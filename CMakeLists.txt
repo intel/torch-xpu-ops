@@ -28,6 +28,30 @@ if(BUILD_TEST)
   add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/sycl ${CMAKE_BINARY_DIR}/test_sycl)
 endif()
 
+# The library couples with PyTorch. Here are two possible building processes:
+# 1. standalone - Need pre-install PyTorch. Introduce PyTorch depdenceise through PyTorch installation dirctory.
+# 2. submodule - Build as a submodule of PyTorch. Introduce PyTorch dependecies through PyTorch sources directory.
+if(PYTORCH_USE_XPU)
+  # submodule
+else()
+  # standalone
+  set(Torch_COMP_VERION "2.3.0")
+
+  if(NOT PYTORCH_INSTALL_DIR)
+    message(FATAL_ERROR "Cannot find PYTORCH_INSTALL_DIR in standalone build mode, please set -DPYTORCH_INSTALL_DIR ...")
+  endif()
+
+  set(Torch_DIR ${PYTORCH_INSTALL_DIR}/share/cmake/Torch)
+  find_package(Torch REQUIRED)
+
+  set(Caffe2_DIR ${PYTORCH_INSTALL_DIR}/share/cmake/Caffe2)
+  find_package(Caffe2 REQUIRED)
+
+  set(PYTORCH_INCLUDE_DIRS ${TORCH_INCLUDE_DIRS} ${CAFFE2_INCLUDE_DIRS})
+endif()
+
+add_subdirectory(${TORCH_XPU_OPS_ROOT}/src ${CMAKE_BINARY_DIR}/torch_xpu_ops)
+
 set(PYTORCH_FOUND_XPU TRUE)
 
 message(STATUS "XPU found")
