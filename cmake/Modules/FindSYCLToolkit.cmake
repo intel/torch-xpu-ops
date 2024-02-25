@@ -23,12 +23,6 @@ This will define the following variables:
 ``SYCL_LANGUAGE_VERSION``
   The SYCL language spec version by Compiler.
 
-``SYCL::SYCL_CXX``
-  Interface target for using SYCL compiler.  The following properties are
-  defined for the target: ``INTERFACE_COMPILE_OPTIONS``,
-  ``INTERFACE_LINK_OPTIONS``, ``INTERFACE_INCLUDE_DIRECTORIES``, and
-  ``INTERFACE_LINK_DIRECTORIES``
-
 #]=======================================================================]
 
 set(SYCLTOOLKIT_FOUND False)
@@ -240,16 +234,6 @@ endif()
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
 message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
-
-add_library(SYCL::SYCL_CXX INTERFACE IMPORTED)
-set_property(TARGET SYCL::SYCL_CXX PROPERTY
-  INTERFACE_COMPILE_OPTIONS ${SYCL_FLAGS})
-set_property(TARGET SYCL::SYCL_CXX PROPERTY
-  INTERFACE_LINK_OPTIONS ${SYCL_LINK_FLAGS})
-set_property(TARGET SYCL::SYCL_CXX PROPERTY
-  INTERFACE_INCLUDE_DIRECTORIES ${SYCL_INCLUDE_DIR})
-set_property(TARGET SYCL::SYCL_CXX PROPERTY
-  INTERFACE_LINK_DIRECTORIES ${SYCL_LIBRARY_DIR})
 
 find_package_handle_standard_args(
   SYCLToolkit
