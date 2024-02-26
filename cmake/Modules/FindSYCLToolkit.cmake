@@ -235,12 +235,15 @@ message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
 message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
 
-find_package_handle_standard_args(
-  SYCLToolkit
-  FOUND_VAR SYCLTOOLKIT_FOUND
-  REQUIRED_VARS SYCL_INCLUDE_DIR SYCL_LIBRARY_DIR SYCL_LIBRARY SYCL_FLAGS
-  VERSION_VAR SYCL_LANGUAGE_VERSION
-  REASON_FAILURE_MESSAGE "${SYCL_REASON_FAILURE}")
+# Avoid module variables conflict due to calling find_package recursively
+# e.g. find_package -> add_subdirectory(entering in a sub-project) -> find_package
+# find_package_handle_standard_args(
+#   SYCLToolkit
+#   FOUND_VAR SYCLTOOLKIT_FOUND
+#   REQUIRED_VARS SYCL_INCLUDE_DIR SYCL_LIBRARY_DIR SYCL_LIBRARY SYCL_FLAGS
+#   VERSION_VAR SYCL_LANGUAGE_VERSION
+#   REASON_FAILURE_MESSAGE "${SYCL_REASON_FAILURE}")
+set(SYCLTOOLKIT_FOUND True)
 
 # Include in Cache
 set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
