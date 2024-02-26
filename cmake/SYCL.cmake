@@ -1,9 +1,13 @@
 # SYCL compiler and runtime setup
 
-find_package(SYCLToolkit REQUIRED)
 if(NOT SYCLTOOLKIT_FOUND)
-  message("Cannot find SYCL compiler tool kit!")
-  return()
+  # Avoid package conflict introduced in PyTorch cmake
+  # find_package(SYCLToolkit REQUIRED)
+  include(${TORCH_XPU_OPS_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
+  if(NOT SYCLTOOLKIT_FOUND)
+    message("Can NOT find SYCL compiler tool kit!")
+    return()
+  endif()
 endif()
 
 # Try to find SYCL compiler version.hpp header
@@ -22,12 +26,7 @@ if(NOT SYCL_VERSION)
   return()
 endif()
 
-find_library(PYTORCH_SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
-
-# SYCL runtime cmake target
-add_library(torch::syclrt INTERFACE IMPORTED)
-set_property(TARGET torch::syclrt APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${SYCL_INCLUDE_DIR})
-set_property(TARGET torch::syclrt APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${PYTORCH_SYCL_LIBRARIES})
+find_library(SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
 
 set(SYCL_COMPILER_VERSION)
 file(READ ${SYCL_VERSION} version_contents)
@@ -52,7 +51,6 @@ endif()
 
 find_package(SYCL REQUIRED)
 if(NOT SYCL_FOUND)
-  message("Cannot find SYCL cmake helpers module!")
+  message("Can NOT find SYCL cmake helpers module!")
   return()
 endif()
-
