@@ -11,6 +11,7 @@
 
 #include <aten/sycl/OffsetCalculator.h>
 #include <aten/sycl/MemoryAccessUtils.h>
+#include <comm/SYCLContext.h>
 
 namespace at { namespace native { namespace memory {
 namespace policies {
@@ -248,6 +249,32 @@ struct multi_outputs_unroll {
 
 } // namespace policies
 
+static inline int preferred_vector_width(at::DeviceIndex dev_id, int elem_sz) {
+  size_t ret;
+  switch (elem_sz) {
+    case 1:
+      static_assert(sizeof(char) == 1, "the char size is not 1 bytes");
+      ret = syclPrefVectorWidth<char>(dev_id);
+      break;
+    case 2:
+      static_assert(sizeof(short) == 2, "the short size is not 2 bytes");
+      ret = syclPrefVectorWidth<short>(dev_id);
+      break;
+    case 4:
+      ret = syclPrefVectorWidth<int>(dev_id);
+      static_assert(sizeof(int) == 4, "the long size is not 4 bytes");
+      break;
+    case 8:
+      static_assert(sizeof(int64_t) == 8, "the long size is not 8");
+      ret = syclPrefVectorWidth<int64_t>(dev_id);
+      break;
+    default:
+      // no vectorize
+      ret = 1;
+  }
+  return ret;
+}
+
 // Query vector size for specific `scalar_t` on current device.
 // Enlarge payloads on each work item with a definite data type
 // specific vector size preference queried from SYCL runtime to feed
@@ -258,9 +285,8 @@ struct multi_outputs_unroll {
 template <typename scalar_t>
 inline int can_vectorize_up_to(char* pointer) {
   int elem_size = sizeof(scalar_t);
-  at::DeviceIndex dev_id = 0; // xpu::current_device();
-  // int preferred_width = preferred_vector_width(dev_id, elem_size);
-  int preferred_width = 4;
+  at::DeviceIndex dev_id = c10::xpu::current_device();
+  int preferred_width = preferred_vector_width(dev_id, elem_size);
   uint64_t address = reinterpret_cast<uint64_t>(pointer);
   constexpr int vec2_alignment =
       std::alignment_of<aligned_vector<scalar_t, 2>>::value;

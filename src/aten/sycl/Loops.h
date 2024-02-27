@@ -10,12 +10,9 @@
 #include <aten/sycl/ElementwiseInvoke.h>
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/OffsetCalculator.h>
-#include <aten/sycl/SYCLHelpers.h> // SYCL context
+#include <comm/SYCLContext.h>
 
-// XXX:
-#include <sycl/sycl.hpp>
-#define sycl_queue() \
-    sycl::queue(sycl::gpu_selector_v, {sycl::property::queue::in_order()})
+using namespace xpu::sycl;
 
 namespace at { namespace native { namespace xpu {
 
@@ -303,9 +300,9 @@ static void launch_legacy_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseKernel<vec_size, func_t>(N, f);
 
-  int wg_sz = 1024; // dpcppMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, wg_sz * vec_size);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, sycl_queue(), ker);
+  sycl::kernel_submit(wg_sz * num_wg, wg_sz, syclGetCurrentQueue(), ker);
 }
 
 template <
@@ -328,9 +325,9 @@ static inline void launch_unrolled_kernel(
   auto ker = UnrolledElementwiseKernel(N, f, data, ic, oc, l, s);
   using ker_t = decltype(ker);
 
-  auto wg_sz = 1024; // dpcppMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, sycl_queue(), ker);
+  sycl::kernel_submit(wg_sz * num_wg, wg_sz, syclGetCurrentQueue(), ker);
 }
 
 template <typename func_t, typename array_t, typename in_calc_t>
@@ -342,8 +339,7 @@ static inline void launch_vectorized_kernel(
     int vec_size) {
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
-  // XXX
-  auto wg_sz = 1024; // dpcppMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerEU();
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
@@ -351,7 +347,7 @@ static inline void launch_vectorized_kernel(
         VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>(   \
             N, f, data, input_calc);                                         \
     int num_wg = ceil_div<int>(N, wg_sz * vec_size);                         \
-    sycl::kernel_submit(wg_sz * num_wg, wg_sz, sycl_queue(), ker);           \
+    sycl::kernel_submit(wg_sz * num_wg, wg_sz, syclGetCurrentQueue(), ker);           \
   }
 
   switch (vec_size) {
@@ -375,7 +371,7 @@ static inline void launch_vectorized_kernel(
       using ker_t = decltype(ker);
 
       int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-      sycl::kernel_submit(wg_sz * num_wg, wg_sz, sycl_queue(), ker);
+      sycl::kernel_submit(wg_sz * num_wg, wg_sz, syclGetCurrentQueue(), ker);
       break;
     }
     default:
@@ -395,9 +391,9 @@ static inline void launch_unrolled_kernel_for_multi_outputs(int64_t N, const fun
       out_calc_t>(N, f, data, ic, oc);
   using ker_t = decltype(ker);
 
-  int wg_sz = 1024; // dpcppMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, ker_t::item_work_size * wg_sz);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, sycl_queue(), ker);
+  sycl::kernel_submit(wg_sz * num_wg, wg_sz, syclGetCurrentQueue(), ker);
 }
 
 template <typename func_t, typename data_t>
@@ -549,7 +545,6 @@ template <typename func_t>
 void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 
   for (int arg = 0; arg < iter.ntensors(); arg++) {
-    // XXX is_cuda()
     TORCH_INTERNAL_ASSERT(
       iter.device(arg).is_xpu(),
       "argument ", arg, ": expected an XPU device but found ", iter.device(arg));
@@ -619,8 +614,7 @@ void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
   if (iter.is_cpu_scalar(1)) {
     AUnaryFunctor<arg1_t, arg2_t, return_t, func_t> af(f, iter.scalar_value<opmath_arg1_t>(1));
     iter.remove_operand(1);
-    // XXX:
-    // const OptionalDeviceGuard device_guard(iter.device(1));
+    const OptionalDeviceGuard device_guard(iter.device(1));
     gpu_kernel(iter, af);
   } else if (iter.is_cpu_scalar(2)) {
     BUnaryFunctor<arg1_t, arg2_t, return_t, func_t> bf(f, iter.scalar_value<opmath_arg2_t>(2));
@@ -645,16 +639,14 @@ void opmath_symmetric_gpu_kernel_with_scalars(TensorIteratorBase& iter, const fu
   static_assert(std::is_same<opmath_arg_t, typename traits::template arg<1>::type>::value,
                 "f is not symmetric");
 
-  // XXX:
-  // OptionalDeviceGuard device_guard;
+  OptionalDeviceGuard device_guard;
   opmath_arg_t scalar_val{};
 
   if (iter.is_cpu_scalar(1)) {
     scalar_val = iter.scalar_value<opmath_arg_t>(1);
     iter.remove_operand(1);
 
-    // XXX:
-    // device_guard.reset_device(iter.device(1));
+    device_guard.reset_device(iter.device(1));
   } else if (iter.is_cpu_scalar(2)) {
     scalar_val = iter.scalar_value<opmath_arg_t>(2);
     iter.remove_operand(2);
