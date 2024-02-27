@@ -28,7 +28,9 @@ set(PROJECT_VERSION "2.3.0")
 cmake_policy(SET CMP0048 NEW)
 project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
 
-option(TORCH_XPU_OPS_BUILD_MODE "submodule or standalone" "submodule")
+if(NOT TORCH_XPU_OPS_BUILD_MODE)
+  set(TORCH_XPU_OPS_BUILD_MODE "submodule")
+endif()
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
@@ -70,9 +72,13 @@ elseif(TORCH_XPU_OPS_BUILD_MODE MATCHES "standalone")
   set(Caffe2_DIR ${PYTORCH_INSTALL_DIR}/share/cmake/Caffe2)
   find_package(Caffe2 REQUIRED)
 
-  set(PYTORCH_INCLUDE_DIRS ${TORCH_INCLUDE_DIRS} ${CAFFE2_INCLUDE_DIRS})
+  set(TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS ${TORCH_INCLUDE_DIRS} ${CAFFE2_INCLUDE_DIRS})
 else()
   message("Unknown build mode. Please see README for build.")
+endif()
+
+if(TORCH_XPU_OPS_PYTORCH_DEPS)
+  sycl_include_external_dependencies(${TORCH_XPU_OPS_PYTORCH_DEPS})
 endif()
 
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)

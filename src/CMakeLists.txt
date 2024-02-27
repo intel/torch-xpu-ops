@@ -21,7 +21,7 @@ set(SYCL_LINK_LIBRARIES_KEYWORD)
 torch_compile_options(torch_xpu_ops)
 target_compile_options_if_supported(torch_xpu_ops "-Wno-deprecated-copy")
 
-target_include_directories(torch_xpu_ops PUBLIC ${PYTORCH_INCLUDE_DIRS})
+target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS})
 target_include_directories(torch_xpu_ops PUBLIC ${ATen_XPU_INCLUDE_DIRS})
 
 target_link_libraries(torch_xpu_ops PUBLIC ${SYCL_LIBRARIES})

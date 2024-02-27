@@ -70,6 +70,10 @@ option(SYCL_HOST_COMPILATION_CXX "Generated file extension" ON)
 # SYCL_VERBOSE_BUILD
 option(SYCL_VERBOSE_BUILD "Print out the commands run while compiling the SYCL source file.  With the Makefile generator this defaults to VERBOSE variable specified on the command line, but can be forced on with this option." OFF)
 
+macro(SYCL_INCLUDE_EXTERNAL_DEPENDENCIES dependency_file)
+  list(APPEND SYCL_EXTERNAL_DEPEND ${dependency_file})
+endmacro()
+
 macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
   # Make the output depend on the dependency file itself, which should cause the
   # rule to re-run.
@@ -291,6 +295,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         # These output files depend on the source_file and the contents of cmake_dependency_file
         ${main_dep}
         DEPENDS ${SYCL_DEPEND}
+        DEPENDS ${SYCL_EXTERNAL_DEPEND}
         DEPENDS ${custom_target_script}
         # Make sure the output directory exists before trying to write to it.
         COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
