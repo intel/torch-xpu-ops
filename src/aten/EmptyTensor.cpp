@@ -2,8 +2,7 @@
 #include <ATen/Context.h>
 #include <ATen/EmptyTensor.h>
 #include <c10/core/DeviceGuard.h>
-
-#include <aten/EmptyTensor.h>
+#include <c10/xpu/XPUCachingAllocator.h>
 
 namespace at::detail {
 
@@ -14,9 +13,8 @@ TensorBase empty_xpu(
     c10::optional<c10::MemoryFormat> memory_format_opt) {
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_xpu());
-  // XXX
-  // const c10::DeviceGuard device_guard(device);
-  auto* allocator = at::getCPUAllocator();
+  const c10::DeviceGuard device_guard(device);
+  auto* allocator = c10::xpu::XPUCachingAllocator::get();
   constexpr c10::DispatchKeySet xpu_dks(c10::DispatchKey::XPU);
   return at::detail::empty_generic(
       size, allocator, xpu_dks, dtype, memory_format_opt);
@@ -56,9 +54,8 @@ TensorBase empty_strided_xpu(
     c10::optional<Device> device_opt) {
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_xpu());
-  // XXX
-  // const c10::DeviceGuard device_guard(device);
-  auto* allocator = at::getCPUAllocator();
+  const c10::DeviceGuard device_guard(device);
+  auto* allocator = c10::xpu::XPUCachingAllocator::get();
   constexpr c10::DispatchKeySet xpu_dks(c10::DispatchKey::XPU);
   return at::detail::empty_strided_generic(
       size, stride, allocator, xpu_dks, dtype);
