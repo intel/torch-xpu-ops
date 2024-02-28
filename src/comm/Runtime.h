@@ -2,15 +2,14 @@
 
 #include <c10/xpu/XPUStream.h>
 
-namespace xpu {
-namespace sycl {
+namespace at::xpu {
 
-static inline at::DeviceIndex syclGetDeviceIndexOfCurrentQueue() {
+static inline at::DeviceIndex getDeviceIndexOfCurrentQueue() {
   return c10::xpu::getCurrentXPUStream().device_index();
 }
 
-static inline ::sycl::queue& syclGetCurrentQueue() {
+static inline sycl::queue& getCurrentSYCLQueue() {
   return c10::xpu::getCurrentXPUStream().queue();
 }
 
-}} // namespace xpu::sycl
+} // namespace at::xpu
