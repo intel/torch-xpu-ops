@@ -7,6 +7,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   list(APPEND SYCL_HOST_FLAGS -std=c++17)
   # SYCL headers warnings
   list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
+  list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
   list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
@@ -35,6 +36,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # resolving incompatible implementation in SYCL runtime.
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=1)
   set(SYCL_FLAGS ${SYCL_FLAGS} ${SYCL_KERNEL_OPTIONS})
+
+  set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
 else()
   message("Not compiling with XPU. Only support GCC compiler as CXX compiler.")
   return()

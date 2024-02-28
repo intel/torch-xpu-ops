@@ -339,9 +339,9 @@ function(SYCL_COMPUTE_DEVICE_OBJECT_FILE_NAME output_file_var sycl_target)
   set(${output_file_var} "${output_file}" PARENT_SCOPE)
 endfunction()
 
-macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target sycl_objects)
+macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
   set(object_files)
-  list(APPEND object_files ${sycl_objects})
+  list(APPEND object_files ${ARGN})
 
   if (object_files)
 
