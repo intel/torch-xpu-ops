@@ -16,7 +16,7 @@ struct CopyScalarFunc {
   }
 };
 
-void copy_kernel(TensorIteratorBase& iter) {
+void copy_kernel(TensorIterator& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
     AT_DISPATCH_QINT_TYPES(dtype, "copy_xpu", [&] {

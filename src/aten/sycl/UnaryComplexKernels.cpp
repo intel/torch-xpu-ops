@@ -43,7 +43,7 @@ struct NegConjScalarFunc {
   }
 };
 
-void neg_conj_kernel(TensorIteratorBase& iter) {
+void neg_conj_kernel(TensorIterator& iter) {
   AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "neg_conj_xpu", [&] {
     gpu_kernel(iter, NegConjScalarFunc<scalar_t>());
   });
@@ -56,7 +56,7 @@ struct NegScalarFunc {
   }
 };
 
-void neg_kernel(TensorIteratorBase& iter) {
+void neg_kernel(TensorIterator& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "neg_xpu", [&]() {
