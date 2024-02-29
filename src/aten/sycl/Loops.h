@@ -13,7 +13,6 @@
 #include <comm/SYCLContext.h>
 
 using namespace at::xpu;
-using namespace xpu::sycl;
 
 namespace at { namespace native { namespace xpu {
 
@@ -303,7 +302,7 @@ static void launch_legacy_kernel(int64_t N, const func_t& f) {
 
   int wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, wg_sz * vec_size);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
 template <
@@ -328,7 +327,7 @@ static inline void launch_unrolled_kernel(
 
   auto wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
 template <typename func_t, typename array_t, typename in_calc_t>
@@ -348,7 +347,7 @@ static inline void launch_vectorized_kernel(
         VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>(   \
             N, f, data, input_calc);                                         \
     int num_wg = ceil_div<int>(N, wg_sz * vec_size);                         \
-    sycl::kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);           \
+    sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);   \
   }
 
   switch (vec_size) {
@@ -372,7 +371,7 @@ static inline void launch_vectorized_kernel(
       using ker_t = decltype(ker);
 
       int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-      sycl::kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
       break;
     }
     default:
@@ -394,7 +393,7 @@ static inline void launch_unrolled_kernel_for_multi_outputs(int64_t N, const fun
 
   int wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, ker_t::item_work_size * wg_sz);
-  sycl::kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
 template <typename func_t, typename data_t>
