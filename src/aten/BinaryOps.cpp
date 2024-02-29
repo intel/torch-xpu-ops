@@ -18,7 +18,7 @@ Tensor add_tensor(
   auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
-  return out;
+  return iter.output();
 }
 
 Tensor& add_tensor_(
@@ -53,7 +53,7 @@ Tensor sub_tensor(
   auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::sub_kernel(iter, alpha);
-  return out;
+  return iter.output();
 }
 
 Tensor& sub_tensor_(
@@ -84,7 +84,7 @@ Tensor mul_tensor(const Tensor& self_arg, const Tensor& other_arg) {
   Tensor out;
   auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
   native::xpu::mul_kernel(iter);
-  return out;
+  return iter.output();
 }
 
 Tensor& mul_tensor_(Tensor& self, const Tensor& other_arg) {
@@ -107,7 +107,7 @@ Tensor div_tensor(const Tensor& self_arg, const Tensor& other_arg) {
   Tensor out;
   auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
   native::xpu::div_kernel(iter);
-  return out;
+  return iter.output();
 }
 
 Tensor& div_tensor_(Tensor& self, const Tensor& other_arg) {
