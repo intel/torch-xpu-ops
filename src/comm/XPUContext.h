@@ -4,6 +4,8 @@
 #include <c10/xpu/XPUFunctions.h>
 #include <c10/xpu/XPUStream.h>
 
+#include <comm/XPUGuard.h>
+
 namespace at::xpu {
 
 // XPU is available if we compiled with XPU.
