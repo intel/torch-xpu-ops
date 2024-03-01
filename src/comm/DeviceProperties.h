@@ -1,6 +1,7 @@
 #pragma once
 
-#include <comm/XPUContext.h>
+#include <ATen/xpu/XPUContext.h>
+
 #include <comm/Runtime.h>
 
 namespace xpu {
