@@ -5,7 +5,7 @@
 #  TORCH_XPU_OPS_BUILD_MODE
 #  -- "submodule" or "standalone", "submodule" by default
 #
-#  TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS
+#  TORCH_XPU_OPS_INCLUDE_DIRS
 #  -- In "submodule" build mode, need configure the variable to inform
 #     PyTorch includes.
 #
@@ -54,8 +54,8 @@ endif()
 # 2. submodule - Build as a submodule of PyTorch. Introduce PyTorch dependecies through PyTorch sources directory.
 if(TORCH_XPU_OPS_BUILD_MODE MATCHES "submodule")
   # submodule
-  if(NOT TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS)
-    message("Can NOT find TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS in submodule build mode, please set the varaible before including torch-xpu-ops root CMakeLists.txt")
+  if(NOT TORCH_XPU_OPS_INCLUDE_DIRS)
+    message("Can NOT find TORCH_XPU_OPS_INCLUDE_DIRS in submodule build mode, please set the varaible before including torch-xpu-ops root CMakeLists.txt")
     return()
   endif()
 elseif(TORCH_XPU_OPS_BUILD_MODE MATCHES "standalone")
@@ -72,7 +72,7 @@ elseif(TORCH_XPU_OPS_BUILD_MODE MATCHES "standalone")
   set(Caffe2_DIR ${PYTORCH_INSTALL_DIR}/share/cmake/Caffe2)
   find_package(Caffe2 REQUIRED)
 
-  set(TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS ${TORCH_INCLUDE_DIRS} ${CAFFE2_INCLUDE_DIRS})
+  set(TORCH_XPU_OPS_INCLUDE_DIRS ${TORCH_INCLUDE_DIRS} ${CAFFE2_INCLUDE_DIRS})
 else()
   message("Unknown build mode. Please see README for build.")
 endif()
