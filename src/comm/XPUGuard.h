@@ -3,9 +3,7 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/impl/InlineDeviceGuard.h>
 #include <c10/core/impl/InlineStreamGuard.h>
-
-// XXX
-#include <comm/XPUGuardImpl.h>
+#include <c10/xpu/impl/XPUGuardImpl.h>
 
 namespace c10::xpu {
 

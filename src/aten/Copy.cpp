@@ -2,6 +2,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/Resize.h>
+#include <ATen/xpu/XPUContext.h>
+#include <ATen/xpu/XPUEvent.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
 #include <torch/library.h>
@@ -9,8 +11,7 @@
 #include <aten/sycl/CopyKernel.h>
 #include <aten/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
-#include <comm/XPUContext.h>
-#include <comm/XPUEvent.h>
+#include <comm/XPUGuard.h>
 
 using namespace at;
 using namespace at::xpu;

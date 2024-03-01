@@ -22,7 +22,7 @@ torch_compile_options(torch_xpu_ops)
 target_compile_options_if_supported(torch_xpu_ops "-Wno-deprecated-copy")
 target_compile_options(torch_xpu_ops PRIVATE ${TORCH_XPU_OPS_FLAGS})
 
-target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_PYTORCH_INCLUDE_DIRS})
+target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
 target_include_directories(torch_xpu_ops PUBLIC ${ATen_XPU_INCLUDE_DIRS})
 target_include_directories(torch_xpu_ops PUBLIC ${SYCL_INCLUDE_DIR})
 
