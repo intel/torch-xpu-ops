@@ -351,6 +351,9 @@ static inline void launch_vectorized_kernel(
   }
 
   switch (vec_size) {
+    case 16:
+      VEC_KER(16);
+      break;
     case 8:
       VEC_KER(8);
       break;
