@@ -111,7 +111,7 @@ SYCL_execute_process(
 SYCL_execute_process(
   "Generating ${generated_file}"
   COMMAND "${SYCL_executable}"
-  -M -MF "${SYCL_generated_dependency_file}"
+  -MD -MF "${SYCL_generated_dependency_file}"
   -c
   "${source_file}"
   -o "${generated_file}"
