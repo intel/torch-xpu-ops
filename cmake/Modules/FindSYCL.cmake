@@ -75,9 +75,11 @@ macro(SYCL_INCLUDE_EXTERNAL_DEPENDENCIES dependency_file)
 endmacro()
 
 macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
+  set(SYCL_DEPEND)
+  set(SYCL_DEPEND_REGENERATE FALSE)
+
   # Make the output depend on the dependency file itself, which should cause the
   # rule to re-run.
-  set(SYCL_DEPEND ${dependency_file})
   if(NOT EXISTS ${dependency_file})
     file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
   endif()
@@ -85,8 +87,24 @@ macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
   # Always include this file to force CMake to run again next
   # invocation and rebuild the dependencies.
   include(${dependency_file})
+
+  if(SYCL_DEPEND)
+    foreach(f ${SYCL_DEPEND})
+      if(NOT EXISTS ${f})
+        set(SYCL_DEPEND_REGENERATE TRUE)
+      endif()
+    endforeach()
+  else()
+    set(SYCL_DEPEND_REGENERATE TRUE)
+  endif()
+
+  if(SYCL_DEPEND_REGENERATE)
+    set(SYCL_DEPEND ${dependency_file})
+    file(WRITE ${dependency_file} "#FindCUDA.cmake generated file.  Do not edit.\n")
+  endif()
 endmacro()
 
+sycl_find_helper_file(make2cmake cmake)
 sycl_find_helper_file(run_sycl cmake)
 
 macro(SYCL_GET_SOURCES_AND_OPTIONS _sycl_sources _cxx_sources _cmake_options)
@@ -241,8 +259,8 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
       set(generated_file_basename "${sycl_target}_generated_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend")
-      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend")
+      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
+      set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
       set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
       set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}$<$<BOOL:$<CONFIG>>:.$<CONFIG>>.cmake")
 
