@@ -22,6 +22,7 @@ set(CMAKE_COMMAND "@CMAKE_COMMAND@") # path
 set(source_file "@source_file@") # path
 set(SYCL_generated_dependency_file "@SYCL_generated_dependency_file@") # path
 set(cmake_dependency_file "@cmake_dependency_file@") # path
+set(SYCL_make2cmake "@SYCL_make2cmake@") # path
 set(SYCL_host_compiler "@SYCL_HOST_COMPILER@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
@@ -110,6 +111,7 @@ SYCL_execute_process(
 SYCL_execute_process(
   "Generating ${generated_file}"
   COMMAND "${SYCL_executable}"
+  -MD -MF "${SYCL_generated_dependency_file}"
   -c
   "${source_file}"
   -o "${generated_file}"
@@ -125,10 +127,47 @@ if(SYCL_result)
     COMMAND "${CMAKE_COMMAND}" -E remove "${generated_file}"
     )
   message(FATAL_ERROR "Error generating file ${generated_file}")
-else()
-  if(verbose)
-    message("Generated ${generated_file} successfully.")
-  endif()
+endif()
+
+# Parse *.d file to retrieve included headers. These headers are dependencies
+# of custom compilation command. Inform cmake to scan these files and
+# retrigger compilation if anything change in these headers.
+SYCL_execute_process(
+  "Generating temporary cmake readable file: ${cmake_dependency_file}.tmp"
+  COMMAND "${CMAKE_COMMAND}"
+  -D "input_file:FILEPATH=${SYCL_generated_dependency_file}"
+  -D "output_file:FILEPATH=${cmake_dependency_file}.tmp"
+  -D "verbose=${verbose}"
+  -P "${SYCL_make2cmake}"
+  )
+
+if(SYCL_result)
+  message(FATAL_ERROR "Error generating ${generated_file}")
+endif()
+
+# Update dependencies list. When we remove some header in .cpp, then the
+# header should be removed from dependencies list. Or unnecessary re-compilation
+# will be triggered, when the header changes.
+SYCL_execute_process(
+  "Copy if different ${cmake_dependency_file}.tmp to ${cmake_dependency_file}"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${cmake_dependency_file}.tmp" "${cmake_dependency_file}"
+  )
+
+if(SYCL_result)
+  message(FATAL_ERROR "Error generating ${generated_file}")
+endif()
+
+SYCL_execute_process(
+  "Removing ${cmake_dependency_file}.tmp and ${SYCL_generated_dependency_file}"
+  COMMAND "${CMAKE_COMMAND}" -E remove "${cmake_dependency_file}.tmp" "${SYCL_generated_dependency_file}"
+  )
+
+if(SYCL_result)
+  message(FATAL_ERROR "Error generating ${generated_file}")
+endif()
+
+if(verbose)
+  message("Generated ${generated_file} successfully.")
 endif()
 
 cmake_policy(POP)
