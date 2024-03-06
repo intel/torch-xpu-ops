@@ -1,9 +1,9 @@
 import torch
 
-a_cpu = torch.randn(2, 3)
+a_cpu = torch.randn(2, 3, 100)
 a_xpu = a_cpu.to('xpu')
 
-c_xpu = a_xpu.abs()
+a_xpu.abs_()
 c_cpu = a_cpu.abs()
 
-print(torch.allclose(c_cpu, c_xpu.to('cpu')))
+print(torch.allclose(c_cpu, a_xpu.to('cpu')))
