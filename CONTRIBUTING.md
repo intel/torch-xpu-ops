@@ -1,57 +1,37 @@
 # Contributing
 
-### License
+## License
 
-<PROJECT NAME> is licensed under the terms in [LICENSE]<link to license file in repo>. By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms.
+Torch XPU Operators project is licensed under the terms in [LICENSE]](./LICENSE). By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms.
 
-### Sign your work
+## Contributing to Torch XPU Operators project
 
-Please use the sign-off line at the end of the patch. Your signature certifies that you wrote the patch or otherwise have the right to pass it on as an open-source patch. The rules are pretty simple: if you can certify
-the below (from [developercertificate.org](http://developercertificate.org/)):
+Thank you for your interest in contributing to this project. Before you begin writing code, it is important that you share your intention to contribute with the team, based on the type of contribution:
 
+1. You want to propose a new feature and implement it.
+    - Post about your intended feature in a [GitHub issue](https://github.com/intel/torch-xpu-ops/issues), and we shall discuss the design and implementation. Once we agree that the plan looks good, go ahead and implement it.
+2. You want to implement a feature or bug-fix for an outstanding issue.
+    - Search for your issue in the [GitHub issue list](https://github.com/intel/torch-xpu-ops/issues).
+    - Pick an issue and comment that you'd like to work on the feature or bug-fix.
+    - If you need more context on a particular issue, ask and we shall provide.
+
+Once you implement and test your feature or bug-fix, submit a Pull Request to https://github.com/intel/torch-xpu-ops.
+
+
+## Developing Torch XPU Operators project on XPU
+
+
+To develop on your machine, here are some tips:
+
+### Build
+* Standalone - Require pre-installation of PyTorch
+```bash
+mkdir build
+cd build && cmake -DTORCH_XPU_OPS_BUILD_MODE=standalone -DBUILD_TEST=1 -DPYTORCH_INSTALL_DIR=YOUR_PYTORCH_INSTALLATION_DIR ..
+make -j x
 ```
-Developer Certificate of Origin
-Version 1.1
-
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-660 York Street, Suite 102,
-San Francisco, CA 94110 USA
-
-Everyone is permitted to copy and distribute verbatim copies of this
-license document, but changing it is not allowed.
-
-Developer's Certificate of Origin 1.1
-
-By making a contribution to this project, I certify that:
-
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
-
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license (unless I am
-    permitted to submit under a different license), as indicated
-    in the file; or
-
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
-
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
+* Submodule - Build as a submodule of PyTorch
+```bash
+# Setup PyTorch source project. torch-xpu-ops is included by default.
+python setup.py install
 ```
-
-Then you just add a line to every git commit message:
-
-    Signed-off-by: Joe Smith <joe.smith@email.com>
-
-Use your real name (sorry, no pseudonyms or anonymous contributions.)
-
-If you set your `user.name` and `user.email` git configs, you can sign your
-commit automatically with `git commit -s`.
