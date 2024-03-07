@@ -6,7 +6,7 @@ Torch XPU Operators* is a SYCL kernel implementation of PyTorch ATen operators o
 ## 1. Overview
 
  <p align="center">
-	 <img src="docs/torch_xpu_ops.jpg" width="50%">
+	 <img src="docs/torch_xpu_ops.jpg" width="100%">
  </p>
 
  * SYCL Implementation for XPU Operators: XPU Operators in this staging branch will be upstream to PyTorch finally. 
