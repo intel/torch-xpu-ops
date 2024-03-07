@@ -11,7 +11,11 @@ Tensor view(const Tensor& self, IntArrayRef size) {
   return at::native::view(self, size);
 }
 
-Tensor as_strided(const Tensor & self, IntArrayRef size, IntArrayRef stride, c10::optional<int64_t> storage_offset=c10::nullopt) {
+Tensor as_strided(
+    const Tensor & self,
+    IntArrayRef size,
+    IntArrayRef stride,
+    c10::optional<int64_t> storage_offset=c10::nullopt) {
   if (self.is_quantized()) {
     return at::native::as_strided_qtensorimpl(self, size, stride, storage_offset);
   }
