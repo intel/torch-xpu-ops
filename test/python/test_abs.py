@@ -2,7 +2,7 @@ import torch
 from torch.testing._internal.common_utils import TestCase
 
 cpu_device = torch.device("cpu")
-dpcpp_device = torch.device("xpu")
+xpu_device = torch.device("xpu")
 
 
 class TestTorchMethod(TestCase):
@@ -45,7 +45,7 @@ class TestTorchMethod(TestCase):
                 3.3333,
             ]
         ]
-        x_dpcpp = torch.tensor(data, device=dpcpp_device)
-        y = torch.tensor(excepted, device=dpcpp_device)
+        x_dpcpp = torch.tensor(data, device=xpu_device)
+        y = torch.tensor(excepted, device=xpu_device)
         y_dpcpp = torch.abs(x_dpcpp)
         self.assertEqual(y.to(cpu_device), y_dpcpp.to(cpu_device))
