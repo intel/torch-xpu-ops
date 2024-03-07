@@ -5,7 +5,7 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 
-class TestTorchMethod(TestCase):
+class TestSimpleUnary(TestCase):
     def test_abs(self, dtype=torch.float):
         data = [
             [
