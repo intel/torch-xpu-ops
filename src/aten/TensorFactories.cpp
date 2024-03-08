@@ -28,9 +28,14 @@ Tensor empty_strided_xpu(IntArrayRef size, IntArrayRef stride, c10::optional<Sca
   return result;
 }
 
+Tensor clone_xpu(const Tensor& self, c10::optional<MemoryFormat> memory_format) {
+  return at::native::clone(self, memory_format);
+}
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::empty.memory_format"), TORCH_FN(at::native::empty_xpu));
   m.impl(TORCH_SELECTIVE_NAME("aten::empty_strided"), TORCH_FN(at::native::empty_strided_xpu));
+  m.impl(TORCH_SELECTIVE_NAME("aten::clone"), TORCH_FN(at::native::clone_xpu));
 }
 
 } // namespace at::native
