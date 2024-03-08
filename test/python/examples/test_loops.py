@@ -29,7 +29,6 @@ class TestLoopsKernel(TestCase):
                 b = torch.as_strided(
                     torch.randn(shape[2][0] * shape[3][0]), shape[2], shape[3]
                 )
-            print(shape, flush=True)
             a_xpu = a.xpu()
             b_xpu = b.xpu()
             c = a + b
