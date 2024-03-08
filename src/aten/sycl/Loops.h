@@ -43,13 +43,13 @@ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
 template <int vec_size, typename func_t>
 struct ElementwiseKernel {
   void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
+    int glbsz = item.get_global_range(0);
     int gid = item.get_global_linear_id();
   #pragma unroll
     for (int i = 0; i < vec_size; i++) {
       if (gid < numel_) {
         f_(gid);
-        gid += grpsz;
+        gid += glbsz;
       }
     }
   };
