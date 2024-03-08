@@ -1,7 +1,7 @@
 # Torch XPU Operators*
 ===========================
 
-Torch XPU Operators* is a SYCL kernel implementation of PyTorch ATen operators on Intel GPU devices, aiming to bring Intel® Data Center GPU Max Series into [PyTorch](https://github.com/pytorch) open source community for AI workload acceleration. Refer to [SYCL kernels for ATen Operators RFC](https://github.com/pytorch/pytorch/issues/114835) for more details. 
+Torch XPU Operators* implements PyTorch ATen operators for Intel GPU devices, aiming to agilely support PyTroch ATen operations and buffer these operations for Intel GPU upstreaming . For more details, refer to [SYCL kernels for ATen Operators RFC](https://github.com/pytorch/pytorch/issues/114835) for more details. 
 
 ## 1. Overview
 
@@ -9,8 +9,7 @@ Torch XPU Operators* is a SYCL kernel implementation of PyTorch ATen operators o
 	 <img src="docs/torch_xpu_ops.jpg" width="100%">
  </p>
 
- * SYCL Implementation for XPU Operators: XPU Operators in this staging branch will be upstream to PyTorch finally. 
- * Intel XPU Runtime: Runtime is based on Intel® oneAPI software stack.
+ * SYCL Implementation for XPU Operators: The Operators in this staging branch will finally be upstreamed to PyTorch for Intel GPU.
  
 ## 2. Requirements
 
@@ -45,21 +44,15 @@ wget https://registrationcenter-download.intel.com/akdlm//IRC_NAS/20f4e6a1-6b0b-
 # 2 components are necessary: DPC++/C++ Compiler and oneMKL
 sudo sh l_BaseKit_p_2024.0.0.49564.sh
 
-# Source OneAPI env
+# Source OneAPI environment
 source /opt/intel/oneapi/compiler/2024.0/env/vars.sh
-source /opt/intel/oneapi/mkl/2024.0/env/vars.sh
 ```
 
 
 ## 3. Build
 
-* Standalone - Require pre-installation of PyTorch
-```bash
-mkdir build
-cd build && cmake -DTORCH_XPU_OPS_BUILD_MODE=standalone -DBUILD_TEST=1 -DPYTORCH_INSTALL_DIR=YOUR_PYTORCH_INSTALLATION_DIR ..
-make -j x
-```
-* Submodule - Build as a submodule of PyTorch
+Need to built this project as a submodule of PyTorch, after install Intel GPU Driver and oneAPI Base Toolkit Packages.
+
 ```bash
 # Setup PyTorch source project. torch-xpu-ops is included by default.
 python setup.py install
