@@ -30,10 +30,10 @@ void conj_kernel(TensorIterator& iter) {
             // Conj is a no-op for non-complex types
             copy_kernel(iter);
           })
-          AT_DISPATCH_CASE_COMPLEX_TYPES_AND(
-              kComplexHalf, iter.common_dtype(), "conj_sycl", [&] {
-                gpu_kernel(iter, ConjScalarFunc<scalar_t>());
-              }));
+      AT_DISPATCH_CASE_COMPLEX_TYPES_AND(kComplexHalf, [&] {
+        gpu_kernel(iter, ConjScalarFunc<scalar_t>());
+      })
+  );
 }
 
 template <typename scalar_t>
