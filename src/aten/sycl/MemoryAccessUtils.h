@@ -46,12 +46,14 @@ struct static_unroll<func, end, end> {
 template<int arg_index>
 struct vectorized_load_helper {
   template <typename args_t, typename policy_t, typename offset_t>
-  static C10_DEVICE void apply(policy_t &self, args_t *args, offset_t offset) {
+  static C10_DEVICE void apply(policy_t &self, args_t *args, offset_t offset, int args_vec_base) {
     using arg_t = std::tuple_element_t<arg_index, args_t>;
     // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
     // need a +1 offset to get the input
-    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + 1]) + self.get_offset(offset, arg_index);
-    auto args_accessor = [&args] C10_DEVICE (int thread_unroll_idx) -> arg_t & { return std::get<arg_index>(args[thread_unroll_idx]); };
+    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + 1]) + offset[arg_index];
+    auto args_accessor = [&args, args_vec_base] C10_DEVICE (int thread_unroll_idx) -> arg_t & { 
+      return std::get<arg_index>(args[args_vec_base + thread_unroll_idx]); 
+    };
     self.load_single_arg(args_accessor, ptr);
   }
 };
