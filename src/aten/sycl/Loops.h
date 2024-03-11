@@ -40,28 +40,6 @@ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
   policy.store(results);
 }
 
-template <int vec_size, typename func_t>
-struct ElementwiseKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int glbsz = item.get_global_range(0);
-    int gid = item.get_global_linear_id();
-  #pragma unroll
-    for (int i = 0; i < vec_size; i++) {
-      if (gid < numel_) {
-        f_(gid);
-        gid += glbsz;
-      }
-    }
-  };
-
-  ElementwiseKernel(int numel, func_t f)
-      : numel_(numel), f_(f) {}
-
- private:
-  int numel_;
-  func_t f_;
-};
-
 template <
     typename func_t,
     typename array_t,
@@ -239,6 +217,48 @@ struct UnrolledElementwiseKernelForMultiOutputs {
   out_calc_t oc_;
 };
 
+template <int vec_size, typename func_t>
+struct ElementwiseGroupRangeKernel {
+  void operator()(sycl::nd_item<1> item) const {
+    int wg_sz = item.get_local_range(0);
+    int group_work_size = wg_sz * vec_size;
+    int idx = group_work_size * item.get_group(0) + item.get_local_id(0);
+  #pragma unroll
+    for (int i = 0; i < vec_size; i++) {
+      if (idx < numel_) {
+        f_(idx);
+        idx += wg_sz;
+      }
+    }
+  };
+
+  ElementwiseGroupRangeKernel(int numel, func_t f)
+      : numel_(numel), f_(f) {}
+
+ private:
+  int numel_;
+  func_t f_;
+};
+
+template <typename func_t>
+struct ElementwiseGlobalRangeKernel {
+  void operator()(sycl::nd_item<1> item) const {
+    int linear_idx = item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    for (int idx = linear_idx; idx < numel_; idx+=item.get_group_range(0) * item.get_local_range(0)) {
+      if (idx < numel_) {
+        f_(idx);
+      }
+    }
+  };
+
+  ElementwiseGlobalRangeKernel(int numel, func_t f)
+      : numel_(numel), f_(f) {}
+
+ private:
+  int numel_;
+  func_t f_;
+};
+
 template <
     typename arg0_t,
     int ntensors,
@@ -292,16 +312,32 @@ struct LegacyKernelWithCastScalarFunctor {
 };
 
 template <int vec_size, typename func_t>
-static void launch_legacy_kernel(int64_t N, const func_t& f) {
+static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
   TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
   if (N == 0) {
     return;
   }
 
-  auto ker = ElementwiseKernel<vec_size, func_t>(N, f);
+  auto ker = ElementwiseGroupRangeKernel<vec_size, func_t>(N, f);
 
   int wg_sz = syclMaxWorkItemsPerEU();
   int num_wg = ceil_div<int>(N, wg_sz * vec_size);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+}
+
+template <typename func_t>
+static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  auto ker = ElementwiseGlobalRangeKernel<func_t>(N, f);
+
+  int wg_sz = syclMaxWorkItemsPerEU();
+  int num_wg = ceil_div<int>(N, wg_sz);
+  int hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
+  num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
@@ -432,7 +468,7 @@ static inline bool can_vectorize_for_non_contigouous(
   return vec_size > 1;
 }
 
-template <typename func_t>
+template <typename func_t, bool enable_broadcast_vec>
 void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -449,8 +485,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   }
 
   int64_t numel = iter.numel();
-
   bool contiguous = iter.is_contiguous();
+  bool latency_case =numel <= syclMaxWorkItemsPerEU() * 4; /* on tuning for different data types */
 
   int vec_size;
   if (contiguous) {
@@ -458,23 +494,26 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     vec_size = memory::can_vectorize_up_to<func_t>(data);
     launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
     return;
-  } else if (can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
-    auto input_calc = make_input_offset_calculator<traits::arity>(iter);
-    launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
-    return;
+  } else {
+    if constexpr (enable_broadcast_vec) {
+      if (!latency_case && can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
+        auto input_calc = make_input_offset_calculator<traits::arity>(iter);
+        launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
+        return;
+      }
+    }
   }
 
   auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
-  constexpr int unroll_factor = sizeof(arg0_t) > 4 ? 2 : 4;
-  launch_legacy_kernel<unroll_factor>(
+  launch_legacy_global_range_kernel(
     numel, LegacyKernelScalarFunctor<
         arg0_t, ntensors, decltype(offset_calc), func_t>(data, offset_calc, f));
 }
 
-template <typename func_t>
+template <typename func_t, bool enable_broadcast_vec=true>
 void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
   if (!needs_dynamic_casting<func_t>::check(iter)) {
-    return gpu_kernel_impl_nocast(iter, f);
+    return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec>(iter, f);
   }
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -513,7 +552,7 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     }
     auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
     constexpr int unroll_factor = sizeof(arg0_t) > 4 ? 2 : 4;
-    launch_legacy_kernel<unroll_factor>(
+    launch_legacy_group_range_kernel<unroll_factor>(
         numel,
         LegacyKernelWithCastScalarFunctor<
             arg0_t, ntensors, decltype(offset_calc), func_t>(
