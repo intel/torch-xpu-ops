@@ -1,10 +1,10 @@
 #pragma once
 
+#include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TensorIteratorDynamicCasting.h>
-#include <ATen/OpMathType.h>
 #include <ATen/native/cuda/thread_constants.h>
 
 #include <aten/sycl/ElementwiseInvoke.h>
@@ -14,7 +14,9 @@
 
 using namespace at::xpu;
 
-namespace at { namespace native { namespace xpu {
+namespace at {
+namespace native {
+namespace xpu {
 
 template <int item_work_size, typename func_t, typename policy_t>
 inline void elementwise_kernel_helper(func_t f, policy_t policy) {
@@ -61,8 +63,7 @@ struct UnrolledElementwiseKernel {
         in_calc_t,
         out_calc_t,
         loader_t,
-        storer_t>(
-        data_, remaining, ic_, oc_, l_, s_, lid, grpid, grpsz);
+        storer_t>(data_, remaining, ic_, oc_, l_, s_, lid, grpid, grpsz);
     elementwise_kernel_helper<item_work_size>(f_, policy);
   };
 
@@ -107,15 +108,7 @@ struct VectorizedElementwiseKernel {
           decltype(oc),
           at::native::memory::LoadWithoutCast,
           at::native::memory::StoreWithoutCast>(
-              data_,
-              remaining,
-              ic_,
-              oc,
-              l,
-              s,
-              lid,
-              grpid,
-              grpsz);
+          data_, remaining, ic_, oc, l, s, lid, grpid, grpsz);
       elementwise_kernel_helper<vec_size>(f_, policy);
     } else {
       auto policy = at::native::memory::policies::
@@ -223,7 +216,7 @@ struct ElementwiseGroupRangeKernel {
     int wg_sz = item.get_local_range(0);
     int group_work_size = wg_sz * vec_size;
     int idx = group_work_size * item.get_group(0) + item.get_local_id(0);
-  #pragma unroll
+#pragma unroll
     for (int i = 0; i < vec_size; i++) {
       if (idx < numel_) {
         f_(idx);
@@ -232,8 +225,7 @@ struct ElementwiseGroupRangeKernel {
     }
   };
 
-  ElementwiseGroupRangeKernel(int numel, func_t f)
-      : numel_(numel), f_(f) {}
+  ElementwiseGroupRangeKernel(int numel, func_t f) : numel_(numel), f_(f) {}
 
  private:
   int numel_;
@@ -243,16 +235,17 @@ struct ElementwiseGroupRangeKernel {
 template <typename func_t>
 struct ElementwiseGlobalRangeKernel {
   void operator()(sycl::nd_item<1> item) const {
-    int linear_idx = item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    for (int idx = linear_idx; idx < numel_; idx+=item.get_group_range(0) * item.get_local_range(0)) {
+    int linear_idx =
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    for (int idx = linear_idx; idx < numel_;
+         idx += item.get_group_range(0) * item.get_local_range(0)) {
       if (idx < numel_) {
         f_(idx);
       }
     }
   };
 
-  ElementwiseGlobalRangeKernel(int numel, func_t f)
-      : numel_(numel), f_(f) {}
+  ElementwiseGlobalRangeKernel(int numel, func_t f) : numel_(numel), f_(f) {}
 
  private:
   int numel_;
@@ -366,6 +359,25 @@ static inline void launch_unrolled_kernel(
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
+constexpr int max_scalar_size_(std::tuple<>) {
+  return 0;
+}
+
+template <typename scalar_t, typename... types>
+constexpr int max_scalar_size_(std::tuple<scalar_t, types...>) {
+  return std::max<int>(
+      sizeof(scalar_t), max_scalar_size_(std::tuple<types...>{}));
+}
+
+template <typename func_t>
+constexpr static inline int max_scalar_size() {
+  using traits = function_traits<func_t>;
+  using args_t = typename traits::ArgsTuple;
+  constexpr auto size = max_scalar_size_(args_t{});
+  using return_t = typename traits::result_type;
+  return std::max<int>(sizeof(return_t), size);
+}
+
 template <typename func_t, typename array_t, typename in_calc_t>
 static inline void launch_vectorized_kernel(
     int64_t N,
@@ -373,17 +385,21 @@ static inline void launch_vectorized_kernel(
     array_t data,
     in_calc_t input_calc,
     int vec_size) {
+  constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
   auto wg_sz = syclMaxWorkItemsPerEU();
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
-    auto ker =                                                               \
-        VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>(   \
-            N, f, data, input_calc);                                         \
-    int num_wg = ceil_div<int>(N, wg_sz * vec_size);                         \
-    sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);   \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
+      auto ker =                                                             \
+          VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
+              N, f, data, input_calc);                                       \
+      int num_wg = ceil_div<int>(N, wg_sz * vec_size);                       \
+      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
+    }                                                                        \
   }
 
   switch (vec_size) {
@@ -418,8 +434,18 @@ static inline void launch_vectorized_kernel(
   }
 }
 
-template <int num_outputs, typename func_t, typename array_t, typename in_calc_t, typename out_calc_t>
-static inline void launch_unrolled_kernel_for_multi_outputs(int64_t N, const func_t& f, array_t data, in_calc_t ic, out_calc_t oc) {
+template <
+    int num_outputs,
+    typename func_t,
+    typename array_t,
+    typename in_calc_t,
+    typename out_calc_t>
+static inline void launch_unrolled_kernel_for_multi_outputs(
+    int64_t N,
+    const func_t& f,
+    array_t data,
+    in_calc_t ic,
+    out_calc_t oc) {
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
   auto ker = UnrolledElementwiseForMultiOutputsKernel<
@@ -486,7 +512,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
   bool contiguous = iter.is_contiguous();
-  bool latency_case =numel <= syclMaxWorkItemsPerEU() * 4; /* on tuning for different data types */
+  bool latency_case = numel <=
+      syclMaxWorkItemsPerEU() * 4; /* on tuning for different data types */
 
   int vec_size;
   if (contiguous) {
@@ -496,7 +523,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
     return;
   } else {
     if constexpr (enable_broadcast_vec) {
-      if (!latency_case && can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
+      if (!latency_case &&
+          can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
         auto input_calc = make_input_offset_calculator<traits::arity>(iter);
         launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
         return;
@@ -506,11 +534,15 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
   auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
   launch_legacy_global_range_kernel(
-    numel, LegacyKernelScalarFunctor<
-        arg0_t, ntensors, decltype(offset_calc), func_t>(data, offset_calc, f));
+      numel,
+      LegacyKernelScalarFunctor<
+          arg0_t,
+          ntensors,
+          decltype(offset_calc),
+          func_t>(data, offset_calc, f));
 }
 
-template <typename func_t, bool enable_broadcast_vec=true>
+template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
   if (!needs_dynamic_casting<func_t>::check(iter)) {
     return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec>(iter, f);
@@ -555,18 +587,22 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     launch_legacy_group_range_kernel<unroll_factor>(
         numel,
         LegacyKernelWithCastScalarFunctor<
-            arg0_t, ntensors, decltype(offset_calc), func_t>(
-                data, dtypes, offset_calc, f));
+            arg0_t,
+            ntensors,
+            decltype(offset_calc),
+            func_t>(data, dtypes, offset_calc, f));
   }
 }
 
 template <typename func_t>
 void gpu_kernel_nocast(TensorIteratorBase& iter, const func_t& f) {
-
   for (int arg = 0; arg < iter.ntensors(); arg++) {
     TORCH_INTERNAL_ASSERT(
-      iter.device(arg).is_xpu(),
-      "argument ", arg, ": expected an XPU device but found ", iter.device(arg));
+        iter.device(arg).is_xpu(),
+        "argument ",
+        arg,
+        ": expected an XPU device but found ",
+        iter.device(arg));
   }
 
   if (iter.numel() == 0) {
@@ -585,11 +621,13 @@ void gpu_kernel_nocast(TensorIteratorBase& iter, const func_t& f) {
 
 template <typename func_t>
 void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
-
   for (int arg = 0; arg < iter.ntensors(); arg++) {
     TORCH_INTERNAL_ASSERT(
-      iter.device(arg).is_xpu(),
-      "argument ", arg, ": expected an XPU device but found ", iter.device(arg));
+        iter.device(arg).is_xpu(),
+        "argument ",
+        arg,
+        ": expected an XPU device but found ",
+        iter.device(arg));
   }
 
   if (iter.numel() == 0) {
@@ -606,30 +644,32 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
   gpu_kernel_impl(iter, f);
 }
 
-template<typename arg1_t, typename arg2_t, typename return_t, typename func_t>
+template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
 struct AUnaryFunctor {
   using traits = function_traits<func_t>;
   using opmath_arg1_t = typename traits::template arg<0>::type;
   return_t operator()(arg2_t b) const {
     return f(a, b);
   }
-  AUnaryFunctor(func_t f_, opmath_arg1_t a_): f(f_), a(a_) {}
-  private:
-    func_t f;
-    opmath_arg1_t a;
+  AUnaryFunctor(func_t f_, opmath_arg1_t a_) : f(f_), a(a_) {}
+
+ private:
+  func_t f;
+  opmath_arg1_t a;
 };
 
-template<typename arg1_t, typename arg2_t, typename return_t, typename func_t>
+template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
 struct BUnaryFunctor {
   using traits = function_traits<func_t>;
   using opmath_arg2_t = typename traits::template arg<1>::type;
   return_t operator()(arg1_t a) const {
     return f(a, b);
   }
-  BUnaryFunctor(func_t f_, opmath_arg2_t b_): f(f_), b(b_) {}
-  private:
-    func_t f;
-    opmath_arg2_t b;
+  BUnaryFunctor(func_t f_, opmath_arg2_t b_) : f(f_), b(b_) {}
+
+ private:
+  func_t f;
+  opmath_arg2_t b;
 };
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
@@ -637,12 +677,17 @@ struct BinaryFunctor {
   return_t operator()(arg1_t a, arg2_t b) const {
     return f(a, b);
   }
-  BinaryFunctor(func_t f_): f(f_) {}
-  private:
-    func_t f;
+  BinaryFunctor(func_t f_) : f(f_) {}
+
+ private:
+  func_t f;
 };
 
-template <typename arg1_t, typename arg2_t = arg1_t, typename return_t = arg1_t, typename func_t>
+template <
+    typename arg1_t,
+    typename arg2_t = arg1_t,
+    typename return_t = arg1_t,
+    typename func_t>
 void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
   TORCH_INTERNAL_ASSERT(iter.ntensors() == 3);
 
@@ -654,12 +699,14 @@ void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
       "gpu_kernel_with_scalars only supports two input arguments");
 
   if (iter.is_cpu_scalar(1)) {
-    AUnaryFunctor<arg1_t, arg2_t, return_t, func_t> af(f, iter.scalar_value<opmath_arg1_t>(1));
+    AUnaryFunctor<arg1_t, arg2_t, return_t, func_t> af(
+        f, iter.scalar_value<opmath_arg1_t>(1));
     iter.remove_operand(1);
     const OptionalDeviceGuard device_guard(iter.device(1));
     gpu_kernel(iter, af);
   } else if (iter.is_cpu_scalar(2)) {
-    BUnaryFunctor<arg1_t, arg2_t, return_t, func_t> bf(f, iter.scalar_value<opmath_arg2_t>(2));
+    BUnaryFunctor<arg1_t, arg2_t, return_t, func_t> bf(
+        f, iter.scalar_value<opmath_arg2_t>(2));
     iter.remove_operand(2);
     gpu_kernel(iter, bf);
   } else {
@@ -668,7 +715,9 @@ void opmath_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
 }
 
 template <typename scalar_t, typename return_t = scalar_t, typename func_t>
-void opmath_symmetric_gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
+void opmath_symmetric_gpu_kernel_with_scalars(
+    TensorIteratorBase& iter,
+    const func_t& f) {
   // Use symmetric property of the functor to reduce number of kernels,
   // requires f(a, b) == f(b, a)
   TORCH_INTERNAL_ASSERT(iter.ntensors() == 3);
@@ -678,8 +727,9 @@ void opmath_symmetric_gpu_kernel_with_scalars(TensorIteratorBase& iter, const fu
   static_assert(
       traits::arity == 2,
       "gpu_kernel_with_scalars only supports two input arguments");
-  static_assert(std::is_same<opmath_arg_t, typename traits::template arg<1>::type>::value,
-                "f is not symmetric");
+  static_assert(
+      std::is_same<opmath_arg_t, typename traits::template arg<1>::type>::value,
+      "f is not symmetric");
 
   OptionalDeviceGuard device_guard;
   opmath_arg_t scalar_val{};
@@ -717,7 +767,9 @@ void gpu_kernel_with_scalars(TensorIteratorBase& iter, const func_t& f) {
 }
 
 template <typename func_t>
-void gpu_kernel_multiple_outputs_impl(TensorIteratorBase& iter, const func_t& f) {
+void gpu_kernel_multiple_outputs_impl(
+    TensorIteratorBase& iter,
+    const func_t& f) {
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
   constexpr int num_outputs = std::tuple_size<output_t>::value;
@@ -737,11 +789,13 @@ void gpu_kernel_multiple_outputs_impl(TensorIteratorBase& iter, const func_t& f)
   if (iter.is_contiguous()) {
     auto input_calc = TrivialOffsetCalculator<num_inputs>();
     auto output_calc = TrivialOffsetCalculator<num_outputs>();
-    launch_unrolled_kernel_for_multi_outputs<num_outputs>(numel, f, data, input_calc, output_calc);
+    launch_unrolled_kernel_for_multi_outputs<num_outputs>(
+        numel, f, data, input_calc, output_calc);
   } else {
     auto input_calc = make_input_offset_calculator<num_inputs>(iter);
     auto output_calc = make_output_offset_calculator<num_outputs>(iter);
-    launch_unrolled_kernel_for_multi_outputs<num_outputs>(numel, f, data, input_calc, output_calc);
+    launch_unrolled_kernel_for_multi_outputs<num_outputs>(
+        numel, f, data, input_calc, output_calc);
   }
 }
 
@@ -765,4 +819,6 @@ void gpu_kernel_multiple_outputs(TensorIteratorBase& iter, const func_t& f) {
   gpu_kernel_multiple_outputs_impl(iter, f);
 }
 
-}}} //namespace at::native::xpu
+} // namespace xpu
+} // namespace native
+} // namespace at
