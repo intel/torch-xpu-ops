@@ -17,7 +17,7 @@ test_shapes = [
 ]
 
 class TestLoopsKernel(TestCase):
-    def test_loops(self, dtype=torch.float):
+    def _test_loops(self, dtype=torch.float):
         for shape in test_shapes:
             if len(shape) == 2:
                 a = torch.randn(shape[0], dtype=dtype)
@@ -35,6 +35,15 @@ class TestLoopsKernel(TestCase):
             c_xpu = a_xpu + b_xpu + 1
             self.assertEqual(c, c_xpu.cpu())
     
+    def test_loops_float(self):
+        self._test_loops(torch.float)
+    
+    def test_loops_half(self):
+        self._test_loops(torch.half)
+    
+    def test_loops_bfloat16(self):
+        self._test_loops(torch.bfloat16)
+
     def test_loops_dynamic_cast(self):
         for shape in test_shapes:
             if len(shape) == 2:
