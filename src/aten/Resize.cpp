@@ -133,12 +133,19 @@ const at::Tensor & resize_(
   return impl::resize_xpu_(self, size, memory_format);
 }
 
+const Tensor& resize_as_(const Tensor& self, const Tensor& the_template,
+        c10::optional<MemoryFormat> optional_memory_format = c10::nullopt) {
+  return resize_(self, the_template.sizes(), optional_memory_format);
+}
+
 Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
-  return copy_xpu(const_cast<Tensor&>(dst), self, false);
+    dst.resize_as_(self);
+    return copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::resize_"), TORCH_FN(resize_));
+  m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
   m.impl(TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"), TORCH_FN(_copy_from_and_resize));
 }
 

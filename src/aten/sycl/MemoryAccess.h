@@ -130,16 +130,11 @@ struct vectorized {
 
   template <typename accessor_t, typename scalar_t>
   inline void load_single_arg(accessor_t to, scalar_t* from) {
-    int index = item_idx + num_items_per_group;
-    auto v = load_vector<vec_size>(from, index);
+    auto v = load_vector<vec_size>(from, 0);
 #pragma unroll
     for (int j = 0; j < vec_size; j++) {
       to(j) = v.val[j];
     }
-  }
-
-  inline int get_offset(typename inp_calc_t::offset_type offset, int arg_index) {
-    return offset[arg_index];
   }
 
   template <typename args_t>
@@ -153,8 +148,10 @@ struct vectorized {
     // Apply `Vectorized` policy for some 'non-contiguous' cases,
     // like broadcast. The broadcasted operands are dense and could be
     // optimized by the policy if satisfying vectorization conditions.
-    auto offset = input_offset_calculator.get(group_offset);
-    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, offset);
+    // auto offset = input_offset_calculator.get(group_offset);
+    auto linear_idx = group_offset + item_idx* vec_size;
+    auto offset = input_offset_calculator.get(linear_idx);
+    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, offset, 0);
   }
 
   template <typename scalar_t>
@@ -164,7 +161,7 @@ struct vectorized {
         reinterpret_cast<scalar_t*>(data[0]) + group_work_size * group_idx;
     vec_t* to_ = reinterpret_cast<vec_t*>(to);
 
-    int index = item_idx + num_items_per_group;
+    int index = item_idx;
     vec_t v;
 #pragma unroll
     for (int j = 0; j < vec_size; j++) {

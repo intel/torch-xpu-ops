@@ -43,13 +43,13 @@ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
 template <int vec_size, typename func_t>
 struct ElementwiseKernel {
   void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
+    int glbsz = item.get_global_range(0);
     int gid = item.get_global_linear_id();
   #pragma unroll
     for (int i = 0; i < vec_size; i++) {
       if (gid < numel_) {
         f_(gid);
-        gid += grpsz;
+        gid += glbsz;
       }
     }
   };
@@ -419,7 +419,7 @@ static inline bool can_vectorize_for_non_contigouous(
   for (int i = 0; i < iter.ntensors(); i++) {
     // Checking each row has enough alignments
     auto strides = iter.strides(i);
-    for (int dim = 1; dim < strides.size(); dim++) {
+    for (int dim = 1; dim < (int)strides.size(); dim++) {
       int64_t base_of_row = strides[dim];
       int64_t vec_size_in_bytes = strides[0] * vec_size;
       while (base_of_row % vec_size_in_bytes) {

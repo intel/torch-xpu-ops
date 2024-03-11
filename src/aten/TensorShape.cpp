@@ -11,6 +11,14 @@ Tensor view(const Tensor& self, IntArrayRef size) {
   return at::native::view(self, size);
 }
 
+Tensor view_as_real(const at::Tensor& self) {
+  return at::native::view_as_real(self);
+}
+
+Tensor view_as_complex(const Tensor& self) {
+  return at::native::view_as_complex(self);
+}
+
 Tensor as_strided(
     const Tensor & self,
     IntArrayRef size,
@@ -22,9 +30,19 @@ Tensor as_strided(
   return at::native::as_strided_tensorimpl(self, size, stride, storage_offset);
 }
 
+Tensor _reshape_alias(
+    const Tensor& self,
+    IntArrayRef size,
+    IntArrayRef stride) {
+  return at::native::_reshape_alias(self, size, stride);
+}
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::view"), TORCH_FN(view));
+  m.impl(TORCH_SELECTIVE_NAME("aten::view_as_real"), TORCH_FN(view_as_real));
+  m.impl(TORCH_SELECTIVE_NAME("aten::view_as_complex"), TORCH_FN(view_as_complex));
   m.impl(TORCH_SELECTIVE_NAME("aten::as_strided"), TORCH_FN(as_strided));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_reshape_alias"), TORCH_FN(_reshape_alias));
 }
 
 }}} // namespace at::native_xpu
