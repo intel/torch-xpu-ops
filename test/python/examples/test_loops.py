@@ -31,6 +31,25 @@ class TestLoopsKernel(TestCase):
                 )
             a_xpu = a.xpu()
             b_xpu = b.xpu()
-            c = a + b
-            c_xpu = a_xpu + b_xpu
+            c = a + b + 1
+            c_xpu = a_xpu + b_xpu + 1
+            self.assertEqual(c, c_xpu.cpu())
+    
+    def test_loops_dynamic_cast(self):
+        for shape in test_shapes:
+            if len(shape) == 2:
+                a = torch.randn(shape[0], dtype=torch.float)
+                b = torch.randn(shape[1], dtype=torch.half)
+            elif len(shape) == 4:
+                a = torch.as_strided(
+                    torch.randn(shape[0][0] * shape[1][0], dtype=torch.float), shape[0], shape[1]
+                )
+                b = torch.as_strided(
+                    torch.randn(shape[2][0] * shape[3][0], dtype=torch.half), shape[2], shape[3]
+                )
+            a_xpu = a.xpu()
+            b_xpu = b.xpu()
+            print(f'a_xpu:{a_xpu.dtype}, {a_xpu.shape}, {a.stride()}; b_xpu:{b_xpu.dtype}, {b_xpu.shape}, {b_xpu.stride()}', flush=True)
+            c = a + b + 1
+            c_xpu = a_xpu + b_xpu + 1
             self.assertEqual(c, c_xpu.cpu())
