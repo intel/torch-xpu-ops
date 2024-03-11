@@ -3,46 +3,51 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
 #include <torch/library.h>
+#include <ATen/XPUNativeFunctions.h>
 
 #include <aten/sycl/BinaryKernels.h>
 
 namespace at {
-namespace native {
-namespace xpu {
 
-Tensor add_tensor(
-    const Tensor& self_arg,
-    const Tensor& other_arg,
-    const Scalar& alpha) {
+at::Tensor XPUNativeFunctions::add(
+    const at::Tensor & self,
+    const at::Tensor & other,
+    const at::Scalar & alpha) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
   return iter.output();
 }
 
-Tensor& add_tensor_(
-    Tensor& self,
-    const Tensor& other_arg,
-    const Scalar& alpha) {
-  auto iter = TensorIterator::binary_op(self, self, other_arg);
+at::Tensor & XPUNativeFunctions::add_(
+    at::Tensor & self,
+    const at::Tensor & other,
+    const at::Scalar & alpha) {
+  auto iter = TensorIterator::binary_op(self, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
   return self;
 }
 
-Tensor add_scalar(
-    const Tensor& self_arg,
-    const Scalar& other,
-    const Scalar& alpha) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::add_tensor(self_arg, wrapper, alpha);
+at::Tensor XPUNativeFunctions::add(
+    const at::Tensor & self,
+    const at::Scalar & other,
+    const at::Scalar & alpha) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::add(self, wrapper, alpha);
 }
 
-Tensor& add_scalar_(Tensor& self, const Scalar& other, const Scalar& alpha) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::add_tensor_(self, wrapper, alpha);
+at::Tensor & XPUNativeFunctions::add_(
+    at::Tensor & self,
+    const at::Scalar & other,
+    const at::Scalar & alpha) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::add_(self, wrapper, alpha);
 }
+
+namespace native {
+namespace xpu {
 
 Tensor sub_tensor(
     const Tensor& self_arg,
@@ -127,10 +132,6 @@ Tensor& div_scalar_(Tensor& self, const Scalar& other) {
 }
 
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::add.Scalar"), TORCH_FN(add_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::add_.Scalar"), TORCH_FN(add_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::add.Tensor"), TORCH_FN(add_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::add_.Tensor"), TORCH_FN(add_tensor_));
   m.impl(TORCH_SELECTIVE_NAME("aten::sub.Scalar"), TORCH_FN(sub_scalar));
   m.impl(TORCH_SELECTIVE_NAME("aten::sub_.Scalar"), TORCH_FN(sub_scalar_));
   m.impl(TORCH_SELECTIVE_NAME("aten::sub.Tensor"), TORCH_FN(sub_tensor));

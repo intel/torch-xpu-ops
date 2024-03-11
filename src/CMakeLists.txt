@@ -1,4 +1,5 @@
-# define archive static library target - torch_xpu_ops
+# Define archive static library target - torch_xpu_ops
+include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
 set(ATen_XPU_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
@@ -12,7 +13,7 @@ sycl_add_library(
   torch_xpu_ops
   STATIC
   SYCL_SOURCES ${ATen_XPU_SYCL_SRCS}
-  CXX_SOURCES ${ATen_XPU_CPP_SRCS})
+  CXX_SOURCES ${ATen_XPU_CPP_SRCS} ${ATen_XPU_GEN_SRCS})
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
 # Align with PyTorch compile options

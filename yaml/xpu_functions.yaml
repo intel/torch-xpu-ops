@@ -1,0 +1,9 @@
+backend: XPU
+cpp_namespace: at
+use_out_as_primary: true
+device_guard: true
+supported:
+  - add.Scalar
+  - add.Tensor
+  - add_.Scalar
+  - add_.Tensor
