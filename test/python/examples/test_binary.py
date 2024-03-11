@@ -15,6 +15,14 @@ class TestSimpleBinary(TestCase):
         c_cpu = a_cpu + b_cpu
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
 
+    def test_add_scalar(self, dtype=torch.float):
+        a_cpu = torch.randn(2, 3)
+        b = 1.11
+        a_xpu = a_cpu.to(xpu_device)
+        c_xpu = a_xpu + b
+        c_cpu = a_cpu + b
+        self.assertEqual(c_cpu, c_xpu.to(cpu_device))
+
     def test_sub(self, dtype=torch.float):
         a_cpu = torch.randn(2, 3)
         b_cpu = torch.randn(2, 3)
