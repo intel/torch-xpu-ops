@@ -2,7 +2,6 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
-#include <torch/library.h>
 #include <ATen/XPUNativeFunctions.h>
 
 #include <aten/sycl/CompareKernels.h>
