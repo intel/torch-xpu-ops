@@ -18,4 +18,6 @@ void gt_kernel(TensorIteratorBase& iter);
 
 void ge_kernel(TensorIteratorBase& iter);
 
-}}} // at::native::xpu
+} // namespace xpu
+} // namespace native
+} // namespace at

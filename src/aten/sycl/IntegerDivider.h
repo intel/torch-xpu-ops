@@ -4,8 +4,8 @@
 
 namespace at::detail {
 
-// A utility class to implement integer division by multiplication, given a fixed
-// divisor.
+// A utility class to implement integer division by multiplication, given a
+// fixed divisor.
 //
 // WARNING: The fast divider algorithm is only implemented for unsigned int;
 //          otherwise we default to plain integer division.  For unsigned int,
@@ -53,7 +53,7 @@ template <typename Value>
 struct DivMod {
   Value div, mod;
 
-  C10_HOST_DEVICE DivMod(Value div, Value mod) : div(div), mod(mod) { }
+  C10_HOST_DEVICE DivMod(Value div, Value mod) : div(div), mod(mod) {}
 };
 
 // Base case: we only have an implementation for uint32_t for now.  For
@@ -61,10 +61,14 @@ struct DivMod {
 template <typename Value>
 struct IntDivider {
   IntDivider() = default;
-  IntDivider(Value d) : divisor(d) { }
+  IntDivider(Value d) : divisor(d) {}
 
-  C10_HOST_DEVICE inline Value div(Value n) const { return n / divisor; }
-  C10_HOST_DEVICE inline Value mod(Value n) const { return n % divisor; }
+  C10_HOST_DEVICE inline Value div(Value n) const {
+    return n / divisor;
+  }
+  C10_HOST_DEVICE inline Value mod(Value n) const {
+    return n % divisor;
+  }
   C10_HOST_DEVICE inline DivMod<Value> divmod(Value n) const {
     return DivMod<Value>(n / divisor, n % divisor);
   }
@@ -83,12 +87,14 @@ struct IntDivider<unsigned int> {
     assert(divisor >= 1 && divisor <= INT32_MAX);
 
     // TODO: gcc/clang has __builtin_clz() but it's not portable.
-    for (shift = 0; shift < 32; shift++) if ((1U << shift) >= divisor) break;
+    for (shift = 0; shift < 32; shift++)
+      if ((1U << shift) >= divisor)
+        break;
 
     uint64_t one = 1;
     uint64_t magic = ((one << 32) * ((one << shift) - divisor)) / divisor + 1;
     m1 = magic;
-    assert(m1 > 0 && m1 == magic);  // m1 must fit in 32 bits.
+    assert(m1 > 0 && m1 == magic); // m1 must fit in 32 bits.
   }
 
   C10_HOST_DEVICE inline unsigned int div(unsigned int n) const {
@@ -97,7 +103,7 @@ struct IntDivider<unsigned int> {
     return (t + n) >> shift;
 #else
     // Using uint64_t so that the addition does not overflow.
-    uint64_t t = ((uint64_t) n * m1) >> 32;
+    uint64_t t = ((uint64_t)n * m1) >> 32;
     return (t + n) >> shift;
 #endif
   }
@@ -111,9 +117,9 @@ struct IntDivider<unsigned int> {
     return DivMod<unsigned int>(q, n - q * divisor);
   }
 
-  unsigned int divisor;  // d above.
-  unsigned int m1;  // Magic number: m' above.
-  unsigned int shift;  // Shift amounts.
+  unsigned int divisor; // d above.
+  unsigned int m1; // Magic number: m' above.
+  unsigned int shift; // Shift amounts.
 };
 
-}  // namespace at::detail
+} // namespace at::detail
