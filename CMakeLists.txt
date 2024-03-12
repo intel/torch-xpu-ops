@@ -56,13 +56,6 @@ if(TORCH_XPU_OPS_PYTORCH_DEPS)
   sycl_include_external_dependencies(${TORCH_XPU_OPS_PYTORCH_DEPS})
 endif()
 
-include(${TORCH_XPU_OPS_ROOT}/cmake/ClangFormat.cmake)
-if(CLANG_FORMAT)
-  file(GLOB_RECURSE ALL_GPU_NATIVE_CSRC_FILES ${IPEX_GPU_ROOT_DIR}/**.[ch] ${IPEX_GPU_ROOT_DIR}/**.[ch]pp)
-  add_custom_target(CL_FORMAT_GPU_NATIVE_CSRC COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_GPU_NATIVE_CSRC_FILES})
-  add_dependencies(intel-ext-pt-gpu CL_FORMAT_GPU_NATIVE_CSRC)
-endif()
-
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)
