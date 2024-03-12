@@ -156,4 +156,5 @@ uint32_t syclNativeVectorWidth(
       "Invalid data type to fetch native vector width!");
 }
 
-}} // namespace xpu::sycl
+} // namespace sycl
+} // namespace xpu

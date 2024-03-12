@@ -10,11 +10,10 @@ static inline void sycl_kernel_submit(
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
-  auto cgf = [&](::sycl::handler &cgh) {
+  auto cgf = [&](::sycl::handler& cgh) {
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range),
-            ::sycl::range<1>(local_range)),
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
   // XXX: c10::xpu::getStreamFromPool().queue();
@@ -34,12 +33,11 @@ static inline void sycl_kernel_submit(
   static_assert(
       std::is_same<ker_t, typename traits::result_type>::value,
       "Kernel type does not match with the return type of kernel creator ...");
-  auto cgf = [&](::sycl::handler &cgh) {
+  auto cgf = [&](::sycl::handler& cgh) {
     ker_t ker = creator(cgh);
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range),
-            ::sycl::range<1>(local_range)),
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
   // XXX: c10::xpu::getStreamFromPool().queue();

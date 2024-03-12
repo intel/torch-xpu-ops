@@ -1,7 +1,7 @@
-#include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
-#include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/BinaryOps.h>
+#include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
 #include <aten/sycl/CompareKernels.h>
@@ -23,7 +23,10 @@ Tensor& eq_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& eq_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
+Tensor& eq_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::eq_kernel(iter);
   return out;
@@ -57,7 +60,10 @@ Tensor& ne_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& ne_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
+Tensor& ne_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::ne_kernel(iter);
   return out;
@@ -91,7 +97,10 @@ Tensor& lt_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& lt_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
+Tensor& lt_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::lt_kernel(iter);
   return out;
@@ -125,7 +134,10 @@ Tensor& le_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& le_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
+Tensor& le_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::le_kernel(iter);
   return out;
@@ -159,7 +171,10 @@ Tensor& gt_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& gt_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor &out) {
+Tensor& gt_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::gt_kernel(iter);
   return out;
@@ -193,7 +208,10 @@ Tensor& ge_tensor_(Tensor& self, const Tensor& other_arg) {
   return self;
 }
 
-Tensor& ge_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
+Tensor& ge_tensor_out(
+    const Tensor& self,
+    const Tensor& other_arg,
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other_arg);
   native::xpu::ge_kernel(iter);
   return out;
@@ -213,7 +231,6 @@ Tensor& ge_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
   auto wrapper = wrapped_scalar_tensor(other);
   return native::xpu::ge_tensor_out(self, wrapper, out);
 }
-
 
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::eq.Scalar"), TORCH_FN(eq_scalar));
@@ -259,4 +276,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::ge_.Tensor"), TORCH_FN(ge_tensor_));
 }
 
-}}} // at::native::xpu
+} // namespace xpu
+} // namespace native
+} // namespace at

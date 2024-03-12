@@ -1,18 +1,18 @@
-#include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
-#include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
-#include <torch/library.h>
 #include <ATen/XPUNativeFunctions.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/BinaryOps.h>
+#include <ATen/native/TensorIterator.h>
+#include <torch/library.h>
 
 #include <aten/sycl/BinaryKernels.h>
 
 namespace at {
 
 at::Tensor XPUNativeFunctions::add(
-    const at::Tensor & self,
-    const at::Tensor & other,
-    const at::Scalar & alpha) {
+    const at::Tensor& self,
+    const at::Tensor& other,
+    const at::Scalar& alpha) {
   Tensor out;
   auto iter = TensorIterator::binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
@@ -20,10 +20,10 @@ at::Tensor XPUNativeFunctions::add(
   return iter.output();
 }
 
-at::Tensor & XPUNativeFunctions::add_(
-    at::Tensor & self,
-    const at::Tensor & other,
-    const at::Scalar & alpha) {
+at::Tensor& XPUNativeFunctions::add_(
+    at::Tensor& self,
+    const at::Tensor& other,
+    const at::Scalar& alpha) {
   auto iter = TensorIterator::binary_op(self, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
@@ -31,17 +31,17 @@ at::Tensor & XPUNativeFunctions::add_(
 }
 
 at::Tensor XPUNativeFunctions::add(
-    const at::Tensor & self,
-    const at::Scalar & other,
-    const at::Scalar & alpha) {
+    const at::Tensor& self,
+    const at::Scalar& other,
+    const at::Scalar& alpha) {
   auto wrapper = native::wrapped_scalar_tensor(other);
   return XPUNativeFunctions::add(self, wrapper, alpha);
 }
 
-at::Tensor & XPUNativeFunctions::add_(
-    at::Tensor & self,
-    const at::Scalar & other,
-    const at::Scalar & alpha) {
+at::Tensor& XPUNativeFunctions::add_(
+    at::Tensor& self,
+    const at::Scalar& other,
+    const at::Scalar& alpha) {
   auto wrapper = native::wrapped_scalar_tensor(other);
   return XPUNativeFunctions::add_(self, wrapper, alpha);
 }
@@ -131,4 +131,4 @@ Tensor& XPUNativeFunctions::div_(Tensor& self, const Scalar& other) {
   return XPUNativeFunctions::div_(self, wrapper);
 }
 
-} // at
+} // namespace at
