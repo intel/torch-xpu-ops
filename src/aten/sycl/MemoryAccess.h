@@ -149,9 +149,9 @@ struct vectorized {
     // like broadcast. The broadcasted operands are dense and could be
     // optimized by the policy if satisfying vectorization conditions.
     // auto offset = input_offset_calculator.get(group_offset);
-    auto linear_idx = group_offset + item_idx* vec_size;
+    auto linear_idx = group_offset + item_idx * vec_size;
     auto offset = input_offset_calculator.get(linear_idx);
-    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, offset, 0);
+    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, offset);
   }
 
   template <typename scalar_t>
@@ -160,14 +160,12 @@ struct vectorized {
     scalar_t* to =
         reinterpret_cast<scalar_t*>(data[0]) + group_work_size * group_idx;
     vec_t* to_ = reinterpret_cast<vec_t*>(to);
-
-    int index = item_idx;
     vec_t v;
 #pragma unroll
     for (int j = 0; j < vec_size; j++) {
       v.val[j] = from[j];
     }
-    to_[index] = v;
+    to_[item_idx] = v;
   }
 };
 
