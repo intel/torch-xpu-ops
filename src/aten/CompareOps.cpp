@@ -3,260 +3,250 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
 #include <torch/library.h>
+#include <ATen/XPUNativeFunctions.h>
 
 #include <aten/sycl/CompareKernels.h>
 
 namespace at {
-namespace native {
-namespace xpu {
 
-Tensor eq_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::eq(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::eq_kernel(iter);
   return iter.output();
 }
 
-Tensor& eq_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::eq_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::eq_kernel(iter);
   return self;
 }
 
-Tensor& eq_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::eq_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::eq_kernel(iter);
   return out;
 }
 
-Tensor eq_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::eq_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::eq(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::eq(self, wrapper);
 }
 
-Tensor& eq_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::eq_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::eq_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::eq_(self, wrapper);
 }
 
-Tensor& eq_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::eq_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::eq_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::eq_out(self, wrapper, out);
 }
 
-Tensor ne_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::ne(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::ne_kernel(iter);
   return iter.output();
 }
 
-Tensor& ne_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::ne_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::ne_kernel(iter);
   return self;
 }
 
-Tensor& ne_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::ne_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::ne_kernel(iter);
   return out;
 }
 
-Tensor ne_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ne_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::ne(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ne(self, wrapper);
 }
 
-Tensor& ne_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ne_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::ne_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ne_(self, wrapper);
 }
 
-Tensor& ne_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ne_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::ne_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ne_out(self, wrapper, out);
 }
 
-Tensor lt_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::lt(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::lt_kernel(iter);
   return iter.output();
 }
 
-Tensor& lt_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::lt_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::lt_kernel(iter);
   return self;
 }
 
-Tensor& lt_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::lt_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::lt_kernel(iter);
   return out;
 }
 
-Tensor lt_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::lt_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::lt(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::lt(self, wrapper);
 }
 
-Tensor& lt_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::lt_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::lt_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::lt_(self, wrapper);
 }
 
-Tensor& lt_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::lt_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::lt_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::lt_out(self, wrapper, out);
 }
 
-Tensor le_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::le(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::le_kernel(iter);
   return iter.output();
 }
 
-Tensor& le_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::le_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::le_kernel(iter);
   return self;
 }
 
-Tensor& le_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::le_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::le_kernel(iter);
   return out;
 }
 
-Tensor le_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::le_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::le(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::le(self, wrapper);
 }
 
-Tensor& le_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::le_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::le_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::le_(self, wrapper);
 }
 
-Tensor& le_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::le_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::le_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::le_out(self, wrapper, out);
 }
 
-Tensor gt_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::gt(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::gt_kernel(iter);
   return iter.output();
 }
 
-Tensor& gt_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::gt_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::gt_kernel(iter);
   return self;
 }
 
-Tensor& gt_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor &out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::gt_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor &out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::gt_kernel(iter);
   return out;
 }
 
-Tensor gt_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::gt_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::gt(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::gt(self, wrapper);
 }
 
-Tensor& gt_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::gt_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::gt_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::gt_(self, wrapper);
 }
 
-Tensor& gt_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::gt_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::gt_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::gt_out(self, wrapper, out);
 }
 
-Tensor ge_tensor(const Tensor& self_arg, const Tensor& other_arg) {
+Tensor XPUNativeFunctions::ge(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::ge_kernel(iter);
   return iter.output();
 }
 
-Tensor& ge_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::comparison_op(self, self, other_arg);
+Tensor& XPUNativeFunctions::ge_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::comparison_op(self, self, other);
   native::xpu::ge_kernel(iter);
   return self;
 }
 
-Tensor& ge_tensor_out(const Tensor& self, const Tensor& other_arg, Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other_arg);
+Tensor& XPUNativeFunctions::ge_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::ge_kernel(iter);
   return out;
 }
 
-Tensor ge_scalar(const Tensor& self_arg, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ge_tensor(self_arg, wrapper);
+Tensor XPUNativeFunctions::ge(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ge(self, wrapper);
 }
 
-Tensor& ge_scalar_(Tensor& self, const Scalar& other) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ge_tensor_(self, wrapper);
+Tensor& XPUNativeFunctions::ge_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ge_(self, wrapper);
 }
 
-Tensor& ge_scalar_out(const Tensor& self, const Scalar& other, Tensor& out) {
-  auto wrapper = wrapped_scalar_tensor(other);
-  return native::xpu::ge_tensor_out(self, wrapper, out);
+Tensor& XPUNativeFunctions::ge_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::ge_out(self, wrapper, out);
 }
 
-
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq.Scalar"), TORCH_FN(eq_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq.Scalar_out"), TORCH_FN(eq_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq_.Scalar"), TORCH_FN(eq_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq.Tensor"), TORCH_FN(eq_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq.Tensor_out"), TORCH_FN(eq_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::eq_.Tensor"), TORCH_FN(eq_tensor_));
-
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne.Scalar"), TORCH_FN(ne_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne.Scalar_out"), TORCH_FN(ne_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne_.Scalar"), TORCH_FN(ne_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne.Tensor"), TORCH_FN(ne_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne.Tensor_out"), TORCH_FN(ne_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ne_.Tensor"), TORCH_FN(ne_tensor_));
-
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt.Scalar"), TORCH_FN(lt_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt.Scalar_out"), TORCH_FN(lt_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt_.Scalar"), TORCH_FN(lt_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt.Tensor"), TORCH_FN(lt_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt.Tensor_out"), TORCH_FN(lt_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::lt_.Tensor"), TORCH_FN(lt_tensor_));
-
-  m.impl(TORCH_SELECTIVE_NAME("aten::le.Scalar"), TORCH_FN(le_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::le.Scalar_out"), TORCH_FN(le_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::le_.Scalar"), TORCH_FN(le_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::le.Tensor"), TORCH_FN(le_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::le.Tensor_out"), TORCH_FN(le_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::le_.Tensor"), TORCH_FN(le_tensor_));
-
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt.Scalar"), TORCH_FN(gt_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt.Scalar_out"), TORCH_FN(gt_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt_.Scalar"), TORCH_FN(gt_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt.Tensor"), TORCH_FN(gt_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt.Tensor_out"), TORCH_FN(gt_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::gt_.Tensor"), TORCH_FN(gt_tensor_));
-
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge.Scalar"), TORCH_FN(ge_scalar));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge.Scalar_out"), TORCH_FN(ge_scalar_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge_.Scalar"), TORCH_FN(ge_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge.Tensor"), TORCH_FN(ge_tensor));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge.Tensor_out"), TORCH_FN(ge_tensor_out));
-  m.impl(TORCH_SELECTIVE_NAME("aten::ge_.Tensor"), TORCH_FN(ge_tensor_));
-}
-
-}}} // at::native::xpu
+} // at
