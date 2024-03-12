@@ -7,3 +7,15 @@ supported:
   - add.Tensor
   - add_.Scalar
   - add_.Tensor
+  - sub.Scalar
+  - sub.Tensor
+  - sub_.Scalar
+  - sub_.Tensor
+  - mul.Scalar
+  - mul.Tensor
+  - mul_.Scalar
+  - mul_.Tensor
+  - div.Scalar
+  - div.Tensor
+  - div_.Scalar
+  - div_.Tensor
