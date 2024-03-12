@@ -49,3 +49,13 @@ class TestSimpleBinary(TestCase):
         c_xpu = a_xpu / b_xpu
         c_cpu = a_cpu / b_cpu
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
+
+    def test_div_int(self, dtype=torch.float):
+        a_cpu = torch.randint(2, 3, [8, 8])
+        b_cpu = torch.randint(2, 3, [8, 8])
+        a_xpu = a_cpu.to(xpu_device)
+        b_xpu = b_cpu.to(xpu_device)
+        c_xpu = a_xpu / b_xpu
+        c_cpu = a_cpu / b_cpu
+        self.assertEqual(c_cpu.dtype, c_xpu.dtype) # assume float
+        self.assertEqual(c_cpu, c_xpu.to(cpu_device))

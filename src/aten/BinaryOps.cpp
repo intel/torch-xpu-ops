@@ -110,13 +110,13 @@ Tensor& mul_scalar_(Tensor& self, const Scalar& other) {
 
 Tensor div_tensor(const Tensor& self_arg, const Tensor& other_arg) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self_arg, other_arg);
+  auto iter = TensorIterator::binary_float_op(out, self_arg, other_arg);
   native::xpu::div_kernel(iter);
   return iter.output();
 }
 
 Tensor& div_tensor_(Tensor& self, const Tensor& other_arg) {
-  auto iter = TensorIterator::binary_op(self, self, other_arg);
+  auto iter = TensorIterator::binary_float_op(self, self, other_arg);
   native::xpu::div_kernel(iter);
   return self;
 }
