@@ -10,4 +10,4 @@ void neg_conj_kernel(TensorIterator& iter);
 
 void neg_kernel(TensorIterator& iter);
 
-} // at::native::xpu
+} // namespace at::native::xpu

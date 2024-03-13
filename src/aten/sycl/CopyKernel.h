@@ -6,4 +6,4 @@ namespace at::native::xpu {
 
 void copy_kernel(TensorIterator& iter);
 
-} // at::native::xpu
+} // namespace at::native::xpu

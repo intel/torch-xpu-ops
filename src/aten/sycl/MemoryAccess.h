@@ -1,19 +1,21 @@
 #pragma once
 
-#include <cstdint>
-#include <type_traits>
-#include <c10/core/DynamicCast.h>
-#include <c10/util/Exception.h>
-#include <c10/util/TypeCast.h>
-#include <c10/macros/Macros.h>
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
+#include <c10/core/DynamicCast.h>
+#include <c10/macros/Macros.h>
+#include <c10/util/Exception.h>
+#include <c10/util/TypeCast.h>
+#include <cstdint>
+#include <type_traits>
 
-#include <aten/sycl/OffsetCalculator.h>
 #include <aten/sycl/MemoryAccessUtils.h>
+#include <aten/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
-namespace at { namespace native { namespace memory {
+namespace at {
+namespace native {
+namespace memory {
 namespace policies {
 
 // Assumption:
@@ -99,10 +101,7 @@ struct unroll {
 // Assumption:
 // 1. tensors could be contiguous, that is: stride == sizeof(type).
 // 2. tensors could be broadcasted.
-template <
-    int vec_size,
-    typename data_t,
-    typename inp_calc_t>
+template <int vec_size, typename data_t, typename inp_calc_t>
 struct vectorized {
   data_t data;
   inp_calc_t input_offset_calculator;
@@ -151,7 +150,8 @@ struct vectorized {
     // auto offset = input_offset_calculator.get(group_offset);
     auto linear_idx = group_offset + item_idx * vec_size;
     auto offset = input_offset_calculator.get(linear_idx);
-    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, offset);
+    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(
+        *this, args, offset);
   }
 
   template <typename scalar_t>
@@ -308,8 +308,7 @@ struct can_vectorize_up_to_helper {
   template <typename array_t, typename traits>
   static void apply(int& result, array_t pointers, traits _) {
     using arg_t = typename traits::template arg<i>::type;
-    result = std::min<int>(
-        result, can_vectorize_up_to<arg_t>(pointers[i + 1]));
+    result = std::min<int>(result, can_vectorize_up_to<arg_t>(pointers[i + 1]));
   }
 };
 
@@ -324,4 +323,6 @@ inline int can_vectorize_up_to(array_t pointers) {
   return result;
 }
 
-}}} // namespace at::native::memory
+} // namespace memory
+} // namespace native
+} // namespace at

@@ -1,8 +1,8 @@
-#include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
-#include <ATen/native/BinaryOps.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/XPUNativeFunctions.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/BinaryOps.h>
+#include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/CompareKernels.h>
 
@@ -184,7 +184,7 @@ Tensor& XPUNativeFunctions::gt_(Tensor& self, const Tensor& other) {
 Tensor& XPUNativeFunctions::gt_out(
     const Tensor& self,
     const Tensor& other,
-    Tensor &out) {
+    Tensor& out) {
   auto iter = TensorIterator::comparison_op(out, self, other);
   native::xpu::gt_kernel(iter);
   return out;
@@ -248,4 +248,4 @@ Tensor& XPUNativeFunctions::ge_out(
   return XPUNativeFunctions::ge_out(self, wrapper, out);
 }
 
-} // at
+} // namespace at

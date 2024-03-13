@@ -28,3 +28,11 @@ target_include_directories(torch_xpu_ops PUBLIC ${ATen_XPU_INCLUDE_DIRS})
 target_include_directories(torch_xpu_ops PUBLIC ${SYCL_INCLUDE_DIR})
 
 target_link_libraries(torch_xpu_ops PUBLIC ${SYCL_LIBRARIES})
+
+include(${TORCH_XPU_OPS_ROOT}/cmake/ClangFormat.cmake)
+if(CLANG_FORMAT)
+  file(GLOB_RECURSE ALL_CSRCS ${TORCH_XPU_OPS_ROOT}/**.[ch] ${TORCH_XPU_OPS_ROOT}/**.[ch]pp)
+  add_custom_target(CL_FORMAT_CSRCS COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_CSRCS})
+  add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
+endif()
+
