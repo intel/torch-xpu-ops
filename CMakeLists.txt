@@ -56,6 +56,7 @@ if(TORCH_XPU_OPS_PYTORCH_DEPS)
   sycl_include_external_dependencies(${TORCH_XPU_OPS_PYTORCH_DEPS})
 endif()
 
+set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)

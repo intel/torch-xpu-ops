@@ -8,26 +8,47 @@ set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
 
 add_subdirectory(aten)
 
+set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
-sycl_add_library(
-  torch_xpu_ops
-  STATIC
-  SYCL_SOURCES ${ATen_XPU_SYCL_SRCS}
-  CXX_SOURCES ${ATen_XPU_CPP_SRCS} ${ATen_XPU_GEN_SRCS})
+if(BUILD_SEPARATE_OPS)
+  add_library(
+    torch_xpu_ops
+    STATIC
+    ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_GEN_SRCS})
+
+  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycl-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      SHARED
+      SYCL_SOURCES ${sycl_src})
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+  endforeach()
+else()
+  sycl_add_library(
+    torch_xpu_ops
+    STATIC
+    SYCL_SOURCES ${ATen_XPU_SYCL_SRCS}
+    CXX_SOURCES ${ATen_XPU_CPP_SRCS} ${ATen_XPU_GEN_SRCS})
+endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
-# Align with PyTorch compile options
-# 1. submodule - PYTORCH_SRC_DIR/cmake/public/utils.cmake
-# 2. standalone - PYTORCH_INSTALL_DIR/share/cmake/Caffe2/public/utils.cmake
-torch_compile_options(torch_xpu_ops)
-target_compile_options_if_supported(torch_xpu_ops "-Wno-deprecated-copy")
-target_compile_options(torch_xpu_ops PRIVATE ${TORCH_XPU_OPS_FLAGS})
+list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 
-target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
-target_include_directories(torch_xpu_ops PUBLIC ${ATen_XPU_INCLUDE_DIRS})
-target_include_directories(torch_xpu_ops PUBLIC ${SYCL_INCLUDE_DIR})
+foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
+  # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
+  torch_compile_options(${lib})
+  target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
+  target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
 
-target_link_libraries(torch_xpu_ops PUBLIC ${SYCL_LIBRARIES})
+  target_include_directories(${lib} PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
+  target_include_directories(${lib} PUBLIC ${ATen_XPU_INCLUDE_DIRS})
+  target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
+
+  target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARIES})
+endforeach()
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/ClangFormat.cmake)
 if(CLANG_FORMAT)
@@ -35,4 +56,3 @@ if(CLANG_FORMAT)
   add_custom_target(CL_FORMAT_CSRCS COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_CSRCS})
   add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
 endif()
-
