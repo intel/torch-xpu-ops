@@ -1,0 +1,57 @@
+backend: XPU
+cpp_namespace: at
+use_out_as_primary: true
+device_guard: true
+supported:
+  - add.Scalar
+  - add.Tensor
+  - add_.Scalar
+  - add_.Tensor
+  - sub.Scalar
+  - sub.Tensor
+  - sub_.Scalar
+  - sub_.Tensor
+  - mul.Scalar
+  - mul.Tensor
+  - mul_.Scalar
+  - mul_.Tensor
+  - div.Scalar
+  - div.Tensor
+  - div_.Scalar
+  - div_.Tensor
+  - eq.Scalar
+  - eq.Scalar_out
+  - eq_.Scalar
+  - eq.Tensor
+  - eq.Tensor_out
+  - eq_.Tensor
+  - ne.Scalar
+  - ne.Scalar_out
+  - ne_.Scalar
+  - ne.Tensor
+  - ne.Tensor_out
+  - ne_.Tensor
+  - lt.Scalar
+  - lt.Scalar_out
+  - lt_.Scalar
+  - lt.Tensor
+  - lt.Tensor_out
+  - lt_.Tensor
+  - le.Scalar
+  - le.Scalar_out
+  - le_.Scalar
+  - le.Tensor
+  - le.Tensor_out
+  - le_.Tensor
+  - gt.Scalar
+  - gt.Scalar_out
+  - gt_.Scalar
+  - gt.Tensor
+  - gt.Tensor_out
+  - gt_.Tensor
+  - ge.Scalar
+  - ge.Scalar_out
+  - ge_.Scalar
+  - ge.Tensor
+  - ge.Tensor_out
+  - ge_.Tensor

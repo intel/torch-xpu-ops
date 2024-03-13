@@ -8,4 +8,6 @@ namespace xpu {
 
 void fill_kernel(TensorIterator& iter, const Scalar& scalar);
 
-}}} // at::native::xpu
+}
+} // namespace native
+} // namespace at

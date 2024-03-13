@@ -1,19 +1,19 @@
 #include <ATen/ATen.h>
 
+#include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/Dispatch.h>
 #include <c10/core/ScalarType.h>
 
-#include <comm/SYCLContext.h>
-#include <aten/sycl/Loops.h>
 #include <aten/sycl/CopyKernel.h>
+#include <aten/sycl/Loops.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
-template<typename scalar_t>
+template <typename scalar_t>
 struct AbsFunctor {
-  scalar_t operator() (const scalar_t a) const {
+  scalar_t operator()(const scalar_t a) const {
     return std::abs(a);
   }
 };

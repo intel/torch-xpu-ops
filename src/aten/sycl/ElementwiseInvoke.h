@@ -8,9 +8,9 @@
 #include <type_traits>
 
 #include <ATen/detail/FunctionTraits.h>
-#include <c10/macros/Macros.h>
 #include <c10/core/DynamicCast.h>
 #include <c10/core/ScalarType.h>
+#include <c10/macros/Macros.h>
 
 template <typename traits, typename func_t, typename index_t, size_t... INDEX>
 C10_HOST_DEVICE typename traits::result_type invoke_impl(

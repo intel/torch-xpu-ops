@@ -74,8 +74,7 @@ struct OptionalXPUGuard {
   explicit OptionalXPUGuard() : guard_() {}
 
   /// Set the current XPU device to the passed Device, if it is not nullopt.
-  explicit OptionalXPUGuard(optional<Device> device_opt)
-      : guard_(device_opt) {}
+  explicit OptionalXPUGuard(optional<Device> device_opt) : guard_(device_opt) {}
 
   /// Set the current XPU device to the passed device index, if it is not
   /// nullopt

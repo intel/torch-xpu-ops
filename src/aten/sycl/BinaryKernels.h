@@ -14,4 +14,6 @@ void mul_kernel(TensorIterator& iter);
 
 void div_kernel(TensorIterator& iter);
 
-}}} // at::native::xpu
+} // namespace xpu
+} // namespace native
+} // namespace at

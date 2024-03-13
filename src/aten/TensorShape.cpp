@@ -20,12 +20,13 @@ Tensor view_as_complex(const Tensor& self) {
 }
 
 Tensor as_strided(
-    const Tensor & self,
+    const Tensor& self,
     IntArrayRef size,
     IntArrayRef stride,
-    c10::optional<int64_t> storage_offset=c10::nullopt) {
+    c10::optional<int64_t> storage_offset = c10::nullopt) {
   if (self.is_quantized()) {
-    return at::native::as_strided_qtensorimpl(self, size, stride, storage_offset);
+    return at::native::as_strided_qtensorimpl(
+        self, size, stride, storage_offset);
   }
   return at::native::as_strided_tensorimpl(self, size, stride, storage_offset);
 }
@@ -40,9 +41,13 @@ Tensor _reshape_alias(
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::view"), TORCH_FN(view));
   m.impl(TORCH_SELECTIVE_NAME("aten::view_as_real"), TORCH_FN(view_as_real));
-  m.impl(TORCH_SELECTIVE_NAME("aten::view_as_complex"), TORCH_FN(view_as_complex));
+  m.impl(
+      TORCH_SELECTIVE_NAME("aten::view_as_complex"), TORCH_FN(view_as_complex));
   m.impl(TORCH_SELECTIVE_NAME("aten::as_strided"), TORCH_FN(as_strided));
-  m.impl(TORCH_SELECTIVE_NAME("aten::_reshape_alias"), TORCH_FN(_reshape_alias));
+  m.impl(
+      TORCH_SELECTIVE_NAME("aten::_reshape_alias"), TORCH_FN(_reshape_alias));
 }
 
-}}} // namespace at::native_xpu
+} // namespace xpu
+} // namespace native
+} // namespace at
