@@ -44,27 +44,27 @@ class TestSimpleUnary(TestCase):
     def test_abs_out(self, dtype):
         self._test_unary_out_ops('abs', dtype)
     
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_sin_out(self, dtype):
         self._test_unary_out_ops('sin', dtype)
     
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_cos_out(self, dtype):
         self._test_unary_out_ops('cos', dtype)
     
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_log_out(self, dtype):
         self._test_unary_out_ops('log', dtype)
     
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_sqrt_out(self, dtype):
         self._test_unary_out_ops('sqrt', dtype)
 
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_rsqrt_out(self, dtype):
         self._test_unary_out_ops('rsqrt', dtype)
     
-    @Dtypes(floating_types)
+    @Dtypes(floating_and_complex_types)
     def test_tanh_out(self, dtype):
         self._test_unary_out_ops('tanh', dtype)
     
