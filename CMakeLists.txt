@@ -56,6 +56,7 @@ if(TORCH_XPU_OPS_PYTORCH_DEPS)
   sycl_include_external_dependencies(${TORCH_XPU_OPS_PYTORCH_DEPS})
 endif()
 
+# Only for debugging. Save building time by shrinking translation unit scope.
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
