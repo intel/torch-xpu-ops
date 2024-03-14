@@ -24,7 +24,11 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
 else()
   sycl_add_library(
