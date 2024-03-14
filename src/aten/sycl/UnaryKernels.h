@@ -20,4 +20,6 @@ void tanh_kernel(TensorIteratorBase& iter);
 
 void neg_kernel(TensorIteratorBase& iter);
 
+void reciprocal_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu
