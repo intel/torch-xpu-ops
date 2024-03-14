@@ -160,4 +160,23 @@ Tensor& XPUNativeFunctions::neg_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::reciprocal(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::reciprocal_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::reciprocal_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::reciprocal_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::reciprocal_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::reciprocal_kernel(iter);
+  return out;
+}
+
 } // namespace at
