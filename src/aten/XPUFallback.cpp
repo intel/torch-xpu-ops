@@ -7,13 +7,11 @@ static bool DEBUG_XPU_FALLBACK = false;
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  std::string op_name = c10::toString(op.schema().operator_name());
-
   if (!DEBUG_XPU_FALLBACK) {
     TORCH_WARN_ONCE(
         "Aten Op fallback from XPU to CPU happends.",
         " This may have performance implications.",
-        " If need debug the fallback ops please set environment variable PYTORCH_DEBUG_XPU_FALLBACK=1 ");
+        " If need debug the fallback ops please set environment variable `PYTORCH_DEBUG_XPU_FALLBACK=1` ");
   } else {
     TORCH_WARN(
         "The operator '",
@@ -63,12 +61,16 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
 }
 
 /*
- * TODO:Move the following registration to the end of all XPU aten op registrations
- *
+ * TODO: Move the following registration to the end of all XPU aten op
+ * registrations
+ */
+
+/*
  * Register fallback to CPU for ops specified in env variable
  * "PYTORCH_XPU_FALLBACK_OP" eg. export
  * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
-
+ */
+/*
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
   if (!fallback_op_str) {
