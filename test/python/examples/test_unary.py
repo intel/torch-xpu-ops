@@ -21,7 +21,6 @@ class Dtypes(object):
                 if dtype in self.exclude_dtypes:
                     continue
                 kwargs['dtype'] = dtype
-                print(f"TestSimpleUnary:{fn.__name__}:{dtype}", flush=True)
                 fn(*args, **kwargs)
         return fn_out
 
