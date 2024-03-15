@@ -1,43 +1,27 @@
 #include <ATen/native/CPUFallback.h>
-#include <unordered_set>
 
 namespace at {
 
-class FallbackSet {
- public:
-  FallbackSet() {}
-
-  void insert(const std::string& value) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    op_set_.insert(value);
-  }
-
-  bool checkExist(const std::string& value) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return op_set_.find(value) != op_set_.end();
-  }
-
- private:
-  std::unordered_set<std::string> op_set_;
-  std::mutex mutex_;
-};
-
-static FallbackSet XPU_FALLBACK_SET;
+static bool DEBUG_XPU_FALLBACK = false;
 
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
   std::string op_name = c10::toString(op.schema().operator_name());
 
-  if (!XPU_FALLBACK_SET.checkExist(op_name)) {
-    XPU_FALLBACK_SET.insert(op_name);
+  if (!DEBUG_XPU_FALLBACK) {
+    TORCH_WARN_ONCE(
+        "Aten Op fallback from XPU to CPU happends.",
+        " This may have performance implications.",
+        " If need debug the fallback ops please set environment variable PYTORCH_DEBUG_XPU_FALLBACK=1 ");
+  } else {
     TORCH_WARN(
         "The operator '",
-        op_name,
-        "' is not currently supported ",
-        "on the XPU backend and will fall back to run on the CPU.",
-        " This may have performance implications.");
+        op.schema().operator_name(),
+        "on the XPU backend and will fall back to run on the CPU.");
   }
+
+  // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
   native::cpu_fallback(op, stack);
 }
 
@@ -69,13 +53,22 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   } else {
     m.fallback(torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
   }
+
+  static const char* debug_xpu_fallback = getenv("PYTORCH_DEBUG_XPU_FALLBACK");
+  if (!debug_xpu_fallback || std::stoi(enable_xpu_fallback) == 0) {
+    DEBUG_XPU_FALLBACK = false;
+  } else {
+    DEBUG_XPU_FALLBACK = true;
+  }
 }
 
 /*
+ * TODO:Move the following registration to the end of all XPU aten op registrations
+ *
  * Register fallback to CPU for ops specified in env variable
  * "PYTORCH_XPU_FALLBACK_OP" eg. export
  * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
- */
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
   if (!fallback_op_str) {
@@ -91,5 +84,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
         torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
   }
 }
+*/
 
 } // namespace at
