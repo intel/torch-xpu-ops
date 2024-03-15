@@ -60,32 +60,4 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   }
 }
 
-/*
- * TODO: Move the following registration to the end of all XPU aten op
- * registrations
- */
-
-/*
- * Register fallback to CPU for ops specified in env variable
- * "PYTORCH_XPU_FALLBACK_OP" eg. export
- * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
- */
-/*
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
-  if (!fallback_op_str) {
-    return;
-  }
-  std::istringstream iss(fallback_op_str);
-  std::string op_name;
-  while (std::getline(iss, op_name, ',')) {
-    TORCH_WARN(
-        "The operator '", op_name, "' will be forced to fallback to CPU.");
-    m.impl(
-        op_name.c_str(),
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
-  }
-}
-*/
-
 } // namespace at
