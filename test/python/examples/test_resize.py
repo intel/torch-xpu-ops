@@ -13,10 +13,6 @@ class TestSimpleResize(TestCase):
         y = torch.ones([2, 2, 4, 3], device=cpu_device, dtype=dtype)
         y.resize_(1, 2, 3, 4)
 
-        print("dpcpp: ")
-        print(x.to("cpu"))
-        print("cpu: ")
-        print(y)
         self.assertEqual(y, x.cpu())
 
     def test_view(self, dtype=torch.float):
