@@ -53,7 +53,7 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   }
 
   static const char* debug_xpu_fallback = getenv("PYTORCH_DEBUG_XPU_FALLBACK");
-  if (!debug_xpu_fallback || std::stoi(enable_xpu_fallback) == 0) {
+  if (!debug_xpu_fallback || std::stoi(debug_xpu_fallback) == 0) {
     DEBUG_XPU_FALLBACK = false;
   } else {
     DEBUG_XPU_FALLBACK = true;
