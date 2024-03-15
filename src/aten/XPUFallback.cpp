@@ -1,17 +1,42 @@
 #include <ATen/native/CPUFallback.h>
+#include <unordered_set>
 
 namespace at {
+
+class FallbackSet {
+public:
+  FallbackSet(){}
+
+  void insert(const std::string& value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    set_.insert(value);
+  }
+
+  bool checkExist(const std::string& value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return op_set_.find(value) != op_set_.end();
+  }
+private:
+  std::unordered_set<std::string> op_set_;
+  std::mutex mutex_;
+};
+
+static FallbackSet XPU_FALLBACK_SET;
 
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  TORCH_WARN_ONCE(
-      "The operator '",
-      op.schema().operator_name(),
-      "' is not currently supported ",
-      "on the XPU backend and will fall back to run on the CPU.",
-      " This may have performance implications.");
+  std::string name = op.schema().operator_name().toString();
 
+  if (XPU_FALL_BACK_SET.checkExist(name)) {
+    XPU_FALL_BACK_SET.insert(name);
+    TORCH_WARN(
+        "The operator '",
+        name,
+        "' is not currently supported ",
+        "on the XPU backend and will fall back to run on the CPU.",
+        " This may have performance implications.");
+  }
   native::cpu_fallback(op, stack);
 }
 
@@ -30,6 +55,11 @@ static void xpu_error_fallback(
       "on XPU.");
 }
 
+static void xpu_force_fallback(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+}
+
 TORCH_LIBRARY_IMPL(_, XPU, m) {
   static const char* enable_xpu_fallback =
       getenv("PYTORCH_ENABLE_XPU_FALLBACK");
@@ -41,12 +71,25 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   }
 }
 
+
+/*
+ * Register fallback to CPU for ops specified in env variable "PYTORCH_XPU_FALLBACK_OP"
+ * eg. export PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
+ */
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  // These ops are not supported via XPU backend currently, and we fallback to
-  // run on CPU. For the rest of unsupported ops the user needs to pass
-  // 'PYTORCH_ENABLE_XPU_FALLBACK=1' to fallback on CPU, otherwise we will error
-  // out. m.impl("div.Scalar",
-  // torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+    static const char* fallback_op_str =
+        getenv("PYTORCH_XPU_FALLBACK_OP");
+    std::istringstream iss(fallback_op_str);
+    std::string op_name;
+    while (std::getline(iss, opname, ",")) {
+        TORCH_WARN(
+                "The operator '",
+                op_name,
+                "' will be forced to fallback to CPU.");
+        m.impl(opname,
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+    }
 }
 
 } // namespace at
