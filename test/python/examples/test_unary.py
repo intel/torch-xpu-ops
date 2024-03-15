@@ -45,7 +45,7 @@ class TestSimpleUnary(TestCase):
                 3.3333,
             ]
         ]
-        x_dpcpp = torch.tensor(data, device=xpu_device)
+        x_xpu = torch.tensor(data, device=xpu_device)
         y = torch.tensor(excepted, device=xpu_device)
-        y_dpcpp = torch.abs(x_dpcpp)
-        self.assertEqual(y.to(cpu_device), y_dpcpp.to(cpu_device))
+        y_xpu = torch.abs(x_xpu)
+        self.assertEqual(y.to(cpu_device), y_xpu.to(cpu_device))
