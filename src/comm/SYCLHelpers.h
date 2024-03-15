@@ -43,3 +43,31 @@ static inline void sycl_kernel_submit(
   // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }
+
+template <typename ker_t>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(::sycl::range<1>(global_range), ker);
+  };
+  // XXX: c10::xpu::getStreamFromPool().queue();
+  q.submit(cgf);
+}
+
+template <typename ker_t, typename ker_creator_t>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    ::sycl::queue q,
+    ker_creator_t creator) {
+  using traits = function_traits<ker_creator_t>;
+  static_assert(
+      std::is_same<ker_t, typename traits::result_type>::value,
+      "Kernel type does not match with the return type of kernel creator ...");
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker_t ker = creator(cgh);
+    cgh.parallel_for<ker_t>(::sycl::range<1>(global_range), ker);
+  };
+  q.submit(cgf);
+}
