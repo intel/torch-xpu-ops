@@ -248,4 +248,46 @@ Tensor& XPUNativeFunctions::ge_out(
   return XPUNativeFunctions::ge_out(self, wrapper, out);
 }
 
+Tensor XPUNativeFunctions::isnan(const Tensor& self) {
+  return XPUNativeFunctions::ne(self, self);
+}
+
+Tensor& XPUNativeFunctions::isnan_out(const Tensor& self, Tensor& out) {
+  return XPUNativeFunctions::ne_out(self, self, out);
+}
+
+Tensor& XPUNativeFunctions::clamp_out(
+    const Tensor& self,
+    const c10::optional<Scalar>& min,
+    const c10::optional<Scalar>& max,
+    Tensor& out) {
+  if (min && max) {
+    auto iter = TensorIterator::unary_op(out, self);
+    native::xpu::clamp_kernel(iter, *min, *max);
+  } else if (max) {
+    XPUNativeFunctions::clamp_max_out(self, *max, out);
+  } else if (min) {
+    XPUNativeFunctions::clamp_min_out(self, *min, out);
+  }
+  return out;
+}
+
+Tensor& XPUNativeFunctions::clamp_min_out(
+    const Tensor& self,
+    const Scalar& min,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::clamp_min_kernel(iter, min);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::clamp_max_out(
+    const Tensor& self,
+    const Scalar& max,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::clamp_max_kernel(iter, max);
+  return out;
+}
+
 } // namespace at
