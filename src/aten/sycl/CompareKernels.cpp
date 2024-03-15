@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/Loops.h>
@@ -48,6 +49,52 @@ struct GeFunctor {
   opmath_t operator()(opmath_t a, opmath_t b) const {
     return a >= b;
   }
+};
+
+template <typename opmath_t>
+struct ClampFunctor {
+  opmath_t operator()(opmath_t v) const {
+    if (_isnan(v)) {
+      return v;
+    } else {
+      return std::min(std::max(v, lower_), upper_);
+    }
+  }
+  ClampFunctor(opmath_t lower, opmath_t upper) : lower_(lower), upper_(upper) {}
+
+ private:
+  opmath_t lower_;
+  opmath_t upper_;
+};
+
+template <typename opmath_t>
+struct ClampMinFunctor {
+  opmath_t operator()(opmath_t v) const {
+    if (_isnan(v)) {
+      return v;
+    } else {
+      return std::max(v, lower_);
+    }
+  }
+  ClampMinFunctor(opmath_t lower) : lower_(lower) {}
+
+ private:
+  opmath_t lower_;
+};
+
+template <typename opmath_t>
+struct ClampMaxFunctor {
+  opmath_t operator()(opmath_t v) const {
+    if (_isnan(v)) {
+      return v;
+    } else {
+      return std::min(v, upper_);
+    }
+  }
+  ClampMaxFunctor(opmath_t upper) : upper_(upper) {}
+
+ private:
+  opmath_t upper_;
 };
 
 void eq_kernel(TensorIteratorBase& iter) {
@@ -113,6 +160,34 @@ void ge_kernel(TensorIteratorBase& iter) {
       kHalf, kBFloat16, kBool, iter.common_dtype(), "ge_xpu", [&]() {
         using opmath_t = opmath_type<scalar_t>;
         opmath_gpu_kernel_with_scalars<scalar_t>(iter, GeFunctor<opmath_t>());
+      });
+}
+
+void clamp_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& min_value,
+    const Scalar& max_value) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf, kBFloat16, iter.dtype(), "clamp_xpu", [&]() {
+        auto lower = min_value.to<scalar_t>();
+        auto upper = max_value.to<scalar_t>();
+        gpu_kernel(iter, ClampFunctor<scalar_t>(lower, upper));
+      });
+}
+
+void clamp_min_kernel(TensorIteratorBase& iter, const Scalar& min_value) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf, kBFloat16, iter.dtype(), "clamp_min_xpu", [&]() {
+        auto lower = min_value.to<scalar_t>();
+        gpu_kernel(iter, ClampMinFunctor<scalar_t>(lower));
+      });
+}
+
+void clamp_max_kernel(TensorIteratorBase& iter, const Scalar& max_value) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf, kBFloat16, iter.dtype(), "clamp_max_xpu", [&]() {
+        auto upper = max_value.to<scalar_t>();
+        gpu_kernel(iter, ClampMaxFunctor<scalar_t>(upper));
       });
 }
 
