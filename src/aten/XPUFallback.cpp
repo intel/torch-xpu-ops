@@ -4,19 +4,20 @@
 namespace at {
 
 class FallbackSet {
-public:
-  FallbackSet(){}
+ public:
+  FallbackSet() {}
 
   void insert(const std::string& value) {
     std::lock_guard<std::mutex> lock(mutex_);
-    set_.insert(value);
+    op_set_.insert(value);
   }
 
   bool checkExist(const std::string& value) {
     std::lock_guard<std::mutex> lock(mutex_);
     return op_set_.find(value) != op_set_.end();
   }
-private:
+
+ private:
   std::unordered_set<std::string> op_set_;
   std::mutex mutex_;
 };
@@ -26,13 +27,13 @@ static FallbackSet XPU_FALLBACK_SET;
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  std::string name = op.schema().operator_name().toString();
+  std::string op_name = c10::toString(op.schema().operator_name());
 
-  if (XPU_FALL_BACK_SET.checkExist(name)) {
-    XPU_FALL_BACK_SET.insert(name);
+  if (!XPU_FALLBACK_SET.checkExist(op_name)) {
+    XPU_FALLBACK_SET.insert(op_name);
     TORCH_WARN(
         "The operator '",
-        name,
+        op_name,
         "' is not currently supported ",
         "on the XPU backend and will fall back to run on the CPU.",
         " This may have performance implications.");
@@ -57,8 +58,7 @@ static void xpu_error_fallback(
 
 static void xpu_force_fallback(
     const c10::OperatorHandle& op,
-    torch::jit::Stack* stack) {
-}
+    torch::jit::Stack* stack) {}
 
 TORCH_LIBRARY_IMPL(_, XPU, m) {
   static const char* enable_xpu_fallback =
@@ -71,25 +71,25 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   }
 }
 
-
 /*
- * Register fallback to CPU for ops specified in env variable "PYTORCH_XPU_FALLBACK_OP"
- * eg. export PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
+ * Register fallback to CPU for ops specified in env variable
+ * "PYTORCH_XPU_FALLBACK_OP" eg. export
+ * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
  */
-
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-    static const char* fallback_op_str =
-        getenv("PYTORCH_XPU_FALLBACK_OP");
-    std::istringstream iss(fallback_op_str);
-    std::string op_name;
-    while (std::getline(iss, opname, ",")) {
-        TORCH_WARN(
-                "The operator '",
-                op_name,
-                "' will be forced to fallback to CPU.");
-        m.impl(opname,
+  static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
+  if (!fallback_op_str) {
+    return;
+  }
+  std::istringstream iss(fallback_op_str);
+  std::string op_name;
+  while (std::getline(iss, op_name, ',')) {
+    TORCH_WARN(
+        "The operator '", op_name, "' will be forced to fallback to CPU.");
+    m.impl(
+        op_name.c_str(),
         torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
-    }
+  }
 }
 
 } // namespace at
