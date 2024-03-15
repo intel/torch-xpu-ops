@@ -18,6 +18,15 @@ void gt_kernel(TensorIteratorBase& iter);
 
 void ge_kernel(TensorIteratorBase& iter);
 
+void clamp_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& min_value,
+    const Scalar& max_value);
+
+void clamp_min_kernel(TensorIteratorBase& iter, const Scalar& min_value);
+
+void clamp_max_kernel(TensorIteratorBase& iter, const Scalar& max_value);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
