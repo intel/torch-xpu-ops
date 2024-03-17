@@ -55,3 +55,9 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - relu.out
+  - threshold.out
+  - threshold_backward.grad_input
+  - gelu.out
+  - gelu_backward.grad_input
+  - tanh_backward.grad_input
