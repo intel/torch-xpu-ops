@@ -27,6 +27,8 @@ void clamp_min_kernel(TensorIteratorBase& iter, const Scalar& min_value);
 
 void clamp_max_kernel(TensorIteratorBase& iter, const Scalar& max_value);
 
+void where_kernel(TensorIterator& iter);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
