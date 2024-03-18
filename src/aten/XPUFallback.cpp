@@ -43,20 +43,17 @@ static void xpu_force_fallback(
     torch::jit::Stack* stack) {}
 
 TORCH_LIBRARY_IMPL(_, XPU, m) {
-  static const char* fallback_env = getenv("PYTORCH_ENABLE_XPU_FALLBACK");
-  bool enable_xpu_fallback = true;
-  if (fallback_env && std::stoi(fallback_env) == 0) {
-    enable_xpu_fallback = false;
-  }
-  if (!enable_xpu_fallback) {
+  static const char* enable_xpu_fallback =
+      getenv("PYTORCH_ENABLE_XPU_FALLBACK");
+  if (!enable_xpu_fallback || std::stoi(enable_xpu_fallback) == 0) {
     m.fallback(
         torch::CppFunction::makeFromBoxedFunction<&xpu_error_fallback>());
   } else {
     m.fallback(torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
   }
 
-  static const char* fallback_debug_env = getenv("PYTORCH_DEBUG_XPU_FALLBACK");
-  if (!fallback_debug_env || std::stoi(fallback_debug_env) == 0) {
+  static const char* debug_xpu_fallback = getenv("PYTORCH_DEBUG_XPU_FALLBACK");
+  if (!debug_xpu_fallback || std::stoi(debug_xpu_fallback) == 0) {
     DEBUG_XPU_FALLBACK = false;
   } else {
     DEBUG_XPU_FALLBACK = true;
