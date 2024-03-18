@@ -58,3 +58,5 @@ supported:
   - normal_
   - uniform_
   - bernoulli.out
+  - bernoulli_.Tensor
+  - bernoulli_.float
