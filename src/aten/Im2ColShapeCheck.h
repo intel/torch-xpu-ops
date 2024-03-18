@@ -5,7 +5,6 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
-
 #include <ATen/div_rtn.h>
 
 static inline void col2im_shape_check(

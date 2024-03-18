@@ -3,7 +3,6 @@
 
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
-
 #include <aten/Im2ColShapeCheck.h>
 
 namespace at::native::xpu {
