@@ -20,6 +20,24 @@ static inline void sycl_kernel_submit(
   q.submit(cgf);
 }
 
+template <typename ker_t>
+static inline void sycl_kernel_submit(
+    int64_t global_range_x,
+    int64_t global_range_y,
+    int64_t local_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<2>(
+            ::sycl::range<2>(global_range_x, global_range_y),
+            ::sycl::range<2>(local_range, 1)),
+        ker);
+  };
+  // XXX: c10::xpu::getStreamFromPool().queue();
+  q.submit(cgf);
+}
+
 // Call for kernels using shared memory. The current SYCL command group handler
 // is required to create shared memory (SYCL local accessor).
 // To use sycl::ker_creator_t to define a creator for kernel.
