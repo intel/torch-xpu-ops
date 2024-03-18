@@ -97,6 +97,14 @@ struct ClampMaxFunctor {
   opmath_t upper_;
 };
 
+template <typename scalar_t>
+struct WhereFunctor {
+  scalar_t operator()(bool cond_val, scalar_t self_val, scalar_t other_val)
+      const {
+    return cond_val ? self_val : other_val;
+  }
+};
+
 void eq_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
@@ -188,6 +196,13 @@ void clamp_max_kernel(TensorIteratorBase& iter, const Scalar& max_value) {
       kHalf, kBFloat16, iter.dtype(), "clamp_max_xpu", [&]() {
         auto upper = max_value.to<scalar_t>();
         gpu_kernel(iter, ClampMaxFunctor<scalar_t>(upper));
+      });
+}
+
+void where_kernel(TensorIterator& iter) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "where_xpu", [&] {
+        gpu_kernel(iter, WhereFunctor<scalar_t>());
       });
 }
 
