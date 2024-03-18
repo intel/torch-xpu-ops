@@ -1,16 +1,15 @@
 #include <ATen/ATen.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/ScalarOps.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/DistributionKernels.h>
 #include <torch/library.h>
 
 namespace at {
-namespace native {
-namespace xpu {
 
-Tensor& normal_(
+Tensor& XPUNativeFunctions::normal_(
     Tensor& self,
     double mean,
     double std,
@@ -21,10 +20,10 @@ Tensor& normal_(
     // variance for normal distribution of the real and imaginary values
     // is half of the input variance
     auto iter = TensorIterator::nullary_op(float_tensor);
-    normal_kernel(iter, mean, std / (std::sqrt(2)), generator);
+    native::xpu::normal_kernel(iter, mean, std / (std::sqrt(2)), generator);
   } else {
     auto iter = TensorIterator::nullary_op(self);
-    normal_kernel(iter, mean, std, generator);
+    native::xpu::normal_kernel(iter, mean, std, generator);
   }
   return self;
 }
@@ -32,7 +31,7 @@ Tensor& normal_(
 #define CHECK_OUT_OF_BOUNDS(var, name, min, max, dtype) \
   TORCH_CHECK(var >= min && var <= max, name, " is out of bounds for ", dtype);
 
-Tensor& uniform_(
+Tensor& XPUNativeFunctions::uniform_(
     Tensor& self,
     double from,
     double to,
@@ -73,16 +72,31 @@ Tensor& uniform_(
           to = std::max(std::min(to, max), min);
         });
     auto iter = at::TensorIterator::nullary_op(self);
-    uniform_kernel(iter, from, to, generator);
+    native::xpu::uniform_kernel(iter, from, to, generator);
   }
   return self;
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::normal_"), TORCH_FN(normal_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::uniform_"), TORCH_FN(uniform_));
+Tensor& XPUNativeFunctions::bernoulli_out(
+    const Tensor& self,
+    c10::optional<Generator> generator,
+    Tensor& out) {
+  auto out_type = out.scalar_type();
+  Tensor out_float;
+  if (!(out_type == at::ScalarType::Float ||
+        out_type == at::ScalarType::Double))
+    out_float = self.to(at::ScalarType::Float);
+  else
+    out_float = out;
+  at::XPUNativeFunctions::uniform_(out_float, 0.0, 1.0, generator);
+  auto iter = TensorIteratorConfig()
+                  .add_output(out)
+                  .add_input(out_float)
+                  .add_input(self)
+                  .check_all_same_dtype(false)
+                  .build();
+  native::xpu::bernoulli_compare_kernel(iter);
+  return out;
 }
 
-} // namespace xpu
-} // namespace native
 } // namespace at
