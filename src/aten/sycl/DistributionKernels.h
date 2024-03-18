@@ -16,4 +16,6 @@ void normal_kernel(
     double std,
     c10::optional<Generator> gen);
 
+void bernoulli_compare_kernel(TensorIterator& iter);
+
 } // namespace at::native::xpu
