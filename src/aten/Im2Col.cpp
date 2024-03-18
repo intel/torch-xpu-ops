@@ -5,7 +5,6 @@
 #include <torch/library.h>
 
 #include <aten/sycl/Im2ColKernel.h>
-#include "Im2ColShapeCheck.h"
 
 namespace at {
 
