@@ -96,6 +96,18 @@ struct BernoulliCompareFunctor {
   }
 };
 
+template <typename scalar_t, typename accscalar_t>
+struct BernoulliFloatCompareFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(rand < static_cast<accscalar_t>(p_));
+  }
+
+  BernoulliFloatCompareFunctor(accscalar_t p) : p_(p) {}
+
+ private:
+  accscalar_t p_;
+};
+
 void bernoulli_compare_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
@@ -105,6 +117,27 @@ void bernoulli_compare_kernel(TensorIterator& iter) {
       [&] {
         auto f = BernoulliCompareFunctor<scalar_t>();
         gpu_kernel(iter, f);
+      });
+}
+
+void bernoulli_float_compare_kernel(
+    TensorIterator& iter,
+    double p,
+    c10::optional<Generator> gen) {
+  auto gen_ = get_generator_or_default<at::XPUGeneratorImpl>(
+      gen, at::xpu::detail::getDefaultXPUGenerator());
+  AT_DISPATCH_ALL_TYPES_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "bernoulli_float_xpu",
+      [&] {
+        using accscalar_t = acc_type<scalar_t, false>;
+        auto p_ = static_cast<accscalar_t>(p);
+        auto f = BernoulliFloatCompareFunctor<scalar_t, accscalar_t>(p_);
+        uniform_and_transform<scalar_t, accscalar_t, PHILOX_ENGINE_CALLS>(
+            iter, gen_, f);
       });
 }
 
