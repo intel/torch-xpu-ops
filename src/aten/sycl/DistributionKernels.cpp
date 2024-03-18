@@ -3,6 +3,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <aten/sycl/DistributionKernelTemplates.h>
+#include <aten/sycl/Loops.h>
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/OffsetCalculator.h>
 #include <aten/sycl/Philox4x32.h>
@@ -85,6 +86,25 @@ void normal_kernel(
         auto f = NormalTransformFunctor<scalar_t, accscalar_t>(mean_, std_);
         normal_and_transform<scalar_t, accscalar_t, PHILOX_ENGINE_CALLS>(
             iter, gen_, f);
+      });
+}
+
+template <typename scalar_t>
+struct BernoulliCompareFunctor {
+  scalar_t operator()(scalar_t out, scalar_t p) const {
+    return static_cast<scalar_t>(out < p);
+  }
+};
+
+void bernoulli_compare_kernel(TensorIterator& iter) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "bernoulli_xpu",
+      [&] {
+        auto f = BernoulliCompareFunctor<scalar_t>();
+        gpu_kernel(iter, f);
       });
 }
 
