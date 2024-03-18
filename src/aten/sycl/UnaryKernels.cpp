@@ -162,7 +162,7 @@ void cos_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
     AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "cos_name", [&]() {
+        kComplexHalf, common_dtype, "cos_xpu", [&]() {
           using opmath_t = at::opmath_type<scalar_t>;
           gpu_kernel(iter, CosFunctor<opmath_t>());
         });
