@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - release/*
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -28,6 +29,8 @@ jobs:
           git clone https://github.com/pytorch/pytorch
           cd pytorch && git checkout `cat ../torch-xpu-ops/.github/ci_commit_pins/pytorch.txt` && git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          # Workaround for torch-xpu-ops ci test
+          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -40,9 +43,17 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
-      - name: Run XPU OP UT
+      - name: Run XPU OP Examples
+        if: ${{ hashFiles('examples/') != '' }}
         run: |
           xpu-smi discovery 
+          source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd examples
+          timeout 8000 pytest -v 2>&1 | tee torch_xpu_ops_example.log
+      - name: Run XPU OP UT
+        if: ${{ hashFiles('test/python/') != '' }}
+        run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd test/python
