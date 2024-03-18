@@ -55,3 +55,6 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - normal_
+  - uniform_
+  - bernoulli.out
