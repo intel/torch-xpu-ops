@@ -1,9 +1,9 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 
+#include <aten/Im2ColShapeCheck.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
-#include <aten/Im2ColShapeCheck.h>
 
 namespace at {
 namespace native {

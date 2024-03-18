@@ -1,7 +1,7 @@
 import torch
 from torch.testing._internal.common_utils import TestCase
 
-class TestIm2col(TestCase):
+class TestFoldUnfold(TestCase):
     def test_im2col(self):
         def helper(x):
             return torch.nn.functional.unfold(x, kernel_size=(10, 15), dilation=2, padding=5, stride=3)
