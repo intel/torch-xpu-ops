@@ -60,6 +60,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - where.self_out
+  - where.self
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
