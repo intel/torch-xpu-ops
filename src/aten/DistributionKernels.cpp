@@ -99,4 +99,36 @@ Tensor& XPUNativeFunctions::bernoulli_out(
   return out;
 }
 
+Tensor& XPUNativeFunctions::bernoulli_(
+    Tensor& self,
+    const Tensor& p_,
+    c10::optional<Generator> generator) {
+  Tensor self_float;
+  auto self_type = self.scalar_type();
+  if (!(self_type == at::ScalarType::Float ||
+        self_type == at::ScalarType::Double))
+    self_float = at::empty(self.sizes(), self.options().dtype(at::kFloat));
+  else
+    self_float = self;
+  at::XPUNativeFunctions::uniform_(self_float, 0.0, 1.0, generator);
+  auto p = p_.to(kXPU);
+  auto iter = TensorIteratorConfig()
+                  .add_output(self)
+                  .add_input(self_float)
+                  .add_input(p)
+                  .check_all_same_dtype(false)
+                  .build();
+  native::xpu::bernoulli_compare_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::bernoulli_(
+    Tensor& self,
+    double p,
+    c10::optional<Generator> generator) {
+  auto iter = TensorIterator::nullary_op(self);
+  native::xpu::bernoulli_float_compare_kernel(iter, p, generator);
+  return self;
+}
+
 } // namespace at
