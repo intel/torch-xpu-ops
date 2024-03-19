@@ -5,6 +5,7 @@
 #include <torch/library.h>
 
 #include <aten/sycl/UnaryKernels.h>
+#include <aten/sycl/UnaryLogKernels.h>
 
 namespace at {
 
@@ -24,75 +25,6 @@ Tensor& XPUNativeFunctions::abs_(Tensor& self) {
 Tensor& XPUNativeFunctions::abs_out(const Tensor& self, Tensor& out) {
   auto iter = TensorIterator::unary_op(out, self);
   native::xpu::abs_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::abs_(Tensor& self) {
-  auto iter = TensorIterator::unary_op(self, self);
-  native::xpu::abs_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::abs_out(const Tensor& self, Tensor& out) {
-  auto iter = TensorIterator::unary_op(out, self);
-  native::xpu::abs_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::sin(const Tensor& self) {
-  Tensor out;
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::sin_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::sin_(Tensor& self) {
-  auto iter = TensorIterator::unary_float_op(self, self);
-  native::xpu::sin_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::sin_out(const Tensor& self, Tensor& out) {
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::sin_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::cos(const Tensor& self) {
-  Tensor out;
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::cos_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::cos_(Tensor& self) {
-  auto iter = TensorIterator::unary_float_op(self, self);
-  native::xpu::cos_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::cos_out(const Tensor& self, Tensor& out) {
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::cos_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::log(const Tensor& self) {
-  Tensor out;
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::log_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::log_(Tensor& self) {
-  auto iter = TensorIterator::unary_float_op(self, self);
-  native::xpu::log_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::log_out(const Tensor& self, Tensor& out) {
-  auto iter = TensorIterator::unary_float_op(out, self);
-  native::xpu::log_kernel(iter);
   return out;
 }
 

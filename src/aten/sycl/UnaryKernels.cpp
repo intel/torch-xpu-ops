@@ -33,13 +33,6 @@ struct CosFunctor {
 };
 
 template <typename scalar_t>
-struct LogFunctor {
-  scalar_t operator()(scalar_t a) const {
-    return std::log(a);
-  }
-};
-
-template <typename scalar_t>
 struct SqrtFunctor {
   scalar_t operator()(scalar_t a) const {
     return std::sqrt(a);
@@ -145,11 +138,10 @@ void abs_kernel(TensorIteratorBase& iter) {
 void sin_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "sin_xpu", [&]() {
-          using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, SinFunctor<opmath_t>());
-        });
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "sin_xpu", [&]() {
+      using opmath_t = at::opmath_type<scalar_t>;
+      gpu_kernel(iter, SinFunctor<opmath_t>());
+    });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         ScalarType::Half, ScalarType::BFloat16, common_dtype, "sin_xpu", [&]() {
@@ -161,34 +153,15 @@ void sin_kernel(TensorIteratorBase& iter) {
 void cos_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "cos_xpu", [&]() {
-          using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, CosFunctor<opmath_t>());
-        });
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "cos_xpu", [&]() {
+      using opmath_t = at::opmath_type<scalar_t>;
+      gpu_kernel(iter, CosFunctor<opmath_t>());
+    });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         ScalarType::Half, ScalarType::BFloat16, common_dtype, "cos_xpu", [&]() {
           gpu_kernel(iter, CosFunctor<scalar_t>());
         });
-  }
-}
-
-void log_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, iter.common_dtype(), "log_xpu", [&]() {
-          using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, LogFunctor<opmath_t>());
-        });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        ScalarType::Half,
-        ScalarType::BFloat16,
-        iter.common_dtype(),
-        "log_xpu",
-        [&]() { gpu_kernel(iter, LogFunctor<scalar_t>()); });
   }
 }
 

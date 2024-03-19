@@ -14,10 +14,6 @@ void mul_kernel(TensorIteratorBase& iter);
 
 void div_kernel(TensorIteratorBase& iter);
 
-void remainder_kernel(TensorIteratorBase& iter);
-
-void fmod_kernel(TensorIteratorBase& iter);
-
 } // namespace xpu
 } // namespace native
 } // namespace at

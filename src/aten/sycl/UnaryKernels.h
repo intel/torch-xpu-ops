@@ -10,8 +10,6 @@ void sin_kernel(TensorIteratorBase& iter);
 
 void cos_kernel(TensorIteratorBase& iter);
 
-void log_kernel(TensorIteratorBase& iter);
-
 void sqrt_kernel(TensorIteratorBase& iter);
 
 void rsqrt_kernel(TensorIteratorBase& iter);

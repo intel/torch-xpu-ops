@@ -5,6 +5,7 @@
 #include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/BinaryKernels.h>
+#include <aten/sycl/BinaryRemainderKernel.h>
 
 namespace at {
 
@@ -237,6 +238,19 @@ Tensor& XPUNativeFunctions::rsub_out(
       self, native::wrapped_scalar_tensor(other), alpha, out);
 }
 
+Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::binary_op(out, self, other);
+  native::xpu::remainder_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::remainder_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::binary_op(self, self, other);
+  native::xpu::remainder_kernel(iter);
+  return self;
+}
+
 Tensor& XPUNativeFunctions::remainder_out(
     const Tensor& self,
     const Tensor& other,
@@ -246,6 +260,50 @@ Tensor& XPUNativeFunctions::remainder_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::remainder(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::remainder(self, wrapper);
+}
+
+Tensor& XPUNativeFunctions::remainder_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::remainder_(self, wrapper);
+}
+
+Tensor& XPUNativeFunctions::remainder_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::remainder_out(self, wrapper, out);
+}
+
+Tensor XPUNativeFunctions::remainder(const Scalar& self, const Tensor& other) {
+  auto wrapper = native::wrapped_scalar_tensor(self);
+  return XPUNativeFunctions::remainder(wrapper, other);
+}
+
+Tensor& XPUNativeFunctions::remainder_out(
+    const Scalar& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(self);
+  return XPUNativeFunctions::remainder_out(wrapper, other, out);
+}
+
+Tensor XPUNativeFunctions::fmod(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::binary_op(out, self, other);
+  native::xpu::fmod_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::fmod_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::binary_op(self, self, other);
+  native::xpu::fmod_kernel(iter);
+  return self;
+}
+
 Tensor& XPUNativeFunctions::fmod_out(
     const Tensor& self,
     const Tensor& other,
@@ -253,6 +311,24 @@ Tensor& XPUNativeFunctions::fmod_out(
   auto iter = TensorIterator::binary_op(out, self, other);
   native::xpu::fmod_kernel(iter);
   return out;
+}
+
+Tensor XPUNativeFunctions::fmod(const Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::fmod(self, wrapper);
+}
+
+Tensor& XPUNativeFunctions::fmod_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::fmod_(self, wrapper);
+}
+
+Tensor& XPUNativeFunctions::fmod_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::fmod_out(self, wrapper, out);
 }
 
 } // namespace at

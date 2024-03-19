@@ -42,42 +42,6 @@ struct DivFunctor {
   }
 };
 
-template <typename scalar_t>
-struct RemainderIntegralFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    scalar_t r = a % b;
-    if (r != 0 && c10::signs_differ(r, b)) {
-      r += b;
-    }
-    return r;
-  }
-};
-
-template <typename scalar_t>
-struct RemainderFloatingFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    auto mod = std::fmod(a, b);
-    if (mod != 0 && c10::signs_differ(b, mod)) {
-      mod += b;
-    }
-    return mod;
-  }
-};
-
-template <typename scalar_t>
-struct FmodIntegralFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a % b;
-  }
-};
-
-template <typename scalar_t>
-struct FmodFloatingFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return ::fmod(a, b);
-  }
-};
-
 void add_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
@@ -128,32 +92,6 @@ void div_kernel(TensorIteratorBase& iter) {
           using opmath_t = opmath_type<scalar_t>;
           opmath_gpu_kernel_with_scalars<scalar_t>(
               iter, DivFunctor<opmath_t>());
-        });
-  }
-}
-
-void remainder_kernel(TensorIteratorBase& iter) {
-  if (isIntegralType(iter.common_dtype(), /*includeBool*/ false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "remainder_xpu", [&]() {
-      gpu_kernel_with_scalars(iter, RemainderIntegralFunctor<scalar_t>());
-    });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, iter.common_dtype(), "remainder_xpu", [&]() {
-          gpu_kernel_with_scalars(iter, RemainderFloatingFunctor<scalar_t>());
-        });
-  }
-}
-
-void fmod_kernel(TensorIteratorBase& iter) {
-  if (isIntegralType(iter.common_dtype(), /*includeBool*/ false)) {
-    AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "fmod_xpu", [&]() {
-      gpu_kernel_with_scalars(iter, FmodIntegralFunctor<scalar_t>());
-    });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, iter.common_dtype(), "fmod_xpu", [&]() {
-          gpu_kernel_with_scalars(iter, FmodFloatingFunctor<scalar_t>());
         });
   }
 }

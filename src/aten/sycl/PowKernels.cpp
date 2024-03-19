@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
-
 #include <aten/sycl/Loops.h>
 #include <aten/sycl/UnaryKernels.h>
 
@@ -13,73 +13,46 @@ void pow_tensor_scalar_kernel(
     TensorIteratorBase& iter,
     const Scalar& exp_scalar);
 
-template <typename T>
-inline T powi(T a, T b) {
-  T result = 1;
-  while (b) {
-    if (b & 1) {
-      result *= a;
-    }
-    b /= 2;
-    a *= a;
-  }
-  return result;
+namespace impl {
+
+template <typename Base_type, typename Exp_type>
+static inline Base_type pow_(Base_type base, Exp_type exp) {
+  return ::pow(base, exp);
 }
+
+template <typename T>
+static inline std::enable_if_t<std::is_integral<T>::value, T> pow_(
+    T base,
+    T exp) {
+  return at::native::powi(base, exp);
+}
+
+template <typename T>
+static inline c10::complex<T> pow_(c10::complex<T> base, c10::complex<T> exp) {
+  return c10_complex_math::pow(base, exp);
+}
+
+} // namespace impl
 
 template <typename scalar_t>
-inline scalar_t pow_impl(scalar_t a, scalar_t b) {
-  return powi<scalar_t>(a, b);
-}
-
-template <>
-inline float pow_impl<float>(float a, float b) {
-  return std::pow(a, b);
-}
-
-template <>
-inline double pow_impl<double>(double a, double b) {
-  return std::pow(a, b);
-}
-
-template <>
-inline at::Half pow_impl<at::Half>(at::Half a, at::Half b) {
-  return std::pow(float(a), float(b));
-}
-
-template <>
-inline at::BFloat16 pow_impl<at::BFloat16>(at::BFloat16 a, at::BFloat16 b) {
-  return std::pow(float(a), float(b));
-}
-
-template <>
-inline c10::complex<float> pow_impl<c10::complex<float>>(
-    c10::complex<float> a,
-    c10::complex<float> b) {
-  return static_cast<c10::complex<float>>(std::pow(
-      static_cast<std::complex<float>>(a),
-      static_cast<std::complex<float>>(b)));
-}
-
-template <>
-inline c10::complex<double> pow_impl<c10::complex<double>>(
-    c10::complex<double> a,
-    c10::complex<double> b) {
-  return static_cast<c10::complex<double>>(std::pow(
-      static_cast<std::complex<double>>(a),
-      static_cast<std::complex<double>>(b)));
-}
+struct PowTensorTensorCastFunctor {
+  scalar_t operator()(scalar_t base, scalar_t exp) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    return impl::pow_(opmath_t{base}, opmath_t{exp});
+  }
+};
 
 template <typename scalar_t>
 struct PowTensorTensorFunctor {
   scalar_t operator()(scalar_t base, scalar_t exp) const {
-    return pow_impl<scalar_t>(base, exp);
+    return impl::pow_(base, exp);
   }
 };
 
 template <typename scalar_t>
 struct PowScalarTensorFunctor {
   scalar_t operator()(scalar_t exp) const {
-    return pow_impl<scalar_t>(base_, exp);
+    return impl::pow_(base_, exp);
   }
   PowScalarTensorFunctor(scalar_t base) : base_(base) {}
 
@@ -154,9 +127,8 @@ void pow_tensor_tensor_kernel(TensorIteratorBase& iter) {
       iter.remove_operand(2);
       pow_chalf_tensor_scalar_impl(iter, exp);
     } else {
-      using opmath_t = at::opmath_type<scalar_t>;
       TORCH_INTERNAL_ASSERT(!iter.is_cpu_scalar(1) && !iter.is_cpu_scalar(2));
-      auto f = PowTensorTensorFunctor<opmath_t>();
+      auto f = PowTensorTensorCastFunctor<scalar_t>();
       gpu_kernel(iter, f);
     }
   } else {
@@ -199,16 +171,9 @@ struct PowImplUnaryFunctor3 {
 };
 
 template <typename scalar_t>
-struct PowImplUnaryFunctor4 {
-  scalar_t operator()(scalar_t base) const {
-    return 1.0 / (base * base);
-  }
-};
-
-template <typename scalar_t>
 struct PowScalarTensorFunctor2 {
   scalar_t operator()(scalar_t base) const {
-    return pow_impl<scalar_t>(base, exp_);
+    return impl::pow_(base, exp_);
   }
   PowScalarTensorFunctor2(scalar_t exp) : exp_(exp) {}
 
