@@ -197,43 +197,50 @@ list(APPEND SYCL_LINK_FLAGS "-fsycl")
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 
-# Create a clean working directory.
-set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
-file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
-file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
+string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
+if(${has_werror} EQUAL -1)
+  # Create a clean working directory.
+  set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
+  file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
+  file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
 
-# Create the test source file
-set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/sycl_features.cpp")
-set(TEST_EXE "${TEST_SRC_FILE}.exe")
-SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE})
+  # Create the test source file
+  set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/sycl_features.cpp")
+  set(TEST_EXE "${TEST_SRC_FILE}.exe")
+  SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE})
 
-# Build the test and create test executable
-SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
-if(error)
-  return()
-endif()
+  # Build the test and create test executable
+  SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
+  if(error)
+    return()
+  endif()
 
-# Execute the test to extract information
-SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
-if(error)
-  return()
-endif()
+  # Execute the test to extract information
+  SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
+  if(error)
+    return()
+  endif()
 
-# Extract test output for information
-SYCL_CMPLR_TEST_EXTRACT(${test_output})
+  # Extract test output for information
+  SYCL_CMPLR_TEST_EXTRACT(${test_output})
 
-# As per specification, all the SYCL compatible compilers should
-# define macro  SYCL_LANGUAGE_VERSION
-string(COMPARE EQUAL "${SYCL_LANGUAGE_VERSION}" "" nosycllang)
-if(nosycllang)
-  set(SYCLTOOLKIT_FOUND False)
-  set(SYCL_REASON_FAILURE "SYCL: It appears that the ${SYCL_COMPILER} does not support SYCL")
-  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
+  # As per specification, all the SYCL compatible compilers should
+  # define macro  SYCL_LANGUAGE_VERSION
+  string(COMPARE EQUAL "${SYCL_LANGUAGE_VERSION}" "" nosycllang)
+  if(nosycllang)
+    set(SYCLTOOLKIT_FOUND False)
+    set(SYCL_REASON_FAILURE "SYCL: It appears that the ${SYCL_COMPILER} does not support SYCL")
+    set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
+  endif()
+
+  message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
+
+  # Include in Cache
+  set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
-message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
 
 # Avoid module variables conflict due to calling find_package recursively
 # e.g. find_package -> add_subdirectory(entering in a sub-project) -> find_package
@@ -245,5 +252,3 @@ message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
 #   REASON_FAILURE_MESSAGE "${SYCL_REASON_FAILURE}")
 set(SYCLTOOLKIT_FOUND True)
 
-# Include in Cache
-set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")

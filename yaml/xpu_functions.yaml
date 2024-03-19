@@ -59,3 +59,28 @@ supported:
   - im2col.out
   - col2im
   - col2im.out
+  - abs
+  - abs_
+  - abs.out
+  - sin
+  - sin_
+  - sin.out
+  - cos
+  - cos_
+  - cos.out
+  - log
+  - log_
+  - log.out
+  - sqrt
+  - sqrt_
+  - sqrt.out
+  - rsqrt
+  - rsqrt_
+  - rsqrt.out
+  - tanh
+  - tanh_
+  - tanh.out
+  - neg
+  - neg_
+  - neg.out
+
