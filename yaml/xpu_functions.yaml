@@ -55,6 +55,10 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - im2col
+  - im2col.out
+  - col2im
+  - col2im.out
   - abs
   - abs_
   - abs.out
@@ -79,3 +83,4 @@ supported:
   - neg
   - neg_
   - neg.out
+
