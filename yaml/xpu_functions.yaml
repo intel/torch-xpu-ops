@@ -3,22 +3,49 @@ cpp_namespace: at
 use_out_as_primary: true
 device_guard: true
 supported:
-  - add.Scalar
   - add.Tensor
-  - add_.Scalar
   - add_.Tensor
-  - sub.Scalar
+  - add.out
+  - add.Scalar
+  - add_.Scalar
+  - add.Scalar_out
   - sub.Tensor
-  - sub_.Scalar
   - sub_.Tensor
-  - mul.Scalar
+  - sub.out
+  - sub.Scalar
+  - sub_.Scalar
+  - sub.Scalar_out
   - mul.Tensor
-  - mul_.Scalar
   - mul_.Tensor
-  - div.Scalar
+  - mul.out
+  - mul.Scalar
+  - mul_.Scalar
+  - mul.Scalar_out
   - div.Tensor
-  - div_.Scalar
   - div_.Tensor
+  - div.out
+  - div.Scalar
+  - div_.Scalar
+  - div.Scalar_out
+  - rsub.Tensor
+  - rsub.Tensor_out
+  - rsub.Scalar
+  - rsub.Scalar_out
+  - remainder.Tensor
+  - remainder_.Tensor
+  - remainder.Tensor_out
+  - remainder.Scalar
+  - remainder_.Scalar
+  - remainder.Scalar_out
+  - remainder.Scalar_Tensor
+  - remainder.Scalar_Tensor_out
+  - fmod.Tensor
+  - fmod_.Tensor
+  - fmod.Tensor_out
+  - fmod.Scalar
+  - fmod_.Scalar
+  - fmod.Scalar_out
+
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -55,6 +82,7 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+
   - abs
   - abs_
   - abs.out
@@ -79,3 +107,15 @@ supported:
   - neg
   - neg_
   - neg.out
+  - reciprocal
+  - reciprocal_
+  - reciprocal.out
+  
+  - pow.Tensor_Tensor
+  - pow_.Tensor
+  - pow.Tensor_Tensor_out
+  - pow.Tensor_Scalar
+  - pow_.Scalar
+  - pow.Tensor_Scalar_out
+  - pow.Scalar
+  - pow.Scalar_out

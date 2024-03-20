@@ -42,7 +42,7 @@ struct DivFunctor {
   }
 };
 
-void add_kernel(TensorIterator& iter, const c10::Scalar& alpha) {
+void add_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;
@@ -59,11 +59,11 @@ void add_kernel(TensorIterator& iter, const c10::Scalar& alpha) {
   }
 }
 
-void sub_kernel(TensorIterator& iter, const c10::Scalar& alpha) {
+void sub_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
   add_kernel(iter, -alpha);
 }
 
-void mul_kernel(TensorIterator& iter) {
+void mul_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;
@@ -80,7 +80,7 @@ void mul_kernel(TensorIterator& iter) {
   }
 }
 
-void div_kernel(TensorIterator& iter) {
+void div_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;

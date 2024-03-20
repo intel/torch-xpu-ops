@@ -70,3 +70,7 @@ class TestSimpleUnary(TestCase):
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
         self._test_unary_out_ops('neg', dtype)
+    
+    @Dtypes(floating_and_complex_types)
+    def test_reciprocal_out(self, dtype):
+        self._test_unary_out_ops('reciprocal', dtype)
