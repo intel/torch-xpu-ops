@@ -6,8 +6,11 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void relu_kernel(TensorIteratorBase& iter);
+void threshold_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& threshold,
+    const Scalar& value);
 
-} // namespace xpu
+}
 } // namespace native
 } // namespace at
