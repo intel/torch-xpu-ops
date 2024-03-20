@@ -92,13 +92,6 @@ __MATH_FUNCTIONS_DECL__ double sqrt(double x) {
   return ::sqrt(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float rsqrt(float x) {
-  return rsqrt(x);
-}
-__MATH_FUNCTIONS_DECL__ double rsqrt(double x) {
-  return rsqrt(x);
-}
-
 __MATH_FUNCTIONS_DECL__ float tan(float x) {
   return ::tanf(x);
 }
@@ -111,13 +104,6 @@ __MATH_FUNCTIONS_DECL__ float tanh(float x) {
 }
 __MATH_FUNCTIONS_DECL__ double tanh(double x) {
   return ::tanh(x);
-}
-
-__MATH_FUNCTIONS_DECL__ float normcdf(float x) {
-  return normcdf(x);
-}
-__MATH_FUNCTIONS_DECL__ double normcdf(double x) {
-  return normcdf(x);
 }
 
 } // namespace c10::xpu::compat
