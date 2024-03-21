@@ -42,3 +42,18 @@ class TestSimpleResize(TestCase):
         b_cpu = torch.view_as_complex(a_cpu)
         b_xpu = torch.view_as_complex(a_xpu)
         self.assertEqual(b_cpu, b_xpu.to(cpu_device))
+
+    def test_tensor_set_storage(self, dtype=torch.float):
+        t1 = torch.tensor([], dtype=dtype).to(xpu_device)
+        t2 = torch.randn(3, 4, 9, 10, dtype=dtype).to(xpu_device)
+        size = torch.Size([9, 3, 4, 10])
+        stride = (10, 360, 90, 1)
+
+        # 1. case when source is storage
+        t1.set_(source=t2.storage())
+        self.assertEqual(t1.storage()._cdata, t2.storage()._cdata)
+        # 2 case when source is storage, and other args also specified
+        t1.set_(source=t2.storage(), storage_offset=0, size=size, stride=stride)
+        self.assertEqual(t1.size(), size)
+        self.assertEqual(t1.stride(), stride)
+
