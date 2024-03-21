@@ -38,6 +38,14 @@ Tensor _reshape_alias(
   return at::native::_reshape_alias(self, size, stride);
 }
 
+Tensor unfold(
+    const Tensor& self,
+    int64_t dimension,
+    int64_t size,
+    int64_t step) {
+  return at::native::unfold(self, dimension, size, step);
+}
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::view"), TORCH_FN(view));
   m.impl(TORCH_SELECTIVE_NAME("aten::view_as_real"), TORCH_FN(view_as_real));
@@ -46,6 +54,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::as_strided"), TORCH_FN(as_strided));
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_reshape_alias"), TORCH_FN(_reshape_alias));
+  m.impl(TORCH_SELECTIVE_NAME("aten::unfold"), TORCH_FN(unfold));
 }
 
 } // namespace xpu
