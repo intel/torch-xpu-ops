@@ -3,6 +3,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/ReduceLogicKernel.h>
 #include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceMinValuesKernel.h>
 #include <aten/sycl/ReduceMomentKernel.h>
@@ -16,7 +17,7 @@ namespace at {
 Tensor& XPUNativeFunctions::max_out(const Tensor& self, Tensor& out) {
   auto iter = at::native::make_reduction(
       "max_all", out, self, IntArrayRef{}, false, self.scalar_type());
-  at::native::xpu::max_all_launch_kernel(iter);
+  native::xpu::max_all_launch_kernel(iter);
   return out;
 }
 
@@ -34,14 +35,14 @@ Tensor XPUNativeFunctions::max(const Tensor& self) {
     Tensor& max_values) {
   auto iter = meta::make_reduction(
       self, max, max_values, dim, keepdim, self.scalar_type(), kLong);
-  at::native::xpu::max_launch_kernel(iter);
+  native::xpu::max_launch_kernel(iter);
   return {max, max_values};
 }
 
 Tensor& XPUNativeFunctions::min_out(const Tensor& self, Tensor& out) {
   auto iter = at::native::make_reduction(
       "min_all", out, self, IntArrayRef{}, false, self.scalar_type());
-  at::native::xpu::min_all_launch_kernel(iter);
+  native::xpu::min_all_launch_kernel(iter);
   return out;
 }
 
@@ -59,7 +60,7 @@ Tensor XPUNativeFunctions::min(const Tensor& self) {
     Tensor& min_indices) {
   auto iter = meta::make_reduction(
       self, min, min_indices, dim, keepdim, self.scalar_type(), kLong);
-  at::native::xpu::min_launch_kernel(iter);
+  native::xpu::min_launch_kernel(iter);
   return {min, min_indices};
 }
 
@@ -112,7 +113,7 @@ Tensor& XPUNativeFunctions::sum_out(
           tmp_output);
       result.copy_(tmp_output);
     } else {
-      at::native::xpu::sum_kernel(iter);
+      native::xpu::sum_kernel(iter);
     }
   }
   return result;
@@ -189,7 +190,7 @@ Tensor& XPUNativeFunctions::mean_out(
     if (iter.numel() == 0) {
       result.fill_(std::numeric_limits<double>::quiet_NaN());
     } else {
-      at::native::xpu::mean_kernel(iter);
+      native::xpu::mean_kernel(iter);
     }
   }
   return result;
@@ -204,6 +205,64 @@ Tensor XPUNativeFunctions::mean(
   Tensor result = at::native::create_reduction_result(
       self, opt_dim.value_or(IntArrayRef{}), keepdim, dtype);
   return XPUNativeFunctions::mean_out(self, opt_dim, keepdim, dtype, result);
+}
+
+inline TensorIterator get_allany_iter(
+    const Tensor& self,
+    const Tensor& result,
+    OptionalIntArrayRef dims,
+    bool keepdim) {
+  return meta::make_reduction(self, result, dims, keepdim, self.scalar_type());
+}
+
+template <int identity, typename Stub>
+inline void allany_impl(
+    const Tensor& self,
+    const Tensor& result,
+    OptionalIntArrayRef dims,
+    bool keepdim,
+    Stub& stub) {
+  if (self.numel() == 0) {
+    result.fill_(identity);
+  } else if (self.numel() == 1) {
+    result.copy_(self.view_as(result).to(at::kBool));
+  } else {
+    auto iter = get_allany_iter(self, result, dims, keepdim);
+    stub(iter);
+  }
+}
+
+static ScalarType get_result_or_bytebool_dtype(
+    const Tensor& self,
+    const Tensor& result) {
+  // Refer [all, any : uint8 compatibility]
+  if (result.defined()) {
+    return result.scalar_type();
+  } else {
+    return (self.scalar_type() == kByte) ? kByte : kBool;
+  }
+}
+
+Tensor XPUNativeFunctions::any(const Tensor& self, int64_t dim, bool keepdim) {
+  Tensor result;
+  auto result_type = get_result_or_bytebool_dtype(self, result);
+  result = at::empty({0}, self.options().dtype(result_type));
+  allany_impl<0>(self, result, dim, keepdim, native::xpu::or_kernel);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::any_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    Tensor& out) {
+  allany_impl<0>(self, out, dim, keepdim, native::xpu::or_kernel);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::any_out(const Tensor& self, Tensor& out) {
+  allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);
+  return out;
 }
 
 } // namespace at

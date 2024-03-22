@@ -131,3 +131,6 @@ supported:
   - sum.IntList_out
   - mean.dim
   - mean.out
+  - any.dim
+  - any.out
+  - any.all_out
