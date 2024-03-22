@@ -3,14 +3,13 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/XPUNativeFunctions.h>
+
 #include <aten/sycl/DistributionKernels.h>
-#include <torch/library.h>
 
 namespace at {
-namespace native {
-namespace xpu {
 
-Tensor& normal_(
+Tensor& XPUNativeFunctions::normal_(
     Tensor& self,
     double mean,
     double std,
@@ -32,7 +31,7 @@ Tensor& normal_(
 #define CHECK_OUT_OF_BOUNDS(var, name, min, max, dtype) \
   TORCH_CHECK(var >= min && var <= max, name, " is out of bounds for ", dtype);
 
-Tensor& uniform_(
+Tensor& XPUNativeFunctions::uniform_(
     Tensor& self,
     double from,
     double to,
@@ -77,7 +76,4 @@ Tensor& uniform_(
   }
   return self;
 }
-
-} // namespace xpu
-} // namespace native
 } // namespace at

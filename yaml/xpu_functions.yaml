@@ -133,3 +133,6 @@ supported:
   - resize_
   - resize_as_
   - _copy_from_and_resize
+  - set_.source_Storage
+  - set_.source_Storage_storage_offset
+  - unfold

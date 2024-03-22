@@ -14,8 +14,6 @@ namespace at {
 namespace native {
 namespace xpu {
 
-namespace impl {
-
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   TORCH_CHECK(
       storage->resizable(), "Trying to resize storage that is not resizable");
@@ -125,34 +123,36 @@ const Tensor& resize_xpu_(
   return self;
 }
 
-} // namespace impl
+} // namespace native::xpu
 
-const at::Tensor& resize_(
+const at::Tensor& XPUNativeFunctions::resize_(
     const at::Tensor& self,
     at::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format) {
-  return impl::resize_xpu_(self, size, memory_format);
+  return native::xpu::resize_xpu_(self, size, memory_format);
 }
 
-const Tensor& resize_as_(
+const Tensor& XPUNativeFunctions::resize_as_(
     const Tensor& self,
     const Tensor& the_template,
     c10::optional<MemoryFormat> optional_memory_format = c10::nullopt) {
   return resize_(self, the_template.sizes(), optional_memory_format);
 }
 
-Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
+extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
+
+Tensor XPUNativeFunctions::_copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   dst.resize_as_(self);
-  return copy_xpu(const_cast<Tensor&>(dst), self, false);
+  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
-Tensor& set_(Tensor& self, Storage source) {
+Tensor& XPUNativeFunctions::set_(Tensor& self, Storage source) {
   int64_t new_size =
       static_cast<int64_t>(source.nbytes() / self.dtype().itemsize());
   return self.set_(source, 0, new_size, {});
 }
 
-Tensor& set_(
+Tensor& XPUNativeFunctions::set_(
     Tensor& self,
     Storage source,
     int64_t storage_offset,
@@ -168,11 +168,13 @@ Tensor& set_(
   return self;
 }
 
-Tensor& source_Storage_set_(at::Tensor& self, at::Storage source) {
+Tensor& XPUNativeFunctions::source_Storage_set_(
+    at::Tensor& self,
+    at::Storage source) {
   return set_(self, source);
 }
 
-Tensor& source_Storage_storage_offset_set_(
+Tensor& XPUNativeFunctions::source_Storage_storage_offset_set_(
     at::Tensor& self,
     at::Storage source,
     c10::SymInt storage_offset,
@@ -186,20 +188,4 @@ Tensor& source_Storage_storage_offset_set_(
       C10_AS_INTARRAYREF_SLOW(stride));
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::resize_"), TORCH_FN(resize_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
-  m.impl(
-      TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
-      TORCH_FN(_copy_from_and_resize));
-  m.impl(
-      TORCH_SELECTIVE_NAME("aten::set_.source_Storage"),
-      TORCH_FN(source_Storage_set_));
-  m.impl(
-      TORCH_SELECTIVE_NAME("aten::set_.source_Storage_storage_offset"),
-      TORCH_FN(source_Storage_storage_offset_set_));
-}
-
-} // namespace xpu
-} // namespace native
 } // namespace at
