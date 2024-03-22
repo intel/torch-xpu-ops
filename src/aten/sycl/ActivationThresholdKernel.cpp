@@ -4,7 +4,6 @@
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/Loops.h>
-#include <comm/XPUMathCompat.h>
 
 namespace at {
 namespace native {
