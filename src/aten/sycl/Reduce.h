@@ -37,7 +37,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
   sycl_local_ptr<vec_t> shared_(shared);
   int l_x = item.get_local_linear_id();
-  int dim_x = wg_size;
+  // int dim_x = wg_size;
   auto sg = item.get_sub_group();
   int sg_size = sg.get_local_range()[0];
   int sg_lid = sg.get_local_linear_id();
@@ -83,7 +83,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     }
 
     for (int offset = sg_range / 2; offset > 0; offset >>= 1) {
-      if (l_x < offset) {
+      if ((int)l_x < offset) {
         vec_t other = shared_[l_x + offset];
 #pragma unroll(out_vec_sz)
         for (int i = 0; i < out_vec_sz; ++i) {
@@ -549,7 +549,8 @@ struct ReduceOp {
       value[i] = ident;
     }
 
-    if (output_idx < config.num_outputs && input_idx < config.num_inputs) {
+    if (output_idx < (index_t)config.num_outputs &&
+        input_idx < (index_t)config.num_inputs) {
       const scalar_t* input_slice =
           (const scalar_t*)((const char*)src + base_offsets1);
       value = item_reduce<output_vec_size>(pos, input_slice);
@@ -708,7 +709,7 @@ struct ReduceOp {
     constexpr int align_elements = align_bytes / sizeof(scalar_t);
     int shift = ((uint64_t)data) % align_bytes / sizeof(scalar_t);
     if (shift > 0) {
-      auto idx = pos.get_local_id(1);
+      int idx = pos.get_local_id(1);
       if (idx >= shift && idx < align_elements &&
           config.should_reduce_tail(pos)) {
         value = ops.reduce(
@@ -718,7 +719,7 @@ struct ReduceOp {
       }
       // align data to vector start
       data += align_elements - shift;
-      if (end > align_elements - shift)
+      if (end > (index_t)align_elements - shift)
         end -= align_elements - shift; /* warning: end flip */
       else
         end = 0;
@@ -756,7 +757,7 @@ struct ReduceOp {
     index_t tail_start = end - end % input_vec_size;
     if (config.should_reduce_tail(pos)) {
       int idx = tail_start + pos.get_local_id(1);
-      if (idx < end) {
+      if ((index_t)idx < end) {
         value_list[0] = ops.reduce(value_list[0], data[idx], idx + shift);
       }
     }
@@ -860,7 +861,7 @@ struct ReduceOp {
     int sg_gid = sg.get_group_linear_id();
     int sg_range = sg.get_group_range()[0];
 
-    for (int offset = 1; offset < sbgrpSize; offset <<= 1) {
+    for (int offset = 1; offset < (int)sbgrpSize; offset <<= 1) {
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; ++i) {
         arg_t other = sg.shuffle_down(value[i], offset);
@@ -876,7 +877,7 @@ struct ReduceOp {
     }
     pos.barrier(sycl_local_fence);
 
-    if (sg_range <= sbgrpSize) {
+    if (sg_range <= (int)sbgrpSize) {
       // sub-group reduce
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; i++) {
@@ -936,12 +937,13 @@ struct ReduceOp {
     sycl_local_ptr<args_vec_t> shared(shared_memory);
     auto sg = pos.get_sub_group();
     uint32_t sbgrpSize = sg.get_local_range()[0];
-    if (dim_x > sbgrpSize) {
+    if (dim_x > (int)sbgrpSize) {
       int address_base = l_x + l_y * gp_x;
       shared[address_base] = value;
-      for (int offset = dim_x / 2; offset >= sbgrpSize; offset >>= 1) {
+      for (int offset = dim_x / 2; offset >= (int)sbgrpSize; offset >>= 1) {
         pos.barrier(sycl_local_fence);
-        if (l_x < offset && l_x + offset < gp_x /* redundant??? */) {
+        if ((int)l_x < offset &&
+            (int)l_x + offset < (int)gp_x /* redundant??? */) {
           args_vec_t other = shared[address_base + offset];
 #pragma unroll(output_vec_size)
           for (int i = 0; i < output_vec_size; ++i) {
@@ -980,7 +982,7 @@ struct ReduceOp {
       int prev_groups_finished = count.fetch_add(
           1, sycl_mem_odr_acq_rel
           /* , default memory scope is device */);
-      finished[0] = (prev_groups_finished == (pos.get_group_range(0) - 1));
+      finished[0] = (prev_groups_finished == (int)(pos.get_group_range(0) - 1));
     }
     pos.barrier(sycl_local_fence);
   }
@@ -1100,7 +1102,8 @@ struct ReduceOp {
         index_t input_offset =
             pos.get_local_id(1) + pos.get_local_id(0) * pos.get_local_range(1);
         index_t step = pos.get_local_range(0) * pos.get_local_range(1);
-        for (; input_offset < config.groups_per_output; input_offset += step) {
+        for (; input_offset < (index_t)config.groups_per_output;
+             input_offset += step) {
           index_t idx = config.staging_memory_offset(pos, input_offset);
           arg_vec_t next = reduce_buffer[idx];
 #pragma unroll(output_vec_size)
@@ -1111,7 +1114,8 @@ struct ReduceOp {
       } else {
         index_t input_offset = pos.get_local_id(0);
         index_t step = pos.get_local_range(0);
-        for (; input_offset < config.groups_per_output; input_offset += step) {
+        for (; input_offset < (index_t)config.groups_per_output;
+             input_offset += step) {
           index_t idx = config.staging_memory_offset(pos, input_offset);
           arg_vec_t next = reduce_buffer[idx];
 #pragma unroll(output_vec_size)
