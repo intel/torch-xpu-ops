@@ -134,3 +134,4 @@ supported:
   - any.dim
   - any.out
   - any.all_out
+  - argmax.out

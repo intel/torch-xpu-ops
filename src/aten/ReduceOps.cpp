@@ -3,6 +3,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/ReduceArgMaxKernel.h>
 #include <aten/sycl/ReduceLogicKernel.h>
 #include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceMinValuesKernel.h>
@@ -262,6 +263,50 @@ Tensor& XPUNativeFunctions::any_out(
 
 Tensor& XPUNativeFunctions::any_out(const Tensor& self, Tensor& out) {
   allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);
+  return out;
+}
+
+template <class Stub>
+void argmax_argmin_impl(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    const Tensor& result,
+    Stub& stub) {
+  c10::MaybeOwned<Tensor> in;
+  DimVector dims;
+  int64_t _dim = 0;
+
+  if (dim.has_value()) {
+    _dim = maybe_wrap_dim(dim.value(), self.dim());
+    auto sizes = self.sizes();
+
+    if (sizes[_dim] == 1) {
+      result.fill_(0);
+      return;
+    }
+
+    dims = IntArrayRef(_dim);
+    in = c10::MaybeOwned<Tensor>::borrowed(self);
+  } else {
+    in = c10::MaybeOwned<Tensor>::owned(self.reshape({-1}));
+    keepdim = false;
+  }
+
+  auto iter =
+      meta::make_reduction(*in, result, dims, keepdim, self.scalar_type());
+
+  if (iter.numel() != 0) {
+    stub(iter);
+  }
+}
+
+Tensor& XPUNativeFunctions::argmax_out(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    Tensor& out) {
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
   return out;
 }
 
