@@ -45,7 +45,6 @@ supported:
   - fmod.Scalar
   - fmod_.Scalar
   - fmod.Scalar_out
-
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -82,7 +81,6 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
-
   - abs
   - abs_
   - abs.out
@@ -110,7 +108,6 @@ supported:
   - reciprocal
   - reciprocal_
   - reciprocal.out
-  
   - pow.Tensor_Tensor
   - pow_.Tensor
   - pow.Tensor_Tensor_out
@@ -119,3 +116,20 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+  - empty.memory_format
+  - empty_strided
+  - clone
+  - fill_.Scalar
+  - zero_
+  - normal_
+  - uniform_
+  - copy_
+  - _to_copy
+  - view
+  - view_as_real
+  - view_as_complex
+  - as_strided
+  - _reshape_alias
+  - resize_
+  - resize_as_
+  - _copy_from_and_resize

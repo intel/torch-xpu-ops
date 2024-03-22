@@ -78,11 +78,6 @@ Tensor& uniform_(
   return self;
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::normal_"), TORCH_FN(normal_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::uniform_"), TORCH_FN(uniform_));
-}
-
 } // namespace xpu
 } // namespace native
 } // namespace at

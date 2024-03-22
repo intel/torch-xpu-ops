@@ -30,11 +30,6 @@ Tensor& zero_(Tensor& self) {
   return self.fill_(0);
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::fill_.Scalar"), TORCH_FN(fill_scalar_));
-  m.impl(TORCH_SELECTIVE_NAME("aten::zero_"), TORCH_FN(zero_));
-}
-
 } // namespace xpu
 } // namespace native
 } // namespace at

@@ -302,9 +302,4 @@ Tensor _to_copy_xpu(
       optional_memory_format);
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::copy_"), TORCH_FN(copy_xpu));
-  m.impl(TORCH_SELECTIVE_NAME("aten::_to_copy"), TORCH_FN(_to_copy_xpu));
-}
-
 } // namespace at::native::xpu
