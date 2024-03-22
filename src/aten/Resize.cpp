@@ -1,18 +1,18 @@
 #include <ATen/ATen.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
-#include <torch/library.h>
 
-#include <aten/Copy.h>
 #include <aten/sycl/CopyKernel.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
 namespace at {
-namespace native {
-namespace xpu {
+namespace native::xpu {
+
+extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
 
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   TORCH_CHECK(
@@ -105,7 +105,7 @@ const Tensor& resize_xpu_(
   auto* self_ = self.unsafeGetTensorImpl();
   int64_t old_storage_nbytes =
       self_->unsafe_storage() ? self_->unsafe_storage().nbytes() : 0;
-  impl::resize_impl_xpu_(self_, size, /*strides=*/c10::nullopt);
+  resize_impl_xpu_(self_, size, /*strides=*/c10::nullopt);
   if (optional_memory_format.has_value()) {
     auto memory_format = optional_memory_format.value();
     TORCH_CHECK(
@@ -139,9 +139,9 @@ const Tensor& XPUNativeFunctions::resize_as_(
   return resize_(self, the_template.sizes(), optional_memory_format);
 }
 
-extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
-
-Tensor XPUNativeFunctions::_copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
+Tensor XPUNativeFunctions::_copy_from_and_resize(
+    const at::Tensor& self,
+    const at::Tensor& dst) {
   dst.resize_as_(self);
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }

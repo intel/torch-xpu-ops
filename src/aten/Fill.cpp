@@ -1,8 +1,8 @@
 #include <ATen/ScalarOps.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Fill.h>
 #include <ATen/native/TensorIterator.h>
-#include <torch/library.h>
 
 #include <aten/sycl/FillKernel.h>
 

@@ -1,7 +1,7 @@
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/ops/as_strided_ops.h>
-#include <ATen/XPUNativeFunctions.h>
 
 namespace at {
 
