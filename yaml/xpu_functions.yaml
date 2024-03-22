@@ -119,3 +119,10 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+
+  - max
+  - max.unary_out
+  - max.dim_max
+  - min
+  - min.unary_out
+  - min.dim_min
