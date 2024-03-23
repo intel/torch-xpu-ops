@@ -3,6 +3,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
+#include <torch/library.h>
 
 #include <aten/sycl/CopyKernel.h>
 
@@ -123,6 +124,29 @@ const Tensor& resize_xpu_(
   return self;
 }
 
+const Tensor& resize_as_(
+    const Tensor& self,
+    const Tensor& the_template,
+    c10::optional<MemoryFormat> optional_memory_format = c10::nullopt) {
+  return resize_(self, the_template.sizes(), optional_memory_format);
+}
+
+Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
+  dst.resize_as_(self);
+  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
+}
+
+// Should not register the operator. Desc of resize_as_ and
+// _copy_from_and_resize native_function.yaml is simplistic since PyTorch
+// intends backend should not register it (e.g. CPU/CUDA) or handle
+// sanity check by backend (e.g. MPS).
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
+  m.impl(
+      TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
+      TORCH_FN(_copy_from_and_resize));
+}
+
 } // namespace native::xpu
 
 const at::Tensor& XPUNativeFunctions::resize_(
@@ -130,21 +154,6 @@ const at::Tensor& XPUNativeFunctions::resize_(
     at::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format) {
   return native::xpu::resize_xpu_(self, size, memory_format);
-}
-
-const Tensor& XPUNativeFunctions::resize_as_(
-    const Tensor& self,
-    const Tensor& the_template,
-    c10::optional<MemoryFormat> optional_memory_format = c10::nullopt) {
-  return resize_(self, the_template.sizes(), optional_memory_format);
-}
-
-Tensor XPUNativeFunctions::_copy_from_and_resize(
-    const at::Tensor& self,
-    const at::Tensor& dst) {
-  dst.resize_as_(self);
-  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
-}
 
 Tensor& XPUNativeFunctions::set_(Tensor& self, Storage source) {
   int64_t new_size =
