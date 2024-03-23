@@ -1,5 +1,6 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
+#include <ATen/native/TensorFactories.h>
 #include <torch/library.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -29,8 +30,9 @@ Tensor empty_xpu(
       pin_memory_opt,
       memory_format_opt);
   // See Note [Enabling Deterministic Operations]
-  if (C10_UNLIKELY(at::globalContext().deterministicAlgorithms()
-      && at::globalContext().deterministicFillUninitializedMemory())) {
+  if (C10_UNLIKELY(
+          at::globalContext().deterministicAlgorithms() &&
+          at::globalContext().deterministicFillUninitializedMemory())) {
     fill_empty_deterministic_(result);
   }
   return result;
@@ -46,8 +48,9 @@ Tensor empty_strided_xpu(
   Tensor result = at::detail::empty_strided_xpu(
       size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
   // See Note [Enabling Deterministic Operations]
-  if (C10_UNLIKELY(at::globalContext().deterministicAlgorithms()
-      && at::globalContext().deterministicFillUninitializedMemory())) {
+  if (C10_UNLIKELY(
+          at::globalContext().deterministicAlgorithms() &&
+          at::globalContext().deterministicFillUninitializedMemory())) {
     fill_empty_deterministic_(result);
   }
   return result;
