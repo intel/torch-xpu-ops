@@ -4,18 +4,16 @@ import sys
 import unittest
 
 import torch
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types_and,
+    all_types_and_complex_and,
+    integral_types_and,
+)
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
-    onlyNativeDeviceTypes,
     onlyXPU,
     OpDTypes,
     ops,
-    skipMeta,
-)
-from torch.testing._internal.common_dtype import (
-    all_types_and_complex_and,
-    floating_and_complex_types_and,
-    integral_types_and,
 )
 from torch.testing._internal.common_methods_invocations import (
     ops_and_refs,
@@ -24,7 +22,6 @@ from torch.testing._internal.common_methods_invocations import (
 from torch.testing._internal.common_utils import (
     NoTest,
     run_tests,
-    slowTest,
     suppress_warnings,
     TEST_WITH_UBSAN,
     TEST_XPU,
@@ -69,36 +66,58 @@ _xpu_computation_op_list = [
     "neg",
     "reciprocal",
     "pow",
-    "normal",
-    "uniform",
     "unfold",
 ]
 _xpu_tensor_factory_op_list = [
+    "normal",
+    "uniform",
     "as_strided",
     "empty",
     "empty_strided",
 ]
+_xpu_all_op_list = _xpu_computation_op_list + _xpu_tensor_factory_op_list
+_xpu_all_ops = [op for op in ops_and_refs if op.name in _xpu_all_op_list]
+
+# Exclusive ops list
 _xpu_not_test_dtype_op_list = [
     "resize_",  # Skipped by CPU
     "resize_as_",  # Skipped by CPU
     "abs",  # Not aligned dtype
 ]
-_xpu_all_op_list = _xpu_computation_op_list + _xpu_tensor_factory_op_list
-_xpu_all_ops = [op for op in ops_and_refs if op.name in _xpu_all_op_list]
+_xpu_float_only_op_list = [
+    "reciprocal", # Align with CUDA impl. Only float and complex supported in CUDA native.
+]
+
+# test_compare_cpu
 _xpu_computation_ops = [
     op for op in ops_and_refs if op.name in _xpu_computation_op_list
 ]
-_xpu_dtype_op_list = _xpu_all_op_list
+
+# test_non_standard_bool_values
+_xpu_non_standard_bool_values_op_list = _xpu_computation_op_list.copy()
+for op in _xpu_float_only_op_list:
+    _xpu_non_standard_bool_values_op_list.remove(op)
+_xpu_non_standard_bool_values_ops = [op for op in ops_and_refs if op.name in _xpu_non_standard_bool_values_op_list]
+
+# test_dtypes
+_xpu_dtype_op_list = _xpu_all_op_list.copy()
 for op in _xpu_not_test_dtype_op_list:
     _xpu_dtype_op_list.remove(op)
+for op in _xpu_float_only_op_list:
+    _xpu_dtype_op_list.remove(op)
 _xpu_dtype_ops = [op for op in ops_and_refs if op.name in _xpu_dtype_op_list]
+
+# test_promotes_int_to_float
+_xpu_promotes_int_to_float_list = _xpu_all_op_list.copy()
+for op in _xpu_float_only_op_list:
+    _xpu_promotes_int_to_float_list.remove(op)
+_xpu_promotes_int_to_float_ops = [op for op in ops_and_refs if op.name in _xpu_promotes_int_to_float_list]
 
 
 class TestXpu(TestCase):
 
     @onlyXPU
     @suppress_warnings
-    @slowTest
     @ops(_xpu_computation_ops, dtypes=any_common_cpu_xpu_one)
     def test_compare_cpu(self, device, dtype, op):
         def to_cpu(arg):
@@ -122,7 +141,7 @@ class TestXpu(TestCase):
             self.assertEqual(xpu_results, cpu_results, atol=1e-4, rtol=1e-4)
 
     @onlyXPU
-    @ops(_xpu_computation_ops, allowed_dtypes=(torch.bool,))
+    @ops(_xpu_non_standard_bool_values_ops, allowed_dtypes=(torch.bool,))
     @unittest.skipIf(TEST_WITH_UBSAN, "Test uses undefined behavior")
     def test_non_standard_bool_values(self, device, dtype, op):
         # Test boolean values other than 0x00 and 0x01 (gh-54789)
@@ -150,7 +169,6 @@ class TestXpu(TestCase):
             self.assertEqual(expect, actual)
 
     @onlyXPU
-    @skipMeta
     @ops(_xpu_dtype_ops, dtypes=OpDTypes.none)
     def test_dtypes(self, device, op):
         # Check complex32 support only if the op claims.
@@ -354,10 +372,8 @@ class TestXpu(TestCase):
 
     # Validates that each OpInfo that sets promotes_int_to_float=True does as it says
     @onlyXPU
-    @skipMeta
-    @onlyNativeDeviceTypes
     @ops(
-        (op for op in _xpu_all_ops if op.promotes_int_to_float),
+        (op for op in _xpu_promotes_int_to_float_ops if op.promotes_int_to_float),
         allowed_dtypes=integral_types_and(torch.bool),
     )
     def test_promotes_int_to_float(self, device, dtype, op):
@@ -369,7 +385,7 @@ class TestXpu(TestCase):
                 )
 
 
-instantiate_device_type_tests(TestXpu, globals())
+instantiate_device_type_tests(TestXpu, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":
