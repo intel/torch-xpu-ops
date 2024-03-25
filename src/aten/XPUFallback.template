@@ -16,7 +16,7 @@ static void xpu_fallback(
     TORCH_WARN(
         "The operator '",
         op.schema().operator_name(),
-        "on the XPU backend and will fall back to run on the CPU.");
+        " on the XPU backend is falling back to run on the CPU.");
   }
 
   // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
@@ -60,4 +60,24 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   }
 }
 
+/*
+ * Register fallback to CPU for ops specified in env variable
+ * "PYTORCH_XPU_FALLBACK_OP" , For example: export
+ * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
+ */
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
+  if (!fallback_op_str) {
+    return;
+  }
+  std::istringstream iss(fallback_op_str);
+  std::string op_name;
+  while (std::getline(iss, op_name, ',')) {
+    TORCH_WARN(
+        "The operator '", op_name, "' registered to be forced to fallback to CPU.");
+    m.impl(
+        op_name.c_str(),
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+  }
+}
 } // namespace at

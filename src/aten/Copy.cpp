@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
@@ -6,7 +7,6 @@
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
-#include <torch/library.h>
 
 #include <aten/sycl/CopyKernel.h>
 #include <aten/sycl/UnaryComplexKernels.h>
@@ -16,7 +16,8 @@
 using namespace at;
 using namespace at::xpu;
 
-namespace at::native::xpu {
+namespace at {
+namespace native::xpu {
 
 static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
   Device dst_device = iter.device(0);
@@ -279,12 +280,16 @@ Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
 
   return self;
 }
+} // namespace native::xpu
 
-Tensor& copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
-  return _copy_xpu(self, src, non_blocking);
+Tensor& XPUNativeFunctions::copy_(
+    Tensor& self,
+    const Tensor& src,
+    bool non_blocking) {
+  return native::xpu::_copy_xpu(self, src, non_blocking);
 }
 
-Tensor _to_copy_xpu(
+Tensor XPUNativeFunctions::_to_copy(
     const Tensor& self,
     c10::optional<ScalarType> dtype,
     c10::optional<Layout> layout,
@@ -301,10 +306,4 @@ Tensor _to_copy_xpu(
       non_blocking,
       optional_memory_format);
 }
-
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::copy_"), TORCH_FN(copy_xpu));
-  m.impl(TORCH_SELECTIVE_NAME("aten::_to_copy"), TORCH_FN(_to_copy_xpu));
-}
-
-} // namespace at::native::xpu
+} // namespace at
