@@ -113,6 +113,5 @@ static inline void sycl_kernel_submit(
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<2>(global_range, local_range), ker);
   };
-  // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }
