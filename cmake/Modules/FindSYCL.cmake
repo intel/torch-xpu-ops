@@ -16,6 +16,12 @@
 #  SYCL_HOST_FLAGS
 #  -- SYCL compiler's 3rd party host compiler (e.g. gcc) arguments .
 #
+#  SYCL_DEVICE_LINK_FLAGS
+#  -- Arguments used when linking device object.
+#
+#  SYCL_OFFLINE_COMPILER_FLAGS
+#  -- Arguments used by offline compiler at AOT compilation.
+#
 #  SYCL_INCLUDE_DIR
 #  -- Include directory for SYCL compiler/runtime headers.
 #
@@ -373,7 +379,11 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(SYCL_device_link_flags)
     set(important_host_flags)
     _sycl_get_important_host_flags(important_host_flags "${SYCL_HOST_FLAGS}")
-    set(SYCL_device_link_flags ${link_type_flag} ${important_host_flags} ${SYCL_FLAGS})
+    set(SYCL_device_link_flags
+        ${link_type_flag}
+        ${important_host_flags}
+        ${SYCL_FLAGS}
+        ${SYCL_DEVICE_LINK_FLAGS})
 
     file(REAL_PATH working_directory "${output_file}")
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
@@ -395,7 +405,12 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
-      COMMAND ${SYCL_EXECUTABLE} -fsycl ${SYCL_device_link_flags} -fsycl-link ${object_files} -o ${output_file}
+      COMMAND ${SYCL_EXECUTABLE}
+      -fsycl
+      ${SYCL_device_link_flags}
+      -fsycl-link ${object_files}
+      -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
+      -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
       )
   endif()

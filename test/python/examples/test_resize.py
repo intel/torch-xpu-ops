@@ -57,3 +57,10 @@ class TestSimpleResize(TestCase):
         self.assertEqual(t1.size(), size)
         self.assertEqual(t1.stride(), stride)
 
+    def test_unfold(self, dtype=torch.float):
+        a_cpu = torch.randn(2, 3, 16, dtype=dtype)
+        a_xpu = a_cpu.to(xpu_device)
+        b_xpu = a_xpu.unfold(2, 2, 2)
+        b_cpu = a_cpu.unfold(2, 2, 2)
+        assert b_xpu.shape == b_cpu.shape
+        self.assertEqual(b_cpu, b_xpu.to(cpu_device))
