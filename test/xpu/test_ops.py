@@ -126,7 +126,6 @@ class TestXpu(TestCase):
             return arg
 
         samples = op.reference_inputs(device, dtype)
-        print(device)
 
         for sample in samples:
             cpu_sample = sample.transform(to_cpu)
