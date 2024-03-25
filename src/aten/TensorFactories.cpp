@@ -1,7 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
-#include <torch/library.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -13,9 +13,9 @@
 
 #include <aten/EmptyTensor.h>
 
-namespace at::native {
+namespace at {
 
-Tensor empty_xpu(
+Tensor XPUNativeFunctions::empty(
     IntArrayRef size,
     c10::optional<ScalarType> dtype_opt,
     c10::optional<Layout> layout_opt,
@@ -33,12 +33,12 @@ Tensor empty_xpu(
   if (C10_UNLIKELY(
           at::globalContext().deterministicAlgorithms() &&
           at::globalContext().deterministicFillUninitializedMemory())) {
-    fill_empty_deterministic_(result);
+    at::native::fill_empty_deterministic_(result);
   }
   return result;
 }
 
-Tensor empty_strided_xpu(
+Tensor XPUNativeFunctions::empty_strided(
     IntArrayRef size,
     IntArrayRef stride,
     c10::optional<ScalarType> dtype_opt,
@@ -51,25 +51,15 @@ Tensor empty_strided_xpu(
   if (C10_UNLIKELY(
           at::globalContext().deterministicAlgorithms() &&
           at::globalContext().deterministicFillUninitializedMemory())) {
-    fill_empty_deterministic_(result);
+    at::native::fill_empty_deterministic_(result);
   }
   return result;
 }
 
-Tensor clone_xpu(
+Tensor XPUNativeFunctions::clone(
     const Tensor& self,
     c10::optional<MemoryFormat> memory_format) {
   return at::native::clone(self, memory_format);
 }
 
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(
-      TORCH_SELECTIVE_NAME("aten::empty.memory_format"),
-      TORCH_FN(at::native::empty_xpu));
-  m.impl(
-      TORCH_SELECTIVE_NAME("aten::empty_strided"),
-      TORCH_FN(at::native::empty_strided_xpu));
-  m.impl(TORCH_SELECTIVE_NAME("aten::clone"), TORCH_FN(at::native::clone_xpu));
-}
-
-} // namespace at::native
+} // namespace at
