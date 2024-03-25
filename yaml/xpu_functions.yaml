@@ -27,10 +27,10 @@ supported:
   - div.Scalar
   - div_.Scalar
   - div.Scalar_out
-  # - rsub.Tensor
-  # - rsub.Tensor_out
-  # - rsub.Scalar
-  # - rsub.Scalar_out
+  - rsub.Tensor
+  - rsub.Tensor_out
+  - rsub.Scalar
+  - rsub.Scalar_out
   - remainder.Tensor
   - remainder_.Tensor
   - remainder.Tensor_out
