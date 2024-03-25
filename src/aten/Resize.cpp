@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
 #include <torch/library.h>
 
@@ -145,12 +146,58 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   return copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
+Tensor& set_(Tensor& self, Storage source) {
+  int64_t new_size =
+      static_cast<int64_t>(source.nbytes() / self.dtype().itemsize());
+  return self.set_(source, 0, new_size, {});
+}
+
+Tensor& set_(
+    Tensor& self,
+    Storage source,
+    int64_t storage_offset,
+    IntArrayRef size,
+    IntArrayRef stride) {
+  at::native::checkSetStorage(self, source, storage_offset, size, stride);
+
+  self.unsafeGetTensorImpl()->set_storage_offset(storage_offset);
+  c10::optional<IntArrayRef> stride_opt = stride.data() != nullptr
+      ? c10::optional<IntArrayRef>(stride)
+      : c10::nullopt;
+  impl::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
+  return self;
+}
+
+Tensor& source_Storage_set_(at::Tensor& self, at::Storage source) {
+  return set_(self, source);
+}
+
+Tensor& source_Storage_storage_offset_set_(
+    at::Tensor& self,
+    at::Storage source,
+    c10::SymInt storage_offset,
+    c10::SymIntArrayRef size,
+    c10::SymIntArrayRef stride) {
+  return set_(
+      self,
+      source,
+      storage_offset.expect_int(),
+      C10_AS_INTARRAYREF_SLOW(size),
+      C10_AS_INTARRAYREF_SLOW(stride));
+}
+
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(TORCH_SELECTIVE_NAME("aten::resize_"), TORCH_FN(resize_));
   m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
       TORCH_FN(_copy_from_and_resize));
+  m.impl(
+      TORCH_SELECTIVE_NAME("aten::set_.source_Storage"),
+      TORCH_FN(source_Storage_set_));
+  m.impl(
+      TORCH_SELECTIVE_NAME("aten::set_.source_Storage_storage_offset"),
+      TORCH_FN(source_Storage_storage_offset_set_));
 }
 
 } // namespace xpu
