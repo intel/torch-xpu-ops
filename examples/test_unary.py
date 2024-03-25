@@ -14,7 +14,7 @@ class Dtypes(object):
     def __init__(self, include_dtypes, exclude_dtypes=[]):
         self.include_dtypes = include_dtypes
         self.exclude_dtypes = exclude_dtypes
-    
+
     def __call__(self, fn):
         def fn_out(*args, **kwargs):
             for dtype in self.include_dtypes:
@@ -38,23 +38,23 @@ class TestSimpleUnary(TestCase):
         d_cpu = eval(f"torch.{fn_str}(a_cpu, out=c_cpu)")
         d_xpu = eval(f"torch.{fn_str}(a_xpu, out=c_xpu)")
         self.assertEqual(c_cpu, c_xpu.cpu(), atol=1e-4, rtol=1e-4)
-    
+
     @Dtypes(floating_types)
     def test_abs_out(self, dtype):
         self._test_unary_out_ops('abs', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_sin_out(self, dtype):
         self._test_unary_out_ops('sin', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_cos_out(self, dtype):
         self._test_unary_out_ops('cos', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_log_out(self, dtype):
         self._test_unary_out_ops('log', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_sqrt_out(self, dtype):
         self._test_unary_out_ops('sqrt', dtype)
@@ -62,15 +62,15 @@ class TestSimpleUnary(TestCase):
     @Dtypes(floating_and_complex_types)
     def test_rsqrt_out(self, dtype):
         self._test_unary_out_ops('rsqrt', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_tanh_out(self, dtype):
         self._test_unary_out_ops('tanh', dtype)
-    
+
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
         self._test_unary_out_ops('neg', dtype)
-    
+
     @Dtypes(floating_and_complex_types)
     def test_reciprocal_out(self, dtype):
         self._test_unary_out_ops('reciprocal', dtype)
