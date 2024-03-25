@@ -6,12 +6,14 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void add_kernel(TensorIterator& iter, const Scalar& alpha);
+void add_kernel(TensorIteratorBase& iter, const Scalar& alpha);
 
-void sub_kernel(TensorIterator& iter, const Scalar& alpha);
+void sub_kernel(TensorIteratorBase& iter, const Scalar& alpha);
 
-void mul_kernel(TensorIterator& iter);
+void mul_kernel(TensorIteratorBase& iter);
 
-void div_kernel(TensorIterator& iter);
+void div_kernel(TensorIteratorBase& iter);
 
-}}} // at::native::xpu
+} // namespace xpu
+} // namespace native
+} // namespace at

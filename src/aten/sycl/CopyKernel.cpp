@@ -1,9 +1,9 @@
 #include <ATen/ATen.h>
 
-#include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/Loops.h>
 
@@ -24,12 +24,16 @@ void copy_kernel(TensorIterator& iter) {
     });
   } else {
     AT_DISPATCH_V2(
-        dtype, "copy_xpu", AT_WRAP(
-          [&] {
-            gpu_kernel(iter, CopyScalarFunc<scalar_t>());
-          }
-        ), AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX), kHalf, kBool, kBFloat16,
-        kComplexHalf, AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES), kFloat8_e4m3fn,
+        dtype,
+        "copy_xpu",
+        AT_WRAP([&] { gpu_kernel(iter, CopyScalarFunc<scalar_t>()); }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        kHalf,
+        kBool,
+        kBFloat16,
+        kComplexHalf,
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+        kFloat8_e4m3fn,
         kFloat8_e5m2);
   }
 }

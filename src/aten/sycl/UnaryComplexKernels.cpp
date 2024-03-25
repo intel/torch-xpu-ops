@@ -1,13 +1,13 @@
 #include <ATen/ATen.h>
 
+#include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/Dispatch.h>
 #include <c10/core/ScalarType.h>
 
-#include <comm/SYCLContext.h>
-#include <aten/sycl/Loops.h>
 #include <aten/sycl/CopyKernel.h>
+#include <aten/sycl/Loops.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
@@ -22,18 +22,12 @@ void conj_kernel(TensorIterator& iter) {
   AT_DISPATCH_SWITCH(
       iter.common_dtype(),
       "conj_xpu",
-      AT_DISPATCH_CASE_ALL_TYPES_AND3(
-          kBool,
-          kBFloat16,
-          kHalf,
-          [&] {
-            // Conj is a no-op for non-complex types
-            copy_kernel(iter);
-          })
-          AT_DISPATCH_CASE_COMPLEX_TYPES_AND(
-              kComplexHalf, iter.common_dtype(), "conj_sycl", [&] {
-                gpu_kernel(iter, ConjScalarFunc<scalar_t>());
-              }));
+      AT_DISPATCH_CASE_ALL_TYPES_AND3(kBool, kBFloat16, kHalf, [&] {
+        // Conj is a no-op for non-complex types
+        copy_kernel(iter);
+      }) AT_DISPATCH_CASE_COMPLEX_TYPES_AND(kComplexHalf, [&] {
+        gpu_kernel(iter, ConjScalarFunc<scalar_t>());
+      }));
 }
 
 template <typename scalar_t>
@@ -64,11 +58,7 @@ void neg_kernel(TensorIterator& iter) {
     });
   } else {
     AT_DISPATCH_ALL_TYPES_AND2(
-        ScalarType::Half,
-        ScalarType::BFloat16,
-        dtype,
-        "neg_xpu",
-        [&]() {
+        ScalarType::Half, ScalarType::BFloat16, dtype, "neg_xpu", [&]() {
           gpu_kernel(iter, NegScalarFunc<scalar_t>());
         });
   }

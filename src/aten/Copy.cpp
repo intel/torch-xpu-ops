@@ -1,12 +1,12 @@
 #include <ATen/ATen.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
-#include <torch/library.h>
 
 #include <aten/sycl/CopyKernel.h>
 #include <aten/sycl/UnaryComplexKernels.h>
@@ -16,7 +16,8 @@
 using namespace at;
 using namespace at::xpu;
 
-namespace at::native::xpu {
+namespace at {
+namespace native::xpu {
 
 static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
   Device dst_device = iter.device(0);
@@ -186,8 +187,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
       }
 
       // TODO: Support quantization
-      src_contig =
-          iter.tensor(1).to(iter.dtype(0)).expand_as(dst).contiguous();
+      src_contig = iter.tensor(1).to(iter.dtype(0)).expand_as(dst).contiguous();
 
     } else {
       bool same_type = iter.dtype(0) == iter.dtype(1);
@@ -240,7 +240,8 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   auto q = getCurrentSYCLQueue();
   if (non_blocking) {
     q.memcpy(dst, src, nbytes);
-    // TODO: If host tensor is pinned, we need record event in host caching allocator.
+    // TODO: If host tensor is pinned, we need record event in host caching
+    // allocator.
   } else {
     auto e = q.memcpy(dst, src, nbytes);
     e.wait();
@@ -263,13 +264,13 @@ Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
   // TODO: Support quantization
 
   auto iter = TensorIteratorConfig()
-      .set_check_mem_overlap(true)
-      .add_output(self)
-      .add_input(src)
-      .resize_outputs(false)
-      .check_all_same_dtype(false)
-      .check_all_same_device(false)
-      .build();
+                  .set_check_mem_overlap(true)
+                  .add_output(self)
+                  .add_input(src)
+                  .resize_outputs(false)
+                  .check_all_same_dtype(false)
+                  .check_all_same_device(false)
+                  .build();
 
   if (iter.numel() == 0) {
     return self;
@@ -279,12 +280,16 @@ Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
 
   return self;
 }
+} // namespace native::xpu
 
-Tensor& copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
-  return _copy_xpu(self, src, non_blocking);
+Tensor& XPUNativeFunctions::copy_(
+    Tensor& self,
+    const Tensor& src,
+    bool non_blocking) {
+  return native::xpu::_copy_xpu(self, src, non_blocking);
 }
 
-Tensor _to_copy_xpu(
+Tensor XPUNativeFunctions::_to_copy(
     const Tensor& self,
     c10::optional<ScalarType> dtype,
     c10::optional<Layout> layout,
@@ -301,10 +306,4 @@ Tensor _to_copy_xpu(
       non_blocking,
       optional_memory_format);
 }
-
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::copy_"), TORCH_FN(copy_xpu));
-  m.impl(TORCH_SELECTIVE_NAME("aten::_to_copy"), TORCH_FN(_to_copy_xpu));
-}
-
-} // namespace at::native_xpu
+} // namespace at
