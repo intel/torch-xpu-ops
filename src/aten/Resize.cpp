@@ -154,6 +154,7 @@ const at::Tensor& XPUNativeFunctions::resize_(
     at::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format) {
   return native::xpu::resize_xpu_(self, size, memory_format);
+}
 
 Tensor& XPUNativeFunctions::set_(Tensor& self, Storage source) {
   int64_t new_size =
@@ -173,28 +174,8 @@ Tensor& XPUNativeFunctions::set_(
   c10::optional<IntArrayRef> stride_opt = stride.data() != nullptr
       ? c10::optional<IntArrayRef>(stride)
       : c10::nullopt;
-  impl::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
+  native::xpu::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
   return self;
-}
-
-Tensor& XPUNativeFunctions::source_Storage_set_(
-    at::Tensor& self,
-    at::Storage source) {
-  return set_(self, source);
-}
-
-Tensor& XPUNativeFunctions::source_Storage_storage_offset_set_(
-    at::Tensor& self,
-    at::Storage source,
-    c10::SymInt storage_offset,
-    c10::SymIntArrayRef size,
-    c10::SymIntArrayRef stride) {
-  return set_(
-      self,
-      source,
-      storage_offset.expect_int(),
-      C10_AS_INTARRAYREF_SLOW(size),
-      C10_AS_INTARRAYREF_SLOW(stride));
 }
 
 } // namespace at

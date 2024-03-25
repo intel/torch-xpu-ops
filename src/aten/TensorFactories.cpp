@@ -1,6 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/TensorFactories.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -32,7 +33,7 @@ Tensor XPUNativeFunctions::empty(
   if (C10_UNLIKELY(
           at::globalContext().deterministicAlgorithms() &&
           at::globalContext().deterministicFillUninitializedMemory())) {
-    fill_empty_deterministic_(result);
+    at::native::fill_empty_deterministic_(result);
   }
   return result;
 }
@@ -50,7 +51,7 @@ Tensor XPUNativeFunctions::empty_strided(
   if (C10_UNLIKELY(
           at::globalContext().deterministicAlgorithms() &&
           at::globalContext().deterministicFillUninitializedMemory())) {
-    fill_empty_deterministic_(result);
+    at::native::fill_empty_deterministic_(result);
   }
   return result;
 }

@@ -83,7 +83,8 @@ static inline void sycl_kernel_submit(
   q.submit(cgf);
 }
 // Using for 2D nd range.
-// TODO: Unify 1D nd range and 2D nd range kernel submission interface with one template.
+// TODO: Unify 1D nd range and 2D nd range kernel submission interface with one
+// template.
 template <typename ker_t>
 static inline void sycl_kernel_submit(
     ::sycl::range<2> global_range,
