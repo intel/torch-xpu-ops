@@ -35,11 +35,6 @@ if not TEST_XPU:
     print("XPU not available, skipping tests", file=sys.stderr)
     TestCase = NoTest  # noqa: F811
 
-TEST_MULTIXPU = torch.xpu.device_count() > 1
-
-cpu_device = torch.device("cpu")
-xpu_device = torch.device("xpu")
-
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
 _xpu_computation_op_list = [
     "fill",
@@ -56,6 +51,27 @@ _xpu_computation_op_list = [
     "mul",
     "div",
     "abs",
+    "rsub",
+    "remainder",
+    "fmod",
+    "eq",
+    "ne",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "sin",
+    "cos",
+    "log",
+    "sqrt",
+    "rsqrt",
+    "tanh",
+    "neg",
+    "reciprocal",
+    "pow",
+    "normal",
+    "uniform",
+    "unfold",
 ]
 _xpu_tensor_factory_op_list = [
     "as_strided",
