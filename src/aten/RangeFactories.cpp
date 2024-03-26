@@ -14,7 +14,7 @@ Tensor& XPUNativeFunctions::arange_out(
     const Scalar& end,
     const Scalar& step,
     Tensor& out) {
-  return at::native::xpu::arange_xpu_out(start, end, step, out);
+  return at::native::xpu::arange_kernel(start, end, step, out);
 }
 
 } // namespace at
