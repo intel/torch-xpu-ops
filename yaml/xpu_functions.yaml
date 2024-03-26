@@ -96,6 +96,7 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - arange.start_out
   - abs
   - abs_
   - abs.out
