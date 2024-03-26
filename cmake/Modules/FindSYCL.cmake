@@ -311,7 +311,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
         set(verbose_output OFF)
       endif()
 
-      set(SYCL_build_comment_string "Building SYCL (${SYCL_build_type}) object ${generated_file_relative_path}")
+      set(SYCL_build_comment_string "Building SYCL (${SYCL_build_type}) object ${generated_file_basename}")
 
       # Build the generated file and dependency file ##########################
       add_custom_command(
