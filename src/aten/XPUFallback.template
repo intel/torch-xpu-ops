@@ -20,7 +20,7 @@ static void xpu_fallback(
   }
 
   // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
-  native::cpu_fallback(op, stack);
+  native::cpu_fallback(op, stack, true);
 }
 
 static void xpu_error_fallback(
