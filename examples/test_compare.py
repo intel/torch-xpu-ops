@@ -26,21 +26,21 @@ class TestTorchMethod(TestCase):
         y_xpu.zero_()
         fn(x1_xpu, x2_xpu, out=y_xpu)
         self.assertEqual(y_xpu.cpu(), y)
-    
+
     def test_eq(self, dtype=torch.float):
         self._test_compare_fn(torch.eq, dtype)
-    
+
     def test_ne(self, dtype=torch.float):
         self._test_compare_fn(torch.ne, dtype)
-    
+
     def test_lt(self, dtype=torch.float):
         self._test_compare_fn(torch.lt, dtype)
-    
+
     def test_le(self, dtype=torch.float):
         self._test_compare_fn(torch.le, dtype)
-    
+
     def test_gt(self, dtype=torch.float):
         self._test_compare_fn(torch.gt, dtype)
-    
+
     def test_ge(self, dtype=torch.float):
         self._test_compare_fn(torch.ge, dtype)

@@ -19,7 +19,7 @@ class TestNNMethod(TestCase):
         torch.normal(mean=-3.0, std=1.2, size=(10000,), device=xpu_device, dtype=dtype, out=x_xpu)
         self.assertEqual(x_xpu.cpu().mean(), -3.0, rtol=tol, atol=tol)
         self.assertEqual(x_xpu.cpu().std(), 1.2, rtol=tol, atol=tol)
-    
+
     def test_distribution_uniform(self, dtype=torch.float):
         tol = 1e-2
         x_xpu = torch.tensor(list(range(10000)), device=xpu_device, dtype=dtype)
