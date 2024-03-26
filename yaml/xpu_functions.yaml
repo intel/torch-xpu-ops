@@ -152,3 +152,8 @@ supported:
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  - where.self_out
+  - where.self
+  - clamp.out
+  - clamp_min.out
+  - clamp_max.out

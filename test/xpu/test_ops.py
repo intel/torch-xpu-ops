@@ -71,6 +71,10 @@ _xpu_computation_op_list = [
     "nn.functional.relu",
     "nn.functional.gelu",
     "arange",
+    "where",
+    "clamp",
+    "clamp_min",
+    "clamp_max",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
