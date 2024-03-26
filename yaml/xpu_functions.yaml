@@ -45,6 +45,8 @@ supported:
   - fmod.Scalar
   - fmod_.Scalar
   - fmod.Scalar_out
+  - tanh_backward
+  - tanh_backward.grad_input
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -81,6 +83,19 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - relu
+  - relu_
+  - relu.out
+  - threshold
+  - threshold_
+  - threshold.out
+  - threshold_backward
+  - threshold_backward.grad_input
+  - gelu
+  - gelu_
+  - gelu.out
+  - gelu_backward
+  - gelu_backward.grad_input
   - arange.start_out
   - abs
   - abs_

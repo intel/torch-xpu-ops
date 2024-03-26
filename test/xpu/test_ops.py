@@ -67,6 +67,9 @@ _xpu_computation_op_list = [
     "reciprocal",
     "pow",
     "unfold",
+    "nn.functional.threshold",
+    "nn.functional.relu",
+    "nn.functional.gelu",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
