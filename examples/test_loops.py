@@ -34,13 +34,13 @@ class TestLoopsKernel(TestCase):
             c = a + b + 1
             c_xpu = a_xpu + b_xpu + 1
             self.assertEqual(c, c_xpu.cpu())
-    
+
     def test_loops_float(self):
         self._test_loops(torch.float)
-    
+
     def test_loops_half(self):
         self._test_loops(torch.half)
-    
+
     def test_loops_bfloat16(self):
         self._test_loops(torch.bfloat16)
 
