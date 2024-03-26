@@ -70,7 +70,7 @@ struct ArangeFunctor {
   accscalar_t xstep_;
 };
 
-Tensor& arange_xpu_out(
+Tensor& arange_kernel(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,

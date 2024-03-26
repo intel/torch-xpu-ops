@@ -4,7 +4,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/RangeFactories.h>
+#include <aten/sycl/RangeFactoriesKernel.h>
 #include <torch/library.h>
 
 namespace at {
