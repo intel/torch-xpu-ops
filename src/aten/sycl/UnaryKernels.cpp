@@ -117,6 +117,20 @@ struct ReciprocalFunctor {
   }
 };
 
+template <typename scalar_t>
+struct BitwiseNotFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return ~a;
+  }
+};
+
+template <>
+struct BitwiseNotFunctor<bool> {
+  bool operator()(bool a) const {
+    return !a;
+  }
+};
+
 void abs_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
@@ -240,6 +254,16 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
       iter.common_dtype(),
       "reciprocal_xpu",
       [&]() { gpu_kernel(iter, ReciprocalFunctor<scalar_t>()); });
+}
+
+void bitwise_not_kernel(TensorIteratorBase& iter) {
+  if (iter.dtype() == ScalarType::Bool) {
+    gpu_kernel(iter, BitwiseNotFunctor<bool>());
+  } else {
+    AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "bitwise_not_xpu", [&]() {
+      gpu_kernel(iter, BitwiseNotFunctor<scalar_t>());
+    });
+  }
 }
 
 } // namespace at::native::xpu

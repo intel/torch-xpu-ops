@@ -71,6 +71,10 @@ _xpu_computation_op_list = [
     "nn.functional.relu",
     "nn.functional.gelu",
     "arange",
+    "bitwise_and",
+    "bitwise_or",
+    "bitwise_xor",
+    "bitwise_not",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
