@@ -5,6 +5,7 @@
 #include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/BinaryKernels.h>
+#include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
 
 namespace at {
@@ -210,7 +211,7 @@ Tensor XPUNativeFunctions::rsub(
     const Tensor& self,
     const Tensor& other,
     const Scalar& alpha) {
-  return XPUNativeFunctions::sub(self, other, alpha);
+  return XPUNativeFunctions::sub(other, self, alpha);
 }
 
 Tensor& XPUNativeFunctions::rsub_out(
@@ -218,7 +219,7 @@ Tensor& XPUNativeFunctions::rsub_out(
     const Tensor& other,
     const Scalar& alpha,
     Tensor& out) {
-  return XPUNativeFunctions::sub_out(self, other, alpha, out);
+  return XPUNativeFunctions::sub_out(other, self, alpha, out);
 }
 
 Tensor XPUNativeFunctions::rsub(
@@ -226,7 +227,7 @@ Tensor XPUNativeFunctions::rsub(
     const Scalar& other,
     const Scalar& alpha) {
   return XPUNativeFunctions::sub(
-      self, native::wrapped_scalar_tensor(other), alpha);
+      native::wrapped_scalar_tensor(other), self, alpha);
 }
 
 Tensor& XPUNativeFunctions::rsub_out(
@@ -235,7 +236,7 @@ Tensor& XPUNativeFunctions::rsub_out(
     const Scalar& alpha,
     Tensor& out) {
   return XPUNativeFunctions::sub_out(
-      self, native::wrapped_scalar_tensor(other), alpha, out);
+      native::wrapped_scalar_tensor(other), self, alpha, out);
 }
 
 Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor& other) {
@@ -329,6 +330,24 @@ Tensor& XPUNativeFunctions::fmod_out(
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
   return XPUNativeFunctions::fmod_out(self, wrapper, out);
+}
+
+Tensor XPUNativeFunctions::tanh_backward(
+    const Tensor& grad_output,
+    const Tensor& output) {
+  Tensor out;
+  auto iter = TensorIterator::binary_op(out, grad_output, output);
+  native::xpu::tanh_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::tanh_backward_out(
+    const Tensor& grad_output,
+    const Tensor& output,
+    Tensor& grad_input) {
+  auto iter = TensorIterator::binary_op(grad_input, grad_output, output);
+  native::xpu::tanh_backward_kernel(iter);
+  return grad_input;
 }
 
 } // namespace at

@@ -26,7 +26,7 @@ class TestTorchMethod(TestCase):
         y_xpu.zero_()
         fn(x1_xpu, x2_xpu, out=y_xpu)
         self.assertEqual(y_xpu.cpu(), y)
-    
+
     def test_eq(self, dtype=torch.float):
         self._test_binary_compare_fn(torch.eq, dtype)
     
