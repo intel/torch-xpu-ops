@@ -70,6 +70,7 @@ _xpu_computation_op_list = [
     "nn.functional.threshold",
     "nn.functional.relu",
     "nn.functional.gelu",
+    "arange",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
