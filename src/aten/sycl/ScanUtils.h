@@ -9,7 +9,7 @@
 
 #include <comm/SYCLContext.h>
 
-namespace at {
+namespace at::native::xpu {
 
 template <typename T>
 inline T CeilDiv(T a, T b) {
@@ -863,4 +863,4 @@ void scan(
   }
 }
 
-} // namespace at
+} // namespace at::native::xpu

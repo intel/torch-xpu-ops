@@ -1,17 +1,17 @@
 // CUDA use this
 // #define TORCH_ASSERT_NO_OPERATORS
-
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
-#include <Aten/sycl/Scan.h>
 
+#include <Aten/sycl/ScanUtils.h>
+#include <Aten/sycl/ScanKernels.h>
 // #include "comm/MathReduce.h"
 // #include "comm/Numerics.h"
 // #include "comm/RegistrationDeclarations.h"
 
-namespace at {
+namespace at::native::xpu {
 
-Tensor& cumsum_out(
+Tensor& launch_cumsum_xpu_kernel(
     const Tensor& self,
     int64_t dim,
     c10::optional<at::ScalarType> dtype,
@@ -23,7 +23,7 @@ Tensor& cumsum_out(
       ScalarType::Half,
       ScalarType::BFloat16,
       self_tensor.scalar_type(),
-      "cumsum",
+      "cumsum_xpu",
       [&]() {
         scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
             out,
@@ -35,4 +35,4 @@ Tensor& cumsum_out(
       });
   return out;
 }
-} // namespace at
+} // namespace at::native::xpu
