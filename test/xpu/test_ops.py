@@ -16,16 +16,38 @@ from torch.testing._internal.common_device_type import (
     ops,
 )
 from torch.testing._internal.common_methods_invocations import (
+    op_db,
+    UnaryUfuncInfo,
+    ReductionOpInfo,
+    SpectralFuncInfo,
     ops_and_refs,
+    BinaryUfuncInfo,
     python_ref_db,
 )
 from torch.testing._internal.common_utils import (
     NoTest,
     run_tests,
+    set_default_dtype,
     suppress_warnings,
+    TEST_WITH_TORCHINDUCTOR,
     TEST_WITH_UBSAN,
     TEST_XPU,
     TestCase,
+)
+
+# Get names of all the operators which have ref in their entry in OpInfo (testing infra)
+#   except for elementwise unary operators (separately implemented in test/test_unary_ufuncs.py),
+#   elementwise binary operators (separately implemented in test_binary_ufuncs.py),
+#   reduction operations (separately impelemented in test_reductions.py),
+#   and Spectral Functions (separately implemented for only 1D as of now, in test/test_spectral_ops.py)
+_ref_test_ops = tuple(
+    filter(
+        lambda op: not isinstance(
+            op, (UnaryUfuncInfo, ReductionOpInfo, SpectralFuncInfo, BinaryUfuncInfo)
+        )
+        and op.ref is not None,
+        op_db,
+    )
 )
 
 if not TEST_XPU:
@@ -71,6 +93,7 @@ _xpu_computation_op_list = [
     "nn.functional.relu",
     "nn.functional.gelu",
     "arange",
+    "clamp",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
@@ -90,6 +113,17 @@ _xpu_not_test_dtype_op_list = [
 ]
 _xpu_float_only_op_list = [
     "reciprocal", # Align with CUDA impl. Only float and complex supported in CUDA native.
+]
+_xpu_not_test_numpy_ref_op_list = [
+    "clone", # Numpy copy cannot pass memory_format.
+]
+
+# test_numpy_ref
+_xpu_numpy_ref_op_list = _xpu_computation_op_list.copy()
+for op in _xpu_not_test_numpy_ref_op_list:
+    _xpu_numpy_ref_op_list.remove(op)
+_xpu_numpy_ref_ops = [
+    op for op in _ref_test_ops if op.name in _xpu_numpy_ref_op_list
 ]
 
 # test_compare_cpu
@@ -119,6 +153,30 @@ _xpu_promotes_int_to_float_ops = [op for op in ops_and_refs if op.name in _xpu_p
 
 
 class TestXpu(TestCase):
+
+    # Tests that the function and its (ndarray-accepting) reference produce the same
+    #   values on the tensors from sample_inputs func for the corresponding op.
+    # This test runs in double and complex double precision because
+    # NumPy does computation internally using double precision for many functions
+    # resulting in possible equality check failures.
+    @onlyXPU
+    @suppress_warnings
+    @ops(_xpu_numpy_ref_ops, allowed_dtypes=(torch.float64, torch.long, torch.complex128))
+    def test_numpy_ref(self, device, dtype, op):
+        if (
+            TEST_WITH_TORCHINDUCTOR and
+            op.formatted_name in ('signal_windows_exponential', 'signal_windows_bartlett') and
+            dtype == torch.float64 and 'cuda' in device
+           ):   # noqa: E121
+            raise unittest.SkipTest("XXX: raises tensor-likes are not close.")
+
+        # Sets the default dtype to NumPy's default dtype of double
+        with set_default_dtype(torch.double):
+            for sample_input in op.reference_inputs(device, dtype):
+                print(sample_input)
+                self.compare_with_reference(
+                    op, op.ref, sample_input, exact_dtype=(dtype is not torch.long)
+                )
 
     @onlyXPU
     @suppress_warnings
