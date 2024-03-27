@@ -2,7 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/TensorUtils.h>
 
-#include <Aten/sycl/ScanKernels.h>
+#include <aten/sycl/ScanKernels.h>
 // #include <ATen/native/ReduceOps.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS

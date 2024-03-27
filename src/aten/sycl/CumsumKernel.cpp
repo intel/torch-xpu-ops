@@ -3,8 +3,8 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 
-#include <Aten/sycl/ScanUtils.h>
-#include <Aten/sycl/ScanKernels.h>
+#include <aten/sycl/ScanUtils.h>
+#include <aten/sycl/ScanKernels.h>
 // #include "comm/MathReduce.h"
 // #include "comm/Numerics.h"
 // #include "comm/RegistrationDeclarations.h"
