@@ -83,24 +83,25 @@ static inline void sycl_kernel_submit(
   q.submit(cgf);
 }
 
-template <typename ker_t>
+// Using for nd range
+
+template <typename ker_t, int dim>
 static inline void sycl_kernel_submit(
-    ::sycl::range<2> global_range,
-    ::sycl::range<2> local_range,
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
     cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<2>(global_range, local_range), ker);
+        ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
-  // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }
 
-template <typename ker_t, typename ker_creator_t>
+template <typename ker_t, typename ker_creator_t, int dim>
 static inline void sycl_kernel_submit(
-    ::sycl::range<2> global_range,
-    ::sycl::range<2> local_range,
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_creator_t creator) {
   using traits = function_traits<ker_creator_t>;
@@ -110,8 +111,7 @@ static inline void sycl_kernel_submit(
   auto cgf = [&](::sycl::handler& cgh) {
     ker_t ker = creator(cgh);
     cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<2>(global_range, local_range), ker);
+        ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
-  // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }

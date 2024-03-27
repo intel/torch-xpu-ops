@@ -1,19 +1,19 @@
 #include <ATen/ATen.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
 #include <torch/library.h>
 
-#include <aten/Copy.h>
 #include <aten/sycl/CopyKernel.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
 namespace at {
-namespace native {
-namespace xpu {
+namespace native::xpu {
 
-namespace impl {
+extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
 
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   TORCH_CHECK(
@@ -106,7 +106,7 @@ const Tensor& resize_xpu_(
   auto* self_ = self.unsafeGetTensorImpl();
   int64_t old_storage_nbytes =
       self_->unsafe_storage() ? self_->unsafe_storage().nbytes() : 0;
-  impl::resize_impl_xpu_(self_, size, /*strides=*/c10::nullopt);
+  resize_impl_xpu_(self_, size, /*strides=*/c10::nullopt);
   if (optional_memory_format.has_value()) {
     auto memory_format = optional_memory_format.value();
     TORCH_CHECK(
@@ -124,15 +124,6 @@ const Tensor& resize_xpu_(
   return self;
 }
 
-} // namespace impl
-
-const at::Tensor& resize_(
-    const at::Tensor& self,
-    at::IntArrayRef size,
-    c10::optional<at::MemoryFormat> memory_format) {
-  return impl::resize_xpu_(self, size, memory_format);
-}
-
 const Tensor& resize_as_(
     const Tensor& self,
     const Tensor& the_template,
@@ -142,17 +133,49 @@ const Tensor& resize_as_(
 
 Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   dst.resize_as_(self);
-  return copy_xpu(const_cast<Tensor&>(dst), self, false);
+  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
+// Should not register the operator. Desc of resize_as_ and
+// _copy_from_and_resize native_function.yaml is simplistic since PyTorch
+// intends backend should not register it (e.g. CPU/CUDA) or handle
+// sanity check by backend (e.g. MPS).
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::resize_"), TORCH_FN(resize_));
   m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
       TORCH_FN(_copy_from_and_resize));
 }
 
-} // namespace xpu
-} // namespace native
+} // namespace native::xpu
+
+const at::Tensor& XPUNativeFunctions::resize_(
+    const at::Tensor& self,
+    at::IntArrayRef size,
+    c10::optional<at::MemoryFormat> memory_format) {
+  return native::xpu::resize_xpu_(self, size, memory_format);
+}
+
+Tensor& XPUNativeFunctions::set_(Tensor& self, Storage source) {
+  int64_t new_size =
+      static_cast<int64_t>(source.nbytes() / self.dtype().itemsize());
+  return self.set_(source, 0, new_size, {});
+}
+
+Tensor& XPUNativeFunctions::set_(
+    Tensor& self,
+    Storage source,
+    int64_t storage_offset,
+    IntArrayRef size,
+    IntArrayRef stride) {
+  at::native::checkSetStorage(self, source, storage_offset, size, stride);
+
+  self.unsafeGetTensorImpl()->set_storage_offset(storage_offset);
+  c10::optional<IntArrayRef> stride_opt = stride.data() != nullptr
+      ? c10::optional<IntArrayRef>(stride)
+      : c10::nullopt;
+  native::xpu::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
+  return self;
+}
+
 } // namespace at

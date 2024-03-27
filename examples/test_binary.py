@@ -59,7 +59,7 @@ class TestSimpleBinary(TestCase):
         c_cpu = a_cpu / b_cpu
         self.assertEqual(c_cpu.dtype, c_xpu.dtype) # assume float
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
-    
+
     def test_binary_div_channels_last(self, dtype=torch.float):
         shapes = [
             (1, 2, 3, 4),
@@ -222,7 +222,7 @@ class TestSimpleBinary(TestCase):
                 self.assertEqual(
                     a_xpu.is_contiguous(memory_format=torch.channels_last), False
                 )
-    
+
     def test_pow(self, dtype=torch.float):
         x_cpu = torch.tensor(([2.5, 3.1, 1.3]), dtype=torch.float, device=cpu_device)
         x_xpu = torch.tensor(
@@ -235,7 +235,7 @@ class TestSimpleBinary(TestCase):
         self.assertEqual(torch.pow(x_cpu, y_cpu), torch.pow(x_xpu, y_xpu).cpu())
         self.assertEqual(x_cpu.pow(y_cpu), x_xpu.pow(y_xpu).cpu())
         self.assertEqual(x_cpu.pow_(y_cpu), x_xpu.pow_(y_xpu).cpu())
-    
+
     def test_binary_op(self, dtype=torch.float):
         x_cpu = torch.randn(5)
 

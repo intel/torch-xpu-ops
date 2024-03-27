@@ -45,7 +45,8 @@ supported:
   - fmod.Scalar
   - fmod_.Scalar
   - fmod.Scalar_out
-
+  - tanh_backward
+  - tanh_backward.grad_input
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -82,7 +83,20 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
-
+  - relu
+  - relu_
+  - relu.out
+  - threshold
+  - threshold_
+  - threshold.out
+  - threshold_backward
+  - threshold_backward.grad_input
+  - gelu
+  - gelu_
+  - gelu.out
+  - gelu_backward
+  - gelu_backward.grad_input
+  - arange.start_out
   - abs
   - abs_
   - abs.out
@@ -110,7 +124,6 @@ supported:
   - reciprocal
   - reciprocal_
   - reciprocal.out
-  
   - pow.Tensor_Tensor
   - pow_.Tensor
   - pow.Tensor_Tensor_out
@@ -119,7 +132,35 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
-
+  - empty.memory_format
+  - empty_strided
+  - clone
+  - fill_.Scalar
+  - zero_
+  - normal_
+  - uniform_
+  - copy_
+  - _to_copy
+  - view
+  - view_as_real
+  - view_as_complex
+  - as_strided
+  - _reshape_alias
+  - resize_
+  - set_.source_Storage
+  - set_.source_Storage_storage_offset
+  - unfold
+  # - resize_as_  # hand-written registration
+  # - _copy_from_and_resize  # hand-written registration
+  - bitwise_and.Tensor_out
+  - bitwise_or.Tensor_out
+  - bitwise_xor.Tensor_out
+  - bitwise_not.out
+  - where.self_out
+  - where.self
+  - clamp.out
+  - clamp_min.out
+  - clamp_max.out
   - max
   - max.unary_out
   - max.dim_max
