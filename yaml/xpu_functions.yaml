@@ -139,6 +139,8 @@ supported:
   - zero_
   - normal_
   - uniform_
+  - bernoulli_.Tensor
+  - bernoulli_.float
   - copy_
   - _to_copy
   - view

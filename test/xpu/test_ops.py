@@ -105,6 +105,7 @@ _xpu_computation_op_list = [
 _xpu_tensor_factory_op_list = [
     "normal",
     "uniform",
+    "bernoulli",
     "as_strided",
     "empty",
     "empty_strided",
