@@ -28,14 +28,14 @@ class TestSimpleResize(TestCase):
         assert b_xpu.shape[2] == 2
 
         self.assertEqual(c_cpu, b_xpu.to(cpu_device))
-    
+
     def test_view_as_real(self, dtype=torch.cfloat):
         a_cpu = torch.randn(2, 3, 4, dtype=dtype)
         a_xpu = a_cpu.to(xpu_device)
         b_cpu = torch.view_as_real(a_cpu)
         b_xpu = torch.view_as_real(a_xpu)
         self.assertEqual(b_cpu, b_xpu.to(cpu_device))
-    
+
     def test_view_as_complex(self, dtype=torch.float):
         a_cpu = torch.randn(109, 2, dtype=dtype)
         a_xpu = a_cpu.to(xpu_device)
