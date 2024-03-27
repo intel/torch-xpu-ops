@@ -4,6 +4,7 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <aten/sycl/BinaryBitwiseOpsKernels.h>
 #include <aten/sycl/BinaryKernels.h>
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
@@ -348,6 +349,33 @@ Tensor& XPUNativeFunctions::tanh_backward_out(
   auto iter = TensorIterator::binary_op(grad_input, grad_output, output);
   native::xpu::tanh_backward_kernel(iter);
   return grad_input;
+}
+
+Tensor& XPUNativeFunctions::bitwise_and_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::binary_op(out, self, other);
+  native::xpu::bitwise_and_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::bitwise_or_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::binary_op(out, self, other);
+  native::xpu::bitwise_or_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::bitwise_xor_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::binary_op(out, self, other);
+  native::xpu::bitwise_xor_kernel(iter);
+  return out;
 }
 
 } // namespace at

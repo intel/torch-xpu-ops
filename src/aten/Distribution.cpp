@@ -13,7 +13,7 @@ Tensor& XPUNativeFunctions::normal_(
     Tensor& self,
     double mean,
     double std,
-    const ::std::optional<at::Generator>& generator) {
+    ::std::optional<at::Generator> generator) {
   TORCH_CHECK(std >= 0.0, "normal_ expects std >= 0.0, but found std=", std);
   if (self.is_complex()) {
     auto float_tensor = at::view_as_real(self);
@@ -35,7 +35,7 @@ Tensor& XPUNativeFunctions::uniform_(
     Tensor& self,
     double from,
     double to,
-    const ::std::optional<at::Generator>& generator) {
+    ::std::optional<at::Generator> generator) {
   if (self.is_complex()) {
     auto float_tensor = at::view_as_real(self);
     uniform_(float_tensor, from, to, generator);
