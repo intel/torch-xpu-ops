@@ -137,8 +137,12 @@ supported:
   - clone
   - fill_.Scalar
   - zero_
+  - random_
+  - random_.from
   - normal_
   - uniform_
+  - bernoulli_.Tensor
+  - bernoulli_.float
   - copy_
   - _to_copy
   - view
