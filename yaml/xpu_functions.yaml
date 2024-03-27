@@ -136,6 +136,7 @@ supported:
   - empty_strided
   - clone
   - fill_.Scalar
+  - fill_.Tensor
   - zero_
   - normal_
   - uniform_
@@ -170,7 +171,6 @@ supported:
   - sum.out
   - sum.dim_IntList
   - sum.IntList_out
-  - mean.dim
   - mean.out
   - any.dim
   - any.out
