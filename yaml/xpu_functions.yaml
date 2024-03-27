@@ -156,3 +156,8 @@ supported:
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
   - bitwise_not.out
+  - where.self_out
+  - where.self
+  - clamp.out
+  - clamp_min.out
+  - clamp_max.out

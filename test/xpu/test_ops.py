@@ -97,6 +97,9 @@ _xpu_computation_op_list = [
     "bitwise_or",
     "bitwise_xor",
     "bitwise_not",
+    "where",
+    "clamp_min",
+    "clamp_max",
     "clamp",
 ]
 _xpu_tensor_factory_op_list = [
