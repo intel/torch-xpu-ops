@@ -180,4 +180,10 @@ Tensor& XPUNativeFunctions::reciprocal_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::bitwise_not_kernel(iter);
+  return out;
+}
+
 } // namespace at
