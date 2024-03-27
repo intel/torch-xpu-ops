@@ -79,6 +79,7 @@ _xpu_computation_op_list = [
     "le",
     "gt",
     "ge",
+    "isnan",
     "sin",
     "cos",
     "log",

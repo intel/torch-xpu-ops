@@ -248,4 +248,12 @@ Tensor& XPUNativeFunctions::ge_out(
   return XPUNativeFunctions::ge_out(self, wrapper, out);
 }
 
+Tensor XPUNativeFunctions::isnan(const Tensor& self) {
+  return XPUNativeFunctions::ne(self, self);
+}
+
+Tensor& XPUNativeFunctions::isnan_out(const Tensor& self, Tensor& out) {
+  return XPUNativeFunctions::ne_out(self, self, out);
+}
+
 } // namespace at
