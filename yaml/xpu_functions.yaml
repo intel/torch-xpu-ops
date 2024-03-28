@@ -83,6 +83,8 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - isnan
+  - isnan.out
   - relu
   - relu_
   - relu.out
