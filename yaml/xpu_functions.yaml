@@ -83,6 +83,7 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat.out
   - relu
   - relu_
   - relu.out

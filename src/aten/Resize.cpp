@@ -136,6 +136,12 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
+// For test infrastructure
+Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
+  dst.resize_as_(self);
+  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
+}
+
 // Should not register the operator. Desc of resize_as_ and
 // _copy_from_and_resize native_function.yaml is simplistic since PyTorch
 // intends backend should not register it (e.g. CPU/CUDA) or handle
@@ -145,6 +151,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
       TORCH_FN(_copy_from_and_resize));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_copy_from"), TORCH_FN(_copy_from));
 }
 
 } // namespace native::xpu
