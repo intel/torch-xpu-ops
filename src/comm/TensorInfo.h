@@ -5,10 +5,10 @@
 #include <ATen/ATen.h>
 #include <ATen/CPUApplyUtils.h>
 
-#include <core/IntegerDivider.h>
+#include <aten/sycl/IntegerDivider.h>
 
+namespace at {
 namespace xpu {
-namespace dpcpp {
 namespace detail {
 
 #define MAX_TENSORINFO_DIMS 12
@@ -261,5 +261,5 @@ TensorInfo<scalar, IndexType> getTensorInfo(const at::Tensor& t) {
 }
 
 } // namespace detail
-} // namespace dpcpp
 } // namespace xpu
+} // namespace at
