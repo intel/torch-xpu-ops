@@ -136,6 +136,7 @@ supported:
   - empty_strided
   - clone
   - fill_.Scalar
+  - fill_.Tensor
   - zero_
   - normal_
   - uniform_
@@ -161,3 +162,17 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - max
+  - max.unary_out
+  - max.dim_max
+  - min
+  - min.unary_out
+  - min.dim_min
+  - sum.out
+  - sum.dim_IntList
+  - sum.IntList_out
+  - mean.out
+  - any.dim
+  - any.out
+  - any.all_out
+  - argmax.out

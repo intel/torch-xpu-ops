@@ -172,6 +172,12 @@ struct StoreWithCast {
 template <typename scalar_t, int vec_size>
 struct alignas(sizeof(scalar_t) * vec_size) aligned_vector {
   scalar_t val[vec_size];
+  scalar_t& operator[](int index) {
+    return val[index];
+  }
+  scalar_t const& operator[](int index) const {
+    return val[index];
+  }
 };
 
 template <int vec_size, typename scalar_t>
