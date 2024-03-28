@@ -42,21 +42,20 @@ Tensor XPUNativeFunctions::cumsum(
     int64_t dim,
     c10::optional<ScalarType> dtype) {
   ScalarType out_dtype;
+  auto is_integral =
+      at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+  out_dtype =
+      dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
   Tensor out = at::empty_strided(
       self.sizes(), self.strides(), self.options().dtype(out_dtype));
-  impl_func_cum_ops(self, dim, out, at::native::xpu::launch_cumsum_xpu_kernel);
-  return out;
+  return cumsum_out(self, dim, dtype, out);
 }
 
 Tensor& XPUNativeFunctions::cumsum_(
     Tensor& self,
     int64_t dim,
     c10::optional<ScalarType> dtype) {
-  ScalarType out_dtype;
-  Tensor out = at::empty_strided(
-      self.sizes(), self.strides(), self.options().dtype(out_dtype));
-  impl_func_cum_ops(self, dim, out, at::native::xpu::launch_cumsum_xpu_kernel);
-  return out;
+  return cumsum_out(self, dim, dtype, self);
 }
 
 } // namespace at
