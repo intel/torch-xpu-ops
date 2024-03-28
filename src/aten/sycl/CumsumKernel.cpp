@@ -1,4 +1,4 @@
-#define TORCH_ASSERT_NO_OPERATORS
+// #define TORCH_ASSERT_NO_OPERATORS
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 

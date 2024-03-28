@@ -101,6 +101,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clamp_max",
     "clamp",
+    "cumsum",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
