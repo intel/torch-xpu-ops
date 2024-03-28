@@ -1,12 +1,8 @@
 #pragma once
-// TODO: how to port this two headers
+
 #include <aten/sycl/BatchKernel.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
-
-// TODO: maybe not need this
-// #include <utils/oneMKLUtils.h>
-
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

@@ -3,7 +3,6 @@
 #include <ATen/core/Tensor.h>
 
 #include <aten/sycl/ScanKernels.h>
-// #include <ATen/native/ReduceOps.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -36,8 +35,4 @@ void cumsum_xpu_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
     result.copy_(*result_);
   }
 }
-
-// TODO: what's this
-// REGISTER_CUDA_DISPATCH(cumsum_stub, &cumsum_cuda_kernel);
-
 } // namespace at::native::xpu
