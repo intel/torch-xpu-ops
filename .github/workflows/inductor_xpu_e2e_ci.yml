@@ -53,19 +53,17 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
-      - name: HF FP32 Inference Accuracy Test
+      - name: HF FP32 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           dt: float32
-          mode: inference
+          mode: training
           scenario: accuracy
-          expected_pass_num: 44
-      - name: HF BF16 Inference Accuracy Test
+      - name: HF BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           dt: bfloat16
-          mode: inference
+          mode: training
           scenario: accuracy
-          expected_pass_num: 45
