@@ -9,15 +9,12 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - cumsum
+  - cumsum.out
+  - cumsum_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
-  - cumsum
-  - cumsum.out
-  - cumsum.dimname
-  - cumsum_
-  - cumsum.out
-  - cumsum.dimname
   - sub.Scalar
   - sub_.Scalar
   - sub.Scalar_out

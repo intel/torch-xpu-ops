@@ -148,7 +148,7 @@ struct IndexToOffset {
 #pragma unroll
     for (int dim = MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
       if (dim < info.dims) {
-        auto divider = IntDivider<IndexType>(info.sizes[dim]);
+        auto divider = at::detail::IntDivider<IndexType>(info.sizes[dim]);
         auto divmod = divider.divmod(linearId);
         linearId = divmod.div;
         offset += divmod.mod * info.strides[dim];

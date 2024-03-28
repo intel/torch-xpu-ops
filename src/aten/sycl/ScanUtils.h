@@ -1,16 +1,17 @@
 #pragma once
 // TODO: how to port this two headers
-#include "comm/TensorInfo.h"
-#include "comm/TensorOptions.h"
-#include "BatchKernel.h"
+#include <aten/sycl/BatchKernel.h>
+#include <comm/TensorInfo.h>
+#include <comm/TensorOptions.h>
 
 // TODO: maybe not need this
-#include <utils/oneMKLUtils.h>
+// #include <utils/oneMKLUtils.h>
 
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-
+using namespace at::xpu::detail;
+using namespace at::xpu;
 template <typename T>
 inline T CeilDiv(T a, T b) {
   return (a + b - 1) / b;
@@ -30,14 +31,14 @@ template <
 T inline group_x_scan_by_uds_for_loop_scan(
     sycl::nd_item<2> item,
     const T pre_max_carr,
-    int64_t base_off_batch,
-    int64_t base_off_problem,
+    size_t base_off_batch,
+    size_t base_off_problem,
     sycl::local_ptr<T> slm,
     LSConfig cfg) {
   using InputInfo = typename LSConfig::InputInfoType;
   using OutputInfo = typename LSConfig::OutputInfoType;
 
-  int64_t glb_ldr_off_0, glb_ldr_off_1, glb_str_off_0, glb_str_off_1,
+  size_t glb_ldr_off_0, glb_ldr_off_1, glb_str_off_0, glb_str_off_1,
       glb_ldr_logical_off_0, glb_ldr_logical_off_1, glb_str_logical_off_0,
       glb_str_logical_off_1;
 
@@ -51,10 +52,10 @@ T inline group_x_scan_by_uds_for_loop_scan(
   const auto rx = item.get_local_range(1);
   const auto ry = item.get_local_range(0);
 
-  uint32_t ix0 = base_off_problem + lix;
-  uint32_t ix1 = base_off_problem + rx + lix;
-  uint32_t glb0 = base_off_batch * cfg.problem_ + ix0;
-  uint32_t glb1 = base_off_batch * cfg.problem_ + ix1;
+  size_t ix0 = base_off_problem + lix;
+  size_t ix1 = base_off_problem + rx + lix;
+  size_t glb0 = base_off_batch * cfg.problem_ + ix0;
+  size_t glb1 = base_off_batch * cfg.problem_ + ix1;
   if constexpr (TrivialOffCal) {
     glb_ldr_off_0 = glb0;
     glb_ldr_off_1 = glb1;
@@ -165,13 +166,32 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = OutputInfo;
 
-  LoopScanConfig() = delete;
+  // Manually enable copy constructor
+  // LoopScanConfig(const LoopScanConfig& cfg_) {
+  //   this->input_ = cfg_->input_;
+  //   this->output_ = cfg_->output_;
+  //   this->indices_ = cfg_->indices_;
+  //   this->batch_ = cfg_->batch_;
+  //   this->problem_ = cfg_->problem_;
+  //   this->stride_ = cfg_->stride_;
+  //   this->init_ = cfg_->init_;
+  //   this->loops_batch = cfg_->loops_batch;
+  //   this->loops_problem = cfg_->loops_problem;
+  //   this->type_ = cfg_->type_;
+  //   this->func_ = cfg_->func_;
+  //   this->glb_range_x_ = cfg_->glb_range_x_;
+  //   this->glb_range_y_ = cfg_->glb_range_y_;
+  //   this->wg_range_x_ = cfg_->wg_range_x_;
+  //   this->wg_range_y_ = cfg_->wg_range_y_;
+  // }
+  LoopScanConfig() {}
+
   LoopScanConfig(
       InputInfo input_info,
       OutputInfo output_info,
       IndicesInfo indices_info,
-      int64_t batch,
-      int64_t problem,
+      size_t batch,
+      size_t problem,
       T init,
       ScanType type,
       BinaryFunction func)
@@ -189,7 +209,7 @@ class LoopScanConfig {
         wg_range_x_(0),
         wg_range_y_(0) {
     auto dev_id = getDeviceIndexOfCurrentQueue();
-    int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
+    size_t wg_size = syclMaxWorkItemsPerEU(dev_id);
     wg_range_x_ = 32;
     while (problem_ <= wg_range_x_ >> 1) {
       wg_range_x_ = wg_range_x_ >> 1;
@@ -197,9 +217,9 @@ class LoopScanConfig {
     wg_range_y_ = wg_size / wg_range_x_;
     const auto target_global_size = syclMaxWorkItemsPerTile(dev_id);
     ;
-    const int max_work_group_num = target_global_size / wg_size;
-    const int wg_number =
-        std::min(max_work_group_num, CeilDiv((int)batch_, wg_range_y_));
+    const size_t max_work_group_num = target_global_size / wg_size;
+    const size_t wg_number =
+        std::min(max_work_group_num, CeilDiv(batch_, wg_range_y_));
     glb_range_x_ = wg_range_x_;
     glb_range_y_ = wg_range_y_ * wg_number;
 
@@ -219,9 +239,9 @@ class LoopScanConfig {
       T init,
       ScanType type,
       BinaryFunction func) {
-    int64_t batch = input_info.outerSize(scan_dim);
+    size_t batch = input_info.outerSize(scan_dim);
     int64_t stride = input_info.innerSize(scan_dim);
-    int64_t problem = input_info.sizes[scan_dim];
+    size_t problem = input_info.sizes[scan_dim];
     return {
         input_info,
         output_info,
@@ -246,8 +266,8 @@ class LoopScanConfig {
   }
 
   struct item_desc {
-    /* parallel batch, not tensor batch */ int64_t glb_batch;
-    /* current global assignment id */ int64_t glb_problem;
+    /* parallel batch, not tensor batch */ size_t glb_batch;
+    /* current global assignment id */ size_t glb_problem;
   };
 
   item_desc get_item_desc(sycl::nd_item<2> item) const {
@@ -261,56 +281,32 @@ class LoopScanConfig {
   InputInfo input_;
   OutputInfo output_;
   IndicesInfo indices_;
-  int64_t batch_;
-  int64_t problem_;
+  size_t batch_;
+  size_t problem_;
   int64_t stride_;
   T init_;
   int loops_batch;
   int loops_problem;
   ScanType type_;
   BinaryFunction func_;
-  int glb_range_x_;
-  int glb_range_y_;
-  int wg_range_x_;
-  int wg_range_y_;
+  size_t glb_range_x_;
+  size_t glb_range_y_;
+  size_t wg_range_x_;
+  size_t wg_range_y_;
 };
 
-template <typename LSConfig, bool TrivialOffCal = false>
-class loop_scan_kernel_creator {
- public:
-  loop_scan_kernel_creator(LSConfig& cfg_) {
-    cfg = cfg_;
-  }
-  loop_scan_kernel& operator()(sycl::handler& cgh) const {
-    int slm_size = cfg_.wg_range_x_ * cfg_.wg_range_y_ * 2;
-    int carr_size = cfg_.wg_range_y_;
-    sycl::local_accessor<LSConfig::arg_t> shared(slm_size, cgh);
-    sycl::local_accessor<LSConfig::arg_t> max_carr(carr_size, cgh);
-    loop_scan_kernel<LSConfig,
-        typename LSConfig::arg_t,
-        typename LSConfig::func_t,
-        TrivialOffCal>
-      ker(cfg, shared, max_carr);
-    return ker;
-  }
- private:
-  LSConfig cfg;
-};
-
-template <
-    class LSConfig,
-    class T,
-    class BinaryFunction,
-    bool TrivialOffCal = false>
+template <typename LSConfig_, bool TrivialOffCal = false>
 class loop_scan_kernel {
+  using LSConfig = LSConfig_;
+  using T = typename LSConfig::arg_t;
+  using BinaryFunction = typename LSConfig::func_t;
+
  public:
-  loop_scan_kernel(const LSConfig& cfg_,
-      sycl::local_accessor<T> slm_, 
-      sycl::local_accessor<T> max_carr_) {
-    cfg = cfg_;
-    slm = slm_;
-    max_carr = max_carr_;
-  }
+  loop_scan_kernel(
+      const LSConfig& cfg_,
+      sycl::local_accessor<T> slm_,
+      sycl::local_accessor<T> max_carr_)
+      : cfg(cfg_), slm(slm_), max_carr(max_carr_) {}
 
   void operator()(sycl::nd_item<2> item) const {
     const int loops_batch = cfg.loops_batch;
@@ -343,12 +339,38 @@ class loop_scan_kernel {
   sycl::local_accessor<T> max_carr;
 };
 
+template <typename LSConfig_, bool TrivialOffCal = false>
+class loop_scan_kernel_creator {
+  using LSConfig = LSConfig_;
+
+ public:
+  loop_scan_kernel_creator(const LSConfig& cfg_) {
+    cfg = cfg_;
+  }
+  loop_scan_kernel<LSConfig, TrivialOffCal> operator()(
+      sycl::handler& cgh) const {
+    int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_ * 2;
+    int carr_size = cfg.wg_range_y_;
+    sycl::local_accessor<typename LSConfig::arg_t> shared(slm_size, cgh);
+    sycl::local_accessor<typename LSConfig::arg_t> max_carr(carr_size, cgh);
+    loop_scan_kernel<LSConfig, TrivialOffCal> ker(cfg, shared, max_carr);
+    return ker;
+  }
+
+ private:
+  LSConfig cfg;
+};
+
 template <typename LSConfig, bool TrivialOffCal = false>
 static inline void launch_loop_scan(const LSConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  loop_scan_kernel_creator creator(cfg);
-  sycl_kernel_submit<loop_scan_kernel, loop_scan_kernel_creator>(
-      cfg.global_size(), cfg.group_size(), queue, creator);
+  loop_scan_kernel_creator<LSConfig, TrivialOffCal> creator(cfg);
+  // TODO: How to resolve this?
+  // we can aproach this type: loop_scan_kernel
+  sycl_kernel_submit<
+      loop_scan_kernel<LSConfig, TrivialOffCal>,
+      decltype(creator),
+      2>(cfg.global_size(), cfg.group_size(), queue, creator);
 }
 
 template <class T, class BinaryFunction>
@@ -369,7 +391,7 @@ T group_x_scan(
   const auto ry = item.get_local_range(0);
 
   slm[liy * rx + lix] = value;
-  for (int offset = 1; offset < rx; offset <<= 1) {
+  for (size_t offset = 1; offset < rx; offset <<= 1) {
     item.barrier(sycl::access::fence_space::local_space);
     if (lix >= offset)
       value = func(slm[liy * rx + (lix - offset)], slm[liy * rx + lix]);
@@ -415,7 +437,7 @@ T group_y_scan(
   const auto ry = item.get_local_range(0);
 
   temp[liy * rx + lix] = value;
-  for (int offset = 1; offset < ry; offset <<= 1) {
+  for (size_t offset = 1; offset < ry; offset <<= 1) {
     item.barrier(sycl::access::fence_space::local_space);
     if (liy >= offset)
       value = func(temp[(liy - offset) * rx + lix], temp[liy * rx + lix]);
@@ -442,7 +464,20 @@ class SegmentScanConfig : public BatchKernelConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  SegmentScanConfig() = delete;
+  // // Manually enable copy constructor
+  // SegmentScanConfig(const SegmentScanConfig& cfg_) {
+  //   this->iinfo_ = cfg_.iinfo_;
+  //   this->oinfo_ = cfg_.oinfo_;
+  //   this->idxinfo_ = cfg_.idxinfo_;
+  //   this->init_ = cfg_.init_;
+  //   this->type_ = cfg_.type_;
+  //   this->func_ = cfg_.func_;
+  //   this->carrier_ = cfg_.carrier_;
+  //   this->carrier_idx_ = cfg_.carrier_idx_;
+  // }
+
+  SegmentScanConfig() {}
+
   SegmentScanConfig(
       InputInfo input_info,
       OutputInfo output_info,
@@ -486,7 +521,7 @@ class SegmentScanConfig : public BatchKernelConfig {
     int64_t batch = input_info.outerSize(scan_dim);
     int64_t stride = input_info.innerSize(scan_dim);
     int64_t problem = input_info.sizes[scan_dim];
-    int64_t problem_along_x = input_info.strides[scan_dim] == 1 ? true : false;
+    bool problem_along_x = input_info.strides[scan_dim] == 1 ? true : false;
     return {
         input_info,
         output_info,
@@ -527,50 +562,20 @@ class SegmentScanConfig : public BatchKernelConfig {
   /* contiguous temp buffer */ int64_t* carrier_idx_;
 };
 
-template <typename SSConfig, bool TrivialOffCal = false, bool TrivialIdxCal = false>
-class segment_scan_kernel_creator {
- public:
-  segment_scan_kernel_creator(SSConfig& cfg_) {
-    cfg = cfg_;
-  }
-
-  segment_scan_kernel operator()(sycl::handler& cgh) const {
-    // SLM for sub group cumsum/cumprod in one workgroup. Allow that
-    // min sub_group_size is 8, herein we use wg_size / 8 to allocate
-    // enough share local memory for simd32, simd16 and simd8.
-    int min_sg_size = syclMinSubGroupSize();
-    int carrier_size = (cfg.problem_wg_range_ + min_sg_size - 1) / min_sg_size;
-    int wg_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-#ifndef SG_SCAN
-    int slm_size = wg_size;
-#else
-    int slm_size = cfg.problem_along_x_ ? carrier_size : wg_size;
-#endif  
-    sycl::local_accessor<typename SSConfig::arg_t> shared(slm_size, cgh);
-    return segment_scan_kernel<
-      SSConfig,
-      typename SSConfig::arg_t,
-      typename SSConfig::func_t,
-      TrivialOffCal,
-      TrivialIdxCal>(cfg);
-  }
-
- private:
-  SSConfig cfg;
-};
-
 template <
-    class SSConfig,
-    class T,
-    class BinaryFunction,
+    class SSConfig_,
     bool TrivialOffCal = false,
     bool TrivialIdxCal = false>
 class segment_scan_kernel {
  public:
+  using SSConfig = SSConfig_;
+  using T = typename SSConfig::arg_t;
+  using BinaryFunction = typename SSConfig::func_t;
   using InputInfo = typename SSConfig::InputInfoType;
   using OutputInfo = typename SSConfig::OutputInfoType;
 
-  segment_scan_kernel(const SSConfig& cfg, sycl::local_accessor<SSConfig::arg_t> slm) : cfg(cfg), slm(slm) {}
+  segment_scan_kernel(const SSConfig& cfg, sycl::local_accessor<T> slm)
+      : cfg(cfg), slm(slm) {}
 
  public:
   void operator()(sycl::nd_item<2> item) const {
@@ -654,7 +659,42 @@ class segment_scan_kernel {
 
  private:
   SSConfig cfg;
-  sycl::local_accessor<SSConfig::arg_t> slm;
+  sycl::local_accessor<T> slm;
+};
+
+template <
+    typename SSConfig_,
+    bool TrivialOffCal = false,
+    bool TrivialIdxCal = false>
+class segment_scan_kernel_creator {
+  using SSConfig = SSConfig_;
+  using T = typename SSConfig::arg_t;
+  using BinaryFunction = typename SSConfig::func_t;
+
+ public:
+  segment_scan_kernel_creator(const SSConfig& cfg_) : cfg(cfg_) {}
+
+  segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> operator()(
+      sycl::handler& cgh) const {
+    // SLM for sub group cumsum/cumprod in one workgroup. Allow that
+    // min sub_group_size is 8, herein we use wg_size / 8 to allocate
+    // enough share local memory for simd32, simd16 and simd8.
+    int min_sg_size = syclMinSubGroupSize();
+    int carrier_size = (cfg.problem_wg_range_ + min_sg_size - 1) / min_sg_size;
+    int wg_size = cfg.wg_range_x_ * cfg.wg_range_y_;
+#ifndef SG_SCAN
+    int slm_size = wg_size;
+#else
+    int slm_size = cfg.problem_along_x_ ? carrier_size : wg_size;
+#endif
+    sycl::local_accessor<T> shared(slm_size, cgh);
+    segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> ker(
+        cfg, shared);
+    return ker;
+  }
+
+ private:
+  SSConfig cfg;
 };
 
 template <
@@ -663,8 +703,12 @@ template <
     bool TrivialIdxCal = false>
 static inline void launch_segment_scan(const SSConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  segment_scan_kernel_creator creator(cfg);
-  sycl_kernel_submit<segment_scan_kernel, segment_scan_kernel_creator>(cfg.global_size(), cfg.group_size(), queue, creator);
+  segment_scan_kernel_creator<SSConfig, TrivialOffCal, TrivialIdxCal> creator(
+      cfg);
+  sycl_kernel_submit<
+      segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>,
+      decltype(creator),
+      2>(cfg.global_size(), cfg.group_size(), queue, creator);
 }
 
 template <class SSConfig, bool TrivialIdxCal = false>
@@ -725,7 +769,6 @@ static inline void accumulate_carrier(const SSConfig& cfg) {
 
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
-
 
 template <
     ScanType Type,
@@ -816,7 +859,7 @@ template <
     typename oscalar_t,
     class BinaryFunction>
 void scan(
-    Tensor& self,
+    const Tensor& self,
     const Tensor& input,
     int dimension,
     scalar_t init,
