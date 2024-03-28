@@ -1,2 +1,0 @@
-/home/yongliang/tt30/torch-xpu-ops/build/CMakeFiles/edit_cache.dir
-/home/yongliang/tt30/torch-xpu-ops/build/CMakeFiles/rebuild_cache.dir
