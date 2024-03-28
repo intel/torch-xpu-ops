@@ -38,6 +38,7 @@ typedef rand_vec2<float> float2;
 typedef rand_vec2<double> double2;
 typedef rand_vec4<uint32_t> uint4;
 typedef rand_vec2<uint32_t> uint2;
+typedef rand_vec2<uint64_t> ulonglong2;
 
 #define PHILOX_W32_0 (0x9E3779B9)
 #define PHILOX_W32_1 (0xBB67AE85)
