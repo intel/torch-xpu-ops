@@ -27,6 +27,16 @@ supported:
   - div.Scalar
   - div_.Scalar
   - div.Scalar_out
+  - divide.Tensor
+  - divide_.Tensor
+  - divide.out
+  - divide.Scalar
+  - divide_.Scalar
+  - divide.Tensor_mode
+  - divide_.Tensor_mode
+  - divide.out_mode
+  - divide.Scalar_mode
+  - divide_.Scalar_mode
   - rsub.Tensor
   - rsub.Tensor_out
   - rsub.Scalar
