@@ -36,6 +36,14 @@ if [[ $MODE == "training" ]]; then
     Mode_extra="--training "
 fi
 
+Real_DT=$DT
+if [[ $DT == amp_bf16 ]]; then
+    Real_DT=amp
+elif [[ $DT == "amp_fp16" ]]; then
+    Real_DT=amp
+    export INDUCTOR_AMP_DT=float16
+fi
+
 Shape_extra=""
 if [[ $SHAPE == "dynamic" ]]; then
     echo "Testing with dynamic shapes."
@@ -48,11 +56,4 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
 fi
 
 ulimit -n 1048576
-if [[ $DT == "amp_bf16" ]]; then
-    ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --amp -d${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra} --backend=inductor --timeout=4800 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}.log
-elif [[ $DT == "amp_fp16" ]]; then
-    export INDUCTOR_AMP_DT=float16
-    ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --amp -d${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=4800 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}.log
-else
-    ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${DT} -d${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=4800 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}.log
-fi
+ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=4800 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
