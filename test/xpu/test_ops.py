@@ -1,12 +1,11 @@
 # Owner(s): ["module: intel"]
 
-import test_xpu
-
-test_xpu.create_template("test_ops", "test_ops_template")
-from test_ops_template import TestCommon
-
 import torch
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import run_tests
+
+import test_xpu
+from test_xpu import instantiate_device_type_tests
+from test_ops import TestCommon
 
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
 
