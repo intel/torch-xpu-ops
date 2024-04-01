@@ -63,8 +63,12 @@ Tensor& XPUNativeFunctions::masked_fill_(
       "with ",
       value.dim(),
       " dimension(s).");
+  // We hit this function if either of the input tensor lives on XPU.
+  // It is ok, if `value` is `CPU` tensor but we should not allow `self` or
+  // `mask` to be CPU tensor. Check for `self` and `mask` being on same device
+  // exists in `masked_fill_` (Scalar version).
   TORCH_CHECK(
-      !self.device().is_cpu(),
+      self.device().is_xpu(),
       "masked_fill_: Expected inputs to be on same device")
   return XPUNativeFunctions::masked_fill_(self, mask, value.item());
 }
