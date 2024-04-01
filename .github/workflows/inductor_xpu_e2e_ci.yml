@@ -63,19 +63,51 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: HF FP32 Inference Accuracy Test
+      - name: HF FP16 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: torchbench
+          suite: huggingface
           env_prepare: true
-          dt: float32
+          dt: float16
           mode: inference
           scenario: accuracy
-      - name: HF BF16 Inference Accuracy Test
+      - name: HF FP16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
           env_prepare: false
+          dt: float16
+          mode: training
+          scenario: accuracy
+      - name: TIMM FP32 Inference Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: true
+          dt: float32
+          mode: inference
+          scenario: accuracy
+      - name: TIMM BF16 Inference Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: false
           dt: bfloat16
           mode: inference
+          scenario: accuracy
+      - name: TIMM FP32 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: false
+          dt: float32
+          mode: training
+          scenario: accuracy
+      - name: TIMM BF16 training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: false
+          dt: bfloat16
+          mode: training
           scenario: accuracy
