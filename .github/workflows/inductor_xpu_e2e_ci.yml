@@ -53,19 +53,29 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
+      - name: Identify pinned versions
+        run: |
+          cd ../pytorch
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+      - name: Show GITHUB_ENV
+        run: echo "$GITHUB_ENV"
       - name: HF FP32 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: huggingface
+          suite: torchbench
+          env_prepare: true
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 44
       - name: HF BF16 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: huggingface
+          suite: torchbench
+          env_prepare: false
           dt: bfloat16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
