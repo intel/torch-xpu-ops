@@ -30,7 +30,7 @@ void masked_fill_kernel(TensorIterator& iter, const Scalar& value) {
       kBFloat16,
       kComplexHalf,
       iter.common_dtype(),
-      "masked_fill_",
+      "masked_fill__xpu",
       [&]() {
         const auto value_ = value.to<scalar_t>();
         gpu_kernel(iter, MaskedFillFunctor<scalar_t>(value_));

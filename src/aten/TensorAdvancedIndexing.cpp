@@ -8,7 +8,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/IndexingOpsKernels.h>
+#include <aten/sycl/Indexing.h>
 #include <torch/library.h>
 
 namespace at {
