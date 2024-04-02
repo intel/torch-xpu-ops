@@ -229,25 +229,26 @@ Tensor& XPUNativeFunctions::divide_(Tensor& self, const Scalar& other) {
   return self.div_(other);
 }
 
-Tensor& XPUNativeFunctions::divide_out(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode, Tensor& result) {
-  return at::div_out(result, self, other, std::move(rounding_mode));
-}
+// div has not impl rounding_mode overload 
+// Tensor& XPUNativeFunctions::divide_out(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode, Tensor& result) {
+//   return at::div_out(result, self, other, std::move(rounding_mode));
+// }
 
-Tensor XPUNativeFunctions::divide(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
-  return self.div(other, std::move(rounding_mode));
-}
+// Tensor XPUNativeFunctions::divide(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
+//   return self.div(other, std::move(rounding_mode));
+// }
 
-Tensor& XPUNativeFunctions::divide_(Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
-  return self.div_(other, std::move(rounding_mode));
-}
+// Tensor& XPUNativeFunctions::divide_(Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
+//   return self.div_(other, std::move(rounding_mode));
+// }
 
-Tensor XPUNativeFunctions::divide(const Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
-  return self.div(other, std::move(rounding_mode));
-}
+// Tensor XPUNativeFunctions::divide(const Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
+//   return self.div(other, std::move(rounding_mode));
+// }
 
-Tensor& XPUNativeFunctions::divide_(Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
-  return self.div_(other, std::move(rounding_mode));
-}
+// Tensor& XPUNativeFunctions::divide_(Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
+//   return self.div_(other, std::move(rounding_mode));
+// }
 
 Tensor XPUNativeFunctions::rsub(
     const Tensor& self,
