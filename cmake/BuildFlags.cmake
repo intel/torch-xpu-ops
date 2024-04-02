@@ -68,6 +68,16 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Support PVC AOT only currently.
   set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc")
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
+
+  if (WERROR)
+    check_cxx_compiler_flag("-Werror" COMPILER_SUPPORT_WERROR)
+    if (NOT COMPILER_SUPPORT_WERROR)
+      set(WERROR FALSE)
+    else()
+      set(SYCL_HOST_FLAGS "${SYCL_HOST_FLAGS} -Werror")
+    endif()
+  endif(WERROR)
+
 else()
   message("Not compiling with XPU. Only support GCC compiler as CXX compiler.")
   return()
