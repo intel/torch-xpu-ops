@@ -72,8 +72,8 @@ runs:
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [ ${{ inputs.suite }} == "torchbench" ]; then
-          python -c "import torch, torchvision, torchaudio"
-          cd ../ && rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
+          cd ../ && python -c "import torch, torchvision, torchaudio"
+          rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
           cd benchmark && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
         fi
