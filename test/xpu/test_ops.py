@@ -2,6 +2,7 @@
 
 import sys
 import unittest
+from collections.abc import Sequence
 
 import torch
 from torch.testing._internal.common_dtype import (
@@ -102,6 +103,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clamp_max",
     "clamp",
+    "masked_fill",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
@@ -117,7 +119,6 @@ _xpu_all_ops = [op for op in ops_and_refs if op.name in _xpu_all_op_list]
 _xpu_not_test_dtype_op_list = [
     "resize_",  # Skipped by CPU
     "resize_as_",  # Skipped by CPU
-    "abs",  # Not aligned dtype
 ]
 _xpu_float_only_op_list = [
     "reciprocal", # Align with CUDA impl. Only float and complex supported in CUDA native.
