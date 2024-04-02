@@ -102,6 +102,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clamp_max",
     "clamp",
+    "masked_fill",
 ]
 _xpu_tensor_factory_op_list = [
     "normal",
