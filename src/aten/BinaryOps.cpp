@@ -209,43 +209,43 @@ Tensor& XPUNativeFunctions::div_out(
 }
 
 // divide, alias for div
-Tensor& divide_out(const Tensor& self, const Tensor& other, Tensor& result) {
+Tensor& XPUNativeFunctions::divide_out(const Tensor& self, const Tensor& other, Tensor& result) {
   return at::div_out(result, self, other);
 }
 
-Tensor divide(const Tensor& self, const Tensor& other) {
+Tensor XPUNativeFunctions::divide(const Tensor& self, const Tensor& other) {
   return self.div(other);
 }
 
-Tensor& divide_(Tensor& self, const Tensor& other) {
+Tensor& XPUNativeFunctions::divide_(Tensor& self, const Tensor& other) {
   return self.div_(other);
 }
 
-Tensor divide(const Tensor& self, const Scalar& other) {
+Tensor XPUNativeFunctions::divide(const Tensor& self, const Scalar& other) {
   return self.div(other);
 }
 
-Tensor& divide_(Tensor& self, const Scalar& other) {
+Tensor& XPUNativeFunctions::divide_(Tensor& self, const Scalar& other) {
   return self.div_(other);
 }
 
-Tensor& divide_out(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode, Tensor& result) {
+Tensor& XPUNativeFunctions::divide_out(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode, Tensor& result) {
   return at::div_out(result, self, other, std::move(rounding_mode));
 }
 
-Tensor divide(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
+Tensor XPUNativeFunctions::divide(const Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
   return self.div(other, std::move(rounding_mode));
 }
 
-Tensor& divide_(Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
+Tensor& XPUNativeFunctions::divide_(Tensor& self, const Tensor& other, c10::optional<c10::string_view> rounding_mode) {
   return self.div_(other, std::move(rounding_mode));
 }
 
-Tensor divide(const Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
+Tensor XPUNativeFunctions::divide(const Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
   return self.div(other, std::move(rounding_mode));
 }
 
-Tensor& divide_(Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
+Tensor& XPUNativeFunctions::divide_(Tensor& self, const Scalar& other, c10::optional<c10::string_view> rounding_mode) {
   return self.div_(other, std::move(rounding_mode));
 }
 
