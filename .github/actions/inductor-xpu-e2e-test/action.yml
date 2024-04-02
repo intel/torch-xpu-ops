@@ -3,33 +3,47 @@ name: inductor-xpu-e2e-test
 inputs:
   suite:
     required: true
-    type: string
-    default: "huggingface"
+    type: choice
+    default: 'huggingface'
+    options:
+      - huggingface
+      - timm_models
+      - torchbench
     description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
   env_prepare:
-    required: true
-    type: boolean 
-    default: true
-    description: Whether prepare suite test env
+    required: false
+    description: If set to any value, will prepare suite test env
   dt:
     required: true
-    type: string
-    default: "float32"
+    type: choice
+    default: 'float32'
+    options:
+      - float32
+      - bfloat16
+      - float16
+      - amp_bf16
+      - amp_fp16
     description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
   mode:
     required: true
-    type: string
-    default: "inference"
+    type: choice
+    default: 'inference'
+    options:
+      - inference
+      - training
     description: inference / training test
   scenario:
     required: true
-    type: string
-    default: "accuracy"
+    type: choice
+    default: 'accuracy'
+    options:
+      - accuracy
+      - performance
     description: accuracy / performance test
   cards:
     required: false
     type: string
-    default: "all"
+    default: 'all'
     description: which cards can be used in the test
   expected_pass_num:
     required: false
@@ -39,55 +53,36 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Show GITHUB_ENV
-      shell: bash
-      run: echo "$GITHUB_ENV"
-    - name: Prepare torchaudio
-      if: ${{ inputs.env_prepare }} && ${{ inputs.suite == 'torchbench' }}
+    - name: Prepare ENV
+      if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
         source activate e2e_ci
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-        cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-        python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-    - name: Prepare torchvision
-      if: ${{ inputs.env_prepare }} && ${{ inputs.suite == 'torchbench' || inputs.suite == 'timm_models' }}
-      shell: bash
-      run: |
-        source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-        cd vision && git checkout $TORCHVISION_COMMIT_ID
-        python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-    - name: Prepare Torchbench
-      if: ${{ inputs.env_prepare }} && ${{ inputs.suite == 'torchbench' }}
-      shell: bash
-      run: |
-        source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        python -c "import torch, torchvision, torchaudio"
-        cd ../ && rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
-        cd benchmark && pip install --no-deps -r requirements.txt
-        python install.py --continue_on_fail
-    - name: Prepare Huggingface
-      if: ${{ inputs.env_prepare }} && ${{ inputs.suite == 'huggingface' }}
-      shell: bash
-      run: |
-        source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        #TRANSFORMERS_COMMIT=$(cat .ci/docker/ci_commit_pins/huggingface.txt)
-        pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
-    - name: Prepare Timms
-      if: ${{ inputs.env_prepare }} && ${{ inputs.suite == 'timm_models' }}
-      shell: bash
-      run: |
-        source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        # install timm without dependencies
-        pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
-        # install timm dependencies without torch and torchvision
-        pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+        if [ ${{ inputs.suite }} == "torchbench" ]; then
+          cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
+          cd audio && git checkout $TORCHAUDIO_COMMIT_ID
+          python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
+        fi 
+        if [ ${{ inputs.suite }} != "huggingface" ]; then
+          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+          cd vision && git checkout $TORCHVISION_COMMIT_ID
+          python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+        else
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+        fi
+        if [ ${{ inputs.suite }} == "torchbench" ]; then
+          python -c "import torch, torchvision, torchaudio"
+          cd ../ && rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
+          cd benchmark && pip install --no-deps -r requirements.txt
+          python install.py --continue_on_fail
+        fi
+        if [ ${{ inputs.suite }} == "timm_models" ]; then
+          # install timm without dependencies
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          # install timm dependencies without torch and torchvision
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+        fi
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
       run: |

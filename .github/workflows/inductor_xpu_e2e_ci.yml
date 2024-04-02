@@ -66,16 +66,17 @@ jobs:
       - name: HF FP32 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: torchbench
+          suite: huggingface
           env_prepare: true
           dt: float32
           mode: inference
           scenario: accuracy
+          expected_pass_num: 44
       - name: HF BF16 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: torchbench
-          env_prepare: false
+          suite: huggingface
           dt: bfloat16
           mode: inference
           scenario: accuracy
+          expected_pass_num: 45
