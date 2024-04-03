@@ -1,9 +1,9 @@
 #pragma once
 
 #include <aten/sycl/BatchKernel.h>
+#include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
-#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 using namespace at::xpu::detail;

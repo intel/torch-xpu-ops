@@ -34,4 +34,5 @@ void launch_cumsum_xpu_kernel(
             std::plus<scalar_t>());
       });
 }
-}} // namespace at::native::xpu
+} // namespace xpu
+} // namespace at::native
