@@ -86,6 +86,8 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - masked_fill_.Tensor
+  - masked_fill_.Scalar
   - relu
   - relu_
   - relu.out
@@ -139,6 +141,7 @@ supported:
   - empty_strided
   - clone
   - fill_.Scalar
+  - fill_.Tensor
   - zero_
   - normal_
   - uniform_
