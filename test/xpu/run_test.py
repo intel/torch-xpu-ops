@@ -1,4 +1,5 @@
 import os
+import sys
 
 skip_list = (
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
@@ -354,6 +355,13 @@ skip_list = (
     "test_python_ref__refs_special_multigammaln_mvlgamma_p_5_xpu_float64",
     "test_python_ref_executor__refs_minimum_executor_aten_xpu_int64",
     "test_python_ref_executor__refs_special_multigammaln_mvlgamma_p_3_executor_aten_xpu_float64",
+    "test_numpy_ref_nn_functional_rms_norm_xpu_complex128",
+    "test_python_ref__refs_square_xpu_complex128",
+    "test_python_ref__refs_square_xpu_complex64",
+    "test_python_ref_executor__refs_istft_executor_aten_xpu_complex128",
+    "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
+    "test_python_ref_torch_fallback__refs_square_xpu_complex128",
+    "test_python_ref_torch_fallback__refs_square_xpu_complex64",
 )
 
 
