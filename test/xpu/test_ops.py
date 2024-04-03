@@ -74,7 +74,6 @@ _xpu_computation_op_list = [
     "rsub",
     "remainder",
     "fmod",
-    "gcd",
     "eq",
     "ne",
     "lt",
