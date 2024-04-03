@@ -366,4 +366,6 @@ skip_options += "'"
 test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v _test_ops.py"
 test_command += skip_options
 
-os.system(test_command)
+res = os.system(test_command)
+exit_code = os.WEXITSTATUS(res)
+sys.exit(exit_code)
