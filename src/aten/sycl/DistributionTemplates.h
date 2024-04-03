@@ -248,7 +248,7 @@ struct Rand4DistFunctor {
 template <typename T, typename V>
 struct UniformIntFromToTransformFunctor {
   auto operator()(V val) const {
-    return static_cast<T>(static_cast<int64_t>((val % range_) + base_));
+    return at::transformation::uniform_int_from_to<T, V>(val, range_, base_);
   }
   UniformIntFromToTransformFunctor(uint64_t range, int64_t base)
       : range_(range), base_(base) {}
@@ -301,7 +301,7 @@ void random_from_to_kernel(
 template <typename T, typename V>
 struct UniformIntFullRangeTransformFunctor {
   auto operator()(V val) const {
-    return static_cast<T>(static_cast<int64_t>(val));
+    return at::transformation::uniform_int_full_range<T, V>(val);
   }
 };
 
@@ -333,39 +333,9 @@ void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
 }
 
 template <typename T, typename V>
-inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
-uniform_int(V val) {
-  return static_cast<T>(
-      val %
-      static_cast<uint64_t>((1ULL << std::numeric_limits<T>::digits) + 1));
-}
-
-template <typename T, typename V>
-inline typename std::enable_if<!(std::is_floating_point<T>::value), T>::type
-uniform_int(V val) {
-  if constexpr (std::is_same_v<T, bool>) {
-    return static_cast<bool>(val & 1);
-  } else if constexpr (std::is_same_v<T, int64_t>) {
-    return static_cast<T>(
-        val % (static_cast<uint64_t>(std::numeric_limits<T>::max()) + 1));
-  } else if constexpr (
-      std::is_same_v<T, at::Half> || std::is_same<T, at::BFloat16>::value) {
-    return static_cast<T>(
-        val %
-        static_cast<uint64_t>((1ULL << std::numeric_limits<T>::digits) + 1));
-  } else if constexpr (std::is_integral_v<T>) {
-    return static_cast<T>(
-        val % (static_cast<uint64_t>(std::numeric_limits<T>::max()) + 1));
-  } else {
-    assert(false);
-    return 0;
-  }
-}
-
-template <typename T, typename V>
 struct UniformIntTransformFunctor {
   auto operator()(V val) const {
-    return uniform_int<T, V>(val);
+    return at::transformation::uniform_int<T, V>(val);
   }
 };
 
