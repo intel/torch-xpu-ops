@@ -65,7 +65,8 @@ inline std::tuple<uint64_t, uint64_t> philox_unpack(PhiloxState arg) {
 
 inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
     int64_t total_elements) {
-  auto group_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
+  auto group_size = std::min(
+      syclGpuHWThreadsPerEU() * syclMaxSubGroupSize(), syclMaxWorkGroupSize());
   auto num_groups = (total_elements + group_size - 1) / group_size;
   auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
