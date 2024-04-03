@@ -382,4 +382,30 @@ Tensor& XPUNativeFunctions::bitwise_xor_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::gcd(
+    const Tensor& self,
+    const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::gcd_kernel_xpu(iter);
+  return iter.output;
+}
+
+Tensor& XPUNativeFunctions::gcd_(
+    Tensor& self,
+    const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::gcd_kernel_xpu(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::gcd_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::gcd_kernel_xpu(iter);
+  return out;
+}
+
 } // namespace at
