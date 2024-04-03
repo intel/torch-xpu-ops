@@ -4,9 +4,17 @@
 
 #include <aten/sycl/ScanKernels.h>
 #include <aten/sycl/ScanUtils.h>
-#include <comm/Numerics.h>
 
-namespace at::native::xpu {
+namespace at::native {
+
+template <typename In, typename Out>
+struct ScalarConvert {
+  static Out to(const In v) {
+    return (Out)v;
+  }
+};
+
+namespace xpu {
 
 void launch_cumsum_xpu_kernel(
     const Tensor& out,
@@ -26,4 +34,4 @@ void launch_cumsum_xpu_kernel(
             std::plus<scalar_t>());
       });
 }
-} // namespace at::native::xpu
+}} // namespace at::native::xpu
