@@ -70,7 +70,6 @@ _xpu_computation_op_list = [
     "sub",
     "mul",
     "div",
-    "divide",
     "abs",
     "rsub",
     "remainder",
