@@ -78,127 +78,69 @@ inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
   return std::make_tuple(counter_offset, num_groups, group_size);
 }
 
-// Just follow loops.h design
 template <
+    typename scalar_t,
     typename accscalar_t,
     int unroll_factor,
     typename dist_t,
     typename transform_t,
-    typename item_t>
-inline void distribution_elementwise_kernel(
-    item_t& item,
-    int numel,
-    PhiloxState philox_args,
-    dist_t dist_func,
-    transform_t transform_func) {
-  int group_size = item.get_local_range(0);
-  int num_groups = item.get_group_range(0);
-  int idx = item.get_group(0) * group_size + item.get_local_id(0);
+    typename offset_calc_t>
+struct DistributionElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int group_size = item.get_local_range(0);
+    int num_groups = item.get_group_range(0);
+    int idx = item.get_global_linear_id();
 
-  auto seeds = philox_unpack(philox_args);
-  randStatePhilox4_32_10_t state;
-  rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
+    auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
 
-  int full_tile_work_size = group_size * num_groups * unroll_factor;
-  int rounded_size =
-      ((numel - 1) / full_tile_work_size + 1) * full_tile_work_size;
-  for (int linear_index = idx; linear_index < rounded_size;
-       linear_index += full_tile_work_size) { // global range stride
-    auto rand = dist_func(&state);
+    int full_tile_work_size = group_size * num_groups * unroll_factor;
+    int rounded_size =
+        ((numel_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
+    for (int linear_index = idx; linear_index < rounded_size;
+         linear_index += full_tile_work_size) { // global range stride
+      auto rand = dist_func_(&state);
 #pragma unroll
-    for (int i = 0; i < unroll_factor; i++) {
-      int li = linear_index + group_size * num_groups * i;
-      if (li < numel) {
-        transform_func(li, static_cast<accscalar_t>((&rand.x)[i]));
+      for (int i = 0; i < unroll_factor; i++) {
+        int li = linear_index + group_size * num_groups * i;
+        if (li < numel_) {
+          if constexpr (std::is_integral<offset_calc_t>::value) {
+            scalar_t* out = (scalar_t*)&out_data_[offset_calc_ * li];
+            *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
+          } else {
+            auto offsets = offset_calc_.get(li);
+            scalar_t* out = (scalar_t*)&out_data_[offsets[0]];
+            *out = transform_func_(static_cast<accscalar_t>((&rand.x)[i]));
+          }
+        }
       }
+      // Some state (e.g. MTGP32) need to add barrier there.
     }
-    // Some state (e.g. MTGP32) need to add barrier there.
   }
-}
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    int unroll_factor,
-    typename dist_t,
-    typename transform_t>
-struct DistributionNullaryVecKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    distribution_elementwise_kernel<accscalar_t, unroll_factor>(
-        item,
-        numel_,
-        PhiloxState(
-            std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_)),
-        dist_func_,
-        [=](int idx, accscalar_t rand) {
-          scalar_t* out = (scalar_t*)&out_data_[stride0_ * idx];
-          *out = transform_func_(rand);
-        });
-  }
-  DistributionNullaryVecKernelFunctor(
+  DistributionElementwiseKernelFunctor(
       int64_t numel,
       std::pair<uint64_t, uint64_t> rng_engine_inputs,
       dist_t dist_func,
-      char* out_data,
-      int stride0,
-      transform_t transform_func)
-      : numel_(numel),
-        rng_engine_inputs_(rng_engine_inputs),
-        dist_func_(dist_func),
-        out_data_(out_data),
-        stride0_(stride0),
-        transform_func_(transform_func) {}
-
- private:
-  int64_t numel_;
-  std::pair<uint64_t, uint64_t> rng_engine_inputs_;
-  dist_t dist_func_;
-  char* out_data_;
-  int stride0_;
-  transform_t transform_func_;
-};
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    int unroll_factor,
-    typename dist_t,
-    typename transform_t>
-struct DistributionNullaryUnrollKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    distribution_elementwise_kernel<accscalar_t, unroll_factor>(
-        item,
-        numel_,
-        PhiloxState(
-            std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_)),
-        dist_func_,
-        [=](int idx, accscalar_t rand) {
-          auto offsets = offset_calc_.get(idx);
-          scalar_t* out = (scalar_t*)&out_data_[offsets[0]];
-          *out = transform_func_(rand);
-        });
-  }
-  DistributionNullaryUnrollKernelFunctor(
-      int64_t numel,
-      std::pair<uint64_t, uint64_t> rng_engine_inputs,
-      dist_t dist_func,
-      char* out_data,
       transform_t transform_func,
-      OffsetCalculator<1> offset_calc)
+      char* out_data,
+      offset_calc_t offset_calc)
       : numel_(numel),
-        rng_engine_inputs_(rng_engine_inputs),
+        philox_args_(PhiloxState(
+            std::get<0>(rng_engine_inputs),
+            std::get<1>(rng_engine_inputs))),
         dist_func_(dist_func),
-        out_data_(out_data),
         transform_func_(transform_func),
+        out_data_(out_data),
         offset_calc_(offset_calc) {}
 
  private:
   int64_t numel_;
-  std::pair<uint64_t, uint64_t> rng_engine_inputs_;
+  PhiloxState philox_args_;
   dist_t dist_func_;
-  char* out_data_;
   transform_t transform_func_;
-  OffsetCalculator<1> offset_calc_;
+  char* out_data_;
+  offset_calc_t offset_calc_;
 };
 
 template <
@@ -244,28 +186,30 @@ void distribution_nullary_kernel(
   if (iter.is_trivial_1d()) {
     auto strides = iter.get_inner_strides();
     int stride0 = strides[0];
-    auto caller = DistributionNullaryVecKernelFunctor<
+    auto caller = DistributionElementwiseKernelFunctor<
         scalar_t,
         accscalar_t,
         unroll_factor,
         dist_t,
-        transform_t>(
-        numel, rng_engine_inputs, dist_func, out_data, stride0, transform_func);
+        transform_t,
+        decltype(stride0)>(
+        numel, rng_engine_inputs, dist_func, transform_func, out_data, stride0);
     sycl_kernel_submit(
         num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
   } else {
     auto offset_calc = make_offset_calculator<1>(iter);
-    auto caller = DistributionNullaryUnrollKernelFunctor<
+    auto caller = DistributionElementwiseKernelFunctor<
         scalar_t,
         accscalar_t,
         unroll_factor,
         dist_t,
-        transform_t>(
+        transform_t,
+        decltype(offset_calc)>(
         numel,
         rng_engine_inputs,
         dist_func,
-        out_data,
         transform_func,
+        out_data,
         offset_calc);
     sycl_kernel_submit(
         num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
@@ -311,7 +255,7 @@ struct UniformIntFromToTransformFunctor {
 
  private:
   uint64_t range_;
-  uint64_t base_;
+  int64_t base_;
 };
 
 template <typename RNG>
