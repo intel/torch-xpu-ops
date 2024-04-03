@@ -1,11 +1,13 @@
 #pragma once
 
+#include <ATen/AccumulateType.h>
 #include <ATen/NumericUtils.h>
 #include <c10/macros/Macros.h>
 #include <c10/util/MathConstants.h>
 #include <c10/util/complex.h>
-#include <c10/util/math_compat.h>
-#include "AccumulateType.h"
+
+namespace at {
+namespace native {
 
 template <typename scalar_t>
 static inline scalar_t calc_gcd(scalar_t a_in, scalar_t b_in) {
@@ -18,3 +20,5 @@ static inline scalar_t calc_gcd(scalar_t a_in, scalar_t b_in) {
   }
   return b;
 }
+} // namespace native
+} // namespace at

@@ -8,6 +8,7 @@
 #include <aten/sycl/BinaryKernels.h>
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
+#include <aten/sycl/GcdLcmKernels.h>
 
 namespace at {
 
@@ -382,18 +383,14 @@ Tensor& XPUNativeFunctions::bitwise_xor_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::gcd(
-    const Tensor& self,
-    const Tensor& other) {
+Tensor XPUNativeFunctions::gcd(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::gcd_kernel_xpu(iter);
-  return iter.output;
+  return iter.output();
 }
 
-Tensor& XPUNativeFunctions::gcd_(
-    Tensor& self,
-    const Tensor& other) {
+Tensor& XPUNativeFunctions::gcd_(Tensor& self, const Tensor& other) {
   auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::xpu::gcd_kernel_xpu(iter);
   return self;
