@@ -6,7 +6,7 @@
 namespace at {
 namespace xpu {
 
-Tensor create_out(
+inline Tensor create_out(
     IntArrayRef sizes,
     IntArrayRef strides,
     const TensorOptions& options) {
@@ -17,7 +17,7 @@ Tensor create_out(
   }
 }
 
-void resize_out(
+inline void resize_out(
     const Tensor& out,
     IntArrayRef sizes,
     IntArrayRef strides,
@@ -52,7 +52,7 @@ void resize_out(
   }
 }
 
-Tensor& resize_reduction(
+inline Tensor& resize_reduction(
     Tensor& out,
     const Tensor& self,
     OptionalIntArrayRef opt_dims,
@@ -88,7 +88,7 @@ Tensor& resize_reduction(
   return out;
 }
 
-std::tuple<Tensor&, Tensor&> resize_reduction_with_indices(
+inline std::tuple<Tensor&, Tensor&> resize_reduction_with_indices(
     Tensor& out,
     Tensor& out_indice,
     const Tensor& self,
