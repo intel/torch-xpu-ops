@@ -3,13 +3,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/ReduceArgMaxKernel.h>
-#include <aten/sycl/ReduceLogicKernel.h>
-#include <aten/sycl/ReduceMomentKernel.h>
-#include <aten/sycl/ReduceSumProdKernel.h>
+#include <aten/sycl/ReduceOps.h>
 #include <torch/library.h>
-
-#include <iostream>
 
 namespace at {
 
