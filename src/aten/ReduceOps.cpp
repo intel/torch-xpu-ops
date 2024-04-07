@@ -10,6 +10,8 @@
 
 namespace at {
 
+using namespace at::xpu;
+
 static ScalarType infer_dtype_from_optional(
     const Tensor& self,
     const optional<ScalarType>& opt_dtype,
@@ -43,76 +45,6 @@ inline bool should_use_acc_buffer(at::TensorIterator& iter) {
     }
   }
   return true;
-}
-
-Tensor& resize_reduction_with_defined_output(
-    Tensor& out,
-    const Tensor& self,
-    OptionalIntArrayRef opt_dims,
-    bool keepdim,
-    ScalarType out_dtype,
-    bool allow_empty_dims = false) {
-  DimVector dims_ = at::native::make_dim_vector(opt_dims, self.dim());
-  maybe_wrap_dims(dims_, self.dim());
-  auto shape =
-      at::meta::get_reduction_shape(self, dims_, keepdim, allow_empty_dims);
-  if (self.layout() == kStrided) {
-    at::xpu::resize_out(out, shape, {}, self.options().dtype(out_dtype));
-  } else if (shape.size() == 0) {
-    at::xpu::resize_out(
-        out, shape, {}, self.options().dtype(out_dtype).layout(kStrided));
-  } else {
-    TORCH_CHECK(
-        false,
-        "resize_reduction: support for output with ",
-        self.layout(),
-        " layout is not implemented yet");
-  }
-  namedinference::propagate_names_for_reduction(out, self, dims_, keepdim);
-  return out;
-}
-
-Tensor& resize_reduction_with_undefined_output(
-    Tensor& out,
-    const Tensor& self,
-    OptionalIntArrayRef opt_dims,
-    bool keepdim,
-    ScalarType out_dtype,
-    bool allow_empty_dims = false) {
-  DimVector dims_ = at::native::make_dim_vector(opt_dims, self.dim());
-  maybe_wrap_dims(dims_, self.dim());
-  auto shape =
-      at::meta::get_reduction_shape(self, dims_, keepdim, allow_empty_dims);
-  if (self.layout() == kStrided) {
-    out = at::xpu::create_out(shape, {}, self.options().dtype(out_dtype));
-  } else if (shape.size() == 0) {
-    out = at::xpu::create_out(
-        shape, {}, self.options().dtype(out_dtype).layout(kStrided));
-  } else {
-    TORCH_CHECK(
-        false,
-        "resize_reduction: support for output with ",
-        self.layout(),
-        " layout is not implemented yet");
-  }
-  namedinference::propagate_names_for_reduction(out, self, dims_, keepdim);
-  return out;
-}
-
-Tensor& resize_reduction(
-    Tensor& out,
-    const Tensor& self,
-    OptionalIntArrayRef opt_dims,
-    bool keepdim,
-    ScalarType out_dtype,
-    bool allow_empty_dims = false) {
-  if (out.defined()) {
-    return resize_reduction_with_defined_output(
-        out, self, opt_dims, keepdim, out_dtype, allow_empty_dims);
-  } else {
-    return resize_reduction_with_undefined_output(
-        out, self, opt_dims, keepdim, out_dtype, allow_empty_dims);
-  }
 }
 
 Tensor& XPUNativeFunctions::sum_out(

@@ -7,8 +7,6 @@
 #include <aten/sycl/ReduceMinValuesKernel.h>
 #include <torch/library.h>
 
-#include <iostream>
-
 namespace at {
 
 void min_all_kernel_impl(Tensor& result, const Tensor& input) {
