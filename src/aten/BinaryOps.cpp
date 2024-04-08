@@ -386,13 +386,13 @@ Tensor& XPUNativeFunctions::bitwise_xor_out(
 Tensor XPUNativeFunctions::gcd(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
-  native::xpu::gcd_kernel_xpu(iter);
+  native::xpu::gcd_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::gcd_(Tensor& self, const Tensor& other) {
   auto iter = TensorIterator::borrowing_binary_op(self, self, other);
-  native::xpu::gcd_kernel_xpu(iter);
+  native::xpu::gcd_kernel(iter);
   return self;
 }
 
@@ -401,7 +401,7 @@ Tensor& XPUNativeFunctions::gcd_out(
     const Tensor& other,
     Tensor& out) {
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
-  native::xpu::gcd_kernel_xpu(iter);
+  native::xpu::gcd_kernel(iter);
   return out;
 }
 

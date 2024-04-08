@@ -1,9 +1,9 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/Loops.h>
-#include <aten/sycl/Math.h>
 
 namespace at::native::xpu {
 
@@ -14,7 +14,7 @@ struct GcdFunctor {
   }
 };
 
-void gcd_kernel_xpu(TensorIteratorBase& iter) {
+void gcd_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "gcd_xpu", [&]() {
     gpu_kernel(iter, GcdFunctor<scalar_t>());
   });
