@@ -17,6 +17,7 @@ concurrency:
 jobs:
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
+    timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
