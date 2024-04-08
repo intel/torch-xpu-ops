@@ -149,6 +149,8 @@ supported:
   - uniform_
   - bernoulli_.Tensor
   - bernoulli_.float
+  - native_dropout
+  - native_dropout_backward
   - copy_
   - _to_copy
   - view
