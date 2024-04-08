@@ -18,11 +18,11 @@ class TestTorchMethod(TestCase):
 
             def make_tensor(size, dtype):
                 if dtype == torch.bool:
-                    return torch.randint(2, size, dtype=dtype, device=device)
+                    return torch.randint(2, size, dtype=dtype).to(device)
                 elif dtype == torch.int:
-                    return torch.randint(10, size, dtype=dtype, device=device)
+                    return torch.randint(10, size, dtype=dtype).to(device)
                 else:
-                    return torch.randn(size, dtype=dtype, device=device)
+                    return torch.randn(size, dtype=dtype).to(device)
 
             min_t = make_tensor((S,), dtype1)
             max_t = make_tensor((S,), dtype2)
