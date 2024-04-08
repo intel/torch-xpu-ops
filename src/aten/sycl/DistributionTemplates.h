@@ -249,7 +249,7 @@ struct Rand4DistFunctor {
 template <typename T, typename V>
 struct UniformIntFromToTransformFunctor {
   auto operator()(V val) const {
-    return at::transformation::uniform_int_from_to<T, V>(val, range_, base_);
+    return transformation::uniform_int_from_to<T, V>(val, range_, base_);
   }
   UniformIntFromToTransformFunctor(uint64_t range, int64_t base)
       : range_(range), base_(base) {}
@@ -336,7 +336,7 @@ void random_full_64_bits_range_kernel(TensorIteratorBase& iter, RNG gen) {
 template <typename T, typename V>
 struct UniformIntTransformFunctor {
   auto operator()(V val) const {
-    return at::transformation::uniform_int<T, V>(val);
+    return transformation::uniform_int<T, V>(val);
   }
 };
 
@@ -515,10 +515,10 @@ void uniform_kernel(
 
 // ====================== Bernoulli ======================
 
-template <typename scalar_t>
+template <typename scalar_t, typename accscalar_t>
 struct BernoulliFunctor {
-  scalar_t operator()(scalar_t out, scalar_t p) const {
-    return static_cast<scalar_t>(out < p);
+  scalar_t operator()(scalar_t out, accscalar_t p) const {
+    return static_cast<scalar_t>((accscalar_t)out < p);
   }
 };
 
@@ -554,10 +554,11 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::Bool,
-      iter.dtype(),
+      self.scalar_type(),
       "bernoulli_xpu",
       [&] {
-        auto f = BernoulliFunctor<scalar_t>();
+        using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
+        auto f = BernoulliFunctor<scalar_t, accscalar_t>();
         gpu_kernel(iter, f);
       });
 }
@@ -565,13 +566,13 @@ void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
 template <typename scalar_t, typename accscalar_t>
 struct BernoulliScalarFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(rand < p_);
+    return static_cast<scalar_t>(
+        transformation::bernoulli<accscalar_t>(rand, p_));
   }
-
-  BernoulliScalarFunctor(accscalar_t p) : p_(p) {}
+  BernoulliScalarFunctor(double p) : p_(p) {}
 
  private:
-  accscalar_t p_;
+  double p_;
 };
 
 template <typename RNG>
