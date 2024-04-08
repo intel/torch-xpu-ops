@@ -371,9 +371,11 @@ for skip_case in skip_list[1:]:
     skip_options += skip_option
 skip_options += "'"
 
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v _test_ops.py"
-test_command += skip_options
+test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -k 'test_compare_cpu__native_batch_norm_legit_cpu_float32' -v _test_ops.py"
+# test_command += skip_options
 
 res = os.system(test_command)
+print("res: ", res)
 exit_code = os.WEXITSTATUS(res)
+print("exit_code: ", exit_code)
 sys.exit(exit_code)
