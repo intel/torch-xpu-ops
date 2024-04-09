@@ -49,6 +49,9 @@ inputs:
     required: false
     type: number
     description: for result check
+  hf_token:
+    required: false
+    description: HUGGING_FACE_HUB_TOKEN for torchbench test
 
 runs:
   using: composite
@@ -85,6 +88,8 @@ runs:
         fi
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
         source activate e2e_ci
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
