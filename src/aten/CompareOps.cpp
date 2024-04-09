@@ -10,13 +10,15 @@ namespace at {
 
 Tensor XPUNativeFunctions::eq(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::eq_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::eq_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::eq_kernel(iter);
   return self;
 }
@@ -25,19 +27,27 @@ Tensor& XPUNativeFunctions::eq_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::eq_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::eq(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::eq(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::eq_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::eq_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::eq_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::eq_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::eq_out(
@@ -45,18 +55,23 @@ Tensor& XPUNativeFunctions::eq_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::eq_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::eq_kernel(iter);
+  return out;
 }
 
 Tensor XPUNativeFunctions::ne(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::ne_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::ne_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::ne_kernel(iter);
   return self;
 }
@@ -65,19 +80,27 @@ Tensor& XPUNativeFunctions::ne_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::ne_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::ne(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ne(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::ne_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::ne_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ne_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::ne_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::ne_out(
@@ -85,18 +108,23 @@ Tensor& XPUNativeFunctions::ne_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ne_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::ne_kernel(iter);
+  return out;
 }
 
 Tensor XPUNativeFunctions::lt(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::lt_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::lt_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::lt_kernel(iter);
   return self;
 }
@@ -105,19 +133,27 @@ Tensor& XPUNativeFunctions::lt_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::lt_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::lt(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::lt(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::lt_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::lt_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::lt_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::lt_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::lt_out(
@@ -125,18 +161,23 @@ Tensor& XPUNativeFunctions::lt_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::lt_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::lt_kernel(iter);
+  return out;
 }
 
 Tensor XPUNativeFunctions::le(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::le_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::le_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::le_kernel(iter);
   return self;
 }
@@ -145,19 +186,27 @@ Tensor& XPUNativeFunctions::le_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::le_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::le(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::le(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::le_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::le_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::le_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::le_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::le_out(
@@ -165,18 +214,23 @@ Tensor& XPUNativeFunctions::le_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::le_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::le_kernel(iter);
+  return out;
 }
 
 Tensor XPUNativeFunctions::gt(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::gt_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::gt_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::gt_kernel(iter);
   return self;
 }
@@ -185,19 +239,27 @@ Tensor& XPUNativeFunctions::gt_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::gt_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::gt(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::gt(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::gt_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::gt_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::gt_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::gt_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::gt_out(
@@ -205,18 +267,23 @@ Tensor& XPUNativeFunctions::gt_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::gt_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::gt_kernel(iter);
+  return out;
 }
 
 Tensor XPUNativeFunctions::ge(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::ge_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::ge_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::comparison_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(self, self, other);
   native::xpu::ge_kernel(iter);
   return self;
 }
@@ -225,19 +292,27 @@ Tensor& XPUNativeFunctions::ge_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::comparison_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_comparison_op(out, self, other);
   native::xpu::ge_kernel(iter);
   return out;
 }
 
 Tensor XPUNativeFunctions::ge(const Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ge(self, wrapper);
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::ge_kernel(iter);
+  return iter.output();
 }
 
 Tensor& XPUNativeFunctions::ge_(Tensor& self, const Scalar& other) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ge_(self, wrapper);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(self, self, wrapper);
+  native::xpu::ge_kernel(iter);
+  return self;
 }
 
 Tensor& XPUNativeFunctions::ge_out(
@@ -245,7 +320,10 @@ Tensor& XPUNativeFunctions::ge_out(
     const Scalar& other,
     Tensor& out) {
   auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::ge_out(self, wrapper, out);
+  TensorIterator iter;
+  iter.build_borrowing_except_last_argument_comparison_op(out, self, wrapper);
+  native::xpu::ge_kernel(iter);
+  return out;
 }
 
 } // namespace at
