@@ -46,7 +46,6 @@ T inline group_x_scan_by_uds_for_loop_scan(
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);
   const auto rx = item.get_local_range(1);
-  const auto ry = item.get_local_range(0);
 
   size_t ix0 = base_off_problem + lix;
   size_t ix1 = base_off_problem + rx + lix;
@@ -162,24 +161,6 @@ class LoopScanConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = OutputInfo;
 
-  // Manually enable copy constructor
-  // LoopScanConfig(const LoopScanConfig& cfg_) {
-  //   this->input_ = cfg_->input_;
-  //   this->output_ = cfg_->output_;
-  //   this->indices_ = cfg_->indices_;
-  //   this->batch_ = cfg_->batch_;
-  //   this->problem_ = cfg_->problem_;
-  //   this->stride_ = cfg_->stride_;
-  //   this->init_ = cfg_->init_;
-  //   this->loops_batch = cfg_->loops_batch;
-  //   this->loops_problem = cfg_->loops_problem;
-  //   this->type_ = cfg_->type_;
-  //   this->func_ = cfg_->func_;
-  //   this->glb_range_x_ = cfg_->glb_range_x_;
-  //   this->glb_range_y_ = cfg_->glb_range_y_;
-  //   this->wg_range_x_ = cfg_->wg_range_x_;
-  //   this->wg_range_y_ = cfg_->wg_range_y_;
-  // }
   LoopScanConfig() {}
 
   LoopScanConfig(
@@ -220,7 +201,7 @@ class LoopScanConfig {
     glb_range_y_ = wg_range_y_ * wg_number;
 
     // For up down sweep algorithm, each work-item handle two elements.
-    // This means that one work group would handle 2 times work group size
+    // This means that one work group would handle 2 times of work group size
     // elements.
     loops_batch = (batch_ + glb_range_y_ - 1) / glb_range_y_;
     loops_problem = (problem_ + (wg_range_x_ * 2) - 1) / (wg_range_x_ * 2);
@@ -236,7 +217,6 @@ class LoopScanConfig {
       ScanType type,
       BinaryFunction func) {
     size_t batch = input_info.outerSize(scan_dim);
-    int64_t stride = input_info.innerSize(scan_dim);
     size_t problem = input_info.sizes[scan_dim];
     return {
         input_info,
@@ -373,18 +353,12 @@ template <class T, class BinaryFunction>
 T group_x_scan(
     sycl::nd_item<2> item,
     T value,
-#ifndef SG_SCAN
     sycl::local_ptr<T> slm,
-#else
-    sycl::local_ptr<T> carrier,
-#endif
     T init,
     BinaryFunction func) {
-#ifndef SG_SCAN
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);
   const auto rx = item.get_local_range(1);
-  const auto ry = item.get_local_range(0);
 
   slm[liy * rx + lix] = value;
   for (size_t offset = 1; offset < rx; offset <<= 1) {
@@ -396,27 +370,6 @@ T group_x_scan(
     if (lix >= offset)
       slm[liy * rx + lix] = value;
   }
-
-#else
-  const auto wg_size = item.get_local_range(1);
-  const auto sg = item.get_sub_group();
-  const auto sgi = sg.get_group_linear_id();
-  const auto sg_size = sg.get_local_range()[0];
-  const auto lane = sg.get_local_linear_id();
-  const auto sg_num = (wg_size + sg_size - 1) / sg_size;
-
-  value = subgroup_scan<T, BinaryFunction>(item, value, func);
-  if (lane == sg_size - 1) {
-    carrier[sgi] = value;
-  }
-
-  item.barrier(sycl::access::fence_space::local_space);
-  for (int i = 0; i < sg_num; i++) {
-    if (sgi > i) {
-      value = func(value, carrier[i]);
-    }
-  }
-#endif
 
   return value;
 }
@@ -672,17 +625,8 @@ class segment_scan_kernel_creator {
 
   segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> operator()(
       sycl::handler& cgh) const {
-    // SLM for sub group cumsum/cumprod in one workgroup. Allow that
-    // min sub_group_size is 8, herein we use wg_size / 8 to allocate
-    // enough share local memory for simd32, simd16 and simd8.
-    int min_sg_size = syclMinSubGroupSize();
-    int carrier_size = (cfg.problem_wg_range_ + min_sg_size - 1) / min_sg_size;
     int wg_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-#ifndef SG_SCAN
     int slm_size = wg_size;
-#else
-    int slm_size = cfg.problem_along_x_ ? carrier_size : wg_size;
-#endif
     sycl::local_accessor<T> shared(slm_size, cgh);
     segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> ker(
         cfg, shared);

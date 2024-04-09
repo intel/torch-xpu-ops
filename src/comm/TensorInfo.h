@@ -11,16 +11,8 @@ namespace at {
 namespace xpu {
 namespace detail {
 
-#define MAX_TENSORINFO_DIMS 12
+#define XPU_MAX_TENSORINFO_DIMS 12
 
-#define MAX_DPCPPTORCH_DIMS MAX_TENSORINFO_DIMS
-
-#define DPCPPTORCH_STR(X) #X
-#define DPCPPTORCH_DIM_WARNING                      \
-  "tensor too large or too many (>" DPCPPTORCH_STR( \
-      MAX_DPCPPTORCH_DIMS) ") dimensions"
-
-// DPCPP kernel argument taht defines tensor layout
 template <typename T, typename IndexType>
 struct TensorInfo {
   using scalar_t = T;
@@ -29,8 +21,8 @@ struct TensorInfo {
   TensorInfo(
       T* p,
       int dim,
-      IndexType sz[MAX_TENSORINFO_DIMS],
-      IndexType st[MAX_TENSORINFO_DIMS]);
+      IndexType sz[XPU_MAX_TENSORINFO_DIMS],
+      IndexType st[XPU_MAX_TENSORINFO_DIMS]);
 
   // Set the sive of given dimension to 1, as if were a
   // reduction dim (allow you to calculate offsets of the
@@ -58,8 +50,8 @@ struct TensorInfo {
   }
 
   T* data = nullptr;
-  IndexType sizes[MAX_TENSORINFO_DIMS];
-  IndexType strides[MAX_TENSORINFO_DIMS];
+  IndexType sizes[XPU_MAX_TENSORINFO_DIMS];
+  IndexType strides[XPU_MAX_TENSORINFO_DIMS];
   int dims = 0;
   bool is_contiguous;
   bool is_strict_contiguous;
@@ -77,11 +69,11 @@ template <typename T, typename IndexType>
 TensorInfo<T, IndexType>::TensorInfo(
     T* p,
     int dim,
-    IndexType sz[MAX_TENSORINFO_DIMS],
-    IndexType st[MAX_TENSORINFO_DIMS]) {
+    IndexType sz[XPU_MAX_TENSORINFO_DIMS],
+    IndexType st[XPU_MAX_TENSORINFO_DIMS]) {
   data = p;
   dims = dim;
-  TORCH_INTERNAL_ASSERT(dims <= MAX_TENSORINFO_DIMS);
+  TORCH_INTERNAL_ASSERT(dims <= XPU_MAX_TENSORINFO_DIMS);
 
   is_contiguous = true;
   int z = 1;
@@ -146,7 +138,7 @@ struct IndexToOffset {
     }
 
 #pragma unroll
-    for (int dim = MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
+    for (int dim = XPU_MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
       if (dim < info.dims) {
         auto divider = at::detail::IntDivider<IndexType>(info.sizes[dim]);
         auto divmod = divider.divmod(linearId);
@@ -158,6 +150,9 @@ struct IndexToOffset {
   }
 };
 
+// To isolate unnecessary code, even the code is not involved in
+// contiguouse case. Additional unnecessary code impacts efficiency of
+// generated code.
 template <typename T, typename IndexType>
 struct IndexToOffset<T, IndexType, true> {
   static constexpr bool STRICT_CONTIGUOUS = true;
@@ -170,79 +165,17 @@ struct IndexToOffset<T, IndexType, true> {
   }
 };
 
-// OffsetInfo is a faster implementation of IndexToOffset that uses faster
-// integer division: we transform each division into integer multiplication by
-// a pre-computed constant.  (See IntDivider for details.)
-template <typename T, typename IndexType, int Dims>
-struct OffsetInfo {
-  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo) {
-    assert(tinfo.dims == Dims);
-    data = tinfo.data;
-
-    for (int i = 0; i < Dims; ++i) {
-      sizes[i] = tinfo.sizes[i];
-      strides[i] = tinfo.strides[i];
-    }
-  }
-
-  T* get(IndexType linearIndex) const {
-    IndexType offset = 0;
-
-    for (int i = Dims - 1; i > 0; --i) {
-      linearIndex = sizes[i] / linearIndex;
-      offset += (sizes[i] % linearIndex) * strides[i];
-    }
-
-    return &data[offset + linearIndex * strides[0]];
-  }
-
-  T* data;
-  IndexType sizes[Dims];
-  IndexType strides[Dims];
-};
-
-// For 1D tensors the offset equals linear index * stride.
-template <typename T, typename IndexType>
-struct OffsetInfo<T, IndexType, 1> {
-  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo)
-      : data{tinfo.data}, stride{tinfo.strides[0]} {}
-
-  T* get(IndexType linearIndex) const {
-    return &data[linearIndex * stride];
-  }
-
-  T* data;
-  const IndexType stride;
-};
-
-// Dims=-1 is used when the dimension is unknown at compile time.
-//
-// Unfortunately, pre-computation does not work here.
-// So let's fall back to vanilla division approach.
-
-template <typename T, typename IndexType>
-struct OffsetInfo<T, IndexType, -1> {
-  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo) : tinfo(tinfo) {}
-
-  T* get(IndexType linearIndex) const {
-    IndexType offset = IndexToOffset<T, IndexType>::get(linearIndex, tinfo);
-    return &tinfo.data[offset];
-  }
-
-  TensorInfo<T, IndexType> tinfo;
-};
-
 template <typename scalar, typename IndexType>
 TensorInfo<scalar, IndexType> getTensorInfo(const at::Tensor& t) {
-  IndexType sz[MAX_TENSORINFO_DIMS];
-  IndexType st[MAX_TENSORINFO_DIMS];
+  IndexType sz[XPU_MAX_TENSORINFO_DIMS];
+  IndexType st[XPU_MAX_TENSORINFO_DIMS];
 
   TORCH_CHECK(
-      t.dim() <= MAX_TENSORINFO_DIMS,
+      t.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "dim:",
       t.dim(),
       " exceed max allowed dim:",
-      MAX_TENSORINFO_DIMS);
+      XPU_MAX_TENSORINFO_DIMS);
 
   int dims;
   if (t.dim()) {

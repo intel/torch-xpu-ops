@@ -33,8 +33,6 @@ class BatchKernelConfig {
   }
 
  public:
-  // BatchKernelConfig() = delete;
-
   BatchKernelConfig(
       int64_t batch,
       int64_t problem,
@@ -59,11 +57,11 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {
     size_t wg_size = syclMaxWorkGroupSize();
-    if (prefer_wg_size != 0 && prefer_wg_size % 32 == 0 &&
+    size_t sg_size = syclMaxSubGroupSize();
+    if (prefer_wg_size != 0 && prefer_wg_size % sg_size == 0 &&
         prefer_wg_size < wg_size) {
       wg_size = prefer_wg_size;
     }
-    size_t sg_size = syclMaxSubGroupSize();
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
 

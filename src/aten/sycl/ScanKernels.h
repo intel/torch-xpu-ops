@@ -1,16 +1,8 @@
 #pragma once
 #include <cstdint>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
-// NOTE: these functions require output tensors to be contiguous
-void launch_cumsum_xpu_kernel(
-    const Tensor& out,
-    const Tensor& self,
-    int64_t dim);
+void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

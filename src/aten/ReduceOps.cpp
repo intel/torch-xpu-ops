@@ -33,7 +33,7 @@ Tensor& XPUNativeFunctions::cumsum_out(
     int64_t dim,
     c10::optional<ScalarType> dtype,
     Tensor& out) {
-  impl_func_cum_ops(self, dim, out, at::native::xpu::launch_cumsum_xpu_kernel);
+  impl_func_cum_ops(self, dim, out, at::native::xpu::cumsum_kernel);
   return out;
 }
 

@@ -1,8 +1,9 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Tensor.h>
 
-#include <aten/sycl/ScanKernels.h>
+#include <aten/sycl/ScanUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -22,17 +23,16 @@ static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
       at::empty(tensor.sizes(), tensor.options()));
 }
 
-void cumsum_xpu_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
-  if (self.is_floating_point() || self.is_complex()) {
-    // See Note [Writing Nondeterministic Operations]
-    // Issue reporting nondeterministic behavior:
-    // https://github.com/pytorch/pytorch/issues/75240
-    globalContext().alertNotDeterministic("cumsum_xpu_kernel");
-  }
-  auto result_ = contiguous_out_arg(result);
-  launch_cumsum_xpu_kernel(*result_, self, dim);
-  if (!result.is_same(*result_)) {
-    result.copy_(*result_);
-  }
+void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      self.scalar_type(),
+      "cumsum_xpu",
+      [&]() {
+        scalar_t init = 0;
+        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
+            result, self, dim, init, std::plus<scalar_t>());
+      });
 }
 } // namespace at::native::xpu
