@@ -1,13 +1,14 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/MemoryOverlap.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/Indexing.h>
 #include <aten/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 template <typename scalar_t>
 struct MaskedFillFunctor {
@@ -37,6 +38,4 @@ void masked_fill_kernel(TensorIterator& iter, const Scalar& value) {
       });
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

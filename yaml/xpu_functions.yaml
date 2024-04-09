@@ -83,6 +83,8 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - index_select
+  - index_select.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - relu
