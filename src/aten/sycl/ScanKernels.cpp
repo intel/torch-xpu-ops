@@ -24,6 +24,8 @@ static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
 }
 
 void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
+  auto result_ = contiguous_out_arg(result);
+
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -32,7 +34,11 @@ void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
       [&]() {
         scalar_t init = 0;
         scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
-            result, self, dim, init, std::plus<scalar_t>());
+            *result_, self, dim, init, std::plus<scalar_t>());
       });
+
+  if (!result.is_same(*result_)) {
+    result.copy_(*result_);
+  }
 }
 } // namespace at::native::xpu

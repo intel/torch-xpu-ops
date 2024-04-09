@@ -3,6 +3,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Fill.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
@@ -32,23 +33,34 @@ Tensor& XPUNativeFunctions::cumsum_out(
     const Tensor& self,
     int64_t dim,
     c10::optional<ScalarType> dtype,
-    Tensor& out) {
-  impl_func_cum_ops(self, dim, out, at::native::xpu::cumsum_kernel);
-  return out;
+    Tensor& result) {
+  // Checking whether 'dim' is valid.
+  maybe_wrap_dim(dim, self.dim());
+
+  ScalarType out_dtype;
+
+  if (!result.defined()) {
+    auto is_integral =
+        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype =
+        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result = at::empty_strided(
+        self.sizes(), self.strides(), self.options().dtype(out_dtype));
+  } else {
+    at::native::resize_output(result, self.sizes());
+    result.as_strided_(self.sizes(), self.strides());
+  }
+
+  impl_func_cum_ops(self, dim, result, at::native::xpu::cumsum_kernel);
+  return result;
 }
 
 Tensor XPUNativeFunctions::cumsum(
     const Tensor& self,
     int64_t dim,
     c10::optional<ScalarType> dtype) {
-  ScalarType out_dtype;
-  auto is_integral =
-      at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-  out_dtype =
-      dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-  Tensor out = at::empty_strided(
-      self.sizes(), self.strides(), self.options().dtype(out_dtype));
-  return cumsum_out(self, dim, dtype, out);
+  Tensor result;
+  return cumsum_out(self, dim, dtype, result);
 }
 
 Tensor& XPUNativeFunctions::cumsum_(

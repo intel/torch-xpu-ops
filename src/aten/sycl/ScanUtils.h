@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/native/Resize.h>
 #include <aten/sycl/BatchKernel.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -804,7 +805,9 @@ void scan(
     int dimension,
     scalar_t init,
     BinaryFunction func) {
-  self.resize_as_(input);
+  if (self.sizes() != input.sizes()) {
+    at::native::resize_output(self, input.sizes());
+  }
   if (input.dim() == 0) {
     self.fill_(input);
     return;
@@ -819,6 +822,8 @@ void scan(
       "dimension ",
       dimension,
       " out of range");
+
+  TORCH_INTERNAL_ASSERT(self.is_contiguous());
 
   TensorInfo<scalar_t, int64_t> input_info =
       getTensorInfo<scalar_t, int64_t>(input_);
