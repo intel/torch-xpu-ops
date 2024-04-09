@@ -73,4 +73,22 @@ Tensor& XPUNativeFunctions::masked_fill_(
   return XPUNativeFunctions::masked_fill_(self, mask, value.item());
 }
 
+Tensor& XPUNativeFunctions::index_add_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    const Scalar& alpha,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::index_add_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::index_add_out", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, source, "xpu::index_add_out", "source");
+  native::xpu::index_add_impl(self, dim, index, source, alpha, out);
+  return out;
+}
+
 } // namespace at
