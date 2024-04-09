@@ -8,6 +8,9 @@ set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
 
 add_subdirectory(aten)
 
+# Avoid SYCL compiler return-type error
+string(REPLACE "-Werror=return-type" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 if(BUILD_SEPARATE_OPS)
