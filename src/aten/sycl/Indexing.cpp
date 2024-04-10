@@ -400,7 +400,7 @@ static inline void _index_select_kernel(
           src_info,
           dst_info,
           index_info,
-          0,
+          static_cast<scalar_t>(0),
           dim,
           false,
           IndexSelectOperator<scalar_t>());
@@ -502,13 +502,16 @@ Tensor& index_select_out_kernel(
     int64_t dim,
     const Tensor& index,
     Tensor& out) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       self.scalar_type(),
       "index_select",
-      [=]() { impl::IndexSelect<scalar_t>(out, self, dim, index); });
+      AT_WRAP([=]() { impl::IndexSelect<scalar_t>(out, self, dim, index); }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      at::ScalarType::ComplexHalf,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool);
   return out;
 }
 
