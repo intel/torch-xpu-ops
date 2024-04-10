@@ -5,6 +5,7 @@
 #include <ATen/core/Array.h>
 #include <aten/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
+#include <comm/XPUMathCompat.h>
 
 namespace at {
 namespace native {
@@ -59,7 +60,7 @@ static inline void norm_group_reduce(
   if (idx == 0) {
     mean = 0;
     rstd = 0;
-    if (sg_local_id < sub_group_num) {
+    if ((int)sg_local_id < sub_group_num) {
       mean = accscalar_t(local_mean[sg_local_id]);
       rstd = accscalar_t(local_rstd[sg_local_id]);
     }
@@ -425,10 +426,10 @@ class NormForward {
     auto local_id = item_id.get_local_id(2);
     index_t group_offset = group_id * cfg.Plane;
 
-    for (index_t j = local_id * vec_size; j < cfg.WGPlane;
+    for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
-      if (plane_offset < cfg.Plane) {
+      if (plane_offset < (index_t)cfg.Plane) {
         vec_t value =
             *(reinterpret_cast<vec_t*>(X_data + group_offset + plane_offset));
         for (int v = 0; v < vec_size; ++v) {
@@ -451,8 +452,8 @@ class NormForward {
     sum2 = (sum2 - sum1 * sum1 / scale) / scale;
     sum1 = sum1 / scale;
     mean_data[group_id] = static_cast<mean_t>(sum1);
-    var_data[group_id] = static_cast<mean_t>(
-        rsqrt(sum2 < 0 ? 0 : sum2 + static_cast<accscalar_t>(eps)));
+    var_data[group_id] = static_cast<mean_t>(c10::xpu::compat::rsqrt(
+        sum2 < 0 ? 0 : sum2 + static_cast<accscalar_t>(eps)));
   }
 
  public:
@@ -693,7 +694,17 @@ void fused_norm_kernel(
       vec_size,
       Norm,
       one_moment>(norm, cfg, (size_t)cfg.sub_group_num);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), creator);
+  sycl_kernel_submit<FusedNormKernelFunctor<
+      scalar_t,
+      mean_t,
+      weight_t,
+      index_t,
+      accscalar_t,
+      vec_t,
+      weight_vec_t,
+      vec_size,
+      Norm,
+      one_moment>>(global_range, local_range, getCurrentSYCLQueue(), creator);
 }
 
 template <
@@ -853,22 +864,17 @@ struct RowwiseMomentsSYCLKernelFunctorCreator {
         weight_vec_t,
         vec_size,
         Norm,
-        one_moment>(local_sum1, local_sum2, norm_, cfg_, last_workgroup_);
+        one_moment>(local_sum1, local_sum2, norm_, cfg_, last_workgroup);
   }
   RowwiseMomentsSYCLKernelFunctorCreator(
       Norm<scalar_t, mean_t, weight_t> norm,
       NormConfig cfg,
-      sycl_local_acc_t<bool> last_workgroup,
       size_t slm_size)
-      : norm_(norm),
-        cfg_(cfg),
-        last_workgroup_(last_workgroup),
-        slm_size_(slm_size) {}
+      : norm_(norm), cfg_(cfg), slm_size_(slm_size) {}
 
  private:
   Norm<scalar_t, mean_t, weight_t> norm_;
   NormConfig cfg_;
-  sycl_local_acc_t<bool> last_workgroup_;
   size_t slm_size_;
 };
 
@@ -904,7 +910,17 @@ void RowwiseMomentsSYCLKernel(
       vec_size,
       Norm,
       one_moment>(norm, cfg, (size_t)cfg.sub_group_num);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), creator);
+  sycl_kernel_submit<RowwiseMomentsSYCLKernelFunctor<
+      scalar_t,
+      mean_t,
+      weight_t,
+      index_t,
+      accscalar_t,
+      vec_t,
+      weight_vec_t,
+      vec_size,
+      Norm,
+      one_moment>>(global_range, local_range, getCurrentSYCLQueue(), creator);
 }
 
 template <
