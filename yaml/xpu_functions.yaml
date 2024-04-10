@@ -85,6 +85,7 @@ supported:
   - ge_.Tensor
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - index_add.out
   - gcd
   - gcd.out
   - gcd_
