@@ -49,6 +49,9 @@ inputs:
     required: false
     type: number
     description: for result check
+  hf_token:
+    required: false
+    description: HUGGING_FACE_HUB_TOKEN for torchbench test
 
 runs:
   using: composite
@@ -72,8 +75,8 @@ runs:
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [ ${{ inputs.suite }} == "torchbench" ]; then
-          python -c "import torch, torchvision, torchaudio"
-          cd ../ && rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
+          cd ../ && python -c "import torch, torchvision, torchaudio"
+          rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
           cd benchmark && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
         fi
@@ -85,6 +88,8 @@ runs:
         fi
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
         source activate e2e_ci
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
@@ -100,6 +105,8 @@ runs:
         bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 5 static 8 5 & \
         bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 6 static 8 6 & \
         bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 7 static 8 7 & wait
+        LOG_NAME=inductor_${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_xpu_${{ inputs.scenario }}_all.log
+        for log in $(ls inductor_log/${{ inputs.suite }}/${{ inputs.dt }}/*card*.log); do cat $log >> inductor_log/${{ inputs.suite }}/${{ inputs.dt }}/${LOG_NAME}; done
     - name: Test Results Overview (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
       run: |

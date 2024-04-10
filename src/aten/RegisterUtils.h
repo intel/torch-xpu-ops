@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ATen/core/Tensor.h>
+#include <ATen/native/ReduceOpsUtils.h>
 #include <aten/EmptyTensor.h>
 
 namespace at {

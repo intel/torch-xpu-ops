@@ -6,8 +6,8 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void relu_kernel(TensorIteratorBase& iter);
+void gcd_kernel(TensorIteratorBase& iter);
 
-} // namespace xpu
+}
 } // namespace native
 } // namespace at
