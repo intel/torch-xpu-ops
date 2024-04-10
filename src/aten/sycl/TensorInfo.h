@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ATen/CollapseDims.h>
+#include <aten/sycl/IntegerDivider.h>
 
 namespace at::xpu::detail {
 
@@ -24,22 +25,34 @@ struct TensorInfo {
   // See note on [collapse dims].
   int collapseDims(const int excludeDim = -1);
 
+  int outerSize(const int excludeDim);
+  int innerSize(const int excludeDim);
+
   // Contiguous tensors of more than one dimension are collapsed down
   // to one tensor
   inline bool isContiguous() const {
     return (dims == 1 && strides[0] == 1);
   }
 
+  inline bool isContiguousCheckStrict(bool strict) const {
+    if (strict)
+      return isContiguous();
+    else
+      return is_contiguous;
+  }
+
   T* data;
   IndexType sizes[MAX_TENSORINFO_DIMS];
   IndexType strides[MAX_TENSORINFO_DIMS];
   int dims;
+  bool is_contiguous;
 };
 
 template <typename T, typename IndexType>
 TensorInfo<T, IndexType>::TensorInfo() {
   data = nullptr;
   dims = 0;
+  is_contiguous = true;
 }
 
 template <typename T, typename IndexType>
@@ -54,9 +67,16 @@ TensorInfo<T, IndexType>::TensorInfo(
       dims < MAX_TENSORINFO_DIMS,
       "XPU Tensors cannot have more than 25 dimensions");
 
-  for (int i = 0; i < dim; ++i) {
+  is_contiguous = true;
+  unsigned int z = 1;
+  for (int i = dim - 1; i >= 0; i--) {
     sizes[i] = sz[i];
     strides[i] = st[i];
+    if (is_contiguous && strides[i] == z) {
+      z *= sizes[i];
+    } else {
+      is_contiguous = false;
+    }
   }
 }
 
@@ -71,6 +91,24 @@ int TensorInfo<T, IndexType>::collapseDims(const int excludeDim) {
   auto result = at::collapse_dims(sizes, strides, dims, excludeDim);
   dims = std::get<1>(result);
   return std::get<0>(result);
+}
+
+template <typename T, typename IndexType>
+int TensorInfo<T, IndexType>::innerSize(const int excludeDim) {
+  int size = 1;
+  for (int i = dims - 1; i > excludeDim; i--) {
+    size *= sizes[i];
+  }
+  return size;
+}
+
+template <typename T, typename IndexType>
+int TensorInfo<T, IndexType>::outerSize(const int excludeDim) {
+  int size = 1;
+  for (int i = 0; i < excludeDim; i++) {
+    size *= sizes[i];
+  }
+  return size;
 }
 
 // Translate a linear index for the apply to a T* offset;
@@ -113,15 +151,126 @@ struct IndexToOffset<T, IndexType, -1> {
   }
 };
 
+namespace v2 {
+
+// Translate a linear index for the apply to a T* offset;
+template <typename T, typename IndexType, bool Trivial = false>
+struct IndexToOffset {
+  static constexpr bool STRICT_CONTIGUOUS = true;
+  static constexpr bool NON_STRICT_CONTIGUOUS = false;
+  static inline IndexType get(
+      IndexType linearId,
+      const TensorInfo<T, IndexType>& info,
+      bool strict_contiguous = true) {
+    IndexType offset = 0;
+
+    if (info.isContiguousCheckStrict(strict_contiguous)) {
+      return linearId;
+    }
+
+#pragma unroll
+    for (int dim = MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
+      if (dim < info.dims) {
+        auto divider = at::detail::IntDivider<IndexType>(info.sizes[dim]);
+        auto divmod = divider.divmod(linearId);
+        linearId = divmod.div;
+        offset += divmod.mod * info.strides[dim];
+      }
+    }
+    return offset;
+  }
+};
+
+template <typename T, typename IndexType>
+struct IndexToOffset<T, IndexType, true> {
+  static constexpr bool STRICT_CONTIGUOUS = true;
+  static constexpr bool NON_STRICT_CONTIGUOUS = false;
+  static inline IndexType get(
+      IndexType linearId,
+      const TensorInfo<T, IndexType>& info,
+      bool strict_contiguous = true) {
+    return linearId;
+  }
+};
+
+// OffsetInfo is a faster implementation of IndexToOffset that uses faster
+// integer division: we transform each division into integer multiplication by
+// a pre-computed constant.  (See IntDivider for details.)
+template <typename T, typename IndexType, int Dims>
+struct OffsetInfo {
+  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo) {
+    assert(tinfo.dims == Dims);
+    data = tinfo.data;
+
+    for (int i = 0; i < Dims; ++i) {
+      sizes[i] = tinfo.sizes[i];
+      strides[i] = tinfo.strides[i];
+    }
+  }
+
+  T* get(IndexType linearIndex) const {
+    IndexType offset = 0;
+
+    for (int i = Dims - 1; i > 0; --i) {
+      linearIndex = sizes[i] / linearIndex;
+      offset += (sizes[i] % linearIndex) * strides[i];
+    }
+
+    return &data[offset + linearIndex * strides[0]];
+  }
+
+  T* data;
+  IndexType sizes[Dims];
+  IndexType strides[Dims];
+};
+
+// For 1D tensors the offset equals linear index * stride.
+template <typename T, typename IndexType>
+struct OffsetInfo<T, IndexType, 1> {
+  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo)
+      : data{tinfo.data}, stride{tinfo.strides[0]} {}
+
+  T* get(IndexType linearIndex) const {
+    return &data[linearIndex * stride];
+  }
+
+  T* data;
+  const IndexType stride;
+};
+
+// Dims=-1 is used when the dimension is unknown at compile time.
+//
+// Unfortunately, pre-computation does not work here.
+// So let's fall back to vanilla division approach.
+
+template <typename T, typename IndexType>
+struct OffsetInfo<T, IndexType, -1> {
+  explicit OffsetInfo(const TensorInfo<T, IndexType>& tinfo) : tinfo(tinfo) {}
+
+  T* get(IndexType linearIndex) const {
+    IndexType offset = IndexToOffset<T, IndexType>::get(linearIndex, tinfo);
+    return &tinfo.data[offset];
+  }
+
+  TensorInfo<T, IndexType> tinfo;
+};
+
+} // namespace v2
+
 template <typename scalar, typename IndexType>
 TensorInfo<scalar, IndexType> getTensorInfo(const at::TensorBase& t) {
   IndexType sz[MAX_TENSORINFO_DIMS];
   IndexType st[MAX_TENSORINFO_DIMS];
 
   int dims = t.dim();
-  for (int i = 0; i < dims; ++i) {
-    sz[i] = t.size(i);
-    st[i] = t.stride(i);
+  if (dims) {
+    for (int i = 0; i < dims; ++i) {
+      sz[i] = t.size(i);
+      st[i] = t.stride(i);
+    }
+  } else {
+    sz[0] = 1;
+    st[0] = 1;
   }
 
   scalar* data_ptr = nullptr;
