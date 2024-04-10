@@ -132,7 +132,12 @@ const Tensor& resize_as_(
 }
 
 Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
-  dst.resize_as_(self);
+  // Dispatch explicitly to bypass redispatching in ATen CPU fallback routine.
+  if (dst.is_xpu()) {
+    resize_xpu_(dst, self.sizes(), c10::nullopt);
+  } else {
+    at::native::resize_(dst, self.sizes());
+  }
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
