@@ -116,32 +116,33 @@ struct IndexFuncSmallIndexFunctor {
     // it can be reused as much as possible. This kernel is chosen when
     // this is a good choice (small number of chosen indices), since
     // re-accessing indices in addition to src elements can be slow.
-    for (IndexType srcIndex = 0; srcIndex < indices.sizes[0]; ++srcIndex) {
+    for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
       // Lua indices begin at 1
       IndexType dstIndex =
-          indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-              srcIndex, indices)];
+          indices_
+              .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
+                  srcIndex, indices_)];
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
       for (IndexType linearIndex = item.get_global_linear_id();
-           linearIndex < innerSize;
+           linearIndex < innerSize_;
            linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
         IndexType dstOffset =
-            IndexToOffset<T, IndexType, DstDim>::get(linearIndex, dst);
-        dstOffset += dstIndex * dst.strides[dstAddDim];
+            IndexToOffset<T, IndexType, DstDim>::get(linearIndex, dst_);
+        dstOffset += dstIndex * dst_.strides[dstAddDim_];
 
         IndexType srcOffset =
-            IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src);
-        srcOffset += srcIndex * src.strides[srcAddDim];
+            IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src_);
+        srcOffset += srcIndex * src_.strides[srcAddDim_];
 
         T val;
         if constexpr (std::is_same<T, bool>::value) {
-          val = src.data[srcOffset] && alpha;
+          val = src_.data[srcOffset] && alpha_;
         } else {
-          val = src.data[srcOffset] * alpha;
+          val = src_.data[srcOffset] * alpha_;
         }
-        op(dst.data, dstOffset, dstNumel, &val);
+        op_(dst_.data, dstOffset, dstNumel_, &val);
       }
     }
   }
@@ -157,28 +158,28 @@ struct IndexFuncSmallIndexFunctor {
       int64_t dstNumel,
       func_t op,
       T alpha)
-      : dst(dst),
-        src(src),
-        indices(indices),
-        dstAddDim(dstAddDim),
-        srcAddDim(srcAddDim),
-        innerSize(innerSize),
-        dstAddDimSize(dstAddDimSize),
-        dstNumel(dstNumel),
-        op(op),
-        alpha(alpha) {}
+      : dst_(dst),
+        src_(src),
+        indices_(indices),
+        dstAddDim_(dstAddDim),
+        srcAddDim_(srcAddDim),
+        innerSize_(innerSize),
+        dstAddDimSize_(dstAddDimSize),
+        dstNumel_(dstNumel),
+        op_(op),
+        alpha_(alpha) {}
 
  private:
-  TensorInfo<T, IndexType> dst;
-  TensorInfo<const T, IndexType> src;
-  TensorInfo<const IndicesType, IndexType> indices;
-  int dstAddDim;
-  int srcAddDim;
-  IndexType innerSize;
-  int64_t dstAddDimSize;
-  int64_t dstNumel;
-  func_t op;
-  T alpha;
+  TensorInfo<T, IndexType> dst_;
+  TensorInfo<const T, IndexType> src_;
+  TensorInfo<const IndicesType, IndexType> indices_;
+  int dstAddDim_;
+  int srcAddDim_;
+  IndexType innerSize_;
+  int64_t dstAddDimSize_;
+  int64_t dstNumel_;
+  func_t op_;
+  T alpha_;
 };
 
 // We prefer this kernel to balance parallelism across index points,
@@ -201,37 +202,38 @@ struct IndexFuncLargeIndexFunctor {
     // We stride over the output including the indexed dimension
     // (totalSize), and calculate the destination index point based on that
     for (IndexType linearIndex = item.get_global_linear_id();
-         linearIndex < totalSize;
+         linearIndex < totalSize_;
          linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
       IndexType srcIndex, elementInSlice;
       if (IndexIsMajor) {
-        srcIndex = linearIndex / innerSize;
-        elementInSlice = linearIndex % innerSize;
+        srcIndex = linearIndex / innerSize_;
+        elementInSlice = linearIndex % innerSize_;
       } else {
-        elementInSlice = linearIndex / innerSize;
-        srcIndex = linearIndex % innerSize;
+        elementInSlice = linearIndex / innerSize_;
+        srcIndex = linearIndex % innerSize_;
       }
 
       // Lua indices begin at 1
       IndexType dstIndex =
-          indices.data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-              srcIndex, indices)];
+          indices_
+              .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
+                  srcIndex, indices_)];
 
       IndexType dstOffset =
-          IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst);
-      dstOffset += dstIndex * dst.strides[dstAddDim];
+          IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
+      dstOffset += dstIndex * dst_.strides[dstAddDim_];
 
       IndexType srcOffset =
-          IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src);
-      srcOffset += srcIndex * src.strides[srcAddDim];
+          IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src_);
+      srcOffset += srcIndex * src_.strides[srcAddDim_];
 
       T val;
       if constexpr (std::is_same<T, bool>::value) {
-        val = src.data[srcOffset] && alpha;
+        val = src_.data[srcOffset] && alpha_;
       } else {
-        val = src.data[srcOffset] * alpha;
+        val = src_.data[srcOffset] * alpha_;
       }
-      op(dst.data, dstOffset, dstNumel, &val);
+      op_(dst_.data, dstOffset, dstNumel_, &val);
     }
   }
 
@@ -247,30 +249,30 @@ struct IndexFuncLargeIndexFunctor {
       int64_t dstNumel,
       func_t op,
       T alpha)
-      : dst(dst),
-        src(src),
-        indices(indices),
-        dstAddDim(dstAddDim),
-        srcAddDim(srcAddDim),
-        totalSize(totalSize),
-        innerSize(innerSize),
-        dstAddDimSize(dstAddDimSize),
-        dstNumel(dstNumel),
-        op(op),
-        alpha(alpha) {}
+      : dst_(dst),
+        src_(src),
+        indices_(indices),
+        dstAddDim_(dstAddDim),
+        srcAddDim_(srcAddDim),
+        totalSize_(totalSize),
+        innerSize_(innerSize),
+        dstAddDimSize_(dstAddDimSize),
+        dstNumel_(dstNumel),
+        op_(op),
+        alpha_(alpha) {}
 
  private:
-  TensorInfo<T, IndexType> dst;
-  TensorInfo<const T, IndexType> src;
-  TensorInfo<const IndicesType, IndexType> indices;
-  int dstAddDim;
-  int srcAddDim;
-  IndexType totalSize;
-  IndexType innerSize;
-  int64_t dstAddDimSize;
-  int64_t dstNumel;
-  func_t op;
-  T alpha;
+  TensorInfo<T, IndexType> dst_;
+  TensorInfo<const T, IndexType> src_;
+  TensorInfo<const IndicesType, IndexType> indices_;
+  int dstAddDim_;
+  int srcAddDim_;
+  IndexType totalSize_;
+  IndexType innerSize_;
+  int64_t dstAddDimSize_;
+  int64_t dstNumel_;
+  func_t op_;
+  T alpha_;
 };
 
 template <typename scalar_t>
