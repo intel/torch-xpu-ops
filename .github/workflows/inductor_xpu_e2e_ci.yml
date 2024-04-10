@@ -39,8 +39,9 @@ jobs:
       - name: Triton Installation
         run: |
           source activate e2e_ci
+          cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .github/ci_commit_pins/triton.txt)
+          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
           echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
       - name: Build Pytorch XPU
@@ -57,6 +58,7 @@ jobs:
       - name: Identify pinned versions
         run: |
           cd ../pytorch
+          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
           echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
@@ -73,6 +75,7 @@ jobs:
           mode: inference
           scenario: accuracy
           expected_pass_num: 44
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: HF BF16 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
