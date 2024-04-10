@@ -63,19 +63,19 @@ inline std::tuple<uint64_t, uint64_t> philox_unpack(PhiloxState arg) {
   }
 }
 
+template <uint32_t UNROLL = rand4_engine_calls>
 inline std::tuple<uint64_t, uint32_t, uint32_t> calc_execution_policy(
     int64_t total_elements) {
-  auto group_size = std::min(
-      syclGpuHWThreadsPerEU() * syclMaxSubGroupSize(), syclMaxWorkGroupSize());
+  auto group_size =
+      syclMaxWorkItemsPerEU(); // TODO: see
+                               // https://github.com/intel/torch-xpu-ops/issues/135
   auto num_groups = (total_elements + group_size - 1) / group_size;
   auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
   // number of times random will be generated per thread, to offset philox
   // counter in thc random state
   uint64_t counter_offset =
-      ((total_elements - 1) / (group_size * num_groups * rand4_engine_calls) +
-       1) *
-      rand4_engine_calls;
+      ((total_elements - 1) / (group_size * num_groups * UNROLL) + 1) * UNROLL;
   return std::make_tuple(counter_offset, num_groups, group_size);
 }
 

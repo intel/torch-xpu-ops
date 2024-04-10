@@ -19,8 +19,6 @@ namespace {
 using namespace at::native;
 using namespace at::xpu::detail;
 
-const int UNROLL = 4;
-
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -37,7 +35,7 @@ struct FusedDropoutVecFunctor {
     using LoadT = memory::aligned_vector<scalar_t, VEC>;
     using MaskLoadT = memory::aligned_vector<mask_t, VEC>;
 
-    auto seeds = philox_unpack(philox_args);
+    auto seeds = philox_unpack(philox_args_);
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
@@ -45,7 +43,7 @@ struct FusedDropoutVecFunctor {
     // Helps align the total number of times rand_uniform4 is called by each
     // thread for the same totalElements in the vec=2 and vec=4 cases.
     bool gridxvec_loop_state = 0;
-    accscalar_t scale = 1.0 / p;
+    accscalar_t scale = 1.0 / p_;
 
     float4 rand;
 
@@ -53,7 +51,7 @@ struct FusedDropoutVecFunctor {
     // VEC factor, as we'll load VEC elements at a time
     IndexType full_tile_work_size =
         item.get_group_range(0) * item.get_local_range(0) * VEC;
-    for (IndexType linearIndex = idx * VEC; linearIndex < totalElements;
+    for (IndexType linearIndex = idx * VEC; linearIndex < totalElements_;
          linearIndex += full_tile_work_size) {
       // local storage
       scalar_t src[VEC];
@@ -74,17 +72,17 @@ struct FusedDropoutVecFunctor {
         gridxvec_loop_state ^= 1;
       }
 
-      rand.x = rand.x < p;
-      rand.y = rand.y < p;
+      rand.x = rand.x < p_;
+      rand.y = rand.y < p_;
       if (VEC == 4) {
-        rand.z = rand.z < p;
-        rand.w = rand.w < p;
+        rand.z = rand.z < p_;
+        rand.w = rand.w < p_;
       }
 
       // Note: We explicitly check for is_contiguous() before launching the
       // vectorized kernel and replace IndexToOffset call with linearIndex to
       // allow vectorization of NHWC (or other) ordering. Single vectorized load
-      *value = *reinterpret_cast<const LoadT*>(&a.data[linearIndex]);
+      *value = *reinterpret_cast<const LoadT*>(&a_.data[linearIndex]);
 
       scalar_t r[VEC];
       mask_t mask[VEC];
@@ -96,9 +94,9 @@ struct FusedDropoutVecFunctor {
         mask[ii] = (mask_t)(&rand.x)[ii];
       }
       // Vectorized writes for both mask & result
-      *(reinterpret_cast<LoadT*>(&b.data[linearIndex])) =
+      *(reinterpret_cast<LoadT*>(&b_.data[linearIndex])) =
           *reinterpret_cast<LoadT*>(&r[0]);
-      *(reinterpret_cast<MaskLoadT*>(&c.data[linearIndex])) =
+      *(reinterpret_cast<MaskLoadT*>(&c_.data[linearIndex])) =
           *reinterpret_cast<MaskLoadT*>(&mask[0]);
     }
   }
@@ -109,20 +107,20 @@ struct FusedDropoutVecFunctor {
       IndexType totalElements,
       accscalar_t p,
       PhiloxState philox_args)
-      : a(a),
-        b(b),
-        c(c),
-        totalElements(totalElements),
-        p(p),
-        philox_args(philox_args) {}
+      : a_(a),
+        b_(b),
+        c_(c),
+        totalElements_(totalElements),
+        p_(p),
+        philox_args_(philox_args) {}
 
  private:
-  TensorInfo<const scalar_t, IndexType> a;
-  TensorInfo<scalar_t, IndexType> b;
-  TensorInfo<mask_t, IndexType> c;
-  IndexType totalElements;
-  accscalar_t p;
-  PhiloxState philox_args;
+  TensorInfo<const scalar_t, IndexType> a_;
+  TensorInfo<scalar_t, IndexType> b_;
+  TensorInfo<mask_t, IndexType> c_;
+  IndexType totalElements_;
+  accscalar_t p_;
+  PhiloxState philox_args_;
 };
 
 template <
@@ -134,16 +132,17 @@ template <
     typename mask_t>
 struct FusedDropoutUnrollFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto seeds = philox_unpack(philox_args);
+    constexpr int UNROLL = 4;
+    auto seeds = philox_unpack(philox_args_);
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
-    accscalar_t scale = 1.0 / p;
+    accscalar_t scale = 1.0 / p_;
     IndexType group_work_size =
         item.get_group_range(0) * item.get_local_range(0);
     IndexType full_tile_work_size = group_work_size * UNROLL;
     IndexType rounded_size =
-        ((totalElements - 1) / full_tile_work_size + 1) * full_tile_work_size;
+        ((totalElements_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
 
     for (IndexType linearIndex = idx; linearIndex < rounded_size;
          linearIndex += full_tile_work_size) {
@@ -151,27 +150,27 @@ struct FusedDropoutUnrollFunctor {
       // and there's nothing for halfs, so generate float for everything
       float4 rand = rand_uniform4(&state);
       scalar_t src[UNROLL];
-      rand.x = rand.x < p;
-      rand.y = rand.y < p;
-      rand.z = rand.z < p;
-      rand.w = rand.w < p;
+      rand.x = rand.x < p_;
+      rand.y = rand.y < p_;
+      rand.z = rand.z < p_;
+      rand.w = rand.w < p_;
       for (int ii = 0; ii < UNROLL; ii++) {
         IndexType li = linearIndex + group_work_size * ii;
-        if (li < totalElements) {
+        if (li < totalElements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a);
-          src[ii] = a.data[aOffset];
+              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a_);
+          src[ii] = a_.data[aOffset];
         }
       }
       for (int ii = 0; ii < UNROLL; ii++) {
         IndexType li = linearIndex + group_work_size * ii;
-        if (li < totalElements) {
+        if (li < totalElements_) {
           // Convert `linearIndex` into an offset of `b`
           const IndexType bOffset =
-              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b);
-          b.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
-          c.data[bOffset] = (mask_t)(&rand.x)[ii];
+              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b_);
+          b_.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
+          c_.data[bOffset] = (mask_t)(&rand.x)[ii];
         }
       }
     }
@@ -183,20 +182,20 @@ struct FusedDropoutUnrollFunctor {
       IndexType totalElements,
       accscalar_t p,
       PhiloxState philox_args)
-      : a(a),
-        b(b),
-        c(c),
-        totalElements(totalElements),
-        p(p),
-        philox_args(philox_args) {}
+      : a_(a),
+        b_(b),
+        c_(c),
+        totalElements_(totalElements),
+        p_(p),
+        philox_args_(philox_args) {}
 
  private:
-  TensorInfo<const scalar_t, IndexType> a;
-  TensorInfo<scalar_t, IndexType> b;
-  TensorInfo<mask_t, IndexType> c;
-  IndexType totalElements;
-  accscalar_t p;
-  PhiloxState philox_args;
+  TensorInfo<const scalar_t, IndexType> a_;
+  TensorInfo<scalar_t, IndexType> b_;
+  TensorInfo<mask_t, IndexType> c_;
+  IndexType totalElements_;
+  accscalar_t p_;
+  PhiloxState philox_args_;
 };
 
 template <typename scalar_t, typename accscalar_t, typename mask_t>
@@ -393,16 +392,10 @@ std::tuple<Tensor, Tensor> dropout(
 
   Tensor ret = at::empty_like(self);
 
-  auto group_size = std::min(
-      syclGpuHWThreadsPerEU() * syclMaxSubGroupSize(), syclMaxWorkGroupSize());
-  auto num_groups = (nelem + group_size - 1) / group_size;
-  auto hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
-  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
-
-  // number of times random will be generated per thread, to offset philox
-  // counter in thc random state
-  int64_t counter_offset =
-      ((nelem - 1) / (group_size * num_groups * UNROLL) + 1) * UNROLL;
+  uint64_t counter_offset;
+  uint32_t num_groups, group_size;
+  std::tie(counter_offset, num_groups, group_size) =
+      calc_execution_policy(nelem);
 
   std::pair<uint64_t, uint64_t> rng_engine_inputs_;
   {
