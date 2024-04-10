@@ -9,6 +9,7 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - _adaptive_avg_pool2d_backward
   - sub.Tensor
   - sub_.Tensor
   - sub.out
