@@ -203,7 +203,7 @@ inline std::tuple<unsigned int, unsigned int, unsigned int> get_cat_range_contig
     ptrdiff_t nTensors) {
   constexpr unsigned int wi_per_group = 256;
   constexpr unsigned int min_aligned_vec_per_wi = 1;
-  constexpr unsigned int max_tb_per_ss = 32;
+  constexpr unsigned int max_group_per_ss = 32;
 
   unsigned int elements_per_wi =
       ALIGNED_VEC_LOAD_BYTES / sizeof(T) * min_aligned_vec_per_wi;
@@ -215,7 +215,7 @@ inline std::tuple<unsigned int, unsigned int, unsigned int> get_cat_range_contig
 
   const unsigned int num_ss = ::syclMaxDSSNum();
 
-  ngroups = std::min(num_ss * max_tb_per_ss, ngroups);
+  ngroups = std::min(num_ss * max_group_per_ss, ngroups);
 
   return std::make_tuple(ngroups, (long long)nTensors, wi_per_group);
 }
@@ -330,6 +330,9 @@ void parallel_cat(
       group_range_x = std::get<0>(launchParams);
       group_range_y = std::get<1>(launchParams);
     }
+    auto global_range_ =
+        sycl::range<2>(group_range_x * local_range, group_range_y);
+    auto local_range_ = sycl::range<2>(local_range, 1);
 
     if (memory_format != c10::MemoryFormat::Contiguous) {
       switch (dimension) {
@@ -343,35 +346,33 @@ void parallel_cat(
       }
     }
     // Template Declarations for dim = 1, 2, 3, 4
-#define HANDLE_CASE(DIMS)                                                  \
-  if (isContig) {                                                          \
-    auto f = CatArrayBatchedCopyContigFunctor<                             \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size>(                                                      \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        dimension,                                                         \
-        outputParam.tensorStride[dimension]);                              \
-    sycl_kernel_submit(                                                    \
-        group_range_x* local_range, group_range_y, local_range, queue, f); \
-  } else {                                                                 \
-    auto f = CatArrayBatchedCopyFunctor<                                   \
-        scalar_t,                                                          \
-        unsigned int,                                                      \
-        DIMS,                                                              \
-        batch_size,                                                        \
-        stride_size>(                                                      \
-        data,                                                              \
-        catMetaData,                                                       \
-        outputParam,                                                       \
-        dimension,                                                         \
-        outputParam.tensorStride[dimension]);                              \
-    sycl_kernel_submit(                                                    \
-        group_range_x* local_range, group_range_y, local_range, queue, f); \
+#define HANDLE_CASE(DIMS)                                      \
+  if (isContig) {                                              \
+    auto f = CatArrayBatchedCopyContigFunctor<                 \
+        scalar_t,                                              \
+        unsigned int,                                          \
+        DIMS,                                                  \
+        batch_size,                                            \
+        stride_size>(                                          \
+        data,                                                  \
+        catMetaData,                                           \
+        outputParam,                                           \
+        dimension,                                             \
+        outputParam.tensorStride[dimension]);                  \
+    sycl_kernel_submit(global_range_, local_range_, queue, f); \
+  } else {                                                     \
+    auto f = CatArrayBatchedCopyFunctor<                       \
+        scalar_t,                                              \
+        unsigned int,                                          \
+        DIMS,                                                  \
+        batch_size,                                            \
+        stride_size>(                                          \
+        data,                                                  \
+        catMetaData,                                           \
+        outputParam,                                           \
+        dimension,                                             \
+        outputParam.tensorStride[dimension]);                  \
+    sycl_kernel_submit(global_range_, local_range_, queue, f); \
   }
 
     switch (nDims) {
