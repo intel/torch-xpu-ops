@@ -8,9 +8,7 @@
 #include <aten/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 template <unsigned N>
 struct alignas(N) OpaqueType {
@@ -187,13 +185,6 @@ struct CatArrayBatchedCopyContigFunctor {
 inline std::tuple<unsigned int, unsigned int> get_cat_range(
     ptrdiff_t nTensors) {
   const int sum_ss = ::syclMaxDSSNum();
-
-  // X dim of grid for cat array cooperates on a single tensor in the cat.
-  // Given half of the GPU, full utilization will always occur.
-
-  // This will have cating two tensors fill the entire grid, but prevent
-  // many threads from needlessly load meta data if their sizes is small.
-
   return std::make_tuple(2LL * sum_ss, (long long)nTensors);
 }
 
@@ -254,7 +245,7 @@ void parallel_cat(
     outputParam.tensorSize[nDims - 1] = out.size(1);
     outputParam.tensorStride[nDims - 1] = out.stride(1);
   } else {
-    TORCH_CHECK(false, "unsupported memory format");
+    TORCH_CHECK(false, "unsupported memory format:", memory_format);
   }
 
   auto queue = at::xpu::getCurrentSYCLQueue();
@@ -497,6 +488,4 @@ void cat_out_kernel(
   }
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
