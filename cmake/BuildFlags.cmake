@@ -9,6 +9,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
   list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
   list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
+  list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     list(APPEND SYCL_HOST_FLAGS -g)
