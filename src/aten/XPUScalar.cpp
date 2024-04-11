@@ -12,7 +12,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
 
-namespace at::native::xpu {
+namespace at {
 
 Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
   Scalar r;
@@ -49,4 +49,4 @@ Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
   return r;
 }
 
-} // namespace at::native::xpu
+} // namespace at
