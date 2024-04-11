@@ -83,6 +83,12 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - masked_fill_.Tensor
+  - masked_fill_.Scalar
+  - index_add.out
+  - gcd
+  - gcd.out
+  - gcd_
   - relu
   - relu_
   - relu.out
@@ -136,6 +142,7 @@ supported:
   - empty_strided
   - clone
   - fill_.Scalar
+  - fill_.Tensor
   - zero_
   - normal_
   - uniform_
@@ -152,3 +159,12 @@ supported:
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  - bitwise_and.Tensor_out
+  - bitwise_or.Tensor_out
+  - bitwise_xor.Tensor_out
+  - bitwise_not.out
+  - where.self_out
+  - where.self
+  - clamp.out
+  - clamp_min.out
+  - clamp_max.out

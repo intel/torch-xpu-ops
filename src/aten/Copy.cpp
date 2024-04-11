@@ -239,7 +239,9 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
   auto q = getCurrentSYCLQueue();
   if (non_blocking) {
-    q.memcpy(dst, src, nbytes);
+    // WA: Move back to asynchronization copy when HostCachingAlloctor supported
+    auto e = q.memcpy(dst, src, nbytes);
+    e.wait();
     // TODO: If host tensor is pinned, we need record event in host caching
     // allocator.
   } else {

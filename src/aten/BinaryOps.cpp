@@ -4,9 +4,11 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <aten/sycl/BinaryBitwiseOpsKernels.h>
 #include <aten/sycl/BinaryKernels.h>
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
+#include <aten/sycl/GcdLcmKernels.h>
 
 namespace at {
 
@@ -15,7 +17,7 @@ Tensor XPUNativeFunctions::add(
     const Tensor& other,
     const Scalar& alpha) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
   return iter.output();
@@ -25,7 +27,7 @@ Tensor& XPUNativeFunctions::add_(
     Tensor& self,
     const Tensor& other,
     const Scalar& alpha) {
-  auto iter = TensorIterator::binary_op(self, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
   return self;
@@ -36,7 +38,7 @@ Tensor& XPUNativeFunctions::add_out(
     const Tensor& other,
     const Scalar& alpha,
     Tensor& out) {
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::add_kernel(iter, alpha);
   return out;
@@ -73,7 +75,7 @@ Tensor XPUNativeFunctions::sub(
     const Scalar& alpha) {
   Tensor out;
   native::sub_check(self, other);
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::sub_kernel(iter, alpha);
   return iter.output();
@@ -84,7 +86,7 @@ Tensor& XPUNativeFunctions::sub_(
     const Tensor& other,
     const Scalar& alpha) {
   native::sub_check(self, other);
-  auto iter = TensorIterator::binary_op(self, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::sub_kernel(iter, alpha);
   return self;
@@ -96,7 +98,7 @@ Tensor& XPUNativeFunctions::sub_out(
     const Scalar& alpha,
     Tensor& out) {
   native::sub_check(self, other);
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::alpha_check(iter.dtype(), alpha);
   native::xpu::sub_kernel(iter, alpha);
   return out;
@@ -129,13 +131,13 @@ Tensor& XPUNativeFunctions::sub_out(
 
 Tensor XPUNativeFunctions::mul(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::mul_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::mul_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::binary_op(self, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::xpu::mul_kernel(iter);
   return self;
 }
@@ -144,7 +146,7 @@ Tensor& XPUNativeFunctions::mul_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::mul_kernel(iter);
   return out;
 }
@@ -169,13 +171,15 @@ Tensor& XPUNativeFunctions::mul_out(
 
 Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::binary_float_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::div_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::div_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::binary_float_op(self, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(self, self, other);
   native::xpu::div_kernel(iter);
   return self;
 }
@@ -184,7 +188,8 @@ Tensor& XPUNativeFunctions::div_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::binary_float_op(out, self, other);
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::div_kernel(iter);
   return out;
 }
@@ -241,13 +246,13 @@ Tensor& XPUNativeFunctions::rsub_out(
 
 Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::remainder_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::remainder_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::binary_op(self, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::xpu::remainder_kernel(iter);
   return self;
 }
@@ -256,7 +261,7 @@ Tensor& XPUNativeFunctions::remainder_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::remainder_kernel(iter);
   return out;
 }
@@ -294,13 +299,13 @@ Tensor& XPUNativeFunctions::remainder_out(
 
 Tensor XPUNativeFunctions::fmod(const Tensor& self, const Tensor& other) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::fmod_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::fmod_(Tensor& self, const Tensor& other) {
-  auto iter = TensorIterator::binary_op(self, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
   native::xpu::fmod_kernel(iter);
   return self;
 }
@@ -309,7 +314,7 @@ Tensor& XPUNativeFunctions::fmod_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  auto iter = TensorIterator::binary_op(out, self, other);
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::fmod_kernel(iter);
   return out;
 }
@@ -336,7 +341,7 @@ Tensor XPUNativeFunctions::tanh_backward(
     const Tensor& grad_output,
     const Tensor& output) {
   Tensor out;
-  auto iter = TensorIterator::binary_op(out, grad_output, output);
+  auto iter = TensorIterator::borrowing_binary_op(out, grad_output, output);
   native::xpu::tanh_backward_kernel(iter);
   return iter.output();
 }
@@ -345,9 +350,59 @@ Tensor& XPUNativeFunctions::tanh_backward_out(
     const Tensor& grad_output,
     const Tensor& output,
     Tensor& grad_input) {
-  auto iter = TensorIterator::binary_op(grad_input, grad_output, output);
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::tanh_backward_kernel(iter);
   return grad_input;
+}
+
+Tensor& XPUNativeFunctions::bitwise_and_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::bitwise_and_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::bitwise_or_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::bitwise_or_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::bitwise_xor_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::bitwise_xor_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::gcd(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::gcd_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::gcd_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::gcd_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::gcd_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::gcd_kernel(iter);
+  return out;
 }
 
 } // namespace at
