@@ -86,6 +86,8 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - index_select
+  - index_select.out
   - isnan
   - isnan.out
   - masked_fill_.Tensor
