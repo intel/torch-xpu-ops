@@ -3,6 +3,7 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Array.h>
+#include <ATen/detail/FunctionTraits.h>
 #include <aten/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
@@ -694,17 +695,8 @@ void fused_norm_kernel(
       vec_size,
       Norm,
       one_moment>(norm, cfg, (size_t)cfg.sub_group_num);
-  sycl_kernel_submit<FusedNormKernelFunctor<
-      scalar_t,
-      mean_t,
-      weight_t,
-      index_t,
-      accscalar_t,
-      vec_t,
-      weight_vec_t,
-      vec_size,
-      Norm,
-      one_moment>>(global_range, local_range, getCurrentSYCLQueue(), creator);
+  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+      global_range, local_range, getCurrentSYCLQueue(), creator);
 }
 
 template <
@@ -910,17 +902,8 @@ void RowwiseMomentsSYCLKernel(
       vec_size,
       Norm,
       one_moment>(norm, cfg, (size_t)cfg.sub_group_num);
-  sycl_kernel_submit<RowwiseMomentsSYCLKernelFunctor<
-      scalar_t,
-      mean_t,
-      weight_t,
-      index_t,
-      accscalar_t,
-      vec_t,
-      weight_vec_t,
-      vec_size,
-      Norm,
-      one_moment>>(global_range, local_range, getCurrentSYCLQueue(), creator);
+  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+      global_range, local_range, getCurrentSYCLQueue(), creator);
 }
 
 template <
