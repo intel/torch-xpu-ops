@@ -8,7 +8,7 @@
 #include <aten/sycl/DistributionTemplates.h>
 #include <aten/sycl/Loops.h>
 #include <aten/sycl/MemoryAccessUtils.h>
-#include <aten/sycl/TensorInfo.h>
+#include <comm/TensorInfo.h>
 
 namespace at {
 namespace native {
@@ -101,7 +101,7 @@ struct FusedDropoutVecFunctor {
     }
   }
   FusedDropoutVecFunctor(
-      TensorInfo<const scalar_t, IndexType> a,
+      TensorInfo<scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType totalElements,
@@ -115,7 +115,7 @@ struct FusedDropoutVecFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<const scalar_t, IndexType> a_;
+  TensorInfo<scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType totalElements_;
@@ -159,7 +159,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < totalElements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a_);
+              IndexToOffset<scalar_t, IndexType>::get(li, a_);
           src[ii] = a_.data[aOffset];
         }
       }
@@ -168,7 +168,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < totalElements_) {
           // Convert `linearIndex` into an offset of `b`
           const IndexType bOffset =
-              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b_);
+              IndexToOffset<scalar_t, IndexType>::get(li, b_);
           b_.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
           c_.data[bOffset] = (mask_t)(&rand.x)[ii];
         }
@@ -176,7 +176,7 @@ struct FusedDropoutUnrollFunctor {
     }
   }
   FusedDropoutUnrollFunctor(
-      TensorInfo<const scalar_t, IndexType> a,
+      TensorInfo<scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType totalElements,
@@ -190,7 +190,7 @@ struct FusedDropoutUnrollFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<const scalar_t, IndexType> a_;
+  TensorInfo<scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType totalElements_;
@@ -269,7 +269,7 @@ inline void launcher(
       [&] {
         using accscalar_t = acc_type<scalar_t, true>;
         accscalar_t pa = (accscalar_t)(p);
-        auto self_info = getTensorInfo<const scalar_t, index_type>(self);
+        auto self_info = getTensorInfo<scalar_t, index_type>(self);
         auto ret_info = getTensorInfo<scalar_t, index_type>(ret);
         auto mask_info = getTensorInfo<mask_t, index_type>(mask);
         self_info.collapseDims();
