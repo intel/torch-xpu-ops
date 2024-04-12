@@ -280,6 +280,10 @@ inline void launcher(
                                   // contiguous tensor
 
         int vec_size = get_vector_size<scalar_t>(self, ret, mask);
+        TORCH_CHECK(
+            vec_size == 4 || vec_size == 2 || vec_size == 1,
+            "The expanded vectorization size for dropout is (4, 2, 1), but got ",
+            vec_size);
 
         if (vec_size == 4) {
           auto caller = FusedDropoutVecFunctor<
