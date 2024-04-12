@@ -10,6 +10,9 @@ supported:
   - add_.Scalar
   - add.Scalar_out
   - _adaptive_avg_pool2d_backward
+  - cumsum
+  - cumsum.out
+  - cumsum_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -84,8 +87,11 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - isnan
+  - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - index_add.out
   - gcd
   - gcd.out
   - gcd_
