@@ -6,10 +6,10 @@
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
-#include <aten/RegisterUtils.h>
 #include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceMinValuesKernel.h>
 #include <aten/sycl/TensorCompare.h>
+#include <comm/RegisterUtils.h>
 
 namespace at {
 
