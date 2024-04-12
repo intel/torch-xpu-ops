@@ -1,14 +1,16 @@
 #include <ATen/ATen.h>
-#include <oneDNN/oneDNN.h>
+#include <ATen/AccumulateType.h>
+#include <ATen/Config.h>
 #include <ATen/NativeFunctions.h>
+#include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/Pool.h>
+#include <aten/sycl/AdaptiveAveragePooling2dKernel.h>
+#include <comm/MemoryFormat.h>
 #include <vector>
 
 namespace at::native::xpu {
 
-using namespace dnnl;
-using namespace xpu::dpcpp;
-using namespace xpu::oneDNN;
+using namespace at::xpu;
 
 template <
     typename scalar_t,
@@ -26,7 +28,7 @@ template <typename scalar_t, typename accscalar_t, bool is_channels_last>
 struct AdaptiveAvgPool2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t gi = item.get_global_linear_id();
-    int64_t li = item.get_local_id(0);
+    // int64_t li = item.get_local_id(0);
 
     for (int64_t i = gi; i < numel; i += global_range) {
       int64_t _iw, _ih, _ic, _ib;
@@ -123,26 +125,21 @@ class adaptive_avg_pool2d_backward_kernel<
     int ow = gyacc.size(3);
 
     int64_t numel = ib * ic * ih * iw;
-    int total_item = std::min(numel, dpcppMaxWorkItemsPerTile());
-    int local_range = dpcppMaxWorkItemsPerEU();
+    int total_item = std::min(numel, syclMaxWorkItemsPerTile());
+    int local_range = syclMaxWorkItemsPerEU();
     int global_range = total_item < local_range
         ? local_range
         : (total_item / local_range) * local_range;
 
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      AdaptiveAvgPool2dBackwardKernelFunctor<
-          scalar_t,
-          accscalar_t,
-          is_channels_last>
-          kfn(ib, ic, ih, iw, oh, ow, numel, global_range, gyacc, gxacc);
+    auto queue = getCurrentSYCLQueue();
+    AdaptiveAvgPool2dBackwardKernelFunctor<
+        scalar_t,
+        accscalar_t,
+        is_channels_last>
+        kfn(ib, ic, ih, iw, oh, ow, numel, global_range, gyacc, gxacc);
 
-      cgh.parallel_for<decltype(kfn)>(
-          sycl::nd_range<1>(
-              sycl::range<1>(global_range), sycl::range<1>(local_range)),
-          kfn);
-    };
-
-    DPCPP_Q_SUBMIT(dpcppGetCurrentQueue(), cgf);
+    sycl_kernel_submit(
+        sycl::range<1>(global_range), sycl::range<1>(local_range), queue, kfn);
   }
 };
 
@@ -173,7 +170,7 @@ struct AdaptiveAvgPool2dBackwardKernel2Functor {
                         native::start_index(_ow, ow, iw));
     }
 
-    item.barrier(dpcpp_local_fence);
+    item.barrier(sycl_local_fence);
 
     for (int64_t i = gi; i < numel; i += global_range) {
       int64_t _iw, _ih, _ic, _ib;
@@ -230,12 +227,12 @@ struct AdaptiveAvgPool2dBackwardKernel2Functor {
       PackedTensorAccessor64<scalar_t, 4> gxacc_,
       int64_t ohw01_shared_size_,
       int64_t ikhw_shared_size_,
-      dpcpp_local_acc_t<int> _oh0_cached_,
-      dpcpp_local_acc_t<int> _oh1_cached_,
-      dpcpp_local_acc_t<int> _ow0_cached_,
-      dpcpp_local_acc_t<int> _ow1_cached_,
-      dpcpp_local_acc_t<accscalar_t> _ikh_cached_,
-      dpcpp_local_acc_t<accscalar_t> _ikw_cached_)
+      sycl_local_acc_t<int> _oh0_cached_,
+      sycl_local_acc_t<int> _oh1_cached_,
+      sycl_local_acc_t<int> _ow0_cached_,
+      sycl_local_acc_t<int> _ow1_cached_,
+      sycl_local_acc_t<accscalar_t> _ikh_cached_,
+      sycl_local_acc_t<accscalar_t> _ikw_cached_)
       : ib(ib_),
         ic(ic_),
         ih(ih_),
@@ -270,12 +267,12 @@ struct AdaptiveAvgPool2dBackwardKernel2Functor {
   PackedTensorAccessor64<scalar_t, 4> gxacc;
   int64_t ohw01_shared_size;
   int64_t ikhw_shared_size;
-  dpcpp_local_acc_t<int> _oh0_cached;
-  dpcpp_local_acc_t<int> _oh1_cached;
-  dpcpp_local_acc_t<int> _ow0_cached;
-  dpcpp_local_acc_t<int> _ow1_cached;
-  dpcpp_local_acc_t<accscalar_t> _ikh_cached;
-  dpcpp_local_acc_t<accscalar_t> _ikw_cached;
+  sycl_local_acc_t<int> _oh0_cached;
+  sycl_local_acc_t<int> _oh1_cached;
+  sycl_local_acc_t<int> _ow0_cached;
+  sycl_local_acc_t<int> _ow1_cached;
+  sycl_local_acc_t<accscalar_t> _ikh_cached;
+  sycl_local_acc_t<accscalar_t> _ikw_cached;
 };
 
 template <typename scalar_t, typename accscalar_t, bool is_channels_last>
@@ -285,72 +282,84 @@ class adaptive_avg_pool2d_backward_kernel<
     is_channels_last,
     true> {
  public:
-  void operator()(
-      PackedTensorAccessor64<scalar_t, 4> gyacc,
-      PackedTensorAccessor64<scalar_t, 4> gxacc) {
-    int ib = gxacc.size(0);
-    int ic = gxacc.size(1);
-    int ih = gxacc.size(2);
-    int iw = gxacc.size(3);
-    int oh = gyacc.size(2);
-    int ow = gyacc.size(3);
+  adaptive_avg_pool2d_backward_kernel(
+      PackedTensorAccessor64<scalar_t, 4> gyacc_,
+      PackedTensorAccessor64<scalar_t, 4> gxacc_)
+      : gyacc(gyacc_), gxacc(gxacc_) {
+    ib = gxacc.size(0);
+    ic = gxacc.size(1);
+    ih = gxacc.size(2);
+    iw = gxacc.size(3);
+    oh = gyacc.size(2);
+    ow = gyacc.size(3);
 
-    int64_t numel = ib * ic * ih * iw;
-    int total_item = std::min(numel, dpcppMaxWorkItemsPerTile());
+    numel = ib * ic * ih * iw;
+    int total_item = std::min(numel, syclMaxWorkItemsPerTile());
 
-    // Not use dpcppMaxWorkItemsPerEU to improve shared local memory usage.
+    // Not use syclMaxWorkItemsPerEU to improve shared local memory usage.
     // Size of local memory is fixed (ih/iw/oh/ow) in the case.
     // Using max work group size to make more work items share same local
     // memory.
-    int local_range = dpcppMaxWorkGroupSize();
-    int global_range = total_item < local_range
+    local_range = syclMaxWorkGroupSize();
+    global_range = total_item < local_range
         ? local_range
         : (total_item / local_range) * local_range;
 
     // trade-off occupancy and slm leverage
-    int64_t ohw01_shared_size = ((iw + ih) * 2) * sizeof(int);
-    int64_t ikhw_shared_size = (oh + ow) * sizeof(accscalar_t);
-
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      dpcpp_local_acc_t<int> _oh0_cached(ih * sizeof(int), cgh);
-      dpcpp_local_acc_t<int> _oh1_cached(ih * sizeof(int), cgh);
-      dpcpp_local_acc_t<int> _ow0_cached(iw * sizeof(int), cgh);
-      dpcpp_local_acc_t<int> _ow1_cached(iw * sizeof(int), cgh);
-      dpcpp_local_acc_t<accscalar_t> _ikh_cached(oh * sizeof(accscalar_t), cgh);
-      dpcpp_local_acc_t<accscalar_t> _ikw_cached(ow * sizeof(accscalar_t), cgh);
-
-      AdaptiveAvgPool2dBackwardKernel2Functor<
-          scalar_t,
-          accscalar_t,
-          is_channels_last>
-          kfn(ib,
-              ic,
-              ih,
-              iw,
-              oh,
-              ow,
-              numel,
-              local_range,
-              global_range,
-              gyacc,
-              gxacc,
-              ohw01_shared_size,
-              ikhw_shared_size,
-              _oh0_cached,
-              _oh1_cached,
-              _ow0_cached,
-              _ow1_cached,
-              _ikh_cached,
-              _ikw_cached);
-
-      cgh.parallel_for<decltype(kfn)>(
-          sycl::nd_range<1>(
-              sycl::range<1>(global_range), sycl::range<1>(local_range)),
-          kfn);
-    };
-
-    DPCPP_Q_SUBMIT(dpcppGetCurrentQueue(), cgf);
+    ohw01_shared_size = ((iw + ih) * 2) * sizeof(int);
+    ikhw_shared_size = (oh + ow) * sizeof(accscalar_t);
   }
+
+  AdaptiveAvgPool2dBackwardKernel2Functor<
+      scalar_t,
+      accscalar_t,
+      is_channels_last>
+  operator()(sycl::handler& cgh) {
+    sycl_local_acc_t<int> _oh0_cached(ih * sizeof(int), cgh);
+    sycl_local_acc_t<int> _oh1_cached(ih * sizeof(int), cgh);
+    sycl_local_acc_t<int> _ow0_cached(iw * sizeof(int), cgh);
+    sycl_local_acc_t<int> _ow1_cached(iw * sizeof(int), cgh);
+    sycl_local_acc_t<accscalar_t> _ikh_cached(oh * sizeof(accscalar_t), cgh);
+    sycl_local_acc_t<accscalar_t> _ikw_cached(ow * sizeof(accscalar_t), cgh);
+
+    AdaptiveAvgPool2dBackwardKernel2Functor<
+        scalar_t,
+        accscalar_t,
+        is_channels_last>
+        kfn(ib,
+            ic,
+            ih,
+            iw,
+            oh,
+            ow,
+            numel,
+            local_range,
+            global_range,
+            gyacc,
+            gxacc,
+            ohw01_shared_size,
+            ikhw_shared_size,
+            _oh0_cached,
+            _oh1_cached,
+            _ow0_cached,
+            _ow1_cached,
+            _ikh_cached,
+            _ikw_cached);
+    return kfn;
+  }
+  int ib;
+  int ic;
+  int ih;
+  int iw;
+  int oh;
+  int ow;
+  int64_t numel;
+  int local_range;
+  int global_range;
+  PackedTensorAccessor64<scalar_t, 4> gyacc;
+  PackedTensorAccessor64<scalar_t, 4> gxacc;
+  int64_t ohw01_shared_size;
+  int64_t ikhw_shared_size;
 };
 
 void adaptive_avg_pool2d_backward_out_template(
@@ -365,7 +374,7 @@ void adaptive_avg_pool2d_backward_out_template(
   auto outputWidth = gradOutput.size(-1);
 
   /* sizes */
-  const int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;
+  // const int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;
   const auto nInputPlane = input.size(-3);
   const auto inputHeight = input.size(-2);
   const auto inputWidth = input.size(-1);
@@ -386,93 +395,84 @@ void adaptive_avg_pool2d_backward_out_template(
   int padW = (dW * (outputWidth - 1) + kW - inputWidth) / 2;
   std::vector<int64_t> padding_vec = {padH, padW};
 
-  // per oneDNN definition, no dilation means dilation ratio is 0
-  std::vector<int64_t> dilation_vec = {0, 0};
-  if (xpu::oneDNN::is_valid_pooling(
-          {inputHeight, inputWidth},
-          {outputHeight, inputHeight},
-          {kH, kW},
-          {dH, dW},
-          {padH, padW})) {
-    xpu::oneDNN::pooling_backward<
-        xpu::oneDNN::alg::pooling_avg_exclude_padding>(
-        gradInput,
-        gradOutput,
-        input,
-        nbatch,
-        nInputPlane,
-        0,
-        inputHeight,
-        inputWidth,
-        0,
-        outputHeight,
-        outputWidth,
-        stride_vec,
-        kernel_size_vec,
-        dilation_vec,
-        padding_vec,
-        padding_vec);
-  } else {
-    auto gradOutput_ = to_plain_if_needed(gradOutput);
+  // no block format
+  // auto gradOutput_ = to_plain_if_needed(gradOutput);
 
-    bool is_3d = gradOutput_.ndimension() == 3;
-    if (is_3d) {
-      gradOutput_.resize_({1, nInputPlane, outputHeight, outputWidth});
-      gradInput.resize_({1, nInputPlane, inputHeight, inputWidth});
-    }
+  bool is_3d = gradOutput.ndimension() == 3;
+  if (is_3d) {
+    gradOutput.resize_({1, nInputPlane, outputHeight, outputWidth});
+    gradInput.resize_({1, nInputPlane, inputHeight, inputWidth});
+  }
 
-    IPEX_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        gradOutput_.scalar_type(),
-        "aten::adaptive_avg_pool2d_backward",
-        [&]() {
-          using accscalar_t = acc_type<scalar_t>;
-          auto gyacc = gradOutput_.packed_accessor64<scalar_t, 4>();
-          auto gxacc = gradInput.packed_accessor64<scalar_t, 4>();
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      gradOutput.scalar_type(),
+      "aten::adaptive_avg_pool2d_backward",
+      [&]() {
+        using accscalar_t = acc_type<scalar_t, false>;
+        auto gyacc = gradOutput.packed_accessor64<scalar_t, 4>();
+        auto gxacc = gradInput.packed_accessor64<scalar_t, 4>();
 
-          int64_t ohw01_shared_size =
-              ((inputHeight + inputWidth) * 2) * sizeof(int);
-          int64_t ikhw_shared_size =
-              (outputHeight + outputWidth) * sizeof(accscalar_t);
-          bool using_shared =
-              dpcppLocalMemSize() >= ohw01_shared_size + ikhw_shared_size;
+        int64_t ohw01_shared_size =
+            ((inputHeight + inputWidth) * 2) * sizeof(int);
+        int64_t ikhw_shared_size =
+            (outputHeight + outputWidth) * sizeof(accscalar_t);
+        bool using_shared =
+            syclLocalMemSize() >= ohw01_shared_size + ikhw_shared_size;
 
-          if (is_smf_channels_last(gradOutput)) {
-            if (using_shared) {
-              adaptive_avg_pool2d_backward_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  true,
-                  true>()(gyacc, gxacc);
-            } else {
-              adaptive_avg_pool2d_backward_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  true,
-                  false>()(gyacc, gxacc);
-            }
+        if (is_smf_channels_last(gradOutput)) {
+          if (using_shared) {
+            auto& queue = getCurrentSYCLQueue();
+            adaptive_avg_pool2d_backward_kernel<
+                scalar_t,
+                accscalar_t,
+                true,
+                true>
+                creator(gyacc, gxacc);
+            sycl_kernel_submit<
+                AdaptiveAvgPool2dBackwardKernel2Functor<
+                    scalar_t,
+                    accscalar_t,
+                    true>,
+                decltype(creator)>(
+                creator.global_range, creator.local_range, queue, creator);
           } else {
-            if (using_shared) {
-              adaptive_avg_pool2d_backward_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  false,
-                  true>()(gyacc, gxacc);
-            } else {
-              adaptive_avg_pool2d_backward_kernel<
-                  scalar_t,
-                  accscalar_t,
-                  false,
-                  false>()(gyacc, gxacc);
-            }
+            adaptive_avg_pool2d_backward_kernel<
+                scalar_t,
+                accscalar_t,
+                true,
+                false>()(gyacc, gxacc);
           }
-        });
+        } else {
+          if (using_shared) {
+            auto& queue = getCurrentSYCLQueue();
+            adaptive_avg_pool2d_backward_kernel<
+                scalar_t,
+                accscalar_t,
+                false,
+                true>
+                creator(gyacc, gxacc);
+            sycl_kernel_submit<
+                AdaptiveAvgPool2dBackwardKernel2Functor<
+                    scalar_t,
+                    accscalar_t,
+                    false>,
+                decltype(creator)>(
+                creator.global_range, creator.local_range, queue, creator);
+          } else {
+            adaptive_avg_pool2d_backward_kernel<
+                scalar_t,
+                accscalar_t,
+                false,
+                false>()(gyacc, gxacc);
+          }
+        }
+      });
 
-    if (is_3d) {
-      gradOutput_.resize_({nInputPlane, outputHeight, outputWidth});
-      gradInput.resize_({nInputPlane, inputHeight, inputWidth});
-    }
+  if (is_3d) {
+    gradOutput.resize_({nInputPlane, outputHeight, outputWidth});
+    gradInput.resize_({nInputPlane, inputHeight, inputWidth});
   }
 }
 
