@@ -8,14 +8,11 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
-#include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/BatchKernel.h>
-#include <aten/sycl/IndexingKernel.h>
+#include <aten/sycl/Indexing.h>
 #include <aten/sycl/Loops.h>
 
-#include <comm/TensorInfo.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
@@ -69,12 +66,11 @@ static inline void _index_select_kernel(
   }
 }
 
-template <typename scalar_t>
 void index_select_kernel(
-    const Tensor& dst,
     const Tensor& src,
-    int dim,
-    const Tensor& indices) {
+    int64_t dim,
+    const Tensor& indices,
+    const Tensor& dst) {
   at::assert_no_internal_overlap(dst);
   at::assert_no_overlap(dst, src);
   at::assert_no_overlap(dst, indices);
@@ -85,17 +81,17 @@ void index_select_kernel(
   int idxDims = indices.dim();
 
   TORCH_CHECK(
-      srcDims <= MAX_DPCPPTORCH_DIMS,
+      srcDims <= XPU_MAX_TENSORINFO_DIMS,
       "src tensor dim should be < ",
-      MAX_DPCPPTORCH_DIMS);
+      XPU_MAX_TENSORINFO_DIMS);
   TORCH_CHECK(
-      dstDims <= MAX_DPCPPTORCH_DIMS,
+      dstDims <= XPU_MAX_TENSORINFO_DIMS,
       "dst tensor dim should be < ",
-      MAX_DPCPPTORCH_DIMS);
+      XPU_MAX_TENSORINFO_DIMS);
   TORCH_CHECK(
-      idxDims <= MAX_DPCPPTORCH_DIMS,
+      idxDims <= XPU_MAX_TENSORINFO_DIMS,
       "index tensor dim should be < ",
-      MAX_DPCPPTORCH_DIMS);
+      XPU_MAX_TENSORINFO_DIMS);
   TORCH_CHECK(
       idxDims <= 1, "Index is supposed to be an empty tensor or a vector");
   TORCH_CHECK(
@@ -112,9 +108,9 @@ void index_select_kernel(
       "index_select(): Source and result must have the same scalar type");
 
   AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "index_select", [&] {
-    TensorInfo<index_t, int64_t> indices_info =
+    TensorInfo<index_t, int64_t> index_info =
         tensorInfoIfScalar(getTensorInfo<index_t, int64_t>(indices));
-    indices_info.collapseDims();
+    index_info.collapseDims();
 
     auto new_size = src.sizes().vec();
 
@@ -129,28 +125,39 @@ void index_select_kernel(
       return;
     }
 
-    TensorInfo<scalar_t, int64_t> dst_info =
-        tensorInfoIfScalar(getTensorInfo<scalar_t, int64_t>(dst));
-    TensorInfo<scalar_t, int64_t> src_info =
-        tensorInfoIfScalar(getTensorInfo<scalar_t, int64_t>(src.contiguous()));
-    int new_indexing_dim = src_info.collapseDims(dim);
+    AT_DISPATCH_V2(
+        dst.scalar_type(),
+        "index_select_xpu",
+        AT_WRAP([&] {
+          TensorInfo<scalar_t, int64_t> dst_info =
+              tensorInfoIfScalar(getTensorInfo<scalar_t, int64_t>(dst));
+          TensorInfo<scalar_t, int64_t> src_info = tensorInfoIfScalar(
+              getTensorInfo<scalar_t, int64_t>(src.contiguous()));
+          int new_indexing_dim = src_info.collapseDims(dim);
 
-    // Improve efficiency of generated native instructions for contiguous.
-    // See comm/TensorInfo.h
-    if (dst.is_contiguous() && indices.is_contiguous())
-      _index_select_kernel<
-          decltype(src_info),
-          decltype(dst_info),
-          decltype(indices_info),
-          /* TrivialOffCal */ true>(
-          src_info, dst_info, indices_info, new_indexing_dim);
-    else
-      _index_select_kernel<
-          decltype(src_info),
-          decltype(dst_info),
-          decltype(indices_info),
-          /* TrivialOffCal */ false>(
-          src_info, dst_info, indices_info, new_indexing_dim);
+          // Improve efficiency of generated native instructions for contiguous.
+          // See comm/TensorInfo.h
+          if (dst.is_contiguous() && indices.is_contiguous())
+            _index_select_kernel<
+                decltype(src_info),
+                decltype(dst_info),
+                decltype(index_info),
+                /* TrivialOffCal */ true>(
+                src_info, dst_info, index_info, new_indexing_dim);
+          else
+            _index_select_kernel<
+                decltype(src_info),
+                decltype(dst_info),
+                decltype(index_info),
+                /* TrivialOffCal */ false>(
+                src_info, dst_info, index_info, new_indexing_dim);
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+        kComplexHalf,
+        kHalf,
+        kBool,
+        kBFloat16);
   });
   return;
 }
@@ -246,8 +253,20 @@ struct IndexAddScalarFunctor {
       int64_t src_off,
       int64_t idx,
       ValType alpha) const {
-    atomicAdd(
-        (sycl_global_ptr<ValType>)(dst + dst_off), src[src_off] * alpha);
+    atomicAdd((sycl_global_ptr<ValType>)(dst + dst_off), src[src_off] * alpha);
+  }
+};
+
+template <>
+struct IndexAddScalarFunctor<bool> {
+  void operator()(
+      bool* dst,
+      bool* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      bool alpha) const {
+    atomicAdd((sycl_global_ptr<bool>)(dst + dst_off), src[src_off] && alpha);
   }
 };
 
@@ -267,19 +286,19 @@ void index_add_kernel(
   const Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
 
   TORCH_CHECK(
-      result.dim() <= MAX_TENSORINFO_DIMS,
+      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
   TORCH_CHECK(
-      source.dim() <= MAX_TENSORINFO_DIMS,
+      source.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
   TORCH_CHECK(
-      index.dim() <= MAX_TENSORINFO_DIMS,
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
 
   if (globalContext().deterministicAlgorithms()) {
@@ -299,35 +318,45 @@ void index_add_kernel(
   // -the number of index we are choosing, which is the total size
   // of the tensor `index`.
   const ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
-  const ptrdiff_t sourceTotalSize = source.numel();
-  const int64_t selfAddDimSize = self_.size(dim);
 
   if (sliceSize == 0) {
     return;
   }
 
-  TensorInfo<int64_t, int64_t> indices_info =
-      getTensorInfo<int64_t, int64_t>(indices);
-  indices_info.collapseDims();
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Bool,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::ComplexHalf,
+      source_.scalar_type(),
+      "index_add_kernel",
+      [&] {
+        TensorInfo<int64_t, int64_t> index_info =
+            getTensorInfo<int64_t, int64_t>(index);
+        index_info.collapseDims();
 
-  TensorInfo<scalar_t, int64_t> src_info =
-      getTensorInfo<scalar_t, int64_t>(source_);
+        TensorInfo<scalar_t, int64_t> src_info =
+            getTensorInfo<scalar_t, int64_t>(source_);
 
-  TensorInfo<scalar_t, int64_t> dst_info =
-      getTensorInfo<scalar_t, int64_t>(self_);
-  int new_indexing_dim = dst_info.collapseDims(dim);
+        TensorInfo<scalar_t, int64_t> dst_info =
+            getTensorInfo<scalar_t, int64_t>(self_);
+        int new_indexing_dim = dst_info.collapseDims(dim);
 
-  auto cfg =
-      IndexKernelConfig<decltype(src_info), decltype(dst_info), decltype(indices_info), IndexAddScalarFunctor<scalar_t>>::
-          make_config(
-              src_info,
-              dst_info,
-              index_info,
-              alpha,
-              dim,
-              true,
-              IndexAddScalarFunctor<scalar_t>());
-  launch_index_kernel(cfg);
+        auto cfg = IndexKernelConfig<
+            decltype(src_info),
+            decltype(dst_info),
+            decltype(index_info),
+            IndexAddScalarFunctor<scalar_t>>::
+            make_config(
+                src_info,
+                dst_info,
+                index_info,
+                alpha.to<scalar_t>(),
+                new_indexing_dim,
+                true,
+                IndexAddScalarFunctor<scalar_t>());
+        launch_index_kernel(cfg);
+      });
 
 #undef SMALL_INDEX
 #undef LARGE_INDEX

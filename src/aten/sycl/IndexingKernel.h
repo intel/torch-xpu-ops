@@ -3,11 +3,11 @@
 
 namespace at::native::xpu {
 
-Tensor& index_select_kernel(
+void index_select_kernel(
     const Tensor& self,
     int64_t dim,
     const Tensor& index,
-    Tensor& out);
+    const Tensor& out);
 
 void masked_fill_kernel(TensorIterator& iter, const Scalar& value);
 
@@ -17,6 +17,6 @@ void index_add_kernel(
     const Tensor& index,
     const Tensor& source,
     const Scalar& alpha,
-    const Tensor& result);
+    const Tensor& out);
 
 } // namespace at::native::xpu

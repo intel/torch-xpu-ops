@@ -3,6 +3,9 @@
 #include <aten/sycl/BatchKernel.h>
 #include <comm/TensorInfo.h>
 
+using namespace at::xpu::detail;
+using namespace at::xpu;
+
 namespace at::native::xpu {
 
 // Pretend that the scalar tensor is in fact a one-element vector.
@@ -279,11 +282,8 @@ class IndexKernel {
     // 1. index operand
     // 2. operand indexing on
     // 3. operand has fixing size as index (optional)
-    int64_t indexing_si, indexing_pi, indexing_bi;
-    int64_t fixing_si, fixing_pi, fixing_bi;
     int64_t idx_logical_off, glb_batch_group, glb_batch_group_loc_off;
     int64_t glb_indexing_logical_off, glb_fixing_logical_off;
-    int64_t glb_indexing_off, glb_fixing_off;
     int64_t dst_off, src_off;
 
     init_global_batch_info(
@@ -355,4 +355,4 @@ static inline void launch_index_kernel(IdxConfig& cfg) {
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, idx_ker);
 }
 
-} // at::native::xpu
+} // namespace at::native::xpu
