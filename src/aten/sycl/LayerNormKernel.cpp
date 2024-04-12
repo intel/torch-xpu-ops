@@ -325,33 +325,9 @@ void LayerNormKernelImpl(
       X.scalar_type(),
       "LayerNormKernelImpl",
       [&]() {
-        if (gamma.scalar_type() == kFloat) {
-          mean = at::empty({M}, X.options().dtype(kFloat));
-          rstd = at::empty({M}, X.options().dtype(kFloat));
-          LayerNormKernelImplInternal<scalar_t, float, float>(
-              X,
-              gamma,
-              beta,
-              M,
-              N,
-              static_cast<acc_type<scalar_t, true>>(eps),
-              Y,
-              mean,
-              rstd);
-        } else {
-          mean = at::empty({M}, X.options());
-          rstd = at::empty({M}, X.options());
-          LayerNormKernelImplInternal<scalar_t, scalar_t, scalar_t>(
-              X,
-              gamma,
-              beta,
-              M,
-              N,
-              static_cast<acc_type<scalar_t, true>>(eps),
-              Y,
-              mean,
-              rstd);
-        }
+        using acc_t = acc_type<scalar_t, true>;
+        LayerNormKernelImplInternal<scalar_t, acc_t, acc_t>(
+            X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
       });
 }
 
@@ -586,8 +562,6 @@ void GammaBetaBackwardSimpleKernelImpl(
     Tensor& dgamma,
     Tensor& dbeta,
     NormConfig& config) {
-  bool can_use_32bit_index =
-      canUse32BitIndexMath(X) && canUse32BitIndexMath(dY);
 #define VecGammaBetaBackwardSimpleKernel(vec_size)                  \
   GammaBetaBackwardSimpleKernel<                                    \
       scalar_t,                                                     \
@@ -759,23 +733,39 @@ std::tuple<Tensor, Tensor, Tensor> native_layer_norm(
   auto M_N = _check_layer_norm_inputs(input, normalized_shape, weight, bias);
   auto M = M_N.first;
   auto N = M_N.second;
+  auto X = input.expect_contiguous();
+  auto gamma = weight.expect_contiguous();
+  auto beta = bias.expect_contiguous();
 
-  Tensor output = at::empty(input.sizes(), input.options());
-  Tensor mean, rstd;
-  if (input.numel() != 0) {
-    Tensor input_ = (input.dim() == 1) ? input.reshape({M, N}) : input;
-    Tensor output_ = (output.dim() == 1) ? output.reshape({M, N}) : output;
-    Tensor weight_ =
-        (weight.defined() && weight.dim() == 1) ? weight.reshape({N}) : weight;
-    Tensor bias_ =
-        (bias.defined() && bias.dim() == 1) ? bias.reshape({N}) : bias;
-    input_ = input_.contiguous();
-    weight_ = weight_.defined() ? weight_.contiguous() : weight_;
-    bias_ = bias_.defined() ? bias_.contiguous() : bias_;
-    LayerNormKernelImpl(
-        input_, weight_, bias_, M, N, epsilon, output, mean, rstd);
+  Tensor Y = at::native::empty_like(
+      *X,
+      c10::nullopt /* dtype */,
+      c10::nullopt /* layout */,
+      c10::nullopt /* device */,
+      c10::nullopt /* pin_memory */,
+      LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto acc_type = at::toAccumulateType(input.scalar_type(), /*is_cuda=*/true);
+  Tensor mean = at::empty({M}, X->options().dtype(acc_type));
+  Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
+  if (M > 0) {
+    LayerNormKernelImpl(*X, *gamma, *beta, M, N, epsilon, Y, mean, rstd);
   }
-  return std::make_tuple(output.reshape(input.sizes()), mean, rstd);
+
+  const auto input_shape = input.sizes();
+  const size_t axis = input.dim() - normalized_shape.size();
+
+  std::vector<int64_t> stat_shape;
+  for (const auto idx : c10::irange(axis)) {
+    stat_shape.push_back(input_shape[idx]);
+  }
+  for (const auto C10_UNUSED idx : c10::irange(axis, input.dim())) {
+    stat_shape.push_back(1);
+  }
+
+  mean = mean.view(stat_shape);
+  rstd = rstd.view(stat_shape);
+
+  return std::make_tuple(Y, mean, rstd);
 }
 
 std::tuple<Tensor, Tensor, Tensor> native_layer_norm_backward(
