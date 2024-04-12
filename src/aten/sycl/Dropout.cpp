@@ -24,16 +24,16 @@ template <
     typename accscalar_t,
     typename IndexType,
     int ADims,
-    int VEC,
+    int VecSize,
     typename mask_t>
 struct FusedDropoutVecFunctor {
   void operator()(sycl::nd_item<1> item) const {
     // make sure we don't break assumption that we can't have > 4 elements /
     // thread
-    static_assert(VEC <= 4, "Value of VEC must be in [2, 4]");
+    static_assert(VecSize <= 4, "Value of VecSize must be in [2, 4]");
 
-    using LoadT = memory::aligned_vector<scalar_t, VEC>;
-    using MaskLoadT = memory::aligned_vector<mask_t, VEC>;
+    using LoadT = memory::aligned_vector<scalar_t, VecSize>;
+    using MaskLoadT = memory::aligned_vector<mask_t, VecSize>;
 
     auto seeds = philox_unpack(philox_args_);
     IndexType idx = item.get_global_linear_id();
@@ -41,28 +41,29 @@ struct FusedDropoutVecFunctor {
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
 
     // Helps align the total number of times rand_uniform4 is called by each
-    // thread for the same totalElements in the vec=2 and vec=4 cases.
+    // thread for the same total_elements in the vec=2 and vec=4 cases.
     bool gridxvec_loop_state = 0;
     accscalar_t scale = 1.0 / p_;
 
     float4 rand;
 
     // Note: Vectorized loads means we'll stride each thread by an additional
-    // VEC factor, as we'll load VEC elements at a time
+    // VecSize factor, as we'll load VecSize elements at a time
     IndexType full_tile_work_size =
-        item.get_group_range(0) * item.get_local_range(0) * VEC;
-    for (IndexType linearIndex = idx * VEC; linearIndex < totalElements_;
+        item.get_group_range(0) * item.get_local_range(0) * VecSize;
+    for (IndexType linearIndex = idx * VecSize; linearIndex < total_elements_;
          linearIndex += full_tile_work_size) {
       // local storage
-      scalar_t src[VEC];
+      scalar_t src[VecSize];
       // We'll use this to actually cause vectorized loads later
       LoadT* value = reinterpret_cast<LoadT*>(&src);
 
       // rand_uniform_double was pure evil anyway, not doing what it promises,
       // and there's nothing for halfs, so generate float for everything
       //  Note: need a new set of random values per 4 elements -- we'll handle
-      //  VEC elements in this thread, so need ceil(VEC / 4) sets of rand.
-      if ((VEC == 4) || (gridxvec_loop_state == 0)) {
+      //  VecSize elements in this thread, so need ceil(VecSize / 4) sets of
+      //  rand.
+      if ((VecSize == 4) || (gridxvec_loop_state == 0)) {
         rand = rand_uniform4(&state);
       } else {
         // sets up the last two values we generated last iteration to be used
@@ -74,7 +75,7 @@ struct FusedDropoutVecFunctor {
 
       rand.x = rand.x < p_;
       rand.y = rand.y < p_;
-      if (VEC == 4) {
+      if (VecSize == 4) {
         rand.z = rand.z < p_;
         rand.w = rand.w < p_;
       }
@@ -84,12 +85,12 @@ struct FusedDropoutVecFunctor {
       // allow vectorization of NHWC (or other) ordering. Single vectorized load
       *value = *reinterpret_cast<const LoadT*>(&a_.data[linearIndex]);
 
-      scalar_t r[VEC];
-      mask_t mask[VEC];
+      scalar_t r[VecSize];
+      mask_t mask[VecSize];
 
 // Perform the actual computation
 #pragma unroll
-      for (int ii = 0; ii < VEC; ii++) {
+      for (int ii = 0; ii < VecSize; ii++) {
         r[ii] = src[ii] * (&rand.x)[ii] * scale;
         mask[ii] = (mask_t)(&rand.x)[ii];
       }
@@ -104,13 +105,13 @@ struct FusedDropoutVecFunctor {
       TensorInfo<scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
-      IndexType totalElements,
+      IndexType total_elements,
       accscalar_t p,
       PhiloxState philox_args)
       : a_(a),
         b_(b),
         c_(c),
-        totalElements_(totalElements),
+        total_elements_(total_elements),
         p_(p),
         philox_args_(philox_args) {}
 
@@ -118,7 +119,7 @@ struct FusedDropoutVecFunctor {
   TensorInfo<scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
-  IndexType totalElements_;
+  IndexType total_elements_;
   accscalar_t p_;
   PhiloxState philox_args_;
 };
@@ -142,7 +143,7 @@ struct FusedDropoutUnrollFunctor {
         item.get_group_range(0) * item.get_local_range(0);
     IndexType full_tile_work_size = group_work_size * UNROLL;
     IndexType rounded_size =
-        ((totalElements_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
+        ((total_elements_ - 1) / full_tile_work_size + 1) * full_tile_work_size;
 
     for (IndexType linearIndex = idx; linearIndex < rounded_size;
          linearIndex += full_tile_work_size) {
@@ -156,7 +157,7 @@ struct FusedDropoutUnrollFunctor {
       rand.w = rand.w < p_;
       for (int ii = 0; ii < UNROLL; ii++) {
         IndexType li = linearIndex + group_work_size * ii;
-        if (li < totalElements_) {
+        if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
               IndexToOffset<scalar_t, IndexType>::get(li, a_);
@@ -165,7 +166,7 @@ struct FusedDropoutUnrollFunctor {
       }
       for (int ii = 0; ii < UNROLL; ii++) {
         IndexType li = linearIndex + group_work_size * ii;
-        if (li < totalElements_) {
+        if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `b`
           const IndexType bOffset =
               IndexToOffset<scalar_t, IndexType>::get(li, b_);
@@ -179,13 +180,13 @@ struct FusedDropoutUnrollFunctor {
       TensorInfo<scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
-      IndexType totalElements,
+      IndexType total_elements,
       accscalar_t p,
       PhiloxState philox_args)
       : a_(a),
         b_(b),
         c_(c),
-        totalElements_(totalElements),
+        total_elements_(total_elements),
         p_(p),
         philox_args_(philox_args) {}
 
@@ -193,7 +194,7 @@ struct FusedDropoutUnrollFunctor {
   TensorInfo<scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
-  IndexType totalElements_;
+  IndexType total_elements_;
   accscalar_t p_;
   PhiloxState philox_args_;
 };
@@ -237,6 +238,7 @@ int get_vector_size(at::Tensor self, at::Tensor ret, at::Tensor mask) {
   } else {
     vec_size =
         memory::can_vectorize_up_to<scalar_t>((char*)self.const_data_ptr());
+    vec_size = std::min(vec_size, 4); // Only supports a maximum vec_size of 4
   }
 
   // check that we'd have no remainders - prefer a smaller vector size with no
@@ -279,98 +281,78 @@ inline void launcher(
 
         int vec_size = get_vector_size<scalar_t>(self, ret, mask);
 
-        if (vec_size > 1) {
-          switch (vec_size) {
-            case 4: {
-              auto caller = FusedDropoutVecFunctor<
-                  scalar_t,
-                  accscalar_t,
-                  index_type,
-                  1,
-                  4,
-                  mask_t>(
-                  self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-              sycl_kernel_submit(
-                  num_groups * group_size,
-                  group_size,
-                  getCurrentSYCLQueue(),
-                  caller);
-            } break;
-            case 2: {
-              auto caller = FusedDropoutVecFunctor<
-                  scalar_t,
-                  accscalar_t,
-                  index_type,
-                  1,
-                  2,
-                  mask_t>(
-                  self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-              sycl_kernel_submit(
-                  num_groups * group_size,
-                  group_size,
-                  getCurrentSYCLQueue(),
-                  caller);
-            } break;
-          }
+        if (vec_size == 4) {
+          auto caller = FusedDropoutVecFunctor<
+              scalar_t,
+              accscalar_t,
+              index_type,
+              1,
+              4,
+              mask_t>(
+              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              caller);
+        } else if (vec_size == 2) {
+          auto caller = FusedDropoutVecFunctor<
+              scalar_t,
+              accscalar_t,
+              index_type,
+              1,
+              2,
+              mask_t>(
+              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              caller);
+        } else if (self_info.dims == 1) {
+          auto caller = FusedDropoutUnrollFunctor<
+              scalar_t,
+              accscalar_t,
+              index_type,
+              1,
+              1,
+              mask_t>(
+              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              caller);
+        } else if (
+            !self.is_contiguous() && ret.is_contiguous() &&
+            mask.is_contiguous()) {
+          auto caller = FusedDropoutUnrollFunctor<
+              scalar_t,
+              accscalar_t,
+              index_type,
+              -1,
+              1,
+              mask_t>(
+              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              caller);
         } else {
-          switch (self_info.dims) {
-            case 1: {
-              auto caller = FusedDropoutUnrollFunctor<
-                  scalar_t,
-                  accscalar_t,
-                  index_type,
-                  1,
-                  1,
-                  mask_t>(
-                  self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
-              sycl_kernel_submit(
-                  num_groups * group_size,
-                  group_size,
-                  getCurrentSYCLQueue(),
-                  caller);
-            } break;
-            default:
-              if (!self.is_contiguous() && ret.is_contiguous() &&
-                  mask.is_contiguous()) {
-                auto caller = FusedDropoutUnrollFunctor<
-                    scalar_t,
-                    accscalar_t,
-                    index_type,
-                    -1,
-                    1,
-                    mask_t>(
-                    self_info,
-                    ret_info,
-                    mask_info,
-                    nelem,
-                    pa,
-                    rng_engine_inputs);
-                sycl_kernel_submit(
-                    num_groups * group_size,
-                    group_size,
-                    getCurrentSYCLQueue(),
-                    caller);
-              } else {
-                auto caller = FusedDropoutUnrollFunctor<
-                    scalar_t,
-                    accscalar_t,
-                    index_type,
-                    -1,
-                    -1,
-                    mask_t>(
-                    self_info,
-                    ret_info,
-                    mask_info,
-                    nelem,
-                    pa,
-                    rng_engine_inputs);
-                sycl_kernel_submit(
-                    num_groups * group_size,
-                    group_size,
-                    getCurrentSYCLQueue(),
-                    caller);
-              }
-          }
+          auto caller = FusedDropoutUnrollFunctor<
+              scalar_t,
+              accscalar_t,
+              index_type,
+              -1,
+              -1,
+              mask_t>(
+              self_info, ret_info, mask_info, nelem, pa, rng_engine_inputs);
+          sycl_kernel_submit(
+              num_groups * group_size,
+              group_size,
+              getCurrentSYCLQueue(),
+              caller);
         }
       });
 }
