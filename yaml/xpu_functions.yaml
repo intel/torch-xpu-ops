@@ -9,6 +9,9 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - cumsum
+  - cumsum.out
+  - cumsum_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -83,10 +86,13 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
-  - index_select
-  - index_select.out
+  - isnan
+  - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - index_add.out
+  - index_select
+  - index_select.out
   - gcd
   - gcd.out
   - gcd_

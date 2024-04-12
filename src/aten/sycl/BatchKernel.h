@@ -1,18 +1,10 @@
 #pragma once
+#include <c10/util/llvmMathExtras.h>
+
 #include <comm/SYCLContext.h>
 #include <algorithm>
 
 namespace at::native::xpu {
-
-static inline int64_t roundup_pow2(int64_t n) {
-  n--;
-  n |= (n >> 1);
-  n |= (n >> 2);
-  n |= (n >> 4);
-  n |= (n >> 8);
-  n |= (n >> 16);
-  return std::max<int64_t>(1, n + 1);
-}
 
 class BatchKernelConfig {
  public:
@@ -33,8 +25,6 @@ class BatchKernelConfig {
   }
 
  public:
-  // BatchKernelConfig() = delete;
-
   BatchKernelConfig(
       int64_t batch,
       int64_t problem,
@@ -59,11 +49,11 @@ class BatchKernelConfig {
         wg_range_x_(0),
         wg_range_y_(0) {
     size_t wg_size = syclMaxWorkGroupSize();
-    if (prefer_wg_size != 0 && prefer_wg_size % 32 == 0 &&
+    size_t sg_size = syclMaxSubGroupSize();
+    if (prefer_wg_size != 0 && prefer_wg_size % sg_size == 0 &&
         prefer_wg_size < wg_size) {
       wg_size = prefer_wg_size;
     }
-    size_t sg_size = syclMaxSubGroupSize();
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
 
@@ -82,14 +72,18 @@ class BatchKernelConfig {
     // 1. assign proper x/y to accommodate workload exactly.
     // 2. prefer enough x (at least limit_x) to access memory coalecsingly.
     // Spare y for x if workload is not large along y.
-    wg_range_y_ = std::min<size_t>(wg_range_y_, roundup_pow2(range_bound_y));
+    wg_range_y_ = std::min<size_t>(
+        wg_range_y_, c10::llvm::PowerOf2Ceil((uint64_t)range_bound_y));
     // Subscribe appropriate x at least limit_x.
     wg_range_x_ = std::max<size_t>(
-        std::min<size_t>(wg_size / wg_range_y_, roundup_pow2(range_bound_x)),
+        std::min<size_t>(
+            wg_size / wg_range_y_,
+            c10::llvm::PowerOf2Ceil((uint64_t)range_bound_x)),
         limit_x);
     // Retieve y if necessary, if x is not large.
-    wg_range_y_ =
-        std::min<size_t>(wg_size / wg_range_x_, roundup_pow2(range_bound_y));
+    wg_range_y_ = std::min<size_t>(
+        wg_size / wg_range_x_,
+        c10::llvm::PowerOf2Ceil((uint64_t)range_bound_y));
 
     if ((uint8_t)policy_ & (uint8_t)Policy::pAdaptive) {
       size_t target_glb_range = syclMaxWorkItemsPerTile() /
@@ -279,4 +273,5 @@ class BatchKernelConfig {
   size_t wg_range_x_;
   size_t wg_range_y_;
 };
+
 } // namespace at::native::xpu
