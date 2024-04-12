@@ -15,7 +15,7 @@ namespace xpu {
 using namespace at::native::memory;
 using namespace at::xpu;
 
-constexpr int SIMD = 16;
+constexpr int SIMD = 32;
 
 template <
     typename accscalar_t,
@@ -727,7 +727,7 @@ void launch_vectorized_fused_norm_kernel(
           scalar_t,                            \
           mean_t,                              \
           weight_t,                            \
-          uint32_t,                            \
+          uint64_t,                            \
           vec_size,                            \
           Norm,                                \
           one_moment>(norm, config);           \
