@@ -9,8 +9,8 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/RegisterUtils.h>
 #include <aten/sycl/IndexingKernel.h>
+#include <comm/RegisterUtils.h>
 #include <torch/library.h>
 
 namespace at {
