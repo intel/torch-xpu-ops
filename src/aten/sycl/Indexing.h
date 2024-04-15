@@ -180,7 +180,7 @@ class IndexKernelConfig : public BatchKernelConfig {
 template <
     class IdxConfig,
     bool TrivialOffCal = false,
-    bool known_problem_inner = false>
+    bool KnownProblemInner = false>
 class IndexKernel {
  public:
   using ValType = typename IdxConfig::ValType;
@@ -220,7 +220,7 @@ class IndexKernel {
         glb_batch_group * cfg_.indexing_dimension_size_ +
         glb_batch_group_loc_off;
     auto stride = cfg_.stride_;
-    if constexpr (known_problem_inner) {
+    if constexpr (KnownProblemInner) {
       si = 0;
       pi = id.glb_problem;
       bi = glb_batch_group_glb_off;
@@ -247,7 +247,7 @@ class IndexKernel {
     int64_t si, pi, bi, stride;
     int64_t glb_batch_group_glb_off =
         glb_batch_group * cfg_.index_num_ + idx_logical_off;
-    if constexpr (known_problem_inner) {
+    if constexpr (KnownProblemInner) {
       si = 0;
       stride = 1;
       pi = id.glb_problem;
@@ -278,7 +278,7 @@ class IndexKernel {
       return;
     }
 
-    // index kernel has three operands,
+    // Indexing kernels have three operands,
     // 1. index operand
     // 2. operand indexing on
     // 3. operand has fixing size as index (optional)
@@ -348,10 +348,10 @@ class IndexKernel {
 template <
     class IdxConfig,
     bool TrivialOffCal = false,
-    bool known_problem_inner = false>
+    bool KnownProblemInner = false>
 static inline void launch_index_kernel(IdxConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  IndexKernel<IdxConfig, TrivialOffCal, known_problem_inner> idx_ker(cfg);
+  IndexKernel<IdxConfig, TrivialOffCal, KnownProblemInner> idx_ker(cfg);
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, idx_ker);
 }
 
