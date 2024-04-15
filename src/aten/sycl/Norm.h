@@ -130,6 +130,74 @@ static inline void norm_group_reduce_row(
   }
 }
 
+template <
+    typename accscalar_t,
+    typename index_t,
+    bool one_moment,
+    typename reduce_op,
+    typename item_t,
+    typename local_shared_t,
+    typename local_shared_bool_t>
+static void norm_global_reduce(
+    item_t item,
+    int workgroup_num_foreach,
+    int workgroup_size,
+    int sub_group_num,
+    accscalar_t& sum1,
+    accscalar_t& sum2,
+    accscalar_t* scratchpad_ptr,
+    int* semaphores_ptr,
+    const local_shared_t& local_data1,
+    const local_shared_t& local_data2,
+    const local_shared_bool_t& last_workgroup,
+    reduce_op bin_op) {
+  index_t local_id = item.get_local_id(2);
+  index_t group_id = item.get_group(0);
+  index_t group_id_foreach = item.get_group(1);
+
+  if (local_id == 0) {
+    if constexpr (one_moment) {
+      auto idx = group_id * workgroup_num_foreach + group_id_foreach;
+      scratchpad_ptr[idx] = sum1;
+    } else {
+      auto idx = group_id * workgroup_num_foreach * 2 + group_id_foreach;
+      scratchpad_ptr[idx] = sum1;
+      scratchpad_ptr[workgroup_num_foreach + idx] = sum2;
+    }
+  }
+  item.barrier(sycl_global_fence);
+
+  if (local_id == 0) {
+    sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
+    int prev_groups_finished = count.fetch_add(1);
+    last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
+  }
+  item.barrier(sycl_local_fence);
+
+  // use the last workgroup for reduction
+  if (last_workgroup[0]) {
+    if constexpr (one_moment) {
+      sum1 = accscalar_t(0);
+      for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
+        auto idx = group_id * workgroup_num_foreach + i;
+        sum1 = bin_op(sum1, scratchpad_ptr[idx]);
+      }
+      sum1 = sycl::reduce_over_group(
+          item.get_group(), sum1, sycl::plus<accscalar_t>());
+    } else {
+      sum1 = accscalar_t(0);
+      sum2 = accscalar_t(0);
+      for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
+        auto idx = group_id * workgroup_num_foreach * 2 + i;
+        sum1 = bin_op(sum1, scratchpad_ptr[idx]);
+        sum2 = bin_op(sum2, scratchpad_ptr[workgroup_num_foreach + idx]);
+      }
+      norm_group_reduce<accscalar_t>(
+          item, sub_group_num, sum1, sum2, local_data1, local_data2, bin_op);
+    }
+  }
+}
+
 class NormConfig {
  public:
   NormConfig(int Batch, int Plane, int problem_dim, int element_size_bytes)
