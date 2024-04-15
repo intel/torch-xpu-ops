@@ -10,8 +10,8 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/Loops.h>
-#include <aten/sycl/TensorInfo.h>
 #include <comm/SYCLContext.h>
+#include <comm/TensorInfo.h>
 
 namespace at {
 namespace native {
@@ -125,9 +125,8 @@ struct IndexFuncSmallIndexFunctor {
     for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
       // Lua indices begin at 1
       IndexType dstIndex =
-          indices_
-              .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-                  srcIndex, indices_)];
+          indices_.data[IndexToOffset<IndicesType, IndexType>::get(
+              srcIndex, indices_)];
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
@@ -135,11 +134,11 @@ struct IndexFuncSmallIndexFunctor {
            linearIndex < innerSize_;
            linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
         IndexType dstOffset =
-            IndexToOffset<T, IndexType, DstDim>::get(linearIndex, dst_);
+            IndexToOffset<T, IndexType>::get(linearIndex, dst_);
         dstOffset += dstIndex * dst_.strides[dstAddDim_];
 
         IndexType srcOffset =
-            IndexToOffset<const T, IndexType, SrcDim>::get(linearIndex, src_);
+            IndexToOffset<T, IndexType>::get(linearIndex, src_);
         srcOffset += srcIndex * src_.strides[srcAddDim_];
 
         T val;
@@ -155,8 +154,8 @@ struct IndexFuncSmallIndexFunctor {
 
   IndexFuncSmallIndexFunctor(
       TensorInfo<T, IndexType> dst,
-      TensorInfo<const T, IndexType> src,
-      TensorInfo<const IndicesType, IndexType> indices,
+      TensorInfo<T, IndexType> src,
+      TensorInfo<IndicesType, IndexType> indices,
       int dstAddDim,
       int srcAddDim,
       IndexType innerSize,
@@ -177,8 +176,8 @@ struct IndexFuncSmallIndexFunctor {
 
  private:
   TensorInfo<T, IndexType> dst_;
-  TensorInfo<const T, IndexType> src_;
-  TensorInfo<const IndicesType, IndexType> indices_;
+  TensorInfo<T, IndexType> src_;
+  TensorInfo<IndicesType, IndexType> indices_;
   int dstAddDim_;
   int srcAddDim_;
   IndexType innerSize_;
@@ -221,16 +220,15 @@ struct IndexFuncLargeIndexFunctor {
 
       // Lua indices begin at 1
       IndexType dstIndex =
-          indices_
-              .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
-                  srcIndex, indices_)];
+          indices_.data[IndexToOffset<IndicesType, IndexType>::get(
+              srcIndex, indices_)];
 
       IndexType dstOffset =
-          IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
+          IndexToOffset<T, IndexType>::get(elementInSlice, dst_);
       dstOffset += dstIndex * dst_.strides[dstAddDim_];
 
       IndexType srcOffset =
-          IndexToOffset<const T, IndexType, SrcDim>::get(elementInSlice, src_);
+          IndexToOffset<T, IndexType>::get(elementInSlice, src_);
       srcOffset += srcIndex * src_.strides[srcAddDim_];
 
       T val;
@@ -245,8 +243,8 @@ struct IndexFuncLargeIndexFunctor {
 
   IndexFuncLargeIndexFunctor(
       TensorInfo<T, IndexType> dst,
-      TensorInfo<const T, IndexType> src,
-      TensorInfo<const IndicesType, IndexType> indices,
+      TensorInfo<T, IndexType> src,
+      TensorInfo<IndicesType, IndexType> indices,
       int dstAddDim,
       int srcAddDim,
       IndexType totalSize,
@@ -269,8 +267,8 @@ struct IndexFuncLargeIndexFunctor {
 
  private:
   TensorInfo<T, IndexType> dst_;
-  TensorInfo<const T, IndexType> src_;
-  TensorInfo<const IndicesType, IndexType> indices_;
+  TensorInfo<T, IndexType> src_;
+  TensorInfo<IndicesType, IndexType> indices_;
   int dstAddDim_;
   int srcAddDim_;
   IndexType totalSize_;
@@ -328,19 +326,19 @@ void index_add_impl(
   const Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
 
   TORCH_CHECK(
-      result.dim() <= MAX_TENSORINFO_DIMS,
+      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
   TORCH_CHECK(
-      source.dim() <= MAX_TENSORINFO_DIMS,
+      source.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
   TORCH_CHECK(
-      index.dim() <= MAX_TENSORINFO_DIMS,
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "tensor has too many (>",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       ") dims");
 
   if (globalContext().deterministicAlgorithms()) {
@@ -460,12 +458,11 @@ void index_add_impl(
           selfInfo.reduceDim(selfAddDim);
           const auto alpha_value = alpha.to<scalar_t>();
           AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu_", [&]() {
-            auto sourceInfo =
-                getTensorInfo<const scalar_t, unsigned int>(source_);
+            auto sourceInfo = getTensorInfo<scalar_t, unsigned int>(source_);
             const int sourceAddDim = sourceInfo.collapseDims(dim);
             sourceInfo.reduceDim(sourceAddDim);
 
-            auto indexInfo = getTensorInfo<const index_t, unsigned int>(index);
+            auto indexInfo = getTensorInfo<index_t, unsigned int>(index);
             indexInfo.collapseDims();
 
             // A reasonable choice for when to have each thread iterate over
@@ -522,14 +519,14 @@ void index_add_impl(
           selfInfo.reduceDim(selfAddDim);
           const auto alpha_value = alpha.to<scalar_t>();
 
-          TensorInfo<const scalar_t, uint64_t> sourceInfo =
-              getTensorInfo<const scalar_t, uint64_t>(source_);
+          TensorInfo<scalar_t, uint64_t> sourceInfo =
+              getTensorInfo<scalar_t, uint64_t>(source_);
           const int sourceAddDim = sourceInfo.collapseDims(dim);
           sourceInfo.reduceDim(sourceAddDim);
 
           AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu_", [&]() {
-            TensorInfo<const index_t, uint64_t> indexInfo =
-                getTensorInfo<const index_t, uint64_t>(index);
+            TensorInfo<index_t, uint64_t> indexInfo =
+                getTensorInfo<index_t, uint64_t>(index);
             indexInfo.collapseDims();
 
             LARGE_INDEX(scalar_t, index_t, uint64_t, -1, -1, -1, true);
