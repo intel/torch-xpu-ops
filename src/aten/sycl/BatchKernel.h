@@ -273,4 +273,5 @@ class BatchKernelConfig {
   size_t wg_range_x_;
   size_t wg_range_y_;
 };
+
 } // namespace at::native::xpu

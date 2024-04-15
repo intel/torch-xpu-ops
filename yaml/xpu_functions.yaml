@@ -91,6 +91,8 @@ supported:
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_select
+  - index_select.out
   - gcd
   - gcd.out
   - gcd_
@@ -149,8 +151,14 @@ supported:
   - fill_.Scalar
   - fill_.Tensor
   - zero_
+  - random_
+  - random_.from
   - normal_
   - uniform_
+  - bernoulli_.Tensor
+  - bernoulli_.float
+  - native_dropout
+  - native_dropout_backward
   - copy_
   - _to_copy
   - view
