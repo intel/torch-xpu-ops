@@ -61,6 +61,12 @@ static inline int64_t syclGpuHWThreadsPerEU(
   return dev_prop->gpu_hw_threads_per_eu;
 }
 
+static inline int64_t syclGpuEUCountPerSubslice(
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  return dev_prop->gpu_eu_count_per_subslice;
+}
+
 static inline int64_t syclMaxWorkItemsPerTile(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);

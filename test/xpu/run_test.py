@@ -2,6 +2,7 @@ import os
 import sys
 
 skip_list = (
+    # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
     "test_compare_cpu_nn_functional_conv2d_xpu_float32",
     "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
@@ -362,6 +363,13 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+
+    # Skip list of new added when porting XPU operators.
+    # See: https://github.com/intel/torch-xpu-ops/issues/128
+    "test_noncontiguous_samples_native_dropout_backward_xpu_int64", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Long'.
+    "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
+    "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32", # CUDA xfail.
+    "test_dtypes_native_dropout_backward_xpu", # Test architecture issue. Cannot get correct claimed supported data type for "masked_scale".
 )
 
 
