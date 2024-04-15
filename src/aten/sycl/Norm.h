@@ -20,28 +20,28 @@ constexpr int SIMD = 32;
 template <
     typename accscalar_t,
     typename reduce_op,
-    typename nd_item_id,
-    typename local_shared>
+    typename item_t,
+    typename local_shared_t>
 static inline void norm_group_reduce(
-    nd_item_id item_id,
+    item_t item,
     int sub_group_num,
-    accscalar_t& mean,
-    accscalar_t& rstd,
-    const local_shared& local_mean,
-    const local_shared& local_rstd,
+    accscalar_t& sum1,
+    accscalar_t& sum2,
+    const local_shared_t& local_data1,
+    const local_shared_t& local_data2,
     reduce_op bin_op) {
-  auto sg = item_id.get_sub_group();
+  auto sg = item.get_sub_group();
 
   // dynamic get SIMD width result in big performance drop
   // uint32_t SIMD = sg.get_local_range()[0];
 #pragma unroll
   for (int i = 1; i < SIMD; i <<= 1) {
-    mean = bin_op(mean, static_cast<accscalar_t>(sg.shuffle_down(mean, i)));
-    rstd = bin_op(rstd, static_cast<accscalar_t>(sg.shuffle_down(rstd, i)));
+    sum1 = bin_op(sum1, static_cast<accscalar_t>(sg.shuffle_down(sum1, i)));
+    sum2 = bin_op(sum2, static_cast<accscalar_t>(sg.shuffle_down(sum2, i)));
   }
   if (sub_group_num == 1) {
-    mean = sycl::group_broadcast(sg, mean, 0);
-    rstd = sycl::group_broadcast(sg, rstd, 0);
+    sum1 = sycl::group_broadcast(sg, sum1, 0);
+    sum2 = sycl::group_broadcast(sg, sum2, 0);
     return;
   }
 
@@ -49,141 +49,72 @@ static inline void norm_group_reduce(
   uint32_t sg_id = sg.get_group_linear_id();
   // reduce internal each subgroup, each subgroup will generate one result
   // there are WGroupSize/subGroupSize elements after this step
-  int idx = sg_id;
   if (sg_local_id == 0) {
-    local_mean[sg_id] = mean;
-    local_rstd[sg_id] = rstd;
+    local_data1[sg_id] = sum1;
+    local_data2[sg_id] = sum2;
   }
-  item_id.barrier(sycl_local_fence);
+  item.barrier(sycl_local_fence);
 
   // use one subgroup to reduce WGroupSize/subGroupSize elements
   // into the final result
-  if (idx == 0) {
-    mean = 0;
-    rstd = 0;
+  if (sg_id == 0) {
+    sum1 = 0;
+    sum2 = 0;
     if ((int)sg_local_id < sub_group_num) {
-      mean = accscalar_t(local_mean[sg_local_id]);
-      rstd = accscalar_t(local_rstd[sg_local_id]);
+      sum1 = accscalar_t(local_data1[sg_local_id]);
+      sum2 = accscalar_t(local_data2[sg_local_id]);
     }
     for (int i = sg_local_id + SIMD; i < sub_group_num; i += SIMD) {
-      mean = bin_op(mean, static_cast<accscalar_t>(local_mean[i]));
-      rstd = bin_op(rstd, static_cast<accscalar_t>(local_rstd[i]));
+      sum1 = bin_op(sum1, static_cast<accscalar_t>(local_data1[i]));
+      sum2 = bin_op(sum2, static_cast<accscalar_t>(local_data2[i]));
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      mean = bin_op(mean, static_cast<accscalar_t>(sg.shuffle_down(mean, i)));
-      rstd = bin_op(rstd, static_cast<accscalar_t>(sg.shuffle_down(rstd, i)));
+      sum1 = bin_op(sum1, static_cast<accscalar_t>(sg.shuffle_down(sum1, i)));
+      sum2 = bin_op(sum2, static_cast<accscalar_t>(sg.shuffle_down(sum2, i)));
       if (i >= ((sub_group_num + 1) >> 1))
         break;
     }
 
     // the 0th WI (the 0th WI in the 0th sub_group) generate the final result
     if (sg_local_id == 0) {
-      local_mean[0] = mean;
-      local_rstd[0] = rstd;
+      local_data1[0] = sum1;
+      local_data2[0] = sum2;
     }
   }
-  item_id.barrier(sycl_local_fence);
+  item.barrier(sycl_local_fence);
 
-  mean = local_mean[0];
-  rstd = local_rstd[0];
-}
-
-template <
-    typename accscalar_t,
-    typename index_t,
-    bool one_moment,
-    typename reduce_op,
-    typename nd_item_id,
-    typename local_shared,
-    typename local_shared_bool>
-static void norm_global_reduce(
-    nd_item_id item_id,
-    int workgroup_num_foreach,
-    int workgroup_size,
-    int sub_group_num,
-    accscalar_t& sum1,
-    accscalar_t& sum2,
-    accscalar_t* scratchpad_ptr,
-    int* semaphores_ptr,
-    const local_shared& local_mean,
-    const local_shared& local_rstd,
-    const local_shared_bool& last_workgroup,
-    reduce_op bin_op) {
-  index_t local_id = item_id.get_local_id(2);
-  index_t group_id = item_id.get_group(0);
-  index_t group_id_foreach = item_id.get_group(1);
-
-  if (local_id == 0) {
-    if constexpr (one_moment) {
-      auto idx = group_id * workgroup_num_foreach + group_id_foreach;
-      scratchpad_ptr[idx] = sum1;
-    } else {
-      auto idx = group_id * workgroup_num_foreach * 2 + group_id_foreach;
-      scratchpad_ptr[idx] = sum1;
-      scratchpad_ptr[workgroup_num_foreach + idx] = sum2;
-    }
-  }
-  item_id.barrier(sycl_global_fence);
-
-  if (local_id == 0) {
-    sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
-    int prev_groups_finished = count.fetch_add(1);
-    last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
-  }
-  item_id.barrier(sycl_local_fence);
-
-  // use the last workgroup for reduction
-  if (last_workgroup[0]) {
-    if constexpr (one_moment) {
-      sum1 = accscalar_t(0);
-      for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
-        auto idx = group_id * workgroup_num_foreach + i;
-        sum1 = bin_op(sum1, scratchpad_ptr[idx]);
-      }
-      sum1 = sycl::reduce_over_group(
-          item_id.get_group(), sum1, sycl::plus<accscalar_t>());
-    } else {
-      sum1 = accscalar_t(0);
-      sum2 = accscalar_t(0);
-      for (int i = local_id; i < workgroup_num_foreach; i += workgroup_size) {
-        auto idx = group_id * workgroup_num_foreach * 2 + i;
-        sum1 = bin_op(sum1, scratchpad_ptr[idx]);
-        sum2 = bin_op(sum2, scratchpad_ptr[workgroup_num_foreach + idx]);
-      }
-      norm_group_reduce<accscalar_t>(
-          item_id, sub_group_num, sum1, sum2, local_mean, local_rstd, bin_op);
-    }
-  }
+  sum1 = local_data1[0];
+  sum2 = local_data2[0];
 }
 
 template <
     int vec_size,
     typename accscalar_t,
     typename reduce_op,
-    typename nd_item_id,
-    typename local_shared>
+    typename item_t,
+    typename local_shared_t>
 static inline void norm_group_reduce_row(
-    nd_item_id item_id,
+    item_t item,
     accscalar_t input1[vec_size],
     accscalar_t input2[vec_size],
-    const local_shared& local_data1,
-    const local_shared& local_data2,
+    const local_shared_t& local_data1,
+    const local_shared_t& local_data2,
     int block_row,
     reduce_op bin_op) {
-  auto local_row_id = item_id.get_local_id(1);
-  auto local_col_id = item_id.get_local_id(2);
+  auto local_row_id = item.get_local_id(1);
+  auto local_col_id = item.get_local_id(2);
 
 #pragma unroll(vec_size)
   for (int j = 0; j < vec_size; ++j) {
     local_data1[local_row_id][local_col_id][j] = input1[j];
     local_data2[local_row_id][local_col_id][j] = input2[j];
   }
-  item_id.barrier(sycl_local_fence);
+  item.barrier(sycl_local_fence);
 
   int k = 1;
   while (k < block_row) {
-    if (local_row_id % (k << 1) == 0 && local_row_id + k < block_row)
+    if (local_row_id % (k << 1) == 0 && local_row_id + k < block_row) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         local_data1[local_row_id][local_col_id][j] = bin_op(
@@ -193,8 +124,9 @@ static inline void norm_group_reduce_row(
             local_data2[local_row_id][local_col_id][j],
             local_data2[local_row_id + k][local_col_id][j]);
       }
+    }
     k *= 2;
-    item_id.barrier(sycl_local_fence);
+    item.barrier(sycl_local_fence);
   }
 }
 
