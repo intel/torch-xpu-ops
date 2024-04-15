@@ -229,7 +229,9 @@ void masked_scale_kernel(
 
 template <typename scalar_t>
 int get_vector_size(at::Tensor self, at::Tensor ret, at::Tensor mask) {
-  int vec_size = 4;
+  constexpr int MAX_VEC_SIZE =
+      4; // Philox4x32 engine only support max vectorize size of 4
+  int vec_size = MAX_VEC_SIZE;
   // get the vector size
   if (!self.is_non_overlapping_and_dense() ||
       !ret.is_non_overlapping_and_dense() ||
