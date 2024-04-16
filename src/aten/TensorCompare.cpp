@@ -2,10 +2,14 @@
 #include <ATen/TensorIndexing.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
+#include <aten/sycl/ReduceMaxValuesKernel.h>
+#include <aten/sycl/ReduceMinValuesKernel.h>
 #include <aten/sycl/TensorCompare.h>
+#include <comm/ReduceOpsUtils.h>
 
 namespace at {
 
@@ -242,6 +246,83 @@ Tensor& XPUNativeFunctions::clamp_max_out(
     native::xpu::clamp_max_scalar_kernel(iter, max);
   }
   return result;
+}
+
+void min_kernel_impl(
+    const Tensor& result,
+    const Tensor& indice,
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim) {
+  auto iter = meta::make_reduction(
+      self, result, indice, dim, keepdim, self.scalar_type(), kLong);
+  native::xpu::min_launch_kernel(iter);
+}
+
+void max_kernel_impl(
+    const Tensor& result,
+    const Tensor& indice,
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim) {
+  auto iter = meta::make_reduction(
+      self, result, indice, dim, keepdim, self.scalar_type(), kLong);
+  native::xpu::max_launch_kernel(iter);
+}
+
+template <class Stub>
+void minmax_out_impl(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    const Tensor& values,
+    const Tensor& indices,
+    Stub& stub) {
+  NoNamesGuard guard;
+  if (self.numel() > 0) {
+    if (self.numel() == 1 && self.dim() == 0) {
+      values.fill_(self);
+      indices.fill_(0);
+    } else {
+      stub(values, indices, self, dim, keepdim);
+    }
+  }
+}
+
+static void check_unsupported_complex(const char* name, const Tensor& self) {
+  TORCH_CHECK(!self.is_complex(), name, ": does not support complex input");
+}
+
+::std::tuple<Tensor&, Tensor&> XPUNativeFunctions::min_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    Tensor& values,
+    Tensor& indices) {
+  dim = maybe_wrap_dim(dim, self.dim());
+  at::native::zero_numel_check_dims(self, dim, "min()");
+  check_unsupported_complex("min()", self);
+  at::xpu::resize_reduction_with_indices(
+      values, indices, self, dim, keepdim, self.scalar_type());
+
+  minmax_out_impl(self, dim, keepdim, values, indices, min_kernel_impl);
+  return {values, indices};
+}
+
+::std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    Tensor& values,
+    Tensor& indices) {
+  dim = maybe_wrap_dim(dim, self.dim());
+  at::native::zero_numel_check_dims(self, dim, "max()");
+  check_unsupported_complex("max()", self);
+  at::xpu::resize_reduction_with_indices(
+      values, indices, self, dim, keepdim, self.scalar_type());
+
+  minmax_out_impl(self, dim, keepdim, values, indices, max_kernel_impl);
+  return {values, indices};
 }
 
 } // namespace at

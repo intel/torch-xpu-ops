@@ -183,3 +183,18 @@ supported:
   - clamp_max.out
   - native_layer_norm
   - native_layer_norm_backward
+  - max
+  - max.unary_out
+  - max.dim_max
+  - min
+  - min.unary_out
+  - min.dim_min
+  - sum.out
+  - sum.dim_IntList
+  - sum.IntList_out
+  - mean.out
+  - any.dim
+  - any.out
+  - any.all_out
+  - argmax.out
+  - _local_scalar_dense
