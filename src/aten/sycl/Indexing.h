@@ -776,8 +776,7 @@ void index_kernel_impl(
       index_ptrs,
       sizes,
       strides);
-  sycl_kernel_submit(
-      sycl::range<1>(global_size), sycl::range<1>(local_size), queue, kfn);
+  sycl_kernel_submit(sycl::range<1>(numel), queue, kfn);
 }
 
 template <typename func_t>

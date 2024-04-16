@@ -58,7 +58,6 @@ static inline void sycl_kernel_submit(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
-  // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }
 
@@ -82,11 +81,17 @@ static inline void sycl_kernel_submit(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
-  // XXX: c10::xpu::getStreamFromPool().queue();
   q.submit(cgf);
 }
 
-// Using for nd range
+template <typename ker_t, int dim>
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) { cgh.parallel_for<ker_t>(range, ker); };
+  q.submit(cgf);
+}
 
 template <typename ker_t, int dim>
 static inline void sycl_kernel_submit(
