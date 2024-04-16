@@ -181,3 +181,4 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - _local_scalar_dense
