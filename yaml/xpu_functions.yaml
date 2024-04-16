@@ -92,6 +92,8 @@ supported:
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_select
+  - index_select.out
   - gcd
   - gcd.out
   - gcd_
