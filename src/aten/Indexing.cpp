@@ -3,7 +3,6 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/Indexing.h>
 #include <aten/sycl/IndexingKernel.h>
