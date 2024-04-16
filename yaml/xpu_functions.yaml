@@ -181,3 +181,5 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - index.Tensor
+  # - index.Tensor_out

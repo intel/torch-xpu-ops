@@ -1,10 +1,10 @@
 #pragma once
-#include <ATen/native/TensorIterator.h>
 #include <ATen/Context.h>
+#include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {
 
-void index_kernel(    
+void index_kernel(
     TensorIterator& iter,
     at::IntArrayRef index_size,
     at::IntArrayRef index_stride,

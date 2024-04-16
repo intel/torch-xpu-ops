@@ -53,6 +53,32 @@ void index_kernel(
       });
 }
 
+void index_out_kernel(
+    TensorIterator& iter,
+    IntArrayRef index_size,
+    IntArrayRef index_stride,
+    IntArrayRef non_index_size,
+    IntArrayRef non_index_stride) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::ComplexHalf,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "index",
+      [&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        IndexFunctor<dtype> f;
+        _index_kernel(
+            iter,
+            index_size,
+            index_stride,
+            non_index_size,
+            non_index_stride,
+            f);
+      });
+}
+
 template <typename ValType>
 class IndexSelectScalarFunctor {
  public:

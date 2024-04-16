@@ -1,13 +1,18 @@
 #pragma once
 
 #include <aten/sycl/BatchKernel.h>
-#include <comm/TensorInfo.h>
 #include <aten/sycl/Loops.h>
+#include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
 namespace at::native::xpu {
+
+template <int N>
+struct alignas(N) OpaqueType {
+  char data[N];
+};
 
 // Pretend that the scalar tensor is in fact a one-element vector.
 template <typename T, typename IndexType>
@@ -487,13 +492,93 @@ struct SmallIndexKernelImplFunctor {
   sycl_local_acc_t<int64_t, 1> local_offset;
 };
 
+template <typename func_t, typename index_buf_type>
+struct SmallIndexKernelCreator {
+  SmallIndexKernelCreator(
+      const func_t f_,
+      int64_t indices_size_,
+      int64_t group_num_tail_,
+      int64_t group_num_,
+      int64_t group_numel_,
+      int64_t group_numel_tail_,
+      int64_t wgroup_size_,
+      size_t num_non_indices_,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes_,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides_,
+      int64_t src_strides0_,
+      size_t num_indices_,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes_,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides_,
+      int64_t element_size_bytes_,
+      int64_t indice_size_bytes_,
+      char* out_data_,
+      char* in_data_,
+      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs_)
+      : f(f_),
+        indices_size(indices_size_),
+        group_num_tail(group_num_tail_),
+        group_num(group_num_),
+        group_numel(group_numel_),
+        group_numel_tail(group_numel_tail_),
+        wgroup_size(wgroup_size_),
+        num_non_indices(num_non_indices_),
+        src_sizes(src_sizes_),
+        src_strides(src_strides_),
+        src_strides0(src_strides0_),
+        num_indices(num_indices_),
+        sizes(sizes_),
+        strides(strides_),
+        element_size_bytes(element_size_bytes_),
+        indice_size_bytes(indice_size_bytes_),
+        out_data(out_data_),
+        in_data(in_data_),
+        index_ptrs(index_ptrs_) {}
 
-template <>
-SmallIndexKernelCreator {
-  SmallIndexKernelCreator();
-  SmallIndexKernelImplFunctor<func_t, index_buf_type> operator()(sycl::handler& cgh) {
-    
+  SmallIndexKernelImplFunctor<func_t, index_buf_type> operator()(
+      sycl::handler& cgh) {
+    sycl_local_acc_t<int64_t, 1> local_offset(indices_size, cgh);
+    SmallIndexKernelImplFunctor<func_t, index_buf_type> kfn(
+        f,
+        indices_size,
+        group_num_tail,
+        group_num,
+        group_numel,
+        group_numel_tail,
+        wgroup_size,
+        num_non_indices,
+        src_sizes,
+        src_strides,
+        src_strides0,
+        num_indices,
+        sizes,
+        strides,
+        element_size_bytes,
+        indice_size_bytes,
+        out_data,
+        in_data,
+        index_ptrs,
+        local_offset);
   }
+  const func_t f;
+  int64_t indices_size;
+  int64_t group_num_tail;
+  int64_t group_num;
+  int64_t group_numel;
+  int64_t group_numel_tail;
+  int64_t wgroup_size;
+  size_t num_non_indices;
+  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes;
+  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides;
+  int64_t src_strides0;
+  size_t num_indices;
+  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes;
+  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides;
+  int64_t element_size_bytes;
+  int64_t indice_size_bytes;
+  char* out_data;
+  char* in_data;
+  at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs;
+  sycl_local_acc_t<int64_t, 1> local_offset;
 };
 
 // SYCL suggest: it’s possible (and even desirable) to oversubscribe tasks to
@@ -557,8 +642,7 @@ void small_index_kernel_impl(
     index_ptrs[i] = (char*)iter.data_ptr(i + 2);
   }
 
-  sycl_local_acc_t<int64_t, 1> local_offset(indices_size, __cgh);
-  SmallIndexKernelImplFunctor<func_t, index_buf_type> kfn(
+  SmallIndexKernelCreator<func_t, index_buf_type> creator(
       f,
       indices_size,
       group_num_tail,
@@ -577,9 +661,12 @@ void small_index_kernel_impl(
       indice_size_bytes,
       out_data,
       in_data,
-      index_ptrs,
-      local_offset);
-  sycl_kernel_submit(sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, kfn);
+      index_ptrs);
+
+  sycl_kernel_submit<
+      SmallIndexKernelImplFunctor<func_t, index_buf_type>,
+      decltype(creator)>(
+      sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, creator);
 }
 
 template <
@@ -668,30 +755,29 @@ void index_kernel_impl(
   int64_t indice_size_bytes = iter.tensor(2).element_size();
 
   auto& queue = getCurrentSYCLQueue();
+  auto local_size = syclMaxSubGroupSize();
+  auto global_size = numel / local_size;
+  auto out_data = (char*)iter.data_ptr(0);
+  auto in_data = (char*)iter.data_ptr(1);
+  using index_buf_type = decltype((char*)iter.data_ptr(0));
+  at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs;
+  for (size_t i = 0; i < num_indices; i++) {
+    index_ptrs[i] = (char*)iter.data_ptr(i + 2);
+  }
 
-  auto cgf = DPCPP_Q_CGF(__cgh) {
-    auto out_data = (char*)iter.data_ptr(0);
-    auto in_data = (char*)iter.data_ptr(1);
-    using index_buf_type = decltype((char*)iter.data_ptr(0));
-    at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs;
-    for (size_t i = 0; i < num_indices; i++) {
-      index_ptrs[i] = (char*)iter.data_ptr(i + 2);
-    }
-
-    auto offset_calc = make_offset_calculator<3>(iter);
-    IndexKernelImplFunctor<func_t, index_buf_type, decltype(offset_calc)>
-        kfn(f,
-            offset_calc,
-            indice_size_bytes,
-            out_data,
-            in_data,
-            num_indices,
-            index_ptrs,
-            sizes,
-            strides);
-    __cgh.parallel_for<decltype(kfn)>(sycl::range</*dim=*/1>(numel), kfn);
-  };
-  DPCPP_Q_SUBMIT(queue, cgf);
+  auto offset_calc = make_offset_calculator<3>(iter);
+  IndexKernelImplFunctor<func_t, index_buf_type, decltype(offset_calc)> kfn(
+      f,
+      offset_calc,
+      indice_size_bytes,
+      out_data,
+      in_data,
+      num_indices,
+      index_ptrs,
+      sizes,
+      strides);
+  sycl_kernel_submit(
+      sycl::range<1>(global_size), sycl::range<1>(local_size), queue, kfn);
 }
 
 template <typename func_t>
@@ -742,7 +828,6 @@ void _index_kernel(
     }
   }
   if (small_index) {
-    // auto& dpcpp_queue = getCurrentSYCLQueue();
     auto dev_id = getDeviceIndexOfCurrentQueue();
     int64_t max_group_num = syclMaxDSSNum(dev_id);
     auto wgroup_size = syclMaxWorkGroupSize(dev_id);
@@ -776,6 +861,5 @@ void _index_kernel(
 
   index_kernel_impl<func_t>(iter, index_size, index_stride, f);
 }
-
 
 } // namespace at::native::xpu
