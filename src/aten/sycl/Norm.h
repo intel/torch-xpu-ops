@@ -200,9 +200,13 @@ static void norm_global_reduce(
 
 class NormConfig {
  public:
-  NormConfig(int Batch, int Plane, int problem_dim, int element_size_bytes)
-      : Batch(Batch),
-        Plane(Plane),
+  NormConfig(
+      int batch_size,
+      int problem_size,
+      int problem_dim,
+      int element_size_bytes)
+      : batch_size(batch_size),
+        problem_size(problem_size),
         problem_dim(problem_dim),
         element_size_bytes(element_size_bytes) {
     semaphores_ptr = nullptr;
@@ -212,14 +216,15 @@ class NormConfig {
     get_max_vec_size();
     if (problem_dim == 1) {
       get_workgroup_size();
-      WGPlane = (Plane + workgroup_num_foreach - 1) / workgroup_num_foreach;
+      WGPlane =
+          (problem_size + workgroup_num_foreach - 1) / workgroup_num_foreach;
     } else {
       get_workgroup_size_row();
     }
   }
 
-  int Batch;
-  int Plane;
+  int batch_size;
+  int problem_size;
   int WGPlane;
   int problem_dim;
   int element_size_bytes;
@@ -247,8 +252,8 @@ class NormConfig {
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
           ? kFloat
           : X.scalar_type();
-      int scratchpad_size =
-          2 * Batch * workgroup_num_foreach * sizeof(acc_type<scalar_t, true>);
+      int scratchpad_size = 2 * batch_size * workgroup_num_foreach *
+          sizeof(acc_type<scalar_t, true>);
       scratchpad = at::zeros(scratchpad_size, X.options().dtype(kAccType));
       semaphores_ptr = semaphores.data_ptr<int>();
       scratchpad_ptr = scratchpad.data_ptr();
@@ -262,14 +267,15 @@ class NormConfig {
 
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;
-    while ((max_vec_size >> 1) * total_resource >= (Batch * Plane) &&
+    while ((max_vec_size >> 1) * total_resource >=
+               (batch_size * problem_size) &&
            (max_vec_size >> 1) >= 1) {
       max_vec_size = max_vec_size >> 1;
     }
   }
 
-  // get resource size for Reduce problem [Batch, Plane]
-  // the reduce is performed on Plane dimension
+  // get resource size for Reduce problem [batch_size, problem_size]
+  // the reduce is performed on problem_size dimension
   void get_workgroup_size() {
     auto dev_id = getDeviceIndexOfCurrentQueue();
     int max_workgroup_size = syclMaxWorkGroupSize(dev_id);
@@ -279,26 +285,26 @@ class NormConfig {
     workgroup_size = max_workgroup_size;
 
     // To keep high occupancy, we should activate at least workgroup_num number
-    // of WG if Batch is larger than workgroup_num, use only one WG to process
-    // Plane elements if Batch is smaller than workgroup_num, use
-    // workgroup_num_foreach to process Plan elements
-    while (workgroup_num > Batch) {
+    // of WG if batch_size is larger than workgroup_num, use only one WG to
+    // process problem_size elements if batch_size is smaller than
+    // workgroup_num, use workgroup_num_foreach to process Plan elements
+    while (workgroup_num > batch_size) {
       workgroup_num = workgroup_num >> 1;
       max_workgroup_num_foreach = max_workgroup_num_foreach << 1;
     }
-    workgroup_num_foreach = (Plane + workgroup_size * max_vec_size - 1) /
+    workgroup_num_foreach = (problem_size + workgroup_size * max_vec_size - 1) /
         (workgroup_size * max_vec_size);
     workgroup_num_foreach =
         std::min(workgroup_num_foreach, max_workgroup_num_foreach);
     // Reduce will waste the EU resource, then
     // minimize the workgroup_size and maximize the workgroup_num
-    while (workgroup_num << 1 <= Batch && (workgroup_size >> 1) >= SIMD) {
+    while (workgroup_num << 1 <= batch_size && (workgroup_size >> 1) >= SIMD) {
       workgroup_num = workgroup_num << 1;
       workgroup_size = workgroup_size >> 1;
     }
 
-    // Workgroup_num should larger or equal to Batch
-    workgroup_num = std::max(workgroup_num, int(Batch));
+    // Workgroup_num should larger or equal to batch_size
+    workgroup_num = std::max(workgroup_num, int(batch_size));
     // At least one subgroup for reduce
     sub_group_num = (workgroup_size + SIMD - 1) / SIMD;
   }
@@ -312,7 +318,8 @@ class NormConfig {
 
     int max_block_row = max_workgroup_size / SIMD;
     block_row = 1;
-    while ((block_row << 2) <= Batch && (block_row << 1) <= max_block_row) {
+    while ((block_row << 2) <= batch_size &&
+           (block_row << 1) <= max_block_row) {
       block_row = block_row << 1;
     }
     workgroup_size = max_workgroup_size / block_row;
@@ -320,23 +327,26 @@ class NormConfig {
     // maximize the vec_size
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;
-    while ((max_vec_size >> 1) * workgroup_num * workgroup_size >= Plane &&
+    while ((max_vec_size >> 1) * workgroup_num * workgroup_size >=
+               problem_size &&
            (max_vec_size >> 1) >= 1) {
       max_vec_size = max_vec_size >> 1;
     }
 
     // maximize the workgroup_size, and minimize the block_row
-    while ((workgroup_size >> 1) * workgroup_num * max_vec_size > Plane &&
+    while ((workgroup_size >> 1) * workgroup_num * max_vec_size >
+               problem_size &&
            (workgroup_size >> 1) >= SIMD) {
       workgroup_size = workgroup_size >> 1;
     }
-    while ((workgroup_size << 1) * workgroup_num * max_vec_size <= Plane &&
+    while ((workgroup_size << 1) * workgroup_num * max_vec_size <=
+               problem_size &&
            (workgroup_size << 1) <= max_workgroup_size) {
       workgroup_size = workgroup_size << 1;
     }
     block_row = max_workgroup_size / workgroup_size;
 
-    workgroup_num = (Plane + workgroup_size * max_vec_size - 1) /
+    workgroup_num = (problem_size + workgroup_size * max_vec_size - 1) /
         (workgroup_size * max_vec_size);
   }
 };
@@ -366,18 +376,18 @@ class NormForward {
         beta_data(beta_data),
         eps(eps) {}
 
-  int get_rowwise_reduce_vec_size(int Plane, int vec_size) {
+  int get_rowwise_reduce_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
 
-    while (Plane % vec_size != 0) {
+    while (problem_size % vec_size != 0) {
       vec_size = vec_size >> 1;
     }
     return vec_size;
   }
 
-  int get_update_vec_size(int Plane, int vec_size) {
+  int get_update_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
@@ -395,7 +405,7 @@ class NormForward {
           can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
     }
 
-    while (Plane % vec_size != 0) {
+    while (problem_size % vec_size != 0) {
       vec_size = vec_size >> 1;
     }
     return vec_size;
@@ -425,12 +435,12 @@ class NormForward {
     auto group_id = item_id.get_group(0);
     auto group_id_foreach = item_id.get_group(1);
     auto local_id = item_id.get_local_id(2);
-    index_t group_offset = group_id * cfg.Plane;
+    index_t group_offset = group_id * cfg.problem_size;
 
     for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
-      if (plane_offset < (index_t)cfg.Plane) {
+      if (plane_offset < (index_t)cfg.problem_size) {
         vec_t value =
             *(reinterpret_cast<vec_t*>(X_data + group_offset + plane_offset));
         for (int v = 0; v < vec_size; ++v) {
@@ -449,7 +459,7 @@ class NormForward {
       accscalar_t sum2,
       const NormConfig& cfg) const {
     auto group_id = item_id.get_group(0);
-    accscalar_t scale = static_cast<accscalar_t>(cfg.Plane);
+    accscalar_t scale = static_cast<accscalar_t>(cfg.problem_size);
     sum2 = (sum2 - sum1 * sum1 / scale) / scale;
     sum1 = sum1 / scale;
     mean_data[group_id] = static_cast<mean_t>(sum1);
@@ -502,7 +512,7 @@ class NormBackward {
   accscalar_t* a_data;
   accscalar_t* b_data;
 
-  int get_rowwise_reduce_vec_size(int Plane, int vec_size) {
+  int get_rowwise_reduce_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
@@ -515,13 +525,13 @@ class NormBackward {
           can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
     }
 
-    while (Plane % vec_size != 0) {
+    while (problem_size % vec_size != 0) {
       vec_size = vec_size >> 1;
     }
     return vec_size;
   }
 
-  int get_update_vec_size(int Plane, int vec_size) {
+  int get_update_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
@@ -537,7 +547,7 @@ class NormBackward {
           can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
     }
 
-    while (Plane % vec_size != 0) {
+    while (problem_size % vec_size != 0) {
       vec_size = vec_size >> 1;
     }
     return vec_size;

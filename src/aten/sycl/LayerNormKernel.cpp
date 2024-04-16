@@ -57,7 +57,7 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
     auto group_id_foreach = item_id.get_group(1);
     auto local_id = item_id.get_local_id(2);
 
-    index_t group_offset = group_id * cfg.Plane;
+    index_t group_offset = group_id * cfg.problem_size;
     if (cfg.workgroup_num_foreach == 1) {
       if (local_id == 0) {
         NF::reduce_project(item_id, sum1, sum2, cfg);
@@ -70,7 +70,7 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
     for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
-      if (plane_offset < (index_t)cfg.Plane) {
+      if (plane_offset < (index_t)cfg.problem_size) {
         vec_t X_val = *(
             reinterpret_cast<vec_t*>(NF::X_data + group_offset + plane_offset));
         weight_vec_t gamma_val, beta_val;
@@ -178,14 +178,14 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
     auto group_id = item_id.get_group(0);
     auto group_id_foreach = item_id.get_group(1);
     auto local_id = item_id.get_local_id(2);
-    index_t group_offset = group_id * cfg.Plane;
+    index_t group_offset = group_id * cfg.problem_size;
 
     mean_t mean_val = NB::mean_data[group_id];
     mean_t rstd_val = NB::var_data[group_id];
     for (index_t j = local_id * vec_size; j < cfg.WGPlane;
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
-      if (plane_offset < cfg.Plane) {
+      if (plane_offset < cfg.problem_size) {
         weight_vec_t gamma_val;
         if (NB::gamma_data != nullptr) {
           gamma_val =
@@ -227,16 +227,16 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       sum2 = NB::b_data[group_id];
     }
 
-    index_t group_offset = group_id * cfg.Plane;
+    index_t group_offset = group_id * cfg.problem_size;
     mean_t mean_val = NB::mean_data[group_id];
     mean_t var_val = NB::var_data[group_id];
 
-    int fH = cfg.Plane;
+    int fH = cfg.problem_size;
     accscalar_t term1 = (accscalar_t(1) / fH) * var_val;
     for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
-      if (plane_offset < (index_t)cfg.Plane) {
+      if (plane_offset < (index_t)cfg.problem_size) {
         vec_t dY_val = *(reinterpret_cast<vec_t*>(
             NB::dY_data + group_offset + plane_offset));
         vec_t X_val = *(
@@ -352,14 +352,14 @@ struct GammaBetaBackwardSimpleKernelFunctor {
       db_sum1[v] = 0;
     }
 
-    for (int row_id = local_row_id; row_id < cfg.Batch;
+    for (int row_id = local_row_id; row_id < cfg.batch_size;
          row_id += cfg.block_row) {
       accscalar_t mean_val = mean_data[row_id];
       accscalar_t rstd_val = var_data[row_id];
       auto plane_offset =
           (group_id * cfg.workgroup_size + local_col_id) * vec_size;
-      if (plane_offset < cfg.Plane) {
-        auto offset = row_id * cfg.Plane + plane_offset;
+      if (plane_offset < cfg.problem_size) {
+        auto offset = row_id * cfg.problem_size + plane_offset;
         vec_t X_val = *(reinterpret_cast<vec_t*>(X_data + offset));
         vec_t dY_val = *(reinterpret_cast<vec_t*>(dY_data + offset));
 #pragma unroll(vec_size)
@@ -389,7 +389,7 @@ struct GammaBetaBackwardSimpleKernelFunctor {
     if (local_row_id == 0) {
       auto plane_offset =
           (group_id * cfg.workgroup_size + local_col_id) * vec_size;
-      if (plane_offset < cfg.Plane) {
+      if (plane_offset < cfg.problem_size) {
         weight_vec_t dg_val, db_val;
         if (cfg.block_row > 1) {
 #pragma unroll(vec_size)
