@@ -1,0 +1,141 @@
+name: E2E Nightly_OnDemand Tests
+
+on:
+  schedule:
+    # GMT+8 21:00 every day
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      ondemand:
+        description: 'Check if nightly test or on-demand test'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - false
+          - true
+      suite:
+        required: true
+        type: choice
+        default: 'huggingface'
+        options:
+          - huggingface
+          - timm_models
+          - torchbench
+        description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
+      dt:
+        required: true
+        type: choice
+        default: 'float32'
+        options:
+          - float32
+          - bfloat16
+          - float16
+          - amp_bf16
+          - amp_fp16
+        description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
+      mode:
+        required: true
+        type: choice
+        default: 'inference'
+        options:
+          - inference
+          - training
+        description: inference / training test
+      scenario:
+        required: true
+        type: choice
+        default: 'accuracy'
+        options:
+          - accuracy
+          - performance
+        description: accuracy / performance test
+  
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}
+  cancel-in-progress: true
+
+jobs:
+  Inductor-XPU-E2E-Nightly-Tests:
+    runs-on: pvc_e2e
+    timeout-minutes: 900
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Conda ENV
+        run: |
+          which conda
+          if conda env list | grep -q "^e2e_ci "; then source activate e2e_ci; else conda create -n e2e_ci python=3.8 cmake ninja -y; fi
+          conda install intel::mkl-static intel::mkl-include -y
+          pip install pandas scipy tqdm
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          cd ../ && rm -rf pytorch
+          git clone -b e2e-baseline https://github.com/etaf/pytorch-inductor-xpu pytorch
+          cd pytorch && git log -n 1 && git submodule sync && git submodule update --init --recursive
+          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          # Workaround for torch-xpu-ops ci test
+          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+      - name: Triton Installation
+        run: |
+          source activate e2e_ci
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
+          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+      - name: Build Pytorch XPU
+        run: |
+          source activate e2e_ci
+          cd ../pytorch
+          pip install -r requirements.txt
+          export USE_XPU=1
+          source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          python setup.py bdist_wheel
+          pip install --force-reinstall dist/*.whl
+      - name: Identify pinned versions
+        run: |
+          cd ../pytorch
+          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+      - name: Show GITHUB_ENV
+        run: echo "$GITHUB_ENV"
+      - name: Nightly HF FP32 Training Accuracy Test
+        if: ${{ contains(inputs.ondemand, 'false') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 44
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly HF BF16 Training Accuracy Test
+        if: ${{ contains(inputs.ondemand, 'false') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 45
+      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ contains(inputs.ondemand, 'true') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: ${{ inputs.suite }}
+          env_prepare: true
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}

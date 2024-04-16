@@ -9,8 +9,8 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/RegisterUtils.h>
-#include <aten/sycl/Indexing.h>
+#include <aten/sycl/IndexingKernel.h>
+#include <comm/RegisterUtils.h>
 #include <torch/library.h>
 
 namespace at {
@@ -177,7 +177,7 @@ Tensor& XPUNativeFunctions::index_add_out(
       common_device, source, "xpu::index_add_out", "source");
   dim = maybe_wrap_dim(dim, self.dim());
   index_func_meta_impl(out, self, dim, index, source, "index_add");
-  native::xpu::index_add_impl(self, dim, index, source, alpha, out);
+  native::xpu::index_add_kernel(self, dim, index, source, alpha, out);
   return out;
 }
 
