@@ -216,7 +216,7 @@ class NormConfig {
     get_max_vec_size();
     if (problem_dim == 1) {
       get_workgroup_size();
-      WGPlane =
+      workgroup_work_size =
           (problem_size + workgroup_num_foreach - 1) / workgroup_num_foreach;
     } else {
       get_workgroup_size_row();
@@ -225,7 +225,7 @@ class NormConfig {
 
   int batch_size;
   int problem_size;
-  int WGPlane;
+  int workgroup_work_size;
   int problem_dim;
   int element_size_bytes;
   int max_vec_size;
@@ -437,9 +437,9 @@ class NormForward {
     auto local_id = item_id.get_local_id(2);
     index_t group_offset = group_id * cfg.problem_size;
 
-    for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
+    for (index_t j = local_id * vec_size; j < (index_t)cfg.workgroup_work_size;
          j += cfg.workgroup_size * vec_size) {
-      index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
+      index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
         vec_t value =
             *(reinterpret_cast<vec_t*>(X_data + group_offset + plane_offset));
@@ -720,7 +720,8 @@ void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t>& norm,
     const NormConfig& config,
     bool can_use_32bit_index) {
-  int vec_size = norm.get_update_vec_size(config.WGPlane, config.max_vec_size);
+  int vec_size =
+      norm.get_update_vec_size(config.workgroup_work_size, config.max_vec_size);
 #define vectorized_fused_norm_kernel(vec_size) \
   {                                            \
     if (can_use_32bit_index) {                 \
@@ -927,8 +928,8 @@ void RowwiseMomentsSYCLKernelImpl(
     Norm<scalar_t, mean_t, weight_t>& norm,
     NormConfig& config,
     bool can_use_32bit_index) {
-  int vec_size =
-      norm.get_rowwise_reduce_vec_size(config.WGPlane, config.max_vec_size);
+  int vec_size = norm.get_rowwise_reduce_vec_size(
+      config.workgroup_work_size, config.max_vec_size);
 #define VecRowwiseMomentsSYCLKernel(vec_size) \
   {                                           \
     if (can_use_32bit_index) {                \
@@ -1039,7 +1040,8 @@ void NormUpdateKernelImpl(
     Norm<scalar_t, mean_t, weight_t>& norm,
     const NormConfig& config,
     bool can_use_32bit_index) {
-  int vec_size = norm.get_update_vec_size(config.WGPlane, config.max_vec_size);
+  int vec_size =
+      norm.get_update_vec_size(config.workgroup_work_size, config.max_vec_size);
 
 #define VecNormUpdateKernel(vec_size) \
   {                                   \

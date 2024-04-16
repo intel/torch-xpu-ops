@@ -67,9 +67,9 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
 
     mean_t mean_val = NF::mean_data[group_id];
     mean_t var_val = NF::var_data[group_id];
-    for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
+    for (index_t j = local_id * vec_size; j < cfg.workgroup_work_size;
          j += cfg.workgroup_size * vec_size) {
-      index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
+      index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
         vec_t X_val = *(
             reinterpret_cast<vec_t*>(NF::X_data + group_offset + plane_offset));
@@ -182,9 +182,9 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
     mean_t mean_val = NB::mean_data[group_id];
     mean_t rstd_val = NB::var_data[group_id];
-    for (index_t j = local_id * vec_size; j < cfg.WGPlane;
+    for (index_t j = local_id * vec_size; j < cfg.workgroup_work_size;
          j += cfg.workgroup_size * vec_size) {
-      index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
+      index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < cfg.problem_size) {
         weight_vec_t gamma_val;
         if (NB::gamma_data != nullptr) {
@@ -233,9 +233,9 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
     int fH = cfg.problem_size;
     accscalar_t term1 = (accscalar_t(1) / fH) * var_val;
-    for (index_t j = local_id * vec_size; j < (index_t)cfg.WGPlane;
+    for (index_t j = local_id * vec_size; j < cfg.workgroup_work_size;
          j += cfg.workgroup_size * vec_size) {
-      index_t plane_offset = group_id_foreach * cfg.WGPlane + j;
+      index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
         vec_t dY_val = *(reinterpret_cast<vec_t*>(
             NB::dY_data + group_offset + plane_offset));
