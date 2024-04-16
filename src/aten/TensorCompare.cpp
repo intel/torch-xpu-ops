@@ -9,7 +9,7 @@
 #include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceMinValuesKernel.h>
 #include <aten/sycl/TensorCompare.h>
-#include <comm/RegisterUtils.h>
+#include <comm/ReduceOpsUtils.h>
 
 namespace at {
 

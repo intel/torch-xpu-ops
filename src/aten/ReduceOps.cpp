@@ -11,7 +11,7 @@
 #include <aten/sycl/ReduceOps.h>
 #include <aten/sycl/ScanKernels.h>
 #include <aten/sycl/ScanUtils.h>
-#include <comm/RegisterUtils.h>
+#include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
 namespace at {

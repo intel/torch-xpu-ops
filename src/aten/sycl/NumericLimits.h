@@ -9,16 +9,7 @@ namespace at {
 template <typename T>
 struct numeric_limits {};
 
-// WARNING: the following at::numeric_limits definitions are there only to
-// support
-//          HIP compilation for the moment. Use std::numeric_limits if you are
-//          not compiling for ROCm. from @colesbury: "The functions on
-//          numeric_limits aren't marked with
-//          __device__ which is why they don't work with ROCm. CUDA allows them
-//          because they're constexpr."
-
 namespace {
-// ROCm doesn't like INFINITY too.
 constexpr double inf = INFINITY;
 } // namespace
 

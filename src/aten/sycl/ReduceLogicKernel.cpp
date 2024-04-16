@@ -1,12 +1,6 @@
 #include <ATen/Dispatch.h>
-#include <ATen/NumericUtils.h>
-#include <ATen/native/DispatchStub.h>
-#include <ATen/native/ReduceAllOps.h>
-#include <ATen/native/ReduceOps.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/cuda/ReduceOps.h>
 #include <aten/sycl/NumericLimits.h>
 #include <aten/sycl/Reduce.h>
 
