@@ -1,7 +1,15 @@
 #pragma once
 #include <ATen/native/TensorIterator.h>
+#include <ATen/Context.h>
 
 namespace at::native::xpu {
+
+void index_kernel(    
+    TensorIterator& iter,
+    at::IntArrayRef index_size,
+    at::IntArrayRef index_stride,
+    at::IntArrayRef non_index_size,
+    at::IntArrayRef non_index_stride);
 
 void index_select_kernel(
     const Tensor& self,

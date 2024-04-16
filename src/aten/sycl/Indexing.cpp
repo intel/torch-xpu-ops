@@ -21,6 +21,38 @@ using namespace at::xpu;
 
 namespace at::native::xpu {
 
+template <typename dtype>
+struct IndexFunctor {
+  void operator()(char* out_data, char* in_data, int64_t offset) const {
+    *(dtype*)out_data = *(dtype*)(in_data + offset);
+  }
+};
+
+void index_kernel(
+    TensorIterator& iter,
+    IntArrayRef index_size,
+    IntArrayRef index_stride,
+    IntArrayRef non_index_size,
+    IntArrayRef non_index_stride) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "index",
+      [&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        IndexFunctor<dtype> f;
+        _index_kernel(
+            iter,
+            index_size,
+            index_stride,
+            non_index_size,
+            non_index_stride,
+            f);
+      });
+}
+
 template <typename ValType>
 class IndexSelectScalarFunctor {
  public:
