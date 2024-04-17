@@ -196,3 +196,9 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - _fft_c2r
+  - _fft_r2c
+  - _fft_c2c
+  - _fft_c2r.out
+  - _fft_r2c.out
+  - _fft_c2c.out
