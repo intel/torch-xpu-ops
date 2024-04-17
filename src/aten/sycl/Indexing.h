@@ -756,7 +756,6 @@ void index_kernel_impl(
   int64_t indice_size_bytes = iter.tensor(2).element_size();
 
   auto& queue = getCurrentSYCLQueue();
-  auto local_size = syclMaxSubGroupSize();
   auto out_data = (char*)iter.data_ptr(0);
   auto in_data = (char*)iter.data_ptr(1);
   using index_buf_type = decltype((char*)iter.data_ptr(0));
