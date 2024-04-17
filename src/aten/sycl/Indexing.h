@@ -362,7 +362,7 @@ static inline void launch_index_kernel(IdxConfig& cfg) {
 }
 
 template <typename func_t, typename index_buf_type>
-struct SmallIndexKernelImplFunctor {
+struct SmallIndexKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     auto local_id = item_id.get_local_id(0);
     auto group_id = item_id.get_group(0);
@@ -429,74 +429,14 @@ struct SmallIndexKernelImplFunctor {
       f_(out_ptr + out_offset, in_ptr + in_offset, offset);
     }
   }
-  SmallIndexKernelImplFunctor(
-      const func_t f,
-      int64_t indices_size,
-      int64_t group_num_tail,
-      int64_t group_num,
-      int64_t group_numel,
-      int64_t group_numel_tail,
-      int64_t wgroup_size,
-      size_t num_non_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides,
-      int64_t src_strides0,
-      size_t num_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
-      int64_t element_size_bytes,
-      int64_t indice_size_bytes,
-      char* out_data,
-      char* in_data,
-      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs,
-      sycl_local_acc_t<int64_t, 1> local_offset)
-      : f_(f),
-        indices_size_(indices_size),
-        group_num_tail_(group_num_tail),
-        group_num_(group_num),
-        group_numel_(group_numel),
-        group_numel_tail_(group_numel_tail),
-        wgroup_size_(wgroup_size),
-        num_non_indices_(num_non_indices),
-        src_sizes_(src_sizes),
-        src_strides_(src_strides),
-        src_strides0_(src_strides0),
-        num_indices_(num_indices),
-        sizes_(sizes),
-        strides_(strides),
-        element_size_bytes_(element_size_bytes),
-        indice_size_bytes_(indice_size_bytes),
-        out_data_(out_data),
-        in_data_(in_data),
-        index_ptrs_(index_ptrs),
-        local_offset_(local_offset) {}
 
- private:
-  const func_t f_;
-  int64_t indices_size_;
-  int64_t group_num_tail_;
-  int64_t group_num_;
-  int64_t group_numel_;
-  int64_t group_numel_tail_;
-  int64_t wgroup_size_;
-  size_t num_non_indices_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides_;
-  int64_t src_strides0_;
-  size_t num_indices_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes_;
-  at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides_;
-  int64_t element_size_bytes_;
-  int64_t indice_size_bytes_;
-  char* out_data_;
-  char* in_data_;
-  at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs_;
-  sycl_local_acc_t<int64_t, 1> local_offset_;
-};
+  void set_local_acc(sycl_local_acc_t<int64_t, 1> slm) {
+    local_offset_ = slm;
+  }
 
-template <typename func_t, typename index_buf_type>
-struct SmallIndexKernelCreator {
-  SmallIndexKernelCreator(
+  SmallIndexKernelFunctor() = default;
+
+  SmallIndexKernelFunctor(
       const func_t f,
       int64_t indices_size,
       int64_t group_num_tail,
@@ -534,33 +474,10 @@ struct SmallIndexKernelCreator {
         indice_size_bytes_(indice_size_bytes),
         out_data_(out_data),
         in_data_(in_data),
-        index_ptrs_(index_ptrs) {}
+        index_ptrs_(index_ptrs),
+        local_offset_() {}
 
-  SmallIndexKernelImplFunctor<func_t, index_buf_type> operator()(
-      sycl::handler& cgh) {
-    sycl_local_acc_t<int64_t, 1> local_offset_(indices_size_, cgh);
-    SmallIndexKernelImplFunctor<func_t, index_buf_type> kfn(
-        f_,
-        indices_size_,
-        group_num_tail_,
-        group_num_,
-        group_numel_,
-        group_numel_tail_,
-        wgroup_size_,
-        num_non_indices_,
-        src_sizes_,
-        src_strides_,
-        src_strides0_,
-        num_indices_,
-        sizes_,
-        strides_,
-        element_size_bytes_,
-        indice_size_bytes_,
-        out_data_,
-        in_data_,
-        index_ptrs_,
-        local_offset_);
-  }
+ private:
   const func_t f_;
   int64_t indices_size_;
   int64_t group_num_tail_;
@@ -580,9 +497,68 @@ struct SmallIndexKernelCreator {
   char* out_data_;
   char* in_data_;
   at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs_;
+  sycl_local_acc_t<int64_t, 1> local_offset_;
 };
 
-// SYCL suggest: it’s possible (and even desirable) to oversubscribe tasks to
+template <typename func_t, typename index_buf_type>
+struct SmallIndexKernelCreator {
+  using ker_t = SmallIndexKernelFunctor<func_t, index_buf_type>;
+
+  SmallIndexKernelCreator(
+      const func_t f,
+      int64_t indices_size,
+      int64_t group_num_tail,
+      int64_t group_num,
+      int64_t group_numel,
+      int64_t group_numel_tail,
+      int64_t wgroup_size,
+      size_t num_non_indices,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides,
+      int64_t src_strides0,
+      size_t num_indices,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
+      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
+      int64_t element_size_bytes,
+      int64_t indice_size_bytes,
+      char* out_data,
+      char* in_data,
+      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs)
+      : slm_size_(indices_size),
+        kfn_(
+            {f,
+             indices_size,
+             group_num_tail,
+             group_num,
+             group_numel,
+             group_numel_tail,
+             wgroup_size,
+             num_non_indices,
+             src_sizes,
+             src_strides,
+             src_strides0,
+             num_indices,
+             sizes,
+             strides,
+             element_size_bytes,
+             indice_size_bytes,
+             out_data,
+             in_data,
+             index_ptrs}) {}
+
+  // Call in CGH context.
+  ker_t operator()(sycl::handler& cgh) {
+    sycl_local_acc_t<int64_t, 1> slm(slm_size_, cgh);
+    kfn_.set_local_acc(slm);
+    return kfn_;
+  }
+
+ private:
+  int64_t slm_size_;
+  ker_t kfn_;
+};
+
+// SYCL suggests: it’s possible (and even desirable) to oversubscribe tasks to
 // device;
 constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
 
@@ -664,9 +640,7 @@ void small_index_kernel_impl(
       in_data,
       index_ptrs);
 
-  sycl_kernel_submit<
-      SmallIndexKernelImplFunctor<func_t, index_buf_type>,
-      decltype(creator)>(
+  sycl_kernel_submit<typename decltype(creator)::ker_t, decltype(creator), 1>(
       sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, creator);
 }
 
@@ -674,7 +648,7 @@ template <
     typename func_t,
     typename index_buf_type,
     typename OffsetCalculatorType>
-struct IndexKernelImplFunctor {
+struct IndexKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
     auto linear_idx = item_id.get_linear_id();
     auto offsets = offset_calc_.get(linear_idx);
@@ -706,7 +680,7 @@ struct IndexKernelImplFunctor {
     }
     f_(out_ptr, in_ptr, offset);
   }
-  IndexKernelImplFunctor(
+  IndexKernelFunctor(
       const func_t f,
       OffsetCalculatorType offset_calc,
       int64_t indice_size_bytes,
@@ -756,7 +730,6 @@ void index_kernel_impl(
   int64_t indice_size_bytes = iter.tensor(2).element_size();
 
   auto& queue = getCurrentSYCLQueue();
-  auto local_size = syclMaxSubGroupSize();
   auto out_data = (char*)iter.data_ptr(0);
   auto in_data = (char*)iter.data_ptr(1);
   using index_buf_type = decltype((char*)iter.data_ptr(0));
@@ -766,7 +739,7 @@ void index_kernel_impl(
   }
 
   auto offset_calc = make_offset_calculator<3>(iter);
-  IndexKernelImplFunctor<func_t, index_buf_type, decltype(offset_calc)> kfn(
+  IndexKernelFunctor<func_t, index_buf_type, decltype(offset_calc)> kfn(
       f,
       offset_calc,
       indice_size_bytes,
