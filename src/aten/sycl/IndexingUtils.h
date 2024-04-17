@@ -340,6 +340,21 @@ static TensorIterator make_index_iterator(const AdvancedIndex& info) {
   return config.build();
 }
 
+static TensorIterator make_index_out_iterator(
+    const AdvancedIndex& info,
+    Tensor& result) {
+  TensorIteratorConfig config;
+  // info.src is a restrided view of result
+  config.set_check_mem_overlap(false)
+      .check_all_same_dtype(false)
+      .add_output(result)
+      .add_input(info.src);
+  for (auto& index : info.indices) {
+    config.add_input(index);
+  }
+  return config.build();
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

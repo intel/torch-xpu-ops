@@ -182,7 +182,7 @@ supported:
   - clamp_min.out
   - clamp_max.out
   - index.Tensor
-  # - index.Tensor_out
+  - index.Tensor_out
   - max
   - max.unary_out
   - max.dim_max
