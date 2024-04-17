@@ -71,5 +71,3 @@ class TestTorchMethod(TestCase):
         
         for dtype in test_dtypes:
             test_one_fft_c2c(dtype)
-
-        
