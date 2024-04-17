@@ -125,10 +125,10 @@ runs:
         echo "num_failed: $num_failed" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
         echo "pass_rate: $pass_rate" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
         cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
-    - name: Upload Inductor XPU E2E CI Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+    - name: Upload Inductor XPU E2E Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       uses: actions/upload-artifact@v4
       with:
-        name: Inductor-XPU-E2E-CI-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.ref }}
+        name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/inductor_log
     - name: Test Results Check (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.expected_pass_num }}
@@ -138,6 +138,6 @@ runs:
         cd ${{ inputs.dt }}
         num_passed=$(grep "num_passed:" ${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log | sed -e 's/.*://;s/[^0-9.]//')
         if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
-          echo -e "[ERROR] Inductor E2E CI test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
+          echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
           exit 1
         fi
