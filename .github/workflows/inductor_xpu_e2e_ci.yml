@@ -50,7 +50,6 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           export USE_XPU=1
-          export PYTORCH_XPU_FALLBACK_OP=rsub.Scalar
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
