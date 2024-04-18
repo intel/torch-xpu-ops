@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/EmbeddingBackwardKernel.h>
 
 namespace at {
 namespace native {
@@ -64,15 +65,14 @@ Tensor embedding_dense_backward(
                 //     sorted_begin, sorted_begin + num_indices, count_begin,
                 //     f);
               }
-              // grad_weight = impl::
-              //     embedding_backward_deterministic_kernel<scalar_t,
-              //     index_t>(
-              //         grad_output_cont,
-              //         orig_indices,
-              //         sorted_indices,
-              //         count,
-              //         num_weights,
-              //         padding_idx);
+              grad_weight =
+                  embedding_backward_deterministic_kernel<scalar_t, index_t>(
+                      grad,
+                      orig_indices,
+                      sorted_indices,
+                      count,
+                      num_weights,
+                      padding_idx);
             });
       });
   return grad_weight;
