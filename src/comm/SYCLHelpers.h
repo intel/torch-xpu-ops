@@ -119,6 +119,15 @@ static inline void sycl_kernel_submit(
   q.submit(cgf);
 }
 
+template <typename ker_t, int dim>
+static inline void sycl_kernel_submit(
+    ::sycl::range<dim> range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) { cgh.parallel_for<ker_t>(range, ker); };
+  q.submit(cgf);
+}
+
 // ================= atomic =================
 
 template <typename T>
