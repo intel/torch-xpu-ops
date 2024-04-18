@@ -43,6 +43,7 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
+          pip install torchvision --no-deps
       - name: Run XPU OP Examples
         if: ${{ hashFiles('examples/') != '' }}
         run: |
