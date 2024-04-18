@@ -26,4 +26,19 @@ void index_add_kernel(
     const Scalar& alpha,
     const Tensor& out);
 
+void index_put_kernel(
+    TensorIterator& iter,
+    IntArrayRef index_size,
+    IntArrayRef index_stride,
+    IntArrayRef non_index_size,
+    IntArrayRef non_index_stride,
+    bool accumulate);
+
+void index_put_deterministic_kernel(
+    Tensor& self,
+    const c10::List<c10::optional<Tensor>>& indices,
+    const Tensor& value,
+    bool accumulate,
+    bool unsafe);
+
 } // namespace at::native::xpu

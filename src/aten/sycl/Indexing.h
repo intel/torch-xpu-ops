@@ -362,7 +362,7 @@ static inline void launch_index_kernel(IdxConfig& cfg) {
 }
 
 template <typename func_t, typename index_buf_type>
-struct SmallIndexKernelFunctor {
+struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     auto local_id = item_id.get_local_id(0);
     auto group_id = item_id.get_group(0);
@@ -430,8 +430,8 @@ struct SmallIndexKernelFunctor {
     }
   }
 
-  void set_local_acc(sycl_local_acc_t<int64_t, 1> slm) {
-    local_offset_ = slm;
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_offset_ = sycl_local_acc_t<int64_t, 1>(indices_size_, cgh);
   }
 
   SmallIndexKernelFunctor() = default;
@@ -619,7 +619,7 @@ void small_index_kernel_impl(
     index_ptrs[i] = (char*)iter.data_ptr(i + 2);
   }
 
-  SmallIndexKernelCreator<func_t, index_buf_type> creator(
+  SmallIndexKernelFunctor<func_t, index_buf_type> kfn(
       f,
       indices_size,
       group_num_tail,
@@ -639,9 +639,8 @@ void small_index_kernel_impl(
       out_data,
       in_data,
       index_ptrs);
-
-  sycl_kernel_submit<typename decltype(creator)::ker_t, decltype(creator), 1>(
-      sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, creator);
+  sycl_kernel_submit(
+      sycl::range<1>(global_size), sycl::range<1>(wgroup_size), queue, kfn);
 }
 
 template <
@@ -832,6 +831,116 @@ void _index_kernel(
   }
 
   index_kernel_impl<func_t>(iter, index_size, index_stride, f);
+}
+
+template <typename scalar_t, typename accscalar_t>
+struct IndexPutDeterministicKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto id = cfg_.get_item_desc(item);
+
+    if (id.glb_batch >= cfg_.problem_batch_ || id.glb_problem >= cfg_.problem_)
+      return;
+
+    int64_t idx = sorted_indices_[id.glb_batch];
+    if (id.glb_batch != 0 && idx == sorted_indices_[id.glb_batch - 1])
+      return;
+
+    int64_t pi_ = id.glb_problem;
+    int64_t si_ = pi_ % stride_;
+    int64_t bi_ = pi_ / stride_;
+    int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
+    int64_t v_stride = si_ + bi_ * v_stride_before_;
+
+    accscalar_t acc;
+    if (accumulate_)
+      acc = self_[s_gid];
+    for (int64_t inner_idx = id.glb_batch;
+         sorted_indices_[inner_idx] == idx && inner_idx < cfg_.problem_batch_;
+         inner_idx++) {
+      int64_t idx_orig = indices_[inner_idx];
+      int64_t v_gid = idx_orig * stride_ + v_stride;
+      if (accumulate_) {
+        acc += (accscalar_t)value_[v_gid];
+      } else {
+        self_[s_gid] = value_[v_gid];
+        break;
+      }
+    }
+    if (accumulate_)
+      self_[s_gid] = acc;
+  }
+
+  IndexPutDeterministicKernelFunctor(
+      int64_t* sorted_indices,
+      int64_t* indices,
+      scalar_t* value,
+      scalar_t* self,
+      int64_t stride,
+      int64_t stride_before,
+      bool accumulate,
+      int64_t v_stride_before,
+      BatchKernelConfig cfg)
+      : sorted_indices_(sorted_indices),
+        indices_(indices),
+        value_(value),
+        self_(self),
+        stride_(stride),
+        stride_before_(stride_before),
+        accumulate_(accumulate),
+        v_stride_before_(v_stride_before),
+        cfg_(cfg) {}
+
+ private:
+  int64_t* sorted_indices_;
+  int64_t* indices_;
+  scalar_t* value_;
+  scalar_t* self_;
+  int64_t stride_;
+  int64_t stride_before_;
+  bool accumulate_;
+  int64_t v_stride_before_;
+  BatchKernelConfig cfg_;
+};
+
+template <typename scalar_t>
+void launch_index_put_deterministic_kernel(
+    int64_t* sorted_indices,
+    int64_t* indices,
+    scalar_t* value,
+    scalar_t* self,
+    int64_t numel,
+    int64_t stride,
+    int64_t stride_before,
+    int64_t outer_dim,
+    bool accumulate) {
+  if (outer_dim * stride == 0 || numel == 0) {
+    return;
+  }
+  int64_t v_stride_before = numel * stride;
+  BatchKernelConfig cfg = {
+      /* num of indices */ numel,
+      /* num of elements to put per indices */ outer_dim * stride,
+      1,
+      numel,
+      true,
+      {BatchKernelConfig::Policy::pSegment,
+       BatchKernelConfig::Policy::pAggressiveSplit}};
+
+  // align with precision of CPU backend.
+  using accscalar_t = scalar_t; /* acc_type<scalar_t>; */
+  IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t> kfn(
+      sorted_indices,
+      indices,
+      value,
+      self,
+      stride,
+      stride_before,
+      accumulate,
+      v_stride_before,
+      cfg);
+
+  sycl_kernel_submit(
+      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
 
 } // namespace at::native::xpu

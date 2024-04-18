@@ -273,81 +273,59 @@ class LoopScanConfig {
 };
 
 template <typename LSConfig_, bool TrivialOffCal = false>
-class loop_scan_kernel {
+class LoopScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using LSConfig = LSConfig_;
   using T = typename LSConfig::arg_t;
   using BinaryFunction = typename LSConfig::func_t;
 
  public:
-  loop_scan_kernel(
-      const LSConfig& cfg_,
-      sycl::local_accessor<T> slm_,
-      sycl::local_accessor<T> max_carr_)
-      : cfg(cfg_), slm(slm_), max_carr(max_carr_) {}
+  LoopScanKernel(const LSConfig& cfg) : cfg_(cfg), slm_(), max_carr_() {}
 
   void operator()(sycl::nd_item<2> item) const {
-    const int loops_batch = cfg.loops_batch;
-    const int loops_problem = cfg.loops_problem;
-    const auto group_size_x = cfg.wg_range_x_;
+    const int loops_batch = cfg_.loops_batch;
+    const int loops_problem = cfg_.loops_problem;
+    const auto group_size_x = cfg_.wg_range_x_;
     const auto liy = item.get_local_id(0);
 
     for (int k = 0,
              base_off_batch_group = item.get_group(0) * item.get_local_range(0);
-         k < loops_batch && base_off_batch_group < cfg.batch_;
-         k++, base_off_batch_group += cfg.glb_range_y_) {
-      max_carr[liy] = cfg.init_;
-      int64_t base_off_batch = k * cfg.glb_range_y_ + item.get_global_id(0);
+         k < loops_batch && base_off_batch_group < cfg_.batch_;
+         k++, base_off_batch_group += cfg_.glb_range_y_) {
+      max_carr_[liy] = cfg_.init_;
+      int64_t base_off_batch = k * cfg_.glb_range_y_ + item.get_global_id(0);
       for (int i = 0; i < loops_problem; ++i) {
         // calculate base addr offset for each loop
         int64_t base_off_problem = i * group_size_x * 2;
-        max_carr[liy] = group_x_scan_by_uds_for_loop_scan<
+        max_carr_[liy] = group_x_scan_by_uds_for_loop_scan<
             LSConfig,
             T,
             BinaryFunction,
             TrivialOffCal>(
-            item, max_carr[liy], base_off_batch, base_off_problem, slm, cfg);
+            item, max_carr_[liy], base_off_batch, base_off_problem, slm_, cfg_);
       }
     }
   }
 
- private:
-  LSConfig cfg;
-  sycl::local_accessor<T> slm;
-  sycl::local_accessor<T> max_carr;
-};
-
-template <typename LSConfig_, bool TrivialOffCal = false>
-class loop_scan_kernel_creator {
-  using LSConfig = LSConfig_;
-
- public:
-  loop_scan_kernel_creator(const LSConfig& cfg_) {
-    cfg = cfg_;
-  }
-  loop_scan_kernel<LSConfig, TrivialOffCal> operator()(
-      sycl::handler& cgh) const {
-    int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_ * 2;
-    int carr_size = cfg.wg_range_y_;
-    sycl::local_accessor<typename LSConfig::arg_t> shared(slm_size, cgh);
-    sycl::local_accessor<typename LSConfig::arg_t> max_carr(carr_size, cgh);
-    loop_scan_kernel<LSConfig, TrivialOffCal> ker(cfg, shared, max_carr);
-    return ker;
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    int slm_size = cfg_.wg_range_x_ * cfg_.wg_range_y_ * 2;
+    int carr_size = cfg_.wg_range_y_;
+    slm_ = sycl::local_accessor<typename LSConfig::arg_t>(slm_size, cgh);
+    max_carr_ = sycl::local_accessor<typename LSConfig::arg_t>(carr_size, cgh);
   }
 
  private:
-  LSConfig cfg;
+  LSConfig cfg_;
+  sycl::local_accessor<T> slm_;
+  sycl::local_accessor<T> max_carr_;
 };
 
 template <typename LSConfig, bool TrivialOffCal = false>
 static inline void launch_loop_scan(const LSConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  loop_scan_kernel_creator<LSConfig, TrivialOffCal> creator(cfg);
-  // TODO: How to resolve this?
-  // we can aproach this type: loop_scan_kernel
-  sycl_kernel_submit<
-      loop_scan_kernel<LSConfig, TrivialOffCal>,
-      decltype(creator),
-      2>(cfg.global_size(), cfg.group_size(), queue, creator);
+
+  LoopScanKernel<LSConfig, TrivialOffCal> kfn(cfg);
+
+  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
 
 template <class T, class BinaryFunction>
@@ -516,7 +494,7 @@ template <
     class SSConfig_,
     bool TrivialOffCal = false,
     bool TrivialIdxCal = false>
-class segment_scan_kernel {
+class SegmentScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
  public:
   using SSConfig = SSConfig_;
   using T = typename SSConfig::arg_t;
@@ -524,8 +502,7 @@ class segment_scan_kernel {
   using InputInfo = typename SSConfig::InputInfoType;
   using OutputInfo = typename SSConfig::OutputInfoType;
 
-  segment_scan_kernel(const SSConfig& cfg, sycl::local_accessor<T> slm)
-      : cfg(cfg), slm(slm) {}
+  SegmentScanKernel(const SSConfig& cfg) : cfg(cfg), slm() {}
 
  public:
   void operator()(sycl::nd_item<2> item) const {
@@ -607,35 +584,14 @@ class segment_scan_kernel {
     }
   }
 
- private:
-  SSConfig cfg;
-  sycl::local_accessor<T> slm;
-};
-
-template <
-    typename SSConfig_,
-    bool TrivialOffCal = false,
-    bool TrivialIdxCal = false>
-class segment_scan_kernel_creator {
-  using SSConfig = SSConfig_;
-  using T = typename SSConfig::arg_t;
-  using BinaryFunction = typename SSConfig::func_t;
-
- public:
-  segment_scan_kernel_creator(const SSConfig& cfg_) : cfg(cfg_) {}
-
-  segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> operator()(
-      sycl::handler& cgh) const {
-    int wg_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-    int slm_size = wg_size;
-    sycl::local_accessor<T> shared(slm_size, cgh);
-    segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal> ker(
-        cfg, shared);
-    return ker;
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_;
+    slm = sycl::local_accessor<T>(slm_size, cgh);
   }
 
  private:
   SSConfig cfg;
+  sycl::local_accessor<T> slm;
 };
 
 template <
@@ -644,12 +600,8 @@ template <
     bool TrivialIdxCal = false>
 static inline void launch_segment_scan(const SSConfig& cfg) {
   auto& queue = getCurrentSYCLQueue();
-  segment_scan_kernel_creator<SSConfig, TrivialOffCal, TrivialIdxCal> creator(
-      cfg);
-  sycl_kernel_submit<
-      segment_scan_kernel<SSConfig, TrivialOffCal, TrivialIdxCal>,
-      decltype(creator),
-      2>(cfg.global_size(), cfg.group_size(), queue, creator);
+  SegmentScanKernel<SSConfig, TrivialOffCal, TrivialIdxCal> kfn(cfg);
+  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
 
 template <class SSConfig, bool TrivialIdxCal = false>
@@ -678,7 +630,7 @@ struct AccumulateCarrierKernelFunctor {
   const SSConfig cfg;
 };
 
-static inline bool dispatch_to_loop_scan_kernel(
+static inline bool dispatch_to_LoopScanKernel(
     const int64_t problem,
     const int64_t stride,
     const int64_t batch) {
@@ -718,7 +670,7 @@ template <
     class InputInfo,
     class OutputInfo,
     class BinaryFunction>
-static inline void _loop_scan_kernel(
+static inline void _LoopScanKernel(
     InputInfo& input_info,
     OutputInfo& output_info,
     int dim_after_collapse,
@@ -837,8 +789,8 @@ void scan(
   int64_t stride = input_info.innerSize(dim_after_collapse);
   int64_t problem = input_info.sizes[dim_after_collapse];
 
-  if (dispatch_to_loop_scan_kernel(problem, stride, batch)) {
-    _loop_scan_kernel<Type, true>(
+  if (dispatch_to_LoopScanKernel(problem, stride, batch)) {
+    _LoopScanKernel<Type, true>(
         input_info, output_info, dim_after_collapse, init, func);
   } else {
     if (batch == 1 && stride == 1) {

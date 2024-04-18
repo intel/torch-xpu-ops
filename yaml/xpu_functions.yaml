@@ -198,3 +198,4 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - _index_put_impl_
