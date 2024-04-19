@@ -854,6 +854,27 @@ OutputIt count_by_segment(
   return d_first + N;
 }
 
+template <typename T>
+inline void swap_var(T& t1, T& t2) {
+  T tmp = t1;
+  t1 = t2;
+  t2 = tmp;
+}
+
+template <typename KeyType, typename ValueType, typename CompFunc>
+inline void compare_and_swap(
+    KeyType& kA,
+    ValueType& vA,
+    KeyType& kB,
+    ValueType& vB,
+    bool dir,
+    const CompFunc comp_t) {
+  if (comp_t(kA, kB) == dir) {
+    swap_var(kA, kB);
+    swap_var(vA, vB);
+  }
+};
+
 // bubble sort for the first round sorting
 template <typename KeyType, typename ValueType, typename CompFunc>
 inline void leaf_sort(
@@ -862,7 +883,18 @@ inline void leaf_sort(
     ValueType* val,
     size_t n,
     size_t sorted_sz,
-    const CompFunc& comp_t) {}
+    const CompFunc& comp_t) {
+  auto start = item.get_linear_id() * n;
+  auto end = std::min(start + n, sorted_sz);
+  for (size_t i = start; i < end; ++i) {
+    for (size_t j = start + 1; j < start + end - i; ++j) {
+      // for stable sort, the condition should be:
+      // if comp_t(key[j], key[j-1]), swap two elements;
+      // so when key[j]==key[j-1], no swap.
+      compare_and_swap(key[j], val[j], key[j - 1], val[j - 1], true, comp_t);
+    }
+  }
+}
 
 // lower_bound used in merge sort: pick up the elements in the sequence doesn't
 // meet the compare situation with smallest index
