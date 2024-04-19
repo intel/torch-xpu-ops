@@ -500,70 +500,12 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<int64_t, 1> local_offset_;
 };
 
-template <typename func_t, typename index_buf_type>
-struct SmallIndexKernelCreator {
-  using ker_t = SmallIndexKernelFunctor<func_t, index_buf_type>;
-
-  SmallIndexKernelCreator(
-      const func_t f,
-      int64_t indices_size,
-      int64_t group_num_tail,
-      int64_t group_num,
-      int64_t group_numel,
-      int64_t group_numel_tail,
-      int64_t wgroup_size,
-      size_t num_non_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> src_strides,
-      int64_t src_strides0,
-      size_t num_indices,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes,
-      at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides,
-      int64_t element_size_bytes,
-      int64_t indice_size_bytes,
-      char* out_data,
-      char* in_data,
-      at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs)
-      : slm_size_(indices_size),
-        kfn_(
-            {f,
-             indices_size,
-             group_num_tail,
-             group_num,
-             group_numel,
-             group_numel_tail,
-             wgroup_size,
-             num_non_indices,
-             src_sizes,
-             src_strides,
-             src_strides0,
-             num_indices,
-             sizes,
-             strides,
-             element_size_bytes,
-             indice_size_bytes,
-             out_data,
-             in_data,
-             index_ptrs}) {}
-
-  // Call in CGH context.
-  ker_t operator()(sycl::handler& cgh) {
-    sycl_local_acc_t<int64_t, 1> slm(slm_size_, cgh);
-    kfn_.set_local_acc(slm);
-    return kfn_;
-  }
-
- private:
-  int64_t slm_size_;
-  ker_t kfn_;
-};
-
 // SYCL suggests: it’s possible (and even desirable) to oversubscribe tasks to
 // device;
 constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
 
 template <typename func_t>
-void small_index_kernel_impl(
+void small_index_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
@@ -771,7 +713,7 @@ void _index_kernel(
       num_indices == static_cast<size_t>(iter.ntensors()) - 2);
   TORCH_INTERNAL_ASSERT(num_indices <= XPU_MAX_TENSORINFO_DIMS);
 
-  // the small_index_kernel_impl is applied for last several
+  // the small_index_kernel is applied for last several
   // successive dims indexing of an input tensor Taking 3-dims tensor input
   // (input.shape=[x,y,z]) for example: input[:,:,idx] or input[:,idx1,idx2]
   // when input tensor satisfies the following conditions, the
@@ -816,7 +758,7 @@ void _index_kernel(
         (total_index_iter > 2 * max_group_num && local_index > wgroup_size &&
          indice_table_size < max_local_mem_size * 0.5);
     if (small_index) {
-      small_index_kernel_impl<func_t>(
+      small_index_kernel<func_t>(
           iter, index_size, index_stride, non_index_size, non_index_stride, f);
       return;
     }

@@ -630,7 +630,7 @@ struct AccumulateCarrierKernelFunctor {
   const SSConfig cfg;
 };
 
-static inline bool dispatch_to_LoopScanKernel(
+static inline bool dispatch_to_loop_scan_kernel(
     const int64_t problem,
     const int64_t stride,
     const int64_t batch) {
@@ -670,7 +670,7 @@ template <
     class InputInfo,
     class OutputInfo,
     class BinaryFunction>
-static inline void _LoopScanKernel(
+static inline void loop_scan_kernel(
     InputInfo& input_info,
     OutputInfo& output_info,
     int dim_after_collapse,
@@ -789,8 +789,8 @@ void scan(
   int64_t stride = input_info.innerSize(dim_after_collapse);
   int64_t problem = input_info.sizes[dim_after_collapse];
 
-  if (dispatch_to_LoopScanKernel(problem, stride, batch)) {
-    _LoopScanKernel<Type, true>(
+  if (dispatch_to_loop_scan_kernel(problem, stride, batch)) {
+    loop_scan_kernel<Type, true>(
         input_info, output_info, dim_after_collapse, init, func);
   } else {
     if (batch == 1 && stride == 1) {
