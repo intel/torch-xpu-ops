@@ -10,6 +10,7 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/Atomics.h>
 #include <aten/sycl/Indexing.h>
 #include <aten/sycl/IndexingUtils.h>
 #include <aten/sycl/Loops.h>

@@ -1,15 +1,19 @@
 #pragma once
 
-#include <c10/util/complex.h>
-#include <runtime/Utils.h>
-#include <utils/DPCPP.h>
-#include "Numerics.h"
-#include "Scalar.h"
+#include <comm/SYCLHelpers.h>
+#include <comm/Scalar.h>
 
-using namespace xpu::dpcpp;
+#include <sycl/sycl.hpp>
 
-namespace at {
-namespace AtenIpexTypeXPU {
+namespace at::native::xpu {
+
+template <typename T>
+using sycl_atomic_ref_rlx_dev_global_t =
+    sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_dev, sycl_global_space>;
+
+template <typename T>
+using sycl_atomic_ref_rlx_wg_local_t =
+    sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_wg, sycl_local_space>;
 
 template <typename T, size_t n>
 struct AtomicIntegerImpl;
@@ -24,7 +28,7 @@ struct AtomicIntegerImpl<T, 1> {
     uint32_t shift = offset * 8;
     uint32_t newval;
     uint32_t newval_byte;
-    dpcpp_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
 
     do {
       newval = assumed;
@@ -47,7 +51,7 @@ struct AtomicIntegerImpl<T, 2> {
     uint32_t assumed = *address_as_ui;
     uint32_t newval;
     uint32_t newval_bytes;
-    dpcpp_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
 
     do {
       newval = assumed;
@@ -68,7 +72,7 @@ struct AtomicIntegerImpl<T, 4> {
     uint32_t* address_as_ui = (uint32_t*)(address);
     uint32_t assumed = *address_as_ui;
     uint32_t newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address_as_ui);
 
     do {
       newval = static_cast<uint32_t>(func(val, static_cast<T>(assumed)));
@@ -83,7 +87,7 @@ struct AtomicIntegerImpl<T, 8> {
     unsigned long long* address_as_ull = (unsigned long long*)(address);
     unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<unsigned long long> target(
+    sycl_atomic_ref_rlx_dev_global_t<unsigned long long> target(
         *address_as_ull);
 
     do {
@@ -92,11 +96,11 @@ struct AtomicIntegerImpl<T, 8> {
   }
 };
 
-#define SYCL_ATOMIC_INTEGER(NAME, OP, DTYPE)                  \
-  static inline void atomic##NAME(                            \
-      const dpcpp_global_ptr_pt<DTYPE>& address, DTYPE val) { \
-    AtomicIntegerImpl<DTYPE, sizeof(DTYPE)>()(                \
-        address, val, [](DTYPE a, DTYPE b) { return OP; });   \
+#define SYCL_ATOMIC_INTEGER(NAME, OP, DTYPE)                \
+  static inline void atomic##NAME(                          \
+      const sycl_global_ptr<DTYPE>& address, DTYPE val) {   \
+    AtomicIntegerImpl<DTYPE, sizeof(DTYPE)>()(              \
+        address, val, [](DTYPE a, DTYPE b) { return OP; }); \
   }
 
 template <typename T>
@@ -110,7 +114,7 @@ struct AtomicFPImpl<at::Half> {
         (unsigned int*)((char*)address - ((size_t)address & 2));
     unsigned int assumed = *address_as_ui;
     unsigned int newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
 
     do {
       newval = assumed;
@@ -134,7 +138,7 @@ struct AtomicFPImpl<at::BFloat16> {
         (unsigned int*)((char*)address - ((size_t)address & 2));
     unsigned int assumed = *address_as_ui;
     unsigned int newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
 
     do {
       newval = assumed;
@@ -154,7 +158,7 @@ struct AtomicFPImpl<float> {
     unsigned int* address_as_ui = (unsigned int*)address;
     unsigned int assumed = *address_as_ui;
     unsigned int newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
+    sycl_atomic_ref_rlx_dev_global_t<unsigned int> target(*address_as_ui);
 
     do {
       newval = __float_as_int(func(val, __int_as_float(assumed)));
@@ -169,7 +173,7 @@ struct AtomicFPImpl<double> {
     unsigned long long* address_as_ull = (unsigned long long*)address;
     unsigned long long assumed = *address_as_ull;
     unsigned long long newval;
-    dpcpp_atomic_ref_rlx_dev_global_t<unsigned long long> target(
+    sycl_atomic_ref_rlx_dev_global_t<unsigned long long> target(
         *address_as_ull);
 
     do {
@@ -180,109 +184,102 @@ struct AtomicFPImpl<double> {
 
 #define SYCL_ATOMIC_FP(NAME, OP, DTYPE)                                       \
   static inline void atomic##NAME(                                            \
-      const dpcpp_global_ptr_pt<DTYPE>& address, DTYPE val) {                 \
+      const sycl_global_ptr<DTYPE>& address, DTYPE val) {                     \
     AtomicFPImpl<DTYPE>()(address, val, [](DTYPE a, DTYPE b) { return OP; }); \
   }
 
-// Atomic addition implementation.
-
-static inline void atomicAdd(
-    const dpcpp_global_ptr_pt<float>& address,
-    float val) {
-  dpcpp_atomic_ref_rlx_dev_global_t<float> target(*address);
+static inline void atomicAdd(const sycl_global_ptr<float>& address, float val) {
+  sycl_atomic_ref_rlx_dev_global_t<float> target(*address);
   target.fetch_add(val);
 }
 
 static inline void atomicAdd(
-    const dpcpp_global_ptr_pt<double>& address,
+    const sycl_global_ptr<double>& address,
     double val) {
-  dpcpp_atomic_ref_rlx_dev_global_t<double> target(*address);
+  sycl_atomic_ref_rlx_dev_global_t<double> target(*address);
   target.fetch_add(val);
 }
 
-SYCL_ATOMIC_FP(Add, Numerics<at::Half>::add(a, b), at::Half)
-SYCL_ATOMIC_FP(Add, Numerics<at::BFloat16>::add(a, b), at::BFloat16)
-
-static inline void atomicAdd(const dpcpp_global_ptr_pt<int>& address, int val) {
-  dpcpp_atomic_ref_rlx_dev_global_t<int> target(*address);
+static inline void atomicAdd(const sycl_global_ptr<int>& address, int val) {
+  sycl_atomic_ref_rlx_dev_global_t<int> target(*address);
   target.fetch_add(val);
 }
 
 static inline void atomicAdd(
-    const dpcpp_global_ptr_pt<int64_t>& address,
+    const sycl_global_ptr<int64_t>& address,
     int64_t val) {
-  dpcpp_atomic_ref_rlx_dev_global_t<int64_t> target(*address);
+  sycl_atomic_ref_rlx_dev_global_t<int64_t> target(*address);
   target.fetch_add(val);
 }
 
-SYCL_ATOMIC_INTEGER(Add, Numerics<uint8_t>::add(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Add, Numerics<int8_t>::add(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Add, Numerics<int16_t>::add(a, b), int16_t)
-
-static inline void atomicAdd(
-    const dpcpp_global_ptr_pt<bool>& address,
-    bool val) {
+static inline void atomicAdd(const sycl_global_ptr<bool>& address, bool val) {
   *address = address && val;
 }
 
 static inline void atomicAdd(
-    const dpcpp_local_ptr_pt<uint32_t>& address,
+    const sycl_local_ptr<uint32_t>& address,
     uint32_t val) {
-  dpcpp_atomic_ref_rlx_wg_local_t<uint32_t> target(*address);
+  sycl_atomic_ref_rlx_wg_local_t<uint32_t> target(*address);
   target.fetch_add(val);
 }
 
 static inline void atomicAdd(
-    const dpcpp_local_ptr_pt<uint64_t>& address,
+    const sycl_local_ptr<uint64_t>& address,
     uint64_t val) {
-  dpcpp_atomic_ref_rlx_wg_local_t<uint64_t> target(*address);
+  sycl_atomic_ref_rlx_wg_local_t<uint64_t> target(*address);
   target.fetch_add(val);
 }
+
+// Atomic add implementation.
+SYCL_ATOMIC_INTEGER(Add, std::plus<uint8_t>()(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Add, std::plus<int8_t>()(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Add, std::plus<int16_t>()(a, b), int16_t)
+
+SYCL_ATOMIC_FP(Add, std::plus<at::Half>()(a, b), at::Half)
+SYCL_ATOMIC_FP(Add, std::plus<at::BFloat16>()(a, b), at::BFloat16)
 
 template <typename T>
 static inline void atomicAdd(
-    const dpcpp_global_ptr_pt<c10::complex<T>>& address,
+    const sycl_global_ptr<c10::complex<T>>& address,
     c10::complex<T> val) {
   atomicAdd(&address->real_, val.real_);
   atomicAdd(&address->imag_, val.imag_);
 }
 
 // Atomic multiplication implementation.
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint8_t>()(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int8_t>()(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int16_t>()(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int32_t>()(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int64_t>()(a, b), int64_t)
 
-SYCL_ATOMIC_INTEGER(Mul, Numerics<uint8_t>::mul(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Mul, Numerics<int8_t>::mul(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Mul, Numerics<int16_t>::mul(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Mul, Numerics<int32_t>::mul(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Mul, Numerics<int64_t>::mul(a, b), int64_t)
-
-SYCL_ATOMIC_FP(Mul, Numerics<float>::mul(a, b), float)
-SYCL_ATOMIC_FP(Mul, Numerics<double>::mul(a, b), double)
-SYCL_ATOMIC_FP(Mul, Numerics<at::Half>::mul(a, b), at::Half)
-SYCL_ATOMIC_FP(Mul, Numerics<at::BFloat16>::mul(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Mul, std::multiplies<float>()(a, b), float)
+SYCL_ATOMIC_FP(Mul, std::multiplies<double>()(a, b), double)
+SYCL_ATOMIC_FP(Mul, std::multiplies<at::Half>()(a, b), at::Half)
+SYCL_ATOMIC_FP(Mul, std::multiplies<at::BFloat16>()(a, b), at::BFloat16)
 
 // Atomic maximum implementation.
-SYCL_ATOMIC_INTEGER(Max, Numerics<uint8_t>::max(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Max, Numerics<int8_t>::max(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Max, Numerics<int16_t>::max(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Max, Numerics<int32_t>::max(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Max, Numerics<int64_t>::max(a, b), int64_t)
+SYCL_ATOMIC_INTEGER(Max, std::max<uint8_t>(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Max, std::max<int8_t>(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Max, std::max<int16_t>(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Max, std::max<int32_t>(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Max, std::max<int64_t>(a, b), int64_t)
 
-SYCL_ATOMIC_FP(Max, Numerics<float>::max(a, b), float)
-SYCL_ATOMIC_FP(Max, Numerics<double>::max(a, b), double)
-SYCL_ATOMIC_FP(Max, Numerics<at::Half>::max(a, b), at::Half)
-SYCL_ATOMIC_FP(Max, Numerics<at::BFloat16>::max(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Max, std::max<float>(a, b), float)
+SYCL_ATOMIC_FP(Max, std::max<double>(a, b), double)
+SYCL_ATOMIC_FP(Max, std::max<at::Half>(a, b), at::Half)
+SYCL_ATOMIC_FP(Max, std::max<at::BFloat16>(a, b), at::BFloat16)
 
 // Atomic minimum implementation.
-SYCL_ATOMIC_INTEGER(Min, Numerics<uint8_t>::min(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Min, Numerics<int8_t>::min(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Min, Numerics<int16_t>::min(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Min, Numerics<int32_t>::min(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Min, Numerics<int64_t>::min(a, b), int64_t)
+SYCL_ATOMIC_INTEGER(Min, std::min<uint8_t>(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Min, std::min<int8_t>(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Min, std::min<int16_t>(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Min, std::min<int32_t>(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Min, std::min<int64_t>(a, b), int64_t)
 
-SYCL_ATOMIC_FP(Min, Numerics<float>::min(a, b), float)
-SYCL_ATOMIC_FP(Min, Numerics<double>::min(a, b), double)
-SYCL_ATOMIC_FP(Min, Numerics<at::Half>::min(a, b), at::Half)
-SYCL_ATOMIC_FP(Min, Numerics<at::BFloat16>::min(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Min, std::min<float>(a, b), float)
+SYCL_ATOMIC_FP(Min, std::min<double>(a, b), double)
+SYCL_ATOMIC_FP(Min, std::min<at::Half>(a, b), at::Half)
+SYCL_ATOMIC_FP(Min, std::min<at::BFloat16>(a, b), at::BFloat16)
 
-} // namespace AtenIpexTypeXPU
-} // namespace at
+} // namespace at::native::xpu
