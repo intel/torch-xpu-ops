@@ -127,7 +127,7 @@ void max_pool2d_backward_out_frame(
       in_n_stride,
       cfg);
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
-} // namespace impl
+}
 
 Tensor& max_pool2d_with_indices_backward_out_template(
     Tensor& gradInput,
