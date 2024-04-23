@@ -16,7 +16,7 @@
 
 namespace at {
 
-// XXX: Should reuse source in storck PyTorch when in-tree.
+// TODO: Should reuse source in storck PyTorch when in-tree.
 
 static bool all_strides_match(TensorList tensors) {
   TORCH_CHECK(!tensors.empty());
