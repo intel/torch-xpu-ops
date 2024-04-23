@@ -212,6 +212,74 @@ Tensor& XPUNativeFunctions::div_out(
   return XPUNativeFunctions::div_out(self, wrapper, out);
 }
 
+static inline TensorIterator meta_func_div_Tensor_mode(
+    const Tensor& self,
+    const Tensor& other,
+    const Tensor& output,
+    c10::optional<c10::string_view> rounding_mode) {
+  TensorIterator iter;
+  if (!rounding_mode.has_value()) {
+    iter.build_borrowing_binary_op(output, self, other);
+    // NOLINTNEXTLINE(bugprone-branch-clone)
+  } else if (*rounding_mode == "trunc") {
+    iter.build_borrowing_binary_op(output, self, other);
+  } else if (*rounding_mode == "floor") {
+    iter.build_borrowing_binary_op(output, self, other);
+  } else {
+    TORCH_CHECK(
+        false,
+        "div expected rounding_mode to be one of None, 'trunc', or 'floor' "
+        "but found '",
+        *rounding_mode,
+        "'");
+  }
+  return iter;
+}
+
+static inline void impl_func_div_Tensor_mode(
+    TensorIterator& iter,
+    ::std::optional<c10::string_view> rounding_mode) {
+  if (!rounding_mode.has_value()) {
+    native::xpu::div_true_kernel(iter);
+  } else if (*rounding_mode == "trunc") {
+    native::xpu::div_trunc_kernel(iter);
+  } else if (*rounding_mode == "floor") {
+    native::xpu::div_floor_kernel(iter);
+  }
+}
+
+Tensor XPUNativeFunctions::div(
+    const at::Tensor& self,
+    const at::Tensor& other,
+    ::std::optional<c10::string_view> rounding_mode) {
+  Tensor output;
+  TensorIterator iter =
+      meta_func_div_Tensor_mode(self, other, output, rounding_mode);
+  impl_func_div_Tensor_mode(iter, rounding_mode);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::div_(
+    at::Tensor& self,
+    const at::Tensor& other,
+    ::std::optional<c10::string_view> rounding_mode) {
+  TensorIterator iter =
+      meta_func_div_Tensor_mode(self, other, self, rounding_mode);
+  impl_func_div_Tensor_mode(iter, rounding_mode);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::div_out(
+    const at::Tensor& self,
+    const at::Tensor& other,
+    ::std::optional<c10::string_view> rounding_mode,
+    at::Tensor& output) {
+  TensorIterator iter =
+      meta_func_div_Tensor_mode(self, other, output, rounding_mode);
+  impl_func_div_Tensor_mode(iter, rounding_mode);
+  return output;
+}
+
 Tensor XPUNativeFunctions::rsub(
     const Tensor& self,
     const Tensor& other,

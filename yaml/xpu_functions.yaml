@@ -30,6 +30,9 @@ supported:
   - div.Scalar
   - div_.Scalar
   - div.Scalar_out
+  - div.Tensor_mode
+  - div_.Tensor_mode
+  - div.out_mode
   - rsub.Tensor
   - rsub.Tensor_out
   - rsub.Scalar
@@ -199,3 +202,4 @@ supported:
   - argmax.out
   - _local_scalar_dense
   - _index_put_impl_
+  - nonzero
