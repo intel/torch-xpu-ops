@@ -2,6 +2,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <aten/sycl/BinaryInternal.h>
 #include <aten/sycl/Loops.h>
 
 namespace at {
@@ -17,29 +18,6 @@ struct AddFunctor {
 
  private:
   opmath_t alpha_;
-};
-
-template <typename opmath_t>
-struct MulFunctor {
-  opmath_t operator()(opmath_t a, opmath_t b) const {
-    return a * b;
-  }
-};
-
-// Workaround for the error: '*' in boolean context, suggest '&&' instead
-// [-Werror=int-in-bool-context]
-template <>
-struct MulFunctor<bool> {
-  bool operator()(bool a, bool b) const {
-    return a && b;
-  }
-};
-
-template <typename opmath_t>
-struct DivFunctor {
-  opmath_t operator()(opmath_t a, opmath_t b) const {
-    return a / b;
-  }
 };
 
 void add_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {

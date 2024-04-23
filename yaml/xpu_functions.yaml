@@ -30,6 +30,9 @@ supported:
   - div.Scalar
   - div_.Scalar
   - div.Scalar_out
+  - div.Tensor_mode
+  - div_.Tensor_mode
+  - div.out_mode
   - rsub.Tensor
   - rsub.Tensor_out
   - rsub.Scalar
@@ -203,3 +206,4 @@ supported:
   - tril
   - tril_
   - tril.out
+  - nonzero
