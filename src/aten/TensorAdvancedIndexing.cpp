@@ -310,20 +310,6 @@ void check_indices_on_cpu_or_selfdevice(
       ")");
 }
 
-// static TensorIterator make_index_iterator(const native::AdvancedIndex& info)
-// {
-//   TensorIteratorConfig config;
-//   config.check_all_same_dtype(false)
-//       .declare_static_dtype_and_device(
-//           info.src.scalar_type(), info.src.device())
-//       .add_owned_output(Tensor())
-//       .add_input(info.src);
-//   for (auto& index : info.indices) {
-//     config.add_input(index);
-//   }
-//   return config.build();
-// }
-
 static void build_index_op(
     TensorIteratorBase& iter,
     const native::AdvancedIndex& info,
@@ -384,6 +370,7 @@ Tensor& XPUNativeFunctions::index_out(
       info.indexed_strides,
       IntArrayRef{},
       IntArrayRef{});
+
   return result;
 }
 
@@ -401,22 +388,6 @@ Tensor XPUNativeFunctions::index(
 
   check_indices_on_cpu_or_selfdevice(self, indices);
 
-  if (result.defined()) {
-    TORCH_CHECK(
-        self.scalar_type() == result.scalar_type(),
-        "index_out: self (",
-        self.scalar_type(),
-        ") and result (",
-        result.scalar_type(),
-        ") must have the same scalar type");
-    at::assert_no_internal_overlap(result);
-    at::assert_no_overlap(result, self);
-    for (const c10::optional<Tensor>& index : indices) {
-      if (index.has_value()) {
-        at::assert_no_overlap(result, *index);
-      }
-    }
-  }
   auto info = native::make_info(self, std::move(indices));
   TensorIterator iter;
   build_index_op(iter, info, result);
@@ -427,6 +398,7 @@ Tensor XPUNativeFunctions::index(
       info.indexed_strides,
       IntArrayRef{},
       IntArrayRef{});
+
   return iter.output();
 }
 
