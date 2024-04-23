@@ -196,8 +196,10 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - _softmax
   - _softmax.out
+  - _softmax_backward_data
   - _softmax_backward_data.out
+  - tril
+  - tril_
   - tril.out
-autograd:
-  - _scaled_dot_product_attention_math
