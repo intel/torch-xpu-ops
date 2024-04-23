@@ -7,30 +7,25 @@ namespace at {
 
 Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
     const Tensor& grad_output_,
-    const Tensor& self_) {
-  /* PyTorch support two cases of AdaptiveAvgPool2d:
-     1. 3D: Input (C, H, W),  Output (C, H0, W0), Kernel (kH, kW)
-     This case does not support channel last format. For a 3-dim tensor,
-     the PyTorch suggest_memory_format can only be Contiguous or
-     ChannelsLast1D (nwc), the ChannelsLast1D (nwc) does not match the
-     sementics of Input (C, H, W) case. Then the suggest_memory_format can
-     only be Contiguous.
-     2. 4D: Input (N, C, H, W),  Output (N, C, H0, W0), Kernel (kH, kW)
-     This case supports Contiguous and ChannelsLast2D memory_format. */
-  Tensor self, grad_output, grad_input;
-  if (self_.ndimension() == 3) {
-    self = self_.contiguous();
-    grad_output = grad_output_.contiguous();
-    grad_input = at::empty_like(self);
+    const Tensor& input_) {
+  Tensor grad_input;
+  if (input_.numel() != 0) {
+    Tensor input, grad_output;
+    if (input_.ndimension() == 3) {
+      input = input_.contiguous();
+      grad_output = grad_output_.contiguous();
+      grad_input = at::empty_like(input);
+    } else {
+      auto smf = input_.suggest_memory_format();
+      input = input_.contiguous(smf);
+      grad_output = grad_output_.contiguous(smf);
+      grad_input = at::empty_like(input_, smf);
+    }
+    native::xpu::adaptive_avg_pool2d_backward_out_template(
+        grad_input, grad_output, input);
   } else {
-    auto smf = self_.suggest_memory_format();
-    self = self_.contiguous(smf);
-    grad_output = grad_output_.contiguous(smf);
-    grad_input = at::empty_like(self_, smf);
+    grad_input = at::zeros_like(input_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
-
-  at::native::xpu::adaptive_avg_pool2d_backward_out_template(
-      grad_input, grad_output, self);
   return grad_input;
 }
 } // namespace at
