@@ -23,7 +23,6 @@ skip_list = (
     "test_dtypes_nn_functional_conv_transpose2d_xpu",
     "test_dtypes_nn_functional_conv_transpose3d_xpu",
     "test_dtypes_nn_functional_max_pool1d_xpu",
-    "test_dtypes_nn_functional_scaled_dot_product_attention_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_reciprocal_xpu",
     "test_dtypes_sgn_xpu",
