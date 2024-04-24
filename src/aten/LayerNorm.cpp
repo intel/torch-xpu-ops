@@ -2,7 +2,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <aten/sycl/LayerNormKernel.h>
+#include <aten/sycl/LayerNormKernels.h>
 #include <c10/core/SymIntArrayRef.h>
 #include <torch/library.h>
 
