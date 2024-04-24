@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/SortingKernels.h>
 
@@ -7,12 +8,65 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void sort_stable_kernel(
+template <typename key_t, typename value_t, typename func_t>
+inline void host_kvsort(
+    key_t* kbegin,
+    key_t* kend,
+    value_t* vbegin,
+    const func_t& fn) {
+  for (auto kit = kbegin, vit = vbegin; kit != kend; kit++, vit++) {
+    for (auto kit_ = kit, vit_ = vit; kit_ != kend; kit_++, vit_++) {
+      if (!fn(*kit, *kit_)) {
+        std::swap(*kit, *kit_);
+        std::swap(*vit, *vit_);
+      }
+    }
+  }
+}
+
+std::vector<int64_t> infer_dense_strides_dim_last(
     const Tensor& self,
+    int64_t dim) {
+  int64_t ndim = self.dim();
+  // sort the strides in descending order according to its value,
+  // keeping dim the last.
+  std::vector<int64_t> strides = self.strides().vec();
+  strides[dim] = -1;
+  std::vector<int64_t> original_dim(ndim);
+  for (int64_t i = 0; i < ndim; i++) {
+    original_dim[i] = i;
+  }
+  host_kvsort(
+      strides.data(),
+      strides.data() + ndim,
+      original_dim.data(),
+      std::greater<int64_t>());
+  // generate contiguous strides on permuted dims
+  std::vector<int64_t> new_strides(ndim);
+  std::vector<int64_t> new_strides_unsort(ndim);
+  int64_t cumprod = 1;
+  for (int64_t i = 0; i < ndim; i++) {
+    new_strides[ndim - 1 - i] = cumprod;
+    cumprod *= self.sizes()[original_dim[ndim - 1 - i]];
+  }
+  // unsort new strides
+  for (int64_t i = 0; i < ndim; i++) {
+    new_strides_unsort[original_dim[i]] = new_strides[i];
+  }
+  return new_strides_unsort;
+}
+
+std::tuple<Tensor&, Tensor&> sort_stable_kernel(
+    const Tensor& self,
+    c10::optional<bool> stable,
     Tensor& values,
     Tensor& indices,
     int dim,
     bool descending) {
+  TORCH_INTERNAL_ASSERT(
+      stable.has_value(),
+      "sort_out(): c10::optional<bool> for stable has to have value.");
+
   bool is_non_overlapping_and_dense = self.is_non_overlapping_and_dense();
   int64_t numel = self.numel();
   int64_t ndim = self.dim();
@@ -49,7 +103,7 @@ void sort_stable_kernel(
   if (is_non_overlapping_and_dense && self.stride(dim) == 1) {
     self_ = self;
   } else {
-    auto new_strides_unsort = impl::infer_dense_strides_dim_last(self, dim);
+    auto new_strides_unsort = infer_dense_strides_dim_last(self, dim);
     self_ = at::empty_strided(self.sizes(), new_strides_unsort, self.options());
     self_.copy_(self);
     newself = true;

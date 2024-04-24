@@ -75,14 +75,11 @@ class GroupRadixSort {
   bool enable_bin_offsets_ = false;
 
  public:
-  static HOST_DEVICE int LocalMemorySize() {
+  static int LocalMemorySize() {
     return sizeof(LocalStorage);
   }
 
-  DEVICE inline void load_bin_offsets(
-      int* counts,
-      int group_id,
-      int num_groups) {
+  inline void load_bin_offsets(int* counts, int group_id, int num_groups) {
     int bin_idx = lid_;
     if (lid_ < RADIX_BUCKETS) {
       if (IS_DESCENDING)
@@ -93,16 +90,14 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline GroupRadixSort(
-      sycl::nd_item<1>& item,
-      sycl_local_acc_t<char> buffer)
+  inline GroupRadixSort(sycl::nd_item<1>& item, sycl_local_acc_t<char> buffer)
       : item_(item),
-        lid_(item.get_local_id(0)),
         local_storage_(reinterpret_cast<LocalStorage&>(
             *(buffer.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()))) {}
+                  .get()))),
+        lid_(item.get_local_id(0)) {}
 
-  DEVICE inline void load_keys(
+  inline void load_keys(
       const KeyT* keys_group_in,
       int num_elements,
       int group_offset = 0) {
@@ -124,7 +119,7 @@ class GroupRadixSort {
     }
   }
 
-  DEVICE inline void load_values(
+  inline void load_values(
       const ValueT* values_group_in,
       int num_elements,
       int group_offset = 0) {
@@ -132,12 +127,13 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = group_offset + lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < num_elements) {
-        values_[ITEM] = values_group_in[offset];
+        values_[ITEM] =
+            values_group_in == nullptr ? offset : values_group_in[offset];
       }
     }
   }
 
-  DEVICE inline void store_keys(KeyT* keys_group_out, int num_elements) {
+  inline void store_keys(KeyT* keys_group_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_ukeys[lid_ * KEYS_PER_THREAD + ITEM] =
@@ -155,7 +151,7 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline void store_values(ValueT* values_group_out, int num_elements) {
+  inline void store_values(ValueT* values_group_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_values[lid_ * KEYS_PER_THREAD + ITEM] =
@@ -172,7 +168,7 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline void exchange_and_store_keys(KeyT* keys_out, int num_elements) {
+  inline void exchange_and_store_keys(KeyT* keys_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
@@ -192,9 +188,7 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline void exchange_and_store_values(
-      ValueT* values_out,
-      int num_elements) {
+  inline void exchange_and_store_values(ValueT* values_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
@@ -212,7 +206,7 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline void exchange_keys() {
+  inline void exchange_keys() {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
@@ -226,7 +220,7 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline void exchange_values() {
+  inline void exchange_values() {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
@@ -240,11 +234,11 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
-  DEVICE inline DigitT extract_digit(KeyTraitsT key) {
+  inline DigitT extract_digit(KeyTraitsT key) {
     return ((key >> begin_bit_) & ((1 << pass_bits_) - 1));
   }
 
-  DEVICE inline void rank_keys(int begin_bit, int end_bit) {
+  inline void rank_keys(int begin_bit, int end_bit) {
     begin_bit_ = begin_bit;
     pass_bits_ = end_bit - begin_bit_;
     pass_bits_ = RADIX_BITS < pass_bits_ ? RADIX_BITS : pass_bits_;
@@ -373,11 +367,11 @@ class RadixSortUpsweep {
   int local_counts_[LANES_PER_SUBGROUP][PACKING_RATIO];
 
  public:
-  static HOST_DEVICE int LocalMemorySize() {
+  static int LocalMemorySize() {
     return sizeof(LocalStorage);
   }
 
-  DEVICE inline RadixSortUpsweep(
+  inline RadixSortUpsweep(
       sycl::nd_item<1>& item,
       const KeyT* keys_in,
       int gid,
@@ -385,7 +379,7 @@ class RadixSortUpsweep {
       int end_bit,
       int num_groups,
       int* count_out,
-      dpcpp_local_acc_t<char> local_ptr)
+      sycl_local_acc_t<char> local_ptr)
       : item_(item),
         keys_in_(keys_in),
         lid_(item.get_local_id(0)),
@@ -401,13 +395,13 @@ class RadixSortUpsweep {
     subgroup_tid_ = lid_ % SUBGROUP_SIZE;
   }
 
-  DEVICE inline DigitT extract_digit(KeyTraitsT key) {
+  inline DigitT extract_digit(KeyTraitsT key) {
     auto pass_bits = end_bit_ - begin_bit_;
     pass_bits = RADIX_BITS < pass_bits ? RADIX_BITS : pass_bits;
     return ((key >> begin_bit_) & ((1 << pass_bits) - 1));
   }
 
-  DEVICE inline void process_full_tile(int group_offset) {
+  inline void process_full_tile(int group_offset) {
     KeyTraitsT keys[KEYS_PER_THREAD];
     auto group_ptr = keys_in_ + group_offset;
 #pragma unroll
@@ -425,7 +419,7 @@ class RadixSortUpsweep {
     }
   }
 
-  DEVICE inline void process_partial_tile(int group_offset, int group_end) {
+  inline void process_partial_tile(int group_offset, int group_end) {
     for (int offset = group_offset + lid_; offset < group_end;
          offset += GROUP_THREADS) {
       KeyTraitsT key = KeyTraits<KeyT>::convert(keys_in_[offset]);
@@ -436,13 +430,13 @@ class RadixSortUpsweep {
     }
   }
 
-  DEVICE inline void reset_digit_counters() {
+  inline void reset_digit_counters() {
 #pragma unroll
     for (int LANE = 0; LANE < COUNTER_LANES; ++LANE)
       local_storage_.counters[LANE][lid_] = 0;
   }
 
-  DEVICE inline void reset_unpacked_counters() {
+  inline void reset_unpacked_counters() {
 #pragma unroll
     for (int LANE = 0; LANE < LANES_PER_SUBGROUP; ++LANE) {
 #pragma unroll
@@ -453,7 +447,7 @@ class RadixSortUpsweep {
     }
   }
 
-  DEVICE inline void unpack_digit_counts() {
+  inline void unpack_digit_counts() {
 #pragma unroll
     for (int LANE = 0; LANE < LANES_PER_SUBGROUP; ++LANE) {
       int counter_lane = (LANE * SUBGROUPS) + subgroup_id_;
@@ -475,7 +469,7 @@ class RadixSortUpsweep {
     }
   }
 
-  DEVICE inline void extract_counts() {
+  inline void extract_counts() {
 #pragma unroll
     for (int LANE = 0; LANE < LANES_PER_SUBGROUP; ++LANE) {
       int counter_lane = (LANE * SUBGROUPS) + subgroup_id_;
@@ -505,7 +499,7 @@ class RadixSortUpsweep {
     }
   }
 
-  DEVICE inline void run(int group_offset, int group_end) {
+  inline void run(int group_offset, int group_end) {
     reset_digit_counters();
     reset_unpacked_counters();
 
@@ -536,10 +530,11 @@ class RadixSortUpsweep {
   }
 };
 
-template <int GROUP_THREADS, int THREAD_WORK_SIZE, int SUBGROUP_SIZE>
+template <int GROUP_THREADS, int THREAD_WORK_SIZE, int SUBGROUP_SIZE_>
 class RadixSortScanBins {
  public:
   enum {
+    SUBGROUP_SIZE = SUBGROUP_SIZE_,
     PROCESSING_LENGTH = GROUP_THREADS * THREAD_WORK_SIZE,
     NUM_SUBGROUPS = GROUP_THREADS / SUBGROUP_SIZE,
   };
@@ -551,14 +546,14 @@ class RadixSortScanBins {
   int lid_;
 
  public:
-  static HOST_DEVICE int LocalMemorySize() {
+  static int LocalMemorySize() {
     return NUM_SUBGROUPS * sizeof(int);
   }
 
-  DEVICE inline RadixSortScanBins(
+  inline RadixSortScanBins(
       sycl::nd_item<1>& item,
       int* count,
-      dpcpp_local_acc_t<char> slm)
+      sycl_local_acc_t<char> slm)
       : item_(item),
         count_(count),
         slm_(reinterpret_cast<int*>(
@@ -566,7 +561,7 @@ class RadixSortScanBins {
         lid_(item.get_local_id(0)) {}
 
   template <bool is_partial>
-  DEVICE inline void consume_tile(
+  inline void consume_tile(
       int group_offset,
       int& running_prefix,
       int tile_bound = 0) {
@@ -598,8 +593,9 @@ class RadixSortScanBins {
     int subgroup_id = lid_ / SUBGROUP_SIZE;
     const int SUBGROUP_SCAN_STEPS = Log2<SUBGROUP_SIZE>::VALUE;
     int subgroup_inclusive_sum, subgroup_exclusive_sum;
+    auto subgroup = item_.get_sub_group();
     subgroup_cumsum<int, SUBGROUP_SCAN_STEPS>(
-        item_.get_sub_group(),
+        subgroup,
         subgroup_tid,
         thread_partial,
         subgroup_inclusive_sum,
@@ -643,7 +639,7 @@ class RadixSortScanBins {
     }
   }
 
-  DEVICE inline void run(int num_counts) {
+  inline void run(int num_counts) {
     int group_offset = 0;
     int running_prefix = 0;
     while (group_offset + PROCESSING_LENGTH <= num_counts) {

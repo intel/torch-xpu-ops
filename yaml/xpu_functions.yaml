@@ -200,3 +200,6 @@ supported:
   - argmax.out
   - _local_scalar_dense
   - nonzero
+  - sort.stable
+  - sort.values_stable
+  - argsort.stable
