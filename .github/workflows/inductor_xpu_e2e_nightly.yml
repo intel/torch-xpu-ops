@@ -6,14 +6,6 @@ on:
     - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
-      ondemand:
-        description: 'Check if nightly test or on-demand test'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - false
-          - true
       suite:
         required: true
         type: choice
@@ -110,7 +102,7 @@ jobs:
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
       - name: Nightly HF FP32 Training Accuracy Test
-        if: ${{ contains(inputs.ondemand, 'false') }}
+        if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -121,7 +113,7 @@ jobs:
           expected_pass_num: 44
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Training Accuracy Test
-        if: ${{ contains(inputs.ondemand, 'false') }}
+        if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -130,7 +122,7 @@ jobs:
           scenario: accuracy
           expected_pass_num: 45
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ contains(inputs.ondemand, 'true') }}
+        if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
