@@ -22,7 +22,7 @@ namespace at {
       common_device, weight, "xpu::native_layer_norm", "weight");
   c10::impl::check_and_update_common_device(
       common_device, bias, "xpu::native_layer_norm", "bias");
-  return native::xpu::native_layer_norm(
+  return native::xpu::layer_norm_kernel(
       input, normalized_shape, weight, bias, eps);
 }
 
@@ -49,7 +49,7 @@ namespace at {
       common_device, weight, "xpu::native_layer_norm_backward", "weight");
   c10::impl::check_and_update_common_device(
       common_device, bias, "xpu::native_layer_norm_backward", "bias");
-  return native::xpu::native_layer_norm_backward(
+  return native::xpu::layer_norm_backward_kernel(
       grad_out, input, normalized_shape, mean, rstd, weight, bias, output_mask);
 }
 

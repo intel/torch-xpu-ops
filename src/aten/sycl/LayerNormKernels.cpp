@@ -703,7 +703,7 @@ void LayerNormBackwardKernelImpl(
       });
 }
 
-std::tuple<Tensor, Tensor, Tensor> native_layer_norm(
+std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
     const Tensor& input,
     at::IntArrayRef normalized_shape,
     const c10::optional<at::Tensor>& weight_opt,
@@ -754,7 +754,7 @@ std::tuple<Tensor, Tensor, Tensor> native_layer_norm(
   return std::make_tuple(std::move(Y), std::move(mean), std::move(rstd));
 }
 
-std::tuple<Tensor, Tensor, Tensor> native_layer_norm_backward(
+std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     at::IntArrayRef normalized_shape,
