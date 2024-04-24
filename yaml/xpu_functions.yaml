@@ -9,6 +9,7 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - _adaptive_avg_pool2d_backward
   - cumsum
   - cumsum.out
   - cumsum_
@@ -30,6 +31,9 @@ supported:
   - div.Scalar
   - div_.Scalar
   - div.Scalar_out
+  - div.Tensor_mode
+  - div_.Tensor_mode
+  - div.out_mode
   - rsub.Tensor
   - rsub.Tensor_out
   - rsub.Scalar
@@ -181,6 +185,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - index.Tensor
+  - index.Tensor_out
   - max
   - max.unary_out
   - max.dim_max
@@ -197,3 +203,5 @@ supported:
   - argmax.out
   - _local_scalar_dense
   - embedding_dense_backward
+  - _index_put_impl_
+  - nonzero
