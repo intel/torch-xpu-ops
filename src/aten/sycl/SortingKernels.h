@@ -17,7 +17,6 @@ struct SegmentedGroupRadixSortPairsFunctor {
       sycl::nd_item<1> item) const {
     int seg_idx = item.get_group(0);
     int seg_offset = seg_idx * num_elements_;
-    int lid = item.get_local_id(0);
     auto method = method_t(item, slm_);
     method.load_keys(keys_in_ + seg_offset, num_elements_);
     method.load_values(

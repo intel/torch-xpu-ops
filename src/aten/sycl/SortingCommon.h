@@ -49,8 +49,8 @@ struct KeyTraits<float> {
   }
   static inline float deconvert(Type v) {
     Type mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    auto v_de = v ^ mask;
-    return *((float*)&v_de);
+    Type v_de = v ^ mask;
+    return reinterpret_cast<float&>(v_de);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;
@@ -151,8 +151,8 @@ struct KeyTraits<double> {
   }
   static inline double deconvert(Type v) {
     Type mask = ((v >> 63) - 1) | 0x8000000000000000;
-    auto v_de = v ^ mask;
-    return *((double*)&v_de);
+    Type v_de = v ^ mask;
+    return reinterpret_cast<double&>(v_de);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;
@@ -169,8 +169,8 @@ struct KeyTraits<at::Half> {
   }
   static inline at::Half deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
-    auto v_de = v ^ mask;
-    return *((at::Half*)&v_de);
+    Type v_de = v ^ mask;
+    return reinterpret_cast<at::Half&>(v_de);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;
@@ -187,8 +187,8 @@ struct KeyTraits<at::BFloat16> {
   }
   static inline at::BFloat16 deconvert(Type v) {
     Type mask = ((v >> 15) - 1) | 0x8000;
-    auto v_de = v ^ mask;
-    return *((at::BFloat16*)&v_de);
+    Type v_de = v ^ mask;
+    return reinterpret_cast<at::BFloat16&>(v_de);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;

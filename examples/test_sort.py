@@ -5,7 +5,7 @@ from torch.testing._internal.common_utils import TestCase
 
 class TestNNMethod(TestCase):
     def test_sort(self):
-        for dtype in [torch.bfloat16, torch.half, torch.bool]:
+        for dtype in [torch.bfloat16, torch.half, torch.float]:
             for i in range(100):
                 a = random.randint(1, 3)
                 b = random.randint(1, 5)
