@@ -185,6 +185,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - index.Tensor
+  - index.Tensor_out
   - max
   - max.unary_out
   - max.dim_max
@@ -200,4 +202,5 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - _index_put_impl_
   - nonzero
