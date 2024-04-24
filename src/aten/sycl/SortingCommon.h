@@ -2,6 +2,7 @@
 
 #include <ATen/ATen.h>
 #include <comm/SYCLContext.h>
+#include <comm/Scalar.h>
 #include <stdlib.h>
 
 namespace at {
@@ -49,8 +50,7 @@ struct KeyTraits<float> {
   }
   static inline float deconvert(Type v) {
     Type mask = (v & 0x80000000) ? 0x80000000 : 0xffffffff;
-    Type v_de = v ^ mask;
-    return reinterpret_cast<float&>(v_de);
+    return __int_as_float(v ^ mask);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;
@@ -151,8 +151,7 @@ struct KeyTraits<double> {
   }
   static inline double deconvert(Type v) {
     Type mask = ((v >> 63) - 1) | 0x8000000000000000;
-    Type v_de = v ^ mask;
-    return reinterpret_cast<double&>(v_de);
+    return __long_long_as_double(v ^ mask);
   }
   static inline int endbit() {
     return sizeof(Type) << 3;
