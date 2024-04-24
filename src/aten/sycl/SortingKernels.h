@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ATen/detail/FunctionTraits.h>
+#include <aten/sycl/SortingCommon.h>
 #include <aten/sycl/SortingRadixSort.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
@@ -23,7 +24,7 @@ struct SegmentedGroupRadixSortPairsFunctor {
         values_in_ == nullptr ? nullptr : values_in_ + seg_offset,
         num_elements_);
     int begin_bit = 0;
-    int end_bit = 8 * sizeof(key_t);
+    int end_bit = KeyTraits<key_t>::endbit();
     while (true) {
       method.rank_keys(begin_bit, end_bit);
       method.exchange_keys();
@@ -441,10 +442,10 @@ void segmented_radix_sort_pairs_kernel(
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
   int num_tiles =
       (num_elements + TILE_PROCESSING_LENGTH - 1) / TILE_PROCESSING_LENGTH;
-  constexpr int end_bit = sizeof(key_t) * 8;
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
+  int end_bit = KeyTraits<key_t>::endbit();
   int* counts;
   key_t* keys_temp;
   value_t* values_temp;

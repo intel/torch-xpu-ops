@@ -78,9 +78,6 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
       "The dimension being sorted can not have more than INT_MAX elements.");
   const auto self_dtype = self.dtype();
   TORCH_CHECK(
-      self_dtype != ScalarType::Bool,
-      "Sort currently does not support bool dtype on XPU.");
-  TORCH_CHECK(
       self_dtype != ScalarType::ComplexFloat &&
           self_dtype != ScalarType::ComplexDouble,
       "Sort currently does not support complex dtypes on XPU.");

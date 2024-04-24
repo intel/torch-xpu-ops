@@ -36,7 +36,6 @@ class GroupRadixSort {
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
     LOG_COUNTER_LANES = Log2<COUNTER_LANES>::VALUE,
     DIGIT_BITS = sizeof(DigitT) << 3,
-    KEY_TRAITS_TYPE_MASK = 1l << ((sizeof(KeyTraitsT) << 3) - 1),
   };
 
   static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
@@ -111,6 +110,8 @@ class GroupRadixSort {
         if (IS_DESCENDING) {
           padding_key = 0;
         } else {
+          constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
+              << ((sizeof(KeyTraitsT) << 3) - 1);
           padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
           padding_key = padding_key ^ (padding_key - 1);
         }
