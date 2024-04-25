@@ -3,17 +3,121 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
-#include <ATen/TensorOperators.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <ATen/native/IndexingUtils.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
+#include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
+
+#include <ATen/XPUNativeFunctions.h>
 #include <aten/sycl/IndexingKernel.h>
-#include <comm/RegisterUtils.h>
-#include <torch/library.h>
+#include <comm/ReduceOpsUtils.h>
 
 namespace at {
+
+// TODO: Should reuse source in stock PyTorch when in-tree.
+
+static bool all_strides_match(TensorList tensors) {
+  TORCH_CHECK(!tensors.empty());
+  auto strides = tensors[0].strides();
+  for (auto& tensor : tensors.slice(1)) {
+    if (!strides.equals(tensor.strides())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Replace indexed dimensions in src with stride 0 and the size of the result
+// tensor. The offset in these dimensions is computed by the kernel using the
+// index tensor's values and the stride of src. The new shape is not meaningful.
+// It's used to make the shape compatible with the result tensor.
+static Tensor restride_src(
+    const Tensor& src,
+    int64_t dims_before,
+    int64_t dims_indexed,
+    IntArrayRef replacement_shape) {
+  auto shape = DimVector(src.sizes());
+  auto strides = DimVector(src.strides());
+  int64_t end = dims_before + dims_indexed;
+  shape.erase(shape.begin() + dims_before, shape.begin() + end);
+  strides.erase(strides.begin() + dims_before, strides.begin() + end);
+  shape.insert(
+      shape.begin() + dims_before,
+      replacement_shape.begin(),
+      replacement_shape.end());
+  strides.insert(strides.begin() + dims_before, replacement_shape.size(), 0);
+  return src.as_strided(shape, strides);
+}
+
+// Add dimensions of size 1 to an index tensor so that it can be broadcast to
+// the result shape and iterated over element-wise like the result tensor and
+// the restrided src.
+static Tensor reshape_indexer(
+    const Tensor& index,
+    int64_t dims_before,
+    int64_t dims_after) {
+  auto orig_shape = index.sizes();
+  auto shape = DimVector();
+  shape.append(dims_before, 1);
+  shape.append(orig_shape.begin(), orig_shape.end());
+  shape.append(dims_after, 1);
+  return index.reshape(shape);
+}
+
+native::AdvancedIndex::AdvancedIndex(
+    const Tensor& src,
+    TensorList indices_list) {
+  int64_t element_size_bytes = src.element_size();
+  int64_t dims_before = 0, dims_after = 0, dims_indexed = 0;
+  IntArrayRef replacement_shape;
+  for (const auto dim : c10::irange(indices_list.size())) {
+    if (!indices_list[dim].defined()) {
+      if (dims_indexed == 0) {
+        dims_before++;
+      } else {
+        dims_after++;
+      }
+    } else {
+      dims_indexed++;
+      replacement_shape = indices_list[dim].sizes();
+      indexed_sizes.push_back(src.size(dim));
+      indexed_strides.push_back(src.stride(dim) * element_size_bytes);
+    }
+  }
+
+  // Check if the indexed subspace contains a dim of size 0, but the replacement
+  // shape does not. This implies that an index is out of bounds, because there
+  // is no number that's a valid index for an empty tensor. Normally, out of
+  // bounds is handled in the indexing kernel, but this case fails earlier in
+  // restride_src with an unhelpful error message.
+  if (std::find(indexed_sizes.begin(), indexed_sizes.end(), 0) !=
+          indexed_sizes.end() &&
+      std::find(replacement_shape.begin(), replacement_shape.end(), 0) ==
+          replacement_shape.end()) {
+    TORCH_CHECK_INDEX(
+        false, "index is out of bounds for dimension with size 0");
+  }
+
+  this->dims_before = dims_before;
+  this->dims_after = dims_after;
+  this->src = restride_src(src, dims_before, dims_indexed, replacement_shape);
+
+  for (auto& index : indices_list) {
+    if (index.defined()) {
+      indices.push_back(reshape_indexer(index, dims_before, dims_after));
+    }
+  }
+
+  if (indices.size() >= 2 && (this->src.device().type() == kXPU)) {
+    if (!all_strides_match(indices)) {
+      for (auto& indice : indices) {
+        indice = indice.contiguous();
+      }
+    }
+  }
+}
 
 Tensor& XPUNativeFunctions::masked_fill_(
     Tensor& self,
@@ -179,6 +283,228 @@ Tensor& XPUNativeFunctions::index_add_out(
   index_func_meta_impl(out, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, out);
   return out;
+}
+
+void check_indices_on_cpu_or_selfdevice(
+    const Tensor& self,
+    const c10::List<c10::optional<Tensor>>& indices) {
+  auto dev = self.device();
+  bool indices_on_cpu_or_dev = std::all_of(
+      indices.begin(), indices.end(), [=](const c10::optional<Tensor>& opt) {
+        if (opt.has_value()) {
+          // for optional<Undefined tensor> cases
+          if (!opt->defined()) {
+            return true;
+          }
+          return (opt->is_cpu() || opt->device() == dev);
+        } else {
+          return true;
+        }
+      });
+  TORCH_CHECK(
+      indices_on_cpu_or_dev,
+      "indices should be either on ",
+      at::kCPU,
+      " or on the same device as the indexed tensor (",
+      dev,
+      ")");
+}
+
+static void build_index_op(
+    TensorIteratorBase& iter,
+    const native::AdvancedIndex& info,
+    Tensor& result) {
+  TensorIteratorConfig config;
+  // info.src is a restrided view of result
+  config.set_check_mem_overlap(false)
+      .check_all_same_dtype(false)
+      .add_output(result)
+      .add_input(info.src);
+  for (auto& index : info.indices) {
+    config.add_owned_const_input(index);
+  }
+  if (!result.defined()) {
+    config.declare_static_dtype_and_device(
+        info.src.scalar_type(), info.src.device());
+  }
+  iter.build(config);
+}
+
+Tensor& XPUNativeFunctions::index_out(
+    const Tensor& self,
+    const c10::List<c10::optional<Tensor>>& indices,
+    Tensor& result) {
+  TORCH_CHECK(
+      indices.size() <= (size_t)self.dim(),
+      "too many indices for tensor of dimension ",
+      self.dim(),
+      " (got ",
+      indices.size(),
+      ")");
+
+  check_indices_on_cpu_or_selfdevice(self, indices);
+
+  if (result.defined()) {
+    TORCH_CHECK(
+        self.scalar_type() == result.scalar_type(),
+        "index_out: self (",
+        self.scalar_type(),
+        ") and result (",
+        result.scalar_type(),
+        ") must have the same scalar type");
+    at::assert_no_internal_overlap(result);
+    at::assert_no_overlap(result, self);
+    for (const c10::optional<Tensor>& index : indices) {
+      if (index.has_value()) {
+        at::assert_no_overlap(result, *index);
+      }
+    }
+  }
+  auto info = native::make_info(self, std::move(indices));
+  TensorIterator iter;
+  build_index_op(iter, info, result);
+
+  native::xpu::index_kernel(
+      iter,
+      info.indexed_sizes,
+      info.indexed_strides,
+      IntArrayRef{},
+      IntArrayRef{});
+
+  return result;
+}
+
+Tensor XPUNativeFunctions::index(
+    const Tensor& self,
+    const c10::List<c10::optional<Tensor>>& indices) {
+  Tensor result;
+  TORCH_CHECK(
+      indices.size() <= (size_t)self.dim(),
+      "too many indices for tensor of dimension ",
+      self.dim(),
+      " (got ",
+      indices.size(),
+      ")");
+
+  check_indices_on_cpu_or_selfdevice(self, indices);
+
+  auto info = native::make_info(self, std::move(indices));
+  TensorIterator iter;
+  build_index_op(iter, info, result);
+
+  native::xpu::index_kernel(
+      iter,
+      info.indexed_sizes,
+      info.indexed_strides,
+      IntArrayRef{},
+      IntArrayRef{});
+
+  return iter.output();
+}
+
+// PyTorch defines it in cpp source. Copy it.
+static TensorIterator make_index_put_iterator(
+    const native::AdvancedIndex& info,
+    const Tensor& value) {
+  TORCH_CHECK(
+      is_expandable_to(value.sizes(), info.src.sizes()),
+      "shape mismatch: value tensor of shape ",
+      value.sizes(),
+      " cannot be broadcast to indexing result of shape ",
+      info.src.sizes());
+  TORCH_CHECK(
+      value.scalar_type() == info.src.scalar_type(),
+      "Index put requires the source and destination dtypes match, "
+      "got ",
+      info.src.scalar_type(),
+      " for the destination "
+      "and ",
+      value.scalar_type(),
+      " for the source.");
+  TensorIteratorConfig config;
+  // info.src is restrided by restride_src with 0 strided dimensions
+  config.set_check_mem_overlap(false);
+  config.resize_outputs(false);
+  config.check_all_same_dtype(false);
+  config.add_output(info.src);
+  config.add_input(value);
+  for (auto& index : info.indices) {
+    config.add_input(index);
+  }
+  return config.build();
+}
+
+Tensor& XPUNativeFunctions::_index_put_impl_(
+    Tensor& self,
+    const torch::List<c10::optional<Tensor>>& indices,
+    const Tensor& value,
+    const bool accumulate,
+    const bool unsafe) {
+  TORCH_CHECK_INDEX(
+      indices.size() <= (size_t)self.dim(),
+      "too many indices for tensor of dimension ",
+      self.dim(),
+      " (got ",
+      indices.size(),
+      ")");
+  if (at::has_internal_overlap(self) == MemOverlap::Yes) {
+    TORCH_WARN(
+        "Use of index_put_ on expanded tensors is deprecated. "
+        "Please clone() the tensor before performing this operation. "
+        "This also applies to advanced indexing e.g. tensor[indices] = tensor");
+  }
+  if (!accumulate) {
+    auto masked_fill_dispatch =
+        native::canDispatchToMaskedFill(self, indices, value);
+    if (std::get<0>(masked_fill_dispatch)) {
+      return self.masked_fill_(std::get<1>(masked_fill_dispatch), value.item());
+    }
+  }
+  auto value_ = value;
+  if (value.device() != self.device() && value.numel() == 1 &&
+      value.dim() == 0) {
+    value_ = value.to(self.device());
+  }
+  at::assert_no_overlap(self, value);
+  // NOLINTNEXTLINE(performance-implicit-conversion-in-loop)
+  for (const c10::optional<Tensor>& index : indices) {
+    if (index.has_value()) {
+      at::assert_no_overlap(self, *index);
+    }
+  }
+
+  // Performance consideration:
+  // Avoid atomic operations when accumulating bf16 and hf16. No efficient
+  // atomic operation hardware support. We have to do CAS, whose performance
+  // is worse than deterministic implementation.
+  bool need_use_deterministic = (accumulate &&
+                                 (self.scalar_type() == at::kBFloat16 ||
+                                  self.scalar_type() == at::kHalf)) ||
+      globalContext().deterministicAlgorithms();
+
+  if (need_use_deterministic) {
+    TORCH_CHECK(
+        value_.device() == self.device(),
+        "expected device ",
+        self.device(),
+        " but got device ",
+        value_.device(),
+        " for value tensor");
+    native::xpu::index_put_deterministic_kernel(
+        self, indices, value_, accumulate, unsafe);
+    return self;
+  }
+
+  auto info = native::make_info(self, indices);
+  auto iter = make_index_put_iterator(info, value_);
+  native::xpu::index_put_kernel(
+      iter,
+      info.indexed_sizes,
+      info.indexed_strides,
+      IntArrayRef{},
+      IntArrayRef{},
+      accumulate);
+  return self;
 }
 
 } // namespace at

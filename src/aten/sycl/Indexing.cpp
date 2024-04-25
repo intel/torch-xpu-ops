@@ -10,8 +10,11 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/Atomics.h>
 #include <aten/sycl/Indexing.h>
+#include <aten/sycl/IndexingUtils.h>
 #include <aten/sycl/Loops.h>
+#include <aten/sycl/pstl/PSTLFunctions.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -20,6 +23,39 @@ using namespace at::xpu::detail;
 using namespace at::xpu;
 
 namespace at::native::xpu {
+
+template <typename dtype>
+struct IndexFunctor {
+  void operator()(char* out_data, char* in_data, int64_t offset) const {
+    *(dtype*)out_data = *(dtype*)(in_data + offset);
+  }
+};
+
+void index_kernel(
+    TensorIterator& iter,
+    IntArrayRef index_size,
+    IntArrayRef index_stride,
+    IntArrayRef non_index_size,
+    IntArrayRef non_index_stride) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::ComplexHalf,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "index_xpu",
+      [&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        IndexFunctor<dtype> f;
+        _index_kernel(
+            iter,
+            index_size,
+            index_stride,
+            non_index_size,
+            non_index_stride,
+            f);
+      });
+}
 
 template <typename ValType>
 class IndexSelectScalarFunctor {
@@ -357,9 +393,161 @@ void index_add_kernel(
                 IndexAddScalarFunctor<scalar_t>());
         launch_index_kernel(cfg);
       });
+}
 
-#undef SMALL_INDEX
-#undef LARGE_INDEX
+template <typename scalar_t>
+struct IndexPutAccumulateFunctor {
+  void operator()(char* out_data, char* in_data, int64_t offset) const {
+    sycl_global_ptr<scalar_t> out_ptr =
+        sycl_global_ptr<scalar_t>((scalar_t*)(out_data + offset));
+    auto in = *(scalar_t*)in_data;
+    atomicAdd(out_ptr, in);
+  }
+};
+
+template <typename scalar_t>
+struct IndexPutFunctor {
+  void operator()(char* out_data, char* in_data, int64_t offset) const {
+    *(scalar_t*)(out_data + offset) = *(scalar_t*)in_data;
+  }
+};
+
+void index_put_kernel(
+    TensorIterator& iter,
+    IntArrayRef index_size,
+    IntArrayRef index_stride,
+    IntArrayRef non_index_size,
+    IntArrayRef non_index_stride,
+    bool accumulate) {
+  if (accumulate) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+        at::ScalarType::ComplexHalf,
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        iter.dtype(),
+        "index_put_xpu",
+        [&] {
+          IndexPutAccumulateFunctor<scalar_t> f;
+          _index_kernel(
+              iter,
+              index_size,
+              index_stride,
+              non_index_size,
+              non_index_stride,
+              f);
+        });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+        at::ScalarType::ComplexHalf,
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        iter.dtype(),
+        "index_put_xpu",
+        [&] {
+          using dtype = OpaqueType<sizeof(scalar_t)>;
+          IndexPutFunctor<dtype> f;
+          _index_kernel(
+              iter,
+              index_size,
+              index_stride,
+              non_index_size,
+              non_index_stride,
+              f);
+        });
+  }
+}
+
+void index_put_deterministic_kernel(
+    Tensor& self,
+    const c10::List<c10::optional<Tensor>>& indices,
+    const Tensor& value,
+    bool accumulate,
+    bool unsafe) {
+  if (indices.size() > (size_t)self.dim()) {
+    TORCH_CHECK_INDEX(
+        false,
+        "too many indices for tensor of dimension ",
+        self.dim(),
+        " (got ",
+        indices.size(),
+        ")");
+  }
+  bool self_contiguous = self.is_contiguous();
+  auto self_ = self_contiguous ? self : self.contiguous();
+  Tensor linearIndex, src, expandedValue = value;
+  int64_t nElemBefore, strideBefore, sliceSize;
+  std::vector<int64_t> inversePerm;
+  std::tie(
+      linearIndex, src, nElemBefore, strideBefore, sliceSize, inversePerm) =
+      makeLinearIndex(self_, indices, !unsafe);
+  int64_t num_indices = linearIndex.numel();
+
+  if (expandedValue.numel() < num_indices * nElemBefore * sliceSize) {
+    auto expanded_size = at::DimVector(expandedValue.sizes());
+    auto size1 = expandedValue.sizes();
+    auto size2 = linearIndex.sizes();
+    if (are_expandable(size1, size2)) {
+      expanded_size = infer_size_dimvector(size1, size2);
+    }
+    if (nElemBefore > 1) {
+      expanded_size.insert(expanded_size.begin(), nElemBefore);
+    }
+    expandedValue = expandedValue.expand(expanded_size);
+  }
+  expandedValue = expandedValue.contiguous();
+
+  if (num_indices > 0 && sliceSize > 0) {
+    const bool permuted = !src.is_contiguous();
+    auto src_ = permuted ? src.contiguous() : src;
+    linearIndex = linearIndex.reshape(-1);
+    auto sorted_indices =
+        at::empty_like(linearIndex, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    auto orig_indices =
+        at::empty_like(linearIndex, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
+    linearIndex.divide_(sliceSize, "trunc");
+
+    sorted_indices.copy_(linearIndex);
+    pstl::itoa(
+        orig_indices.data_ptr<int64_t>(),
+        orig_indices.data_ptr<int64_t>() + linearIndex.numel(),
+        (int64_t)0);
+    pstl::sort<int64_t, int64_t>(
+        linearIndex.data_ptr<int64_t>(),
+        sorted_indices.data_ptr<int64_t>(),
+        orig_indices.data_ptr<int64_t>(),
+        linearIndex.numel(),
+        false);
+    TORCH_INTERNAL_ASSERT(
+        linearIndex.numel() * sliceSize * nElemBefore == expandedValue.numel(),
+        "number of flattened indices did not match number of elements in the value tensor: ",
+        linearIndex.numel() * sliceSize * nElemBefore,
+        " vs ",
+        expandedValue.numel());
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+        at::ScalarType::ComplexHalf,
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        expandedValue.scalar_type(),
+        "index_put_deterministic_kernel",
+        [&] {
+          launch_index_put_deterministic_kernel<scalar_t>(
+              sorted_indices.data_ptr<int64_t>(),
+              orig_indices.data_ptr<int64_t>(),
+              expandedValue.data_ptr<scalar_t>(),
+              src_.data_ptr<scalar_t>(),
+              num_indices,
+              sliceSize,
+              strideBefore,
+              nElemBefore,
+              accumulate);
+        });
+    if (permuted)
+      self.copy_(src_.permute(inversePerm));
+  }
 }
 
 } // namespace at::native::xpu
