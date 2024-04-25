@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/detail/FunctionTraits.h>
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
 
@@ -45,21 +44,6 @@ using sycl_global_ptr = typename sycl::global_ptr<T>;
 template <typename T>
 using sycl_atomic_ref_rlx_dev_global_t =
     sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_dev, sycl_global_space>;
-
-template <typename ker_t>
-static inline void sycl_kernel_submit(
-    int64_t global_range,
-    int64_t local_range,
-    ::sycl::queue q,
-    ker_t ker) {
-  auto cgf = [&](::sycl::handler& cgh) {
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        ker);
-  };
-  q.submit(cgf);
-}
 
 template <typename ker_t, int dim>
 static inline void sycl_kernel_submit(
@@ -114,6 +98,43 @@ sycl_kernel_submit(
   auto cgf = [&](::sycl::handler& cgh) {
     cgh.parallel_for<ker_t>(
         ::sycl::nd_range<dim>(global_range, local_range), ker);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t>
+static inline typename std::enable_if<
+    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        ker);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t>
+static inline typename std::enable_if<
+    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        ker);
   };
   q.submit(cgf);
 }
