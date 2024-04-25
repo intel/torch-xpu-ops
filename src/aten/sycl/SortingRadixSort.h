@@ -614,8 +614,7 @@ class RadixSortScanBins {
     }
     subgroup_exclusive_sum += subgroup_prefix_sum;
     subgroup_exclusive_sum += running_prefix;
-    if (lid_ == 0)
-      running_prefix += group_all_sum;
+    running_prefix += group_all_sum;
     // Write back
     int inclusive = partial_output[0];
     inclusive = subgroup_exclusive_sum + inclusive;

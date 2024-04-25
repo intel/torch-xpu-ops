@@ -4,6 +4,13 @@ from torch.testing._internal.common_utils import TestCase
 
 
 class TestNNMethod(TestCase):
+    def test_large_sort(self, dtype=torch.bfloat16):
+        x = torch.randn(2**25, dtype=dtype)
+        y = x.to("xpu")
+        res_cpu, _ = torch.sort(x)
+        res, _ = torch.sort(y)
+        self.assertEqual(res_cpu, res.cpu())
+
     def test_sort(self):
         for dtype in [torch.bfloat16, torch.half, torch.float]:
             for i in range(100):
