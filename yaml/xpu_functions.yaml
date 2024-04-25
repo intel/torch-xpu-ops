@@ -9,6 +9,7 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - _adaptive_avg_pool2d_backward
   - cumsum
   - cumsum.out
   - cumsum_
@@ -184,6 +185,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - index.Tensor
+  - index.Tensor_out
   - max
   - max.unary_out
   - max.dim_max
@@ -206,4 +209,5 @@ supported:
   - tril
   - tril_
   - tril.out
+  - _index_put_impl_
   - nonzero
