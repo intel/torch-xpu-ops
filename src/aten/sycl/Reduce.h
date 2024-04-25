@@ -369,39 +369,25 @@ struct ReduceConfig {
 std::ostream& operator<<(std::ostream& out, const ReduceConfig& config);
 
 template <int output_vec_size, typename R>
-class ReduceKernel {
+class ReduceKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
  public:
-  ReduceKernel(
-      R reduction,
-      sycl_local_acc_t<char> shared,
-      sycl_local_acc_t<bool> finished)
-      : reduction_(reduction), shared_(shared), finished_(finished) {}
+  ReduceKernel(R reduction, sycl::range<1> slm_sz)
+      : reduction_(reduction), slm_sz_(slm_sz), shared_(), finished_() {}
 
   void operator()(sycl::nd_item<2> pos) const {
     reduction_.template run<output_vec_size>(pos, shared_, finished_);
   }
 
- private:
-  R reduction_;
-  sycl_local_acc_t<char> shared_; /* group tree reduce */
-  sycl_local_acc_t<bool> finished_; /* last WG flag to broadcast inner WG */
-};
-
-template <int output_vec_size, typename R>
-class ReduceKernelCreator {
- public:
-  ReduceKernelCreator(R reduction, sycl::range<1> slm_sz)
-      : reduction_(reduction), slm_sz_(slm_sz) {}
-
-  ReduceKernel<output_vec_size, R> operator()(::sycl::handler& cgh) const {
-    sycl_local_acc_t<char> shared(slm_sz_, cgh);
-    sycl_local_acc_t<bool> finished({1}, cgh);
-    return ReduceKernel<output_vec_size, R>(reduction_, shared, finished);
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    shared_ = sycl_local_acc_t<char>(slm_sz_, cgh);
+    finished_ = sycl_local_acc_t<bool>({1}, cgh);
   }
 
  private:
   R reduction_;
   sycl::range<1> slm_sz_;
+  sycl_local_acc_t<char> shared_; /* group tree reduce */
+  sycl_local_acc_t<bool> finished_; /* last WG flag to broadcast inner WG */
 };
 
 template <typename index_t>
@@ -1199,21 +1185,18 @@ static void launch_reduce_kernel(
   sycl::range<1> slm_sz{static_cast<uint32_t>(config.slm_sz())};
   switch (config.output_vec_size) {
     case 4: {
-      auto creator = ReduceKernelCreator<4, R>(reduction, slm_sz);
-      sycl_kernel_submit<ReduceKernel<4, R>>(
-          config.global_sz(), config.group_sz(), queue, creator);
+      auto kfn = ReduceKernel<4, R>(reduction, slm_sz);
+      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
       break;
     }
     case 2: {
-      auto creator = ReduceKernelCreator<2, R>(reduction, slm_sz);
-      sycl_kernel_submit<ReduceKernel<2, R>>(
-          config.global_sz(), config.group_sz(), queue, creator);
+      auto kfn = ReduceKernel<2, R>(reduction, slm_sz);
+      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
       break;
     }
     default: {
-      auto creator = ReduceKernelCreator<1, R>(reduction, slm_sz);
-      sycl_kernel_submit<ReduceKernel<1, R>>(
-          config.global_sz(), config.group_sz(), queue, creator);
+      auto kfn = ReduceKernel<1, R>(reduction, slm_sz);
+      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
       break;
     }
   }
