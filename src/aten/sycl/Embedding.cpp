@@ -2,10 +2,18 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/EmbeddingBackwardKernel.h>
+#include <aten/sycl/pstl/PSTLFunctions.h>
 
 namespace at {
 namespace native {
 namespace xpu {
+
+template <typename index_t>
+struct EmbeddingDenseBackwardEqFunctor {
+  auto operator()(index_t a, index_t b) const {
+    return a == b;
+  }
+};
 
 Tensor embedding_dense_backward(
     const Tensor& grad_,
@@ -43,14 +51,13 @@ Tensor embedding_dense_backward(
               auto orig_begin = orig_indices.data_ptr<index_t>();
               {
                 sorted_indices.copy_(indices);
-                // xpu::pstl::iota(
-                //     orig_begin, orig_begin + num_indices, (index_t)0);
-                // xpu::pstl::sort<index_t, index_t>(
-                //     indices.data_ptr<index_t>(),
-                //     sorted_begin,
-                //     orig_begin,
-                //     num_indices,
-                //     false);
+                pstl::itoa(orig_begin, orig_begin + num_indices, (index_t)0);
+                pstl::sort<index_t, index_t>(
+                    indices.data_ptr<index_t>(),
+                    sorted_begin,
+                    orig_begin,
+                    num_indices,
+                    false);
               }
 
               if (scale_grad_by_freq) {
@@ -60,10 +67,9 @@ Tensor embedding_dense_backward(
                 // sorted: 2 5 5 5 7 7 8 9 9
                 //  count: 1 3 3 3 2 2 1 2 2
                 //
-                // embedding_dense_backward_eq_functor<index_t> f;
-                // xpu::pstl::count_by_segment<index_t, index_t, index_t>(
-                //     sorted_begin, sorted_begin + num_indices, count_begin,
-                //     f);
+                EmbeddingDenseBackwardEqFunctor<index_t> f;
+                pstl::count_by_segment<index_t, index_t, index_t>(
+                    sorted_begin, sorted_begin + num_indices, count_begin, f);
               }
               grad_weight =
                   embedding_backward_deterministic_kernel<scalar_t, index_t>(

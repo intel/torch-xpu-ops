@@ -2,6 +2,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -501,21 +502,21 @@ void sum_and_scatter(
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
 }
 
-struct embedding_backward_deterministic_kernel_copy_if_functor {
+struct EmbeddingBackwardDeterministicKernelCopyIfFunctor {
   template <typename T>
   auto operator()(T x) const {
     return x != -1;
   }
 };
 
-struct embedding_backward_deterministic_kernel_transform_first_true_functor {
+struct EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor {
   template <typename U, typename V>
   auto operator()(U d, V idx) const {
     return d ? idx : -1;
   }
 };
 
-struct embedding_backward_deterministic_kernel_adjacent_difference_functor {
+struct EmbeddingBackwardDeterministicKernelAdjacentDifferenceFunctor {
   template <typename T>
   bool operator()(T lhs, T rhs) const {
     if (lhs != rhs) {
@@ -552,34 +553,33 @@ Tensor embedding_backward_deterministic_kernel(
     auto dummy_begin = dummy.data_ptr<index_t>();
     auto idx_tensor = at::empty_like(sorted_indices);
     auto idx_begin = idx_tensor.data_ptr<index_t>();
-    embedding_backward_deterministic_kernel_adjacent_difference_functor
+    EmbeddingBackwardDeterministicKernelAdjacentDifferenceFunctor
         adjacent_difference_functor;
-    // xpu::pstl::adjacent_difference<index_t>(
-    //     sorted_indices_begin,
-    //     sorted_indices_begin + numel,
-    //     dummy_begin,
-    //     adjacent_difference_functor);
+    pstl::adjacent_difference<index_t>(
+        sorted_indices_begin,
+        sorted_indices_begin + numel,
+        dummy_begin,
+        adjacent_difference_functor);
 
     // For algorithm adjacent difference, for output, its first element is
     // always equal to source first element. We need to set it as 1 manually.
     Tensor count_tensor =
         at::empty({numel}, at::TensorOptions().device(kXPU).dtype(kLong));
     auto count_begin = count_tensor.data_ptr<int64_t>();
-    // xpu::pstl::iota(count_begin, count_begin + numel, (int64_t)0);
+    pstl::itoa(count_begin, count_begin + numel, (int64_t)0);
     auto segment_offsets_begin = segment_offsets.data_ptr<index_t>();
-    embedding_backward_deterministic_kernel_transform_first_true_functor
+    EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor
         transform_first_true_functor;
-    // xpu::pstl::transform_first_true<index_t>(
-    //     dummy_begin,
-    //     dummy_begin + numel,
-    //     count_begin,
-    //     idx_begin,
-    //     transform_first_true_functor);
-    embedding_backward_deterministic_kernel_copy_if_functor copy_if_functor;
-    // auto ends = xpu::pstl::copy_if<index_t>(
-    //     idx_begin, idx_begin + numel, segment_offsets_begin,
-    //     copy_if_functor);
-    // num_of_segments = std::distance(segment_offsets_begin, ends);
+    pstl::transform_first_true<index_t>(
+        dummy_begin,
+        dummy_begin + numel,
+        count_begin,
+        idx_begin,
+        transform_first_true_functor);
+    EmbeddingBackwardDeterministicKernelCopyIfFunctor copy_if_functor;
+    auto ends = pstl::copy_if<index_t>(
+        idx_begin, idx_begin + numel, segment_offsets_begin, copy_if_functor);
+    num_of_segments = std::distance(segment_offsets_begin, ends);
   }
 
   auto partials_per_segment =
@@ -597,11 +597,11 @@ Tensor embedding_backward_deterministic_kernel(
   // Unit: index in `partial_segment_offset`
   auto partials_per_segment_offset =
       at::empty({num_of_segments}, orig_indices.options());
-  // xpu::pstl::exclusive_scan(
-  //     partials_per_segment.template data_ptr<index_t>(),
-  //     partials_per_segment.template data_ptr<index_t>() + num_of_segments,
-  //     partials_per_segment_offset.template data_ptr<index_t>(),
-  //     (index_t)0);
+  pstl::exclusive_scan(
+      partials_per_segment.template data_ptr<index_t>(),
+      partials_per_segment.template data_ptr<index_t>() + num_of_segments,
+      partials_per_segment_offset.template data_ptr<index_t>(),
+      (index_t)0);
 
   // The total number of partial-segments is the sum of
   // `partials_per_segment_offset`
