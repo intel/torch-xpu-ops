@@ -8,8 +8,8 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/ops/as_strided_ops.h>
-#include <aten/RegisterUtils.h>
 #include <aten/sycl/Shape.h>
+#include <comm/RegisterUtils.h>
 
 namespace at {
 

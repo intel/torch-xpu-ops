@@ -6,6 +6,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TensorShape.h>
 #include <aten/sycl/Loops.h>
+#include <aten/sycl/MemoryAccessUtils.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -14,6 +15,11 @@ template <unsigned N>
 struct alignas(N) OpaqueType {
   char data[N];
 };
+
+inline bool is_aligned_vec4(const void* ptr) {
+  auto iptr = reinterpret_cast<uintptr_t>(ptr);
+  return !(iptr % alignof(memory::aligned_vector<int, 4>));
+}
 
 constexpr int CAT_ARRAY_BATCH_SIZE = 64;
 constexpr int CAT_ARRAY_MAX_INPUT_DIMS = 4;
@@ -182,6 +188,89 @@ struct CatArrayBatchedCopyContigFunctor {
   IndexType dimStride_;
 };
 
+template <
+    typename T,
+    typename IndexType,
+    int Dims,
+    int batch_size,
+    int stride_size>
+struct CatArrayBatchedCopyAligned16ContigFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto group_x = item.get_group(0);
+    auto group_y = item.get_group(1);
+    auto lid = item.get_local_id(0);
+    auto group_x_range = item.get_local_range(0);
+
+    // This kernel tries to use 128 bit loads
+    constexpr int kILP = ALIGNED_VEC_LOAD_BYTES / sizeof(T);
+    IndexType inputOffset = (group_x * group_x_range + lid) * kILP;
+    IndexType inputStride = item.get_group_range(0) * group_x_range * kILP;
+
+    IndexType nElements = inputs_.nElements[group_y];
+    if (inputOffset >= nElements) {
+      return;
+    }
+
+    const T* data = inputs_.input[group_y];
+    IndexType offset = inputs_.offset[group_y];
+    IndexType dimSize = inputs_.dimSize[group_y];
+    IndexType dataOffset = offset * dimStride_;
+
+    IndexType v_elementOffset[kILP];
+    T reg_data[kILP];
+
+    while (inputOffset + kILP <= nElements) {
+      for (int i = 0; i < kILP; ++i) {
+        v_elementOffset[i] = CatArrIndexToOffset<IndexType, Dims>::compute(
+            os_.tensorSize,
+            os_.tensorStride,
+            dimSize,
+            concatDim_,
+            inputOffset + i);
+      }
+
+      using LT = memory::aligned_vector<T, kILP>;
+      ((LT*)reg_data)[0] = const_cast<LT*>((LT*)(data + inputOffset))[0];
+
+#pragma unroll
+      for (int i = 0; i < kILP; ++i) {
+        output_[dataOffset + v_elementOffset[i]] = reg_data[i];
+      }
+
+      inputOffset += inputStride;
+    }
+
+    // Handle remaining tail in case nElements does not divide
+    // exactly to kILP
+
+    while (inputOffset < nElements) {
+      v_elementOffset[0] = CatArrIndexToOffset<IndexType, Dims>::compute(
+          os_.tensorSize, os_.tensorStride, dimSize, concatDim_, inputOffset);
+      output_[dataOffset + v_elementOffset[0]] = data[inputOffset];
+      inputOffset++;
+    }
+  }
+
+  CatArrayBatchedCopyAligned16ContigFunctor(
+      T* output,
+      CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs,
+      TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os,
+      const int concatDim,
+      IndexType dimStride)
+      : output_(output),
+        inputs_(inputs),
+        os_(os),
+        concatDim_(concatDim),
+        dimStride_(dimStride) {}
+
+ private:
+  T* output_;
+  CatArrInputTensorMetadata<T, IndexType, batch_size, stride_size> inputs_;
+  TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> os_;
+  const int concatDim_;
+  IndexType dimStride_;
+};
+
 inline std::tuple<unsigned int, unsigned int> get_cat_range(
     ptrdiff_t nTensors) {
   const int sum_ss = ::syclMaxDSSNum();
@@ -200,9 +289,6 @@ inline std::tuple<unsigned int, unsigned int, unsigned int> get_cat_range_contig
       ALIGNED_VEC_LOAD_BYTES / sizeof(T) * min_aligned_vec_per_wi;
   unsigned int max_wi = ceil_div(max_elements_per_tensor, elements_per_wi);
   unsigned int ngroups = ceil_div(max_wi, wi_per_group);
-
-  // Limit the number of thread blocks to prevent too many threads to load the
-  // metadata if they operate on very small tensors.
 
   const unsigned int num_ss = ::syclMaxDSSNum();
 
@@ -255,7 +341,7 @@ void parallel_cat(
   // 16 Byte boundary.
 
   bool isContig = true;
-  // bool isAligned = true;
+  bool isAligned = true;
   unsigned int max_elements_per_tensor = 0;
 
   // Now we loop
@@ -280,7 +366,7 @@ void parallel_cat(
           inputs[i + batchCounter].get().numel();
 
       // If at least one of the inputs is not aligned, we can't call the
-      //   isAligned &= is_aligned_vec4(catMetaData.input[batchCounter]);
+      isAligned &= is_aligned_vec4(catMetaData.input[batchCounter]);
 
       if (stride_size > 1) {
         auto strides = inputs[i + batchCounter].get().strides();
@@ -338,7 +424,21 @@ void parallel_cat(
     }
     // Template Declarations for dim = 1, 2, 3, 4
 #define HANDLE_CASE(DIMS)                                      \
-  if (isContig) {                                              \
+  if (isContig && isAligned && sizeof(scalar_t) >= 4 &&        \
+      sizeof(scalar_t) <= 8) {                                 \
+    auto f = CatArrayBatchedCopyAligned16ContigFunctor<        \
+        scalar_t,                                              \
+        unsigned int,                                          \
+        DIMS,                                                  \
+        batch_size,                                            \
+        stride_size>(                                          \
+        data,                                                  \
+        catMetaData,                                           \
+        outputParam,                                           \
+        dimension,                                             \
+        outputParam.tensorStride[dimension]);                  \
+    sycl_kernel_submit(global_range_, local_range_, queue, f); \
+  } else if (isContig) {                                       \
     auto f = CatArrayBatchedCopyContigFunctor<                 \
         scalar_t,                                              \
         unsigned int,                                          \
