@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/detail/FunctionTraits.h>
 #include <aten/sycl/SortingCommon.h>
 #include <aten/sycl/SortingRadixSort.h>
 #include <c10/xpu/XPUCachingAllocator.h>
@@ -13,7 +12,8 @@ namespace xpu {
 // ======================= group sort =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedGroupRadixSortPairsFunctor {
+struct SegmentedGroupRadixSortPairsFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
       sycl::nd_item<1> item) const {
     int seg_idx = item.get_group(0);
@@ -36,37 +36,10 @@ struct SegmentedGroupRadixSortPairsFunctor {
     method.store_keys(keys_out_ + seg_offset, num_elements_);
     method.store_values(values_out_ + seg_offset, num_elements_);
   }
-  SegmentedGroupRadixSortPairsFunctor(
-      const key_t* keys_in,
-      key_t* keys_out,
-      const value_t* values_in,
-      value_t* values_out,
-      int num_elements,
-      sycl_local_acc_t<char> slm)
-      : keys_in_(keys_in),
-        keys_out_(keys_out),
-        values_in_(values_in),
-        values_out_(values_out),
-        num_elements_(num_elements),
-        slm_(slm) {}
-
- private:
-  const key_t* keys_in_;
-  key_t* keys_out_;
-  const value_t* values_in_;
-  value_t* values_out_;
-  int num_elements_;
-  sycl_local_acc_t<char> slm_;
-};
-
-template <typename method_t, typename key_t, typename value_t>
-struct SegmentedGroupRadixSortPairsFunctorCreator {
-  auto operator()(::sycl::handler& cgh) const {
-    sycl_local_acc_t<char> shared(method_t::LocalMemorySize(), cgh);
-    return SegmentedGroupRadixSortPairsFunctor<method_t, key_t, value_t>(
-        keys_in_, keys_out_, values_in_, values_out_, num_elements_, shared);
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
   }
-  SegmentedGroupRadixSortPairsFunctorCreator(
+  SegmentedGroupRadixSortPairsFunctor(
       const key_t* keys_in,
       key_t* keys_out,
       const value_t* values_in,
@@ -84,6 +57,7 @@ struct SegmentedGroupRadixSortPairsFunctorCreator {
   const value_t* values_in_;
   value_t* values_out_;
   int num_elements_;
+  sycl_local_acc_t<char> slm_;
 };
 
 template <
@@ -107,20 +81,20 @@ void segmented_group_radix_sort_pairs_kernel(
       KEYS_PER_ITEM,
       IS_DESCENDING,
       value_t>;
-  auto creator =
-      SegmentedGroupRadixSortPairsFunctorCreator<method_t, key_t, value_t>(
-          keys_in, keys_out, values_in, values_out, num_elements);
-  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+  auto caller = SegmentedGroupRadixSortPairsFunctor<method_t, key_t, value_t>(
+      keys_in, keys_out, values_in, values_out, num_elements);
+  sycl_kernel_submit(
       num_segments * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      creator);
+      caller);
 }
 
 // ======================= upsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsUpsweepFunctor {
+struct SegmentedRadixSortPairsUpsweepFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
       sycl::nd_item<1> item) const {
     int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
@@ -143,37 +117,10 @@ struct SegmentedRadixSortPairsUpsweepFunctor {
         slm_);
     method.run(tile_offset, tile_end);
   }
-  SegmentedRadixSortPairsUpsweepFunctor(
-      const key_t* keys_in,
-      int* counts,
-      int num_elements,
-      int begin_bit,
-      int end_bit,
-      sycl_local_acc_t<char> slm)
-      : keys_in_(keys_in),
-        counts_(counts),
-        num_elements_(num_elements),
-        begin_bit_(begin_bit),
-        end_bit_(end_bit),
-        slm_(slm) {}
-
- private:
-  const key_t* keys_in_;
-  int* counts_;
-  int num_elements_;
-  int begin_bit_;
-  int end_bit_;
-  sycl_local_acc_t<char> slm_;
-};
-
-template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsUpsweepFunctorCreator {
-  auto operator()(::sycl::handler& cgh) const {
-    sycl_local_acc_t<char> shared(method_t::LocalMemorySize(), cgh);
-    return SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
-        keys_in_, counts_, num_elements_, begin_bit_, end_bit_, shared);
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
   }
-  SegmentedRadixSortPairsUpsweepFunctorCreator(
+  SegmentedRadixSortPairsUpsweepFunctor(
       const key_t* keys_in,
       int* counts,
       int num_elements,
@@ -191,6 +138,7 @@ struct SegmentedRadixSortPairsUpsweepFunctorCreator {
   int num_elements_;
   int begin_bit_;
   int end_bit_;
+  sycl_local_acc_t<char> slm_;
 };
 
 template <
@@ -216,20 +164,20 @@ void segmented_radix_sort_pairs_upsweep_kernel(
       value_t>;
   int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
       method_t::PROCESSING_LENGTH;
-  auto creator =
-      SegmentedRadixSortPairsUpsweepFunctorCreator<method_t, key_t, value_t>(
-          keys_in, counts, num_elements, begin_bit, end_bit);
-  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+  auto caller = SegmentedRadixSortPairsUpsweepFunctor<method_t, key_t, value_t>(
+      keys_in, counts, num_elements, begin_bit, end_bit);
+  sycl_kernel_submit(
       num_segments * num_tiles * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      creator);
+      caller);
 }
 
 // ======================= scan bins =======================
 
 template <typename method_t>
-struct SegmentedRadixSortPairsScanFunctor {
+struct SegmentedRadixSortPairsScanFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
       sycl::nd_item<1> item) const {
     constexpr int RADIX_BUCKETS = 16;
@@ -238,31 +186,16 @@ struct SegmentedRadixSortPairsScanFunctor {
     auto method = method_t(item, counts_seg, slm_);
     method.run(num_tiles_ * RADIX_BUCKETS);
   }
-  SegmentedRadixSortPairsScanFunctor(
-      int* counts,
-      int num_tiles,
-      sycl_local_acc_t<char> slm)
-      : counts_(counts), num_tiles_(num_tiles), slm_(slm) {}
-
- private:
-  int* counts_;
-  int num_tiles_;
-  sycl_local_acc_t<char> slm_;
-};
-
-template <typename method_t>
-struct SegmentedRadixSortPairsScanFunctorCreator {
-  auto operator()(::sycl::handler& cgh) const {
-    sycl_local_acc_t<char> shared(method_t::LocalMemorySize(), cgh);
-    return SegmentedRadixSortPairsScanFunctor<method_t>(
-        counts_, num_tiles_, shared);
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
   }
-  SegmentedRadixSortPairsScanFunctorCreator(int* counts, int num_tiles)
+  SegmentedRadixSortPairsScanFunctor(int* counts, int num_tiles)
       : counts_(counts), num_tiles_(num_tiles) {}
 
  private:
   int* counts_;
   int num_tiles_;
+  sycl_local_acc_t<char> slm_;
 };
 
 template <int KEYS_PER_ITEM, int GROUP_SIZE, int SUBGROUP_SIZE>
@@ -271,13 +204,12 @@ void segmented_radix_sort_pairs_scan_kernel(
     int num_tiles,
     int num_segments) {
   using method_t = RadixSortScanBins<GROUP_SIZE, KEYS_PER_ITEM, SUBGROUP_SIZE>;
-  auto creator =
-      SegmentedRadixSortPairsScanFunctorCreator<method_t>(counts, num_tiles);
-  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+  auto caller = SegmentedRadixSortPairsScanFunctor<method_t>(counts, num_tiles);
+  sycl_kernel_submit(
       num_segments * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      creator);
+      caller);
 }
 
 // ======================= downsweep =======================
@@ -304,54 +236,10 @@ struct SegmentedRadixSortPairsDownsweepFunctor {
     method.exchange_and_store_keys(keys_out_ + seg_offset, num_elements_);
     method.exchange_and_store_values(values_out_ + seg_offset, num_elements_);
   }
-  SegmentedRadixSortPairsDownsweepFunctor(
-      const key_t* keys_in,
-      key_t* keys_out,
-      const value_t* values_in,
-      value_t* values_out,
-      int num_elements,
-      int begin_bit,
-      int end_bit,
-      int* counts,
-      sycl_local_acc_t<char> slm)
-      : keys_in_(keys_in),
-        keys_out_(keys_out),
-        values_in_(values_in),
-        values_out_(values_out),
-        num_elements_(num_elements),
-        begin_bit_(begin_bit),
-        end_bit_(end_bit),
-        counts_(counts),
-        slm_(slm) {}
-
- private:
-  const key_t* keys_in_;
-  key_t* keys_out_;
-  const value_t* values_in_;
-  value_t* values_out_;
-  int num_elements_;
-  int begin_bit_;
-  int end_bit_;
-  int* counts_;
-  sycl_local_acc_t<char> slm_;
-};
-
-template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsDownsweepFunctorCreator {
-  auto operator()(::sycl::handler& cgh) const {
-    sycl_local_acc_t<char> shared(method_t::LocalMemorySize(), cgh);
-    return SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
-        keys_in_,
-        keys_out_,
-        values_in_,
-        values_out_,
-        num_elements_,
-        begin_bit_,
-        end_bit_,
-        counts_,
-        shared);
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
   }
-  SegmentedRadixSortPairsDownsweepFunctorCreator(
+  SegmentedRadixSortPairsDownsweepFunctor(
       const key_t* keys_in,
       key_t* keys_out,
       const value_t* values_in,
@@ -378,6 +266,7 @@ struct SegmentedRadixSortPairsDownsweepFunctorCreator {
   int begin_bit_;
   int end_bit_;
   int* counts_;
+  sycl_local_acc_t<char> slm_;
 };
 
 template <
@@ -406,8 +295,8 @@ void segmented_radix_sort_pairs_downsweep_kernel(
       value_t>;
   int num_tiles = (num_elements + method_t::PROCESSING_LENGTH - 1) /
       method_t::PROCESSING_LENGTH;
-  auto creator =
-      SegmentedRadixSortPairsDownsweepFunctorCreator<method_t, key_t, value_t>(
+  auto caller =
+      SegmentedRadixSortPairsDownsweepFunctor<method_t, key_t, value_t>(
           keys_in,
           keys_out,
           values_in,
@@ -416,11 +305,11 @@ void segmented_radix_sort_pairs_downsweep_kernel(
           begin_bit,
           end_bit,
           count);
-  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
+  sycl_kernel_submit(
       num_segments * num_tiles * GROUP_SIZE,
       GROUP_SIZE,
       at::xpu::getCurrentSYCLQueue(),
-      creator);
+      caller);
 }
 
 // ======================= large sort =======================
