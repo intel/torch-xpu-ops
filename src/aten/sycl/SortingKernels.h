@@ -601,6 +601,18 @@ void segmented_sort_pairs(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
 }
 
+template <typename key_t, typename value_t>
+void sort_pairs(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_elements,
+    bool descending) {
+  segmented_sort_pairs<key_t, value_t>(
+      keys_in, keys_out, values_in, values_out, 1, num_elements, descending);
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
