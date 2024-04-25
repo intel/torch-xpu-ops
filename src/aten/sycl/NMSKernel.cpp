@@ -1,6 +1,5 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <ATen/detail/FunctionTraits.h>
 #include <comm/SYCLContext.h>
 
 namespace at {
@@ -26,7 +25,7 @@ inline bool dev_iou(
 }
 
 template <typename scalar_t, typename acc_t>
-struct NMSKernelFunctor {
+struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<2> item) const {
     int row_start = item.get_group(0);
     int col_start = item.get_group(1);
@@ -75,33 +74,6 @@ struct NMSKernelFunctor {
     }
   }
   NMSKernelFunctor(
-      sycl_local_acc_t<acc_t> slm,
-      int dets_num,
-      float iou_threshold,
-      scalar_t* dets_sorted_ptr,
-      unsigned long long* mask_ptr)
-      : slm_(slm),
-        dets_num_(dets_num),
-        iou_threshold_(iou_threshold),
-        dets_sorted_ptr_(dets_sorted_ptr),
-        mask_ptr_(mask_ptr) {}
-
- private:
-  sycl_local_acc_t<acc_t> slm_;
-  int dets_num_;
-  float iou_threshold_;
-  scalar_t* dets_sorted_ptr_;
-  unsigned long long* mask_ptr_;
-};
-
-template <typename scalar_t, typename acc_t>
-struct NMSKernelFunctorCreator {
-  auto operator()(::sycl::handler& cgh) const {
-    auto slm = sycl_local_acc_t<acc_t>(nms_items_per_group * 4, cgh);
-    return NMSKernelFunctor<scalar_t, acc_t>(
-        slm, dets_num_, iou_threshold_, dets_sorted_ptr_, mask_ptr_);
-  }
-  NMSKernelFunctorCreator(
       int dets_num,
       float iou_threshold,
       scalar_t* dets_sorted_ptr,
@@ -111,11 +83,16 @@ struct NMSKernelFunctorCreator {
         dets_sorted_ptr_(dets_sorted_ptr),
         mask_ptr_(mask_ptr) {}
 
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<acc_t>(nms_items_per_group * 4, cgh);
+  }
+
  private:
   int dets_num_;
   float iou_threshold_;
   scalar_t* dets_sorted_ptr_;
   unsigned long long* mask_ptr_;
+  sycl_local_acc_t<acc_t> slm_;
 };
 
 Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
@@ -136,11 +113,10 @@ Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
         using acc_t = acc_type<scalar_t, true>;
         auto dets_sorted_ptr = (scalar_t*)dets_sorted.data_ptr();
         auto mask_ptr = (unsigned long long*)mask.data_ptr();
-        auto creator = NMSKernelFunctorCreator<scalar_t, acc_t>(
+        auto caller = NMSKernelFunctor<scalar_t, acc_t>(
             dets_num, iou_threshold, dets_sorted_ptr, mask_ptr);
-        sycl_kernel_submit<
-            typename function_traits<decltype(creator)>::result_type>(
-            global_range, local_range, at::xpu::getCurrentSYCLQueue(), creator);
+        sycl_kernel_submit(
+            global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
       });
   return mask;
 }
