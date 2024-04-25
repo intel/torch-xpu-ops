@@ -215,7 +215,8 @@ void segmented_radix_sort_pairs_scan_kernel(
 // ======================= downsweep =======================
 
 template <typename method_t, typename key_t, typename value_t>
-struct SegmentedRadixSortPairsDownsweepFunctor {
+struct SegmentedRadixSortPairsDownsweepFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
       sycl::nd_item<1> item) const {
     int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
