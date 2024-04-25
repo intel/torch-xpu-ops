@@ -4,7 +4,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/layer_norm.h>
+
 #include <aten/sycl/Loops.h>
 #include <aten/sycl/Norm.h>
 #include <comm/SYCLContext.h>
@@ -267,7 +267,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 };
 
 template <typename scalar_t, typename mean_t, typename weight_t>
-void LayerNormKernelImplInternal(
+void _layer_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
@@ -290,45 +290,20 @@ void LayerNormKernelImplInternal(
 
   auto config = NormConfig(M, N, 1, sizeof(scalar_t));
   bool can_use_32bit_index = canUse32BitIndexMath(X);
-  LayerNormForward<scalar_t, mean_t, weight_t> layer_norm_forward(
+  LayerNormForward<scalar_t, mean_t, weight_t> norm(
       X_data, Y_data, mean_data, var_data, gamma_data, beta_data, eps, M, N);
 
   if (config.workgroup_num_foreach == 1) {
-    launch_vectorized_fused_norm_kernel<
-        scalar_t,
-        mean_t,
-        weight_t,
-        LayerNormForward>(layer_norm_forward, config, can_use_32bit_index);
+    vectorized_fused_norm_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
+        norm, config, can_use_32bit_index);
   } else {
     Tensor semaphores, scratchpad;
     config.template init_global_reduce<scalar_t>(X, semaphores, scratchpad);
-    RowwiseMomentsSYCLKernelImpl<scalar_t, mean_t, weight_t, LayerNormForward>(
-        layer_norm_forward, config, can_use_32bit_index);
-    NormUpdateKernelImpl<scalar_t, mean_t, weight_t, LayerNormForward>(
-        layer_norm_forward, config, can_use_32bit_index);
+    rowwise_moments_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
+        norm, config, can_use_32bit_index);
+    norm_update_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
+        norm, config, can_use_32bit_index);
   }
-}
-
-void LayerNormKernelImpl(
-    const Tensor& X,
-    const Tensor& gamma,
-    const Tensor& beta,
-    int64_t M,
-    int64_t N,
-    double eps,
-    Tensor& Y,
-    Tensor& mean,
-    Tensor& rstd) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      X.scalar_type(),
-      "LayerNormKernelImpl",
-      [&]() {
-        using acc_t = acc_type<scalar_t, true>;
-        LayerNormKernelImplInternal<scalar_t, acc_t, scalar_t>(
-            X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
-      });
 }
 
 template <
@@ -339,7 +314,8 @@ template <
     int vec_size,
     typename vec_t,
     typename weight_vec_t>
-struct GammaBetaBackwardSimpleKernelFunctor {
+struct GammaBetaBackwardSimpleKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item_id) const {
     auto local_row_id = item_id.get_local_id(1);
     auto local_col_id = item_id.get_local_id(2);
@@ -413,6 +389,22 @@ struct GammaBetaBackwardSimpleKernelFunctor {
       }
     }
   }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_sum1 = sycl_local_acc_t<accscalar_t, 3>(
+        sycl::range<3>(
+            (size_t)cfg.block_row,
+            (size_t)cfg.workgroup_size,
+            (size_t)vec_size),
+        cgh);
+    local_sum2 = sycl_local_acc_t<accscalar_t, 3>(
+        sycl::range<3>(
+            (size_t)cfg.block_row,
+            (size_t)cfg.workgroup_size,
+            (size_t)vec_size),
+        cgh);
+  }
+
   GammaBetaBackwardSimpleKernelFunctor(
       const mean_t* mean_data_,
       const mean_t* var_data_,
@@ -420,9 +412,7 @@ struct GammaBetaBackwardSimpleKernelFunctor {
       scalar_t* dY_data_,
       scalar_t* X_data_,
       weight_t* dg_data_,
-      weight_t* db_data_,
-      sycl_local_acc_t<accscalar_t, 3> local_sum1_,
-      sycl_local_acc_t<accscalar_t, 3> local_sum2_)
+      weight_t* db_data_)
       : mean_data(mean_data_),
         var_data(var_data_),
         cfg(cfg_),
@@ -430,8 +420,8 @@ struct GammaBetaBackwardSimpleKernelFunctor {
         X_data(X_data_),
         dg_data(dg_data_),
         db_data(db_data_),
-        local_sum1(local_sum1_),
-        local_sum2(local_sum2_) {}
+        local_sum1(),
+        local_sum2() {}
 
  private:
   const mean_t* mean_data;
@@ -450,74 +440,8 @@ template <
     typename accscalar_t,
     typename mean_t,
     typename weight_t,
-    int vec_size,
-    typename vec_t,
-    typename weight_vec_t>
-struct GammaBetaBackwardSimpleKernelFunctorCreator {
-  auto operator()(::sycl::handler& cgh) {
-    sycl_local_acc_t<accscalar_t, 3> local_sum1(
-        sycl::range<3>(
-            (size_t)cfg.block_row,
-            (size_t)cfg.workgroup_size,
-            (size_t)vec_size),
-        cgh);
-    sycl_local_acc_t<accscalar_t, 3> local_sum2(
-        sycl::range<3>(
-            (size_t)cfg.block_row,
-            (size_t)cfg.workgroup_size,
-            (size_t)vec_size),
-        cgh);
-    return GammaBetaBackwardSimpleKernelFunctor<
-        scalar_t,
-        accscalar_t,
-        mean_t,
-        weight_t,
-        vec_size,
-        vec_t,
-        weight_vec_t>(
-        mean_data,
-        var_data,
-        cfg,
-        dY_data,
-        X_data,
-        dg_data,
-        db_data,
-        local_sum1,
-        local_sum2);
-  }
-  GammaBetaBackwardSimpleKernelFunctorCreator(
-      const mean_t* mean_data_,
-      const mean_t* var_data_,
-      NormConfig cfg_,
-      scalar_t* dY_data_,
-      scalar_t* X_data_,
-      weight_t* dg_data_,
-      weight_t* db_data_)
-      : mean_data(mean_data_),
-        var_data(var_data_),
-        cfg(cfg_),
-        dY_data(dY_data_),
-        X_data(X_data_),
-        dg_data(dg_data_),
-        db_data(db_data_) {}
-
- private:
-  const mean_t* mean_data;
-  const mean_t* var_data;
-  NormConfig cfg;
-  scalar_t* dY_data;
-  scalar_t* X_data;
-  weight_t* dg_data;
-  weight_t* db_data;
-};
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename mean_t,
-    typename weight_t,
     int vec_size>
-void GammaBetaBackwardSimpleKernel(
+void vec_gamma_beta_bwd_simple_kernel(
     const Tensor& dY,
     const Tensor& X,
     const mean_t* mean_data,
@@ -540,17 +464,17 @@ void GammaBetaBackwardSimpleKernel(
       (size_t)cfg.block_row,
       (size_t)cfg.workgroup_size};
 
-  auto creator = GammaBetaBackwardSimpleKernelFunctorCreator<
+  GammaBetaBackwardSimpleKernelFunctor<
       scalar_t,
       accscalar_t,
       mean_t,
       weight_t,
       vec_size,
       vec_t,
-      weight_vec_t>(
-      mean_data, var_data, cfg, dY_data, X_data, dg_data, db_data);
-  sycl_kernel_submit<typename function_traits<decltype(creator)>::result_type>(
-      global_range, local_range, getCurrentSYCLQueue(), creator);
+      weight_vec_t>
+      kfn(mean_data, var_data, cfg, dY_data, X_data, dg_data, db_data);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 template <
@@ -558,7 +482,7 @@ template <
     typename accscalar_t,
     typename mean_t,
     typename weight_t>
-void GammaBetaBackwardSimpleKernelImpl(
+void gamma_beta_bwd_simple_kernel(
     const Tensor& dY,
     const Tensor& X,
     const mean_t* mean_data,
@@ -566,8 +490,8 @@ void GammaBetaBackwardSimpleKernelImpl(
     Tensor& dgamma,
     Tensor& dbeta,
     NormConfig& config) {
-#define VecGammaBetaBackwardSimpleKernel(vec_size)                  \
-  GammaBetaBackwardSimpleKernel<                                    \
+#define VECTORIZE_KERNEL(vec_size)                                  \
+  vec_gamma_beta_bwd_simple_kernel<                                 \
       scalar_t,                                                     \
       accscalar_t,                                                  \
       mean_t,                                                       \
@@ -577,22 +501,23 @@ void GammaBetaBackwardSimpleKernelImpl(
 
   switch (config.max_vec_size) {
     case 8: {
-      VecGammaBetaBackwardSimpleKernel(8);
+      VECTORIZE_KERNEL(8);
     }
     case 4: {
-      VecGammaBetaBackwardSimpleKernel(4);
+      VECTORIZE_KERNEL(4);
     }
     case 2: {
-      VecGammaBetaBackwardSimpleKernel(2);
+      VECTORIZE_KERNEL(2);
     }
     case 1: {
-      VecGammaBetaBackwardSimpleKernel(1);
+      VECTORIZE_KERNEL(1);
     }
   }
+#undef VECTORIZE_KERNEL
 }
 
 template <typename scalar_t, typename mean_t, typename weight_t>
-void LayerNormBackwardKernelImplInternal(
+void _layer_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,
@@ -623,13 +548,13 @@ void LayerNormBackwardKernelImplInternal(
     bool can_use_32bit_index = canUse32BitIndexMath(X) &&
         canUse32BitIndexMath(dY) && canUse32BitIndexMath(dX);
     if (config.workgroup_num_foreach == 1) {
-      LayerNormBackward<scalar_t, mean_t, weight_t> layer_norm_backward(
+      LayerNormBackward<scalar_t, mean_t, weight_t> norm(
           X_data, dY_data, dX_data, mean_data, var_data, gamma_data, M, N);
-      launch_vectorized_fused_norm_kernel<
+      vectorized_fused_norm_kernel<
           scalar_t,
           mean_t,
           weight_t,
-          LayerNormBackward>(layer_norm_backward, config, can_use_32bit_index);
+          LayerNormBackward>(norm, config, can_use_32bit_index);
     } else {
       const auto kAccType =
           (X.scalar_type() == kHalf || X.scalar_type() == kBFloat16)
@@ -640,7 +565,7 @@ void LayerNormBackwardKernelImplInternal(
       accscalar_t* a_data = a.data_ptr<accscalar_t>();
       accscalar_t* b_data = b.data_ptr<accscalar_t>();
 
-      LayerNormBackward<scalar_t, mean_t, weight_t> layer_norm_backward(
+      LayerNormBackward<scalar_t, mean_t, weight_t> norm(
           X_data,
           dY_data,
           dX_data,
@@ -654,22 +579,45 @@ void LayerNormBackwardKernelImplInternal(
       Tensor semaphores, scratchpad;
       config.template init_global_reduce<accscalar_t>(
           X, semaphores, scratchpad);
-      RowwiseMomentsSYCLKernelImpl<
-          scalar_t,
-          mean_t,
-          weight_t,
-          LayerNormBackward>(layer_norm_backward, config, can_use_32bit_index);
-      NormUpdateKernelImpl<scalar_t, mean_t, weight_t, LayerNormBackward>(
-          layer_norm_backward, config, can_use_32bit_index);
+      rowwise_moments_kernel<scalar_t, mean_t, weight_t, LayerNormBackward>(
+          norm, config, can_use_32bit_index);
+      norm_update_kernel<scalar_t, mean_t, weight_t, LayerNormBackward>(
+          norm, config, can_use_32bit_index);
     }
   }
 
   auto config_w = NormConfig(M, N, 0, sizeof(scalar_t));
-  GammaBetaBackwardSimpleKernelImpl<scalar_t, accscalar_t, mean_t, weight_t>(
+  gamma_beta_bwd_simple_kernel<scalar_t, accscalar_t, mean_t, weight_t>(
       dY, X, mean_data, var_data, dgamma, dbeta, config_w);
 }
 
-void LayerNormBackwardKernelImpl(
+std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
+    const Tensor& X,
+    const Tensor& gamma,
+    const Tensor& beta,
+    int64_t M,
+    int64_t N,
+    double eps,
+    Tensor& Y,
+    Tensor& mean,
+    Tensor& rstd) {
+  if (M > 0) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        X.scalar_type(),
+        "layer_norm_xpu",
+        [&]() {
+          using acc_t = acc_type<scalar_t, true>;
+          _layer_norm_kernel<scalar_t, acc_t, scalar_t>(
+              X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
+        });
+  }
+
+  return std::make_tuple(Y, mean, rstd);
+}
+
+std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,
@@ -681,165 +629,30 @@ void LayerNormBackwardKernelImpl(
     Tensor& dgamma,
     Tensor& dbeta,
     std::array<bool, 3> grad_input_mask) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      X.scalar_type(),
-      "LayerNormBackwardKernelImpl",
-      [&]() {
-        using accscalar_t = acc_type<scalar_t, true>;
-        LayerNormBackwardKernelImplInternal<scalar_t, accscalar_t, scalar_t>(
-            dY.contiguous(),
-            X,
-            mean,
-            rstd,
-            gamma,
-            M,
-            N,
-            dX,
-            dgamma,
-            dbeta,
-            grad_input_mask);
-      });
-}
-
-std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
-    const Tensor& input,
-    at::IntArrayRef normalized_shape,
-    const c10::optional<at::Tensor>& weight_opt,
-    const c10::optional<at::Tensor>& bias_opt,
-    double epsilon) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-  c10::MaybeOwned<Tensor> bias_maybe_owned =
-      at::borrow_from_optional_tensor(bias_opt);
-  const Tensor& bias = *bias_maybe_owned;
-
-  auto M_N = _check_layer_norm_inputs(input, normalized_shape, weight, bias);
-  auto M = M_N.first;
-  auto N = M_N.second;
-  auto X = input.expect_contiguous();
-  auto gamma = weight.expect_contiguous();
-  auto beta = bias.expect_contiguous();
-
-  Tensor Y = at::native::empty_like(
-      *X,
-      c10::nullopt /* dtype */,
-      c10::nullopt /* layout */,
-      c10::nullopt /* device */,
-      c10::nullopt /* pin_memory */,
-      LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  auto acc_type = at::toAccumulateType(input.scalar_type(), /*is_cuda=*/true);
-  Tensor mean = at::empty({M}, X->options().dtype(acc_type));
-  Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
-  if (M > 0) {
-    LayerNormKernelImpl(*X, *gamma, *beta, M, N, epsilon, Y, mean, rstd);
-  }
-
-  const auto input_shape = input.sizes();
-  const size_t axis = input.dim() - normalized_shape.size();
-
-  std::vector<int64_t> stat_shape;
-  for (const auto idx : c10::irange(axis)) {
-    stat_shape.push_back(input_shape[idx]);
-  }
-  for (const auto C10_UNUSED idx : c10::irange(axis, input.dim())) {
-    stat_shape.push_back(1);
-  }
-
-  mean = mean.view(stat_shape);
-  rstd = rstd.view(stat_shape);
-
-  return std::make_tuple(std::move(Y), std::move(mean), std::move(rstd));
-}
-
-std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& input,
-    at::IntArrayRef normalized_shape,
-    const Tensor& mean,
-    const Tensor& rstd,
-    const c10::optional<at::Tensor>& weight_opt,
-    const c10::optional<at::Tensor>& bias_opt,
-    std::array<bool, 3> grad_input_mask) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-  c10::MaybeOwned<Tensor> bias_maybe_owned =
-      at::borrow_from_optional_tensor(bias_opt);
-  const Tensor& bias = *bias_maybe_owned;
-
-  auto M_N = _check_layer_norm_inputs(input, normalized_shape, weight, bias);
-  auto M = M_N.first;
-  auto N = M_N.second;
-  auto X = input.expect_contiguous();
-  auto gamma = weight.expect_contiguous();
-  auto beta = bias.expect_contiguous();
-
-  Tensor grad_input;
-  Tensor grad_weight;
-  Tensor grad_bias;
-  if (grad_input_mask[0]) {
-    grad_input = at::native::empty_like(
-        *X,
-        c10::nullopt /* dtype */,
-        c10::nullopt /* layout */,
-        c10::nullopt /* device */,
-        c10::nullopt /* pin_memory */,
-        LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  }
-
-  if (grad_input_mask[1]) {
-    grad_weight = M > 0 ? at::native::empty_like(
-                              *gamma,
-                              c10::nullopt /* dtype */,
-                              c10::nullopt /* layout */,
-                              c10::nullopt /* device */,
-                              c10::nullopt /* pin_memory */,
-                              LEGACY_CONTIGUOUS_MEMORY_FORMAT)
-                        : at::native::zeros_like(
-                              *gamma,
-                              c10::nullopt /* dtype */,
-                              c10::nullopt /* layout */,
-                              c10::nullopt /* device */,
-                              c10::nullopt /* pin_memory */,
-                              LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  }
-  if (grad_input_mask[2]) {
-    grad_bias = M > 0 ? at::native::empty_like(
-                            *beta,
-                            c10::nullopt /* dtype */,
-                            c10::nullopt /* layout */,
-                            c10::nullopt /* device */,
-                            c10::nullopt /* pin_memory */,
-                            LEGACY_CONTIGUOUS_MEMORY_FORMAT)
-                      : at::native::zeros_like(
-                            *beta,
-                            c10::nullopt /* dtype */,
-                            c10::nullopt /* layout */,
-                            c10::nullopt /* device */,
-                            c10::nullopt /* pin_memory */,
-                            LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  }
-
   if (M > 0 && N > 0) {
-    LayerNormBackwardKernelImpl(
-        grad_output,
-        *X,
-        mean,
-        rstd,
-        *gamma,
-        M,
-        N,
-        grad_input,
-        grad_weight,
-        grad_bias,
-        grad_input_mask);
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        X.scalar_type(),
+        "layer_norm_backward_xpu",
+        [&]() {
+          using accscalar_t = acc_type<scalar_t, true>;
+          _layer_norm_backward_kernel<scalar_t, accscalar_t, scalar_t>(
+              dY.contiguous(),
+              X,
+              mean,
+              rstd,
+              gamma,
+              M,
+              N,
+              dX,
+              dgamma,
+              dbeta,
+              grad_input_mask);
+        });
   }
 
-  return std::make_tuple(
-      std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
+  return std::make_tuple(dX, dgamma, dbeta);
 }
 
 } // namespace xpu

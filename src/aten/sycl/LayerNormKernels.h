@@ -7,20 +7,27 @@ namespace native {
 namespace xpu {
 
 std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
-    const Tensor& input,
-    at::IntArrayRef normalized_shape,
-    const c10::optional<at::Tensor>& weight_opt,
-    const c10::optional<at::Tensor>& bias_opt,
-    double epsilon);
+    const Tensor& X,
+    const Tensor& gamma,
+    const Tensor& beta,
+    int64_t M,
+    int64_t N,
+    double eps,
+    Tensor& Y,
+    Tensor& mean,
+    Tensor& rstd);
 
 std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& input,
-    at::IntArrayRef normalized_shape,
+    const Tensor& dY,
+    const Tensor& X,
     const Tensor& mean,
     const Tensor& rstd,
-    const c10::optional<at::Tensor>& weight_opt,
-    const c10::optional<at::Tensor>& bias_opt,
+    const Tensor& gamma,
+    int64_t M,
+    int64_t N,
+    Tensor& dX,
+    Tensor& dgamma,
+    Tensor& dbeta,
     std::array<bool, 3> grad_input_mask);
 
 } // namespace xpu
