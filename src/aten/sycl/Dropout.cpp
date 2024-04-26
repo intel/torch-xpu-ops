@@ -404,7 +404,7 @@ std::tuple<Tensor, Tensor> dropout(
   return std::tuple<Tensor, Tensor>(ret, mask);
 }
 
-std::tuple<Tensor, Tensor> native_dropout(
+std::tuple<Tensor, Tensor> native_dropout_kernel(
     const Tensor& self,
     double p,
     c10::optional<bool> train) {
@@ -453,7 +453,7 @@ Tensor dropout_backward(const Tensor& grad, const Tensor& mask, double scale) {
   return ret;
 }
 
-Tensor native_dropout_backward(
+Tensor native_dropout_backward_kernel(
     const Tensor& grad,
     const Tensor& mask,
     double scale) {

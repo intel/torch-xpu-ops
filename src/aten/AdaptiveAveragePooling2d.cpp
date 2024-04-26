@@ -21,7 +21,7 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
       grad_output = grad_output_.contiguous(smf);
       grad_input = at::empty_like(input_, smf);
     }
-    native::xpu::adaptive_avg_pool2d_backward_out_template(
+    native::xpu::adaptive_avg_pool2d_backward_out_template_kernel(
         grad_input, grad_output, input);
   } else {
     grad_input = at::zeros_like(input_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
