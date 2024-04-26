@@ -14,8 +14,7 @@ Tensor& XPUNativeFunctions::_fft_r2c_out(
   Tensor out_cpu = out.to(Device(at::kCPU));
   at::_fft_r2c_out(
       out_cpu, self.to(Device(at::kCPU)), dim, normalization, onesided);
-  out.copy_(out_cpu);
-  return out;
+  return out.copy_(out_cpu);
 }
 
 Tensor& XPUNativeFunctions::_fft_c2r_out(
