@@ -235,7 +235,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   sycl_local_acc_t<accscalar_t> _ikw_cached;
 };
 
-void adaptive_avg_pool2d_backward_out_template_kernel(
+void adaptive_avg_pool2d_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input) {
