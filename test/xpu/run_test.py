@@ -1,7 +1,7 @@
 import os
 import sys
 
-skip_list = (
+test_ops_skip_list = (
     # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
     "test_compare_cpu_nn_functional_conv2d_xpu_float32",
@@ -668,16 +668,56 @@ skip_list = (
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
 )
 
+nn_test_embedding_skip_list = (
+    # Skip list of base line
+    # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
+    "test_embedding_backward_xpu_float64",
+    "test_embedding_bag_1D_padding_idx_xpu_float32",
+    "test_embedding_bag_1D_padding_idx_xpu_float64",
+    "test_embedding_bag_2D_padding_idx_xpu_float32",
+    "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int64",
+    "test_embedding_bag_bfloat16_xpu_int64_int32",
+    "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_float64",
+    "test_embedding_bag_device_xpu_int64_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int32_float16",
+    "test_embedding_bag_device_xpu_int64_int32_float32",
+    "test_embedding_bag_device_xpu_int64_int32_float64",
+    "test_embedding_bag_device_xpu_int64_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int64_float16",
+    "test_embedding_bag_device_xpu_int64_int64_float32",
+    "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int64",
+    "test_embedding_bag_half_xpu_int64_int32",
+    "test_embedding_bag_half_xpu_int64_int64",
+)
 
-skip_options = " -k 'not " + skip_list[0]
-for skip_case in skip_list[1:]:
+res = 0
+
+# test_ops
+test_ops_skip_options = " -k 'not " + test_ops_skip_list[0]
+for skip_case in test_ops_skip_list[1:]:
     skip_option = " and not " + skip_case
-    skip_options += skip_option
-skip_options += "'"
+    test_ops_skip_options += skip_option
+test_ops_skip_options += "'"
+test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v test_ops_xpu.py"
+test_command += test_ops_skip_options
+res += os.system(test_command)
 
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v _test_ops.py"
-test_command += skip_options
+# nn/test_embedding
+nn_test_embedding_skip_options = " -k 'not " + nn_test_embedding_skip_list[0]
+for skip_case in nn_test_embedding_skip_list[1:]:
+    skip_option = " and not " + skip_case
+    nn_test_embedding_skip_options += skip_option
+nn_test_embedding_skip_options += "'"
+test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v nn/test_embedding_xpu.py"
+test_command += nn_test_embedding_skip_options
+res += os.system(test_command)
 
-res = os.system(test_command)
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
