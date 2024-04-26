@@ -418,7 +418,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "vdot",
     "xlogy.OutTensor",
   };
-  std::string op_name;
   for (auto& op_name : fallback_list) {
     m.impl(
         op_name.c_str(),
