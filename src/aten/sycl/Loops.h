@@ -2,10 +2,12 @@
 
 #include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
+#include <ATen/core/TensorBody.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TensorIteratorDynamicCasting.h>
 #include <ATen/native/cuda/thread_constants.h>
+#include <c10/core/DeviceGuard.h>
 
 #include <aten/sycl/ElementwiseInvoke.h>
 #include <aten/sycl/MemoryAccess.h>
