@@ -15,7 +15,7 @@ struct EmbeddingDenseBackwardEqFunctor {
   }
 };
 
-Tensor embedding_dense_backward(
+Tensor embedding_dense_backward_kernel(
     const Tensor& grad_,
     const Tensor& indices_,
     int64_t num_weights,

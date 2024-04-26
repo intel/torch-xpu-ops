@@ -15,11 +15,11 @@ Tensor XPUNativeFunctions::embedding_dense_backward(
   c10::impl::check_and_update_common_device(
       common_device,
       grad_output,
-      "xpu::embedding_dense_backward",
+      "embedding_dense_backward_xpu",
       "grad_output");
   c10::impl::check_and_update_common_device(
-      common_device, indices, "xpu::embedding_dense_backward", "indices");
-  return native::xpu::embedding_dense_backward(
+      common_device, indices, "embedding_dense_backward_xpu", "indices");
+  return native::xpu::embedding_dense_backward_kernel(
       grad_output, indices, num_weights, padding_idx, scale_grad_by_freq);
   ;
 }
