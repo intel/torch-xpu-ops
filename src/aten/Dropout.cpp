@@ -11,7 +11,7 @@ namespace at {
     const Tensor& input,
     double p,
     ::std::optional<bool> train) {
-  return at::native::xpu::native_dropout_kernel(input, p, train);
+  return at::native::xpu::dropout_kernel(input, p, train);
 }
 
 Tensor XPUNativeFunctions::native_dropout_backward(
@@ -26,8 +26,7 @@ Tensor XPUNativeFunctions::native_dropout_backward(
       "grad_output");
   c10::impl::check_and_update_common_device(
       common_device, mask, "xpu::native_dropout_backward", "mask");
-  return at::native::xpu::native_dropout_backward_kernel(
-      grad_output, mask, scale);
+  return at::native::xpu::dropout_backward_kernel(grad_output, mask, scale);
 }
 
 } // namespace at
