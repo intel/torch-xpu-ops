@@ -1,7 +1,8 @@
 #include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <aten/sycl/Embedding.h>
+
+#include <ATen/XPUNativeFunctions.h>
+#include <aten/sycl/EmbeddingKernels.h>
 
 namespace at {
 
