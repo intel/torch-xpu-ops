@@ -81,8 +81,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   }
 }
 
-/*
- * Register fallback to CPU for ops specified in fallback_list.txt
+/* 
+ * These ops are not supported via XPU backend currently, and we fallback to run on CPU.
  */
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
