@@ -1,7 +1,5 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CPUFallback.h>
-#include <string.h>
-#include <iostream>
 
 namespace at {
 
