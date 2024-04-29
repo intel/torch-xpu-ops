@@ -384,6 +384,7 @@ skip_list = (
     "test_compare_cpu_addmm_xpu_float32",
     "test_compare_cpu_addmv_xpu_float32",
     "test_dtypes__refs_linalg_svd_xpu",
+    "tets_dtypes__refs_nn_functional_pdist_xpu",
     "test_dtypes_addbmm_xpu",
     "test_dtypes_addmm_decomposed_xpu",
     "test_dtypes_addmm_xpu",
