@@ -1,12 +1,85 @@
+#include <ATen/core/Tensor.h>
 #include <ATen/native/CPUFallback.h>
 
 namespace at {
 
 static bool DEBUG_XPU_FALLBACK = false;
 
+static void xpu_fallback_impl(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  native::cpu_fallback(op, stack, true);
+}
+
+namespace native::xpu {
+Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
+}
+
+// Register op's implementation lazily since sometimes the op is not defined,
+// when registering implementation in PyTorch.
+
+// Change both maps table and register_func when adding a new operator
+// with lazy registration. So far, support torchvision namespace only.
+// <operator_name: string, is_cpu_fallback: bool>
+static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
+  {"torchvision::nms", false},
+  {"torchvision::roi_align", true},
+  {"torchvision::_roi_align_backward", true},
+};
+
+// Return:
+// true  - Redispatch to implementation lazily registered.
+// false - Not redispatch.
+static bool lazy_registration_and_redispatch(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  auto register_func =
+      [](torch::Library& m) -> void {
+        // Register all operators of torchvision namespace, not to register op
+        // by op when the op is called. When a torchvision::op is called,
+        // suppose ops of torchvision are all defined (`import torchvision`).
+        m.impl(TORCH_SELECTIVE_NAME("torchvision::nms"), TORCH_FN(at::native::xpu::nms));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::roi_align"),
+            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_roi_align_backward"),
+            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+      };
+
+  static const torch::detail::TorchLibraryInit
+      torchvision_ops_impl_lazy_registration(
+          torch::Library::IMPL,
+          register_func,
+          "torchvision",
+          c10::make_optional(c10::DispatchKey::XPU),
+          __FILE__,
+          __LINE__);
+
+  bool need_redispatch_after_lazy_registration =
+      torchvision_ops_dispatching_table_.end() != torchvision_ops_dispatching_table_.find(op.schema().operator_name().name);
+  bool is_cpu_fallback = need_redispatch_after_lazy_registration ?
+      torchvision_ops_dispatching_table_[op.schema().operator_name().name] : true;
+
+  if (need_redispatch_after_lazy_registration) {
+    if (!is_cpu_fallback) {
+      op.redispatchBoxed(c10::DispatchKeySet(c10::DispatchKey::XPU), stack);
+    } else {
+      xpu_fallback_impl(op, stack);
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
+  if (lazy_registration_and_redispatch(op, stack)) {
+    return;
+  }
+
   if (!DEBUG_XPU_FALLBACK) {
     TORCH_WARN_ONCE(
         "Aten Op fallback from XPU to CPU happends.",
@@ -20,22 +93,21 @@ static void xpu_fallback(
   }
 
   // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
-  native::cpu_fallback(op, stack, true);
+  xpu_fallback_impl(op, stack);
 }
 
-static void xpu_error_fallback(
+static void xpu_lazy_registration_or_error_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  TORCH_CHECK_NOT_IMPLEMENTED(
-      false,
-      "The operator '",
-      op.schema().operator_name(),
-      "' is not currently implemented ",
-      "for the XPU device. If you want this op to be added in priority during the prototype ",
-      "phase of this feature, please open issue on https://github.com/intel/torch-xpu-ops/issues. ",
-      "As a temporary fix, you can set the environment variable `PYTORCH_ENABLE_XPU_FALLBACK=1` ",
-      "to use the CPU as a fallback for this op. WARNING: this will be slower than running natively ",
-      "on XPU.");
+  if (!lazy_registration_and_redispatch(op, stack)) {
+    TORCH_CHECK_NOT_IMPLEMENTED(
+        false,
+        "The operator '",
+        op.schema().operator_name(),
+        "' is not currently implemented for the XPU device. Please open a feature on https://github.com/intel/torch-xpu-ops/issues. ",
+        "You can set the environment variable `PYTORCH_ENABLE_XPU_FALLBACK=1` to use the CPU implementation as a fallback for XPU unimplemented operators. "
+        "WARNING: this will bring unexpected performance compared with running natively on XPU.");
+  }
 }
 
 static void xpu_force_fallback(
@@ -47,7 +119,7 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
       getenv("PYTORCH_ENABLE_XPU_FALLBACK");
   if (!enable_xpu_fallback || std::stoi(enable_xpu_fallback) == 0) {
     m.fallback(
-        torch::CppFunction::makeFromBoxedFunction<&xpu_error_fallback>());
+        torch::CppFunction::makeFromBoxedFunction<&xpu_lazy_registration_or_error_fallback>());
   } else {
     m.fallback(torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
   }
@@ -81,7 +153,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   }
 }
 
-/* 
+/*
  * These ops are not supported via XPU backend currently, and we fallback to run on CPU.
  */
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
@@ -422,20 +494,12 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   for (auto& op_name : fallback_list) {
     m.impl(
         op_name.c_str(),
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
   }
 }
 TORCH_LIBRARY_IMPL(_inductor_test, XPU, m) {
     m.impl(
         "realize",
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
-}
-TORCH_LIBRARY_IMPL(torchvision, XPU, m) {
-    m.impl(
-        "roi_align",
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
-    m.impl(
-        "_roi_align_backward",
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
 }
 } // namespace at
