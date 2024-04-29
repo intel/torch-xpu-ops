@@ -219,7 +219,7 @@ static inline TensorIterator meta_func_div_Tensor_mode(
     c10::optional<c10::string_view> rounding_mode) {
   TensorIterator iter;
   if (!rounding_mode.has_value()) {
-    iter.build_borrowing_binary_op(output, self, other);
+    iter.build_borrowing_binary_float_op(output, self, other);
     // NOLINTNEXTLINE(bugprone-branch-clone)
   } else if (*rounding_mode == "trunc") {
     iter.build_borrowing_binary_op(output, self, other);
