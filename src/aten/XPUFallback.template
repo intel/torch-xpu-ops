@@ -104,12 +104,9 @@ static void xpu_lazy_registration_or_error_fallback(
         false,
         "The operator '",
         op.schema().operator_name(),
-        "' is not currently implemented ",
-        "for the XPU device. If you want this op to be added in priority during the prototype ",
-        "phase of this feature, please open issue on https://github.com/intel/torch-xpu-ops/issues. ",
-        "As a temporary fix, you can set the environment variable `PYTORCH_ENABLE_XPU_FALLBACK=1` ",
-        "to use the CPU as a fallback for this op. WARNING: this will be slower than running natively ",
-        "on XPU.");
+        "' is not currently implemented for the XPU device. Please open a feature on https://github.com/intel/torch-xpu-ops/issues. ",
+        "You can set the environment variable `PYTORCH_ENABLE_XPU_FALLBACK=1` to use the CPU implementation as a fallback for XPU unimplemented operators. "
+        "WARNING: this will bring unexpected performance compared with running natively on XPU.");
   }
 }
 
