@@ -9,6 +9,7 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+  - _adaptive_avg_pool2d_backward
   - cumsum
   - cumsum.out
   - cumsum_
@@ -184,6 +185,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - native_layer_norm
+  - native_layer_norm_backward
   - index.Tensor
   - index.Tensor_out
   - max

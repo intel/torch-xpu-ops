@@ -8,7 +8,7 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/ReduceOps.h>
+#include <aten/sycl/ReduceOpsKernels.h>
 #include <aten/sycl/ScanKernels.h>
 #include <aten/sycl/ScanUtils.h>
 #include <comm/ReduceOpsUtils.h>
