@@ -80,7 +80,7 @@ struct MinimumFunctor {
     } else if (b != b) {
       return b;
     } else {
-      return std::max(a, b);
+      return std::min(a, b);
     }
   }
 };
