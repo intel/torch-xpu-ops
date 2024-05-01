@@ -11,7 +11,7 @@ with XPUTestPatch():
 
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu")
-instantiate_device_type_tests(TestRefsOpsInfo, globals(), only_for="cpu")
+instantiate_device_type_tests(TestRefsOpsInfo, globals(), only_for="xpu")
 instantiate_device_type_tests(TestFakeTensor, globals(), only_for="xpu")
 instantiate_device_type_tests(TestTags, globals(), only_for="xpu")
 
