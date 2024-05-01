@@ -666,6 +666,7 @@ skip_list = (
     "test_variant_consistency_eager_svd_xpu_complex64",
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+
 )
 
 
