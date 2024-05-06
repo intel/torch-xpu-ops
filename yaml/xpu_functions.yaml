@@ -204,3 +204,11 @@ supported:
   - _local_scalar_dense
   - _index_put_impl_
   - nonzero
+  - _softmax
+  - _softmax.out
+  - _log_softmax
+  - _log_softmax.out
+  - _softmax_backward_data
+  - _softmax_backward_data.out
+  - _log_softmax_backward_data
+  - _log_softmax_backward_data.out
