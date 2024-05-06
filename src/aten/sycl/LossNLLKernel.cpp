@@ -2,13 +2,12 @@
 #include <ATen/Functions.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Reduction.h>
-
-#include <core/Device.h>
-#include <core/Memory.h>
 #include <comm/SYCLContext.h>
+#include <iostream>
 
 namespace at::native::xpu {
-
+namespace impl {
+using namespace at::xpu;
 template <typename scalar_t>
 struct ClassNLLCriterionUpdateOutputKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
@@ -105,7 +104,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
       bool has_weights_,
       int64_t batch_size_,
       int64_t local_size_,
-      int64_t target_stride_,
       int n_classes_,
       int64_t ignore_index_,
       int64_t reduction_)
@@ -117,7 +115,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
         has_weights(has_weights_),
         batch_size(batch_size_),
         local_size(local_size_),
-        target_stride(target_stride_),
         n_classes(n_classes_),
         ignore_index(ignore_index_),
         reduction(reduction_) {}
@@ -131,14 +128,14 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
   bool has_weights;
   int64_t batch_size;
   int64_t local_size;
-  int64_t target_stride;
   int n_classes;
   int64_t ignore_index;
   int64_t reduction;
 };
 
 template <typename scalar_t>
-struct ClassNLLCriterionUpdateOutputKernelFunctor3 {
+struct ClassNLLCriterionUpdateOutputKernelFunctor3
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     auto input_ptr = input_data;
     auto target_ptr = target_data;
@@ -186,12 +183,9 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3 {
       bool has_weights_,
       int64_t batch_size_,
       int64_t local_size_,
-      int64_t target_stride_,
       int n_classes_,
       int64_t ignore_index_,
       int n_target_,
-      sycl_local_acc_t<scalar_t> local_output_acc_,
-      sycl_local_acc_t<scalar_t> local_total_weight_acc_,
       int64_t reduction_)
       : input_data(input_data_),
         target_data(target_data_),
@@ -201,13 +195,15 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3 {
         has_weights(has_weights_),
         batch_size(batch_size_),
         local_size(local_size_),
-        target_stride(target_stride_),
         n_classes(n_classes_),
         ignore_index(ignore_index_),
         n_target(n_target_),
-        local_output_acc(local_output_acc_),
-        local_total_weight_acc(local_total_weight_acc_),
         reduction(reduction_) {}
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    auto local_output_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
+    auto local_total_weight_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
+  }
 
  private:
   scalar_t* input_data;
@@ -218,7 +214,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3 {
   bool has_weights;
   int64_t batch_size;
   int64_t local_size;
-  int64_t target_stride;
   int n_classes;
   int64_t ignore_index;
   int n_target;
@@ -226,7 +221,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3 {
   sycl_local_acc_t<scalar_t> local_total_weight_acc;
   int64_t reduction;
 };
-
 
 template <typename scalar_t>
 void ClassNLLCriterion_updateOutput(
@@ -237,39 +231,17 @@ void ClassNLLCriterion_updateOutput(
     Tensor& total_weight,
     int64_t reduction,
     int64_t ignore_index) {
-  TORCH_CHECK(
-      input.dim() > 0 && input.dim() <= 2, "input tensor should be 1D or 2D");
-  TORCH_CHECK(
-      target.dim() == 1,
-      "1D target tensor expected, multi-target not supported");
-  TORCH_CHECK(
-      input.size(0) == target.size(0),
-      "size mismatch (got input: ",
-      input.sizes(),
-      ", target: ",
-      target.sizes(),
-      ")")
-
   int n_dims = input.dim();
   int n_classes = input.size(-1);
   ignore_index -= 0;
 
   int64_t batch_size = input.size(0);
-  int64_t num_targets = target.size(0);
-  int64_t target_stride = target.stride(0);
 
   const Tensor weights_val = weights.value();
-  TORCH_CHECK(
-      !weights_val.defined() ||
-          (weights_val.dim() == 1 && weights_val.numel() == n_classes),
-      "weight tensor should be defined either for all ",
-      n_classes,
-      " classes or no classes"
-      " but got weight tensor of shape: ",
-      weights_val.sizes());
 
   if (reduction == at::Reduction::None && n_dims == 2) {
     output.resize_({batch_size});
+    int64_t target_stride = target.stride(0);
 
     auto weights_cont =
         weights_val.defined() ? weights_val.contiguous() : weights_val;
@@ -306,7 +278,6 @@ void ClassNLLCriterion_updateOutput(
         input_stride_0,
         input_stride_1);
 
-    // DPCPP_Q_SUBMIT(queue, cgf);
     sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
     return;
   }
@@ -330,73 +301,57 @@ void ClassNLLCriterion_updateOutput(
 
   if (input_cont.dim() == 1 || input_cont.dim() == 0) {
     int64_t local_size = 1;
+    auto input_data = _input_data;
+    auto weights_data = has_weights
+        ? _weights_data
+        : input_data; // use the input as the dummy data.
+    auto target_data = _target_data;
+    auto total_weight_data = _total_weight_data;
+    auto output_data = _output_data;
+    ClassNLLCriterionUpdateOutputKernelFunctor2<scalar_t> kfn(
+        input_data,
+        target_data,
+        weights_data,
+        output_data,
+        total_weight_data,
+        has_weights,
+        batch_size,
+        local_size,
+        n_classes,
+        ignore_index,
+        reduction);
 
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      auto input_data = _input_data;
-      auto weights_data = has_weights
-          ? _weights_data
-          : input_data; // use the input as the dummy data.
-      auto target_data = _target_data;
-      auto total_weight_data = _total_weight_data;
-      auto output_data = _output_data;
-      ClassNLLCriterionUpdateOutputKernelFunctor2<scalar_t> kfn(
-          input_data,
-          target_data,
-          weights_data,
-          output_data,
-          total_weight_data,
-          has_weights,
-          batch_size,
-          local_size,
-          target_stride,
-          n_classes,
-          ignore_index,
-          reduction);
-      cgh.parallel_for<decltype(kfn)>(sycl::range<1>(local_size), kfn);
-    };
-
-    DPCPP_Q_SUBMIT(queue, cgf);
-  } else if (input.dim() == 2) {
+    sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
+  } else if (input_cont.dim() == 2) {
+    std::cout << "input dim == 2" << std::endl;
+    std::cout << input_cont.data() << std::endl;
     int64_t batch_size = input.size(0);
     int n_target = input.size(1);
     auto dev_id = getDeviceIndexOfCurrentQueue();
     int64_t local_size = syclMaxWorkGroupSize(dev_id);
+    auto input_data = _input_data;
+    auto weights_data = has_weights
+        ? _weights_data
+        : input_data; // use the input as the dummy data.
+    auto target_data = _target_data;
+    auto total_weight_data = _total_weight_data;
+    auto output_data = _output_data;
+    ClassNLLCriterionUpdateOutputKernelFunctor3<scalar_t> kfn(
+        input_data,
+        target_data,
+        weights_data,
+        output_data,
+        total_weight_data,
+        has_weights,
+        batch_size,
+        local_size,
+        n_classes,
+        ignore_index,
+        n_target,
+        reduction);
 
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      auto input_data = _input_data;
-      auto weights_data = has_weights
-          ? _weights_data
-          : input_data; // use the input as the dummy data.
-      auto target_data = _target_data;
-      auto total_weight_data = _total_weight_data;
-      auto output_data = _output_data;
-      auto local_output_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
-      auto local_total_weight_acc =
-          sycl_local_acc_t<scalar_t>(local_size, cgh);
-
-      ClassNLLCriterionUpdateOutputKernelFunctor3<scalar_t> kfn(
-          input_data,
-          target_data,
-          weights_data,
-          output_data,
-          total_weight_data,
-          has_weights,
-          batch_size,
-          local_size,
-          target_stride,
-          n_classes,
-          ignore_index,
-          n_target,
-          local_output_acc,
-          local_total_weight_acc,
-          reduction);
-      cgh.parallel_for<decltype(kfn)>(
-          sycl::nd_range<1>(
-              sycl::range<1>(local_size), sycl::range<1>(local_size)),
-          kfn);
-    };
-
-    DPCPP_Q_SUBMIT(queue, cgf);
+    sycl_kernel_submit(
+        sycl::range<1>(local_size), sycl::range<1>(local_size), queue, kfn);
   }
 }
 
@@ -591,53 +546,16 @@ void ClassNLLCriterion_updateGradInput(
     const optional<Tensor>& weights,
     const Tensor& total_weight,
     int64_t ignore_index) {
-  TORCH_CHECK(
-      input.dim() > 0 && input.dim() <= 2, "input tensor should be 1D or 2D");
-  TORCH_CHECK(
-      target.dim() <= 1,
-      "0D or 1D target tensor expected, multi-target not supported");
-
-  auto no_batch_dim = input.dim() == 1 && target.dim() == 0;
-  TORCH_CHECK(
-      no_batch_dim || (input.size(0) == target.size(0)),
-      "size mismatch (got input: ",
-      input.sizes(),
-      ", target: ",
-      target.sizes(),
-      ")");
-  TORCH_CHECK(
-      total_weight.numel() == 1,
-      "expected total_weight to be a  single element tensor, got: ",
-      total_weight.sizes(),
-      " (",
-      total_weight.numel(),
-      " elements)");
-
   int n_dims = input.dim();
-  int n_classes = input.size(-1);
 
   gradInput.resize_as_(input);
   gradInput.zero_();
-  TORCH_CHECK(gradInput.is_contiguous(), "gradInput must be contiguous");
-
-  TORCH_CHECK(
-      input.defined() && (n_dims <= 2 && n_dims > 0),
-      "input tensor should be 1D or 2D");
 
   int64_t batch_size = input.size(0);
-  int64_t num_targets = target.size(0);
-  int64_t target_stride = target.stride(0);
-
-  TORCH_CHECK(
-      batch_size == num_targets,
-      "mismatch between the batch size of input and that of target")
-
   const Tensor weights_val = weights.value();
-  TORCH_CHECK(
-      !weights_val.defined() || weights_val.numel() == input.size(-1),
-      "weight tensor should be defined either for all or no classes");
 
   if (reduction == at::Reduction::None && n_dims == 2) {
+    int64_t target_stride = target.stride(0);
     check_dim_size(gradOutput, 1, 0, batch_size);
     auto weights_cont =
         weights_val.defined() ? weights_val.contiguous() : weights_val;
@@ -652,33 +570,29 @@ void ClassNLLCriterion_updateGradInput(
     auto gradInput_stride_0 = gradInput.stride(0);
     auto gradInput_stride_1 = gradInput.stride(1);
     auto gradOutput_stride_0 = gradOutput.stride(0);
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      auto target_data = target.data_ptr<int64_t>();
-      auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-      auto weights_data = has_weights
-          ? weights_cont.data_ptr<scalar_t>()
-          : gradOutput_data; // Use gradOutput handler as dummy weights
-      auto gradInput_data = gradInput.data_ptr<scalar_t>();
-      ClassNLLCriterionUpdateGradInputKernelFunctor<scalar_t> kfn(
-          target_data,
-          gradOutput_data,
-          weights_data,
-          gradInput_data,
-          has_weights,
-          local_size,
-          batch_size,
-          target_stride,
-          ignore_index,
-          gradInput_stride_0,
-          gradInput_stride_1,
-          gradOutput_stride_0);
-      cgh.parallel_for<decltype(kfn)>(
-          sycl::nd_range<1>(
-              sycl::range<1>(global_size), sycl::range<1>(local_size)),
-          kfn);
-    };
 
-    DPCPP_Q_SUBMIT(queue, cgf);
+    auto target_data = target.data_ptr<int64_t>();
+    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
+    auto weights_data = has_weights
+        ? weights_cont.data_ptr<scalar_t>()
+        : gradOutput_data; // Use gradOutput handler as dummy weights
+    auto gradInput_data = gradInput.data_ptr<scalar_t>();
+    ClassNLLCriterionUpdateGradInputKernelFunctor<scalar_t> kfn(
+        target_data,
+        gradOutput_data,
+        weights_data,
+        gradInput_data,
+        has_weights,
+        local_size,
+        batch_size,
+        target_stride,
+        ignore_index,
+        gradInput_stride_0,
+        gradInput_stride_1,
+        gradOutput_stride_0);
+
+    sycl_kernel_submit(
+        sycl::range<1>(global_size), sycl::range<1>(local_size), queue, kfn);
     return;
   }
 
@@ -693,71 +607,70 @@ void ClassNLLCriterion_updateGradInput(
       gradOutput.sizes());
 
   auto& queue = getCurrentSYCLQueue();
-  if (input.dim() == 1) {
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-      auto weights_data = has_weights
-          ? weights_cont.data_ptr<scalar_t>()
-          : gradOutput_data; // Use gradOutput handler as dummy weights
-      auto gradInput_data = gradInput.data_ptr<scalar_t>();
-      auto target_data = target_cont.data_ptr<int64_t>();
-      auto total_weight_data = total_weight.data_ptr<scalar_t>();
-      ClassNLLCriterionUpdateGradInputKernelFunctor2<scalar_t> kfn(
-          target_data,
-          gradOutput_data,
-          weights_data,
-          gradInput_data,
-          total_weight_data,
-          has_weights,
-          ignore_index,
-          reduction);
-      cgh.parallel_for<decltype(kfn)>(sycl::range<1>(1), kfn);
-    };
-    DPCPP_Q_SUBMIT(queue, cgf);
+  if (n_dims == 1) {
+    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
+    auto weights_data = has_weights
+        ? weights_cont.data_ptr<scalar_t>()
+        : gradOutput_data; // Use gradOutput handler as dummy weights
+    auto gradInput_data = gradInput.data_ptr<scalar_t>();
+    auto target_data = target_cont.data_ptr<int64_t>();
+    auto total_weight_data = total_weight.data_ptr<scalar_t>();
+    ClassNLLCriterionUpdateGradInputKernelFunctor2<scalar_t> kfn(
+        target_data,
+        gradOutput_data,
+        weights_data,
+        gradInput_data,
+        total_weight_data,
+        has_weights,
+        ignore_index,
+        reduction);
+
+    sycl_kernel_submit(sycl::range<1>(1), queue, kfn);
   } else {
     int nframe = input.size(0);
     int ndim = input.size(1);
     int64_t local_size = 32;
-    auto cgf = DPCPP_Q_CGF(cgh) {
-      auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-      auto weights_data = has_weights
-          ? weights_cont.data_ptr<scalar_t>()
-          : gradOutput_data; // use the gradOutput handler as dummy weights
-      auto gradInput_data = gradInput.data_ptr<scalar_t>();
-      auto target_data = target_cont.data_ptr<int64_t>();
-      auto total_weight_data = total_weight.data_ptr<scalar_t>();
-      ClassNLLCriterionUpdateGradInputKernelFunctor3<scalar_t> kfn(
-          target_data,
-          gradOutput_data,
-          weights_data,
-          gradInput_data,
-          total_weight_data,
-          has_weights,
-          ignore_index,
-          reduction,
-          ndim,
-          local_size,
-          nframe);
-      cgh.parallel_for<decltype(kfn)>(sycl::range<1>(local_size), kfn);
-    };
 
-    DPCPP_Q_SUBMIT(queue, cgf);
+    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
+    auto weights_data = has_weights
+        ? weights_cont.data_ptr<scalar_t>()
+        : gradOutput_data; // use the gradOutput handler as dummy weights
+    auto gradInput_data = gradInput.data_ptr<scalar_t>();
+    auto target_data = target_cont.data_ptr<int64_t>();
+    auto total_weight_data = total_weight.data_ptr<scalar_t>();
+    ClassNLLCriterionUpdateGradInputKernelFunctor3<scalar_t> kfn(
+        target_data,
+        gradOutput_data,
+        weights_data,
+        gradInput_data,
+        total_weight_data,
+        has_weights,
+        ignore_index,
+        reduction,
+        ndim,
+        local_size,
+        nframe);
+
+    sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
   }
 }
+} // namespace impl
 
 std::tuple<Tensor&, Tensor&> launch_nll_loss_forward_kernel(
     const Tensor& self,
     const Tensor& target,
-    const optional<Tensor>& weight,
+    // const optional<Tensor>& weight,
+    const OptionalTensorRef weight_opt,
     int64_t reduction,
     int64_t ignore_index,
     Tensor& output,
     Tensor& total_weight) {
+  const Tensor& weight = weight_opt.getTensorRef();
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "ClassNLLCriterion_updateOutput",
+      "nll_loss_forward_out_kernel",
       [&]() {
         impl::ClassNLLCriterion_updateOutput<scalar_t>(
             self,
@@ -776,16 +689,18 @@ Tensor& launch_nll_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
-    const optional<Tensor>& weight,
+    // const optional<Tensor>& weight,
+    const OptionalTensorRef weight_opt,
     int64_t reduction,
     int64_t ignore_index,
     const Tensor& total_weight,
     Tensor& grad_input) {
+  const Tensor& weight = weight_opt.getTensorRef();
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "ClassNLLCriterion_updateGradInput",
+      "nll_loss_backward_out_kernel",
       [&]() {
         impl::ClassNLLCriterion_updateGradInput<scalar_t>(
             self,

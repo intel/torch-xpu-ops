@@ -204,3 +204,7 @@ supported:
   - _local_scalar_dense
   - _index_put_impl_
   - nonzero
+  - nll_loss_forward.output
+  # - nll_loss_forward
+  # - nll_loss_backward.grad_input
+  # - nll_loss_backward
