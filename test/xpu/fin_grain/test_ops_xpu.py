@@ -18,6 +18,8 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_UBSAN,
     TEST_XPU,
     TestCase,
+    slowTest,
+    unMarkDynamoStrictTest,
 )
 
 try:
@@ -38,6 +40,9 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
+any_common_cpu_xpu_all = OpDTypes.any_common_cpu_cuda_all
+_ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
+
 _xpu_computation_op_list = [
     "fill",
     "zeros",
@@ -53,10 +58,75 @@ _xpu_computation_op_list = [
     "mul",
     "div",
     "abs",
+
+    "bernoulli",
+    "bitwise_and",
+    "bitwise_not",
+    "bitwise_or",
+    "bitwise_xor",
+    "clamp",
+    "clamp_max",
+    "clamp_min",
+    "clone",
+    "copy",
+    "cos",
+    "cumsum",
+    "empty",
+    "eq",
+    "fill",
+    "fmod",
+    "gcd",
+    "ge",
+    "gelu",
+    "gt",
+    "index_add",
+    "index_put",
+    "index_select",
+    "isnan",
+    "le",
+    "log",
+    "lt",
+    "masked_fill",
+    "maximum",
+    "minimum",
+    "mul",
+    "native_dropout_backward",
+    "ne",
+    "neg",
+    "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.threshold",
+    "nonzero",
+    "normal",
+    "pow",
+    "reciprocal",
+    "_refs.rsub",
+    "relu",
+    "remainder",
+    "reshape",
+    "rsqrt",
+    "sin",
+    "sqrt",
+    "sum",
+    "tanh",
+    "unfold",
+    "uniform",
+    "view",
+    "where",
+    "zero",
+    "add",
+    "any",
+    "arange",
+    "as_strided",
+
+
 ]
 
 _xpu_computation_ops = [
     op for op in ops_and_refs if op.name in _xpu_computation_op_list
+]
+
+_xpu_computation_ops_no_numpy_ref = [
+    op for op in _ops_and_refs_with_no_numpy_ref if op.name in _xpu_computation_op_list
 ]
 
 
@@ -71,10 +141,12 @@ class Namespace:
         pass
 
 
-class TestCommonXPU(TestCase):
+class TestCommon(TestCase):
     @onlyXPU
     @suppress_warnings
-    @ops(_xpu_computation_ops, dtypes=any_common_cpu_xpu_one)
+    @slowTest
+    #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
+    @ops(_xpu_computation_ops, dtypes=any_common_cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
         self.proxy = Namespace.TestCommonProxy()
 
@@ -93,7 +165,7 @@ class TestCommonXPU(TestCase):
         test_common_test_fn(self.proxy, device, dtype, op)
 
 
-instantiate_device_type_tests(TestCommonXPU, globals(), only_for="xpu")
+instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

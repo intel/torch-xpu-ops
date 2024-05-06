@@ -1,0 +1,27 @@
+diff --git a/torch/testing/_internal/common_device_type.py b/torch/testing/_internal/common_device_type.py
+index 048ae83f72d..2a33a830ad0 100644
+--- a/torch/testing/_internal/common_device_type.py
++++ b/torch/testing/_internal/common_device_type.py
+@@ -832,6 +832,7 @@ class OpDTypes(Enum):
+     any_one = 4  # Test precisely one supported dtype
+     none = 5  # Instantiate no dtype variants (no dtype kwarg needed)
+     any_common_cpu_cuda_one = 6  # Test precisely one supported dtype that is common to both cuda and cpu
++    any_common_cpu_cuda_one = 7  # Test all supported dtype that is common to both cuda and cpu
+ 
+ 
+ # Arbitrary order
+@@ -941,6 +942,14 @@ class ops(_TestParametrizer):
+                     dtypes = {next(dtype for dtype in ANY_DTYPE_ORDER if dtype in supported)}
+                 else:
+                     dtypes = {}
++            elif self.opinfo_dtypes == OpDTypes.any_common_cpu_cuda_all:
++                # Tries to pick a dtype that supports both CPU and CUDA
++                supported = op.dtypes.intersection(op.dtypesIfCUDA)
++                if supported:
++                    dtypes = {dtype for dtype in ANY_DTYPE_ORDER if dtype in supported}
++                else:
++                    dtypes = {}
++
+ 
+             elif self.opinfo_dtypes == OpDTypes.none:
+                 dtypes = {None}
