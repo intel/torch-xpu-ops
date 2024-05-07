@@ -230,9 +230,9 @@ void pow_tensor_scalar_kernel(
   } else {
     TORCH_INTERNAL_ASSERT(
         false,
-        "invalid combination of type in Pow function, common dtype:",
+        "invalid combination of type in Pow function, common dtype: ",
         iter.common_dtype(),
-        "exp is integral?",
+        ", exp is integral? ",
         exp_scalar.isIntegral(false));
   }
 }

@@ -226,3 +226,7 @@ supported:
   - scatter_reduce_.two
   - gather
   - gather.out
+  - maximum
+  - maximum.out
+  - minimum
+  - minimum.out
