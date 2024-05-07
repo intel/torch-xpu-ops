@@ -26,15 +26,15 @@ for pr_number in args.pr_list:
         apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
         apply_message = apply_info.communicate()[0].decode("utf-8")
         apply_status = apply_info.returncode
+        print(apply_status, apply_message)
         if apply_status == 0:
             print("{} applied got SUCCESSFUL".format(pr_info["diff_url"]))
         else:
             print("{} applied got FAILED".format(pr_info["diff_url"]))
-            print(apply_status, apply_message)
             exit(1)
     elif pr_info["state"].lower() == "closed":
         print("{} is ClOSED, no need to apply".format(pr_info["diff_url"]))
     else:
-        print("{} is UNKNOWN, no need to apply".format(pr_info["diff_url"]))
+        print("{} is {}, no need to apply".format(pr_info["diff_url"], pr_info["state"]))
         exit(1)
 
