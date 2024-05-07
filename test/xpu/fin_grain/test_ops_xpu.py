@@ -40,7 +40,7 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
-any_common_cpu_xpu_all = OpDTypes.any_common_cpu_cuda_all
+cpu_xpu_all = (torch.bfloat16, torch.complex128, torch.complex64, torch.float16, torch.float32, torch.float64, torch.int16, torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool)
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
 _xpu_computation_op_list = [
@@ -129,7 +129,6 @@ _xpu_computation_ops_no_numpy_ref = [
     op for op in _ops_and_refs_with_no_numpy_ref if op.name in _xpu_computation_op_list
 ]
 
-
 # NB: TestCommonProxy is a nested class. This prevents test runners from picking
 # it up and running it.
 class Namespace:
@@ -146,7 +145,7 @@ class TestCommon(TestCase):
     @suppress_warnings
     @slowTest
     #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
-    @ops(_xpu_computation_ops, dtypes=any_common_cpu_xpu_all)
+    @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
         self.proxy = Namespace.TestCommonProxy()
 
