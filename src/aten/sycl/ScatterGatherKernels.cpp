@@ -1,5 +1,13 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
+#include <ATen/native/ReduceOpsUtils.h>
+#include <ATen/native/ReductionType.h>
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/Atomics.h>
@@ -452,6 +460,300 @@ struct ScatterGatherBaseKernel {
   }
 };
 
+template <typename scalar_t, typename offset_calc_t, typename func_t>
+struct ScatterFillInternalKernelLoopFunctor {
+  void operator()(int i) const {
+    auto offsets = offset_calc_.get(i);
+    int64_t idx_dim = *(int64_t*)(index_ptr_ + offsets[1]);
+    char* self_data = self_ptr_ + offsets[0];
+    f_((scalar_t*)self_data + idx_dim * index_stride_, (scalar_t*)&src_val_);
+  }
+  ScatterFillInternalKernelLoopFunctor(
+      char* self_ptr,
+      char* index_ptr,
+      offset_calc_t offset_calc,
+      int64_t index_stride,
+      func_t f,
+      scalar_t src_val)
+      : self_ptr_(self_ptr),
+        index_ptr_(index_ptr),
+        offset_calc_(offset_calc),
+        index_stride_(index_stride),
+        f_(f),
+        src_val_(src_val) {}
+
+ private:
+  char* self_ptr_;
+  char* index_ptr_;
+  offset_calc_t offset_calc_;
+  int64_t index_stride_;
+  func_t f_;
+  scalar_t src_val_;
+};
+
+template <typename scalar_t>
+struct ScatterFillInternalKernel {
+  template <typename func_t>
+  void operator()(
+      TensorIterator& iter,
+      scalar_t src_val,
+      int64_t index_size,
+      int64_t index_stride,
+      int64_t numel,
+      const func_t& f) {
+    if (!iter.can_use_32bit_indexing()) {
+      for (auto& sub_iter : iter.with_32bit_indexing()) {
+        ScatterFillInternalKernel<scalar_t>()(
+            sub_iter, src_val, index_size, index_stride, numel, f);
+      }
+      return;
+    }
+
+    char* self_ptr = (char*)iter.data_ptr(0);
+    char* index_ptr = (char*)iter.data_ptr(1);
+
+    auto offset_calc = make_offset_calculator<2>(iter);
+
+    auto loop = ScatterFillInternalKernelLoopFunctor<
+        scalar_t,
+        decltype(offset_calc),
+        func_t>(self_ptr, index_ptr, offset_calc, index_stride, f, src_val);
+
+    // TODO: optimize it
+    constexpr int group_work_items = 256;
+    constexpr int work_size_per_item = 4;
+    launch_scatter_gather_kernel<group_work_items, work_size_per_item>(
+        iter.numel(), loop);
+  }
+};
+
+template <bool cast_to_opaque = true>
+struct ScatterFillBaseKernel {
+  template <typename func_t>
+  void operator()(
+      const Tensor& self,
+      int64_t dim,
+      const Tensor& index,
+      Scalar src,
+      const std::string& method_name,
+      const func_t& f) {
+    at::assert_no_internal_overlap(self);
+
+    auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
+
+    // restride self such that
+    // self.shape = index.shape and
+    // self.stride[dim] = 0
+    auto self_restrided = restride_dim(self, dim, index_sizes);
+
+    auto iter = TensorIteratorConfig()
+                    .set_check_mem_overlap(false)
+                    .check_all_same_dtype(false)
+                    .resize_outputs(false)
+                    .add_output(self_restrided)
+                    .add_const_input(index)
+                    .build();
+
+    auto index_size = ensure_nonempty_size(self, dim);
+    auto index_stride = ensure_nonempty_stride(self, dim);
+
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        at::ScalarType::BFloat16,
+        iter.dtype(),
+        "scatter_fill_base_kernel_func",
+        [&] {
+          using dtype = typename std::conditional<
+              cast_to_opaque,
+              OpaqueType<sizeof(scalar_t)>,
+              scalar_t>::type;
+
+          auto src_scalar_val = src.to<scalar_t>();
+          auto src_val = *(dtype*)&src_scalar_val;
+
+          ScatterFillInternalKernel<dtype>()(
+              iter, src_val, index_size, index_stride, self.numel(), f);
+        });
+  }
+
+  void operator()(
+      const Tensor& self,
+      int64_t dim,
+      const Tensor& index,
+      Scalar src,
+      const std::string& method_name,
+      const ReduceMultiply& f) {
+    at::assert_no_internal_overlap(self);
+
+    auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
+
+    // restride self such that
+    // self.shape = index.shape and
+    // self.stride[dim] = 0
+    auto self_restrided = restride_dim(self, dim, index_sizes);
+
+    auto iter = TensorIteratorConfig()
+                    .set_check_mem_overlap(false)
+                    .check_all_same_dtype(false)
+                    .resize_outputs(false)
+                    .add_output(self_restrided)
+                    .add_const_input(index)
+                    .build();
+
+    auto index_size = ensure_nonempty_size(self, dim);
+    auto index_stride = ensure_nonempty_stride(self, dim);
+
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        iter.dtype(),
+        "scatter_fill_base_kernel_reduce_multiply",
+        [&] {
+          using dtype = typename std::conditional<
+              cast_to_opaque,
+              OpaqueType<sizeof(scalar_t)>,
+              scalar_t>::type;
+
+          auto src_scalar_val = src.to<scalar_t>();
+          auto src_val = *(dtype*)&src_scalar_val;
+
+          ScatterFillInternalKernel<dtype>()(
+              iter, src_val, index_size, index_stride, self.numel(), f);
+        });
+  }
+};
+
+void gather_kernel(
+    const Tensor& result,
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index) {
+  ScatterGatherBaseKernel</*is_scatter_like=*/false>()(
+      result, dim, index, self, "gather_kernel", tensor_assign);
+}
+
+void scatter_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  // When indices are not unique, the behavior is non-deterministic
+  globalContext().alertNotDeterministic("scatter_");
+  ScatterGatherBaseKernel<>()(
+      self, dim, index, src, "scatter_kernel", tensor_assign);
+}
+
+void scatter_fill_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& src) {
+  ScatterFillBaseKernel<>()(
+      self, dim, index, src, "scatter_fill_kernel", tensor_assign);
+}
+
+void scatter_add_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("scatter_add_kernel");
+  ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
+      self, dim, index, src, "scatter_add_kernel", reduce_add);
+}
+
+void scatter_reduce_kernel(
+    const Tensor& self,
+    const int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const ReductionType& reduce) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd/AtomicMul usage
+  globalContext().alertNotDeterministic("scatter_reduce_kernel");
+  switch (reduce) {
+    case ReductionType::SUM:
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_add", reduce_add);
+      break;
+    case ReductionType::PROD:
+      ScatterGatherBaseKernel<true, false>()(
+          self,
+          dim,
+          index,
+          src,
+          "scatter_reduce_kernel_multiply",
+          reduce_multiply);
+      break;
+    default:
+      break;
+  }
+}
+
+void scatter_reduce_two_kernel(
+    const Tensor& self,
+    const int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const ReductionType& reduce) {
+  switch (reduce) {
+    case ReductionType::SUM:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
+      break;
+    case ReductionType::PROD:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_prod");
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_prod", reduce_multiply);
+      break;
+    case ReductionType::MAX:
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_amax", reduce_maximum);
+      break;
+    case ReductionType::MIN:
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
+      break;
+    case ReductionType::MEAN:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
+      ScatterGatherBaseKernel<true, false>()(
+          self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
+      break;
+  }
+}
+
+void scatter_scalar_reduce_kernel(
+    const Tensor& self,
+    const int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    const ReductionType& reduce) {
+  switch (reduce) {
+    case ReductionType::SUM:
+      ScatterFillBaseKernel<false>()(
+          self, dim, index, value, "scatter_fill_kernel_add", reduce_add);
+      break;
+    case ReductionType::PROD:
+      ScatterFillBaseKernel<false>()(
+          self,
+          dim,
+          index,
+          value,
+          "scatter_fill_kernel_multiply",
+          reduce_multiply);
+      break;
+    default:
+      break;
+  }
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
