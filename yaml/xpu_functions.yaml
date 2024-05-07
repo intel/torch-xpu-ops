@@ -206,3 +206,7 @@ supported:
   - _local_scalar_dense
   - _index_put_impl_
   - nonzero
+  - maximum
+  - maximum.out
+  - minimum
+  - minimum.out
