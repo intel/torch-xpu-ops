@@ -90,6 +90,8 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
           has_weights ? weights_ptr[cur_target] : static_cast<scalar_t>(1.0f);
       output_ptr[0] = -static_cast<scalar_t>(input_ptr[cur_target]) *
           static_cast<scalar_t>(total_weight_ptr[0]);
+    } else {
+      output_ptr[0] = static_cast<scalar_t>(0.f);
     }
     if (reduction == at::Reduction::Mean && total_weight_ptr[0]) {
       output_ptr[0] /= total_weight_ptr[0];
@@ -201,8 +203,10 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
         reduction(reduction_) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    auto local_output_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
-    auto local_total_weight_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
+    local_output_acc =
+        sycl_local_acc_t<scalar_t>(local_size * sizeof(scalar_t), cgh);
+    local_total_weight_acc =
+        sycl_local_acc_t<scalar_t>(local_size * sizeof(scalar_t), cgh);
   }
 
  private:
@@ -300,6 +304,9 @@ void ClassNLLCriterion_updateOutput(
   auto& queue = getCurrentSYCLQueue();
 
   if (input_cont.dim() == 1 || input_cont.dim() == 0) {
+    std::cout << "input dim == 0 || 1" << std::endl;
+    std::cout << input_cont.data() << std::endl;
+    std::cout << target_cont.data() << std::endl;
     int64_t local_size = 1;
     auto input_data = _input_data;
     auto weights_data = has_weights
@@ -308,6 +315,8 @@ void ClassNLLCriterion_updateOutput(
     auto target_data = _target_data;
     auto total_weight_data = _total_weight_data;
     auto output_data = _output_data;
+    std::cout << "has_weights: " << has_weights << std::endl;
+    std::cout << "ignore_index: " << ignore_index << std::endl;
     ClassNLLCriterionUpdateOutputKernelFunctor2<scalar_t> kfn(
         input_data,
         target_data,
@@ -323,12 +332,18 @@ void ClassNLLCriterion_updateOutput(
 
     sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
   } else if (input_cont.dim() == 2) {
-    std::cout << "input dim == 2" << std::endl;
-    std::cout << input_cont.data() << std::endl;
+    // std::cout << "input dim == 2" << std::endl;
+    // std::cout << input_cont.data() << std::endl;
+    // std::cout << target_cont.data() << std::endl;
     int64_t batch_size = input.size(0);
     int n_target = input.size(1);
     auto dev_id = getDeviceIndexOfCurrentQueue();
     int64_t local_size = syclMaxWorkGroupSize(dev_id);
+    // std::cout << "local_size: " << local_size << std::endl;
+    // std::cout << "batch_size: " << batch_size << std::endl;
+    // std::cout << "n_target: " << n_target << std::endl;
+    // std::cout << "has_weights: " << has_weights << std::endl;
+    // std::cout << "ignore_index: " << ignore_index << std::endl;
     auto input_data = _input_data;
     auto weights_data = has_weights
         ? _weights_data
