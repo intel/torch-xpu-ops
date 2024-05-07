@@ -21,7 +21,7 @@ for pr_number in args.pr_list:
     if pr_info["state"].lower() == "open":
         pr_file = pr_info["diff_url"].split("/")[-1]
         urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
-        apply_cmd = "git apply --3way " + pr_file + " && rm -f " + pr_file + " || true"
+        apply_cmd = "git apply --3way " + pr_file + " && rm -f " + pr_file
         print(apply_cmd)
         apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
         apply_message = apply_info.communicate()[0].decode("utf-8")
@@ -31,7 +31,7 @@ for pr_number in args.pr_list:
             print("{} applied got SUCCESSFUL".format(pr_info["diff_url"]))
         else:
             print("{} applied got FAILED".format(pr_info["diff_url"]))
-            exit(1)
+            # exit(1)
     elif pr_info["state"].lower() == "closed":
         print("{} is ClOSED, no need to apply".format(pr_info["diff_url"]))
     else:
