@@ -1,6 +1,21 @@
 import os
 import sys
 
+
+def launch_test(test_case, skip_list):
+    skip_options = " -k 'not " + skip_list[0]
+    for skip_case in skip_list[1:]:
+        skip_option = " and not " + skip_case
+        skip_options += skip_option
+    skip_options += "'"
+    test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+    test_command += skip_options
+    print(test_command)
+    return os.system(test_command)
+
+res= 0
+
+# test_ops
 skip_list = (
     # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
@@ -378,6 +393,7 @@ skip_list = (
     "test_dtypes_pca_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_dtypes_svd_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_noncontiguous_samples_nn_functional_linear_xpu_int64", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes__refs_nn_functional_pdist_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Failures:
@@ -667,17 +683,31 @@ skip_list = (
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
 )
+res += launch_test("test_ops_xpu.py", skip_list)
 
+# test_binary_ufuncs
+skip_list = (
+    "jiterator", # Jiterator is only supported by CUDA
+    "cuda", # Skip cuda hard-coded case
+    "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
+    "test_div_rounding_numpy_xpu_float16", # CPU fail
+    "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
+    "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_xor_xpu", # align CUDA dtype
+    "test_type_promotion_max_binary_xpu", # align CUDA dtype
+    "test_type_promotion_maximum_xpu", # align CUDA dtype
+    "test_type_promotion_min_binary_xpu", # align CUDA dtype
+    "test_type_promotion_minimum_xpu", # align CUDA dtype
+    "test_pow_xpu_int16", # align CUDA dtype
+    "test_pow_xpu_int32", # align CUDA dtype
+    "test_pow_xpu_int64", # align CUDA dtype
+    "test_pow_xpu_int8", # align CUDA dtype
+    "test_pow_xpu_uint8", # align CUDA dtype
+    "test_logaddexp_xpu_complex128", # CPU fail
+    "test_logaddexp_xpu_complex64", # CPU fail
+)
+res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
-skip_options = " -k 'not " + skip_list[0]
-for skip_case in skip_list[1:]:
-    skip_option = " and not " + skip_case
-    skip_options += skip_option
-skip_options += "'"
-
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v _test_ops.py"
-test_command += skip_options
-
-res = os.system(test_command)
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
