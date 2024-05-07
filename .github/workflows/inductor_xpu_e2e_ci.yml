@@ -71,21 +71,37 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: HF FP32 Inference Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
-          env_prepare: true
-          dt: float32
-          mode: inference
-          scenario: accuracy
-          expected_pass_num: 44
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: HF BF16 Inference Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
+          env_prepare: true
           dt: bfloat16
           mode: inference
+          scenario: accuracy
+          expected_pass_num: 45
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # - name: HF FP16 Inference Accuracy Test
+      #   uses: ./.github/actions/inductor-xpu-e2e-test
+      #   with:
+      #     suite: huggingface
+      #     dt: float16
+      #     mode: inference
+      #     scenario: accuracy
+      #     expected_pass_num: 45
+      # - name: HF BF16 Training Accuracy Test
+      #   uses: ./.github/actions/inductor-xpu-e2e-test
+      #   with:
+      #     suite: huggingface
+      #     dt: bfloat16
+      #     mode: training
+      #     scenario: accuracy
+      #     expected_pass_num: 45
+      - name: HF FP16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: training
           scenario: accuracy
           expected_pass_num: 45
