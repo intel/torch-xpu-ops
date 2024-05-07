@@ -3,7 +3,7 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Reduction.h>
 #include <comm/SYCLContext.h>
-#include <iostream>
+// #include <iostream>
 
 namespace at::native::xpu {
 namespace impl {
@@ -304,9 +304,9 @@ void ClassNLLCriterion_updateOutput(
   auto& queue = getCurrentSYCLQueue();
 
   if (input_cont.dim() == 1 || input_cont.dim() == 0) {
-    std::cout << "input dim == 0 || 1" << std::endl;
-    std::cout << input_cont.data() << std::endl;
-    std::cout << target_cont.data() << std::endl;
+    // std::cout << "input dim == 0 || 1" << std::endl;
+    // std::cout << input_cont.data() << std::endl;
+    // std::cout << target_cont.data() << std::endl;
     int64_t local_size = 1;
     auto input_data = _input_data;
     auto weights_data = has_weights
@@ -315,8 +315,8 @@ void ClassNLLCriterion_updateOutput(
     auto target_data = _target_data;
     auto total_weight_data = _total_weight_data;
     auto output_data = _output_data;
-    std::cout << "has_weights: " << has_weights << std::endl;
-    std::cout << "ignore_index: " << ignore_index << std::endl;
+    // std::cout << "has_weights: " << has_weights << std::endl;
+    // std::cout << "ignore_index: " << ignore_index << std::endl;
     ClassNLLCriterionUpdateOutputKernelFunctor2<scalar_t> kfn(
         input_data,
         target_data,
