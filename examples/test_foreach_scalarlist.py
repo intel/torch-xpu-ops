@@ -3,8 +3,6 @@ import random
 from torch.testing._internal.common_utils import TestCase
 from torch.testing._internal.common_dtype import get_all_dtypes
 
-cpu_device = torch.device("cpu")
-dpcpp_device = torch.device("xpu")
 
 
 class ForeachBinaryScalarListTest:
