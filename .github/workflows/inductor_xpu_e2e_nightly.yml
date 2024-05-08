@@ -145,7 +145,7 @@ jobs:
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 44
+          expected_pass_num: 45
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
