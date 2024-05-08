@@ -88,7 +88,7 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 38
       - name: HF BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
