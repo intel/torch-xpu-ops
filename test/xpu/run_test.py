@@ -13,7 +13,7 @@ def launch_test(test_case, skip_list):
     print(test_command)
     return os.system(test_command)
 
-res= 0
+res = 0
 
 # test_ops
 skip_list = (
@@ -385,6 +385,12 @@ skip_list = (
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
     "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32", # CUDA xfail.
     "test_dtypes_native_dropout_backward_xpu", # Test architecture issue. Cannot get correct claimed supported data type for "masked_scale".
+    "test_non_standard_bool_values_scatter_reduce_amax_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_amin_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_prod_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amax_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amin_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_prod_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
@@ -708,6 +714,21 @@ skip_list = (
     "test_logaddexp_xpu_complex64", # CPU fail
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
+
+# test_scatter_gather_ops
+skip_list = (
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_scatter__reductions_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_amax_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_amin_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_mean_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_mean_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_prod_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_prod_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_prod_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+)
+res += launch_test("test_scatter_gather_ops_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
