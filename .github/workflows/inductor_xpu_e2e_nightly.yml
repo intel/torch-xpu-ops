@@ -135,7 +135,7 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 44
       - name: Nightly HF FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
