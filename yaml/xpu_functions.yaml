@@ -185,6 +185,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - native_layer_norm
+  - native_layer_norm_backward
   - index.Tensor
   - index.Tensor_out
   - max
@@ -208,3 +210,7 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - maximum
+  - maximum.out
+  - minimum
+  - minimum.out
