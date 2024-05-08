@@ -5,7 +5,6 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <aten/sycl/LossNLLKernel.h>
 #include <comm/RegisterUtils.h>
-// #include <iostream>
 
 namespace at {
 void meta_func_nll_loss_forward(
@@ -96,8 +95,6 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nll_loss_forward_out(
       ignore_index,
       output,
       total_weight);
-  // Tensor target_cpu = target.to(Device(kCPU));
-  // std::cout << target_cpu.data() << std::endl;
   return native::xpu::launch_nll_loss_forward_kernel(
       self,
       target,
