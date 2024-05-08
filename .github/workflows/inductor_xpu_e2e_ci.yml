@@ -48,7 +48,7 @@ jobs:
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           # TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          TRITON_PINNED_COMMIT=9fc75c56126de79f05415101ed8bf83ee562074d
+          TRITON_PINNED_COMMIT=4f1cb9fb61ebc58abff8fdb2b0c426ab889dfd19
           echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
       - name: Build Pytorch XPU
