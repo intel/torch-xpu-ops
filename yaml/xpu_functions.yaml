@@ -185,6 +185,9 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - clamp.Tensor_out
+  - clamp_min.Tensor_out
+  - clamp_max.Tensor_out
   - native_layer_norm
   - native_layer_norm_backward
   - index.Tensor

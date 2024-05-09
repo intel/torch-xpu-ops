@@ -6,9 +6,10 @@
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
+#include <aten/sycl/MaxMinElementwiseKernels.h>
 #include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceMinValuesKernel.h>
-#include <aten/sycl/TensorCompare.h>
+#include <aten/sycl/TensorCompareKernels.h>
 #include <comm/ReduceOpsUtils.h>
 
 namespace at {
@@ -203,6 +204,24 @@ Tensor& XPUNativeFunctions::clamp_min_out(
   return result;
 }
 
+TensorIterator clamp_min_tensor_meta(
+    const Tensor& self,
+    const Tensor& min,
+    Tensor& result) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(result, self, min);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::clamp_min_out(
+    const Tensor& self,
+    const Tensor& min,
+    Tensor& result) {
+  auto iter = clamp_min_tensor_meta(self, min, result);
+  native::xpu::maximum_kernel(iter);
+  return result;
+}
+
 TensorIterator clamp_max_meta(
     const Tensor& self,
     const Scalar& max,
@@ -246,6 +265,77 @@ Tensor& XPUNativeFunctions::clamp_max_out(
     native::xpu::clamp_max_scalar_kernel(iter, max);
   }
   return result;
+}
+
+TensorIterator clamp_max_tensor_meta(
+    const Tensor& self,
+    const Tensor& max,
+    Tensor& result) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(result, self, max);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::clamp_max_out(
+    const Tensor& self,
+    const Tensor& max,
+    Tensor& result) {
+  auto iter = clamp_max_tensor_meta(self, max, result);
+  native::xpu::minimum_kernel(iter);
+  return result;
+}
+
+TensorIterator clamp_tensor_meta(
+    const Tensor& self,
+    const OptionalTensorRef min,
+    const OptionalTensorRef max,
+    Tensor& result) {
+  TensorIterator iter;
+  TORCH_CHECK(
+      min || max,
+      "torch.clamp: At least one of 'min' or 'max' must not be None");
+  TORCH_CHECK(
+      !isComplexType(self.scalar_type()),
+      "clamp is not supported for complex types");
+#define CLAMP_CONFIG()                      \
+  TensorIteratorConfig()                    \
+      .set_check_mem_overlap(true)          \
+      .add_output(result)                   \
+      .add_const_input(self)                \
+      .promote_inputs_to_common_dtype(true) \
+      .cast_common_dtype_to_outputs(true)   \
+      .enforce_safe_casting_to_output(true)
+
+  if (min && max) {
+    iter.build(CLAMP_CONFIG().add_const_input(*min).add_const_input(*max));
+  } else if (min) {
+    iter.build(CLAMP_CONFIG().add_const_input(*min));
+  } else if (max) {
+    iter.build(CLAMP_CONFIG().add_const_input(*max));
+  }
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::clamp_out(
+    const Tensor& self,
+    const ::std::optional<at::Tensor>& min,
+    const ::std::optional<at::Tensor>& max,
+    Tensor& out) {
+  auto min_ =
+      ((min.has_value() && (*min).defined()) ? at::OptionalTensorRef(*min)
+                                             : at::OptionalTensorRef());
+  auto max_ =
+      ((max.has_value() && (*max).defined()) ? at::OptionalTensorRef(*max)
+                                             : at::OptionalTensorRef());
+  auto iter = clamp_tensor_meta(self, min_, max_, out);
+  if (min_ && max_) {
+    native::xpu::clamp_kernel(iter);
+  } else if (min_) {
+    native::xpu::maximum_kernel(iter);
+  } else if (max_) {
+    native::xpu::minimum_kernel(iter);
+  }
+  return out;
 }
 
 void min_kernel_impl(
