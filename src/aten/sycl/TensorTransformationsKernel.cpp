@@ -1,12 +1,17 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/ATen.h>
-#include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/Dispatch.h>
+#include <ATen/WrapDimUtilsMulti.h>
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
+
+template <int N>
+struct alignas(N) OpaqueType {
+  char data[N];
+};
 
 template <typename func_t>
 struct ElementwiseKernelFunctor {
@@ -58,7 +63,11 @@ void elementwise_kernel(int total_n_elems, func_t f) {
   ElementwiseKernelFunctor<func_t> kfn(
       loops, total_n_elems, f, total_work_items);
 
-  sycl_kernel_submit(sycl::range<1>(total_work_items), sycl::range<1>(work_group_size), queue, kfn);
+  sycl_kernel_submit(
+      sycl::range<1>(total_work_items),
+      sycl::range<1>(work_group_size),
+      queue,
+      kfn);
 }
 
 template <typename func_t>
@@ -122,8 +131,7 @@ void flip_xpu_kernel(TensorIterator& iter) {
       iter.dtype(),
       "flip_xpu",
       [&] {
-        using dtype = typename native::Memory::aligned_element<sizeof(
-            scalar_t)>::element_type;
+        using dtype = OpaqueType<sizeof(scalar_t)>;
         flip_kernel_impl<dtype>(iter);
       });
 }

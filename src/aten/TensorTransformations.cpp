@@ -1,13 +1,16 @@
 #include <ATen/ATen.h>
+#include <ATen/TensorIterator.h>
+#include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/XPUNativeFunctions.h>
-#include <ATen/core/Tensor.h>
+#include <ATen/core/op_registration/adaption.h>
 #include <aten/sycl/TensorTransformationsKernel.h>
 
-namespace at{
+namespace at {
 
 Tensor XPUNativeFunctions::flip(const Tensor& self, IntArrayRef dims) {
   std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(common_device, self, "xpu::flip", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::flip", "self");
 
   const int64_t total_dims = self.dim();
   // It wraps the dims and checks that there are no repeated dims
@@ -74,4 +77,4 @@ Tensor XPUNativeFunctions::flip(const Tensor& self, IntArrayRef dims) {
   at::native::xpu::flip_xpu_kernel(iter);
   return out_tensor;
 }
-} // namespace at 
+} // namespace at
