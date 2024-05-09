@@ -210,3 +210,9 @@ supported:
   - maximum.out
   - minimum
   - minimum.out
+  - tril.out
+  - tril
+  - tril_
+  - triu.out
+  - triu
+  - triu_

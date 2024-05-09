@@ -1,5 +1,16 @@
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/Context.h>
+#include <ATen/Dispatch.h>
+#include <ATen/MemoryOverlap.h>
+#include <ATen/ceil_div.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/Resize.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
+
+using namespace at::xpu;
+
 template <typename scalar_t, typename IndexType, bool upper>
 struct ApplyTriuTrilKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
@@ -61,11 +72,11 @@ struct ApplyTriuTrilKernelFunctor {
 
 template <typename scalar_t, typename IndexType, bool upper>
 void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
-  auto& queue = dpcppGetCurrentQueue();
-  auto dev_id = dpcppGetDeviceIdOfCurrentQueue();
+  auto& queue = getCurrentSYCLQueue();
+  auto dev_id = getDeviceIndexOfCurrentQueue();
   auto N = self.numel();
-  int64_t group_size = dpcppMaxWorkGroupSize(dev_id);
-  auto num_groups = CeilDiv(N, group_size);
+  int64_t group_size = syclMaxWorkGroupSize(dev_id);
+  auto num_groups = ceil_div(N, group_size);
   auto total_items = num_groups * group_size;
   IndexType self_size_0 = (IndexType)self.size(-2);
   IndexType self_size_1 = (IndexType)self.size(-1);
@@ -80,40 +91,34 @@ void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
   scalar_t* result_ptr = (scalar_t*)(result.data_ptr());
   scalar_t* self_ptr = (scalar_t*)(self.data_ptr());
 
-  auto cgf = DPCPP_Q_CGF(cgh) {
-    ApplyTriuTrilKernelFunctor<scalar_t, IndexType, upper> kfn(
-        k,
-        N,
-        self_size_0,
-        self_size_1,
-        self_stride,
-        self_stride_0,
-        self_stride_1,
-        result_stride,
-        result_stride_0,
-        result_stride_1,
-        result_ptr,
-        self_ptr);
-    // kick off kernel
-    cgh.parallel_for<decltype(kfn)>(
-        sycl::nd_range<1>(
-            sycl::range<1>(total_items), sycl::range<1>(group_size)),
-        kfn);
-  };
+  ApplyTriuTrilKernelFunctor<scalar_t, IndexType, upper> kfn(
+      k,
+      N,
+      self_size_0,
+      self_size_1,
+      self_stride,
+      self_stride_0,
+      self_stride_1,
+      result_stride,
+      result_stride_0,
+      result_stride_1,
+      result_ptr,
+      self_ptr);
 
-  DPCPP_Q_SUBMIT(queue, cgf);
+  sycl_kernel_submit(
+      sycl::range<1>(total_items), sycl::range<1>(group_size), queue, kfn);
 }
 
 #define TRIU_TRIL_LAMBDA(upper)                                   \
   [&] {                                                           \
-    if (xpu::dpcpp::detail::canUse32BitIndexMath(self)) {         \
+    if (canUse32BitIndexMath(self)) {                             \
       apply_triu_tril<scalar_t, int32_t, upper>(result, self, k); \
     } else {                                                      \
       apply_triu_tril<scalar_t, int64_t, upper>(result, self, k); \
     }                                                             \
   }
 
-Tensor& tril_dpcpp_out(Tensor& result, const Tensor& self, int64_t k) {
+Tensor& tril_xpu_kernel(Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
@@ -121,13 +126,33 @@ Tensor& tril_dpcpp_out(Tensor& result, const Tensor& self, int64_t k) {
     return result;
   }
 
-  IPEX_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::Half,
       at::ScalarType::Bool,
       at::ScalarType::BFloat16,
+      at::ScalarType::ComplexHalf,
       self.scalar_type(),
-      "tril",
+      "tril_xpu",
       TRIU_TRIL_LAMBDA(false));
+
+  return result;
+}
+
+Tensor& triu_xpu_kernel(Tensor& result, const Tensor& self, int64_t k) {
+  if (result.sizes() != self.sizes()) {
+    result.resize_as_(self);
+  }
+  if (self.numel() == 0) {
+    return result;
+  }
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      at::ScalarType::BFloat16,
+      at::ScalarType::ComplexHalf,
+      self.scalar_type(),
+      "triu_xpu",
+      TRIU_TRIL_LAMBDA(true));
 
   return result;
 }
