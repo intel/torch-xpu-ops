@@ -718,6 +718,8 @@ skip_list = (
     "test_pow_xpu_uint8", # align CUDA dtype
     "test_logaddexp_xpu_complex128", # CPU fail
     "test_logaddexp_xpu_complex64", # CPU fail
+    "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
