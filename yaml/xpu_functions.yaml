@@ -199,6 +199,7 @@ supported:
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
+  - mean.dim
   - any.dim
   - any.out
   - any.all_out
