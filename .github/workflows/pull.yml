@@ -55,6 +55,14 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd examples
           timeout 8000 pytest -v
+      - name: Run XPU OP UT Finegrain
+        if: ${{ hashFiles('test/xpu/') != '' }}
+        run: |
+          source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          export PYTORCH_TEST_WITH_SLOW=1
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/fin_grain
+          timeout 10000 python run_fine_grain.py
       - name: Run XPU OP UT
         if: ${{ hashFiles('test/xpu/') != '' }}
         run: |
