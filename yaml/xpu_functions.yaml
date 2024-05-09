@@ -187,6 +187,8 @@ supported:
   - clamp.out
   - clamp_min.out
   - clamp_max.out
+  - native_layer_norm
+  - native_layer_norm_backward
   - index.Tensor
   - index.Tensor_out
   - max
@@ -206,3 +208,13 @@ supported:
   - _local_scalar_dense
   - _index_put_impl_
   - nonzero
+  - _foreach_add.Scalar
+  - _foreach_add_.Scalar
+  - _foreach_add.ScalarList
+  - _foreach_add_.ScalarList
+  - _foreach_add.List
+  - _foreach_add_.List
+  - maximum
+  - maximum.out
+  - minimum
+  - minimum.out
