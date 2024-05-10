@@ -2,16 +2,28 @@ import os
 import sys
 
 
-def launch_test(test_case, skip_list):
-    skip_options = " -k 'not " + skip_list[0]
-    for skip_case in skip_list[1:]:
-        skip_option = " and not " + skip_case
-        skip_options += skip_option
-    skip_options += "'"
-    test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
-    test_command += skip_options
-    print(test_command)
-    return os.system(test_command)
+def launch_test(test_case, skip_list=None, exe_list=None):
+    if skip_list != None:
+        skip_options = " -k 'not " + skip_list[0]
+        for skip_case in skip_list[1:]:
+            skip_option = " and not " + skip_case
+            skip_options += skip_option
+        skip_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += skip_options
+        return os.system(test_command)
+    elif exe_list != None:
+        exe_options = " -k '" + exe_list[0]
+        for exe_case in exe_list[1:]:
+            exe_option = " and " + exe_case
+            exe_options += exe_option
+        exe_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += exe_options
+        return os.system(test_command)
+    else:
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        return os.system(test_command)
 
 res= 0
 
@@ -708,6 +720,14 @@ skip_list = (
     "test_logaddexp_xpu_complex64", # CPU fail
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
+
+# test_foreach
+# Too slow to run all case on CPU. Add white list.
+execute_list = (
+    "_foreach_add_",
+    "not slowpath",
+)
+res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

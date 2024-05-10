@@ -213,6 +213,12 @@ supported:
   - tril_
   - _index_put_impl_
   - nonzero
+  - _foreach_add.Scalar
+  - _foreach_add_.Scalar
+  - _foreach_add.ScalarList
+  - _foreach_add_.ScalarList
+  - _foreach_add.List
+  - _foreach_add_.List
   - maximum
   - maximum.out
   - minimum
