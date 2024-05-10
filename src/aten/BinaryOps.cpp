@@ -9,6 +9,7 @@
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
 #include <aten/sycl/GcdLcmKernels.h>
+#include <aten/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
 
@@ -471,6 +472,60 @@ Tensor& XPUNativeFunctions::gcd_out(
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::gcd_kernel(iter);
   return out;
+}
+
+static inline TensorIterator meta_func_maximum(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  TORCH_CHECK(
+      !self.is_complex() && !other.is_complex(),
+      "maximum not implemented for complex tensors.");
+  auto iter = TensorIterator::borrowing_binary_op(output, self, other);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::maximum(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_func_maximum(self, other, output);
+  native::xpu::maximum_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::maximum_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_func_maximum(self, other, output);
+  native::xpu::maximum_kernel(iter);
+  return output;
+}
+
+static inline TensorIterator meta_func_minimum(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  TORCH_CHECK(
+      !self.is_complex() && !other.is_complex(),
+      "minimum not implemented for complex tensors.");
+  auto iter = TensorIterator::borrowing_binary_op(output, self, other);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::minimum(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_func_minimum(self, other, output);
+  native::xpu::minimum_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::minimum_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_func_minimum(self, other, output);
+  native::xpu::minimum_kernel(iter);
+  return output;
 }
 
 } // namespace at

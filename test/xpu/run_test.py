@@ -1,7 +1,33 @@
 import os
 import sys
 
-test_ops_skip_list = (
+def launch_test(test_case, skip_list=None, exe_list=None):
+    if skip_list != None:
+        skip_options = " -k 'not " + skip_list[0]
+        for skip_case in skip_list[1:]:
+            skip_option = " and not " + skip_case
+            skip_options += skip_option
+        skip_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += skip_options
+        return os.system(test_command)
+    elif exe_list != None:
+        exe_options = " -k '" + exe_list[0]
+        for exe_case in exe_list[1:]:
+            exe_option = " and " + exe_case
+            exe_options += exe_option
+        exe_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += exe_options
+        return os.system(test_command)
+    else:
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        return os.system(test_command)
+
+res = 0
+
+# test_ops
+skip_list = (
     # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
     "test_compare_cpu_nn_functional_conv2d_xpu_float32",
@@ -378,6 +404,7 @@ test_ops_skip_list = (
     "test_dtypes_pca_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_dtypes_svd_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_noncontiguous_samples_nn_functional_linear_xpu_int64", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes__refs_nn_functional_pdist_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Failures:
@@ -667,6 +694,39 @@ test_ops_skip_list = (
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
 )
+res += launch_test("test_ops_xpu.py", skip_list)
+
+# test_binary_ufuncs
+skip_list = (
+    "jiterator", # Jiterator is only supported by CUDA
+    "cuda", # Skip cuda hard-coded case
+    "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
+    "test_div_rounding_numpy_xpu_float16", # CPU fail
+    "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
+    "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_xor_xpu", # align CUDA dtype
+    "test_type_promotion_max_binary_xpu", # align CUDA dtype
+    "test_type_promotion_maximum_xpu", # align CUDA dtype
+    "test_type_promotion_min_binary_xpu", # align CUDA dtype
+    "test_type_promotion_minimum_xpu", # align CUDA dtype
+    "test_pow_xpu_int16", # align CUDA dtype
+    "test_pow_xpu_int32", # align CUDA dtype
+    "test_pow_xpu_int64", # align CUDA dtype
+    "test_pow_xpu_int8", # align CUDA dtype
+    "test_pow_xpu_uint8", # align CUDA dtype
+    "test_logaddexp_xpu_complex128", # CPU fail
+    "test_logaddexp_xpu_complex64", # CPU fail
+)
+res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
+
+# test_foreach
+# Too slow to run all case on CPU. Add white list.
+execute_list = (
+    "_foreach_add_",
+    "not slowpath",
+)
+res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
 nn_test_embedding_skip_list = (
     # Skip list of base line
@@ -718,28 +778,7 @@ nn_test_embedding_skip_list = (
     "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
     "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
 )
-
-res = 0
-
-# test_ops
-test_ops_skip_options = " -k 'not " + test_ops_skip_list[0]
-for skip_case in test_ops_skip_list[1:]:
-    skip_option = " and not " + skip_case
-    test_ops_skip_options += skip_option
-test_ops_skip_options += "'"
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v test_ops_xpu.py"
-test_command += test_ops_skip_options
-res += os.system(test_command)
-
-# nn/test_embedding
-nn_test_embedding_skip_options = " -k 'not " + nn_test_embedding_skip_list[0]
-for skip_case in nn_test_embedding_skip_list[1:]:
-    skip_option = " and not " + skip_case
-    nn_test_embedding_skip_options += skip_option
-nn_test_embedding_skip_options += "'"
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v nn/test_embedding_xpu.py"
-test_command += nn_test_embedding_skip_options
-res += os.system(test_command)
+res += launch_test("nn/test_embedding_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

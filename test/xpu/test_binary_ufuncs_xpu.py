@@ -9,10 +9,10 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_ops import TestCommon
+    from test_binary_ufuncs import TestBinaryUfuncs
 
 
-instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
+instantiate_device_type_tests(TestBinaryUfuncs, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":
