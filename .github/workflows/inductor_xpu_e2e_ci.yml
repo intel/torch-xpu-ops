@@ -78,7 +78,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
       - name: HF FP16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -86,4 +86,4 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 39
+          expected_pass_num: 40

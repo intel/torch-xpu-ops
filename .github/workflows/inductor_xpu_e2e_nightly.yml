@@ -116,7 +116,7 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 44
+          expected_pass_num: 45
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -126,7 +126,7 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
       - name: Nightly HF FP16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -135,7 +135,7 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 38
+          expected_pass_num: 39
       - name: Nightly HF FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -145,7 +145,7 @@ jobs:
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -155,7 +155,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
       - name: Nightly HF FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -164,7 +164,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 38
+          expected_pass_num: 40
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
