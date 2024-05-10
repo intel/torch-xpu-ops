@@ -76,8 +76,4 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
            .to(order_t.device(), keep.scalar_type())});
 }
 
-TORCH_LIBRARY_IMPL(torchvision, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("torchvision::nms"), TORCH_FN(nms));
-}
-
 } // namespace at::native::xpu
