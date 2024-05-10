@@ -1,12 +1,16 @@
 # Owner(s): ["module: intel"]
 
-import torch
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
-from ..xpu_test_utils import XPUTestPatch, instantiate_device_type_tests
+try:
+    from .xpu_test_utils import XPUPatchForImport
+except Exception as e:
+    from ..xpu_test_utils import XPUPatchForImport
 
-with XPUTestPatch():
+with XPUPatchForImport(False):
     from test_embedding import TestEmbeddingNNDeviceType
+
 
 instantiate_device_type_tests(TestEmbeddingNNDeviceType, globals(), only_for="xpu")
 
