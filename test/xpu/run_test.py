@@ -778,7 +778,7 @@ nn_test_embedding_skip_list = (
     "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
     "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
 )
-res += launch_test("nn/test_embedding_xpu.py", skip_list)
+res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
