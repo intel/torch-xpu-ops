@@ -86,4 +86,4 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 38
+          expected_pass_num: 39
