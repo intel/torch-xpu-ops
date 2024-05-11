@@ -98,7 +98,8 @@ jobs:
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
-          echo ${GITHUB_ENV}
+      - name: Show GITHUB_ENV
+        run: echo "$GITHUB_ENV"
       - name: Triton Installation
         run: |
           source activate e2e_ci
@@ -116,8 +117,6 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl      
-      - name: Show GITHUB_ENV
-        run: echo "$GITHUB_ENV"
       - name: Nightly HF FP32 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
