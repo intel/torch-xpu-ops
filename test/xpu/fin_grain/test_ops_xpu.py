@@ -117,7 +117,7 @@ _xpu_computation_op_list = [
     "any",
     "arange",
     "as_strided",
-
+    "sort",
 
 ]
 
