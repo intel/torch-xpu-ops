@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void flip_xpu_kernel(TensorIterator& iter);
+void flip_kernel(TensorIterator& iter);
 
 } // namespace at::native::xpu

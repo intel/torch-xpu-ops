@@ -123,7 +123,7 @@ void flip_kernel_impl(TensorIterator& iter) {
   launch_kernel(iter.numel(), loop);
 }
 
-void flip_xpu_kernel(TensorIterator& iter) {
+void flip_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       at::ScalarType::Half,
       at::ScalarType::Bool,

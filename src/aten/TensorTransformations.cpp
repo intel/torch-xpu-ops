@@ -74,7 +74,7 @@ Tensor XPUNativeFunctions::flip(const Tensor& self, IntArrayRef dims) {
   iter._unsafe_set_arg_strides(0, strides_bytes);
   iter._unsafe_set_arg_data(0, reinterpret_cast<void*>(data));
 
-  at::native::xpu::flip_xpu_kernel(iter);
+  at::native::xpu::flip_kernel(iter);
   return out_tensor;
 }
 } // namespace at
