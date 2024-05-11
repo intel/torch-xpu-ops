@@ -405,6 +405,8 @@ void segmented_radix_sort_pairs_kernel(
 
 // ======================= interface =======================
 
+// NOTE: Subgroup size of 32 provides better performance currently.
+// TODO: Additional selection logic is needed to adapt to different platforms.
 template <
     typename key_t,
     typename value_t,
@@ -418,6 +420,8 @@ void segmented_sort_pairs_(
     int num_segments,
     int num_elements) {
   if (num_elements > 4096) {
+    // Considering register pressure, we use a problem size of 4096 to delineate
+    // the boundary between single tile sort and group sort.
     segmented_radix_sort_pairs_kernel<
         key_t,
         value_t,

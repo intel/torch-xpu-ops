@@ -413,7 +413,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "softplus.out",
     "softshrink_backward.grad_input",
     "softshrink.out",
-    "sort.values_stable",
     "special_airy_ai.out",
     "special_bessel_j0.out",
     "special_bessel_j1.out",
