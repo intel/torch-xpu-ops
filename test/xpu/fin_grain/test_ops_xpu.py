@@ -58,7 +58,6 @@ _xpu_computation_op_list = [
     "mul",
     "div",
     "abs",
-
     "bernoulli",
     "bitwise_and",
     "bitwise_not",
@@ -117,8 +116,7 @@ _xpu_computation_op_list = [
     "any",
     "arange",
     "as_strided",
-
-
+    "flip",
 ]
 
 _xpu_computation_ops = [
