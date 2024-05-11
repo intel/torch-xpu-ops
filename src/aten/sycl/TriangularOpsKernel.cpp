@@ -118,7 +118,7 @@ void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
     }                                                             \
   }
 
-Tensor& tril_xpu_kernel(Tensor& result, const Tensor& self, int64_t k) {
+Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
@@ -138,7 +138,7 @@ Tensor& tril_xpu_kernel(Tensor& result, const Tensor& self, int64_t k) {
   return result;
 }
 
-Tensor& triu_xpu_kernel(Tensor& result, const Tensor& self, int64_t k) {
+Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
