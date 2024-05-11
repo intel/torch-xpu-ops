@@ -216,6 +216,7 @@ supported:
   - maximum.out
   - minimum
   - minimum.out
+  - flip
   - tril.out
   - tril
   - tril_

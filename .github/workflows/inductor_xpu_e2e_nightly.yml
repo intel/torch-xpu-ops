@@ -52,7 +52,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.secnario }}
   cancel-in-progress: true
 
 jobs:
@@ -91,11 +91,14 @@ jobs:
           else
             echo "TRITON_COMMIT_ID=${{ inputs.triton }}" >> "${GITHUB_ENV}"
           fi
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
           echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
           source activate e2e_ci
@@ -115,6 +118,35 @@ jobs:
           pip install --force-reinstall dist/*.whl      
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
+      - name: Nightly HF FP32 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 45
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly HF BF16 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 46
+      - name: Nightly HF FP16 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 39
       - name: Nightly HF FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -124,7 +156,7 @@ jobs:
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 44
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -134,7 +166,16 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
+      - name: Nightly HF FP16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 40
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
