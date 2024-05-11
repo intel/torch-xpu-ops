@@ -182,12 +182,24 @@ supported:
   - bitwise_not.out
   - where.self_out
   - where.self
+  - clamp
   - clamp.out
-  - clamp_min.out
-  - clamp_max.out
+  - clamp_
+  - clamp.Tensor
   - clamp.Tensor_out
-  - clamp_min.Tensor_out
+  - clamp_.Tensor
+  - clamp_max
+  - clamp_max.out
+  - clamp_max_
+  - clamp_max.Tensor
   - clamp_max.Tensor_out
+  - clamp_max_.Tensor
+  - clamp_min
+  - clamp_min.out
+  - clamp_min_
+  - clamp_min.Tensor
+  - clamp_min.Tensor_out
+  - clamp_min_.Tensor
   - native_layer_norm
   - native_layer_norm_backward
   - index.Tensor
