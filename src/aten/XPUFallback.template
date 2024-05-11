@@ -237,7 +237,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",
-    "flip",
     "floor_divide",
     "floor.out",
     "fmax.out",
