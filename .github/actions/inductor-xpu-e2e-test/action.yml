@@ -76,8 +76,8 @@ runs:
         fi
         if [ ${{ inputs.suite }} == "torchbench" ]; then
           cd ../ && python -c "import torch, torchvision, torchaudio"
-          rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
-          cd benchmark && pip install --no-deps -r requirements.txt
+          rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
         fi
         if [ ${{ inputs.suite }} == "timm_models" ]; then
