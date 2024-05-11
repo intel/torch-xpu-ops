@@ -2,7 +2,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <aten/sycl/TriangularOpsKernel.h>
+#include <aten/sycl/TriangularOpsKernels.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
