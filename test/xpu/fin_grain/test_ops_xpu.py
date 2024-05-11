@@ -117,6 +117,8 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     "flip",
+    "tril",
+    "triu",
 ]
 
 _xpu_computation_ops = [
