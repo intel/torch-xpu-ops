@@ -718,6 +718,8 @@ skip_list = (
     "test_pow_xpu_uint8", # align CUDA dtype
     "test_logaddexp_xpu_complex128", # CPU fail
     "test_logaddexp_xpu_complex64", # CPU fail
+    "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
@@ -728,6 +730,65 @@ execute_list = (
     "not slowpath",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
+
+
+# test_transformers
+skip_list = (
+    # AssertionError: False is not true
+    # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
+    "test_disable_fastpath_xpu",
+    # We have no mechanism to handle SDPBackend::ERROR so far. Will give a fully support when we support all SDPBackends.
+    "test_dispatch_fails_no_backend_xpu",
+    # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
+    "test_with_nested_tensor_input_xpu",
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_sdp_math_gradcheck_contiguous_inputs_False_xpu",
+    "test_sdp_math_gradcheck_contiguous_inputs_True_xpu",
+    "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_True_training_False_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_True_training_False_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_False_training_True_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_False_training_True_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_False_training_False_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_False_training_False_enable_nested_tensor_False_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_mha_native_args_nb_heads_8_bias_True_xpu",
+    "test_mha_native_args_nb_heads_8_bias_False_xpu",
+    "test_mha_native_args_nb_heads_1_bias_True_xpu",
+    "test_mha_native_args_nb_heads_1_bias_False_xpu",
+)
+res += launch_test("test_transformers_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
