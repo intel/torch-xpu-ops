@@ -733,12 +733,11 @@ res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 # test_transformers
 skip_list = (
     # AssertionError: False is not true
-    # due to transformer_encoder_layer_forward op issue
+    # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
     "test_disable_fastpath_xpu",
-    # RuntimeError not raised by <lambda>
+    # We have no mechanism to handle SDPBackend::ERROR so far. Will give a fully support when we support all SDPBackends.
     "test_dispatch_fails_no_backend_xpu",
     # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
-    # We have no mechanism to handle SDPBackend::ERROR so far.
     "test_with_nested_tensor_input_xpu",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_sdp_math_gradcheck_contiguous_inputs_False_xpu",
