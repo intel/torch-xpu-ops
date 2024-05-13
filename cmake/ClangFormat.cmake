@@ -16,7 +16,7 @@ endif()
 
 find_program(CLANG_FORMAT "clang-format-12")
 if(NOT CLANG_FORMAT)
-  message(WARNING "Please install clang-format-12 before contributing to IPEX!")
+  message("Please install clang-format-12 before contributing to torch-xpu-ops!")
 else()
   set(CLANG_FORMAT_EXEC clang-format-12)
 endif()
