@@ -43,9 +43,6 @@ template <typename T>
 using sycl_global_ptr = typename sycl::global_ptr<T>;
 
 template <typename T>
-using sycl_global_ptr_pt = typename sycl::global_ptr<T>::pointer_t;
-
-template <typename T>
 using sycl_atomic_ref_rlx_dev_global_t =
     sycl::atomic_ref<T, sycl_mem_odr_rlx, sycl_mem_scp_dev, sycl_global_space>;
 

@@ -19,9 +19,9 @@ Tensor& XPUNativeFunctions::max_pool2d_with_indices_backward_out(
      1. 3D: Input (C, H, W),  Output (C, H0, W0), Kernel (kH, kW)
      This case does not support channel last format. For a 3-dim tensor,
      the PyTorch suggest_memory_format can only be Contiguous or
-     ChannelsLast1D (nwc), the ChannelsLast1D (nwc) does not match the sementics
-     of Input (C, H, W) case. Then the suggest_memory_format can only be
-     Contiguous.
+     ChannelsLast1D (nwc), the ChannelsLast1D (nwc) does not match the
+     sementics of Input (C, H, W) case. Then the suggest_memory_format can
+     only be Contiguous.
      2. 4D: Input (N, C, H, W),  Output (N, C, H0, W0), Kernel (kH, kW)
      This case supports Contiguous and ChannelsLast2D memory_format. */
   Tensor self, grad_output, indices;

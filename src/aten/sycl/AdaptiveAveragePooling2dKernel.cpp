@@ -239,6 +239,12 @@ void adaptive_avg_pool2d_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input) {
+  TensorArg grad_input_arg{gradInput, "gradInput", 1},
+      grad_output_arg{gradOutput, "gradOutput", 2},
+      input_arg{input, "input", 3};
+  adaptive_pool_empty_output_check(gradOutput, "adaptive_avg_pool2d_backward");
+  checkAllSameGPU(__func__, {grad_input_arg, grad_output_arg, input_arg});
+
   TORCH_CHECK(
       (input.ndimension() == 3 || input.ndimension() == 4),
       "non-empty 3D or 4D (batch mode) tensor expected for input");

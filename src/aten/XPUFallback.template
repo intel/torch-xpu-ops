@@ -327,7 +327,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "lu_unpack.out",
     "masked_scatter_",
     "masked_select",
-    "max_pool2d_with_indices_backward.grad_input",
     "max_pool2d_with_indices.out",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
