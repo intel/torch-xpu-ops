@@ -220,8 +220,6 @@ supported:
   - argmax.out
   - _local_scalar_dense
   - max_pool2d_with_indices_backward.grad_input
-  - _index_put_impl_
-  - nonzero
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
