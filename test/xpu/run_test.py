@@ -723,6 +723,8 @@ skip_list = (
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
+res += launch_test("test_autograd_fallback.py")
+
 # test_foreach
 # Too slow to run all case on CPU. Add white list.
 execute_list = (
