@@ -6,6 +6,11 @@ on:
     - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Specify triton commit, use pytorch pined commit by default
       suite:
         required: true
         type: choice
@@ -47,7 +52,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.secnario }}
   cancel-in-progress: true
 
 jobs:
@@ -67,19 +72,40 @@ jobs:
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          git clone -b e2e-baseline https://github.com/etaf/pytorch-inductor-xpu pytorch
-          cd pytorch && git log -n 1 && git submodule sync && git submodule update --init --recursive
+          source activate e2e_ci
+          git clone -b nightly --single-branch --depth=1 https://github.com/pytorch/pytorch pytorch
+          cd pytorch
+          # apply PRs for stock pytorch
+          pip install requests
+          python ../torch-xpu-ops/.github/scripts/apply-torch-pr.py -n 122472 124709 125587
+          git status && git show -s
+          git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+      - name: Identify pinned versions
+        run: |
+          cd ../pytorch
+          if [ -z ${{ inputs.triton }} ]; then
+            echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+          else
+            echo "TRITON_COMMIT_ID=${{ inputs.triton }}" >> "${GITHUB_ENV}"
+          fi
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
           source activate e2e_ci
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Build Pytorch XPU
         run: |
           source activate e2e_ci
@@ -89,18 +115,38 @@ jobs:
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
-      - name: Identify pinned versions
-        run: |
-          cd ../pytorch
-          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
-          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
-          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          pip install --force-reinstall dist/*.whl      
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
+      - name: Nightly HF FP32 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 45
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly HF BF16 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 46
+      - name: Nightly HF FP16 Inference Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: inference
+          scenario: accuracy
+          expected_pass_num: 39
       - name: Nightly HF FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -110,7 +156,7 @@ jobs:
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 44
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly HF BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -120,7 +166,16 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
+      - name: Nightly HF FP16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 40
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test

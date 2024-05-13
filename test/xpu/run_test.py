@@ -1,6 +1,33 @@
 import os
 import sys
 
+
+def launch_test(test_case, skip_list=None, exe_list=None):
+    if skip_list != None:
+        skip_options = " -k 'not " + skip_list[0]
+        for skip_case in skip_list[1:]:
+            skip_option = " and not " + skip_case
+            skip_options += skip_option
+        skip_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += skip_options
+        return os.system(test_command)
+    elif exe_list != None:
+        exe_options = " -k '" + exe_list[0]
+        for exe_case in exe_list[1:]:
+            exe_option = " and " + exe_case
+            exe_options += exe_option
+        exe_options += "'"
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command += exe_options
+        return os.system(test_command)
+    else:
+        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        return os.system(test_command)
+
+res= 0
+
+# test_ops
 skip_list = (
     # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
@@ -378,6 +405,7 @@ skip_list = (
     "test_dtypes_pca_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_dtypes_svd_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
     "test_noncontiguous_samples_nn_functional_linear_xpu_int64", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes__refs_nn_functional_pdist_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Failures:
@@ -667,17 +695,100 @@ skip_list = (
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
 )
+res += launch_test("test_ops_xpu.py", skip_list)
+
+# test_binary_ufuncs
+skip_list = (
+    "jiterator", # Jiterator is only supported by CUDA
+    "cuda", # Skip cuda hard-coded case
+    "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
+    "test_div_rounding_numpy_xpu_float16", # CPU fail
+    "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
+    "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_xor_xpu", # align CUDA dtype
+    "test_type_promotion_max_binary_xpu", # align CUDA dtype
+    "test_type_promotion_maximum_xpu", # align CUDA dtype
+    "test_type_promotion_min_binary_xpu", # align CUDA dtype
+    "test_type_promotion_minimum_xpu", # align CUDA dtype
+    "test_pow_xpu_int16", # align CUDA dtype
+    "test_pow_xpu_int32", # align CUDA dtype
+    "test_pow_xpu_int64", # align CUDA dtype
+    "test_pow_xpu_int8", # align CUDA dtype
+    "test_pow_xpu_uint8", # align CUDA dtype
+    "test_logaddexp_xpu_complex128", # CPU fail
+    "test_logaddexp_xpu_complex64", # CPU fail
+    "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
+)
+res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
+
+# test_foreach
+# Too slow to run all case on CPU. Add white list.
+execute_list = (
+    "_foreach_add_",
+    "not slowpath",
+)
+res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
 
-skip_options = " -k 'not " + skip_list[0]
-for skip_case in skip_list[1:]:
-    skip_option = " and not " + skip_case
-    skip_options += skip_option
-skip_options += "'"
+# test_transformers
+skip_list = (
+    # AssertionError: False is not true
+    # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
+    "test_disable_fastpath_xpu",
+    # We have no mechanism to handle SDPBackend::ERROR so far. Will give a fully support when we support all SDPBackends.
+    "test_dispatch_fails_no_backend_xpu",
+    # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
+    "test_with_nested_tensor_input_xpu",
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_sdp_math_gradcheck_contiguous_inputs_False_xpu",
+    "test_sdp_math_gradcheck_contiguous_inputs_True_xpu",
+    "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_True_training_False_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_True_training_False_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_False_training_True_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_False_training_True_enable_nested_tensor_False_xpu",
+    "test_transformerencoder_batch_first_False_training_False_enable_nested_tensor_True_xpu",
+    "test_transformerencoder_batch_first_False_training_False_enable_nested_tensor_False_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_no_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_4D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_4D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_no_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_3D_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_causal_attn_mask_dropout_p_0_0_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
+    "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_mha_native_args_nb_heads_8_bias_True_xpu",
+    "test_mha_native_args_nb_heads_8_bias_False_xpu",
+    "test_mha_native_args_nb_heads_1_bias_True_xpu",
+    "test_mha_native_args_nb_heads_1_bias_False_xpu",
+)
+res += launch_test("test_transformers_xpu.py", skip_list)
 
-test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v _test_ops.py"
-test_command += skip_options
-
-res = os.system(test_command)
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

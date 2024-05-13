@@ -1217,7 +1217,6 @@ class AccumulationBuffer {
       numerator_ = 1;
       denominator_ = 1;
     } else {
-      // buffer_ = getDeviceAllocator()->allocate(size);
       buffer_ = c10::xpu::XPUCachingAllocator::get()->allocate(size);
       acc_ptr_ = (char*)buffer_.get();
       numerator_ = acc_t_size;
