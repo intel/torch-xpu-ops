@@ -8,7 +8,7 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/ops/as_strided_ops.h>
-#include <aten/sycl/Shape.h>
+#include <aten/sycl/ShapeKernels.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
@@ -180,7 +180,12 @@ void cat_meta(
             memory_format);
   }
 
-  at::xpu::resize_out(result, sizes, {}, options);
+  if (is_out_defined) {
+    at::xpu::resize_out(result, sizes, {}, options);
+  } else {
+    result = at::xpu::create_out(sizes, {}, options);
+  }
+
   if (!maybe_outnames.empty()) {
     namedinference::propagate_names(result, maybe_outnames);
   }
@@ -203,6 +208,40 @@ Tensor& XPUNativeFunctions::cat_out(
   c10::impl::check_and_update_common_device(
       common_device, tensors, "xpu::cat_out", "tensors");
 
+  size_t valid;
+  bool all_contiguous;
+  bool all_same_dtype;
+  bool all_same_sizes_and_stride;
+  c10::MemoryFormat memory_format;
+  cat_meta(
+      tensors,
+      dim,
+      result,
+      valid,
+      all_contiguous,
+      all_same_dtype,
+      all_same_sizes_and_stride,
+      memory_format);
+
+  at::native::xpu::cat_out_kernel(
+      tensors,
+      dim,
+      valid,
+      all_contiguous,
+      all_same_dtype,
+      all_same_sizes_and_stride,
+      memory_format,
+      result);
+
+  return result;
+}
+
+Tensor XPUNativeFunctions::cat(const ITensorListRef& tensors, int64_t dim) {
+  std::optional<Device> common_device = std::nullopt;
+  c10::impl::check_and_update_common_device(
+      common_device, tensors, "xpu::cat", "tensors");
+
+  Tensor result;
   size_t valid;
   bool all_contiguous;
   bool all_same_dtype;

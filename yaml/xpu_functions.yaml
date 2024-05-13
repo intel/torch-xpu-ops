@@ -90,6 +90,7 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat
   - cat.out
   - isnan
   - isnan.out

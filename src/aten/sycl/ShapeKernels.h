@@ -2,9 +2,7 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 void cat_out_kernel(
     const ITensorListRef& tensors,
@@ -16,6 +14,4 @@ void cat_out_kernel(
     MemoryFormat memory_format,
     const Tensor& result);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
