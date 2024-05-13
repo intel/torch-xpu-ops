@@ -310,4 +310,37 @@ Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sgn(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sgn_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return out;
+}
 } // namespace at

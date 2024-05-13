@@ -239,3 +239,7 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - sgn
+  - sgn.out
+  - sgn_
+
