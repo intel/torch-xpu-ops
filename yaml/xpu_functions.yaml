@@ -90,11 +90,15 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat
+  - cat.out
   - isnan
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_add_
+  - index_add
   - index_select
   - index_select.out
   - gcd
@@ -176,6 +180,7 @@ supported:
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  # - _copy_from  # hand-written registration
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
