@@ -23,13 +23,13 @@ args = parser.parse_args()
 
 # check reverted PR is in current code base or not
 def check_reverted_reopen(pr_info):
-    git_cmd = "git log nightly -n 1 2>&1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//' || " + \
-              "git log -n 1 |grep '^commit' |awk '{print $2}'"
+    git_cmd = "git log nightly -n 1 2>&1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//' || git rev-parse HEAD"
     git_info = subprocess.Popen(git_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     main_commit = git_info.communicate()[0].decode("utf-8").replace("\n", "")
-    revert_cmd = "git fetch origin -a > /dev/null 2>&1 && git checkout " + main_commit + " > /dev/null 2>&1 && " + \
+    revert_cmd = "cur_cmt=$(git rev-parse HEAD) && git fetch origin main > /dev/null 2>&1 && " + \
+                 "git checkout " + main_commit + " > /dev/null 2>&1 && " + \
                  "git log |grep 'Reverted " + pr_info["html_url"] + " ' || true && " + \
-                 "git checkout nightly > /dev/null 2>&1"
+                 "git checkout $cur_cmt > /dev/null 2>&1"
     revert_info = subprocess.Popen(revert_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     revert_msg = revert_info.communicate()[0].decode("utf-8")
     if "Reverted " + pr_info["html_url"] in revert_msg:
