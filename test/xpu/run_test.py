@@ -811,5 +811,329 @@ skip_list = (
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
+# test_modules
+skip_list = (
+    "test_save_load_nn_",
+    "test_cpu_gpu_parity_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32", # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32", # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32", # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_CrossEntropyLoss_xpu_float16", # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_cpu_gpu_parity_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_forward_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_GRU_eval_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_forward_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_GRU_train_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_forward_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_forward_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_Conv3d_xpu_float64", # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The ...
+    "test_grad_nn_ConvTranspose3d_xpu_float64", # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The ...
+    "test_grad_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_LazyConv3d_xpu_float64", # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The ...
+    "test_grad_nn_LazyConvTranspose3d_xpu_float64", # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The ...
+    "test_grad_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_grad_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_gradgrad_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_TransformerEncoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_TransformerEncoder_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_if_train_and_eval_modes_differ_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32", # Failed: Unexpected success
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64", # Failed: Unexpected success
+    "test_memory_format_nn_Conv2d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_ConvTranspose2d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_memory_format_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_GRU_eval_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_memory_format_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_GRU_train_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_memory_format_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_GroupNorm_xpu_bfloat16", # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
+    "test_memory_format_nn_GroupNorm_xpu_float16", # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
+    "test_memory_format_nn_GroupNorm_xpu_float32", # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
+    "test_memory_format_nn_GroupNorm_xpu_float64", # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
+    "test_memory_format_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_LazyConv2d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_LazyConvTranspose2d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_memory_format_nn_ReflectionPad3d_xpu_float32", # AssertionError: False is not true
+    "test_memory_format_nn_ReflectionPad3d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_ReplicationPad2d_xpu_float32", # AssertionError: False is not true
+    "test_memory_format_nn_ReplicationPad2d_xpu_float64", # AssertionError: False is not true
+    "test_memory_format_nn_ReplicationPad3d_xpu_float32", # AssertionError: False is not true
+    "test_memory_format_nn_ReplicationPad3d_xpu_float64", # AssertionError: False is not true
+    "test_multiple_device_transfer_nn_BCELoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BCELoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BCEWithLogitsLoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BCEWithLogitsLoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm1d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm1d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm1d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm1d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm2d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm2d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm2d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm2d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm3d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm3d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm3d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BatchNorm3d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Bilinear_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_Conv1d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Conv1d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Conv2d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Conv2d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Conv3d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Conv3d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex128", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex128", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex128", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float16", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Embedding_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Embedding_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_FractionalMaxPool2d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_FractionalMaxPool2d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_FractionalMaxPool3d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_FractionalMaxPool3d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_multiple_device_transfer_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_bfloat16", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float16", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm1d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm1d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm1d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm1d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm2d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm2d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm2d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm2d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm3d_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm3d_eval_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm3d_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_InstanceNorm3d_train_mode_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LSTMCell_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_LSTM_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_LSTM_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_LayerNorm_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LayerNorm_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv1d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv1d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv2d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv2d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv3d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConv3d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose1d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose1d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose2d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose2d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose3d_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_LazyConvTranspose3d_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Linear_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_MultiLabelSoftMarginLoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiLabelSoftMarginLoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiMarginLoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiMarginLoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiheadAttention_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_MultiheadAttention_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_NLLLoss_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_NLLLoss_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_PReLU_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_PReLU_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RMSNorm_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RMSNorm_xpu_float64", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RNNCell_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_RNN_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_RNN_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_TransformerDecoderLayer_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multiple_device_transfer_nn_Transformer_xpu_float32", # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_Bilinear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_GRUCell_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_non_contiguous_tensors_nn_GRUCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_LSTMCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_LSTM_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_LSTM_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_Linear_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_MultiheadAttention_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_MultiheadAttention_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_RNNCell_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_RNN_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_RNN_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_TransformerDecoderLayer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_TransformerEncoderLayer_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_TransformerEncoderLayer_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_TransformerEncoder_eval_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_TransformerEncoder_train_mode_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_non_contiguous_tensors_nn_Transformer_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+)
+res += launch_test("test_modules_xpu.py", skip_list)
+
+# test_nn
+skip_list = (
+    "test_CTCLoss_cudnn_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_GRU_grad_and_gradgrad_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_GroupNorm_empty_xpu", # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
+    "test_GroupNorm_memory_format_xpu", # AssertionError: Tensor-likes are not close!
+    "test_InstanceNorm1d_general_xpu", # AssertionError: Scalars are not close!
+    "test_InstanceNorm2d_general_xpu", # AssertionError: Scalars are not close!
+    "test_InstanceNorm3d_general_xpu", # AssertionError: Scalars are not close!
+    "test_LSTM_grad_and_gradgrad_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_TransformerEncoderLayer_empty_xpu", # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
+    "test_adaptiveavg_pool1d_shmem_xpu", # RuntimeError: Native API failed. Native API returns: -5 (PI_ERROR_OUT_OF_RESOURCES) -5 (PI_ERROR_OUT_OF_RESOURCES)
+    "test_batchnorm_simple_average_mixed_xpu_bfloat16", # AssertionError: AssertionError not raised
+    "test_batchnorm_simple_average_mixed_xpu_float16", # AssertionError: AssertionError not raised
+    "test_batchnorm_simple_average_xpu_float32", # AssertionError: AssertionError not raised
+    "test_batchnorm_update_stats_xpu", # AssertionError: AssertionError not raised
+    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16", # AssertionError: 'CUDA error: device-side assert triggered' not found in 'PYTORCH_API_USAGE torch.python.import\nPYTORCH_API_USAGE c10d.python.import\nPYTORCH_API_USAGE aten.init.xpu\nPYTORCH_API_USAGE tensor.create\n/home/...
+    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32", # AssertionError: 'CUDA error: device-side assert triggered' not found in 'PYTORCH_API_USAGE torch.python.import\nPYTORCH_API_USAGE c10d.python.import\nPYTORCH_API_USAGE aten.init.xpu\nPYTORCH_API_USAGE tensor.create\n/home/...
+    "test_ctc_loss_cudnn_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_device_mask_xpu", # AssertionError: False is not true
+    "test_grid_sample_bfloat16_precision_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_grid_sample_half_precision_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_grid_sample_large_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_layernorm_half_precision_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_layernorm_weight_bias_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_lstmcell_backward_only_one_output_grad_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_masked_softmax_devices_parity_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_module_to_empty_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_overwrite_module_params_on_conversion_cpu_device_xpu", # AssertionError: False is not true
+    "test_rnn_fused_xpu_float32", # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_rnn_fused_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_rnn_retain_variables_xpu_float64", # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bicubic_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bilinear_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bicubic_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8", # AssertionError: RuntimeError not raised
+    "test_upsamplingNearest2d_launch_fail_xpu", # Failed: Unexpected success
+)
+res += launch_test("test_nn_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
