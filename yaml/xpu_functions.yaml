@@ -90,6 +90,8 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat
+  - cat.out
   - isnan
   - isnan.out
   - masked_fill_.Tensor
@@ -176,15 +178,31 @@ supported:
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  # - _copy_from  # hand-written registration
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
   - bitwise_not.out
   - where.self_out
   - where.self
+  - clamp
   - clamp.out
-  - clamp_min.out
+  - clamp_
+  - clamp.Tensor
+  - clamp.Tensor_out
+  - clamp_.Tensor
+  - clamp_max
   - clamp_max.out
+  - clamp_max_
+  - clamp_max.Tensor
+  - clamp_max.Tensor_out
+  - clamp_max_.Tensor
+  - clamp_min
+  - clamp_min.out
+  - clamp_min_
+  - clamp_min.Tensor
+  - clamp_min.Tensor_out
+  - clamp_min_.Tensor
   - native_layer_norm
   - native_layer_norm_backward
   - index.Tensor
@@ -204,12 +222,22 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - _softmax.out
+  - _softmax
+  - _softmax_backward_data.out
+  - _softmax_backward_data
+  - tril.out
+  - tril
+  - tril_
   - _index_put_impl_
   - nonzero
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - sort.stable
+  - sort.values_stable
+  - argsort.stable
   - _foreach_add.Scalar
   - _foreach_add_.Scalar
   - _foreach_add.ScalarList
@@ -220,3 +248,4 @@ supported:
   - maximum.out
   - minimum
   - minimum.out
+  - flip
