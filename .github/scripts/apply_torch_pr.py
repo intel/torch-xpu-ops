@@ -9,14 +9,15 @@ import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument('--pr-list', '-n', nargs='+',
     default=[
-        # internal use only for CI/Nightly model list
-        "https://github.com/mengfei25/pytorch/pull/18",
-        # public pytorch
+        #Upgrade submodule oneDNN to v3.4
         "https://github.com/pytorch/pytorch/pull/122472",
+        # Add manual_seed and synchronize method
         "https://github.com/pytorch/pytorch/pull/124709",
+        # Fallback to CPU for XPU FP64
         "https://github.com/pytorch/pytorch/pull/125587",
     ]
 )
+parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
 args = parser.parse_args()
 
 
@@ -39,7 +40,10 @@ def check_reverted_reopen(pr_info):
 
 
 # headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
-for pr_link in args.pr_list:
+pr_list = args.pr_list + args.extra_pr_list
+pr_list = set(pr_list)
+pr_list = sorted(pr_list)
+for pr_link in pr_list:
     repo_info = pr_link.split("/")
     pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
                         repo_info[-3] + '/pulls/' + repo_info[-1], timeout=60).json()
