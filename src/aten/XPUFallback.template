@@ -449,7 +449,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "triangular_solve.X",
     "tril_indices",
     "triu_indices",
-    "triu.out",
     "trunc.out",
     "unfold_backward",
     "_unique2",
