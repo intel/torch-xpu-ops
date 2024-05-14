@@ -229,9 +229,6 @@ supported:
   - _softmax
   - _softmax_backward_data.out
   - _softmax_backward_data
-  - tril.out
-  - tril
-  - tril_
   - _index_put_impl_
   - nonzero
   - sort.stable
@@ -248,3 +245,9 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - tril.out
+  - tril
+  - tril_
+  - triu.out
+  - triu
+  - triu_
