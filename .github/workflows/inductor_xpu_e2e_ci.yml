@@ -71,7 +71,7 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: HF BF16 Training Accuracy Test
+      - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -79,7 +79,7 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 46
-      - name: HF FP16 Training Accuracy Test
+      - name: Huggingface FP16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -87,10 +87,18 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 40
-      - name: TIMM BF16 Training Accuracy Test
+      - name: Timm_models BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 16
+      - name: Torchbench BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
           dt: bfloat16
           mode: training
           scenario: accuracy
