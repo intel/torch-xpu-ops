@@ -120,6 +120,7 @@ _xpu_computation_op_list = [
     "flip",
     "tril",
     "triu",
+    "max_pool2d_with_indices_backward",
 ]
 
 _xpu_computation_ops = [
