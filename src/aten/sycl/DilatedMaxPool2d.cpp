@@ -257,7 +257,9 @@ void max_pool2d_backward_out_frame(
   auto in_cf_c_stride = gradInputSizeH * gradInputSizeW;
   auto out_n_stride = numPlane * out_cf_c_stride;
   auto in_n_stride = numPlane * in_cf_c_stride;
-  if (globalContext().deterministicAlgorithms()) {
+  if (globalContext().deterministicAlgorithms() ||
+      std::is_same_v<scalar_t, at::Half> ||
+      std::is_same_v<scalar_t, at::BFloat16>) {
     BatchKernelConfig cfg = {
         1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
     auto caller = MaxPool2dBackwardOutDeterministicKernelFunctor<
