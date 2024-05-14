@@ -133,6 +133,8 @@ skip_list = (
     "test_compare_cpu_view_as_real_xpu_int8",
     "test_compare_cpu_view_as_real_xpu_uint8",
 
+    # Not enabled on CUDA
+    "test_compare_cpu_scatter_xpu_bool",
 )
 
 
