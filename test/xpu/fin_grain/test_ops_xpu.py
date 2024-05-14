@@ -118,6 +118,8 @@ _xpu_computation_op_list = [
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
+    "scatter",
+    "gather",
 ]
 
 _xpu_computation_ops = [
