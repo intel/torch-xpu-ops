@@ -393,8 +393,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "segment_reduce",
     "_segment_reduce_backward",
     "sgn.out",
-    "sigmoid_backward.grad_input",
-    "sigmoid.out",
     "signbit.out",
     "sign.out",
     "silu.out",

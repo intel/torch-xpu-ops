@@ -131,6 +131,15 @@ struct BitwiseNotFunctor<bool> {
   }
 };
 
+template <typename scalar_t>
+struct SigmoidFunctor {
+  scalar_t operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    const auto one = opmath_t{1.0};
+    return one / (one + std::exp(-static_cast<opmath_t>(a)));
+  }
+};
+
 void abs_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.dtype();
   if (at::isComplexType(dtype)) {
@@ -264,6 +273,15 @@ void bitwise_not_kernel(TensorIteratorBase& iter) {
       gpu_kernel(iter, BitwiseNotFunctor<scalar_t>());
     });
   }
+}
+
+void sigmoid_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "sigmoid_xpu",
+      [&]() { gpu_kernel(iter, SigmoidFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
