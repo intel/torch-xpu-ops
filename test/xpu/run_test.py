@@ -813,7 +813,7 @@ res += launch_test("test_transformers_xpu.py", skip_list)
 
 # test_pooling
 skip_list = (
-    # PU fallback failure
+    # CPU fallback failure
     "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
     "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
     "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
