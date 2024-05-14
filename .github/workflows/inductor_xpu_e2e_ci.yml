@@ -36,7 +36,7 @@ jobs:
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply-torch-pr.py -n 122472 124709 125587
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
@@ -87,3 +87,11 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 40
+      - name: TIMM BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 16

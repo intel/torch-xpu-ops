@@ -7,17 +7,26 @@ import subprocess
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--pr-list', '-n', nargs='+', default=[], required=True)
-parser.add_argument('--repo', '-r', default='https://github.com/pytorch/pytorch.git', type=str)
+parser.add_argument('--pr-list', '-n', nargs='+',
+    default=[
+        # internal use only for CI/Nightly model list
+        "https://github.com/mengfei25/pytorch/pull/18",
+        # public pytorch
+        "https://github.com/pytorch/pytorch/pull/122472",
+        "https://github.com/pytorch/pytorch/pull/124709",
+        "https://github.com/pytorch/pytorch/pull/125587",
+    ]
+)
 args = parser.parse_args()
 
 
 # check reverted PR is in current code base or not
 def check_reverted_reopen(pr_info):
-    git_cmd = "git log nightly -n 1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//'"
+    git_cmd = "git log nightly -n 1 2>&1 |grep 'nightly release' |head -1 |sed 's/.*(//;s/).*//' || " + \
+              "git log -n 1 |grep '^commit' |awk '{print $2}'"
     git_info = subprocess.Popen(git_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     main_commit = git_info.communicate()[0].decode("utf-8").replace("\n", "")
-    revert_cmd = "git fetch origin main > /dev/null 2>&1 && git checkout " + main_commit + " > /dev/null 2>&1 && " + \
+    revert_cmd = "git fetch origin -a > /dev/null 2>&1 && git checkout " + main_commit + " > /dev/null 2>&1 && " + \
                  "git log |grep 'Reverted " + pr_info["html_url"] + " ' || true && " + \
                  "git checkout nightly > /dev/null 2>&1"
     revert_info = subprocess.Popen(revert_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
@@ -29,11 +38,11 @@ def check_reverted_reopen(pr_info):
     return reverted
 
 
-repo_info = re.sub(r'\.git$', '', args.repo.strip()).split("/")
 # headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
-for pr_number in args.pr_list:
-    pr_info = requests.get('https://api.' + repo_info[-3] + '/repos/' + repo_info[-2] + '/' + \
-                        repo_info[-1] + '/pulls/' + pr_number, timeout=60).json()
+for pr_link in args.pr_list:
+    repo_info = pr_link.split("/")
+    pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
+                        repo_info[-3] + '/pulls/' + repo_info[-1], timeout=60).json()
 
     if pr_info["state"].lower() == "open":
         # for reverted PR
