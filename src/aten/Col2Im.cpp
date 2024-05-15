@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/XPUNativeFunctions.h>
+#include <ATen/core/op_registration/adaption.h>
 #include <ATen/div_rtn.h>
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>

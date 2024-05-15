@@ -134,7 +134,7 @@ static void col2im_kernel(
       dilation_h,
       dilation_w,
       out_data);
-  sycl_kernel_submit(total_threads, sycl_queue, kfn);
+  sycl_kernel_submit(::sycl::range<1>(total_threads), sycl_queue, kfn);
 }
 
 void col2im_out_template(
