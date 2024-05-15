@@ -17,11 +17,10 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor {
     auto local_item_id = item_id.get_id(0);
     for (int i = local_item_id; i < batch_size; i += local_size) {
       int cur_target = target_ptr[i * target_stride];
-      if (cur_target >= 0 && cur_target < n_classes)
-        if (cur_target == ignore_index) {
-          output_ptr[i * output_stride_0] = 0.0f;
-          continue;
-        }
+      if (cur_target == ignore_index) {
+        output_ptr[i * output_stride_0] = 0.0f;
+        continue;
+      }
       scalar_t cur_weight =
           has_weight ? weight_ptr[cur_target] : static_cast<scalar_t>(1.0f);
       output_ptr[i * output_stride_0] =
@@ -90,8 +89,9 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
           static_cast<scalar_t>(total_weight_ptr[0]);
     } else {
       output_ptr[0] = static_cast<scalar_t>(0.f);
+      total_weight_ptr[0] = static_cast<scalar_t>(0.f);
     }
-    if (reduction == at::Reduction::Mean && total_weight_ptr[0]) {
+    if (reduction == at::Reduction::Mean) {
       output_ptr[0] /= total_weight_ptr[0];
     }
   }
@@ -102,9 +102,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
       scalar_t* output_data_,
       scalar_t* total_weight_data_,
       bool has_weight_,
-      int64_t batch_size_,
-      int64_t local_size_,
-      int n_classes_,
       int64_t ignore_index_,
       int64_t reduction_)
       : input_data(input_data_),
@@ -113,9 +110,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
         output_data(output_data_),
         total_weight_data(total_weight_data_),
         has_weight(has_weight_),
-        batch_size(batch_size_),
-        local_size(local_size_),
-        n_classes(n_classes_),
         ignore_index(ignore_index_),
         reduction(reduction_) {}
 
@@ -126,9 +120,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
   scalar_t* output_data;
   scalar_t* total_weight_data;
   bool has_weight;
-  int64_t batch_size;
-  int64_t local_size;
-  int n_classes;
   int64_t ignore_index;
   int64_t reduction;
 };
@@ -170,7 +161,7 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
 
     output_ptr[0] = local_output_acc[0];
     total_weight_ptr[0] = local_total_weight_acc[0];
-    if (reduction == at::Reduction::Mean && total_weight_ptr[0]) {
+    if (reduction == at::Reduction::Mean) {
       output_ptr[0] /= total_weight_ptr[0];
     }
   }
@@ -183,7 +174,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
       bool has_weight_,
       int64_t batch_size_,
       int64_t local_size_,
-      int n_classes_,
       int64_t ignore_index_,
       int n_target_,
       int64_t reduction_)
@@ -195,7 +185,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
         has_weight(has_weight_),
         batch_size(batch_size_),
         local_size(local_size_),
-        n_classes(n_classes_),
         ignore_index(ignore_index_),
         n_target(n_target_),
         reduction(reduction_) {}
@@ -216,7 +205,6 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
   bool has_weight;
   int64_t batch_size;
   int64_t local_size;
-  int n_classes;
   int64_t ignore_index;
   int n_target;
   sycl_local_acc_t<scalar_t> local_output_acc;
@@ -241,6 +229,7 @@ void ClassNLLCriterion_updateOutput(
 
   if (reduction == at::Reduction::None && n_dims == 2) {
     output.resize_({batch_size});
+    total_weight.zero_();
     int64_t target_stride = target.stride(0);
 
     auto weight_cont = weight.defined() ? weight.contiguous() : weight;
@@ -313,9 +302,6 @@ void ClassNLLCriterion_updateOutput(
         output_data,
         total_weight_data,
         has_weight,
-        batch_size,
-        local_size,
-        n_classes,
         ignore_index,
         reduction);
 
@@ -341,7 +327,6 @@ void ClassNLLCriterion_updateOutput(
         has_weight,
         batch_size,
         local_size,
-        n_classes,
         ignore_index,
         n_target,
         reduction);
@@ -425,16 +410,14 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor2 {
     auto target_ptr = target_data;
     auto total_weight_ptr = total_weight_data;
 
-    if (*total_weight_ptr <= 0)
-      return;
-    scalar_t norm = (reduction == at::Reduction::Mean)
-        ? (static_cast<scalar_t>(1) / static_cast<scalar_t>(*total_weight_ptr))
-        : static_cast<scalar_t>(1);
     int t = (int)*target_ptr;
     if (t != (int)ignore_index) {
-      gradInput_ptr[t] =
-          -(has_weights ? weights_ptr[t] : static_cast<scalar_t>(1)) * norm *
-          gradOutput_ptr[0];
+      scalar_t grad =
+          -((reduction == at::Reduction::Mean)
+                ? static_cast<scalar_t>(gradOutput_ptr[0]) /
+                    static_cast<scalar_t>(*total_weight_ptr)
+                : static_cast<scalar_t>(gradOutput_ptr[0]));
+      gradInput_ptr[t] = has_weights ? weights_ptr[t] * grad : grad;
     }
   }
   ClassNLLCriterionUpdateGradInputKernelFunctor2(
@@ -477,20 +460,18 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor3 {
 
     auto local_item_id = item_id.get_id(0);
 
-    if (*total_weight_ptr <= 0)
-      return;
     int i, t;
-    scalar_t norm = (reduction == at::Reduction::Mean)
-        ? (static_cast<scalar_t>(1.0f) /
-           static_cast<scalar_t>(*total_weight_ptr))
-        : static_cast<scalar_t>(1);
+
+    scalar_t grad =
+        -((reduction == at::Reduction::Mean)
+              ? static_cast<scalar_t>(gradOutput_ptr[0]) /
+                  static_cast<scalar_t>(*total_weight_ptr)
+              : static_cast<scalar_t>(gradOutput_ptr[0]));
     for (i = local_item_id; i < nframe; i += local_size) {
       t = (int)target_ptr[i];
       if (t != (int)ignore_index) {
-        // assert(t >= 0 && t < n_classes)
         gradInput_ptr[i * ndim + t] =
-            -(has_weights ? weights_ptr[t] : static_cast<scalar_t>(1)) * norm *
-            gradOutput_ptr[0];
+            has_weights ? weights_ptr[t] * grad : grad;
       }
     }
   }
