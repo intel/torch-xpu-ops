@@ -36,5 +36,14 @@ execute_list = (
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
+# test_decomp
+execute_list = (
+    "test_comprehensive_nn_functional_cross_entropy_xpu",
+    "test_comprehensive_nn_functional_nll_loss_xpu_bfloat16",
+    "test_comprehensive_nn_functional_nll_loss_xpu_float32",
+    "test_comprehensive_nn_functional_nll_loss_xpu_float64"
+)
+res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
