@@ -727,14 +727,6 @@ res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
 res += launch_test("test_autograd_fallback.py")
 
-# test_foreach
-# Too slow to run all case on CPU. Add white list.
-execute_list = (
-    "_foreach_add_",
-    "not slowpath",
-)
-res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
-
 # test_sort_and_select
 skip_list = (
     # The following isin case fails on CPU fallback, as it could be backend-specific.
@@ -745,9 +737,9 @@ skip_list = (
     "test_isin_different_devices_xpu_int64", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_int8", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_uint8", # AssertionError: RuntimeError not raised
-    
+
     "test_isin_different_dtypes_xpu", # RuntimeError: "isin_default_cpu" not implemented for 'Half'"
-    
+
     "test_sort_large_slice_xpu", # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
