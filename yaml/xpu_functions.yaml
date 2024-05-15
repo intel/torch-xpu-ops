@@ -250,8 +250,6 @@ supported:
   - triu.out
   - triu
   - triu_
-
-  - clamp_max.out
   - im2col
   - im2col.out
   - col2im
