@@ -1,6 +1,7 @@
 # Owner(s): ["module: intel"]
 
 import sys
+import pytest
 import unittest
 
 import torch
@@ -149,10 +150,12 @@ class TestCommon(TestCase):
     #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
     @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
-        self.proxy = Namespace.TestCommonProxy()
-
-        test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
-        test_common_test_fn(self.proxy, device, dtype, op)
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCommonProxy()
+            test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+            test_common_test_fn(self.proxy, device, dtype, op)
+        else:
+            pytest.skip("dtype not supported")
 
     @onlyXPU
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.bool,))
