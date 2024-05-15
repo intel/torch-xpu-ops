@@ -212,10 +212,6 @@ static inline void atomicAdd(
   target.fetch_add(val);
 }
 
-static inline void atomicAdd(const sycl_global_ptr<bool>& address, bool val) {
-  *address = address || val;
-}
-
 static inline void atomicAdd(
     const sycl_local_ptr<uint32_t>& address,
     uint32_t val) {
@@ -231,6 +227,7 @@ static inline void atomicAdd(
 }
 
 // Atomic add implementation.
+SYCL_ATOMIC_INTEGER(Add, a || b, bool)
 SYCL_ATOMIC_INTEGER(Add, std::plus<uint8_t>()(a, b), uint8_t)
 SYCL_ATOMIC_INTEGER(Add, std::plus<int8_t>()(a, b), int8_t)
 SYCL_ATOMIC_INTEGER(Add, std::plus<int16_t>()(a, b), int16_t)
