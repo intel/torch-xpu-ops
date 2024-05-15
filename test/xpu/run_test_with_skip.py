@@ -803,5 +803,14 @@ skip_list = (
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
+
+# test_autocast
+skip_list = (
+    # Frontend API support
+    # https://github.com/intel/torch-xpu-ops/issues/223
+    "test_cache_disabled",
+)
+res += launch_test("test_autocast_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

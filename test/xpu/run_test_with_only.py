@@ -36,8 +36,5 @@ execute_list = (
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
-# test_autocast
-res += launch_test("test_autocast_xpu.py")
-
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
