@@ -109,7 +109,7 @@ struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_scan_ = sycl_local_acc_t<T>(N_, cgh);
+    local_scan_ = sycl_local_acc_t<T>(wgroup_size_, cgh);
   }
 
   KSScanWithCarrierKernelFunctor(
@@ -154,6 +154,7 @@ struct ScanAccumulateKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_carry_ = sycl_local_acc_t<T>(1, cgh);
     return;
   }
 
