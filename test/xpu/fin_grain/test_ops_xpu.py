@@ -122,6 +122,7 @@ _xpu_computation_op_list = [
     "tril",
     "triu",
     "cat",
+    "nn.functional.unfold",
 ]
 
 _xpu_computation_ops = [
