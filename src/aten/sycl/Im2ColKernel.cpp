@@ -2,7 +2,6 @@
 #include <ATen/Dispatch.h>
 
 #include <ATen/native/im2col_shape_check.h>
-// #include <aten/Im2ColShapeCheck.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
