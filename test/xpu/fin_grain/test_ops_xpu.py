@@ -155,7 +155,7 @@ class TestCommon(TestCase):
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
         else:
-            pytest.skip()
+            pytest.skip(f"{op.name} has not supported {dtype} yet for {device}")
 
     @onlyXPU
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.bool,))
