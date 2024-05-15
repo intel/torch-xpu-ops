@@ -213,7 +213,7 @@ static inline void atomicAdd(
 }
 
 static inline void atomicAdd(const sycl_global_ptr<bool>& address, bool val) {
-  *address = address && val;
+  *address = address || val;
 }
 
 static inline void atomicAdd(
