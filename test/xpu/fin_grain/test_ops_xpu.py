@@ -120,6 +120,7 @@ _xpu_computation_op_list = [
     "flip",
     "tril",
     "triu",
+    "cat",
     "log_softmax",
     "softmax",
 ]
