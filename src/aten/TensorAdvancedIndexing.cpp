@@ -246,7 +246,11 @@ void index_func_meta_impl(
   // set_output_raw_strided
   auto options = self.options();
   auto sizes = self.sizes();
-  at::xpu::resize_out(result, sizes, {}, options);
+  if (is_defined) {
+    at::xpu::resize_out(result, sizes, {}, options);
+  } else {
+    result = at::xpu::create_out(sizes, {}, options);
+  }
   if (is_defined) {
     at::assert_no_internal_overlap(result);
     at::assert_no_overlap(result, index);
@@ -283,6 +287,25 @@ Tensor& XPUNativeFunctions::index_add_out(
   index_func_meta_impl(out, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, out);
   return out;
+}
+
+Tensor& XPUNativeFunctions::index_add_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    const Scalar& alpha) {
+  return index_add_out(self, dim, index, source, alpha, self);
+}
+
+Tensor XPUNativeFunctions::index_add(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    const Scalar& alpha) {
+  Tensor out;
+  return index_add_out(self, dim, index, source, alpha, out);
 }
 
 void check_indices_on_cpu_or_selfdevice(

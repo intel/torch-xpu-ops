@@ -97,6 +97,8 @@ supported:
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_add_
+  - index_add
   - index_select
   - index_select.out
   - gcd
@@ -226,9 +228,6 @@ supported:
   - _softmax
   - _softmax_backward_data.out
   - _softmax_backward_data
-  - tril.out
-  - tril
-  - tril_
   - _index_put_impl_
   - nonzero
   - nll_loss_forward.output
@@ -249,3 +248,9 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - tril.out
+  - tril
+  - tril_
+  - triu.out
+  - triu
+  - triu_
