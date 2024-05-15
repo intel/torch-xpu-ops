@@ -9,7 +9,6 @@ skip_list = (
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
     "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_index_add_xpu_bool",
     "test_compare_cpu_index_put_xpu_bool",
     "test_compare_cpu_log_xpu_complex64",
     "test_compare_cpu_mul_xpu_complex64",
