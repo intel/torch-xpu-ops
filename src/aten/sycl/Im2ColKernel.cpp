@@ -133,7 +133,7 @@ static void im2col_kernel(
   sycl_kernel_submit(::sycl::range<1>(total_threads), sycl_queue, kfn);
 }
 
-void im2col_out_template(
+void im2col_kernel(
     Tensor& output,
     const Tensor& input_,
     IntArrayRef kernel_size,

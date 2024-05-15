@@ -21,7 +21,7 @@ Tensor& XPUNativeFunctions::im2col_out(
       common_device, out, "xpu::im2col_out", "out");
   c10::impl::check_and_update_common_device(
       common_device, self, "xpu::im2col_out", "self");
-  at::native::xpu::im2col_out_template(
+  at::native::xpu::im2col_kernel(
       out, self, kernel_size, dilation, padding, stride);
   return out;
 }
@@ -36,7 +36,7 @@ Tensor XPUNativeFunctions::im2col(
   c10::impl::check_and_update_common_device(
       common_device, self, "xpu::im2col", "self");
   Tensor output = at::empty_like(self);
-  at::native::xpu::im2col_out_template(
+  at::native::xpu::im2col_kernel(
       output, self, kernel_size, dilation, padding, stride);
   return output;
 }

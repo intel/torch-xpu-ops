@@ -1,14 +1,10 @@
 #pragma once
 
 #include <ATen/ATen.h>
-#include <ATen/Config.h>
-#include <ATen/NativeFunctions.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
-void col2im_out_template(
+void col2im_kernel(
     Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
@@ -17,6 +13,4 @@ void col2im_out_template(
     IntArrayRef padding,
     IntArrayRef stride);
 
-}
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
