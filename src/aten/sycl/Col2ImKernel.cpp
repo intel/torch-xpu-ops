@@ -214,7 +214,7 @@ void col2im_out_template(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
       input.scalar_type(),
-      "col2im_out_dpcpp",
+      "col2im_xpu",
       [&] {
         Tensor input_n = Tensor();
         Tensor output_n = Tensor();

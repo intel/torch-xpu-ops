@@ -210,7 +210,7 @@ void im2col_out_template(
   output.zero_();
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "im2col_out_dpcpp", [&] {
+      kHalf, kBFloat16, input.scalar_type(), "im2col_xpu", [&] {
         Tensor input_n;
         Tensor output_n;
 

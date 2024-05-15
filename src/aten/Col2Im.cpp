@@ -16,6 +16,9 @@ Tensor& XPUNativeFunctions::col2im_out(
     IntArrayRef padding,
     IntArrayRef stride,
     Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  c10::impl::check_and_update_common_device(common_device, out, "xpu::col2im_out", "out");
+  c10::impl::check_and_update_common_device(common_device, self, "xpu::col2im_out", "self");
   at::native::xpu::col2im_out_template(
       out, self, output_size, kernel_size, dilation, padding, stride);
   return out;
@@ -28,8 +31,9 @@ Tensor XPUNativeFunctions::col2im(
     IntArrayRef dilation,
     IntArrayRef padding,
     IntArrayRef stride) {
+  std::optional<Device> common_device = std::nullopt;
+  c10::impl::check_and_update_common_device(common_device, self, "xpu::col2im", "self");
   Tensor output = at::empty_like(self);
-
   at::native::xpu::col2im_out_template(
       output, self, output_size, kernel_size, dilation, padding, stride);
   return output;
