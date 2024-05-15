@@ -13,40 +13,24 @@ on:
         description: Specify triton commit, use pytorch pined commit by default
       suite:
         required: true
-        type: choice
+        type: string
         default: 'huggingface'
-        options:
-          - huggingface
-          - timm_models
-          - torchbench
-        description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
+        description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench
       dt:
         required: true
-        type: choice
+        type: string
         default: 'float32'
-        options:
-          - float32
-          - bfloat16
-          - float16
-          - amp_bf16
-          - amp_fp16
-        description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
+        description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16
       mode:
         required: true
-        type: choice
+        type: string
         default: 'inference'
-        options:
-          - inference
-          - training
-        description: inference / training test
+        description: inference,training
       scenario:
         required: true
-        type: choice
+        type: string
         default: 'accuracy'
-        options:
-          - accuracy
-          - performance
-        description: accuracy / performance test
+        description: accuracy,performance
   
 
 permissions: read-all

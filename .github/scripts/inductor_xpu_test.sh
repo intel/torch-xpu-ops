@@ -37,9 +37,9 @@ if [[ $MODE == "training" ]]; then
 fi
 
 Real_DT=$DT
-if [[ $DT == amp_bf16 ]]; then
+if [[ "$DT" == "amp_bf16" ]]; then
     Real_DT=amp
-elif [[ $DT == "amp_fp16" ]]; then
+elif [[ "$DT" == "amp_fp16" ]]; then
     Real_DT=amp
     export INDUCTOR_AMP_DT=float16
 fi
