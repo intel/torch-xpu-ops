@@ -122,6 +122,7 @@ _xpu_computation_op_list = [
     "tril",
     "triu",
     "cat",
+    "nn.functional.embedding",
 ]
 
 _xpu_computation_ops = [
