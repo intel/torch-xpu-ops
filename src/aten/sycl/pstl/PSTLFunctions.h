@@ -5,6 +5,7 @@
 
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/MemoryAccessUtils.h>
+#include <aten/sycl/SortingKernels.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
@@ -1416,15 +1417,8 @@ void sort(
     const int64_t sort_sz,
     bool descending) {
   RECORD_FUNCTION("pstl::sort", {});
-
-  // TODO: Support radix sort for fast path.
-  if (descending) {
-    merge_sort<KeyType, ValueType>(
-        out_key, out_val, sort_sz, GTFunctor<KeyType>());
-  } else {
-    merge_sort<KeyType, ValueType>(
-        out_key, out_val, sort_sz, LSFunctor<KeyType>());
-  }
+  sort_pairs<KeyType, ValueType>(
+      in_key, out_key, nullptr, out_val, sort_sz, descending);
 }
 
 } // namespace at::native::xpu::pstl
