@@ -125,6 +125,7 @@ _xpu_computation_op_list = [
     "scatter",
     "gather",
     "max_pool2d_with_indices_backward",
+    "nn.functional.embedding",
 ]
 
 _xpu_computation_ops = [

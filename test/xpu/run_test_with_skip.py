@@ -766,6 +766,58 @@ skip_list = (
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
 
+nn_test_embedding_skip_list = (
+    # Skip list of base line
+    # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
+    "test_embedding_backward_xpu_float64",
+    "test_embedding_bag_1D_padding_idx_xpu_float32",
+    "test_embedding_bag_1D_padding_idx_xpu_float64",
+    "test_embedding_bag_2D_padding_idx_xpu_float32",
+    "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int64",
+    "test_embedding_bag_bfloat16_xpu_int64_int32",
+    "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_float64",
+    "test_embedding_bag_device_xpu_int64_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int32_float16",
+    "test_embedding_bag_device_xpu_int64_int32_float32",
+    "test_embedding_bag_device_xpu_int64_int32_float64",
+    "test_embedding_bag_device_xpu_int64_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int64_float16",
+    "test_embedding_bag_device_xpu_int64_int64_float32",
+    "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int64",
+    "test_embedding_bag_half_xpu_int64_int32",
+    "test_embedding_bag_half_xpu_int64_int64",
+
+    # CPU fallback error: RuntimeError: expected scalar type Long but found Int
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float32",
+    "test_embedding_bag_bfloat16_xpu_int32_int32",
+    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int32_float16",
+    "test_embedding_bag_device_xpu_int32_int32_float32",
+    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int64_float16",
+    "test_embedding_bag_device_xpu_int32_int64_float32",
+    "test_embedding_bag_half_xpu_int32_int32",
+
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
+)
+res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
+
 # test_transformers
 skip_list = (
     # AssertionError: False is not true
