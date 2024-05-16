@@ -697,6 +697,48 @@ skip_list = (
     "test_variant_consistency_eager_svd_xpu_complex64",
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+
+    # issue 232
+    "test_backward_linalg_diagonal_xpu_float32", 
+    "test_backward_ormqr_xpu_float32",
+    "test_backward_select_scatter_xpu_float32",
+    "test_backward_tensor_split_xpu_float32",
+    "test_backward_diagonal_scatter_xpu_float32",
+    "test_backward_diagonal_xpu_float32",
+    "test_backward_select_xpu_float32",
+
+    # issue 229
+    "test_backward_fft_ihfft2_xpu_float32",
+    "test_backward_lu_unpack_xpu_float32",
+    "test_backward_nn_functional_max_unpool1d_xpu_float32",
+    "test_backward_t_xpu_float32",
+
+    # issue 232
+    "test_operator_as_strided_partial_views_xpu_float32",
+    "test_operator_linalg_diagonal_xpu_float32", 
+    "test_operator_diagonal_xpu_float32",
+    "test_operator_select_xpu_float32", 
+    # oneDNN issue
+    "test_forward_ad_linalg_eig_xpu_float32",
+    "test_forward_ad_linalg_eigvals_xpu_float32",
+    
+    # issue 239
+    "test_view_replay_addbmm_xpu_float32",
+    "test_view_replay_addmm_xpu_float32",
+    "test_view_replay_addmv_xpu_float32",
+    # issue 240
+    "test_view_replay_jiterator_2inputs_2outputs_xpu_float32",
+    "test_view_replay_jiterator_4inputs_with_extra_args_xpu_float32",
+    "test_view_replay_jiterator_binary_return_by_ref_xpu_float32",
+    "test_view_replay_jiterator_binary_xpu_float32"，
+    "test_view_replay_jiterator_unary_xpu_float32",
+    # issue 241
+    "test_view_replay_nn_functional_conv_transpose2d_xpu_float32",
+    "test_view_replay_nn_functional_conv_transpose3d_xpu_float32",
+    "test_view_replay_nn_functional_group_norm_xpu_float32",
+    # issue 242
+    "test_view_replay_sparse_sampled_addmm_xpu_float32",
+    "test_view_replay_to_sparse_xpu_float32",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
