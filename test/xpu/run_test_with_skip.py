@@ -843,7 +843,7 @@ skip_list = (
     "test_checkpointing_non_reentrant_autocast_cpu",
     "test_per_dispatch_key_input_saving_xpu",
 )
-res += launch_test("test_autograd_xpu.py", skip_list)
+res += launch_test("test_autograd_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
