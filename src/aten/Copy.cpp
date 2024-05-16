@@ -273,7 +273,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
       }
     } else {
       auto e = q.memcpy(dst, src, nbytes);
-      if (at::detail::getXPUHooks().isPinnedPtr(src)) {
+      if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
         at::xpu::CachingHostAllocator_recordEvent(
             const_cast<void*>(dst),
             iter.tensor(0).storage().data_ptr().get_context(),
