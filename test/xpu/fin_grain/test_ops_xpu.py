@@ -122,6 +122,8 @@ _xpu_computation_op_list = [
     "tril",
     "triu",
     "cat",
+    "scatter",
+    "gather",
     "nn.functional.embedding",
 ]
 
