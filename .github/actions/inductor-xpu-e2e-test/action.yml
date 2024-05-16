@@ -80,6 +80,7 @@ runs:
         cd ../pytorch
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
         rm -rf inductor_log
+        set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
@@ -88,14 +89,14 @@ runs:
             do
               for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
               do
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 2 static 8 2 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 3 static 8 3 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 4 static 8 4 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 5 static 8 5 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
-                bash -xe inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 2 static 8 2 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 3 static 8 3 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 4 static 8 4 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 5 static 8 5 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
                 wait
                 LOG_DIR="inductor_log/${suite}/${dt}"
                 LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log

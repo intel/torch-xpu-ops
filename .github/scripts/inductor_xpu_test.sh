@@ -56,4 +56,4 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
 fi
 
 ulimit -n 1048576
-ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=7200 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
+ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n10 --no-skip --dashboard ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=7200 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
