@@ -11,11 +11,12 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_ops import TestCommon
     from test_ops import TestCompositeCompliance
-
+    from test_ops import TestMathBits
 
 
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
 instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu")
+instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":
