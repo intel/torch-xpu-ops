@@ -224,6 +224,7 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - embedding_dense_backward
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out

@@ -126,6 +126,7 @@ _xpu_computation_op_list = [
     "softmax",
     "scatter",
     "gather",
+    "nn.functional.embedding",
 ]
 
 _xpu_computation_ops = [
