@@ -2,13 +2,11 @@
 
 #include <ATen/ATen.h>
 
-#include <aten/sycl/DilatedMaxPool2d.h>
-
 namespace at {
 namespace native {
 namespace xpu {
 
-Tensor& max_pool2d_with_indices_backward_out_template(
+Tensor& max_pool2d_with_indices_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,

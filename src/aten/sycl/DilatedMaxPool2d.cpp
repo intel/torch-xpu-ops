@@ -310,7 +310,7 @@ void max_pool2d_backward_out_frame(
   }
 }
 
-Tensor& max_pool2d_with_indices_backward_out_template(
+Tensor& max_pool2d_with_indices_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
@@ -320,44 +320,29 @@ Tensor& max_pool2d_with_indices_backward_out_template(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode) {
-  TORCH_CHECK(
-      kernel_size.size() == 1 || kernel_size.size() == 2,
-      "max_pool2d: kernel_size must either be a single int, or a tuple "
-      "of two ints")
+  NoNamesGuard guard;
+  TensorArg gradInput_arg{gradInput, "gradInput", 1};
+  TensorArg gradOutput_arg{gradOutput, "gradOutput", 2};
+  TensorArg input_arg{input, "input", 3};
+  TensorArg indices_arg{indices, "indices", 4};
+  checkAllSameGPU(
+      __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
+
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
       ? kH
       : safe_downcast<int, int64_t>(kernel_size[1]);
-
-  TORCH_CHECK(
-      stride.size() == 0 || stride.size() == 1 || stride.size() == 2,
-      "max_pool2d: stride must either be omitted, a single int, or a "
-      "tuple of two ints")
   const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
   const int dW = stride.empty() ? kW
       : stride.size() == 1      ? dH
                                 : safe_downcast<int, int64_t>(stride[1]);
-
-  TORCH_CHECK(
-      padding.size() == 1 || padding.size() == 2,
-      "max_pool2d: padding must be either be a single int, or a tuple "
-      "of two ints");
   const int padH = safe_downcast<int, int64_t>(padding[0]);
   const int padW =
       padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
-
-  TORCH_CHECK(
-      dilation.size() == 1 || dilation.size() == 2,
-      "max_pool2d: dilation must be either a single int, or a tuple of "
-      "two ints");
   const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
   const int dilationW = dilation.size() == 1
       ? dilationH
       : safe_downcast<int, int64_t>(dilation[1]);
-
-  TORCH_CHECK(
-      (input.ndimension() == 3 || input.ndimension() == 4),
-      "non-empty 3D or 4D (batch mode) tensor expected for input");
 
   /* sizes */
   const int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;
@@ -365,28 +350,9 @@ Tensor& max_pool2d_with_indices_backward_out_template(
   const auto inputHeight = input.size(-2);
   const auto inputWidth = input.size(-1);
 
-  const int64_t dims = 2;
-  auto kernel_size_vec =
-      expand_param_if_needed(kernel_size, "kernel_size", dims);
-  std::vector<int64_t> empty_stride_vec = {dH, dW};
-  auto stride_vec = stride.empty()
-      ? empty_stride_vec
-      : expand_param_if_needed(stride, "stride", dims);
-  auto padding_vec = expand_param_if_needed(padding, "padding", dims);
-
-  auto padding_vec_l = padding_vec;
-  auto padding_vec_r = padding_vec;
-  auto dilation_vec = expand_param_if_needed(dilation, "dilation", dims);
-
-  std::vector<int64_t> output_sizes;
-  int64_t outputHeight, outputWidth;
-
-  // Unsqueeze 3D input(C, H, W) -> 4D input(1, C, H, W)
-  auto input_4d = (input.ndimension() == 3) ? (input.unsqueeze(0)) : (input);
-
-  outputHeight = pooling_output_shape<int64_t>(
+  int64_t outputHeight = pooling_output_shape<int64_t>(
       inputHeight, kH, padH, dH, dilationH, ceil_mode);
-  outputWidth = pooling_output_shape<int64_t>(
+  int64_t outputWidth = pooling_output_shape<int64_t>(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
 
   auto memory_format = input.suggest_memory_format();
