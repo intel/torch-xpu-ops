@@ -3,8 +3,10 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
+#include <ATen/xpu/detail/XPUHooks.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
 
@@ -225,10 +227,13 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
   // Copy between CPU and GPU
   c10::xpu::OptionalXPUGuard device_guard;
+  enum { _H2D_, _D2H_ } copy_kind;
   if (dst_device.type() == c10::DeviceType::XPU && src_device.is_cpu()) {
     device_guard.set_device(dst_device);
+    copy_kind = _H2D_;
   } else if (dst_device.is_cpu() && src_device.type() == c10::DeviceType::XPU) {
     device_guard.set_device(src_device);
+    copy_kind = _D2H_;
   } else {
     TORCH_INTERNAL_ASSERT(false, "unsupported devices in GPU copy_()");
   }
@@ -239,11 +244,42 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
   auto q = getCurrentSYCLQueue();
   if (non_blocking) {
-    // WA: Move back to asynchronization copy when HostCachingAlloctor supported
-    auto e = q.memcpy(dst, src, nbytes);
-    e.wait();
-    // TODO: If host tensor is pinned, we need record event in host caching
-    // allocator.
+    if (copy_kind == _H2D_) {
+      if (at::detail::getXPUHooks().isPinnedPtr(src)) {
+        auto e = q.memcpy(dst, src, nbytes);
+        at::xpu::CachingHostAllocator_recordEvent(
+            const_cast<void*>(src),
+            iter.tensor(1).storage().data_ptr().get_context(),
+            at::xpu::getCurrentXPUStream());
+      } else {
+        // Using stage memory for async copy to avoid incorrect
+        // free of src host memory before async H2D copy. E.g. memory allocated
+        // by CPU tensor factory won't be cached in CPU allocator. When host
+        // memory is freed with CPU tensor dtor at the end of train main loop,
+        // but the corresponding H2D copy might not have been executed yet.
+        auto src_host_alloc_dptr = at::xpu::HostAlloc(nbytes);
+        void* src_host_alloc = src_host_alloc_dptr.get();
+        if (!src_host_alloc) {
+          throw std::runtime_error(
+              "Fail to allocate host memory from XPU HostAllocator");
+        }
+
+        std::memcpy(src_host_alloc, src, nbytes);
+        auto e = q.memcpy(dst, src_host_alloc, nbytes);
+        at::xpu::CachingHostAllocator_recordEvent(
+            const_cast<void*>(src_host_alloc),
+            src_host_alloc_dptr.get_context(),
+            at::xpu::getCurrentXPUStream());
+      }
+    } else {
+      auto e = q.memcpy(dst, src, nbytes);
+      if (at::detail::getXPUHooks().isPinnedPtr(src)) {
+        at::xpu::CachingHostAllocator_recordEvent(
+            const_cast<void*>(dst),
+            iter.tensor(0).storage().data_ptr().get_context(),
+            at::xpu::getCurrentXPUStream());
+      }
+    }
   } else {
     auto e = q.memcpy(dst, src, nbytes);
     e.wait();
