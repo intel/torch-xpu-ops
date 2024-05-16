@@ -246,7 +246,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   if (non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
-        auto e = q.memcpy(dst, src, nbytes);
+        q.memcpy(dst, src, nbytes);
         at::xpu::CachingHostAllocator_recordEvent(
             const_cast<void*>(src),
             iter.tensor(1).storage().data_ptr().get_context(),
@@ -265,14 +265,14 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         }
 
         std::memcpy(stage_mem, src, nbytes);
-        auto e = q.memcpy(dst, stage_mem, nbytes);
+        q.memcpy(dst, stage_mem, nbytes);
         at::xpu::CachingHostAllocator_recordEvent(
             const_cast<void*>(stage_mem),
             stage_mem_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
       }
     } else {
-      auto e = q.memcpy(dst, src, nbytes);
+      q.memcpy(dst, src, nbytes);
       if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
         at::xpu::CachingHostAllocator_recordEvent(
             const_cast<void*>(dst),
