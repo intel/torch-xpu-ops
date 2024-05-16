@@ -124,6 +124,7 @@ _xpu_computation_op_list = [
     "cat",
     "scatter",
     "gather",
+    "nn.functional.embedding",
 ]
 
 _xpu_computation_ops = [
