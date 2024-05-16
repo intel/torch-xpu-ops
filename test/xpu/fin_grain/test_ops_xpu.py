@@ -124,6 +124,8 @@ _xpu_computation_op_list = [
     "cat",
     "log_softmax",
     "softmax",
+    "scatter",
+    "gather",
 ]
 
 _xpu_computation_ops = [
