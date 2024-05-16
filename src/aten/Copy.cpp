@@ -257,18 +257,18 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         // by CPU tensor factory won't be cached in CPU allocator. When host
         // memory is freed with CPU tensor dtor at the end of train main loop,
         // but the corresponding H2D copy might not have been executed yet.
-        auto src_host_alloc_dptr = at::xpu::HostAlloc(nbytes);
-        void* src_host_alloc = src_host_alloc_dptr.get();
-        if (!src_host_alloc) {
+        auto stage_mem_dptr = at::xpu::HostAlloc(nbytes);
+        void* stage_mem = stage_mem_dptr.get();
+        if (!stage_mem) {
           throw std::runtime_error(
               "Fail to allocate host memory from XPU HostAllocator");
         }
 
-        std::memcpy(src_host_alloc, src, nbytes);
-        auto e = q.memcpy(dst, src_host_alloc, nbytes);
+        std::memcpy(stage_mem, src, nbytes);
+        auto e = q.memcpy(dst, stage_mem, nbytes);
         at::xpu::CachingHostAllocator_recordEvent(
-            const_cast<void*>(src_host_alloc),
-            src_host_alloc_dptr.get_context(),
+            const_cast<void*>(stage_mem),
+            stage_mem_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
       }
     } else {
