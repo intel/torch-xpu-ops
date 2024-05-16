@@ -1,7 +1,6 @@
 import os
 import sys
 
-
 def launch_test(test_case, skip_list=None, exe_list=None):
     if skip_list != None:
         skip_options = " -k 'not " + skip_list[0]
@@ -25,7 +24,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
         return os.system(test_command)
 
-res= 0
+res = 0
 
 # test_ops
 skip_list = (
@@ -397,6 +396,12 @@ skip_list = (
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
     "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32", # CUDA xfail.
     "test_dtypes_native_dropout_backward_xpu", # Test architecture issue. Cannot get correct claimed supported data type for "masked_scale".
+    "test_non_standard_bool_values_scatter_reduce_amax_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_amin_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_prod_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amax_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amin_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_prod_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
     "test_non_standard_bool_values_argsort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
     "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
@@ -726,9 +731,6 @@ skip_list = (
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
-# test_autograd_fallback
-res += launch_test("test_autograd_fallback.py")
-
 # test_reductions
 skip_list = (
     "test_accreal_type_xpu",  # Skip CPU device case
@@ -902,13 +904,22 @@ skip_list = (
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
-# test_foreach
-# Too slow to run all case on CPU. Add white list.
-execute_list = (
-    "_foreach_add_",
-    "not slowpath",
+# test_scatter_gather_ops
+skip_list = (
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_scatter__reductions_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_amax_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_amin_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_mean_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_mean_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_prod_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_prod_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_prod_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
 )
-res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
+res += launch_test("test_scatter_gather_ops_xpu.py", skip_list)
+
+res += launch_test("test_autograd_fallback.py")
 
 # test_sort_and_select
 skip_list = (
@@ -920,12 +931,64 @@ skip_list = (
     "test_isin_different_devices_xpu_int64", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_int8", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_uint8", # AssertionError: RuntimeError not raised
-    
+
     "test_isin_different_dtypes_xpu", # RuntimeError: "isin_default_cpu" not implemented for 'Half'"
-    
+
     "test_sort_large_slice_xpu", # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
+
+nn_test_embedding_skip_list = (
+    # Skip list of base line
+    # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
+    "test_embedding_backward_xpu_float64",
+    "test_embedding_bag_1D_padding_idx_xpu_float32",
+    "test_embedding_bag_1D_padding_idx_xpu_float64",
+    "test_embedding_bag_2D_padding_idx_xpu_float32",
+    "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int64",
+    "test_embedding_bag_bfloat16_xpu_int64_int32",
+    "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_float64",
+    "test_embedding_bag_device_xpu_int64_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int32_float16",
+    "test_embedding_bag_device_xpu_int64_int32_float32",
+    "test_embedding_bag_device_xpu_int64_int32_float64",
+    "test_embedding_bag_device_xpu_int64_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int64_float16",
+    "test_embedding_bag_device_xpu_int64_int64_float32",
+    "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int64",
+    "test_embedding_bag_half_xpu_int64_int32",
+    "test_embedding_bag_half_xpu_int64_int64",
+
+    # CPU fallback error: RuntimeError: expected scalar type Long but found Int
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float32",
+    "test_embedding_bag_bfloat16_xpu_int32_int32",
+    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int32_float16",
+    "test_embedding_bag_device_xpu_int32_int32_float32",
+    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int64_float16",
+    "test_embedding_bag_device_xpu_int32_int64_float32",
+    "test_embedding_bag_half_xpu_int32_int32",
+
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
+)
+res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
 # test_transformers
 skip_list = (
