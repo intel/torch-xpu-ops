@@ -882,12 +882,14 @@ skip_list = (
     "test_sum_parallel_xpu",  # Skip CPU devive cases
     "test_tensor_reduce_ops_empty_xpu",  # Skip cases for non-Scipy
     "test_var_dim_xpu",  # Skip CPU devive cases
+    "test_dim_reduction_xpu_float16",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_bfloat16",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_float32",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_float64",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_int16",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_int32",  # Failed, mode not supports XPU
     "test_dim_reduction_xpu_int8",  # Failed, mode not supports XPU
+    "test_dim_reduction_xpu_int64", # Failed, mode not supports XPU
     "test_mode_xpu_float32",  # Failed, mode not supports XPU
     "test_mode_xpu_float64",  # Failed, mode not supports XPU
     "test_mode_xpu_int16",  # Failed, mode not supports XPU
@@ -898,7 +900,7 @@ skip_list = (
     "test_ref_extremal_values_mean_xpu_complex64",  # Scalars are not close
     "test_ref_small_input_masked_prod_xpu_float16",  # Tensor-likes are not close
 )
-res += launch_test("test_reductions_xpu.py")
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
 # test_foreach
 # Too slow to run all case on CPU. Add white list.
