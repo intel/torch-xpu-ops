@@ -1,11 +1,23 @@
 #pragma once
 
+#include <ATen/NumericUtils.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/Scalar.h>
-
 #include <sycl/sycl.hpp>
 
 namespace at::native::xpu {
+
+template <typename T>
+static inline T safe_max(T a, T b) {
+  T max = at::_isnan(a) ? a : (at::_isnan(b) ? b : std::max<T>(a, b));
+  return max;
+}
+
+template <typename T>
+static inline T safe_min(T a, T b) {
+  T min = at::_isnan(a) ? a : (at::_isnan(b) ? b : std::min<T>(a, b));
+  return min;
+}
 
 template <typename T>
 using sycl_atomic_ref_rlx_dev_global_t =
@@ -256,27 +268,27 @@ SYCL_ATOMIC_FP(Mul, std::multiplies<at::Half>()(a, b), at::Half)
 SYCL_ATOMIC_FP(Mul, std::multiplies<at::BFloat16>()(a, b), at::BFloat16)
 
 // Atomic maximum implementation.
-SYCL_ATOMIC_INTEGER(Max, std::max<uint8_t>(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Max, std::max<int8_t>(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Max, std::max<int16_t>(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Max, std::max<int32_t>(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Max, std::max<int64_t>(a, b), int64_t)
+SYCL_ATOMIC_INTEGER(Max, safe_max<uint8_t>(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Max, safe_max<int8_t>(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Max, safe_max<int16_t>(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Max, safe_max<int32_t>(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Max, safe_max<int64_t>(a, b), int64_t)
 
-SYCL_ATOMIC_FP(Max, std::max<float>(a, b), float)
-SYCL_ATOMIC_FP(Max, std::max<double>(a, b), double)
-SYCL_ATOMIC_FP(Max, std::max<at::Half>(a, b), at::Half)
-SYCL_ATOMIC_FP(Max, std::max<at::BFloat16>(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Max, safe_max<float>(a, b), float)
+SYCL_ATOMIC_FP(Max, safe_max<double>(a, b), double)
+SYCL_ATOMIC_FP(Max, safe_max<at::Half>(a, b), at::Half)
+SYCL_ATOMIC_FP(Max, safe_max<at::BFloat16>(a, b), at::BFloat16)
 
 // Atomic minimum implementation.
-SYCL_ATOMIC_INTEGER(Min, std::min<uint8_t>(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER(Min, std::min<int8_t>(a, b), int8_t)
-SYCL_ATOMIC_INTEGER(Min, std::min<int16_t>(a, b), int16_t)
-SYCL_ATOMIC_INTEGER(Min, std::min<int32_t>(a, b), int32_t)
-SYCL_ATOMIC_INTEGER(Min, std::min<int64_t>(a, b), int64_t)
+SYCL_ATOMIC_INTEGER(Min, safe_min<uint8_t>(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER(Min, safe_min<int8_t>(a, b), int8_t)
+SYCL_ATOMIC_INTEGER(Min, safe_min<int16_t>(a, b), int16_t)
+SYCL_ATOMIC_INTEGER(Min, safe_min<int32_t>(a, b), int32_t)
+SYCL_ATOMIC_INTEGER(Min, safe_min<int64_t>(a, b), int64_t)
 
-SYCL_ATOMIC_FP(Min, std::min<float>(a, b), float)
-SYCL_ATOMIC_FP(Min, std::min<double>(a, b), double)
-SYCL_ATOMIC_FP(Min, std::min<at::Half>(a, b), at::Half)
-SYCL_ATOMIC_FP(Min, std::min<at::BFloat16>(a, b), at::BFloat16)
+SYCL_ATOMIC_FP(Min, safe_min<float>(a, b), float)
+SYCL_ATOMIC_FP(Min, safe_min<double>(a, b), double)
+SYCL_ATOMIC_FP(Min, safe_min<at::Half>(a, b), at::Half)
+SYCL_ATOMIC_FP(Min, safe_min<at::BFloat16>(a, b), at::BFloat16)
 
 } // namespace at::native::xpu
