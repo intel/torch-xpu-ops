@@ -22,213 +22,127 @@ from torch.testing._internal.common_utils import (
 from torch.utils.checkpoint import checkpoint
 
 
-class TestAutogradMultipleDispatch(TestCase):
-    # def test_autograd_multiple_dispatch_registrations(self, device):
-    #     t = torch.randn(3, 3, device=device, requires_grad=True)
-    #     # using _test_autograd_multiple_dispatch.fullcoverage which has
-    #     # registrations in derivatives.yaml for Default, AutogradCUDA and NestedTensorAutograd
-    #     out = torch._test_autograd_multiple_dispatch(t)
-    #     grad = torch.randn(3, 3, device=device)
-    #     out.backward(grad)
+def autograd_multiple_dispatch_registrations(self, device):
+    t = torch.randn(3, 3, device=device, requires_grad=True)
+    # using _test_autograd_multiple_dispatch.fullcoverage which has
+    # registrations in derivatives.yaml for Default, AutogradCUDA and NestedTensorAutograd
+    out = torch._test_autograd_multiple_dispatch(t)
+    grad = torch.randn(3, 3, device=device)
+    out.backward(grad)
+    if "XPU" not in device:
+        # bogus default gradient registered for Autograd is grad + 1
+        self.assertEqual(t.grad, grad + 1)
+    else:
+        # bogus gradient registered for AutogradCUDA is grad * 2
+        self.assertEqual(t.grad, grad * 2)
+    # test registered AutogradNestedTensor formula
+    a = (
+        torch.arange(6, dtype=torch.float, device=device)
+        .reshape(2, 3)
+        .requires_grad_(True)
+    )
+    b = (
+        torch.arange(8, dtype=torch.float, device=device)
+        .reshape(2, 4)
+        .requires_grad_(True)
+    )
+    nt = torch.nested.as_nested_tensor([a, b], dtype=torch.float, device=device)
+    nt_out = torch._test_autograd_multiple_dispatch(nt)
+    c = torch.randn(2, 3, device=device)
+    d = torch.randn(2, 4, device=device)
+    nt_grad = torch.nested.nested_tensor([c, d], dtype=torch.float, device=device)
+    nt_out.backward(nt_grad)
+    # bogus gradient for AutogradNestedTensor is grad * grad
+    self.assertEqual(a.grad, c * c)
+    self.assertEqual(b.grad, d * d)
 
-    #     if "XPU" not in device:
-    #         # bogus default gradient registered for Autograd is grad + 1
-    #         self.assertEqual(t.grad, grad + 1)
-    #     else:
-    #         # bogus gradient registered for AutogradCUDA is grad * 2
-    #         self.assertEqual(t.grad, grad * 2)
 
-    #     # test registered AutogradNestedTensor formula
-    #     a = (
-    #         torch.arange(6, dtype=torch.float, device=device)
-    #         .reshape(2, 3)
-    #         .requires_grad_(True)
-    #     )
-    #     b = (
-    #         torch.arange(8, dtype=torch.float, device=device)
-    #         .reshape(2, 4)
-    #         .requires_grad_(True)
-    #     )
-    #     nt = torch.nested.as_nested_tensor([a, b], dtype=torch.float, device=device)
-
-    #     nt_out = torch._test_autograd_multiple_dispatch(nt)
-    #     c = torch.randn(2, 3, device=device)
-    #     d = torch.randn(2, 4, device=device)
-    #     nt_grad = torch.nested.nested_tensor([c, d], dtype=torch.float, device=device)
-    #     nt_out.backward(nt_grad)
-
-    #     # bogus gradient for AutogradNestedTensor is grad * grad
-    #     self.assertEqual(a.grad, c * c)
-    #     self.assertEqual(b.grad, d * d)
-
-    # def test_autograd_composite_implicit_and_dispatch_registration(self, device):
-    #     t = torch.randn(3, 3, device=device, requires_grad=True)
-    #     # using _test_autograd_multiple_dispatch.ntonly
-    #     # which has registrations in derivatives.yaml for NestedTensorAutograd and otherwise is CompositeImplicit
-    #     out = torch._test_autograd_multiple_dispatch(t, True)
-    #     grad = torch.randn(3, 3, device=device)
-    #     out.backward(grad)
-
-    #     # t.grad is just out.grad by composite op since _test_autograd_multiple_dispatch is just a clone
-    #     self.assertEqual(t.grad, grad)
-
-    #     # test registered AutogradNestedTensor formula
-    #     a = (
-    #         torch.arange(6, dtype=torch.float, device=device)
-    #         .reshape(2, 3)
-    #         .requires_grad_(True)
-    #     )
-    #     b = (
-    #         torch.arange(8, dtype=torch.float, device=device)
-    #         .reshape(2, 4)
-    #         .requires_grad_(True)
-    #     )
-    #     nt = torch.nested.as_nested_tensor([a, b], dtype=torch.float, device=device)
-
-    #     nt_out = torch._test_autograd_multiple_dispatch(nt, True)
-    #     c = torch.randn(2, 3, device=device)
-    #     d = torch.randn(2, 4, device=device)
-    #     nt_grad = torch.nested.nested_tensor([c, d], dtype=torch.float, device=device)
-    #     nt_out.backward(nt_grad)
-
-    #     # bogus gradient for AutogradNestedTensor is grad * grad + grad
-    #     self.assertEqual(a.grad, c * c + c)
-    #     self.assertEqual(b.grad, d * d + d)
-
-    def test_foward_mode_AD(self, device):
-        # check that forward mode AD is only registered for the Default
-        # dispatch for _test_autograd_multiple_dispatch.fullcoverage and not AutogradCUDA
-
-        primal = torch.randn(3, device=device)
-        tangent = torch.randn(3, device=device)
-
-        with fwAD.dual_level():
-            dual_input = fwAD.make_dual(primal, tangent)
-
-            err_msg = r"Trying to use forward AD with .* that does not support it"
-            hint_msg = "Running forward AD for an OP that does not implement it should raise a NotImplementedError"
-
-            if "XPU" in device:
-                with self.assertRaisesRegex(NotImplementedError, err_msg, msg=hint_msg):
-                    torch._test_autograd_multiple_dispatch(dual_input)
-            else:
-                torch._test_autograd_multiple_dispatch(dual_input)
-
-    def test_view_copy(self, device):
-        # tests that view_copy derivative formulas are also generated per dispatch key
-        # from their respective view ops in derivatives.yaml
-        t = torch.randn(2, 2, device=device, requires_grad=True)
-        t_ref = t.clone().detach().requires_grad_()
-        # _test_autograd_multiple_dispatch_view does a .view(-1) on the input
-        t_view = torch._test_autograd_multiple_dispatch_view(t_ref)
-        t_view_copy = torch._test_autograd_multiple_dispatch_view_copy(t)
-
-        grad = torch.randn(4, device=device)
-        t_view_copy.backward(grad)
-        t_view.backward(grad.clone())
-
-        # forward and backward give the same shape + result
-        self.assertEqual(t_view_copy, t_view)
-        self.assertEqual(t.grad, t_ref.grad)
-        # backward results are per-dispatch-key in derivatives.yaml
+def foward_mode_AD(self, device):
+    # check that forward mode AD is only registered for the Default
+    # dispatch for _test_autograd_multiple_dispatch.fullcoverage and not AutogradCUDA
+    primal = torch.randn(3, device=device)
+    tangent = torch.randn(3, device=device)
+    with fwAD.dual_level():
+        dual_input = fwAD.make_dual(primal, tangent)
+        err_msg = r"Trying to use forward AD with .* that does not support it"
+        hint_msg = "Running forward AD for an OP that does not implement it should raise a NotImplementedError"
         if "XPU" in device:
-            # gradient registered to AutogradCUDA is grad.reshape_as(self) + 1
-            self.assertEqual(t.grad, grad.reshape_as(t) + 1)
+            with self.assertRaisesRegex(NotImplementedError, err_msg, msg=hint_msg):
+                torch._test_autograd_multiple_dispatch(dual_input)
         else:
-            # Default gradient registered is grad.reshape_as(self)
-            self.assertEqual(t.grad, grad.reshape_as(t))
+            torch._test_autograd_multiple_dispatch(dual_input)
 
-    @onlyXPU
-    def test_backward_single_threaded(self, device):
-        threads_eq = None
 
-        class TestFn(Function):
-            @staticmethod
-            def forward(ctx, x, self):
-                ctx.self = self
-                ctx.tid = threading.get_ident()
-                return x.clone()
+def view_copy(self, device):
+    # tests that view_copy derivative formulas are also generated per dispatch key
+    # from their respective view ops in derivatives.yaml
+    t = torch.randn(2, 2, device=device, requires_grad=True)
+    t_ref = t.clone().detach().requires_grad_()
+    # _test_autograd_multiple_dispatch_view does a .view(-1) on the input
+    t_view = torch._test_autograd_multiple_dispatch_view(t_ref)
+    t_view_copy = torch._test_autograd_multiple_dispatch_view_copy(t)
+    grad = torch.randn(4, device=device)
+    t_view_copy.backward(grad)
+    t_view.backward(grad.clone())
+    # forward and backward give the same shape + result
+    self.assertEqual(t_view_copy, t_view)
+    self.assertEqual(t.grad, t_ref.grad)
+    # backward results are per-dispatch-key in derivatives.yaml
+    if "XPU" in device:
+        # gradient registered to AutogradCUDA is grad.reshape_as(self) + 1
+        self.assertEqual(t.grad, grad.reshape_as(t) + 1)
+    else:
+        # Default gradient registered is grad.reshape_as(self)
+        self.assertEqual(t.grad, grad.reshape_as(t))
 
-            @staticmethod
-            def backward(ctx, gO):
-                nonlocal threads_eq
-                threads_eq = ctx.tid == threading.get_ident()
-                return gO, None
 
-        inp = torch.rand(10, device=device, requires_grad=True)
+@onlyXPU
+def backward_single_threaded(self, device):
+    threads_eq = None
 
-        with torch.autograd.set_multithreading_enabled(False):
-            TestFn.apply(inp, None).sum().backward()
-        self.assertTrue(threads_eq)
+    class TestFn(Function):
+        @staticmethod
+        def forward(ctx, x, self):
+            ctx.self = self
+            ctx.tid = threading.get_ident()
+            return x.clone()
 
+        @staticmethod
+        def backward(ctx, gO):
+            nonlocal threads_eq
+            threads_eq = ctx.tid == threading.get_ident()
+            return gO, None
+    inp = torch.rand(10, device=device, requires_grad=True)
+    with torch.autograd.set_multithreading_enabled(False):
         TestFn.apply(inp, None).sum().backward()
-        self.assertFalse(threads_eq)
+    self.assertTrue(threads_eq)
+    TestFn.apply(inp, None).sum().backward()
+    self.assertFalse(threads_eq)
 
-    @onlyXPU
-    def test_backward_tls_stash(self, device):
-        local = threading.local()
-        local.my_obj = {}
-        local.my_obj[10] = 10
-        test_self = self
-        torch._C._stash_obj_in_tls("my_obj", local.my_obj)
 
-        class TestFn(Function):
-            @staticmethod
-            def forward(ctx, x, self):
-                return x.clone()
+@onlyXPU
+def backward_tls_stash(self, device):
+    local = threading.local()
+    local.my_obj = {}
+    local.my_obj[10] = 10
+    test_self = self
+    torch._C._stash_obj_in_tls("my_obj", local.my_obj)
 
-            @staticmethod
-            def backward(ctx, gO):
-                test_self.assertTrue(torch._C._is_key_in_tls("my_obj"))
-                test_self.assertTrue(torch._C._get_obj_in_tls("my_obj")[10] == 10)
-                torch._C._get_obj_in_tls("my_obj")[10] = 5
-                return gO, None
+    class TestFn(Function):
+        @staticmethod
+        def forward(ctx, x, self):
+            return x.clone()
 
-        inp = torch.rand(10, device=device, requires_grad=True)
+        @staticmethod
+        def backward(ctx, gO):
+            test_self.assertTrue(torch._C._is_key_in_tls("my_obj"))
+            test_self.assertTrue(torch._C._get_obj_in_tls("my_obj")[10] == 10)
+            torch._C._get_obj_in_tls("my_obj")[10] = 5
+            return gO, None
+    inp = torch.rand(10, device=device, requires_grad=True)
+    TestFn.apply(inp, None).sum().backward()
+    self.assertEqual(local.my_obj[10], 5)
 
-        TestFn.apply(inp, None).sum().backward()
-        self.assertEqual(local.my_obj[10], 5)
-
-    def test_set_sequence_nr(self):
-        x = torch.randn((10,), dtype=torch.float32, requires_grad=True)
-        y = torch.randn((10,), dtype=torch.float32, requires_grad=True)
-        z = torch.randn((10,), dtype=torch.float32, requires_grad=True)
-
-        a = x + y
-        b = y + z
-        c = a + b
-
-        self.assertIsNotNone(a.grad_fn)
-        self.assertIsNotNone(b.grad_fn)
-        self.assertIsNotNone(c.grad_fn)
-
-        a.grad_fn._set_sequence_nr(100)
-        b.grad_fn._set_sequence_nr(99)
-        c.grad_fn._set_sequence_nr(98)
-
-        self.assertEqual(a.grad_fn._sequence_nr(), 100)
-        self.assertEqual(b.grad_fn._sequence_nr(), 99)
-        self.assertEqual(c.grad_fn._sequence_nr(), 98)
-
-        def log_grad_order(grad: torch.Tensor, name: str, order):
-            order.append(name)
-            return grad
-
-        order = []
-        a.register_hook(partial(log_grad_order, name="a", order=order))
-        b.register_hook(partial(log_grad_order, name="b", order=order))
-        c.register_hook(partial(log_grad_order, name="c", order=order))
-
-        c.sum().backward()
-
-        # Expect to see that even though c has the smallest sequence number, it is still the first node to get run in autograd.
-        # Also check that although a comes first during the forward, after giving it priority with sequence_nr,
-        # its autograd node is run before that of b.
-        self.assertEqual(order, ["c", "a", "b"])
-
-        self.assertEqual(x.grad, torch.ones_like(x))
-        self.assertEqual(y.grad, 2 * torch.ones_like(x))
-        self.assertEqual(z.grad, torch.ones_like(x))
 
 def checkpointing_without_reentrant_dataparallel(self):
     """
@@ -481,6 +395,7 @@ with XPUPatchForImport(False):
         TestAutogradDeviceType,
         TestAllowMutationOnSaved,
         TestAutogradInferenceMode,
+        TestAutogradMultipleDispatch,
         TestMultithreadAutograd,
         TestNestedCheckpoint,
     )
@@ -496,6 +411,11 @@ with XPUPatchForImport(False):
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
+    TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
+    TestAutogradMultipleDispatch.test_foward_mode_AD = foward_mode_AD
+    TestAutogradMultipleDispatch.test_view_copy = view_copy
+    TestAutogradMultipleDispatch.test_backward_single_threaded = backward_single_threaded
+    TestAutogradMultipleDispatch.test_backward_tls_stash = backward_tls_stash
 
 instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu")
 

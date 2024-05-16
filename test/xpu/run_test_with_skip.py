@@ -841,6 +841,7 @@ skip_list = (
     # Skip CPU case
     "test_copy__xpu",
     "test_checkpointing_non_reentrant_autocast_cpu",
+    "test_per_dispatch_key_input_saving_cpu",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
