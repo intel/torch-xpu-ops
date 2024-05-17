@@ -190,10 +190,8 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
         reduction(reduction_) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_output_acc =
-        sycl_local_acc_t<scalar_t>(local_size * sizeof(scalar_t), cgh);
-    local_total_weight_acc =
-        sycl_local_acc_t<scalar_t>(local_size * sizeof(scalar_t), cgh);
+    local_output_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
+    local_total_weight_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
   }
 
  private:
