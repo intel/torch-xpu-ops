@@ -23,7 +23,8 @@ def DO_NOTHING(*args, **kwargs):
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test"
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
@@ -54,7 +55,7 @@ class XPUPatchForImport:
         common_utils.instantiate_parametrized_tests = (
             DO_NOTHING
         )
-        sys.path.append(self.test_package)
+        sys.path.extend(self.test_package)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
