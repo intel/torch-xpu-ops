@@ -1253,5 +1253,17 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+skip_list = (
+    "test_cat_out_fast_path_dim0_dim1_xpu_uint16",
+    "test_cat_out_fast_path_dim0_dim1_xpu_uint32",
+    "test_cat_out_fast_path_dim0_dim1_xpu_uint64",
+    "test_float_to_int_conversion_finite_xpu_int16",
+    "test_float_to_int_conversion_finite_xpu_int8",
+    "test_tensor_ctor_device_inference_xpu",   
+)
+
+res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
+
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
