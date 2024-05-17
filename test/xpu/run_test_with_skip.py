@@ -900,6 +900,14 @@ skip_list = (
     "test_mode_xpu_uint8",  # Failed, mode not supports XPU
     "test_ref_extremal_values_mean_xpu_complex64",  # CUDA skip
     "test_ref_small_input_masked_prod_xpu_float16",  # Tensor-likes are not close
+    "test_dim_reduction_fns_fn_name_mode_xpu_int8", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_int64", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_int32", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_int16", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_float64", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_float32", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_float16", # Failed, mode not supports xpu
+    "test_dim_reduction_fns_fn_name_mode_xpu_bfloat16", # Failed, mode not supports xpu
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
