@@ -885,6 +885,7 @@ skip_list = (
 )
 res += launch_test("test_complex_xpu.py", skip_list)
 
+res += launch_test("test_dropout_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
