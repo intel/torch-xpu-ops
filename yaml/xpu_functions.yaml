@@ -279,6 +279,10 @@ supported:
   - triu.out
   - triu
   - triu_
+  - im2col
+  - im2col.out
+  - col2im
+  - col2im.out
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input

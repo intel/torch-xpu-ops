@@ -32,7 +32,7 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b nightly https://github.com/pytorch/pytorch pytorch
+          git clone -b main https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
@@ -88,7 +88,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 40
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Timm_models BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
