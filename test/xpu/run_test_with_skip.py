@@ -1053,7 +1053,7 @@ skip_list = (
     "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
     "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
 
-    # Lack of meta func in
+    # CUDA xfails
     # Failed: Unexpected success
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
@@ -1207,9 +1207,6 @@ skip_list = (
     "test_module_to_empty_xpu_float64",
     "test_rnn_fused_xpu_float64",
     "test_rnn_retain_variables_xpu_float64",
-
-    # RuntimeError: Native API failed. Native API returns: -5 (PI_ERROR_OUT_OF_RESOURCES) -5 (PI_ERROR_OUT_OF_RESOURCES)
-    "test_adaptiveavg_pool1d_shmem_xpu",
 
     # CPU fallback fails
     # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
