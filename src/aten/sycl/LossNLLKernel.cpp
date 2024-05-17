@@ -5,10 +5,10 @@
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-namespace impl {
+
 using namespace at::xpu;
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateOutputKernelFunctor {
+template <typename scalar_t, typename index_t>
+struct NllLossForwardNoReduceKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
     auto input_ptr = input_data;
     auto target_ptr = target_data;
@@ -29,9 +29,9 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor {
           cur_weight;
     }
   }
-  ClassNLLCriterionUpdateOutputKernelFunctor(
+  NllLossForwardNoReduceKernelFunctor(
       scalar_t* input_data_,
-      int64_t* target_data_,
+      index_t* target_data_,
       scalar_t* weight_data_,
       scalar_t* output_data_,
       bool has_weight_,
@@ -59,7 +59,7 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor {
 
  private:
   scalar_t* input_data;
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* weight_data;
   scalar_t* output_data;
   bool has_weight;
@@ -73,8 +73,8 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor {
   int64_t input_stride_1;
 };
 
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
+template <typename scalar_t, typename index_t>
+struct NllLossForwardReduce1DKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
     auto input_ptr = input_data;
     auto target_ptr = target_data;
@@ -95,9 +95,9 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
       output_ptr[0] /= total_weight_ptr[0];
     }
   }
-  ClassNLLCriterionUpdateOutputKernelFunctor2(
+  NllLossForwardReduce1DKernelFunctor(
       scalar_t* input_data_,
-      int64_t* target_data_,
+      index_t* target_data_,
       scalar_t* weight_data_,
       scalar_t* output_data_,
       scalar_t* total_weight_data_,
@@ -115,7 +115,7 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
 
  private:
   scalar_t* input_data;
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* weight_data;
   scalar_t* output_data;
   scalar_t* total_weight_data;
@@ -124,8 +124,8 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor2 {
   int64_t reduction;
 };
 
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateOutputKernelFunctor3
+template <typename scalar_t, typename index_t>
+struct NllLossForwardReduce2DKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     auto input_ptr = input_data;
@@ -165,9 +165,9 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
       output_ptr[0] /= total_weight_ptr[0];
     }
   }
-  ClassNLLCriterionUpdateOutputKernelFunctor3(
+  NllLossForwardReduce2DKernelFunctor(
       scalar_t* input_data_,
-      int64_t* target_data_,
+      index_t* target_data_,
       scalar_t* weight_data_,
       scalar_t* output_data_,
       scalar_t* total_weight_data_,
@@ -196,7 +196,7 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
 
  private:
   scalar_t* input_data;
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* weight_data;
   scalar_t* output_data;
   scalar_t* total_weight_data;
@@ -210,8 +210,8 @@ struct ClassNLLCriterionUpdateOutputKernelFunctor3
   int64_t reduction;
 };
 
-template <typename scalar_t>
-void ClassNLLCriterion_updateOutput(
+template <typename scalar_t, typename index_t>
+void nll_loss_forward_template(
     const Tensor& input,
     const Tensor& target,
     Tensor& output,
@@ -233,8 +233,7 @@ void ClassNLLCriterion_updateOutput(
     auto weight_cont = weight.defined() ? weight.contiguous() : weight;
 
     auto& queue = getCurrentSYCLQueue();
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int64_t local_size = syclMaxWorkGroupSize(dev_id);
+    int64_t local_size = syclMaxWorkGroupSize();
     bool has_weight = weight.defined()
         ? true
         : false; // sycl kernel can not accept host pointer
@@ -244,12 +243,12 @@ void ClassNLLCriterion_updateOutput(
     auto input_stride_1 = input.stride(1);
 
     auto input_data = input.data_ptr<scalar_t>();
-    auto target_data = target.data_ptr<int64_t>();
+    auto target_data = target.data_ptr<index_t>();
     auto weight_data = has_weight
         ? weight_cont.data_ptr<scalar_t>()
         : input_data; // use the input as the dummy data.
     auto output_data = output.data_ptr<scalar_t>();
-    ClassNLLCriterionUpdateOutputKernelFunctor<scalar_t> kfn(
+    NllLossForwardNoReduceKernelFunctor<scalar_t, index_t> kfn(
         input_data,
         target_data,
         weight_data,
@@ -278,7 +277,7 @@ void ClassNLLCriterion_updateOutput(
   scalar_t* _input_data = input_cont.data_ptr<scalar_t>();
   scalar_t* _weight_data =
       weight.defined() ? weight_cont.data_ptr<scalar_t>() : NULL;
-  int64_t* _target_data = target_cont.data_ptr<int64_t>();
+  index_t* _target_data = target_cont.data_ptr<index_t>();
   scalar_t* _output_data = output.data_ptr<scalar_t>();
   scalar_t* _total_weight_data = total_weight.data_ptr<scalar_t>();
   bool has_weight = _weight_data != NULL ? true : false;
@@ -293,7 +292,7 @@ void ClassNLLCriterion_updateOutput(
     auto target_data = _target_data;
     auto total_weight_data = _total_weight_data;
     auto output_data = _output_data;
-    ClassNLLCriterionUpdateOutputKernelFunctor2<scalar_t> kfn(
+    NllLossForwardReduce1DKernelFunctor<scalar_t, index_t> kfn(
         input_data,
         target_data,
         weight_data,
@@ -307,8 +306,7 @@ void ClassNLLCriterion_updateOutput(
   } else if (input_cont.dim() == 2) {
     int64_t batch_size = input.size(0);
     int n_target = input.size(1);
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int64_t local_size = syclMaxWorkGroupSize(dev_id);
+    int64_t local_size = syclMaxWorkGroupSize();
     auto input_data = _input_data;
     auto weight_data = has_weight
         ? _weight_data
@@ -316,7 +314,7 @@ void ClassNLLCriterion_updateOutput(
     auto target_data = _target_data;
     auto total_weight_data = _total_weight_data;
     auto output_data = _output_data;
-    ClassNLLCriterionUpdateOutputKernelFunctor3<scalar_t> kfn(
+    NllLossForwardReduce2DKernelFunctor<scalar_t, index_t> kfn(
         input_data,
         target_data,
         weight_data,
@@ -334,8 +332,8 @@ void ClassNLLCriterion_updateOutput(
   }
 }
 
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateGradInputKernelFunctor {
+template <typename scalar_t, typename index_t>
+struct NllLossBackwardNoReduceKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     auto target_ptr = target_data;
     auto gradOutput_ptr = gradOutput_data;
@@ -358,8 +356,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor {
           static_cast<scalar_t>(gradOutput_ptr[i * gradOutput_stride_0]);
     }
   }
-  ClassNLLCriterionUpdateGradInputKernelFunctor(
-      int64_t* target_data_,
+  NllLossBackwardNoReduceKernelFunctor(
+      index_t* target_data_,
       scalar_t* gradOutput_data_,
       scalar_t* weights_data_,
       scalar_t* gradInput_data_,
@@ -385,7 +383,7 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor {
         gradOutput_stride_0(gradOutput_stride_0_) {}
 
  private:
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* gradOutput_data;
   scalar_t* weights_data;
   scalar_t* gradInput_data;
@@ -399,8 +397,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor {
   int64_t gradOutput_stride_0;
 };
 
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateGradInputKernelFunctor2 {
+template <typename scalar_t, typename index_t>
+struct NllLossBackwardReduce1DKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
     auto gradOutput_ptr = gradOutput_data;
     auto weights_ptr = has_weights ? weights_data : NULL;
@@ -418,8 +416,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor2 {
       gradInput_ptr[t] = has_weights ? weights_ptr[t] * grad : grad;
     }
   }
-  ClassNLLCriterionUpdateGradInputKernelFunctor2(
-      int64_t* target_data_,
+  NllLossBackwardReduce1DKernelFunctor(
+      index_t* target_data_,
       scalar_t* gradOutput_data_,
       scalar_t* weights_data_,
       scalar_t* gradInput_data_,
@@ -437,7 +435,7 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor2 {
         reduction(reduction_) {}
 
  private:
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* gradOutput_data;
   scalar_t* weights_data;
   scalar_t* gradInput_data;
@@ -447,8 +445,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor2 {
   int64_t reduction;
 };
 
-template <typename scalar_t>
-struct ClassNLLCriterionUpdateGradInputKernelFunctor3 {
+template <typename scalar_t, typename index_t>
+struct NllLossBackwardReduce2DKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
     auto gradOutput_ptr = gradOutput_data;
     auto weights_ptr = has_weights ? weights_data : NULL;
@@ -473,8 +471,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor3 {
       }
     }
   }
-  ClassNLLCriterionUpdateGradInputKernelFunctor3(
-      int64_t* target_data_,
+  NllLossBackwardReduce2DKernelFunctor(
+      index_t* target_data_,
       scalar_t* gradOutput_data_,
       scalar_t* weights_data_,
       scalar_t* gradInput_data_,
@@ -498,7 +496,7 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor3 {
         nframe(nframe_) {}
 
  private:
-  int64_t* target_data;
+  index_t* target_data;
   scalar_t* gradOutput_data;
   scalar_t* weights_data;
   scalar_t* gradInput_data;
@@ -511,8 +509,8 @@ struct ClassNLLCriterionUpdateGradInputKernelFunctor3 {
   int nframe;
 };
 
-template <typename scalar_t>
-void ClassNLLCriterion_updateGradInput(
+template <typename scalar_t, typename index_t>
+static inline void nll_loss_backward_template(
     const Tensor& input,
     const Tensor& target,
     const Tensor& gradOutput,
@@ -534,8 +532,7 @@ void ClassNLLCriterion_updateGradInput(
     auto weight_cont = weight.defined() ? weight.contiguous() : weight;
 
     auto& queue = getCurrentSYCLQueue();
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int64_t local_size = syclMaxWorkGroupSize(dev_id);
+    int64_t local_size = syclMaxWorkGroupSize();
     int64_t global_size =
         ((batch_size + local_size - 1) / local_size) * local_size;
     bool has_weight = weight.defined() ? true : false;
@@ -544,13 +541,13 @@ void ClassNLLCriterion_updateGradInput(
     auto gradInput_stride_1 = gradInput.stride(1);
     auto gradOutput_stride_0 = gradOutput.stride(0);
 
-    auto target_data = target.data_ptr<int64_t>();
+    auto target_data = target.data_ptr<index_t>();
     auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
     auto weight_data = has_weight
         ? weight_cont.data_ptr<scalar_t>()
         : gradOutput_data; // Use gradOutput handler as dummy weight
     auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    ClassNLLCriterionUpdateGradInputKernelFunctor<scalar_t> kfn(
+    NllLossBackwardNoReduceKernelFunctor<scalar_t, index_t> kfn(
         target_data,
         gradOutput_data,
         weight_data,
@@ -585,9 +582,9 @@ void ClassNLLCriterion_updateGradInput(
         ? weight_cont.data_ptr<scalar_t>()
         : gradOutput_data; // Use gradOutput handler as dummy weight
     auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    auto target_data = target_cont.data_ptr<int64_t>();
+    auto target_data = target_cont.data_ptr<index_t>();
     auto total_weight_data = total_weight.data_ptr<scalar_t>();
-    ClassNLLCriterionUpdateGradInputKernelFunctor2<scalar_t> kfn(
+    NllLossBackwardReduce1DKernelFunctor<scalar_t, index_t> kfn(
         target_data,
         gradOutput_data,
         weight_data,
@@ -608,9 +605,9 @@ void ClassNLLCriterion_updateGradInput(
         ? weight_cont.data_ptr<scalar_t>()
         : gradOutput_data; // use the gradOutput handler as dummy weight
     auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    auto target_data = target_cont.data_ptr<int64_t>();
+    auto target_data = target_cont.data_ptr<index_t>();
     auto total_weight_data = total_weight.data_ptr<scalar_t>();
-    ClassNLLCriterionUpdateGradInputKernelFunctor3<scalar_t> kfn(
+    NllLossBackwardReduce2DKernelFunctor<scalar_t, index_t> kfn(
         target_data,
         gradOutput_data,
         weight_data,
@@ -626,9 +623,13 @@ void ClassNLLCriterion_updateGradInput(
     sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
   }
 }
-} // namespace impl
 
-std::tuple<Tensor&, Tensor&> launch_nll_loss_forward_kernel(
+#define AT_DISPATCH_NLL_LOSS_INDEX_TYPES(TYPE, NAME, ...)                     \
+  AT_DISPATCH_SWITCH(TYPE, NAME,                                              \
+  AT_PRIVATE_CASE_TYPE_USING_HINT(at::ScalarType::Byte, index_t, __VA_ARGS__) \
+  AT_PRIVATE_CASE_TYPE_USING_HINT(at::ScalarType::Long, index_t, __VA_ARGS__))
+
+std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
     const Tensor& self,
     const Tensor& target,
     const OptionalTensorRef weight_opt,
@@ -643,20 +644,25 @@ std::tuple<Tensor&, Tensor&> launch_nll_loss_forward_kernel(
       self.scalar_type(),
       "nll_loss_forward_out_kernel",
       [&]() {
-        impl::ClassNLLCriterion_updateOutput<scalar_t>(
-            self,
-            target,
-            output,
-            weight,
-            total_weight,
-            reduction,
-            ignore_index);
+        AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+            target.scalar_type(),
+            "nll_loss_forward_out_kernel_index",
+            [&]() {
+              nll_loss_forward_template<scalar_t, index_t>(
+                  self,
+                  target,
+                  output,
+                  weight,
+                  total_weight,
+                  reduction,
+                  ignore_index);
+        });
       });
 
   return std::tuple<Tensor&, Tensor&>(output, total_weight);
 }
 
-Tensor& launch_nll_loss_backward_kernel(
+Tensor& nll_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -672,16 +678,23 @@ Tensor& launch_nll_loss_backward_kernel(
       self.scalar_type(),
       "nll_loss_backward_out_kernel",
       [&]() {
-        impl::ClassNLLCriterion_updateGradInput<scalar_t>(
-            self,
-            target,
-            grad_output,
-            grad_input,
-            reduction,
-            weight,
-            total_weight,
-            ignore_index);
+        AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+            target.scalar_type(),
+            "nll_loss_backward_out_kernel_index",
+            [&]() {
+              nll_loss_backward_template<scalar_t, index_t>(
+                  self,
+                  target,
+                  grad_output,
+                  grad_input,
+                  reduction,
+                  weight,
+                  total_weight,
+                  ignore_index);
+            });
       });
   return grad_input;
 }
+
+#undef AT_DISPATCH_NLL_LOSS_INDEX_TYPES
 } // namespace at::native::xpu
