@@ -7,7 +7,7 @@
 #include <comm/RegisterUtils.h>
 
 namespace at {
-void meta_func_nll_loss_forward(
+void nll_loss_forward_meta(
     const Tensor& self,
     const Tensor& target,
     const OptionalTensorRef weight_opt,
@@ -85,7 +85,7 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nll_loss_forward_out(
       common_device, target, "xpu::nll_loss_forward_out", "target");
   c10::impl::check_and_update_common_device(
       common_device, weight, "xpu::nll_loss_forward_out", "weight");
-  meta_func_nll_loss_forward(
+  nll_loss_forward_meta(
       self,
       target,
       ((weight.has_value() && (*weight).defined())
@@ -95,7 +95,7 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nll_loss_forward_out(
       ignore_index,
       output,
       total_weight);
-  return native::xpu::launch_nll_loss_forward_kernel(
+  return native::xpu::nll_loss_forward_kernel(
       self,
       target,
       ((weight.has_value() && (*weight).defined())
@@ -119,7 +119,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::nll_loss_forward(
       self, target, weight, reduction, ignore_index, output, total_weight);
 }
 
-void meta_func_nll_loss_backward(
+void nll_loss_backward_meta(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -206,7 +206,7 @@ Tensor& XPUNativeFunctions::nll_loss_backward_out(
       total_weight,
       "xpu::nll_loss_backward_out",
       "total_weight");
-  meta_func_nll_loss_backward(
+  nll_loss_backward_meta(
       grad_output,
       self,
       target,
@@ -217,7 +217,7 @@ Tensor& XPUNativeFunctions::nll_loss_backward_out(
       ignore_index,
       total_weight,
       grad_input);
-  return native::xpu::launch_nll_loss_backward_kernel(
+  return native::xpu::nll_loss_backward_kernel(
       grad_output,
       self,
       target,

@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-std::tuple<Tensor&, Tensor&> launch_nll_loss_forward_kernel(
+std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
     const Tensor& self,
     const Tensor& target,
     const OptionalTensorRef weight_opt,
@@ -12,7 +12,7 @@ std::tuple<Tensor&, Tensor&> launch_nll_loss_forward_kernel(
     Tensor& output,
     Tensor& total_weight);
 
-Tensor& launch_nll_loss_backward_kernel(
+Tensor& nll_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
