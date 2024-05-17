@@ -36,5 +36,8 @@ execute_list = (
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
+# test_comparison_utils
+res += launch_test("test_comparison_utils_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
