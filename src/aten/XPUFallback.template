@@ -318,8 +318,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "log_normal_",
     "log_sigmoid_backward",
     "log_sigmoid_forward",
-    "_log_softmax_backward_data.out",
-    "_log_softmax.out",
     "logspace.out",
     "lu_unpack.out",
     "masked_scatter_",

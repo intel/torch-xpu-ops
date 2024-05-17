@@ -27,7 +27,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
         return os.system(test_command)
 
-res= 0
+res = 0
 
 # test_foreach
 execute_list = (

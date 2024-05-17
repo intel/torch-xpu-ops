@@ -231,10 +231,14 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
-  - nll_loss_forward.output
-  - nll_loss_forward
-  - nll_loss_backward.grad_input
-  - nll_loss_backward
+  - _softmax
+  - _softmax.out
+  - _log_softmax
+  - _log_softmax.out
+  - _softmax_backward_data
+  - _softmax_backward_data.out
+  - _log_softmax_backward_data
+  - _log_softmax_backward_data.out
   - scatter.src
   - scatter.src_out
   - scatter_.src
@@ -275,3 +279,7 @@ supported:
   - triu.out
   - triu
   - triu_
+  - nll_loss_forward.output
+  - nll_loss_forward
+  - nll_loss_backward.grad_input
+  - nll_loss_backward
