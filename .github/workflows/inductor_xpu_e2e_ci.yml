@@ -32,7 +32,7 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b nightly https://github.com/pytorch/pytorch pytorch
+          git clone -b main https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
