@@ -27,8 +27,9 @@ Cur_Ver=`pip list | grep "^torch " | awk '{print $2}' | cut -d"+" -f 1`
 if [ $(printf "${Cur_Ver}\n2.0.2"|sort|head -1) = "${Cur_Ver}" ]; then
     Mode_extra="";
 else
-    # For PT 2.1
-    Mode_extra="--inference --freezing ";
+    # For PT >= 2.1
+    # Remove --freezing cause feature not ready
+    Mode_extra="--inference ";
 fi
 
 if [[ $MODE == "training" ]]; then

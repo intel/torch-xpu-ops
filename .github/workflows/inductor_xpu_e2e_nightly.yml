@@ -127,7 +127,7 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -147,7 +147,7 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 39
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -178,7 +178,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 40
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
