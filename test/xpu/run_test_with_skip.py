@@ -1253,5 +1253,14 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+# test_content_store
+skip_list = (
+    # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
+    "test_basic_xpu",
+    "test_load_tensor_xpu",
+)
+res += launch_test("test_content_store_xpu.py")
+
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
