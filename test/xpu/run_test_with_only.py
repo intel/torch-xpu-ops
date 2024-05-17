@@ -31,7 +31,7 @@ res= 0
 
 # test_foreach
 execute_list = (
-    "_foreach_add_ and not jit",
+    "_foreach_add_ and not slowpath",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
