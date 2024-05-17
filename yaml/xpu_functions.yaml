@@ -224,12 +224,33 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - embedding_dense_backward
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - scatter.src
+  - scatter.src_out
+  - scatter_.src
+  - scatter.value
+  - scatter.value_out
+  - scatter_.value
+  - scatter.reduce
+  - scatter.reduce_out
+  - scatter_.reduce
+  - scatter.value_reduce
+  - scatter.value_reduce_out
+  - scatter_.value_reduce
+  - scatter_add
+  - scatter_add.out
+  - scatter_add_
+  - scatter_reduce.two
+  - scatter_reduce.two_out
+  - scatter_reduce_.two
+  - gather
+  - gather.out
   - sort.stable
   - sort.values_stable
   - argsort.stable

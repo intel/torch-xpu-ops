@@ -1047,5 +1047,15 @@ skip_list = (
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
+# test_complex
+skip_list = (
+    #Skip CPU case
+    "test_eq_xpu_complex128",
+    "test_eq_xpu_complex64",
+    "test_ne_xpu_complex128",
+    "test_ne_xpu_complex64",
+)
+res += launch_test("test_complex_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
