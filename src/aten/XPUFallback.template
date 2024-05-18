@@ -344,8 +344,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "native_batch_norm_backward",
     "native_group_norm_backward",
     "nextafter.out",
-    "nll_loss_backward.grad_input",
-    "nll_loss_forward.output",
     "normal.Tensor_Tensor",
     "norm.out",
     "ormqr",
