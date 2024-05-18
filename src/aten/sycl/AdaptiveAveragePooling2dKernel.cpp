@@ -173,12 +173,12 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    _oh0_cached = sycl_local_acc_t<int>(ih * sizeof(int), cgh);
-    _oh1_cached = sycl_local_acc_t<int>(ih * sizeof(int), cgh);
-    _ow0_cached = sycl_local_acc_t<int>(iw * sizeof(int), cgh);
-    _ow1_cached = sycl_local_acc_t<int>(iw * sizeof(int), cgh);
-    _ikh_cached = sycl_local_acc_t<accscalar_t>(oh * sizeof(accscalar_t), cgh);
-    _ikw_cached = sycl_local_acc_t<accscalar_t>(ow * sizeof(accscalar_t), cgh);
+    _oh0_cached = sycl_local_acc_t<int>(ih, cgh);
+    _oh1_cached = sycl_local_acc_t<int>(ih, cgh);
+    _ow0_cached = sycl_local_acc_t<int>(iw, cgh);
+    _ow1_cached = sycl_local_acc_t<int>(iw, cgh);
+    _ikh_cached = sycl_local_acc_t<accscalar_t>(oh, cgh);
+    _ikw_cached = sycl_local_acc_t<accscalar_t>(ow, cgh);
   }
 
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
@@ -199,10 +199,6 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     global_range = total_item < local_range
         ? local_range
         : (total_item / local_range) * local_range;
-
-    // trade-off occupancy and slm leverage
-    ohw01_shared_size = ((iw + ih) * 2) * sizeof(int);
-    ikhw_shared_size = (oh + ow) * sizeof(accscalar_t);
   }
 
   sycl::range<1> glb_range() {
@@ -225,8 +221,6 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   int global_range;
   PackedTensorAccessor64<scalar_t, 4> gyacc;
   PackedTensorAccessor64<scalar_t, 4> gxacc;
-  int64_t ohw01_shared_size;
-  int64_t ikhw_shared_size;
   sycl_local_acc_t<int> _oh0_cached;
   sycl_local_acc_t<int> _oh1_cached;
   sycl_local_acc_t<int> _ow0_cached;
