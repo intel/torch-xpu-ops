@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 def launch_test(test_case, skip_list=None, exe_list=None):
     if skip_list != None:
         skip_options = " -k 'not " + skip_list[0]
@@ -1252,6 +1253,17 @@ skip_list = (
     "test_rnn_fused_xpu_float32",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
+
+# test_pooling
+skip_list = (
+    # CUDA bias case
+    "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
+
+    # CPU fallback fails
+    "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+)
+res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

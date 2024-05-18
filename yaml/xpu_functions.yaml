@@ -224,6 +224,8 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices_backward
+  - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
   - _softmax.out
   - _softmax
