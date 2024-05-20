@@ -15,22 +15,22 @@ on:
         required: true
         type: string
         default: 'huggingface'
-        description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench
+        description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
       dt:
         required: true
         type: string
         default: 'float32'
-        description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16
+        description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
       mode:
         required: true
         type: string
         default: 'inference'
-        description: inference,training
+        description: inference,training. Delimiter is comma
       scenario:
         required: true
         type: string
         default: 'accuracy'
-        description: accuracy,performance
+        description: accuracy,performance. Delimiter is comma
 
 
 permissions: read-all
