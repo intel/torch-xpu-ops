@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 def launch_test(test_case, skip_list=None, exe_list=None):
     if skip_list != None:
         skip_options = " -k 'not " + skip_list[0]
@@ -14,7 +15,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     elif exe_list != None:
         exe_options = " -k '" + exe_list[0]
         for exe_case in exe_list[1:]:
-            exe_option = " and " + exe_case
+            exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += "'"
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
@@ -1432,6 +1433,17 @@ skip_list = (
     "test_rnn_fused_xpu_float32",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
+
+# test_pooling
+skip_list = (
+    # CUDA bias case
+    "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
+
+    # CPU fallback fails
+    "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+)
+res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
