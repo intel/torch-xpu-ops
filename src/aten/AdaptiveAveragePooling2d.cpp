@@ -28,4 +28,5 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
   }
   return grad_input;
 }
+
 } // namespace at
