@@ -1265,5 +1265,8 @@ skip_list = (
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
+skip_list = ( "test_flip_xpu_float32" )
+res += launch_test("test_shape_ops_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
