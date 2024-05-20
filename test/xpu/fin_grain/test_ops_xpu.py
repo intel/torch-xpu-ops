@@ -1,6 +1,7 @@
 # Owner(s): ["module: intel"]
 
 import sys
+import pytest
 import unittest
 
 import torch
@@ -116,7 +117,19 @@ _xpu_computation_op_list = [
     "any",
     "arange",
     "as_strided",
+    # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
+    "tril",
+    "triu",
+    "cat",
+    "log_softmax",
+    "softmax",
+    "scatter",
+    "gather",
+    "max_pool2d_with_indices_backward",
+    "nn.functional.embedding",
+    "nn.functional.unfold",
+    # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
 ]
 
 _xpu_computation_ops = [
@@ -145,10 +158,12 @@ class TestCommon(TestCase):
     #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
     @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
-        self.proxy = Namespace.TestCommonProxy()
-
-        test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
-        test_common_test_fn(self.proxy, device, dtype, op)
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCommonProxy()
+            test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+            test_common_test_fn(self.proxy, device, dtype, op)
+        else:
+            pytest.skip(f"{op.name} has not supported {dtype} yet for {device}")
 
     @onlyXPU
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.bool,))

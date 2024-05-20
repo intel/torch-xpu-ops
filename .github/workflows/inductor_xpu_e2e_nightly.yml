@@ -73,11 +73,11 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b nightly --single-branch --depth=1 https://github.com/pytorch/pytorch pytorch
+          git clone -b main https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply-torch-pr.py -n 122472 124709 125587
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
@@ -118,7 +118,7 @@ jobs:
           pip install --force-reinstall dist/*.whl      
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: Nightly HF FP32 Inference Accuracy Test
+      - name: Nightly Huggingface FP32 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -127,9 +127,9 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly HF BF16 Inference Accuracy Test
+      - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -138,44 +138,68 @@ jobs:
           mode: inference
           scenario: accuracy
           expected_pass_num: 46
-      - name: Nightly HF FP16 Inference Accuracy Test
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           dt: float16
           mode: inference
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP32 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface BF16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Torchbench BF16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          dt: bfloat16
+          mode: training
           scenario: accuracy
           expected_pass_num: 39
-      - name: Nightly HF FP32 Training Accuracy Test
-        if: ${{ !inputs.suite }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
-          env_prepare: true
-          dt: float32
-          mode: training
-          scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly HF BF16 Training Accuracy Test
+      - name: Nightly Timm_models FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: huggingface
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          expected_pass_num: 46
-      - name: Nightly HF FP16 Training Accuracy Test
-        if: ${{ !inputs.suite }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
+          suite: timm_models
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 40
+          expected_pass_num: 22
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
