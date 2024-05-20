@@ -116,6 +116,43 @@ runs:
                 bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
                 bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
                 wait
+              done
+            done
+          done
+        done
+
+    - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+      run: |
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        set -xe
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          do
+            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
+            $contains_status
+            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+            do
+              contains "inference,training" $mode
+              $contains_status
+              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+              do
+                contains "accuracy,performance" $scenario
+                $contains_status
                 LOG_DIR="inductor_log/${suite}/${dt}"
                 LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
                 rm -f ${LOG_DIR}/${LOG_NAME}
@@ -143,19 +180,20 @@ runs:
       with:
         name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/inductor_log
-
     - name: Upload Inductor XPU E2E Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.expected_pass_num }}
       uses: actions/upload-artifact@v4
       with:
         name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/inductor_log
+
     - name: Test Results Check (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.expected_pass_num }}
       shell: bash
       run: |
         cd ../pytorch/inductor_log/${{ inputs.suite }}
         cd ${{ inputs.dt }}
+        cat ${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
         num_passed=$(grep "num_passed:" ${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log | sed -e 's/.*://;s/[^0-9.]//')
         if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
           echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
