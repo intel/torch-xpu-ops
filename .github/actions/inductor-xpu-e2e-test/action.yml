@@ -136,6 +136,7 @@ runs:
               contains_status="continue"
             }
         }
+        cd ../pytorch
         set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
