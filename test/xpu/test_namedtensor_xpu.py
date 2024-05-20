@@ -9,17 +9,17 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
-def test_select_cuda(self):
+def select_cuda(self):
     self._test_select('xpu')
 
-def test_as_strided_cuda(self):
+def as_strided_cuda(self):
     self._test_as_strided('xpu')
 
 with XPUPatchForImport(False):
     from test_namedtensor import TestNamedTensor
 
-TestNamedTensor.test_select_cuda=test_select_cuda
-TestNamedTensor.test_as_strided_cuda=test_as_strided_cuda
+TestNamedTensor.test_select_cuda=select_cuda
+TestNamedTensor.test_as_strided_cuda=as_strided_cuda
 
 if __name__ == '__main__':
     run_tests()
