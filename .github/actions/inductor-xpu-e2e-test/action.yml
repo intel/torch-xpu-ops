@@ -97,15 +97,15 @@ runs:
           $contains_status
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
           do
-            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $suite
+            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
             $contains_status
             for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
             do
-              contains "inference,training" $suite
+              contains "inference,training" $mode
               $contains_status
               for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
               do
-                contains "accuracy,performance" $suite
+                contains "accuracy,performance" $scenario
                 $contains_status
                 bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
                 bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
