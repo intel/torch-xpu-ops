@@ -65,9 +65,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
 
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-intel-enable-auto-large-GRF-mode\"")
-  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-poison-unsupported-fp64-kernels\"")
   # Support PVC AOT only currently.
-  set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc")
+  set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,mtl-p")
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 else()
   message("Not compiling with XPU. Only support GCC compiler as CXX compiler.")

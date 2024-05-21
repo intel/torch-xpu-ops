@@ -624,10 +624,14 @@ static inline void nll_loss_backward_template(
   }
 }
 
-#define AT_DISPATCH_NLL_LOSS_INDEX_TYPES(TYPE, NAME, ...)                     \
-  AT_DISPATCH_SWITCH(TYPE, NAME,                                              \
-  AT_PRIVATE_CASE_TYPE_USING_HINT(at::ScalarType::Byte, index_t, __VA_ARGS__) \
-  AT_PRIVATE_CASE_TYPE_USING_HINT(at::ScalarType::Long, index_t, __VA_ARGS__))
+#define AT_DISPATCH_NLL_LOSS_INDEX_TYPES(TYPE, NAME, ...) \
+  AT_DISPATCH_SWITCH(                                     \
+      TYPE,                                               \
+      NAME,                                               \
+      AT_PRIVATE_CASE_TYPE_USING_HINT(                    \
+          at::ScalarType::Byte, index_t, __VA_ARGS__)     \
+          AT_PRIVATE_CASE_TYPE_USING_HINT(                \
+              at::ScalarType::Long, index_t, __VA_ARGS__))
 
 std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
     const Tensor& self,
@@ -645,9 +649,7 @@ std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
       "nll_loss_forward_out_kernel",
       [&]() {
         AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
-            target.scalar_type(),
-            "nll_loss_forward_out_kernel_index",
-            [&]() {
+            target.scalar_type(), "nll_loss_forward_out_kernel_index", [&]() {
               nll_loss_forward_template<scalar_t, index_t>(
                   self,
                   target,
@@ -656,7 +658,7 @@ std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
                   total_weight,
                   reduction,
                   ignore_index);
-        });
+            });
       });
 
   return std::tuple<Tensor&, Tensor&>(output, total_weight);
@@ -679,9 +681,7 @@ Tensor& nll_loss_backward_kernel(
       "nll_loss_backward_out_kernel",
       [&]() {
         AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
-            target.scalar_type(),
-            "nll_loss_backward_out_kernel_index",
-            [&]() {
+            target.scalar_type(), "nll_loss_backward_out_kernel_index", [&]() {
               nll_loss_backward_template<scalar_t, index_t>(
                   self,
                   target,
