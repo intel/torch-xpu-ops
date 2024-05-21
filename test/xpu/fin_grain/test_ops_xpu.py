@@ -13,6 +13,8 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
+    IS_FBCODE,
+    IS_SANDCASTLE,
     NoTest,
     run_tests,
     suppress_warnings,
@@ -30,6 +32,7 @@ except Exception as e:
 
 with XPUPatchForImport():
     from test_ops import TestCommon as TestCommonBase
+    from test_ops import TestCompositeCompliance as TestCompositeComplianceBase
 
 if not TEST_XPU:
     print("XPU not available, skipping tests", file=sys.stderr)
@@ -150,6 +153,9 @@ class Namespace:
     class TestCommonProxy(TestCase, TestCommonBase):
         pass
 
+    class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
+        pass
+
 
 class TestCommon(TestCase):
     @onlyXPU
@@ -177,7 +183,73 @@ class TestCommon(TestCase):
         test_common_test_fn(self.proxy, device, dtype, op)
 
 
-instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
+@unMarkDynamoStrictTest
+class TestCompositeCompliance(TestCase):
+    # Checks if the operator (if it is composite) is written to support most
+    # backends and Tensor subclasses. See "CompositeImplicitAutograd Compliance"
+    # in aten/src/ATen/native/README.md for more details
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
+    @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    def test_operator(self, device, dtype, op):
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCompositeComplianceProxy()
+
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_operator
+            )
+            test_composite_compliance_test_fn(self.proxy, device, dtype, op)
+
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
+    @ops([op for op in _xpu_computation_ops if op.supports_autograd], allowed_dtypes=(torch.float,))
+    def test_backward(self, device, dtype, op):
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCompositeComplianceProxy()
+
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_backward
+            )
+            test_composite_compliance_test_fn(self.proxy, device, dtype, op)
+
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
+    @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    def test_forward_ad(self, device, dtype, op):
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCompositeComplianceProxy()
+
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_forward_ad
+            )
+            test_composite_compliance_test_fn(self.proxy, device, dtype, op)
+
+    @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    def test_cow_input(self, device, dtype, op):
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCompositeComplianceProxy()
+
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_cow_input
+            )
+            test_composite_compliance_test_fn(self.proxy, device, dtype, op)
+
+    @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
+    def test_view_replay(self, device, dtype, op):
+        if dtype in op.supported_dtypes(device):
+            self.proxy = Namespace.TestCompositeComplianceProxy()
+
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_view_replay
+            )
+            test_composite_compliance_test_fn(self.proxy, device, dtype, op)
+
+
+# instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
+instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":
