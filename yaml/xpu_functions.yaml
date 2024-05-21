@@ -162,6 +162,12 @@ supported:
   - random_
   - random_.from
   - normal_
+  - normal.Tensor_float_out
+  - normal.Tensor_float
+  - normal.float_Tensor_out
+  - normal.float_Tensor
+  - normal.Tensor_Tensor_out
+  - normal.Tensor_Tensor
   - uniform_
   - bernoulli_.Tensor
   - bernoulli_.float
@@ -177,6 +183,8 @@ supported:
   - resize_
   - set_.source_Storage
   - set_.source_Storage_storage_offset
+  - set_.source_Tensor
+  - set_
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration

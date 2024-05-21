@@ -30,6 +30,63 @@ Tensor& XPUNativeFunctions::normal_(
       self, mean, std, std::move(generator));
 }
 
+// out tensor float
+Tensor& XPUNativeFunctions::normal_out(
+    const Tensor& mean,
+    double std,
+    c10::optional<Generator> gen,
+    Tensor& output) {
+  return at::native::templates::normal_out_impl<NormalStub, Generator>(
+      output, mean, std, std::move(gen));
+}
+
+// functional tensor float
+Tensor XPUNativeFunctions::normal(
+    const Tensor& mean,
+    double std,
+    c10::optional<Generator> gen) {
+  return at::native::templates::normal_impl<NormalStub, Generator>(
+      mean, std, std::move(gen));
+}
+
+// out float tensor
+Tensor& XPUNativeFunctions::normal_out(
+    double mean,
+    const Tensor& std,
+    c10::optional<Generator> gen,
+    Tensor& output) {
+  return at::native::templates::normal_out_impl<NormalStub, Generator>(
+      output, mean, std, std::move(gen));
+}
+
+// functional float tensor
+Tensor XPUNativeFunctions::normal(
+    double mean,
+    const Tensor& std,
+    c10::optional<Generator> gen) {
+  return at::native::templates::normal_impl<NormalStub, Generator>(
+      mean, std, std::move(gen));
+}
+
+// out tensor tensor
+Tensor& XPUNativeFunctions::normal_out(
+    const Tensor& mean,
+    const Tensor& std,
+    c10::optional<Generator> gen,
+    Tensor& output) {
+  return at::native::templates::normal_out_impl<NormalStub, Generator>(
+      output, mean, std, std::move(gen));
+}
+
+// functional tensor tensor
+Tensor XPUNativeFunctions::normal(
+    const Tensor& mean,
+    const Tensor& std,
+    c10::optional<Generator> gen) {
+  return at::native::templates::normal_impl<NormalStub, Generator>(
+      mean, std, std::move(gen));
+}
+
 template <typename RNG>
 struct UniformStub {
   void operator()(
