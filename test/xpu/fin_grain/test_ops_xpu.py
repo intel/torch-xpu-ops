@@ -248,7 +248,7 @@ class TestCompositeCompliance(TestCase):
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
 
-# instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
+instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
 instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu")
 
 
