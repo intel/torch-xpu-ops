@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 def launch_test(test_case, skip_list=None, exe_list=None):
     if skip_list != None:
         skip_options = " -k 'not " + skip_list[0]
@@ -14,7 +15,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     elif exe_list != None:
         exe_options = " -k '" + exe_list[0]
         for exe_case in exe_list[1:]:
-            exe_option = " and " + exe_case
+            exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += "'"
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
@@ -1253,17 +1254,40 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+# test_indexing
+skip_list = (
+    # CPU bias cases
+    # It is kernel assert on XPU implementation not exception on host.
+    # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_trivial_fancy_out_of_bounds_xpu",
+    "test_advancedindex",
+
+    # CUDA bias case
+    "test_index_put_accumulate_with_optional_tensors_xpu",
+)
+res += launch_test("test_indexing_xpu.py",skip_list)
+
+# test_pooling
+skip_list = (
+    # CUDA bias case
+    "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
+
+    # CPU fallback fails
+    "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+)
+res += launch_test("nn/test_pooling_xpu.py", skip_list)
+
+# test_tensor_creation_ops
 skip_list = (
     "test_cat_out_fast_path_dim0_dim1_xpu_uint16",
     "test_cat_out_fast_path_dim0_dim1_xpu_uint32",
     "test_cat_out_fast_path_dim0_dim1_xpu_uint64",
     "test_float_to_int_conversion_finite_xpu_int16",
     "test_float_to_int_conversion_finite_xpu_int8",
-    "test_tensor_ctor_device_inference_xpu",   
+    "test_tensor_ctor_device_inference_xpu",
 )
-
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
-
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
