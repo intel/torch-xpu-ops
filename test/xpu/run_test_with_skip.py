@@ -1287,5 +1287,13 @@ skip_list = (
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
+skip_list = ( 
+    "test_flatten_xpu",
+    "test_memory_format_resize_as_xpu",
+    "test_ravel_xpu",
+)
+
+res += launch_test("./test_view_ops_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
