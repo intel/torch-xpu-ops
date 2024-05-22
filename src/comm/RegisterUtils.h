@@ -2,7 +2,11 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
+#ifdef _WIN32
 #include "EmptyTensor.h"
+#else
+#include <aten/EmptyTensor.h>
+#endif
 
 namespace at {
 namespace xpu {

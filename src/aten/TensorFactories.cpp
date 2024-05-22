@@ -11,7 +11,11 @@
 #include <ATen/ops/empty_strided_native.h>
 #endif
 
+#ifdef _WIN32
 #include "EmptyTensor.h"
+#else
+#include <aten/EmptyTensor.h>
+#endif
 
 namespace at {
 

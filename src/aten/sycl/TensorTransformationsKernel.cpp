@@ -6,7 +6,7 @@
 #include <aten/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
-#if (defined(_WIN32))
+#ifdef _WIN32
 #define RESTRICT __restrict
 #else
 #define RESTRICT __restrict__
