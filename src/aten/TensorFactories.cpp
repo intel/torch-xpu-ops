@@ -11,7 +11,7 @@
 #include <ATen/ops/empty_strided_native.h>
 #endif
 
-#include <aten/EmptyTensor.h>
+#include "EmptyTensor.h"
 
 namespace at {
 

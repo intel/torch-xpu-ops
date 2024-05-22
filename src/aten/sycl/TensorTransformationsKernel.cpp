@@ -6,6 +6,13 @@
 #include <aten/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#if (defined(_WIN32))
+#define RESTRICT __restrict
+#else
+#define RESTRICT __restrict__
+#endif
+
+
 namespace at::native::xpu {
 
 template <int N>
@@ -83,22 +90,22 @@ struct FlipKernelImplLoopFunctor {
   void operator()(const int i) const {
     const auto offsets = offset_calc.get(i);
     // offsets can be negative here, but it's fine
-    scalar_t* const __restrict__ out_data =
+    scalar_t* const RESTRICT out_data =
         reinterpret_cast<scalar_t*>(out_ptr + offsets[0]);
-    const scalar_t* const __restrict__ in_data =
+    const scalar_t* const RESTRICT in_data =
         reinterpret_cast<const scalar_t*>(in_ptr + offsets[1]);
     *out_data = *in_data;
   }
 
   FlipKernelImplLoopFunctor(
-      char* const __restrict__ out_ptr,
-      const char* const __restrict__ in_ptr,
+      char* const RESTRICT out_ptr,
+      const char* const RESTRICT in_ptr,
       const offset_calc_t offset_calc)
       : out_ptr(out_ptr), in_ptr(in_ptr), offset_calc(offset_calc) {}
 
  private:
-  char* const __restrict__ out_ptr;
-  const char* const __restrict__ in_ptr;
+  char* const RESTRICT out_ptr;
+  const char* const RESTRICT in_ptr;
   const offset_calc_t offset_calc;
 };
 
@@ -111,8 +118,8 @@ void flip_kernel_impl(TensorIterator& iter) {
     return;
   }
 
-  char* const __restrict__ out_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
-  const char* const __restrict__ in_ptr =
+  char* const RESTRICT out_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  const char* const RESTRICT in_ptr =
       reinterpret_cast<const char*>(iter.data_ptr(1));
 
   const auto offset_calc =

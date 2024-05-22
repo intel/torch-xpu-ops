@@ -2,6 +2,10 @@
 
 #include <aten/sycl/SortingCommon.h>
 
+#ifdef _WIN32
+#include <winsock.h>
+#endif
+
 namespace at {
 namespace native {
 namespace xpu {

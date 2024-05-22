@@ -47,8 +47,8 @@ Tensor embedding_dense_backward_kernel(
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_backward", [&] {
               // TODO: port pstl functions
-              auto sorted_begin = sorted_indices.data_ptr<index_t>();
-              auto orig_begin = orig_indices.data_ptr<index_t>();
+              index_t* sorted_begin = sorted_indices.data_ptr<index_t>();
+              index_t* orig_begin = orig_indices.data_ptr<index_t>();
               {
                 sorted_indices.copy_(indices);
                 pstl::itoa(orig_begin, orig_begin + num_indices, (index_t)0);
