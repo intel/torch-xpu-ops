@@ -1254,6 +1254,18 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+skip_list = (
+    # CPU bias cases
+    # It is kernel assert on XPU implementation not exception on host.
+    # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_trivial_fancy_out_of_bounds_xpu",
+    "test_advancedindex",
+
+    # CUDA bias case
+    "test_index_put_accumulate_with_optional_tensors_xpu",
+)
+res += launch_test("test_indexing_xpu.py",skip_list)
+
 # test_pooling
 skip_list = (
     # CUDA bias case
