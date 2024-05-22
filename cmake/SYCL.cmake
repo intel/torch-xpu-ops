@@ -25,21 +25,22 @@ if(NOT SYCL_VERSION)
   return()
 endif()
 
-# TODO: we can drop this workaround once an open-source release
-# for Windows has a fix for the issue.
-foreach(sycl_lib_version "" 7 6)
-    if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
-        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}d")
-    else()
-        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}")
-    endif()
+# On both Linux and Windows, the current version of SYCL runtime is 7.
+# On Linux, libsycl.so symbolic links to libsycl.so.7.
+# On Windows, sycl7.dll version suffix is used.
+foreach(sycl_lib_version "" 7)
+    set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}")
 
     find_library(SYCL_LIBRARIES ${SYCL_LIBRARY_NAME} HINTS ${SYCL_LIBRARY_DIR})
 
     if(EXISTS "${SYCL_LIBRARIES}")
+        set(SYCL_LIBRARIES_FOUND TRUE)
         break()
     endif()
 endforeach()
+if(NOT SYCL_LIBRARIES_FOUND)
+    message(FATAL_ERROR "Cannot find a SYCL library")
+endif()
 
 set(SYCL_COMPILER_VERSION)
 file(READ ${SYCL_VERSION} version_contents)
