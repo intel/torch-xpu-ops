@@ -34,9 +34,16 @@ if(DEFINED ENV{SYCL_ROOT})
 elseif(DEFINED ENV{CMPLR_ROOT})
   set(SYCL_ROOT $ENV{CMPLR_ROOT})
 endif()
+
+if(WIN32)
+  set(SYCL_EXECUTABLE_NAME icx)
+else()
+  set(SYCL_EXECUTABLE_NAME icpx)
+endif()
+
 if(NOT SYCL_ROOT)
   execute_process(
-    COMMAND which icpx
+    COMMAND which ${SYCL_EXECUTABLE_NAME}
     OUTPUT_VARIABLE SYCL_CMPLR_FULL_PATH
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -49,10 +56,10 @@ if(NOT SYCL_ROOT)
   set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
 endif()
 
-find_file(
+find_program(
   SYCL_COMPILER
-  NAMES icpx
-  HINTS ${SYCL_ROOT}/bin
+  NAMES ${SYCL_EXECUTABLE_NAME}
+  PATHS ${SYCL_ROOT}/bin
   NO_DEFAULT_PATH
   )
 

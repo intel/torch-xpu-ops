@@ -1,5 +1,4 @@
 # SYCL compiler and runtime setup
-
 if(NOT SYCLTOOLKIT_FOUND)
   # Avoid package conflict introduced in PyTorch cmake
   # find_package(SYCLToolkit REQUIRED)
@@ -26,7 +25,21 @@ if(NOT SYCL_VERSION)
   return()
 endif()
 
-find_library(SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
+# TODO: we can drop this workaround once an open-source release
+# for Windows has a fix for the issue.
+foreach(sycl_lib_version "" 7 6)
+    if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}d")
+    else()
+        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}")
+    endif()
+
+    find_library(SYCL_LIBRARIES ${SYCL_LIBRARY_NAME} HINTS ${SYCL_LIBRARY_DIR})
+
+    if(EXISTS "${SYCL_LIBRARIES}")
+        break()
+    endif()
+endforeach()
 
 set(SYCL_COMPILER_VERSION)
 file(READ ${SYCL_VERSION} version_contents)

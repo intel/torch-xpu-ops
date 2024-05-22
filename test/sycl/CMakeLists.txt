@@ -21,8 +21,15 @@ sycl_add_library(
 add_executable(
   test_sycl_build_archive
   ${TEST_SYCL_CXX_SRCS})
-target_link_libraries(test_sycl_build_archive
-  "-Wl,--whole-archive,\"$<TARGET_FILE:sycl_simple_kernel_test>\" -Wl,--no-whole-archive")
+if(MSVC)
+  # MSVC on Windows
+  target_link_libraries(test_sycl_build_archive
+  "-WHOLEARCHIVE:\"$<TARGET_FILE:sycl_simple_kernel_test>\"")
+else()
+  # GCC on Linux
+  target_link_libraries(test_sycl_build_archive
+    "-Wl,--whole-archive,\"$<TARGET_FILE:sycl_simple_kernel_test>\" -Wl,--no-whole-archive")
+endif()
 add_dependencies(test_sycl_build_archive sycl_simple_kernel_test)
 
 # SYCL runtime library could be a transitive link library of

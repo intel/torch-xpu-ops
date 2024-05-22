@@ -58,8 +58,13 @@ set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
 if(SYCL_COMPILER)
   set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
 else()
+  if(WIN32)
+    set(SYCL_EXECUTABLE_NAME icx)
+  else()
+    set(SYCL_EXECUTABLE_NAME icpx)
+  endif()
   find_program(SYCL_EXECUTABLE
-    NAMES icpx
+    NAMES ${SYCL_EXECUTABLE_NAME}
     PATHS "${SYCL_PACKAGE_DIR}"
     PATH_SUFFIXES bin bin64
     NO_DEFAULT_PATH
@@ -67,7 +72,21 @@ else()
 endif()
 
 set(SYCL_LIBRARIES)
-find_library(SYCL_RUNTIME_LIBRARY sycl HINTS ${SYCL_LIBRARY_DIR})
+# TODO: we can drop this workaround once an open-source release
+# for Windows has a fix for the issue.
+foreach(sycl_lib_version "" 7 6)
+    if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}d")
+    else()
+        set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}")
+    endif()
+
+    find_library(SYCL_RUNTIME_LIBRARY ${SYCL_LIBRARY_NAME} HINTS ${SYCL_LIBRARY_DIR})
+
+    if(EXISTS "${SYCL_RUNTIME_LIBRARY}")
+        break()
+    endif()
+endforeach()
 list(APPEND SYCL_LIBRARIES ${SYCL_RUNTIME_LIBRARY})
 
 # Parse HOST_COMPILATION mode.
@@ -265,7 +284,10 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
       set(generated_file_basename "${sycl_target}_generated_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
+      if(NOT WIN32)
+        # TODO: enable incremental build on Windows
+        set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
+      endif()
       set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
       set(custom_target_script_pregen "${SYCL_compile_intermediate_directory}/${generated_file_basename}.cmake.pre-gen")
       set(custom_target_script "${SYCL_compile_intermediate_directory}/${generated_file_basename}$<$<BOOL:$<CONFIG>>:.$<CONFIG>>.cmake")
@@ -401,6 +423,12 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
+    set(SYCL_OFFLINE_COMPILER_FLAGS_OPTION "")
+    # TODO: enable AOT build on Windows
+    if(NOT WIN32)
+      set(SYCL_OFFLINE_COMPILER_FLAGS_OPTION -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}')
+    endif()
+
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
@@ -409,7 +437,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
-      -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}'
+      ${SYCL_OFFLINE_COMPILER_FLAGS_OPTION}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
       )
