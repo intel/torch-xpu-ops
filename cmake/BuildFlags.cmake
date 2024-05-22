@@ -6,7 +6,7 @@ if(MSVC)
   list(APPEND SYCL_HOST_FLAGS /MD)
   list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
   # SYCL headers warnings
-  list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of "deprecated" functions
+  list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
   list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
 else()
   list(APPEND SYCL_HOST_FLAGS -fPIC)
