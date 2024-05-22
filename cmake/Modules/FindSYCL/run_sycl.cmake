@@ -115,7 +115,7 @@ SYCL_execute_process(
 # Generate the code
 set(SYCL_DEPENDENCY_FLAGS "")
 # TODO: enable incremental build on Windows
-if(NOT WIN32)
+if(NOT MSVC)
   set(SYCL_DEPENDENCY_FLAGS -MD -MF "${SYCL_generated_dependency_file}")
 endif()
 
