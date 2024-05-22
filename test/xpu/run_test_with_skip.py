@@ -703,6 +703,19 @@ skip_list = (
     "test_variant_consistency_eager_svd_xpu_complex64",
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+    # oneDNN issues
+    # RuntimeError: value cannot be converted to type float without overflow
+    "test_conj_view_addbmm_xpu_complex64",
+    "test_neg_conj_view_addbmm_xpu_complex128",
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_conj_view_conj_physical_xpu_complex64",
+    "test_neg_view_nn_functional_rrelu_xpu_float64",
+    # CPU fallback fails
+    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
+    "test_neg_view__refs_nn_functional_group_norm_xpu_float64",
+    "test_neg_view_nn_functional_group_norm_xpu_float64",
+    # CUDA skip,reproduce the UT in CUDA,CUDA fail
+    "test_neg_view_nn_functional_dropout_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
