@@ -1287,5 +1287,12 @@ skip_list = (
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
+# test_dataloader
+skip_list = (
+    # Skip for XPU didn't support
+    "test_nested_tensor_multiprocessing",
+)
+res += launch_test("test_dataloader_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
