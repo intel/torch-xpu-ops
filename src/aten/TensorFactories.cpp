@@ -1,7 +1,7 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
+// #include <ATen/xpu/XPUNativeFunctions.h>[]
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -15,7 +15,9 @@
 
 namespace at {
 
-Tensor XPUNativeFunctions::empty(
+namespace native {
+
+Tensor empty_xpu(
     IntArrayRef size,
     c10::optional<ScalarType> dtype_opt,
     c10::optional<Layout> layout_opt,
@@ -38,7 +40,7 @@ Tensor XPUNativeFunctions::empty(
   return result;
 }
 
-Tensor XPUNativeFunctions::empty_strided(
+Tensor empty_strided_xpu(
     IntArrayRef size,
     IntArrayRef stride,
     c10::optional<ScalarType> dtype_opt,
@@ -56,10 +58,12 @@ Tensor XPUNativeFunctions::empty_strided(
   return result;
 }
 
-Tensor XPUNativeFunctions::clone(
-    const Tensor& self,
-    c10::optional<MemoryFormat> memory_format) {
-  return at::native::clone(self, memory_format);
-}
+} // namespace native
+
+// Tensor XPUNativeFunctions::clone(
+//     const Tensor& self,
+//     c10::optional<MemoryFormat> memory_format) {
+//   return at::native::clone(self, memory_format);
+// }
 
 } // namespace at

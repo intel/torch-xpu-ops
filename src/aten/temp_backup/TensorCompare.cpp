@@ -1,6 +1,5 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/TensorIndexing.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorCompare.h>

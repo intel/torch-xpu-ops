@@ -1,13 +1,19 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
+// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
 
-namespace at {
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/xpu/ops/_local_scalar_dense_native.h>
+#endif
 
-Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
+namespace at::native {
+
+Scalar _local_scalar_dense_xpu(const Tensor& self) {
   Scalar r;
   AT_DISPATCH_V2(
       self.scalar_type(),
@@ -40,4 +46,4 @@ Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
   return r;
 }
 
-} // namespace at
+} // namespace at::native

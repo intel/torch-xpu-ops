@@ -1,0 +1,970 @@
+- func: add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: add.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: add.out
+  tags: pointwise
+
+- func: add.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  ufunc_inner_loop:
+    Generic: add (AllAndComplex, BFloat16, Half, ComplexHalf)
+    ScalarOnly: add (Bool)
+  tags: pointwise
+
+# - func: cumsum(Tensor self, int dim, *, ScalarType? dtype=None) -> Tensor
+#   structured_delegate: cumsum.out
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   tags: core
+
+# - func: cumsum_(Tensor(a!) self, int dim, *, ScalarType? dtype=None) -> Tensor(a!)
+#   structured_delegate: cumsum.out
+#   variants: method
+
+# - func: cumsum.out(Tensor self, int dim, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU : cumsum_out
+
+- func: sub.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sub_out
+  tags: pointwise
+
+- func: sub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: sub.out
+  tags: [core, pointwise]
+
+- func: sub_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: sub.out
+  tags: pointwise
+# For C++ only, until we have conversion from C++ numbers to Tensor
+
+- func: sub.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: sub_.Scalar(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  autogen: sub.Scalar_out
+  tags: pointwise
+# subtract, alias for sub
+
+- func: mul.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: mul.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: mul_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: mul.out
+  variants: method
+  tags: pointwise
+
+- func: mul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: mul_out
+  tags: pointwise
+  # For C++ only, until we have conversion from C++ numbers to Tensor
+
+- func: mul.Scalar(Tensor self, Scalar other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: mul_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  autogen: mul.Scalar_out
+  tags: pointwise
+# multiply, alias for mul
+
+
+- func: div.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: div.out
+  tags: [core, pointwise]
+
+- func: div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: div.out
+  tags: pointwise
+
+- func: div.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: div_out
+  tags: pointwise
+
+# - func: rsub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function
+#   dispatch:
+#     XPU: rsub
+#   autogen: rsub.Tensor_out
+
+- func: remainder.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: remainder_out
+  tags: pointwise
+
+- func: remainder.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: remainder.Tensor_out
+  variants: method, function
+  tags: [core, pointwise]
+
+- func: remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: remainder.Tensor_out
+  variants: method
+  tags: pointwise
+
+- func: fmod.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: fmod_out
+  tags: pointwise
+
+- func: fmod.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: fmod.Tensor_out
+  variants: method, function
+  tags: [core, pointwise]
+
+- func: fmod_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: fmod.Tensor_out
+  tags: pointwise
+
+# - func: tanh_backward.grad_input(Tensor grad_output, Tensor output, *, Tensor(a!) grad_input) -> Tensor(a!)
+#   python_module: nn
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: tanh_backward_out
+#   tags: pointwise
+
+# - func: tanh_backward(Tensor grad_output, Tensor output) -> Tensor
+#   python_module: nn
+#   structured_delegate: tanh_backward.grad_input
+
+# - func: eq.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: eq_Tensor_out
+#   tags: pointwise
+
+# - func: eq.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: eq.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   tags: [core, pointwise]
+
+# - func: ne.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: ne_Tensor_out
+#   tags: pointwise
+
+# - func: ne.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: ne.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   tags: [core, pointwise]
+
+# - func: lt.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: lt_Tensor_out
+#   tags: pointwise
+
+# - func: lt.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: lt.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   tags: [core, pointwise]
+
+# - func: le.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: le_Tensor_out
+#   tags: pointwise
+
+# - func: le.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: le.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   dispatch:
+#     QuantizedCPU: le_quantized_cpu
+#   tags: [core, pointwise]
+
+# - func: gt.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: gt_Tensor_out
+#   tags: pointwise
+
+# - func: gt.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: gt.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   tags: [core, pointwise]
+
+# - func: ge.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: ge_Tensor_out
+#   tags: pointwise
+
+# - func: ge.Tensor(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: ge.Tensor_out
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   tags: [core, pointwise]
+
+# - func: isnan(Tensor self) -> Tensor
+#   variants: function, method
+#   device_check: NoCheck
+#   device_guard: False
+#   dispatch:
+#     XPU: isnan
+#   autogen: isnan.out
+#   tags: [core, pointwise]
+
+# - func: masked_fill_.Scalar(Tensor(a!) self, Tensor mask, Scalar value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   dispatch:
+#     XPU: masked_fill__xpu
+#   autogen: masked_fill.Scalar_out
+
+# - func: index_add.out(Tensor self, int dim, Tensor index, Tensor source, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   variants: function
+#   precomputed:
+#   - dim -> int dim
+#   dispatch:
+#     XPU: index_add_xpu_out
+
+# - func: index_add_(Tensor(a!) self, int dim, Tensor index, Tensor source, *, Scalar alpha=1) -> Tensor(a!)
+#   structured_delegate: index_add.out
+#   variants: method
+
+# - func: index_add(Tensor self, int dim, Tensor index, Tensor source, *, Scalar alpha=1) -> Tensor
+#   structured_delegate: index_add.out
+#   variants: function, method
+
+# - func: index_select.out(Tensor self, int dim, Tensor index, *, Tensor(a!) out) -> Tensor(a!)
+#   dispatch:
+#     XPU: index_select_out_xpu
+
+# - func: index_select(Tensor self, int dim, Tensor index) -> Tensor
+#   variants: method, function
+#   dispatch:
+#     XPU: index_select_xpu_
+#   tags: core
+
+# - func: gcd.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: gcd_out
+#   tags: pointwise
+
+# - func: gcd(Tensor self, Tensor other) -> Tensor
+#   structured_delegate: gcd.out
+#   variants: function, method
+#   tags: pointwise
+
+# - func: gcd_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+#   structured_delegate: gcd.out
+#   variants: function, method
+
+# - func: relu(Tensor self) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   dispatch:
+#     XPU: relu
+#   tags: [core, pointwise]
+
+# - func: relu_(Tensor(a!) self) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   dispatch:
+#     XPU: relu_
+#   autogen: relu.out
+#   tags: pointwise
+
+# - func: threshold(Tensor self, Scalar threshold, Scalar value) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function
+#   structured_delegate: threshold.out
+#   dispatch:
+#     QuantizedCPU: threshold_quantized_cpu
+
+# - func: threshold_(Tensor(a!) self, Scalar threshold, Scalar value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: function
+#   structured_delegate: threshold.out
+
+# - func: threshold.out(Tensor self, Scalar threshold, Scalar value, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: threshold_out
+
+# - func: threshold_backward.grad_input(Tensor grad_output, Tensor self, Scalar threshold, *, Tensor(a!) grad_input) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: threshold_backward_out
+
+# - func: threshold_backward(Tensor grad_output, Tensor self, Scalar threshold) -> Tensor
+#   variants: function
+#   structured_delegate: threshold_backward.grad_input
+#   tags: pointwise
+
+# - func: gelu.out(Tensor self, *, str approximate='none', Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   device_check: NoCheck   # TensorIterator
+#   python_module: nn
+#   dispatch:
+#     XPU: gelu_out_xpu
+
+# - func: gelu_(Tensor(a!) self, *, str approximate='none') -> Tensor(a!)
+#   structured_delegate: gelu.out
+#   device_check: NoCheck   # TensorIterator
+#   python_module: nn
+
+# - func: gelu(Tensor self, *, str approximate='none') -> Tensor
+#   structured_delegate: gelu.out
+#   device_check: NoCheck   # TensorIterator
+#   python_module: nn
+#   tags: [core, pointwise]
+
+# - func: gelu_backward.grad_input(Tensor grad_output, Tensor self, *, str approximate='none', Tensor(a!) grad_input) -> Tensor(a!)
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   python_module: nn
+#   dispatch:
+#     XPU: gelu_backward_out_xpu
+
+# - func: gelu_backward(Tensor grad_output, Tensor self, *, str approximate='none') -> Tensor
+#   structured_delegate: gelu_backward.grad_input
+#   python_module: nn
+#   tags: pointwise
+
+
+# # too complexed
+# # - func: arange.start_out(Scalar start, Scalar end, Scalar step=1, *, Tensor(a!) out) -> Tensor(a!)
+# #   dispatch:
+# #     XPU: arange_xpu_out
+# #   cpp_no_default_args: ['step']
+
+- func: abs.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: abs_out
+  tags: pointwise
+
+- func: abs(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: abs_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: sin(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sin.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: sin_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sin.out
+  variants: function, method
+  tags: pointwise
+
+- func: sin.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sin_out
+  tags: pointwise
+
+- func: cos(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: cos.out
+  dispatch:
+    NestedTensorCPU, NestedTensorCUDA: cos_nested
+  tags: [core, pointwise]
+
+- func: cos_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: cos.out
+  tags: pointwise
+
+- func: cos.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: cos_out
+  tags: pointwise
+
+- func: log(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: log.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: log_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: log.out
+  variants: function, method
+  tags: pointwise
+
+- func: log.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: log_out
+  tags: pointwise
+
+- func: sqrt(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sqrt.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: sqrt_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sqrt.out
+  variants: function, method
+  tags: pointwise
+
+- func: sqrt.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sqrt_out
+  tags: pointwise
+
+- func: rsqrt(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: rsqrt.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: rsqrt_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: rsqrt.out
+  variants: function, method
+  tags: pointwise
+
+- func: rsqrt.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: rsqrt_out
+  tags: pointwise
+
+- func: tanh(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: tanh.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: tanh_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: tanh.out
+  variants: function, method
+  tags: pointwise
+
+- func: tanh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: tanh_out
+  tags: pointwise
+
+- func: neg(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: neg.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: neg_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: neg.out
+  variants: function, method
+  tags: pointwise
+
+- func: neg.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: neg_out
+  tags: pointwise
+
+- func: reciprocal(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: reciprocal.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: reciprocal_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: reciprocal.out
+  variants: function, method
+  tags: pointwise
+
+- func: reciprocal.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: reciprocal_out
+  tags: pointwise
+
+# - func: pow.Tensor_Tensor_out(Tensor self, Tensor exponent, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: pow_Tensor_Tensor_out
+#   tags: pointwise
+
+# - func: pow.Scalar_out(Scalar self, Tensor exponent, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   dispatch:
+#     XPU: pow_Scalar_out
+#   tags: pointwise
+
+# - func: pow.Tensor_Scalar_out(Tensor self, Scalar exponent, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: pow_Tensor_Scalar_out
+#   tags: pointwise
+
+- func: empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    XPU: empty_xpu
+  tags: core
+
+- func: empty_strided(SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: empty_strided_xpu
+  autogen: empty_strided.out
+  tags: core
+
+- func: fill.Scalar(Tensor self, Scalar value) -> Tensor
+  variants: function
+  tags: core
+
+- func: fill.Tensor(Tensor self, Tensor value) -> Tensor
+  variants: function
+
+- func: fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: fill_
+  autogen: fill.Scalar_out
+
+- func: fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: fill_
+  autogen: fill.Tensor_out
+
+# - func: zero_(Tensor(a!) self) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   dispatch:
+#     XPU: zero_
+#   autogen: zero, zero.out
+
+# - func: random_(Tensor(a!) self, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   tags: nondeterministic_seeded
+#   variants: method
+#   dispatch:
+#     XPU: random_
+#   autogen: random, random.out
+
+# - func: random_.from(Tensor(a!) self, int from, int? to, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   tags: nondeterministic_seeded
+#   dispatch:
+#     XPU: random_
+#   autogen: random.from, random.from_out
+
+# - func: normal_(Tensor(a!) self, float mean=0, float std=1, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   tags: nondeterministic_seeded
+#   variants: method
+#   dispatch:
+#     XPU: normal_
+#   autogen: normal.out
+
+# - func: uniform_(Tensor(a!) self, float from=0, float to=1, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   tags: nondeterministic_seeded
+#   variants: method
+#   dispatch:
+#     XPU: uniform_xpu_
+#   autogen: uniform, uniform.out
+
+# - func: bernoulli_.Tensor(Tensor(a!) self, Tensor p, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   tags: nondeterministic_seeded
+#   dispatch:
+#     XPU: bernoulli_
+#   autogen: bernoulli.Tensor, bernoulli.Tensor_out
+
+# - func: bernoulli_.float(Tensor(a!) self, float p=0.5, *, Generator? generator=None) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   tags: nondeterministic_seeded
+#   dispatch:
+#     XPU: bernoulli_
+#     MPS: bernoulli_mps_
+#   autogen: bernoulli.float_out
+
+# - func: native_dropout(Tensor input, float p, bool? train) -> (Tensor, Tensor)
+#   variants: function
+#   dispatch:
+#     XPU: native_dropout_xpu
+#   tags: [nondeterministic_seeded, core]
+#   autogen: native_dropout.out
+
+# - func: native_dropout_backward(Tensor grad_output, Tensor mask, float scale) -> Tensor
+#   dispatch:
+#     XPU: native_dropout_backward_xpu
+#   autogen: native_dropout_backward.out
+#   tags: pointwise
+
+- func: view(Tensor(a) self, SymInt[] size) -> Tensor(a)
+  variants: method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    XPU: view
+  tags: core
+
+- func: view_as_real(Tensor(a) self) -> Tensor(a)
+  variants: function
+  dispatch:
+    XPU: view_as_real
+
+- func: view_as_complex(Tensor(a) self) -> Tensor(a)
+  variants: function
+  dispatch:
+    XPU: view_as_complex
+
+- func: view_copy(Tensor self, SymInt[] size) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: view_copy_symint
+  tags: view_copy
+  autogen: view_copy.out
+
+- func: view_as_real_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: view_as_real_copy
+  tags: view_copy
+  autogen: view_as_real_copy.out
+
+- func: view_as_complex_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: view_as_complex_copy
+  tags: view_copy
+  autogen: view_as_complex_copy.out
+
+- func: as_strided_copy(Tensor self, SymInt[] size, SymInt[] stride, SymInt? storage_offset=None) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: as_strided_copy_symint
+  tags: view_copy
+  autogen: as_strided_copy.out
+
+- func: as_strided(Tensor(a) self, SymInt[] size, SymInt[] stride, SymInt? storage_offset=None) -> Tensor(a)
+  variants: function, method
+  dispatch:
+    XPU: as_strided_tensorimpl
+  device_check: NoCheck
+  device_guard: False
+  tags: core
+
+- func: _reshape_alias(Tensor(a) self, SymInt[] size, SymInt[] stride) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    XPU: _reshape_alias
+
+- func: _reshape_alias_copy(Tensor self, SymInt[] size, SymInt[] stride) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _reshape_alias_copy_symint
+  tags: view_copy
+  autogen: _reshape_alias_copy.out
+
+# - func: resize_(Tensor(a!) self, SymInt[] size, *, MemoryFormat? memory_format=None) -> Tensor(a!)
+#   use_const_ref_for_mutable_tensors: True
+#   variants: method
+#   device_check: NoCheck
+#   device_guard: False
+#   tags: [core, inplace_view]
+#   dispatch:
+#     XPU: reisze_xpu_
+#   autogen: resize, resize.out
+
+# - func: set_.source_Storage(Tensor(a!) self, Storage source) -> Tensor(a!)
+#   variants: method
+#   device_check: NoCheck
+#   device_guard: False
+#   dispatch:
+#     XPU: set_
+#   autogen: set.source_Storage, set.source_Storage_out
+#   tags: inplace_view
+
+# - func: set_.source_Storage_storage_offset(Tensor(a!) self, Storage source, SymInt storage_offset, SymInt[] size, SymInt[] stride=[]) -> Tensor(a!)
+#   variants: method
+#   device_check: NoCheck
+#   device_guard: False
+#   dispatch:
+#     XPU: set_storage_xpu_
+#   autogen: set.source_Storage_storage_offset, set.source_Storage_storage_offset_out
+#   tags: inplace_view
+
+# - func: unfold(Tensor(a) self, int dimension, int size, int step) -> Tensor(a)
+#   variants: method
+#   device_check: NoCheck
+#   device_guard: False
+#   dispatch:
+#     XPU: unfold
+
+# - func: bitwise_and.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   variants: function
+#   dispatch:
+#     XPU: bitwise_and_out
+#   tags: pointwise
+
+# - func: bitwise_or.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   variants: function
+#   dispatch:
+#     XPU: bitwise_or_out
+#   tags: pointwise
+
+# - func: bitwise_xor.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   variants: function
+#   dispatch:
+#     XPU: bitwise_xor_out
+#   tags: pointwise
+
+- func: bitwise_not(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: bitwise_not.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: bitwise_not_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: bitwise_not.out
+  variants: method
+  tags: pointwise
+
+- func: bitwise_not.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: bitwise_not_out
+  tags: pointwise
+
+# - func: where.self_out(Tensor condition, Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: where_self_out
+
+# - func: where.self(Tensor condition, Tensor self, Tensor other) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   dispatch:
+#     XPU: where
+#   tags: [core, pointwise]
+
+# - func: clamp.out(Tensor self, Scalar? min=None, Scalar? max=None, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   cpp_no_default_args: ['min']
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: clamp_out
+#   tags: pointwise
+
+# - func: clamp_min.out(Tensor self, Scalar min, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: clamp_min_out
+#   tags: pointwise
+
+# - func: clamp_max.out(Tensor self, Scalar max, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   dispatch:
+#     XPU: clamp_max_out
+#   tags: pointwise
+
+# - func: max(Tensor self) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   dispatch:
+#     XPU: max
+
+# - func: max.unary_out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: max_unary_out
+
+# - func: max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) -> (Tensor(a!) values, Tensor(b!) indices)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   precomputed:
+#   - dim -> int dim
+#   dispatch:
+#     XPU: max_out
+
+# - func: min(Tensor self) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   dispatch:
+#     XPU: min
+
+# - func: min.unary_out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: min_unary_out
+
+# - func: min.dim_min(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) min, Tensor(b!) min_indices) -> (Tensor(a!) values, Tensor(b!) indices)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   precomputed:
+#   - dim -> int dim
+#   dispatch:
+#     XPU: min_out
+
+# - func: sum.IntList_out(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: sum_out
+
+# - func: mean.out(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     XPU: mean_out
+
+# - func: any.out(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   structured: True
+#   dispatch:
+#     XPU: any_out
+
+# - func: any.all_out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck
+#   structured: True
+#   dispatch:
+#     XPU: any_all_out
+
+# - func: argmax.out(Tensor self, int? dim=None, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
+#   structured: True
+#   dispatch:
+#     XPU: argmax_out
+
+# - func: _local_scalar_dense(Tensor self) -> Scalar
+#   tags: [core, data_dependent_output]
+#   dispatch:
+#     XPU: _local_scalar_dense_xpu
+#   variants: function

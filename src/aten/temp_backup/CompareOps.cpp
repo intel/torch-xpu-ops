@@ -1,8 +1,8 @@
 #include <ATen/ScalarOps.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <aten/sycl/CompareKernels.h>
 

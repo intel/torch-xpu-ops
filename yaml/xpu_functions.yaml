@@ -9,7 +9,10 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
-  - _adaptive_avg_pool2d_backward
+  - add.Scalar #Composite
+  - add_.Scalar #Composite
+  - add.Scalar_out #Composite
+  - _adaptive_avg_pool2d_backward #need add
   - cumsum
   - cumsum.out
   - cumsum_
@@ -25,13 +28,14 @@ supported:
   - div.Tensor
   - div_.Tensor
   - div.out
-  - div.Scalar
-  - div_.Scalar
-  - div.Scalar_out
+  - div.Scalar # COMPO
+  - div_.Scalar #COMPO
+  - div.Scalar_out #COMPO
   - div.Tensor_mode
   - div_.Tensor_mode
   - div.out_mode
   - rsub.Tensor
+<<<<<<< HEAD
   - remainder.Tensor
   - remainder_.Tensor
   - remainder.Tensor_out
@@ -39,48 +43,67 @@ supported:
   - fmod.Tensor
   - fmod_.Tensor
   - fmod.Tensor_out
+=======
+  - rsub.Tensor_out
+  - rsub.Scalar #composiite
+  - rsub.Scalar_out #composite
+  - remainder.Tensor
+  - remainder_.Tensor
+  - remainder.Tensor_out
+  - remainder.Scalar #composite
+  - remainder_.Scalar #composite
+  - remainder.Scalar_out #composite
+  - remainder.Scalar_Tensor #composite
+  - remainder.Scalar_Tensor_out #composite
+  - fmod.Tensor
+  - fmod_.Tensor
+  - fmod.Tensor_out
+  - fmod.Scalar #composite
+  - fmod_.Scalar #composie
+  - fmod.Scalar_out #composite
+>>>>>>> fb98945 (Buffer src file for easier build)
   - tanh_backward
   - tanh_backward.grad_input
-  - eq.Scalar
-  - eq.Scalar_out
-  - eq_.Scalar
+  - eq.Scalar #structured delegate
+  - eq.Scalar_out #structured delgeat
+  - eq_.Scalar #structured delgeat
   - eq.Tensor
   - eq.Tensor_out
-  - eq_.Tensor
-  - ne.Scalar
-  - ne.Scalar_out
-  - ne_.Scalar
+  - eq_.Tensor #structured delgeat
+  - ne.Scalar #structured delgeat
+  - ne.Scalar_out #structured delgeat
+  - ne_.Scalar #structured delgeat
   - ne.Tensor
   - ne.Tensor_out
-  - ne_.Tensor
-  - lt.Scalar
-  - lt.Scalar_out
-  - lt_.Scalar
+  - ne_.Tensor #structured delgeat
+  - lt.Scalar #structured
+  - lt.Scalar_out #structured
+  - lt_.Scalar #structured
   - lt.Tensor
-  - lt.Tensor_out
-  - lt_.Tensor
-  - le.Scalar
-  - le.Scalar_out
-  - le_.Scalar
+  - lt.Tensor_out 
+  - lt_.Tensor #structured
+  - le.Scalar #structured
+  - le.Scalar_out #structured
+  - le_.Scalar #structured
   - le.Tensor
   - le.Tensor_out
-  - le_.Tensor
-  - gt.Scalar
-  - gt.Scalar_out
-  - gt_.Scalar
+  - le_.Tensor #structured
+  - gt.Scalar #structured
+  - gt.Scalar_out #structured
+  - gt_.Scalar #structured
   - gt.Tensor
   - gt.Tensor_out
-  - gt_.Tensor
-  - ge.Scalar
-  - ge.Scalar_out
-  - ge_.Scalar
+  - gt_.Tensor #structured
+  - ge.Scalar #structured
+  - ge.Scalar_out #structured
+  - ge_.Scalar #structured
   - ge.Tensor
   - ge.Tensor_out
-  - ge_.Tensor
-  - cat
-  - cat.out
+  - ge_.Tensor #structured
+  - cat  # NEED ADD
+  - cat.out #NEED ADD
   - isnan
-  - isnan.out
+  - isnan.out # autogen
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
@@ -89,63 +112,63 @@ supported:
   - index_select
   - index_select.out
   - gcd
-  - gcd.out
-  - gcd_
+  - gcd.out #structured
+  - gcd_ #structured
   - relu
   - relu_
   - relu.out
-  - threshold
-  - threshold_
+  - threshold #structured
+  - threshold_ #structured
   - threshold.out
-  - threshold_backward
+  - threshold_backward #structued
   - threshold_backward.grad_input
-  - gelu
-  - gelu_
+  - gelu #structured
+  - gelu_ #structured
   - gelu.out
   - gelu_backward
-  - gelu_backward.grad_input
+  - gelu_backward.grad_input #structured
   - arange.start_out
-  - abs
-  - abs_
+  - abs #structured
+  - abs_ #structured
   - abs.out
-  - sin
-  - sin_
-  - sin.out
-  - cos
-  - cos_
+  - sin #structured
+  - sin_ #structured
+  - sin.out 
+  - cos #structured
+  - cos_ #structured
   - cos.out
-  - log
-  - log_
+  - log #structured
+  - log_ #structured
   - log.out
-  - sqrt
-  - sqrt_
+  - sqrt #structured
+  - sqrt_ #structured
   - sqrt.out
-  - rsqrt
-  - rsqrt_
+  - rsqrt  #structured
+  - rsqrt_ #structured
   - rsqrt.out
-  - tanh
-  - tanh_
+  - tanh #structured
+  - tanh_ #structured
   - tanh.out
-  - neg
-  - neg_
+  - neg #structured
+  - neg_ #structured
   - neg.out
-  - reciprocal
-  - reciprocal_
+  - reciprocal #structured
+  - reciprocal_ #structured
   - reciprocal.out
-  - pow.Tensor_Tensor
-  - pow_.Tensor
+  - pow.Tensor_Tensor #structured
+  - pow_.Tensor #structured
   - pow.Tensor_Tensor_out
-  - pow.Tensor_Scalar
-  - pow_.Scalar
+  - pow.Tensor_Scalar #structured
+  - pow_.Scalar #structured
   - pow.Tensor_Scalar_out
-  - pow.Scalar
+  - pow.Scalar #structured
   - pow.Scalar_out
   - exp
   - exp.out
   - exp_
   - empty.memory_format
   - empty_strided
-  - clone
+  - clone # not sure
   - fill_.Scalar
   - fill_.Tensor
   - zero_
@@ -164,9 +187,9 @@ supported:
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
-  - native_dropout_backward
-  - copy_
-  - _to_copy
+  - native_dropout_backward # not sure
+  - copy_ # not sure
+  - _to_copy # not sure
   - view
   - view_as_real
   - view_as_complex
@@ -215,7 +238,12 @@ supported:
   - min
   - min.unary_out
   - min.dim_min
+<<<<<<< HEAD
   - sum.dim_IntList
+=======
+  - sum.out # not sure
+  - sum.dim_IntList #not sure
+>>>>>>> fb98945 (Buffer src file for easier build)
   - sum.IntList_out
   - mean.out
   - mean.dim
@@ -225,7 +253,7 @@ supported:
   - all.dims_out
   - all
   - all.all_out
-  - any.dim
+  - any.dim # structure
   - any.out
   - any.dims
   - any.dims_out

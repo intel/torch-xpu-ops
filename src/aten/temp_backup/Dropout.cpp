@@ -1,20 +1,21 @@
 #include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/DropoutKernels.h>
+#include <ATen/native/xpu/sycl/DropoutKernels.h>
+#include <ATen/native/xpu/sycl/Dropout.h>
 
 namespace at {
 
-::std::tuple<Tensor, Tensor> XPUNativeFunctions::native_dropout(
+namespace native {
+::std::tuple<Tensor, Tensor> native_dropout_xpu(
     const Tensor& input,
     double p,
     ::std::optional<bool> train) {
   return at::native::xpu::dropout_kernel(input, p, train);
 }
 
-Tensor XPUNativeFunctions::native_dropout_backward(
+Tensor native_dropout_backward_xpu(
     const Tensor& grad_output,
     const Tensor& mask,
     double scale) {
@@ -28,5 +29,6 @@ Tensor XPUNativeFunctions::native_dropout_backward(
       common_device, mask, "xpu::native_dropout_backward", "mask");
   return at::native::xpu::dropout_backward_kernel(grad_output, mask, scale);
 }
+} // namespace native
 
 } // namespace at

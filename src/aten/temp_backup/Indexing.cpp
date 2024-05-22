@@ -1,8 +1,8 @@
 #include <ATen/ATen.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/WrapDimUtils.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <aten/sycl/IndexingKernel.h>
 #include <comm/TensorInfo.h>
