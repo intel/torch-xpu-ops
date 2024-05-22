@@ -59,7 +59,8 @@ endif()
 find_program(
   SYCL_COMPILER
   NAMES ${SYCL_EXECUTABLE_NAME}
-  PATHS ${SYCL_ROOT}/bin
+  PATHS "${SYCL_ROOT}"
+  PATH_SUFFIXES bin bin64
   NO_DEFAULT_PATH
   )
 
