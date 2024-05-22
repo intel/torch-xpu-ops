@@ -1278,6 +1278,16 @@ skip_list = (
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
+# nn/test_dropout
+skip_list = (
+    # Cannot freeze rng state. Need enhance test infrastructure to make XPU
+    # compatible in freeze_rng_state.
+    # https://github.com/intel/torch-xpu-ops/issues/259
+    "test_Dropout1d_xpu",
+    "test_Dropout3d_xpu",
+)
+res += launch_test("nn/test_dropout_xpu.py", skip_list)
+
 # test_tensor_creation_ops
 skip_list = (
     "test_cat_out_fast_path_dim0_dim1_xpu_uint16",
