@@ -212,6 +212,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
   Tests-Failure-And-Report:
+    if: ${{ !inputs.suite }}
     runs-on: pvc_e2e
     permissions:
       issues: write
