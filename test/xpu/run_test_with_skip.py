@@ -1742,10 +1742,8 @@ skip_list=(
     'test_reference_numerics_small_jiterator_unary_xpu_int64',
     'test_reference_numerics_small_jiterator_unary_xpu_int8',
     'test_reference_numerics_small_jiterator_unary_xpu_uint8',
-#AssertionError: Scalars are not equal
-    'test_exp_xpu_complex128',
-    'test_exp_xpu_complex64',
-#AssertionError: Tensor-likes are not close
+
+    # AssertionError: Tensor-likes are not close
     'test_reference_numerics_extremal__refs_acos_xpu_complex128',
     'test_reference_numerics_extremal__refs_asin_xpu_complex128',
     'test_reference_numerics_extremal__refs_asin_xpu_complex64',
@@ -1781,8 +1779,8 @@ skip_list=(
     'test_reference_numerics_small__refs_atan_xpu_complex128',
     'test_reference_numerics_small__refs_atan_xpu_complex64',
     'test_reference_numerics_small_atan_xpu_complex128',
-    'test_reference_numerics_small_atan_xpu_complex64'
- )
+    'test_reference_numerics_small_atan_xpu_complex64',
+)
 
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
