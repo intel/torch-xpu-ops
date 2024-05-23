@@ -5,6 +5,13 @@
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
 #include <ATen/native/xpu/sycl/Dropout.h>
 
+
+#include <ATen/ops/native_dropout_backward_native.h>
+#include <ATen/ops/native_dropout_native.h>
+
+#include <aten/sycl/Dropout.h>
+
+
 namespace at {
 
 namespace native {

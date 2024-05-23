@@ -2,14 +2,16 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+// #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <aten/sycl/IndexingKernel.h>
 #include <comm/TensorInfo.h>
 
 namespace at {
 
-Tensor& XPUNativeFunctions::index_select_out(
+namespace native {
+
+Tensor& index_select_out_xpu(
     const Tensor& self,
     int64_t dim,
     const Tensor& index,
@@ -36,11 +38,18 @@ Tensor& XPUNativeFunctions::index_select_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::index_select(
-    const Tensor& self,
-    int64_t dim,
-    const Tensor& index) {
-  auto out = at::empty({0}, self.options());
-  return index_select_out(self, dim, index, out);
+Tensor index_select_xpu_(const Tensor& self, int64_t dim, const Tensor& index) {
+  Tensor result = at::empty({0}, self.options());
+  return at::native::index_select_out_xpu(self, dim, index, result);
 }
+
+// Tensor XPUNativeFunctions::index_select(
+//     const Tensor& self,
+//     int64_t dim,
+//     const Tensor& index) {
+//   auto out = at::empty({0}, self.options());
+//   return index_select_out(self, dim, index, out);
+// }
+
+} // namespace native
 } // namespace at

@@ -15,13 +15,13 @@
 #include <comm/RegisterUtils.h>
 #include <torch/library.h>
 
-#include <ATen/xpu/ops/index_add_meta.h>
+#include <ATen/ops/index_add_meta.h>
 #include <ATen/xpu/ops/index_add_native.h>
 
 namespace at {
 
 namespace native {
-REGISTER_XPU_DISPATCH(masked_fill_stub, xpu::masked_fill_kernel);
+// REGISTER_XPU_DISPATCH(masked_fill_stub, xpu::masked_fill_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
@@ -38,9 +38,15 @@ TORCH_IMPL_FUNC(index_add_xpu_out)
   c10::impl::check_and_update_common_device(
       common_device, source, "xpu::index_add_out", "source");
   dim = maybe_wrap_dim(dim, self.dim());
-  index_func_meta_impl(result, self, dim, index, source, "index_add");
+  //   index_func_meta_impl(result, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, result);
 }
+
+// Tensor index_select_xpu_(const Tensor& self, int64_t dim, const Tensor&
+// index) {
+//   Tensor result = at::empty({0}, self.options());
+//   return at::native::index_select_out_xpu(self, dim, index, result);
+// }
 
 } // namespace native
 

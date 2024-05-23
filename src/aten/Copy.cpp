@@ -299,31 +299,31 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   }
 }
 
-// Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
-//   // TODO: valid check
-//   if (self.is_same(src)) {
-//     return self;
-//   }
+Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
+  // TODO: valid check
+  if (self.is_same(src)) {
+    return self;
+  }
 
-//   // TODO: Support quantization
+  // TODO: Support quantization
 
-//   auto iter = TensorIteratorConfig()
-//                   .set_check_mem_overlap(true)
-//                   .add_output(self)
-//                   .add_input(src)
-//                   .resize_outputs(false)
-//                   .check_all_same_dtype(false)
-//                   .check_all_same_device(false)
-//                   .build();
+  auto iter = TensorIteratorConfig()
+                  .set_check_mem_overlap(true)
+                  .add_output(self)
+                  .add_input(src)
+                  .resize_outputs(false)
+                  .check_all_same_dtype(false)
+                  .check_all_same_device(false)
+                  .build();
 
-//   if (iter.numel() == 0) {
-//     return self;
-//   }
+  if (iter.numel() == 0) {
+    return self;
+  }
 
-//   _copy_xpu(iter, non_blocking);
+  _copy_xpu(iter, non_blocking);
 
-//   return self;
-// }
+  return self;
+}
 } // namespace native::xpu
 
 namespace native {
