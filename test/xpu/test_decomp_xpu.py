@@ -9,12 +9,11 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_ops import TestCommon
-    from test_ops import TestMathBits
+    from test_decomp import TestDecomp,DecompOneOffTests
 
 
-instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
-instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu")
+instantiate_device_type_tests(TestDecomp, globals(), only_for="xpu")
+instantiate_device_type_tests(DecompOneOffTests, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

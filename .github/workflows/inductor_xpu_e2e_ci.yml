@@ -32,11 +32,12 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b nightly --single-branch --depth=1 https://github.com/pytorch/pytorch pytorch
+          git clone -b main https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply-torch-pr.py -n 122472 124709 125587
+          # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
@@ -71,7 +72,7 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: HF BF16 Training Accuracy Test
+      - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -79,11 +80,31 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 46
-      - name: HF FP16 Training Accuracy Test
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Huggingface FP16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 40
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Timm_models BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 16
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Torchbench BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 16
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
