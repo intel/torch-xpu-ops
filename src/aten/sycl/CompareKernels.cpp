@@ -9,122 +9,139 @@ namespace at {
 namespace native {
 namespace xpu {
 
+enum class EqOpType { EQ, NE };
+
 template <typename scalar_t>
-struct EqFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a == b;
+struct CompareEqFunctor {
+  CompareEqFunctor(EqOpType op) : op_(op) {}
+  const EqOpType op_;
+  bool operator()(scalar_t a, scalar_t b) const {
+    if (op_ == EqOpType::EQ) {
+      return a == b;
+    } else { // NE
+      return a != b;
+    }
   }
 };
 
-template <typename scalar_t>
-struct NeFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a != b;
-  }
-};
-
-template <typename scalar_t>
-struct LtFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a < b;
-  }
-};
-
-template <typename scalar_t>
-struct LeFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a <= b;
-  }
-};
-
-template <typename scalar_t>
-struct GtFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a > b;
-  }
-};
-
-template <typename scalar_t>
-struct GeFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a >= b;
-  }
-};
+void compare_eq_ne_kernel(TensorIteratorBase& iter, EqOpType op) {
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "compare_eq_ne_xpu",
+      AT_WRAP([&]() {
+        opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
+            iter, CompareEqFunctor<scalar_t>(op));
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      kComplexHalf,
+      kHalf,
+      kBFloat16,
+      kBool,
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
+}
 
 void eq_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (common_dtype == kComplexHalf) {
-    using scalar_t = c10::complex<c10::Half>;
-    using opmath_t = opmath_type<scalar_t>;
-    opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-        iter, EqFunctor<opmath_t>());
-  } else {
-    AT_DISPATCH_V2(
-        common_dtype,
-        "eq_xpu",
-        AT_WRAP([&]() {
-          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-              iter, EqFunctor<scalar_t>());
-        }),
-        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-        kHalf,
-        kBFloat16,
-        kBool,
-        AT_EXPAND(AT_FLOAT8_TYPES),
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
-  }
+  compare_eq_ne_kernel(iter, EqOpType::EQ);
 }
 
 void ne_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (common_dtype == kComplexHalf) {
-    using scalar_t = c10::complex<c10::Half>;
-    using opmath_t = opmath_type<scalar_t>;
-    opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-        iter, NeFunctor<opmath_t>());
+  compare_eq_ne_kernel(iter, EqOpType::NE);
+}
+
+enum class OpType { GE, GT, LE, LT };
+
+template <typename scalar_t>
+struct CompareFunctor {
+  constexpr CompareFunctor(OpType op) : op_(op){};
+  OpType op_;
+  bool operator()(scalar_t a, scalar_t b) const {
+    if (op_ == OpType::GE) {
+      return a >= b;
+    } else if (op_ == OpType::GT) {
+      return a > b;
+    } else if (op_ == OpType::LE) {
+      return a <= b;
+    } else { // LT
+      return a < b;
+    }
+  }
+};
+
+// Reflects the comparison operator, so reflect(op)(a, b) == op(b, a)
+OpType reflect(OpType x) {
+  switch (x) {
+    case OpType::GE:
+      return OpType::LE;
+    case OpType::GT:
+      return OpType::LT;
+    case OpType::LE:
+      return OpType::GE;
+    case OpType::LT:
+      return OpType::GT;
+  }
+  TORCH_INTERNAL_ASSERT(false, "Invalid OpType");
+}
+
+template <typename scalar_t, typename fn_t>
+struct CompareScalarFunctor {
+  CompareScalarFunctor(scalar_t rhs, fn_t fn) : rhs_(rhs), fn_(fn) {}
+  bool operator()(scalar_t lhs) const {
+    return fn_(lhs, rhs_);
+  }
+  scalar_t rhs_;
+  fn_t fn_;
+};
+
+template <typename scalar_t>
+void compare_scalar_kernel(TensorIteratorBase& iter, OpType op, scalar_t rhs) {
+  CompareFunctor<scalar_t> f(op);
+  auto caller = CompareScalarFunctor<scalar_t, decltype(f)>(rhs, f);
+  gpu_kernel(iter, caller);
+}
+
+template <typename scalar_t>
+void compare_kernel_impl(TensorIteratorBase& iter, OpType op) {
+  // If either input is a cpu scalar, perform the equivalent comparison
+  // where the scalar is on the right hand side. This saves us from
+  // generating two otherwise identical kernels with mirrored
+  // arguments.
+  if (iter.is_cpu_scalar(1)) {
+    const scalar_t lhs = iter.scalar_value<scalar_t>(1);
+    iter.remove_operand(1);
+    const DeviceGuard device_guard(iter.device(1));
+    compare_scalar_kernel(iter, reflect(op), lhs);
+  } else if (iter.is_cpu_scalar(2)) {
+    const scalar_t rhs = iter.scalar_value<scalar_t>(2);
+    iter.remove_operand(2);
+    compare_scalar_kernel(iter, op, rhs);
   } else {
-    AT_DISPATCH_V2(
-        common_dtype,
-        "ne_xpu",
-        AT_WRAP([&]() {
-          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
-              iter, NeFunctor<scalar_t>());
-        }),
-        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-        kHalf,
-        kBFloat16,
-        kBool,
-        AT_EXPAND(AT_FLOAT8_TYPES),
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
+    CompareFunctor<scalar_t> f(op);
+    gpu_kernel(iter, f);
   }
 }
 
-void lt_kernel(TensorIteratorBase& iter) {
+inline void compare_kernel_with_scalars(TensorIteratorBase& iter, OpType op) {
   AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "lt_xpu", [&]() {
-        opmath_gpu_kernel_with_scalars<scalar_t>(iter, LtFunctor<scalar_t>());
-      });
-}
-
-void le_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "le_xpu", [&]() {
-        opmath_gpu_kernel_with_scalars<scalar_t>(iter, LeFunctor<scalar_t>());
-      });
-}
-
-void gt_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "gt_xpu", [&]() {
-        opmath_gpu_kernel_with_scalars<scalar_t>(iter, GtFunctor<scalar_t>());
+      kHalf, kBFloat16, kBool, iter.common_dtype(), "compare_xpu", [&]() {
+        compare_kernel_impl<scalar_t>(iter, op);
       });
 }
 
 void ge_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "ge_xpu", [&]() {
-        opmath_gpu_kernel_with_scalars<scalar_t>(iter, GeFunctor<scalar_t>());
-      });
+  compare_kernel_with_scalars(iter, OpType::GE);
+}
+
+void gt_kernel(TensorIteratorBase& iter) {
+  compare_kernel_with_scalars(iter, OpType::GT);
+}
+
+void le_kernel(TensorIteratorBase& iter) {
+  compare_kernel_with_scalars(iter, OpType::LE);
+}
+
+void lt_kernel(TensorIteratorBase& iter) {
+  compare_kernel_with_scalars(iter, OpType::LT);
 }
 
 } // namespace xpu
