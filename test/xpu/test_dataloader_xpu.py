@@ -5,18 +5,10 @@ import sys
 import torch
 from torch import multiprocessing as mp
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, parametrize
+from torch.testing._internal.common_utils import run_tests
 from torch.utils.data import (
-    _utils,
-    ChainDataset,
-    ConcatDataset,
     DataLoader,
-    Dataset,
-    IterableDataset,
     IterDataPipe,
-    StackDataset,
-    Subset,
-    TensorDataset,
 )
 from torch.utils.data.datapipes.iter import IterableWrapper
 
@@ -33,7 +25,6 @@ test_package = (
 
 
 with XPUPatchForImport(False):
-    import test_dataloader
     from test_dataloader import *
 
     def _test_multiprocessing_iterdatapipe(self, with_dill):
