@@ -9,12 +9,8 @@ import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument('--pr-list', '-n', nargs='+',
     default=[
-        #Upgrade submodule oneDNN to v3.4
-        "https://github.com/pytorch/pytorch/pull/122472",
-        # Add manual_seed and synchronize method
-        "https://github.com/pytorch/pytorch/pull/124709",
         # Fallback to CPU for XPU FP64
-        "https://github.com/pytorch/pytorch/pull/125587",
+        "https://github.com/pytorch/pytorch/pull/126516",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])

@@ -162,6 +162,12 @@ supported:
   - random_
   - random_.from
   - normal_
+  - normal.Tensor_float_out
+  - normal.Tensor_float
+  - normal.float_Tensor_out
+  - normal.float_Tensor
+  - normal.Tensor_Tensor_out
+  - normal.Tensor_Tensor
   - uniform_
   - bernoulli_.Tensor
   - bernoulli_.float
@@ -177,6 +183,8 @@ supported:
   - resize_
   - set_.source_Storage
   - set_.source_Storage_storage_offset
+  - set_.source_Tensor
+  - set_
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
@@ -224,6 +232,8 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices_backward
+  - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
   - _softmax.out
   - _softmax
@@ -279,3 +289,11 @@ supported:
   - triu.out
   - triu
   - triu_
+  - im2col
+  - im2col.out
+  - col2im
+  - col2im.out
+  - nll_loss_forward.output
+  - nll_loss_forward
+  - nll_loss_backward.grad_input
+  - nll_loss_backward
