@@ -1255,6 +1255,7 @@ res += launch_test("test_nn_xpu.py", skip_list)
 
 # test_content_store
 skip_list = (
+    # Storage compatibility in XPU tensor.
     # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
     "test_basic_xpu",
     "test_load_tensor_xpu",
