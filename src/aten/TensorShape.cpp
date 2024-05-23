@@ -7,9 +7,15 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
-#include <ATen/ops/as_strided_ops.h>
 #include <aten/sycl/ShapeKernels.h>
 #include <comm/RegisterUtils.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/as_strided_ops.h>
+#endif
 
 namespace at {
 

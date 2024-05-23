@@ -1254,6 +1254,18 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+skip_list = (
+    # CPU bias cases
+    # It is kernel assert on XPU implementation not exception on host.
+    # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_trivial_fancy_out_of_bounds_xpu",
+    "test_advancedindex",
+
+    # CUDA bias case
+    "test_index_put_accumulate_with_optional_tensors_xpu",
+)
+res += launch_test("test_indexing_xpu.py",skip_list)
+
 # test_pooling
 skip_list = (
     # CUDA bias case
@@ -1264,6 +1276,16 @@ skip_list = (
     "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
+
+# nn/test_dropout
+skip_list = (
+    # Cannot freeze rng state. Need enhance test infrastructure to make XPU
+    # compatible in freeze_rng_state.
+    # https://github.com/intel/torch-xpu-ops/issues/259
+    "test_Dropout1d_xpu",
+    "test_Dropout3d_xpu",
+)
+res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
