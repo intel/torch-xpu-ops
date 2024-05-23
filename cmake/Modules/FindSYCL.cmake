@@ -285,7 +285,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
       set(generated_file_basename "${sycl_target}_generated_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
-      if(NOT WIN32)
+      if(NOT MSVC)
         # TODO: enable incremental build on Windows
         set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
       endif()
