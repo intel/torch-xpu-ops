@@ -900,7 +900,7 @@ skip_list = (
     "test_mode_xpu_int8",  # Failed, mode not supports XPU
     "test_mode_xpu_uint8",  # Failed, mode not supports XPU
     "test_ref_extremal_values_mean_xpu_complex64",  # CUDA skip
-    "test_ref_small_input_masked_prod_xpu_float16",  # Tensor-likes are not close
+    "test_ref_small_input_masked_prod_xpu_float16",  # CPU Fallback mis-align with numpy
     "test_dim_reduction_fns_fn_name_mode_xpu_int8", # Failed, mode not supports xpu
     "test_dim_reduction_fns_fn_name_mode_xpu_int64", # Failed, mode not supports xpu
     "test_dim_reduction_fns_fn_name_mode_xpu_int32", # Failed, mode not supports xpu
