@@ -200,7 +200,7 @@ runs:
       if: ${{ inputs.expected_pass_num }}
       shell: bash
       run: |
-        cd ../pytorch/inductor_log/
+        cd ${{ github.workspace }}/inductor_log/
         cat summary.csv summary.log
         num_failed=$(grep "num_failed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
         if [ $num_failed -ne 0 ]; then
