@@ -807,6 +807,7 @@ res += launch_test("test_transformers_xpu.py", skip_list)
 # test_autocast
 skip_list = (
     # Frontend API support
+    # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
     # https://github.com/intel/torch-xpu-ops/issues/223
     "test_cache_disabled",
 )
