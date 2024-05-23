@@ -173,12 +173,12 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    _oh0_cached = sycl_local_acc_t<int>(ih * sizeof(int), cgh);
-    _oh1_cached = sycl_local_acc_t<int>(ih * sizeof(int), cgh);
-    _ow0_cached = sycl_local_acc_t<int>(iw * sizeof(int), cgh);
-    _ow1_cached = sycl_local_acc_t<int>(iw * sizeof(int), cgh);
-    _ikh_cached = sycl_local_acc_t<accscalar_t>(oh * sizeof(accscalar_t), cgh);
-    _ikw_cached = sycl_local_acc_t<accscalar_t>(ow * sizeof(accscalar_t), cgh);
+    _oh0_cached = sycl_local_acc_t<int>(ih, cgh);
+    _oh1_cached = sycl_local_acc_t<int>(ih, cgh);
+    _ow0_cached = sycl_local_acc_t<int>(iw, cgh);
+    _ow1_cached = sycl_local_acc_t<int>(iw, cgh);
+    _ikh_cached = sycl_local_acc_t<accscalar_t>(oh, cgh);
+    _ikw_cached = sycl_local_acc_t<accscalar_t>(ow, cgh);
   }
 
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
@@ -199,10 +199,6 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     global_range = total_item < local_range
         ? local_range
         : (total_item / local_range) * local_range;
-
-    // trade-off occupancy and slm leverage
-    ohw01_shared_size = ((iw + ih) * 2) * sizeof(int);
-    ikhw_shared_size = (oh + ow) * sizeof(accscalar_t);
   }
 
   sycl::range<1> glb_range() {
@@ -225,8 +221,6 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   int global_range;
   PackedTensorAccessor64<scalar_t, 4> gyacc;
   PackedTensorAccessor64<scalar_t, 4> gxacc;
-  int64_t ohw01_shared_size;
-  int64_t ikhw_shared_size;
   sycl_local_acc_t<int> _oh0_cached;
   sycl_local_acc_t<int> _oh1_cached;
   sycl_local_acc_t<int> _ow0_cached;
@@ -239,6 +233,12 @@ void adaptive_avg_pool2d_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input) {
+  TensorArg grad_input_arg{gradInput, "gradInput", 1},
+      grad_output_arg{gradOutput, "gradOutput", 2},
+      input_arg{input, "input", 3};
+  adaptive_pool_empty_output_check(gradOutput, "adaptive_avg_pool2d_backward");
+  checkAllSameGPU(__func__, {grad_input_arg, grad_output_arg, input_arg});
+
   TORCH_CHECK(
       (input.ndimension() == 3 || input.ndimension() == 4),
       "non-empty 3D or 4D (batch mode) tensor expected for input");

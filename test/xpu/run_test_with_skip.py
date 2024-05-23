@@ -15,7 +15,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     elif exe_list != None:
         exe_options = " -k '" + exe_list[0]
         for exe_case in exe_list[1:]:
-            exe_option = " and " + exe_case
+            exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += "'"
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
@@ -25,7 +25,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
         return os.system(test_command)
 
-res= 0
+res = 0
 
 # test_ops
 skip_list = (
@@ -390,6 +390,8 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+    "test_conj_view_conj_physical_xpu_complex64",
+    "test_neg_conj_view_conj_physical_xpu_complex128",
 
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
@@ -397,6 +399,12 @@ skip_list = (
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
     "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32", # CUDA xfail.
     "test_dtypes_native_dropout_backward_xpu", # Test architecture issue. Cannot get correct claimed supported data type for "masked_scale".
+    "test_non_standard_bool_values_scatter_reduce_amax_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_amin_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_prod_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amax_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amin_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_prod_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
     "test_non_standard_bool_values_argsort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
     "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
@@ -697,6 +705,236 @@ skip_list = (
     "test_variant_consistency_eager_svd_xpu_complex64",
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+    # oneDNN issues
+    # RuntimeError: value cannot be converted to type float without overflow
+    "test_conj_view_addbmm_xpu_complex64",
+    "test_neg_conj_view_addbmm_xpu_complex128",
+
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_neg_view_nn_functional_rrelu_xpu_float64",
+
+    # CPU fallback fails
+    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
+    "test_neg_view__refs_nn_functional_group_norm_xpu_float64",
+    "test_neg_view_nn_functional_group_norm_xpu_float64",
+
+    # CUDA skip,reproduce the UT in CUDA,CUDA fail
+    "test_neg_view_nn_functional_dropout_xpu_float64",
+
+    ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    # https://github.com/intel/torch-xpu-ops/issues/254
+    "test_conj_view___rmatmul___xpu_complex64",
+    "test_conj_view__refs_linalg_svd_xpu_complex64",
+    "test_conj_view_addmm_decomposed_xpu_complex64",
+    "test_conj_view_addmm_xpu_complex64",
+    "test_conj_view_addmv_xpu_complex64",
+    "test_conj_view_addr_xpu_complex64",
+    "test_conj_view_baddbmm_xpu_complex64",
+    "test_conj_view_bmm_xpu_complex64",
+    "test_conj_view_cholesky_inverse_xpu_complex64",
+    "test_conj_view_cholesky_solve_xpu_complex64",
+    "test_conj_view_cholesky_xpu_complex64",
+    "test_conj_view_corrcoef_xpu_complex64",
+    "test_conj_view_cov_xpu_complex64",
+    "test_conj_view_einsum_xpu_complex64",
+    "test_conj_view_geqrf_xpu_complex64",
+    "test_conj_view_inner_xpu_complex64",
+    "test_conj_view_linalg_cholesky_ex_xpu_complex64",
+    "test_conj_view_linalg_cholesky_xpu_complex64",
+    "test_conj_view_linalg_cond_xpu_complex64",
+    "test_conj_view_linalg_det_singular_xpu_complex64",
+    "test_conj_view_linalg_det_xpu_complex64",
+    "test_conj_view_linalg_eig_xpu_complex64",
+    "test_conj_view_linalg_eigh_xpu_complex64",
+    "test_conj_view_linalg_eigvals_xpu_complex64",
+    "test_conj_view_linalg_eigvalsh_xpu_complex64",
+    "test_conj_view_linalg_householder_product_xpu_complex64",
+    "test_conj_view_linalg_inv_ex_xpu_complex64",
+    "test_conj_view_linalg_inv_xpu_complex64",
+    "test_conj_view_linalg_ldl_factor_ex_xpu_complex64",
+    "test_conj_view_linalg_ldl_factor_xpu_complex64",
+    "test_conj_view_linalg_ldl_solve_xpu_complex64",
+    "test_conj_view_linalg_lstsq_grad_oriented_xpu_complex64",
+    "test_conj_view_linalg_lstsq_xpu_complex64",
+    "test_conj_view_linalg_lu_factor_xpu_complex64",
+    "test_conj_view_linalg_lu_solve_xpu_complex64",
+    "test_conj_view_linalg_matrix_norm_xpu_complex64",
+    "test_conj_view_linalg_matrix_power_xpu_complex64",
+    "test_conj_view_linalg_matrix_rank_hermitian_xpu_complex64",
+    "test_conj_view_linalg_matrix_rank_xpu_complex64",
+    "test_conj_view_linalg_multi_dot_xpu_complex64",
+    "test_conj_view_linalg_norm_subgradients_at_zero_xpu_complex64",
+    "test_conj_view_linalg_norm_xpu_complex64",
+    "test_conj_view_linalg_pinv_hermitian_xpu_complex64",
+    "test_conj_view_linalg_pinv_singular_xpu_complex64",
+    "test_conj_view_linalg_pinv_xpu_complex64",
+    "test_conj_view_linalg_qr_xpu_complex64",
+    "test_conj_view_linalg_slogdet_xpu_complex64",
+    "test_conj_view_linalg_solve_ex_xpu_complex64",
+    "test_conj_view_linalg_solve_triangular_xpu_complex64",
+    "test_conj_view_linalg_solve_xpu_complex64",
+    "test_conj_view_linalg_svd_xpu_complex64",
+    "test_conj_view_linalg_svdvals_xpu_complex64",
+    "test_conj_view_linalg_tensorinv_xpu_complex64",
+    "test_conj_view_linalg_tensorsolve_xpu_complex64",
+    "test_conj_view_logdet_xpu_complex64",
+    "test_conj_view_lu_solve_xpu_complex64",
+    "test_conj_view_lu_xpu_complex64",
+    "test_conj_view_matmul_xpu_complex64",
+    "test_conj_view_mm_xpu_complex64",
+    "test_conj_view_mv_xpu_complex64",
+    "test_conj_view_nn_functional_linear_xpu_complex64",
+    "test_conj_view_norm_nuc_xpu_complex64",
+    "test_conj_view_ormqr_xpu_complex64",
+    "test_conj_view_pinverse_xpu_complex64",
+    "test_conj_view_qr_xpu_complex64",
+    "test_conj_view_svd_xpu_complex64",
+    "test_conj_view_tensordot_xpu_complex64",
+    "test_conj_view_triangular_solve_xpu_complex64",
+    "test_neg_conj_view_addmm_decomposed_xpu_complex128",
+    "test_neg_conj_view_addmm_xpu_complex128",
+    "test_neg_conj_view_addmv_xpu_complex128",
+    "test_neg_conj_view_addr_xpu_complex128",
+    "test_neg_conj_view_baddbmm_xpu_complex128",
+    "test_neg_conj_view_bmm_xpu_complex128",
+    "test_neg_conj_view_cholesky_inverse_xpu_complex128",
+    "test_neg_conj_view_cholesky_solve_xpu_complex128",
+    "test_neg_conj_view_cholesky_xpu_complex128",
+    "test_neg_conj_view_corrcoef_xpu_complex128",
+    "test_neg_conj_view_cov_xpu_complex128",
+    "test_neg_conj_view_geqrf_xpu_complex128",
+    "test_neg_conj_view_inner_xpu_complex128",
+    "test_neg_conj_view_linalg_cholesky_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_cholesky_xpu_complex128",
+    "test_neg_conj_view_linalg_cond_xpu_complex128",
+    "test_neg_conj_view_linalg_det_singular_xpu_complex128",
+    "test_neg_conj_view_linalg_eig_xpu_complex128",
+    "test_neg_conj_view_linalg_eigh_xpu_complex128",
+    "test_neg_conj_view_linalg_eigvals_xpu_complex128",
+    "test_neg_conj_view_linalg_eigvalsh_xpu_complex128",
+    "test_neg_conj_view_linalg_householder_product_xpu_complex128",
+    "test_neg_conj_view_linalg_inv_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_inv_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_factor_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_factor_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_lstsq_grad_oriented_xpu_complex128",
+    "test_neg_conj_view_linalg_lstsq_xpu_complex128",
+    "test_neg_conj_view_linalg_lu_factor_xpu_complex128",
+    "test_neg_conj_view_linalg_lu_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_matrix_rank_hermitian_xpu_complex128",
+    "test_neg_conj_view_linalg_matrix_rank_xpu_complex128",
+    "test_neg_conj_view_linalg_multi_dot_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_hermitian_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_singular_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_xpu_complex128",
+    "test_neg_conj_view_linalg_qr_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_triangular_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_svdvals_xpu_complex128",
+    "test_neg_conj_view_linalg_tensorinv_xpu_complex128",
+    "test_neg_conj_view_linalg_tensorsolve_xpu_complex128",
+    "test_neg_conj_view_lu_solve_xpu_complex128",
+    "test_neg_conj_view_lu_xpu_complex128",
+    "test_neg_conj_view_mm_xpu_complex128",
+    "test_neg_conj_view_mv_xpu_complex128",
+    "test_neg_conj_view_nn_functional_linear_xpu_complex128",
+    "test_neg_conj_view_norm_nuc_xpu_complex128",
+    "test_neg_conj_view_ormqr_xpu_complex128",
+    "test_neg_conj_view_pinverse_xpu_complex128",
+    "test_neg_conj_view_qr_xpu_complex128",
+    "test_neg_conj_view_tensordot_xpu_complex128",
+    "test_neg_conj_view_triangular_solve_xpu_complex128",
+    "test_neg_view___rmatmul___xpu_float64",
+    "test_neg_view__refs_linalg_svd_xpu_float64",
+    "test_neg_view__refs_nn_functional_pdist_xpu_float64",
+    "test_neg_view_addbmm_xpu_float64",
+    "test_neg_view_addmm_decomposed_xpu_float64",
+    "test_neg_view_addmm_xpu_float64",
+    "test_neg_view_addmv_xpu_float64",
+    "test_neg_view_addr_xpu_float64",
+    "test_neg_view_baddbmm_xpu_float64",
+    "test_neg_view_bmm_xpu_float64",
+    "test_neg_view_cdist_xpu_float64",
+    "test_neg_view_cholesky_inverse_xpu_float64",
+    "test_neg_view_cholesky_solve_xpu_float64",
+    "test_neg_view_cholesky_xpu_float64",
+    "test_neg_view_corrcoef_xpu_float64",
+    "test_neg_view_cov_xpu_float64",
+    "test_neg_view_einsum_xpu_float64",
+    "test_neg_view_geqrf_xpu_float64",
+    "test_neg_view_inner_xpu_float64",
+    "test_neg_view_linalg_cholesky_ex_xpu_float64",
+    "test_neg_view_linalg_cholesky_xpu_float64",
+    "test_neg_view_linalg_cond_xpu_float64",
+    "test_neg_view_linalg_det_singular_xpu_float64",
+    "test_neg_view_linalg_det_xpu_float64",
+    "test_neg_view_linalg_eig_xpu_float64",
+    "test_neg_view_linalg_eigh_xpu_float64",
+    "test_neg_view_linalg_eigvals_xpu_float64",
+    "test_neg_view_linalg_eigvalsh_xpu_float64",
+    "test_neg_view_linalg_householder_product_xpu_float64",
+    "test_neg_view_linalg_inv_ex_xpu_float64",
+    "test_neg_view_linalg_inv_xpu_float64",
+    "test_neg_view_linalg_ldl_factor_ex_xpu_float64",
+    "test_neg_view_linalg_ldl_factor_xpu_float64",
+    "test_neg_view_linalg_ldl_solve_xpu_float64",
+    "test_neg_view_linalg_lstsq_grad_oriented_xpu_float64",
+    "test_neg_view_linalg_lstsq_xpu_float64",
+    "test_neg_view_linalg_lu_factor_xpu_float64",
+    "test_neg_view_linalg_lu_solve_xpu_float64",
+    "test_neg_view_linalg_matrix_norm_xpu_float64",
+    "test_neg_view_linalg_matrix_power_xpu_float64",
+    "test_neg_view_linalg_matrix_rank_hermitian_xpu_float64",
+    "test_neg_view_linalg_matrix_rank_xpu_float64",
+    "test_neg_view_linalg_multi_dot_xpu_float64",
+    "test_neg_view_linalg_norm_subgradients_at_zero_xpu_float64",
+    "test_neg_view_linalg_norm_xpu_float64",
+    "test_neg_view_linalg_pinv_hermitian_xpu_float64",
+    "test_neg_view_linalg_pinv_singular_xpu_float64",
+    "test_neg_view_linalg_pinv_xpu_float64",
+    "test_neg_view_linalg_qr_xpu_float64",
+    "test_neg_view_linalg_slogdet_xpu_float64",
+    "test_neg_view_linalg_solve_ex_xpu_float64",
+    "test_neg_view_linalg_solve_triangular_xpu_float64",
+    "test_neg_view_linalg_solve_xpu_float64",
+    "test_neg_view_linalg_svd_xpu_float64",
+    "test_neg_view_linalg_svdvals_xpu_float64",
+    "test_neg_view_linalg_tensorinv_xpu_float64",
+    "test_neg_view_linalg_tensorsolve_xpu_float64",
+    "test_neg_view_logdet_xpu_float64",
+    "test_neg_view_lu_solve_xpu_float64",
+    "test_neg_view_lu_xpu_float64",
+    "test_neg_view_matmul_xpu_float64",
+    "test_neg_view_mm_xpu_float64",
+    "test_neg_view_mv_xpu_float64",
+    "test_neg_view_nn_functional_bilinear_xpu_float64",
+    "test_neg_view_nn_functional_linear_xpu_float64",
+    "test_neg_view_nn_functional_multi_head_attention_forward_xpu_float64",
+    "test_neg_view_nn_functional_scaled_dot_product_attention_xpu_float64",
+    "test_neg_view_norm_nuc_xpu_float64",
+    "test_neg_view_ormqr_xpu_float64",
+    "test_neg_view_pca_lowrank_xpu_float64",
+    "test_neg_view_pinverse_xpu_float64",
+    "test_neg_view_qr_xpu_float64",
+    "test_neg_view_svd_lowrank_xpu_float64",
+    "test_neg_view_svd_xpu_float64",
+    "test_neg_view_tensordot_xpu_float64",
+    "test_neg_view_triangular_solve_xpu_float64",
+
+    ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
+    # https://github.com/intel/torch-xpu-ops/issues/253
+    "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
+    "test_conj_view_nn_functional_conv_transpose3d_xpu_complex64",
+    "test_neg_view_nn_functional_conv_transpose2d_xpu_float64",
+    "test_neg_view_nn_functional_conv_transpose3d_xpu_float64",
+
+    ### Error #2 in TestMathBitsXPU , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. 
+    # https://github.com/intel/torch-xpu-ops/issues/242
+    "test_conj_view_to_sparse_xpu_complex64",
+    "test_neg_conj_view_to_sparse_xpu_complex128",
+    "test_neg_view_to_sparse_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -726,6 +964,21 @@ skip_list = (
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
+# test_scatter_gather_ops
+skip_list = (
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    "test_scatter__reductions_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_amax_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_amin_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_mean_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_mean_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+    "test_scatter_reduce_prod_xpu_bool", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_scatter_reduce_prod_xpu_complex128", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
+    "test_scatter_reduce_prod_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
+)
+res += launch_test("test_scatter_gather_ops_xpu.py", skip_list)
+
 res += launch_test("test_autograd_fallback.py")
 
 # test_sort_and_select
@@ -744,6 +997,58 @@ skip_list = (
     "test_sort_large_slice_xpu", # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
+
+nn_test_embedding_skip_list = (
+    # Skip list of base line
+    # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
+    "test_embedding_backward_xpu_float64",
+    "test_embedding_bag_1D_padding_idx_xpu_float32",
+    "test_embedding_bag_1D_padding_idx_xpu_float64",
+    "test_embedding_bag_2D_padding_idx_xpu_float32",
+    "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int64",
+    "test_embedding_bag_bfloat16_xpu_int64_int32",
+    "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_float64",
+    "test_embedding_bag_device_xpu_int64_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int32_float16",
+    "test_embedding_bag_device_xpu_int64_int32_float32",
+    "test_embedding_bag_device_xpu_int64_int32_float64",
+    "test_embedding_bag_device_xpu_int64_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int64_int64_float16",
+    "test_embedding_bag_device_xpu_int64_int64_float32",
+    "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int64",
+    "test_embedding_bag_half_xpu_int64_int32",
+    "test_embedding_bag_half_xpu_int64_int64",
+
+    # CPU fallback error: RuntimeError: expected scalar type Long but found Int
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float16",
+    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float32",
+    "test_embedding_bag_bfloat16_xpu_int32_int32",
+    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int32_float16",
+    "test_embedding_bag_device_xpu_int32_int32_float32",
+    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int64_float16",
+    "test_embedding_bag_device_xpu_int32_int64_float32",
+    "test_embedding_bag_half_xpu_int32_int32",
+
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
+    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
+)
+res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
 # test_transformers
 skip_list = (
@@ -803,6 +1108,435 @@ skip_list = (
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
+# test_complex
+skip_list = (
+    #Skip CPU case
+    "test_eq_xpu_complex128",
+    "test_eq_xpu_complex64",
+    "test_ne_xpu_complex128",
+    "test_ne_xpu_complex64",
+)
+res += launch_test("test_complex_xpu.py", skip_list)
+
+# test_modules
+skip_list = (
+    # XPU tensor compatible issue
+    # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
+    "test_save_load_nn_",
+
+    # oneDNN issues
+    # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_cpu_gpu_parity_nn_Bilinear_xpu_float64",
+    "test_cpu_gpu_parity_nn_GRUCell_xpu_float64",
+    "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_LSTMCell_xpu_float64",
+    "test_cpu_gpu_parity_nn_LSTM_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_LSTM_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_Linear_xpu_float64",
+    "test_cpu_gpu_parity_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_RNNCell_xpu_float64",
+    "test_cpu_gpu_parity_nn_RNN_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_RNN_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_TransformerDecoderLayer_xpu_float64",
+    "test_cpu_gpu_parity_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_cpu_gpu_parity_nn_Transformer_xpu_float64",
+    "test_forward_nn_Bilinear_xpu_float64",
+    "test_forward_nn_GRUCell_xpu_float64",
+    "test_forward_nn_GRU_eval_mode_xpu_float64",
+    "test_forward_nn_GRU_train_mode_xpu_float64",
+    "test_forward_nn_LSTMCell_xpu_float64",
+    "test_forward_nn_LSTM_eval_mode_xpu_float64",
+    "test_forward_nn_LSTM_train_mode_xpu_float64",
+    "test_forward_nn_Linear_xpu_float64",
+    "test_forward_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_forward_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_forward_nn_RNNCell_xpu_float64",
+    "test_forward_nn_RNN_eval_mode_xpu_float64",
+    "test_forward_nn_RNN_train_mode_xpu_float64",
+    "test_forward_nn_TransformerDecoderLayer_xpu_float64",
+    "test_forward_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_forward_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_forward_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_forward_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_forward_nn_Transformer_xpu_float64",
+    "test_grad_nn_Bilinear_xpu_float64",
+    "test_grad_nn_GRUCell_xpu_float64",
+    "test_grad_nn_GRU_eval_mode_xpu_float64",
+    "test_grad_nn_GRU_train_mode_xpu_float64",
+    "test_grad_nn_LSTMCell_xpu_float64",
+    "test_grad_nn_LSTM_eval_mode_xpu_float64",
+    "test_grad_nn_LSTM_train_mode_xpu_float64",
+    "test_grad_nn_Linear_xpu_float64",
+    "test_grad_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_grad_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_grad_nn_RNNCell_xpu_float64",
+    "test_grad_nn_RNN_eval_mode_xpu_float64",
+    "test_grad_nn_RNN_train_mode_xpu_float64",
+    "test_grad_nn_TransformerDecoderLayer_xpu_float64",
+    "test_grad_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_grad_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_grad_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_grad_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_grad_nn_Transformer_xpu_float64",
+    "test_gradgrad_nn_Bilinear_xpu_float64",
+    "test_gradgrad_nn_GRUCell_xpu_float64",
+    "test_gradgrad_nn_GRU_eval_mode_xpu_float64",
+    "test_gradgrad_nn_GRU_train_mode_xpu_float64",
+    "test_gradgrad_nn_LSTMCell_xpu_float64",
+    "test_gradgrad_nn_LSTM_eval_mode_xpu_float64",
+    "test_gradgrad_nn_LSTM_train_mode_xpu_float64",
+    "test_gradgrad_nn_Linear_xpu_float64",
+    "test_gradgrad_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_gradgrad_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_gradgrad_nn_RNNCell_xpu_float64",
+    "test_gradgrad_nn_RNN_eval_mode_xpu_float64",
+    "test_gradgrad_nn_RNN_train_mode_xpu_float64",
+    "test_gradgrad_nn_TransformerDecoderLayer_xpu_float64",
+    "test_gradgrad_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_gradgrad_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_gradgrad_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_gradgrad_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_gradgrad_nn_Transformer_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_Bilinear_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_LSTMCell_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_Linear_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_RNNCell_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_TransformerDecoderLayer_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_TransformerEncoderLayer_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_TransformerEncoder_xpu_float64",
+    "test_if_train_and_eval_modes_differ_nn_Transformer_xpu_float64",
+    "test_memory_format_nn_GRUCell_xpu_float64",
+    "test_memory_format_nn_GRU_eval_mode_xpu_float64",
+    "test_memory_format_nn_GRU_train_mode_xpu_float64",
+    "test_memory_format_nn_LSTMCell_xpu_float64",
+    "test_memory_format_nn_LSTM_eval_mode_xpu_float64",
+    "test_memory_format_nn_LSTM_train_mode_xpu_float64",
+    "test_memory_format_nn_RNNCell_xpu_float64",
+    "test_memory_format_nn_RNN_eval_mode_xpu_float64",
+    "test_memory_format_nn_RNN_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_Bilinear_xpu_float64",
+    "test_multiple_device_transfer_nn_GRUCell_xpu_float64",
+    "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_LSTMCell_xpu_float64",
+    "test_multiple_device_transfer_nn_LSTM_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_LSTM_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_Linear_xpu_float64",
+    "test_multiple_device_transfer_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_RNNCell_xpu_float64",
+    "test_multiple_device_transfer_nn_RNN_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_RNN_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_TransformerDecoderLayer_xpu_float64",
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_Transformer_xpu_float64",
+    "test_non_contiguous_tensors_nn_Bilinear_xpu_float64",
+    "test_non_contiguous_tensors_nn_GRUCell_xpu_float64",
+    "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_LSTMCell_xpu_float64",
+    "test_non_contiguous_tensors_nn_LSTM_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_LSTM_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_Linear_xpu_float64",
+    "test_non_contiguous_tensors_nn_MultiheadAttention_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_MultiheadAttention_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_RNNCell_xpu_float64",
+    "test_non_contiguous_tensors_nn_RNN_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_RNN_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_TransformerDecoderLayer_xpu_float64",
+    "test_non_contiguous_tensors_nn_TransformerEncoderLayer_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_TransformerEncoderLayer_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_TransformerEncoder_eval_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_TransformerEncoder_train_mode_xpu_float64",
+    "test_non_contiguous_tensors_nn_Transformer_xpu_float64",
+    # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+    "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
+    "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
+    # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The ...
+    "test_grad_nn_Conv3d_xpu_float64",
+    "test_grad_nn_ConvTranspose3d_xpu_float64",
+    "test_grad_nn_LazyConv3d_xpu_float64",
+    "test_grad_nn_LazyConvTranspose3d_xpu_float64",
+    # AssertionError: False is not true
+    "test_memory_format_nn_Conv2d_xpu_float64",
+    "test_memory_format_nn_ConvTranspose2d_xpu_float64",
+    "test_memory_format_nn_LazyConv2d_xpu_float64",
+    "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
+
+    # CPU fallback fails
+    # AssertionError: Tensor-likes are not close!
+    "test_cpu_gpu_parity_nn_CrossEntropyLoss_xpu_float16",
+
+    # CPU fallback could not cover these
+    # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_cpu_gpu_parity_nn_GRUCell_xpu_float32",
+    "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float32",
+    "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float32",
+    "test_forward_nn_GRUCell_xpu_float32",
+    "test_forward_nn_GRU_eval_mode_xpu_float32",
+    "test_forward_nn_GRU_train_mode_xpu_float32",
+    "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float32",
+    "test_memory_format_nn_GRUCell_xpu_float32",
+    "test_memory_format_nn_GRU_eval_mode_xpu_float32",
+    "test_memory_format_nn_GRU_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_GRUCell_xpu_float32",
+    "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float32",
+    "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
+    "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
+    "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
+
+    # CUDA xfails
+    # Failed: Unexpected success
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
+
+    # CPU fallback fails
+    # AssertionError: False is not true
+    "test_memory_format_nn_ReflectionPad3d_xpu_float32",
+    "test_memory_format_nn_ReflectionPad3d_xpu_float64",
+    "test_memory_format_nn_ReplicationPad2d_xpu_float32",
+    "test_memory_format_nn_ReplicationPad2d_xpu_float64",
+    "test_memory_format_nn_ReplicationPad3d_xpu_float32",
+    "test_memory_format_nn_ReplicationPad3d_xpu_float64",
+
+    # CPU fallback fails
+    # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
+    "test_memory_format_nn_GroupNorm_xpu_bfloat16",
+    "test_memory_format_nn_GroupNorm_xpu_float16",
+    "test_memory_format_nn_GroupNorm_xpu_float32",
+    "test_memory_format_nn_GroupNorm_xpu_float64",
+
+    # CUDA bias cases
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_multiple_device_transfer_nn_BCELoss_xpu_float32",
+    "test_multiple_device_transfer_nn_BCELoss_xpu_float64",
+    "test_multiple_device_transfer_nn_BCEWithLogitsLoss_xpu_float32",
+    "test_multiple_device_transfer_nn_BCEWithLogitsLoss_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm1d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm1d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm1d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm1d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm2d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm2d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm2d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm2d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm3d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm3d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_BatchNorm3d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_BatchNorm3d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_Bilinear_xpu_float32",
+    "test_multiple_device_transfer_nn_Conv1d_xpu_float32",
+    "test_multiple_device_transfer_nn_Conv1d_xpu_float64",
+    "test_multiple_device_transfer_nn_Conv2d_xpu_float32",
+    "test_multiple_device_transfer_nn_Conv2d_xpu_float64",
+    "test_multiple_device_transfer_nn_Conv3d_xpu_float32",
+    "test_multiple_device_transfer_nn_Conv3d_xpu_float64",
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex128",
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex32",
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_complex64",
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_float32",
+    "test_multiple_device_transfer_nn_ConvTranspose1d_xpu_float64",
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex128",
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex32",
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_complex64",
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_float32",
+    "test_multiple_device_transfer_nn_ConvTranspose2d_xpu_float64",
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex128",
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex32",
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_complex64",
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_float32",
+    "test_multiple_device_transfer_nn_ConvTranspose3d_xpu_float64",
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float16",
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float32",
+    "test_multiple_device_transfer_nn_CrossEntropyLoss_xpu_float64",
+    "test_multiple_device_transfer_nn_Embedding_xpu_float32",
+    "test_multiple_device_transfer_nn_Embedding_xpu_float64",
+    "test_multiple_device_transfer_nn_FractionalMaxPool2d_xpu_float32",
+    "test_multiple_device_transfer_nn_FractionalMaxPool2d_xpu_float64",
+    "test_multiple_device_transfer_nn_FractionalMaxPool3d_xpu_float32",
+    "test_multiple_device_transfer_nn_FractionalMaxPool3d_xpu_float64",
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_bfloat16",
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float16",
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float32",
+    "test_multiple_device_transfer_nn_GroupNorm_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm1d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm1d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm1d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm1d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm2d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm2d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm2d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm2d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm3d_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm3d_eval_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_InstanceNorm3d_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_InstanceNorm3d_train_mode_xpu_float64",
+    "test_multiple_device_transfer_nn_LSTMCell_xpu_float32",
+    "test_multiple_device_transfer_nn_LSTM_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_LSTM_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_LayerNorm_xpu_float32",
+    "test_multiple_device_transfer_nn_LayerNorm_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConv1d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConv1d_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConv2d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConv2d_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConv3d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConv3d_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConvTranspose1d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConvTranspose1d_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConvTranspose2d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConvTranspose2d_xpu_float64",
+    "test_multiple_device_transfer_nn_LazyConvTranspose3d_xpu_float32",
+    "test_multiple_device_transfer_nn_LazyConvTranspose3d_xpu_float64",
+    "test_multiple_device_transfer_nn_Linear_xpu_float32",
+    "test_multiple_device_transfer_nn_MultiLabelSoftMarginLoss_xpu_float32",
+    "test_multiple_device_transfer_nn_MultiLabelSoftMarginLoss_xpu_float64",
+    "test_multiple_device_transfer_nn_MultiMarginLoss_xpu_float32",
+    "test_multiple_device_transfer_nn_MultiMarginLoss_xpu_float64",
+    "test_multiple_device_transfer_nn_MultiheadAttention_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_MultiheadAttention_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_NLLLoss_xpu_float32",
+    "test_multiple_device_transfer_nn_NLLLoss_xpu_float64",
+    "test_multiple_device_transfer_nn_PReLU_xpu_float32",
+    "test_multiple_device_transfer_nn_PReLU_xpu_float64",
+    "test_multiple_device_transfer_nn_RMSNorm_xpu_float32",
+    "test_multiple_device_transfer_nn_RMSNorm_xpu_float64",
+    "test_multiple_device_transfer_nn_RNNCell_xpu_float32",
+    "test_multiple_device_transfer_nn_RNN_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_RNN_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_TransformerDecoderLayer_xpu_float32",
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_TransformerEncoderLayer_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float32",
+    "test_multiple_device_transfer_nn_Transformer_xpu_float32",
+)
+res += launch_test("test_modules_xpu.py", skip_list)
+
+# test_nn
+skip_list = (
+    # CUDA bias cases
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_CTCLoss_cudnn_xpu",
+    "test_ctc_loss_cudnn_xpu",
+    "test_grid_sample_bfloat16_precision_xpu",
+    "test_grid_sample_half_precision_xpu",
+    "test_grid_sample_large_xpu",
+    "test_layernorm_half_precision_xpu",
+    "test_layernorm_weight_bias_xpu",
+    "test_masked_softmax_devices_parity_xpu",
+    # AssertionError: 'CUDA error: device-side assert triggered' not found in 'PYTORCH_API_USAGE torch.python.import\nPYTORCH_API_USAGE c10d.python.import\nPYTORCH_API_USAGE aten.init.xpu\nPYTORCH_API_USAGE tensor.create\n/home/...
+    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
+    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
+    # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
+    "test_TransformerEncoderLayer_empty_xpu",
+
+    # oneDNN issues
+    # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_GRU_grad_and_gradgrad_xpu_float64",
+    "test_LSTM_grad_and_gradgrad_xpu_float64",
+    "test_lstmcell_backward_only_one_output_grad_xpu_float64",
+    "test_module_to_empty_xpu_float64",
+    "test_rnn_fused_xpu_float64",
+    "test_rnn_retain_variables_xpu_float64",
+
+    # CPU fallback fails
+    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
+    "test_GroupNorm_empty_xpu",
+    # AssertionError: Tensor-likes are not close!
+    "test_GroupNorm_memory_format_xpu",
+    # AssertionError: Scalars are not close!
+    "test_InstanceNorm1d_general_xpu",
+    "test_InstanceNorm2d_general_xpu",
+    "test_InstanceNorm3d_general_xpu",
+    # AssertionError: AssertionError not raised
+    "test_batchnorm_simple_average_mixed_xpu_bfloat16",
+    "test_batchnorm_simple_average_mixed_xpu_float16",
+    "test_batchnorm_simple_average_xpu_float32",
+    "test_batchnorm_update_stats_xpu",
+    # AssertionError: False is not true
+    "test_device_mask_xpu",
+    "test_overwrite_module_params_on_conversion_cpu_device_xpu",
+    # AssertionError: RuntimeError not raised
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bicubic_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bilinear_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bicubic_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
+    "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
+    # Failed: Unexpected success
+    "test_upsamplingNearest2d_launch_fail_xpu",
+
+    # CPU fallback could not cover
+    # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
+    "test_rnn_fused_xpu_float32",
+)
+res += launch_test("test_nn_xpu.py", skip_list)
+
+# test_indexing
+skip_list = (
+    # CPU bias cases
+    # It is kernel assert on XPU implementation not exception on host.
+    # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_trivial_fancy_out_of_bounds_xpu",
+    "test_advancedindex",
+
+    # CUDA bias case
+    "test_index_put_accumulate_with_optional_tensors_xpu",
+)
+res += launch_test("test_indexing_xpu.py",skip_list)
+
+# test_pooling
+skip_list = (
+    # CUDA bias case
+    "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
+    "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
+
+    # CPU fallback fails
+    "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+)
+res += launch_test("nn/test_pooling_xpu.py", skip_list)
+
+# nn/test_dropout
+skip_list = (
+    # Cannot freeze rng state. Need enhance test infrastructure to make XPU
+    # compatible in freeze_rng_state.
+    # https://github.com/intel/torch-xpu-ops/issues/259
+    "test_Dropout1d_xpu",
+    "test_Dropout3d_xpu",
+)
+res += launch_test("nn/test_dropout_xpu.py", skip_list)
+
+# test_tensor_creation_ops
+skip_list = (
+    # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
+    "test_float_to_int_conversion_finite_xpu_int8",
+    "test_float_to_int_conversion_finite_xpu_int16",
+
+    # sparse
+    "test_tensor_ctor_device_inference_xpu",
+
+    # Dispatch issue. It is a composite operator. But it is implemented by
+    # DispatchStub. XPU doesn't support DispatchStub.
+    "test_kaiser_window_xpu",
+
+    # CUDA bias case
+    "test_randperm_xpu",
+)
+res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
 # test_autocast
 skip_list = (

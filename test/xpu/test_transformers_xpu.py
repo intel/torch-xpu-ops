@@ -10,10 +10,12 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_transformers import TestTransformers, TestSDPAFailureModes, TestSDPA, TestAttnBias
 
+
 instantiate_device_type_tests(TestTransformers, globals(), only_for="xpu")
 instantiate_device_type_tests(TestSDPAFailureModes, globals(), only_for="xpu")
 instantiate_device_type_tests(TestSDPA, globals(), only_for="xpu")
 instantiate_device_type_tests(TestAttnBias, globals(), only_for="xpu")
+
 
 if __name__ == "__main__":
     run_tests()
