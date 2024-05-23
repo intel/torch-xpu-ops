@@ -1781,7 +1781,6 @@ skip_list=(
     'test_reference_numerics_small_atan_xpu_complex128',
     'test_reference_numerics_small_atan_xpu_complex64',
 )
-
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
