@@ -1254,6 +1254,7 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+# test_indexing
 skip_list = (
     # CPU bias cases
     # It is kernel assert on XPU implementation not exception on host.
@@ -1286,6 +1287,24 @@ skip_list = (
     "test_Dropout3d_xpu",
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
+
+# test_tensor_creation_ops
+skip_list = (
+    # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
+    "test_float_to_int_conversion_finite_xpu_int8",
+    "test_float_to_int_conversion_finite_xpu_int16",
+
+    # sparse
+    "test_tensor_ctor_device_inference_xpu",
+
+    # Dispatch issue. It is a composite operator. But it is implemented by
+    # DispatchStub. XPU doesn't support DispatchStub.
+    "test_kaiser_window_xpu",
+
+    # CUDA bias case
+    "test_randperm_xpu",
+)
+res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
