@@ -55,5 +55,8 @@ res += launch_test("test_comparison_utils_xpu.py")
 # test_pruning
 res += launch_test("nn/test_pruning_xpu.py")
 
+# test_load_state_dict
+res += launch_test("nn/test_load_state_dict_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
