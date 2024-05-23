@@ -297,3 +297,6 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _embedding_bag
+  # - _embedding_bag_dense_backward
+  # - _embedding_bag_per_sample_weights_backward
