@@ -390,6 +390,8 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+    "test_conj_view_conj_physical_xpu_complex64",
+    "test_neg_conj_view_conj_physical_xpu_complex128",
 
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
@@ -709,7 +711,6 @@ skip_list = (
     "test_neg_conj_view_addbmm_xpu_complex128",
 
     # CPU fallback error: AssertionError: Tensor-likes are not close!
-    "test_conj_view_conj_physical_xpu_complex64",
     "test_neg_view_nn_functional_rrelu_xpu_float64",
 
     # CPU fallback fails
@@ -720,7 +721,7 @@ skip_list = (
     # CUDA skip,reproduce the UT in CUDA,CUDA fail
     "test_neg_view_nn_functional_dropout_xpu_float64",
 
-    ### Error #0 in TestMathBitsXPU , totally 200 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
     # https://github.com/intel/torch-xpu-ops/issues/254
     "test_conj_view___rmatmul___xpu_complex64",
     "test_conj_view__refs_linalg_svd_xpu_complex64",
@@ -922,14 +923,14 @@ skip_list = (
     "test_neg_view_tensordot_xpu_float64",
     "test_neg_view_triangular_solve_xpu_float64",
 
-    ### Error #1 in TestMathBitsXPU , totally 4 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
+    ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
     "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
     "test_conj_view_nn_functional_conv_transpose3d_xpu_complex64",
     "test_neg_view_nn_functional_conv_transpose2d_xpu_float64",
     "test_neg_view_nn_functional_conv_transpose3d_xpu_float64",
 
-    ### Error #2 in TestMathBitsXPU , totally 4 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+    ### Error #2 in TestMathBitsXPU , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. 
     # https://github.com/intel/torch-xpu-ops/issues/242
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
