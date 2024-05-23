@@ -1,4 +1,3 @@
-
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
@@ -13,5 +12,6 @@ with XPUPatchForImport(False):
     from test_unary_ufuncs import TestUnaryUfuncs
 
 instantiate_device_type_tests(TestUnaryUfuncs, globals(),only_for=("xpu"))
+
 if __name__ == "__main__":
     run_tests()
