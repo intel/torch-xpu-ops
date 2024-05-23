@@ -141,7 +141,7 @@ if(SYCL_result)
 endif()
 
 # TODO: enable incremental build on Windows
-if(NOT WIN32)
+if(NOT MSVC)
   # Parse *.d file to retrieve included headers. These headers are dependencies
   # of custom compilation command. Inform cmake to scan these files and
   # retrigger compilation if anything change in these headers.
