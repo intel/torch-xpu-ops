@@ -128,6 +128,7 @@ jobs:
           mode: inference
           scenario: accuracy
           expected_pass_num: 46
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -189,6 +190,7 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 39
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -199,6 +201,7 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 22
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
