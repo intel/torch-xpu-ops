@@ -210,3 +210,30 @@ jobs:
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
+  Tests-Failure-And-Report:
+    if: ${{ !inputs.suite }}
+    runs-on: pvc_e2e
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    needs: Inductor-XPU-E2E-Nightly-Tests
+    if: always()
+    steps:
+      - name: Report github issue for XPU OPS nightly
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }}
+        run: |
+          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ github.repository }}"
+          gh --repo $repo issue comment 304  \
+              --body "XPU OPS Nightly Successful $(date +'%F'), See: $build_url"
+      - name: Report github issue when failure detected
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'failure' }}
+        run: |
+          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          notification_list="${{ secrets.NIGHTLY_EMAIL_LIST }}"
+          repo="${{ github.repository }}"
+          gh --repo $repo issue comment 304  \
+              --body "XPU OPS Nightly Failed $(date +'%F'), See: $build_url
+                      cc $notification_list"
