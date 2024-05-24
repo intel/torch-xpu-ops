@@ -212,14 +212,13 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
   Tests-Failure-And-Report:
-    if: ${{ !inputs.suite }}
+    if: always() && ${{ !inputs.suite }}
     runs-on: pvc_e2e
     permissions:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
     needs: Inductor-XPU-E2E-Nightly-Tests
-    if: always()
     steps:
       - name: Report github issue for XPU OPS nightly
         if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }}
