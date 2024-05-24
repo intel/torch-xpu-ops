@@ -47,5 +47,8 @@ res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 # test_comparison_utils
 res += launch_test("test_comparison_utils_xpu.py")
 
+# test_module_hooks
+res += launch_test("test_module_hooks_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
