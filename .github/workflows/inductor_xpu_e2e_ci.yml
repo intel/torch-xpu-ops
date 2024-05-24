@@ -34,7 +34,7 @@ jobs:
           source activate e2e_ci
           git clone -b nightly https://github.com/pytorch/pytorch pytorch
           cd pytorch
-          # git checkout 27594be3ed602c28ae285923cf852d82603587a8
+          # git checkout f0366de4140c1b0a03a6b8f4f6da0ad585b23bcf
           # apply PRs for stock pytorch
           pip install requests
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
@@ -43,7 +43,7 @@ jobs:
           git submodule sync && git submodule update --init --recursive
           git clone https://github.com/intel/torch-xpu-ops
           cd torch-xpu-ops
-          git checkout 9f689063d14d01bffe77e62e22c21268aa7e5253
+          git checkout c3c4d64e7c6b48b317e7cf1ec40b24f1a21bf55a
           cd ../
           rm -rf third_party/torch-xpu-ops && mv ./torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test
