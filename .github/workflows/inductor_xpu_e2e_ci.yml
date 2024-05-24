@@ -32,9 +32,9 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b main https://github.com/pytorch/pytorch pytorch
+          git clone -b nightly https://github.com/pytorch/pytorch pytorch
           cd pytorch
-          git checkout 27594be3ed602c28ae285923cf852d82603587a8
+          # git checkout 27594be3ed602c28ae285923cf852d82603587a8
           # apply PRs for stock pytorch
           pip install requests
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
