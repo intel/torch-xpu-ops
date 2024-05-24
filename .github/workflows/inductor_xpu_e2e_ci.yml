@@ -41,6 +41,9 @@ jobs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
+          cd ../torch-xpu-ops
+          git checkout 9f689063d14d01bffe77e62e22c21268aa7e5253
+          cd ../pytorch
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
