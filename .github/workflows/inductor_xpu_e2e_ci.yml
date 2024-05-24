@@ -80,6 +80,7 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 46
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Huggingface FP16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -98,6 +99,7 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 16
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Torchbench BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -107,4 +109,5 @@ jobs:
           mode: training
           scenario: accuracy
           expected_pass_num: 16
+          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
