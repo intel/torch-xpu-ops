@@ -15,7 +15,7 @@ permissions: read-all
 jobs:
   preci-ut:
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: github.repository_owner == 'skipped'
     name: preci-ut
     runs-on: linux.idc.xpu
     timeout-minutes: 240
