@@ -1538,5 +1538,6 @@ skip_list = (
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
+res += launch_test("test_native_functions_xpu.py")
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
