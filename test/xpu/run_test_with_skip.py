@@ -1813,5 +1813,6 @@ res += launch_test("test_namedtensor_xpu.py")
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
 
+res += launch_test("test_matmul_cuda_xpu.py")
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
