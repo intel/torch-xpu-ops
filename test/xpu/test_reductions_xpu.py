@@ -14,6 +14,5 @@ with XPUPatchForImport(False):
 instantiate_device_type_tests(TestReductions, globals(), only_for="xpu")
 
 
-
 if __name__ == "__main__":
     run_tests()
