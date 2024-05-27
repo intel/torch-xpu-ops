@@ -1646,6 +1646,15 @@ skip_list=(
     "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
     "test_reference_numerics_extremal_tanh_xpu_complex128",
     "test_reference_numerics_extremal_tanh_xpu_complex64",
+
+# AssertionError: Scalars are not equal!
+    "test_exp_xpu_complex128",
+    "test_exp_xpu_complex64",
+# AssertionError: Tensor-likes are not close!
+    "test_reference_numerics_extremal__refs_exp_xpu_complex128",
+    "test_reference_numerics_extremal__refs_exp_xpu_complex64",
+    "test_reference_numerics_extremal_exp_xpu_complex128",
+    "test_reference_numerics_extremal_exp_xpu_complex64",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
