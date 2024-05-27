@@ -1,0 +1,24 @@
+diff --git a/torch/testing/_internal/common_device_type.py b/torch/testing/_internal/common_device_type.py
+index 07caa0ac3ee..53944351689 100644
+--- a/torch/testing/_internal/common_device_type.py
++++ b/torch/testing/_internal/common_device_type.py
+@@ -1082,7 +1082,7 @@ def _has_sufficient_memory(device, size):
+         if device == 'cuda':
+             device = 'cuda:0'
+         return torch.cuda.memory.mem_get_info(device)[0] >= size
+-
++   
+     if device == 'xla':
+         raise unittest.SkipTest('TODO: Memory availability checks for XLA?')
+ 
+@@ -1584,4 +1584,9 @@ def skipPRIVATEUSE1(fn):
+ # TODO: the "all" in the name isn't true anymore for quite some time as we have also have for example XLA and MPS now.
+ #  This should probably enumerate all available device type test base classes.
+ def get_all_device_types() -> List[str]:
+-    return ['cpu'] if not torch.cuda.is_available() else ['cpu', 'cuda']
++    devices = ['cpu',]
++    if torch.cuda.is_available():
++        devices.append('cuda')
++    if torch.xpu.is_available():
++        devices.append('xpu')
++    return devices
