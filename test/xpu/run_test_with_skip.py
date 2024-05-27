@@ -1547,6 +1547,67 @@ skip_list = (
 )
 res += launch_test("test_autocast_xpu.py", skip_list)
 
+# test_autograd
+skip_list = (
+    # Segment fault
+    "test_resize_version_bump_xpu",
+    # c10::NotImplementedError
+    "test_autograd_composite_implicit_and_dispatch_registration_xpu",
+    "test_autograd_multiple_dispatch_registrations_xpu",
+    # NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend。
+    "test_sparse_mask_autograd_xpu",
+    "test_sparse_ctor_getter_backward_xpu_float64",
+    "test_sparse_ctor_getter_backward_xpu_complex128",
+    "test_sparse_backward_xpu_float64",
+    "test_sparse_backward_xpu_complex128",
+    # AttributeError: module 'torch.xpu' has no attribute
+    "test_graph_save_on_cpu_cuda",
+    "test_checkpointing_without_reentrant_memory_savings",
+    # CUDA hard-code
+    "test_profiler_emit_nvtx_xpu",
+    # Could not run 'aten::_pin_memory' with arguments from the 'CUDA' backend
+    "test_pin_memory_xpu",
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_mv_grad_stride_0_xpu",
+    # module 'torch._C' has no attribute '_scatter'
+    "test_checkpointing_without_reentrant_dataparallel",
+    "test_dataparallel_saved_tensors_hooks",
+    # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
+    "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
+    # PyTorch was compiled without CUDA support
+    "test_checkpointing_non_reentrant_autocast_gpu",
+    # Skip if without LAPACK
+    "test_lobpcg",
+    # Skip device count < 2
+    "test_backward_device_xpu",
+    "test_inputbuffer_add_multidevice_xpu",
+    "test_unused_output_device_xpu",
+    # Skip CPU case
+    "test_copy__xpu",
+    "test_checkpointing_non_reentrant_autocast_cpu",
+    "test_per_dispatch_key_input_saving_xpu",
+)
+res += launch_test("test_autograd_xpu.py", skip_list)
+
+# test_reductions
+skip_list = (
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction",
+    "test_mode",
+    "test_dim_reduction_fns_fn_name_mode",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
+
+)
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
 # test_content_store
 skip_list = (
     # Storage compatibility in XPU tensor.
