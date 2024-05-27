@@ -734,181 +734,31 @@ res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
 # test_reductions
 skip_list = (
-    "test_accreal_type_xpu",  # Skip CPU device case
-    "test_cumprod_integer_upcast_xpu",  # Skip CPU device case
-    "test_cumsum_integer_upcast_xpu",  # Skip CPU device case
-    "test_dim_default_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_default_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_dim_default_keepdim_mean_xpu",  # CUDA skip
-    "test_dim_default_keepdim_prod_xpu",  # CUDA skip
-    "test_dim_default_keepdim_std_xpu",  # CUDA skip
-    "test_dim_default_keepdim_sum_xpu",  # CUDA skip
-    "test_dim_default_keepdim_var_xpu",  # CUDA skip
-    "test_dim_empty__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_empty__refs_sum_xpu",  # CUDA skip
-    "test_dim_empty_count_nonzero_xpu",  # CUDA skip
-    "test_dim_empty_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_empty_keepdim__refs_sum_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_masked_logsumexp_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_mean_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_nanmean_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_std_unbiased_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_std_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_sum_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_var_unbiased_xpu",  # CUDA skip
-    "test_dim_empty_keepdim_var_xpu",  # CUDA skip
-    "test_dim_empty_masked_logsumexp_xpu",  # CUDA skip
-    "test_dim_empty_mean_xpu",  # CUDA skip
-    "test_dim_empty_nanmean_xpu",  # CUDA skip
-    "test_dim_empty_std_unbiased_xpu",  # CUDA skip
-    "test_dim_empty_std_xpu",  # CUDA skip
-    "test_dim_empty_sum_xpu",  # CUDA skip
-    "test_dim_empty_var_unbiased_xpu",  # CUDA skip
-    "test_dim_empty_var_xpu",  # CUDA skip
-    "test_dim_multi_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_multi_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_dim_multi_unsorted_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_multi_unsorted_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_dim_none_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_none_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_dim_none_keepdim_prod_xpu",  # CUDA skip
-    "test_dim_none_prod_xpu",  # CUDA skip
-    "test_dim_reduction_lastdim_xpu_bfloat16",  # CUDA skip, CPU available
-    "test_dim_reduction_lastdim_xpu_float32",  # CUDA skip, CPU available
-    "test_dim_single_keepdim__refs_count_nonzero_xpu",  # CUDA skip
-    "test_dim_single_keepdim_count_nonzero_xpu",  # CUDA skip
-    "test_empty_tensor_empty_slice_masked_logsumexp_xpu",  # CUDA skip
-    "test_histc_lowp_xpu_bfloat16",  # Skip CPU devive cases
-    "test_histc_lowp_xpu_float16",  # Skip CPU devive cases
-    "test_histogram_error_handling_xpu_float32",  # CUDA skip, CPU available
-    "test_histogram_xpu_float32",  # CUDA skip, CPU available
-    "test_histogramdd_xpu_float32",  # CUDA skip, CPU available
-    "test_logcumsumexp_complex_xpu_complex128", # test require SciPy, but SciPy not found
-    "test_logcumsumexp_complex_xpu_complex64",  # test require SciPy, but SciPy not found
-    "test_logsumexp_dim_xpu",  # CUDA skip
-    "test_logsumexp_xpu",  # CUDA skip
-    "test_max_elementwise_xpu",  # Skip CPU devive cases
-    "test_max_mixed_devices_xpu",  # Skip CPU devive cases
-    "test_mean_dim_xpu",  # Skip CPU devive cases
-    "test_mean_int_with_optdtype_xpu",  # CUDA skip
-    "test_min_elementwise_xpu",  # Skip CPU devive cases
-    "test_min_mixed_devices_xpu",  # Skip CPU devive cases
-    "test_nansum_complex_xpu_complex128",  # Skip CPU devive cases
-    "test_nansum_complex_xpu_complex64",  # Skip CPU devive cases
-    "test_prod_integer_upcast_xpu",  # Skip CPU devive cases
-    "test_prod_lowp_xpu_bfloat16",  # Skip CPU devive cases
-    "test_prod_lowp_xpu_float16",  # Skip CPU devive cases
-    "test_prod_xpu_float32",  # Skip CPU devive cases
-    "test_ref_duplicate_values__refs_std_xpu_float16",  # CUDA skip
-    "test_ref_duplicate_values__refs_sum_xpu_float16",  # CUDA skip
-    "test_ref_duplicate_values_prod_xpu_complex64",  # CUDA skip
-    "test_ref_duplicate_values_prod_xpu_float16",  # CUDA skip
-    "test_ref_duplicate_values_prod_xpu_uint8",  # CUDA skip
-    "test_ref_duplicate_values_std_xpu_float16",  # CUDA skip
-    "test_ref_duplicate_values_var_xpu_complex128",  # CUDA skip
-    "test_ref_duplicate_values_var_xpu_complex64",  # CUDA skip
-    "test_ref_duplicate_values_var_xpu_float16",  # CUDA skip
-    "test_ref_duplicate_values_var_xpu_float32",  # CUDA skip
-    "test_ref_duplicate_values_var_xpu_float64",  # CUDA skip
-    "test_ref_large_input_64bit_indexing__refs_all_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_amax_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_amin_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_any_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_count_nonzero_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_mean_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_prod_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_std_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_sum_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing__refs_var_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_all_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_amax_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_amin_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_any_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_argmax_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_argmin_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_count_nonzero_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_amax_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_amin_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_argmax_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_argmin_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_mean_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_prod_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_std_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_sum_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_masked_var_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_mean_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_nanmean_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_nansum_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_prod_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_std_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_sum_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_large_input_64bit_indexing_var_xpu_float64",  # common_device_type.py::_has_sufficient_memory has no case for device xpu
-    "test_ref_small_input__refs_prod_xpu_complex64",  # CUDA skip, CPU available
-    "test_ref_small_input__refs_prod_xpu_float16",  # CUDA skip, CPU available
-    "test_ref_small_input__refs_std_xpu_float16",  # CUDA skip
-    "test_ref_small_input__refs_sum_xpu_float16",  # CUDA skip
-    "test_ref_small_input__refs_var_xpu_complex128",  # CUDA skip
-    "test_ref_small_input__refs_var_xpu_complex64",  # CUDA skip
-    "test_ref_small_input__refs_var_xpu_float16",  # CUDA skip
-    "test_ref_small_input__refs_var_xpu_float32",  # CUDA skip
-    "test_ref_small_input__refs_var_xpu_float64",  # CUDA skip
-    "test_ref_small_input_mean_xpu_float16",  # CUDA skip
-    "test_ref_small_input_nanmean_xpu_float16",  # CUDA skip
-    "test_ref_small_input_nansum_xpu_float16",  # CUDA skip
-    "test_ref_small_input_prod_xpu_complex64",  # CUDA skip
-    "test_ref_small_input_prod_xpu_float16",  # CUDA skip
-    "test_ref_small_input_std_xpu_float16",  # CUDA skip
-    "test_ref_small_input_sum_xpu_float16",  # CUDA skip
-    "test_ref_small_input_var_xpu_complex128",  # CUDA skip
-    "test_ref_small_input_var_xpu_complex64",  # CUDA skip
-    "test_ref_small_input_var_xpu_float16",  # CUDA skip
-    "test_ref_small_input_var_xpu_float32",  # CUDA skip
-    "test_ref_small_input_var_xpu_float64",  # CUDA skip
-    "test_reference_masked_masked_prod_xpu_bool",  # CUDA skip
-    "test_reference_masked_masked_prod_xpu_int16",  # CUDA skip
-    "test_reference_masked_masked_prod_xpu_int32",  # CUDA skip
-    "test_reference_masked_masked_prod_xpu_int8",  # CUDA skip
-    "test_reference_masked_masked_sum_xpu_bool",  # CUDA skip
-    "test_reference_masked_masked_sum_xpu_int16",  # CUDA skip
-    "test_reference_masked_masked_sum_xpu_int32",  # CUDA skip
-    "test_reference_masked_masked_sum_xpu_int8",  # CUDA skip
-    "test_std_dim_xpu",  # Skip CPU devive cases
-    "test_sum_all_xpu_bool",  # Skip CPU devive cases
-    "test_sum_all_xpu_float64",  # Skip CPU devive cases
-    "test_sum_dim_xpu",  # Skip CPU devive cases
-    "test_sum_integer_upcast_xpu",  # Skip CPU devive cases
-    "test_sum_noncontig_lowp_xpu_bfloat16",  # Skip CPU devive cases
-    "test_sum_noncontig_lowp_xpu_float16",  # Skip CPU devive cases
-    "test_sum_out_xpu_float64",  # Skip CPU devive cases
-    "test_sum_parallel_xpu",  # Skip CPU devive cases
-    "test_tensor_reduce_ops_empty_xpu",  # Skip cases for non-Scipy
-    "test_var_dim_xpu",  # Skip CPU devive cases
-    "test_dim_reduction_xpu_float16",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_bfloat16",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_float32",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_float64",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_int16",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_int32",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_int8",  # Failed, mode not supports XPU
-    "test_dim_reduction_xpu_int64", # Failed, mode not supports XPU
-    "test_mode_xpu_float32",  # Failed, mode not supports XPU
-    "test_mode_xpu_float64",  # Failed, mode not supports XPU
-    "test_mode_xpu_int16",  # Failed, mode not supports XPU
-    "test_mode_xpu_int32",  # Failed, mode not supports XPU
-    "test_mode_xpu_int64",  # Failed, mode not supports XPU
-    "test_mode_xpu_int8",  # Failed, mode not supports XPU
-    "test_mode_xpu_uint8",  # Failed, mode not supports XPU
-    "test_ref_extremal_values_mean_xpu_complex64",  # CUDA skip
-    "test_ref_small_input_masked_prod_xpu_float16",  # CPU Fallback mis-align with numpy
-    "test_dim_reduction_fns_fn_name_mode_xpu_int8", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_int64", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_int32", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_int16", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_float64", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_float32", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_float16", # Failed, mode not supports xpu
-    "test_dim_reduction_fns_fn_name_mode_xpu_bfloat16", # Failed, mode not supports xpu
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction_xpu_bfloat16",
+    "test_dim_reduction_xpu_float16",
+    "test_dim_reduction_xpu_float32",
+    "test_dim_reduction_xpu_float64",
+    "test_dim_reduction_xpu_int16",
+    "test_dim_reduction_xpu_int32",
+    "test_dim_reduction_xpu_int64",
+    "test_dim_reduction_xpu_int8",
+    "test_mode_xpu_float32",
+    "test_mode_xpu_float64",
+    "test_mode_xpu_int16",
+    "test_mode_xpu_int32",
+    "test_mode_xpu_int64",
+    "test_mode_xpu_int8",
+    "test_mode_xpu_uint8",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
