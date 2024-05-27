@@ -1589,5 +1589,24 @@ skip_list = (
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
+# test_reductions
+skip_list = (
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction",
+    "test_mode",
+    "test_dim_reduction_fns_fn_name_mode",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
+
+)
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
