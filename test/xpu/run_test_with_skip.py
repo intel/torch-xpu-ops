@@ -1608,5 +1608,8 @@ skip_list = (
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
+res += launch_test("nn/test_init_xpu.py")
+
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
