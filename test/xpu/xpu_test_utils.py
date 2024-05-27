@@ -36,6 +36,9 @@ class XPUPatchForImport:
         self.instantiate_device_type_tests_fn = (
             common_device_type.instantiate_device_type_tests
         )
+        self.instantiate_parametrized_tests_fn = (
+            common_utils.instantiate_parametrized_tests
+        )
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -66,6 +69,9 @@ class XPUPatchForImport:
         )
         common_device_type.instantiate_device_type_tests = (
             self.instantiate_device_type_tests_fn
+        )
+        common_utils.instantiate_parametrized_tests = (
+            self.instantiate_parametrized_tests_fn
         )
         common_utils.TestCase = self.test_case_cls
 
