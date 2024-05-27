@@ -732,36 +732,6 @@ skip_list = (
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
-# test_reductions
-skip_list = (
-    # CPU/CUDA bias code in aten::mode_out
-    # https://github.com/intel/torch-xpu-ops/issues/327
-    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
-    "test_dim_reduction_xpu_bfloat16",
-    "test_dim_reduction_xpu_float16",
-    "test_dim_reduction_xpu_float32",
-    "test_dim_reduction_xpu_float64",
-    "test_dim_reduction_xpu_int16",
-    "test_dim_reduction_xpu_int32",
-    "test_dim_reduction_xpu_int64",
-    "test_dim_reduction_xpu_int8",
-    "test_mode_xpu_float32",
-    "test_mode_xpu_float64",
-    "test_mode_xpu_int16",
-    "test_mode_xpu_int32",
-    "test_mode_xpu_int64",
-    "test_mode_xpu_int8",
-    "test_mode_xpu_uint8",
-
-    # CUDA skips the case in opdb.
-    # https://github.com/intel/torch-xpu-ops/issues/222
-    "test_ref_extremal_values_mean_xpu_complex64",
-
-    # CPU fallback fails (CPU vs Numpy).
-    "test_ref_small_input_masked_prod_xpu_float16",
-)
-res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
-
 # test_scatter_gather_ops
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32", # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
@@ -1316,6 +1286,25 @@ skip_list = (
     "test_Dropout3d_xpu",
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
+
+# test_reductions
+skip_list = (
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction",
+    "test_mode",
+    "test_dim_reduction_fns_fn_name_mode",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
+
+)
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
