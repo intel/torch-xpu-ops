@@ -1608,5 +1608,19 @@ skip_list = (
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 
+skip_list = (
+    # known oneDNN issue
+    # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_multihead_attention_dtype_batch_first_xpu_float64",
+    "test_multihead_attention_dtype_xpu_float64",
+    "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
+    "test_multihead_attn_fast_path_small_test_xpu_float64",
+    "test_multihead_attn_in_proj_bias_none_xpu_float64",
+    "test_multihead_attn_in_proj_weight_none_xpu_float64",
+)
+
+res = launch_test("nn/test_multihead_attention_xpu.py", skip_list)
+
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
