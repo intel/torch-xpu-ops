@@ -26,7 +26,7 @@ struct DivTruncScalarFunctor {
 template <typename scalar_t>
 struct DivTruncFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::trunc(c10::xpu::compat::div(a, b));
+    return c10::xpu::compat::div_trunc(a, b);
   }
 };
 
