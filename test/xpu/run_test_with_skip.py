@@ -1589,5 +1589,7 @@ skip_list = (
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
+res += launch_test("test_namedtensor_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
