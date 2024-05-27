@@ -22,9 +22,6 @@ from torch.testing._internal.common_utils import (
 
 
 class TestDropoutNN(NNTestCase):
-    _do_cuda_memory_leak_check = True
-    _do_cuda_non_default_stream = True
-
     def _test_alpha_dropout(self, cls, input):
         mean = input.mean()
         std = input.std()
