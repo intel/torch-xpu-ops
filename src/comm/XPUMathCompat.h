@@ -52,7 +52,7 @@ inline auto div<c10::BFloat16>(const c10::BFloat16& a, const c10::BFloat16& b)
 
 template <typename T>
 inline T div_trunc(const T& a, const T& b) {
-  return ((a == b) && std::isfinite(a)) ? (T)1 : (T)std::trunc(div<T>(a, b));
+  return ((a == b) && std::isfinite(a)) ? (T)1 : (T)std::trunc(a / b);
 }
 
 } // namespace c10::xpu::compat
