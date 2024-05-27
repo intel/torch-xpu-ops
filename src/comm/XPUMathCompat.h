@@ -37,6 +37,7 @@ inline auto div(const T& a, const T& b) {
 template <>
 inline auto div<c10::Half>(const c10::Half& a, const c10::Half& b)
     __ubsan_ignore_float_divide_by_zero__ {
+  // Suppress compiler optimization to get data type promotion.
   volatile float res = static_cast<float>(a) / static_cast<float>(b);
   return res;
 }
@@ -44,6 +45,7 @@ inline auto div<c10::Half>(const c10::Half& a, const c10::Half& b)
 template <>
 inline auto div<c10::BFloat16>(const c10::BFloat16& a, const c10::BFloat16& b)
     __ubsan_ignore_float_divide_by_zero__ {
+  // Suppress compiler optimization to get data type promotion.
   volatile float res = static_cast<float>(a) / static_cast<float>(b);
   return res;
 }
