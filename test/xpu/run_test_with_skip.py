@@ -1821,10 +1821,6 @@ skip_list = (
     "test_cudnn_convolution_add_relu_xpu_float16",
     "test_cudnn_convolution_add_relu_xpu_float32",
     "test_conv_double_backward_xpu_float64",
-    # largeTensorTest unsupport XPU device, shuold be fixed.
-    "test_conv3d_64bit_indexing_xpu",
-    "test_conv3d_large_batch_1_xpu",
-    "test_conv_large_batch_1_xpu",
 )
 res += launch_test("test_convolution_xpu.py", skip_list)
 
