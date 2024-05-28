@@ -1617,5 +1617,7 @@ skip_list = (
 )
 res += launch_test("test_content_store_xpu.py")
 
+res += launch_test("nn/test_packed_sequence_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
