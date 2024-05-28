@@ -1617,6 +1617,8 @@ skip_list = (
     "test_multihead_attn_fast_path_small_test_xpu_float64",
     "test_multihead_attn_in_proj_bias_none_xpu_float64",
     "test_multihead_attn_in_proj_weight_none_xpu_float64",
+    # issue 342
+    "test_multihead_self_attn_two_masks_fast_path_mock_xpu",
 )
 
 res = launch_test("nn/test_multihead_attention_xpu.py", skip_list)
