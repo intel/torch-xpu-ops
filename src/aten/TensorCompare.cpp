@@ -11,6 +11,8 @@
 #include <aten/sycl/TensorCompare.h>
 #include <comm/ReduceOpsUtils.h>
 
+#include <ATen/ops/result_type_native.h>
+
 namespace at {
 
 namespace native {

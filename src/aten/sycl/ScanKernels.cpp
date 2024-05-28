@@ -5,13 +5,13 @@
 
 #include <aten/sycl/ScanUtils.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
+// #ifndef AT_PER_OPERATOR_HEADERS
+// #include <ATen/Functions.h>
+// #include <ATen/NativeFunctions.h>
+// #else
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
-#endif
+// #endif
 
 namespace at::native::xpu {
 

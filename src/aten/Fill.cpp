@@ -7,6 +7,12 @@
 
 #include <aten/sycl/FillKernel.h>
 
+#ifdef AT_PER_OPERATOR_HEADERS
+#include <ATen/ops/_adaptive_avg_pool2d.h>
+#else
+fuck
+#endif
+
 namespace at::native {
 
 // Tensor& fill_out(Tensor& self, const Scalar& value) {

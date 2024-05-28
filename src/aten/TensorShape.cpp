@@ -9,12 +9,19 @@
 #include <aten/sycl/ShapeKernels.h>
 #include <comm/RegisterUtils.h>
 
-
 #include <ATen/xpu/ops/as_strided_copy_native.h>
+#include <ATen/xpu/ops/as_strided_native.h>
+
 
 namespace at {
 
 namespace native {
+
+TORCH_API at::Tensor as_strided_qtensorimpl(
+    const at::Tensor& self,
+    at::IntArrayRef size,
+    at::IntArrayRef stride,
+    ::std::optional<int64_t> storage_offset);
 
 Tensor as_strided_xpu(
     const Tensor& self,

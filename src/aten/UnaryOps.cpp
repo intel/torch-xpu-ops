@@ -10,6 +10,10 @@
 #include <aten/sycl/UnarySignKernels.h>
 #include <aten/sycl/UnarySpecialOpsKernels.h>
 
+#include <ATen/ops/empty.h>
+#include <ATen/ops/empty_like.h>
+#include <ATen/ops/real.h>
+
 namespace at {
 
 namespace native {

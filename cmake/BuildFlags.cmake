@@ -16,6 +16,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+  if(USE_PER_OPERATOR_HEADERS)
+    list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
+    # target_compile_definitions(torch_xpu_ops PUBLIC -DAT_PER_OPERATOR_HEADERS)
+  endif()
+
   # -- Kernel flags (SYCL_KERNEL_OPTIONS)
   # The fast-math will be enabled by default in SYCL compiler.
   # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
