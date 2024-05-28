@@ -1602,7 +1602,7 @@ skip_list = (
     
     "test_inplace_grad_conj_physical_xpu_complex128",
     "test_inplace_gradgrad_conj_physical_xpu_complex128",
-    }
+)
 
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
