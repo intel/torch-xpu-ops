@@ -3,28 +3,28 @@ import sys
 
 skip_list = (
     # Known issue
-    "test_compare_cpu__refs_rsub_xpu_bfloat16",
-    "test_compare_cpu_add_xpu_bfloat16",
-    "test_compare_cpu_cumsum_xpu_bfloat16",
-    "test_compare_cpu_cumsum_xpu_float16",
+    "test_compare_cpu__refs_rsub_xpu_bfloat16", # CPU result is not golden reference
+    "test_compare_cpu_add_xpu_bfloat16",# CPU result is not golden reference
+    "test_compare_cpu_cumsum_xpu_bfloat16",# Caused by different accumulation order
+    "test_compare_cpu_cumsum_xpu_float16", # Caused by different accumulation order
     "test_compare_cpu_log_softmax_xpu_bfloat16", # Need FP64 golden ref for more accurate comparison
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_log_xpu_complex64",
-    "test_compare_cpu_mul_xpu_complex64",
-    "test_compare_cpu_native_dropout_backward_xpu_bool",
-    "test_compare_cpu_native_dropout_backward_xpu_int16",
-    "test_compare_cpu_native_dropout_backward_xpu_int32",
-    "test_compare_cpu_native_dropout_backward_xpu_int64",
-    "test_compare_cpu_native_dropout_backward_xpu_int8",
-    "test_compare_cpu_native_dropout_backward_xpu_uint8",
-    "test_compare_cpu_pow_xpu_complex128",
-    "test_compare_cpu_pow_xpu_complex64",
-    "test_compare_cpu_rsqrt_xpu_bfloat16",
-    "test_compare_cpu_sub_xpu_bfloat16",
-    "test_compare_cpu_tanh_xpu_complex128",
-    "test_compare_cpu_tanh_xpu_complex64",
-    "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
+    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",# CPU result is not golden reference
+    "test_compare_cpu_div_trunc_rounding_xpu_float16",# CPU result is not golden reference
+    "test_compare_cpu_log_xpu_complex64", # For extreme value processing, CPU result is not golden reference
+    "test_compare_cpu_mul_xpu_complex64", # For extreme value processing, CPU result is not golden reference
+    "test_compare_cpu_native_dropout_backward_xpu_bool", # CUDA does not support either
+    "test_compare_cpu_native_dropout_backward_xpu_int16", # CUDA does not support either
+    "test_compare_cpu_native_dropout_backward_xpu_int32", # CUDA does not support either
+    "test_compare_cpu_native_dropout_backward_xpu_int64", # CUDA does not support either
+    "test_compare_cpu_native_dropout_backward_xpu_int8", # CUDA does not support either
+    "test_compare_cpu_native_dropout_backward_xpu_uint8", # CUDA does not support either
+    "test_compare_cpu_pow_xpu_complex128", # For extreme value processing, CPU result is not golden reference
+    "test_compare_cpu_pow_xpu_complex64", # For extreme value processing, CPU result is not golden reference
+    "test_compare_cpu_rsqrt_xpu_bfloat16", # CPU result is not golden reference
+    "test_compare_cpu_sub_xpu_bfloat16", # CPU result is not golden reference
+    "test_compare_cpu_tanh_xpu_complex128", # For extreme value processing, CPU result is not golden reference
+    "test_compare_cpu_tanh_xpu_complex64",  # For extreme value processing, CPU result is not golden reference
+    "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # CUDA does not support either
 
     # TestCompositeCompliance
     # CPU fallback fails
