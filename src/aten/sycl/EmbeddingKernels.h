@@ -17,6 +17,17 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_dpcpp(
     bool include_last_offset,
     int64_t padding_idx);
 
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only(
+    const Tensor& weight,
+    const Tensor& indices,
+    const Tensor& offsets,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    bool sparse,
+    const c10::optional<Tensor>& per_sample_weights_opt,
+    bool include_last_offset,
+    int64_t padding_idx);
+
 Tensor embedding_dense_backward_kernel(
     const Tensor& grad_,
     const Tensor& indices_,
