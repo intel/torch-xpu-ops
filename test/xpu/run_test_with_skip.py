@@ -1609,6 +1609,47 @@ skip_list = (
 
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+skip_list=(
+    # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
+    "_jiterator_",
+
+    # CPU Fallback fails: Tensor-likes are not close!
+    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex64",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex128",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex64",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
+    "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_extremal_acos_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex64",
+    "test_reference_numerics_extremal_atan_xpu_complex128",
+    "test_reference_numerics_extremal_atan_xpu_complex64",
+    "test_reference_numerics_extremal_exp2_xpu_complex128",
+    "test_reference_numerics_extremal_exp2_xpu_complex64",
+    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_large__refs_atan_xpu_complex128",
+    "test_reference_numerics_large__refs_atan_xpu_complex64",
+    "test_reference_numerics_large_atan_xpu_complex128",
+    "test_reference_numerics_large_atan_xpu_complex64",
+    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_small__refs_atan_xpu_complex128",
+    "test_reference_numerics_small__refs_atan_xpu_complex64",
+    "test_reference_numerics_small_atan_xpu_complex128",
+    "test_reference_numerics_small_atan_xpu_complex64",
+
+    # For extreme value processing, Numpy and XPU results are inconsistent
+    "test_reference_numerics_extremal__refs_log_xpu_complex64",
+    "test_reference_numerics_extremal_log_xpu_complex64",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex128",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
+    "test_reference_numerics_extremal_tanh_xpu_complex128",
+    "test_reference_numerics_extremal_tanh_xpu_complex64",
+)
+res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
 # test_content_store
 skip_list = (
