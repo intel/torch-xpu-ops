@@ -961,6 +961,8 @@ skip_list = (
     "test_logaddexp_xpu_complex64", # CPU fail
     "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
     "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_div_rounding_nonfinite_xpu_bfloat16", # CPU result is not golden reference
+    "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
