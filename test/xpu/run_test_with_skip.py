@@ -1658,5 +1658,251 @@ skip_list = (
 )
 res += launch_test("test_content_store_xpu.py")
 
+
+skip_list = (
+    # issue 302
+    ### Error #0 in TestTorchDeviceTypeXPU , totally 11 , RuntimeError: expected scalar type Long but found Int
+ 
+    "test_index_reduce_reduce_mean_xpu_bfloat16",
+    "test_index_reduce_reduce_mean_xpu_float16",
+    "test_index_reduce_reduce_mean_xpu_float32",
+    "test_index_reduce_reduce_mean_xpu_float64",
+    "test_index_reduce_reduce_mean_xpu_int16",
+    "test_index_reduce_reduce_mean_xpu_int32",
+    "test_index_reduce_reduce_mean_xpu_int64",
+    "test_index_reduce_reduce_mean_xpu_int8",
+    "test_index_reduce_reduce_mean_xpu_uint8",
+
+    ### Error #1 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
+    
+
+    "test_grad_scaling_state_dict_xpu",
+
+    ### Error #2 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'torch.storage.TypedStorage' object has no attribute 'is_xpu'
+
+    ### Error #3 in TestTorchDeviceTypeXPU , totally 3 , AttributeError: module 'torch.xpu' has no attribute 'ByteStorage'
+    
+
+    "test_storage_setitem_xpu_uint8",
+    "test_tensor_storage_type_xpu_uint8",
+
+    ### Error #4 in TestTorchDeviceTypeXPU , totally 4 , AttributeError: module 'torch.xpu' has no attribute 'FloatStorage'
+    
+
+
+    "test_storage_setitem_xpu_float32",
+    "test_tensor_storage_type_xpu_float32",
+
+    ### Error #5 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Scalars are not equal!
+    
+    "test_bernoulli_edge_cases_xpu_float16",
+    "test_strides_propagation_xpu",
+
+
+    ### Error #7 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map2_ is only implemented on CPU tensors
+    
+    "test_broadcast_fn_map2_xpu",
+
+    ### Error #8 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map_ is only implemented on CPU tensors
+    
+    "test_broadcast_fn_map_xpu",
+
+    ### Error #9 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    
+    "test_corrcoef_xpu_complex64",
+
+    ### Error #10 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: True is not false
+    
+    "test_discontiguous_out_cumsum_xpu",
+
+    ### Error #11 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: tensor(False, device='xpu:0') is not true
+    
+    "test_exponential_no_zero_xpu_float16",
+
+    ### Error #12 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'amp'
+    
+    "test_grad_scaler_pass_itself_xpu",
+    "test_pickle_gradscaler_xpu",
+
+    ### Error #13 in TestTorchDeviceTypeXPU , totally 3 , NotImplementedError: Could not run 'aten::_copy_from_and_resize' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_copy_from_and_resize' is only available for these backends: [XPU, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+    
+    "test_grad_scaling_autocast_foreach2_fused_True_AdamW_xpu_float32",
+    "test_grad_scaling_autocast_foreach2_fused_True_Adam_xpu_float32",
+    "test_grad_scaling_autocast_foreach2_fused_True_SGD_xpu_float32",
+
+    ### Error #14 in TestTorchDeviceTypeXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+    
+    "test_grad_scaling_unscale_sparse_xpu_float32",
+    "test_memory_format_empty_like_xpu",
+
+    ### Error #15 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Tensor-likes are not close!
+    
+    "test_gradient_all_xpu_float32",
+    "test_index_put_non_accumulate_deterministic_xpu",
+
+    ### Error #16 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: unsupported operation: more than one element of the written-to tensor refers to a single memory location. Please clone() the tensor before performing the operation.
+    
+    "test_index_fill_mem_overlap_xpu",
+
+    ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
+    
+    "test_is_set_to_xpu",
+    "test_pin_memory_from_constructor_xpu",
+
+    ### Error #18 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Torch not compiled with CUDA enabled
+    
+    "test_memory_format_cpu_and_cuda_ops_xpu",
+    "test_sync_warning_xpu",
+
+    ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
+    
+    "test_module_share_memory_xpu",
+
+    ### Error #20 in TestTorchDeviceTypeXPU , totally 3 , RuntimeError: Expected a 'cpu' device type for generator but found 'xpu'
+    
+    "test_multinomial_deterministic_xpu_float16",
+    "test_multinomial_deterministic_xpu_float32",
+    "test_multinomial_deterministic_xpu_float64",
+
+    ### Error #21 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: multinomial expects Long tensor out, got: Float
+    
+    "test_multinomial_device_constrain_xpu",
+
+    ### Error #22 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: "Expected all tensors to be on the same device" does not match "multinomial expects Long tensor out, got: Float"
+    
+    "test_multinomial_device_constrain_xpu",
+
+    ### Error #23 in TestTorchDeviceTypeXPU , totally 26 , AssertionError: RuntimeError not raised : expected a non-deterministic error, but it was not raised
+    
+    "test_nondeterministic_alert_AdaptiveAvgPool2d_xpu",
+    "test_nondeterministic_alert_AdaptiveAvgPool3d_xpu",
+    "test_nondeterministic_alert_AdaptiveMaxPool2d_xpu",
+    "test_nondeterministic_alert_CTCLoss_xpu",
+    "test_nondeterministic_alert_EmbeddingBag_max_xpu",
+    "test_nondeterministic_alert_FractionalMaxPool2d_xpu",
+    "test_nondeterministic_alert_FractionalMaxPool3d_xpu",
+    "test_nondeterministic_alert_MaxPool3d_xpu",
+    "test_nondeterministic_alert_NLLLoss_xpu",
+    "test_nondeterministic_alert_ReflectionPad1d_xpu",
+    "test_nondeterministic_alert_ReflectionPad2d_xpu",
+    "test_nondeterministic_alert_ReflectionPad3d_xpu",
+    "test_nondeterministic_alert_ReplicationPad1d_xpu",
+    "test_nondeterministic_alert_ReplicationPad2d_xpu",
+    "test_nondeterministic_alert_ReplicationPad3d_xpu",
+    "test_nondeterministic_alert_bincount_xpu",
+    "test_nondeterministic_alert_grid_sample_2d_xpu",
+    "test_nondeterministic_alert_grid_sample_3d_xpu",
+    "test_nondeterministic_alert_histc_xpu",
+    "test_nondeterministic_alert_interpolate_bicubic_xpu",
+    "test_nondeterministic_alert_interpolate_bilinear_xpu",
+    "test_nondeterministic_alert_interpolate_linear_xpu",
+    "test_nondeterministic_alert_interpolate_trilinear_xpu",
+    "test_nondeterministic_alert_kthvalue_xpu_float64",
+    "test_nondeterministic_alert_median_xpu_float64",
+    "test_nondeterministic_alert_put_accumulate_xpu",
+
+    ### Error #24 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'TestTorchDeviceTypeXPU' object has no attribute 'check_device_nondeterministic_alert'
+    
+    "test_nondeterministic_alert_AvgPool3d_xpu",
+
+    ### Error #25 in TestTorchDeviceTypeXPU , totally 2 , RuntimeError: "max_unpool2d" not implemented for 'Half'
+    
+    "test_nondeterministic_alert_MaxUnpool1d_xpu_float16",
+    "test_nondeterministic_alert_MaxUnpool2d_xpu_float16",
+
+    ### Error #26 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: "max_unpool3d" not implemented for 'Half'
+    
+    "test_nondeterministic_alert_MaxUnpool3d_xpu_float16",
+
+    ### Error #27 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: RuntimeError not raised
+    
+    "test_put_mem_overlap_xpu",
+
+    ### Error #28 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: "lshift_cpu" not implemented for 'Float'
+    
+    "test_shift_mem_overlap_xpu",
+
+    ### Error #29 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: "unsupported operation" does not match ""lshift_cpu" not implemented for 'Float'"
+    
+    "test_shift_mem_overlap_xpu",
+
+    ### Error #30 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'BoolStorage'
+    
+    "test_storage_setitem_xpu_bool",
+    "test_tensor_storage_type_xpu_bool",
+
+    ### Error #31 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'ComplexDoubleStorage'
+    
+    "test_storage_setitem_xpu_complex128",
+    "test_tensor_storage_type_xpu_complex128",
+
+    ### Error #32 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'ComplexFloatStorage'
+    
+    "test_storage_setitem_xpu_complex64",
+    "test_tensor_storage_type_xpu_complex64",
+
+    ### Error #33 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'DoubleStorage'
+    
+    "test_storage_setitem_xpu_float64",
+    "test_tensor_storage_type_xpu_float64",
+
+    ### Error #34 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'ShortStorage'
+    
+    "test_storage_setitem_xpu_int16",
+    "test_tensor_storage_type_xpu_int16",
+
+    ### Error #35 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'IntStorage'
+    
+    "test_storage_setitem_xpu_int32",
+    "test_tensor_storage_type_xpu_int32",
+
+    ### Error #36 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'LongStorage'
+    
+    "test_storage_setitem_xpu_int64",
+    "test_tensor_storage_type_xpu_int64",
+
+    ### Error #37 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'CharStorage'
+    
+    "test_storage_setitem_xpu_int8",
+    "test_tensor_storage_type_xpu_int8",
+
+    ### Error #38 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: module 'torch.xpu' has no attribute 'BFloat16Storage'
+    
+    "test_tensor_storage_type_xpu_bfloat16",
+
+    ### Error #39 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: module 'torch.xpu' has no attribute 'HalfStorage'
+    
+    "test_tensor_storage_type_xpu_float16",
+
+    ### Error #40 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_index_add - RuntimeError: expected ...
+    
+    "test_tensor_storage_type_xpu_uint8",
+
+    ### Error #41 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_print - AttributeError: module 'tor...
+    
+    "test_tensor_storage_type_xpu_uint8",
+
+    ### Error #42 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_storage_error - AttributeError: 'to...
+    
+    "test_tensor_storage_type_xpu_uint8",
+
+    # issue 302, 12
+    "test_index_add",
+    "test_index_add_all_dtypes", 
+
+    # issue 302 , 8
+    "test_print", 
+    "test_storage_error",
+    "test_storage_error_no_attribute",
+    # issue 302, 6 
+    "test_storage_error",
+    "test_typed_storage_deprecation_warning",
+    "test_typed_storage_internal_no_warning",
+    # issue 302, 11
+    "test_cuda_vitals_gpu_only_xpu",
+)
+res = launch_test("test_torch_xpu.py", skip_list)
+
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
