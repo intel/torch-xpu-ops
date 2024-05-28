@@ -1,6 +1,7 @@
 # Owner(s): ["module: tests"]
 
 import torch
+import torch.testing._internal.common_utils
 import torch.utils.data
 import numpy as np
 
@@ -67,6 +68,59 @@ from torch.testing._internal.two_tensor import TwoTensor
 
 onlyXPU=onlyXPU
 onlyNativeDeviceTypes=onlyXPU
+torch.testing._internal.common_utils.NATIVE_DEVICES=('cpu', 'cuda', 'meta', 'xpu', torch._C._get_privateuse1_backend_name())
+
+from typing import List
+def my_get_all_device_types_xpu() -> List[str]:
+    devices = ['cpu',]
+    if torch.cuda.is_available():
+        devices.append('cuda')
+    if torch.xpu.is_available():
+        devices.append('xpu')
+    return devices
+
+get_all_device_types = my_get_all_device_types_xpu
+
+torch.testing._internal.common_utils.TestEnvironment.def_flag("TEST_XPU_MEM_LEAK_CHECK", env_var="PYTORCH_TEST_XPU_MEM_LEAK_CHECK")
+
+def my_should_stop_test_suite(self):
+        if torch.cuda.is_initialized():
+            # CUDA device side error will cause subsequence test cases to fail.
+            # stop entire test suite if catches RuntimeError during torch.cuda.synchronize().
+            try:
+                torch.cuda.synchronize()
+            except RuntimeError as rte:
+                print("TEST SUITE EARLY TERMINATION due to torch.cuda.synchronize() failure", file=sys.stderr)
+                print(str(rte), file=sys.stderr)
+                return True
+            return False
+        elif torch.xpu.is_initialized():
+            try:
+                torch.xpu.synchronize()
+            except RuntimeError as rte:
+                print("TEST SUITE EARLY TERMINATION due to torch.xpu.synchronize() failure", file=sys.stderr)
+                print(str(rte), file=sys.stderr)
+                return True
+            return False
+        else:
+            return False
+torch.testing._internal.common_utils.TestCase._should_stop_test_suite = my_should_stop_test_suite
+
+
+def my_wrap_with_cuda_policy(self, method_name, policy):
+        test_method = getattr(self, method_name)
+        # the import below may initialize CUDA context, so we do it only if
+        # self._do_cuda_memory_leak_check or self._do_cuda_non_default_stream
+        # is True.
+        # TODO: sure looks like we unconditionally initialize the context here
+        # -- ezyang
+        from torch.testing._internal.common_cuda import TEST_CUDA
+        from torch.testing._internal.common_utils import TEST_XPU
+        fullname = self.id().lower()  # class_name.method_name
+        if (TEST_CUDA and ('gpu' in fullname or 'cuda' in fullname)) or (TEST_XPU and ('gpu' in fullname or 'cuda' in fullname)):
+            setattr(self, method_name, self.wrap_method_with_policy(test_method, policy))
+
+torch.testing._internal.common_utils.TestCase.wrap_with_cuda_policy = my_wrap_with_cuda_policy
 
 if TEST_WITH_TORCHINDUCTOR:
     from torch._inductor.test_case import TestCase
