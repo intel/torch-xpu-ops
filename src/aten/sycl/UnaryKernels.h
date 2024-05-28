@@ -22,4 +22,6 @@ void reciprocal_kernel(TensorIteratorBase& iter);
 
 void bitwise_not_kernel(TensorIteratorBase& iter);
 
+void exp_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu
