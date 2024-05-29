@@ -8,8 +8,6 @@ skip_list = (
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_softmax_xpu_bfloat16", # Need FP64 golden ref for more accurate comparison
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_native_dropout_backward_xpu_bool",
@@ -25,6 +23,11 @@ skip_list = (
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
+
+    # CPU result is not golden reference
+    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
+    "test_compare_cpu_div_trunc_rounding_xpu_float16",
+    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
 
     # TestCompositeCompliance
     # CPU fallback fails
