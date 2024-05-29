@@ -787,6 +787,21 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_dpcpp(
     const Tensor& per_sample_weights_t,
     bool include_last_offset,
     int64_t padding_idx) {
+  TORCH_CHECK(
+      indices_t.dim() == 1 || indices_t.dim() == 2,
+      "input has to be a 1D or 2D Tensor, but got Tensor of dimension ",
+      indices_t.dim());
+  if (indices_t.dim() == 1) {
+    TORCH_CHECK(
+        offsets_t.dim() == 1,
+        "offsets has to be a 1D Tensor, but got Tensor of dimension ",
+        offsets_t.dim());
+  }
+  TORCH_CHECK(
+      weight_t.dim() == 2,
+      "weight has to be a 2D Tensor, but got Tensor of dimension ",
+      weight_t.dim());
+
   auto weight = weight_t.contiguous();
   auto indices_original = indices_t.contiguous();
   auto offsets_original = offsets_t.contiguous();
