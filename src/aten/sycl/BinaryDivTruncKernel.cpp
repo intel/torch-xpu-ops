@@ -50,7 +50,7 @@ void div_trunc_kernel(TensorIteratorBase& iter) {
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, dtype, "div_trunc_xpu", [&]() {
-          gpu_kernel_with_scalars<scalar_t>(iter, DivTruncFunctor<scalar_t>());
+          gpu_kernel_with_scalars(iter, DivTruncFunctor<scalar_t>());
         });
   }
 }
