@@ -32,9 +32,8 @@ void div_true_kernel(TensorIteratorBase& iter) {
   } else {
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
         kHalf, kBFloat16, common_dtype, "div_true_xpu", [&]() {
-          using opmath_t = opmath_type<scalar_t>;
-          opmath_gpu_kernel_with_scalars<scalar_t>(
-              iter, DivFunctor<opmath_t>());
+          DivFunctor<scalar_t> f;
+          gpu_kernel_with_scalars(iter, f);
         });
   }
 }
