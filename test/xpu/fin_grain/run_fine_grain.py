@@ -18,12 +18,15 @@ skip_list = (
     "test_compare_cpu_pow_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",    
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
     "test_compare_cpu__refs_rsub_xpu_bfloat16",
-    "test_compare_cpu_add_xpu_bfloat16",   
+    "test_compare_cpu_add_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_bfloat16",
+  
+    # CPU result is not golden reference
+    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
+    "test_compare_cpu_div_trunc_rounding_xpu_float16",
+    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
     
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool", 

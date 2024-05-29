@@ -7,6 +7,8 @@
 #include <aten/sycl/BinaryKernels.h>
 #include <aten/sycl/Loops.h>
 
+#include <comm/XPUMathCompat.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
@@ -24,7 +26,7 @@ struct DivTruncScalarFunctor {
 template <typename scalar_t>
 struct DivTruncFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::trunc(a / b);
+    return c10::xpu::compat::div_trunc(a, b);
   }
 };
 
