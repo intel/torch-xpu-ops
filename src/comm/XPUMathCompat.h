@@ -30,31 +30,10 @@ __MATH_FUNCTIONS_DECL__ double rsqrt(double x) {
 }
 
 template <typename T>
-inline auto div(const T& a, const T& b) {
-  return a / b;
-}
-
-template <>
-inline auto div<c10::Half>(const c10::Half& a, const c10::Half& b)
-    __ubsan_ignore_float_divide_by_zero__ {
-  // Suppress compiler optimization to get data type promotion.
-  volatile float res = static_cast<float>(a) / static_cast<float>(b);
-  return res;
-}
-
-template <>
-inline auto div<c10::BFloat16>(const c10::BFloat16& a, const c10::BFloat16& b)
-    __ubsan_ignore_float_divide_by_zero__ {
-  // Suppress compiler optimization to get data type promotion.
-  volatile float res = static_cast<float>(a) / static_cast<float>(b);
-  return res;
-}
-
-template <typename T>
 inline T div_trunc(const T& a, const T& b) {
   // In the SYCL compilation environment, dividing the same numbers does not
   // equal 1.f sometimes. Therefore, additional checks are required.
-  return ((a == b) && std::isfinite(a)) ? (T)1 : (T)std::trunc(div<T>(a, b));
+  return ((a == b) && std::isfinite(a)) ? (T)1 : (T)std::trunc(a / b);
 }
 
 } // namespace c10::xpu::compat
