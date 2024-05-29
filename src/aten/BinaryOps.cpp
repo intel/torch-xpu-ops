@@ -174,14 +174,14 @@ Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
   Tensor out;
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::div_(Tensor& self, const Tensor& other) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(self, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return self;
 }
 
@@ -191,7 +191,7 @@ Tensor& XPUNativeFunctions::div_out(
     Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return out;
 }
 
