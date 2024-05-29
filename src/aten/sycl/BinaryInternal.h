@@ -1,7 +1,5 @@
 #pragma once
 
-#include <comm/XPUMathCompat.h>
-
 namespace at::native::xpu {
 
 template <typename scalar_t>
