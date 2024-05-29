@@ -7,80 +7,13 @@
 #include <aten/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
 
-namespace at::native::xpu::detail {
+namespace at::native::xpu {
+
+namespace detail {
 
 constexpr int MODE_SUM = 0;
 constexpr int MODE_MEAN = 1;
 constexpr int MODE_MAX = 2;
-
-#define EMBBAG_KERNEL_ACC(                                                   \
-    scalar_t,                                                                \
-    accscalar_t,                                                             \
-    index_t,                                                                 \
-    mode,                                                                    \
-    vec_size,                                                                \
-    output,                                                                  \
-    weight,                                                                  \
-    input,                                                                   \
-    offset,                                                                  \
-    offset2bag,                                                              \
-    bag_size,                                                                \
-    max_indices,                                                             \
-    per_sample_weights,                                                      \
-    index_len,                                                               \
-    bag_num,                                                                 \
-    vec_len,                                                                 \
-    padding_idx,                                                             \
-    ignore_offsets)                                                          \
-  embedding_bag_kernel<scalar_t, accscalar_t, index_t, mode, vec_size>(      \
-      output.data_ptr<scalar_t>(),                                           \
-      weight.data_ptr<scalar_t>(),                                           \
-      indices.data_ptr<index_t>(),                                           \
-      offsets.data_ptr<index_t>(),                                           \
-      offset2bag.data_ptr<index_t>(),                                        \
-      bag_size.data_ptr<index_t>(),                                          \
-      max_indices.data_ptr<index_t>(),                                       \
-      per_sample_weights.defined() ? per_sample_weights.data_ptr<scalar_t>() \
-                                   : nullptr,                                \
-      index_size,                                                            \
-      bag_num,                                                               \
-      vec_len,                                                               \
-      padding_idx,                                                           \
-      ignore_offsets)
-
-#define EMBBAG_KERNEL_NO_ACC(                                                \
-    scalar_t,                                                                \
-    index_t,                                                                 \
-    mode,                                                                    \
-    vec_size,                                                                \
-    output,                                                                  \
-    weight,                                                                  \
-    input,                                                                   \
-    offset,                                                                  \
-    offset2bag,                                                              \
-    bag_size,                                                                \
-    max_indices,                                                             \
-    per_sample_weights,                                                      \
-    index_len,                                                               \
-    bag_num,                                                                 \
-    vec_len,                                                                 \
-    padding_idx,                                                             \
-    ignore_offsets)                                                          \
-  embedding_bag_kernel<scalar_t, scalar_t, index_t, mode, vec_size>(         \
-      output.data_ptr<scalar_t>(),                                           \
-      weight.data_ptr<scalar_t>(),                                           \
-      indices.data_ptr<index_t>(),                                           \
-      offsets.data_ptr<index_t>(),                                           \
-      offset2bag.data_ptr<index_t>(),                                        \
-      bag_size.data_ptr<index_t>(),                                          \
-      max_indices.data_ptr<index_t>(),                                       \
-      per_sample_weights.defined() ? per_sample_weights.data_ptr<scalar_t>() \
-                                   : nullptr,                                \
-      index_size,                                                            \
-      bag_num,                                                               \
-      vec_len,                                                               \
-      padding_idx,                                                           \
-      ignore_offsets)
 
 template <
     typename scalar_t,
@@ -254,112 +187,6 @@ struct EmbeddingBagKernelFunctor {
   BatchKernelConfig cfg;
   index_t fixing_bag_size;
 };
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_t,
-    int mode,
-    int vec_size>
-void embedding_bag_kernel(
-    scalar_t* const output,
-    scalar_t* const weights,
-    index_t* const index,
-    index_t* const offset,
-    index_t* const offset2bag,
-    index_t* const bag_size,
-    index_t* const max_index,
-    scalar_t* const per_sample_weights,
-    int64_t index_size,
-    int64_t bag_num,
-    int64_t vec_len,
-    index_t padding_idx,
-    bool ignore_offsets) {
-  using vec_t = at::detail::Array<scalar_t, vec_size>;
-  using vec_acc_t = at::detail::Array<accscalar_t, vec_size>;
-  using vec_idx_t = at::detail::Array<index_t, vec_size>;
-
-  vec_t* o_vec = reinterpret_cast<vec_t*>(output);
-  vec_t* w_vec = reinterpret_cast<vec_t*>(weights);
-  vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
-
-  vec_len = vec_len / vec_size;
-  BatchKernelConfig cfg = {
-      bag_num, vec_len, 1, bag_num, true, BatchKernelConfig::Policy::pAdaptive};
-  index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
-  auto caller = EmbeddingBagKernelFunctor<
-      scalar_t,
-      accscalar_t,
-      index_t,
-      mode,
-      vec_size,
-      vec_t,
-      vec_acc_t,
-      vec_idx_t>(
-      index,
-      offset,
-      offset2bag,
-      bag_size,
-      max_index,
-      per_sample_weights,
-      index_size,
-      bag_num,
-      vec_len,
-      padding_idx,
-      ignore_offsets,
-      o_vec,
-      w_vec,
-      max_idx_vec,
-      cfg,
-      fixing_bag_size);
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), caller);
-}
-
-void embedding_bag_sum_template(
-    const Tensor& indices,
-    const Tensor& offsets,
-    const Tensor& weights,
-    const Tensor& per_sample_weights,
-    Tensor& output,
-    Tensor& offset2bag,
-    Tensor& bag_size,
-    Tensor& max_indices,
-    int64_t index_size,
-    int64_t bag_num,
-    int64_t vec_len,
-    int64_t padding_idx,
-    bool ignore_offsets);
-
-void embedding_bag_mean_template(
-    const Tensor& indices,
-    const Tensor& offsets,
-    const Tensor& weights,
-    const Tensor& per_sample_weights,
-    Tensor& output,
-    Tensor& offset2bag,
-    Tensor& bag_size,
-    Tensor& max_indices,
-    int64_t index_size,
-    int64_t bag_num,
-    int64_t vec_len,
-    int64_t padding_idx,
-    bool ignore_offsets);
-
-void embedding_bag_max_template(
-    const Tensor& indices,
-    const Tensor& offsets,
-    const Tensor& weights,
-    const Tensor& per_sample_weights,
-    Tensor& output,
-    Tensor& offset2bag,
-    Tensor& bag_size,
-    Tensor& max_indices,
-    int64_t index_size,
-    int64_t bag_num,
-    int64_t vec_len,
-    int64_t padding_idx,
-    bool ignore_offsets);
 
 template <
     int vec_size,
@@ -748,4 +575,137 @@ struct EmbeddingBagUpdateOutputKernelFunctor {
   const bool if_align_vector;
 };
 
-} // namespace at::native::xpu::detail
+template <typename index_t>
+struct embedding_bag_backward_dpcpp_sum_avg_functor {
+  auto operator()(index_t a, index_t b) const {
+    return a == b;
+  }
+};
+
+template <typename scalar_t, typename index_t, typename accscalar_t>
+struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item_id) const {
+    int idx = item_id.get_global_linear_id();
+    auto sg = item_id.get_sub_group();
+    int sgSize =
+        sg.get_local_range()[0]; // number of work-items in this sub-group
+    int sgId = idx / sgSize; // subgroup index
+    int sglid =
+        sg.get_local_id()[0]; // index of the work-item in this sub-group
+
+    int num_sg = num_group * max_group_size / sgSize; // number of sub-groups
+    for (int sample_idx = sgId; sample_idx < num_samples;
+         sample_idx += num_sg) {
+      accscalar_t result = 0.;
+      const int bag_idx = (int)offset2bag[sample_idx];
+      const int embedding_idx = (int)indices[sample_idx];
+      if (embedding_idx != padding_idx) {
+        for (int feature_idx = sglid; feature_idx < embedding_features;
+             feature_idx += sgSize) {
+          result += grad[grad_stride0 * bag_idx + grad_stride1 * feature_idx] *
+              weight[weight_stride0 * embedding_idx +
+                     weight_stride1 * feature_idx];
+        }
+      }
+      // subgroup reduce sum
+      for (int offset = sgSize / 2; offset > 0; offset /= 2) {
+        result += sycl::shift_group_left(sg, result, offset);
+      };
+      if (sglid == 0) {
+        output[sample_idx] = result;
+      }
+    }
+  }
+  EmbeddingBagPerSampleWeightsBackwardKernelFunctor(
+      const scalar_t* grad_,
+      int64_t grad_stride0_,
+      int64_t grad_stride1_,
+      const scalar_t* weight_,
+      int64_t weight_stride0_,
+      int64_t weight_stride1_,
+      const index_t* indices_,
+      const index_t* offset2bag_,
+      int64_t num_samples_,
+      int64_t embedding_features_,
+      scalar_t* output_,
+      index_t padding_idx_,
+      int64_t num_group_,
+      int64_t max_group_size_)
+      : grad(grad_),
+        grad_stride0(grad_stride0_),
+        grad_stride1(grad_stride1_),
+        weight(weight_),
+        weight_stride0(weight_stride0_),
+        weight_stride1(weight_stride1_),
+        indices(indices_),
+        offset2bag(offset2bag_),
+        num_samples(num_samples_),
+        embedding_features(embedding_features_),
+        output(output_),
+        padding_idx(padding_idx_),
+        num_group(num_group_),
+        max_group_size(max_group_size_) {}
+
+ private:
+  const scalar_t* grad;
+  int64_t grad_stride0;
+  int64_t grad_stride1;
+  const scalar_t* weight;
+  int64_t weight_stride0;
+  int64_t weight_stride1;
+  const index_t* indices;
+  const index_t* offset2bag;
+  int64_t num_samples;
+  int64_t embedding_features;
+  scalar_t* output;
+  index_t padding_idx;
+  int64_t num_group;
+  int64_t max_group_size;
+};
+
+} // namespace detail
+
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_dpcpp(
+    const Tensor& weight_t,
+    const Tensor& indices_t,
+    const Tensor& offsets_t,
+    const bool scale_grad_by_freq,
+    const int64_t mode,
+    bool sparse,
+    const Tensor& per_sample_weights_t,
+    bool include_last_offset,
+    int64_t padding_idx);
+
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only(
+    const Tensor& weight,
+    const Tensor& indices,
+    const Tensor& offsets,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    bool sparse,
+    const c10::optional<Tensor>& per_sample_weights_opt,
+    bool include_last_offset,
+    int64_t padding_idx);
+
+Tensor _embedding_bag_dense_backward_dpcpp(
+    const Tensor& grad_t,
+    const Tensor& indices,
+    const Tensor& offset2bag,
+    const Tensor& bag_size,
+    const Tensor& max_indices,
+    int64_t num_weights,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    const Tensor& per_sample_weights,
+    int64_t padding_idx);
+
+Tensor _embedding_bag_per_sample_weights_backward_dpcpp(
+    const Tensor& grad,
+    const Tensor& weight, // NB: embedding table, not per_sample_weights
+    const Tensor& indices_,
+    const Tensor& offsets_,
+    const Tensor& offset2bag,
+    int64_t mode,
+    int64_t padding_idx);
+
+} // namespace at::native::xpu

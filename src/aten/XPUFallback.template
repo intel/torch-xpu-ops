@@ -215,8 +215,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_efficientzerotensor",
     "elu_backward.grad_input",
     "elu.out",
-    "_embedding_bag_dense_backward",
-    "_embedding_bag_per_sample_weights_backward",
     "equal",
     "erfc.out",
     "erfinv.out",
