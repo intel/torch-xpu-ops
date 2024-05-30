@@ -310,4 +310,26 @@ Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::exp(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::exp_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::exp_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::exp_kernel(iter);
+  return self;
+}
+
 } // namespace at
