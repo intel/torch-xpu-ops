@@ -301,3 +301,5 @@ supported:
   - nll_loss_backward.grad_input
   - nll_loss_backward
   - batch_norm_stats
+  - batch_norm_elemt
+  - batch_norm_elemt.out

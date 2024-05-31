@@ -5,9 +5,11 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUContext.h>
+#include <aten/Resize.h>
 #include <aten/sycl/Loops.h>
 #include <aten/sycl/Reduce.h>
 #include <comm/SYCLContext.h>
+#include <comm/XPUMathCompat.h>
 
 namespace at {
 namespace native {
@@ -90,6 +92,8 @@ int get_prefer_simd(int numPlane, int nHw) {
   }
   return simd;
 }
+
+// ========================== batch_norm_stats ==========================
 
 template <
     int SIMD,
@@ -829,6 +833,603 @@ std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
         }
       });
   return std::tuple<Tensor, Tensor>(save_mean, save_invstd);
+}
+
+// ========================== batch_norm_elemt ==========================
+
+ScalarType first_type() {
+  return ScalarType::Undefined;
+}
+
+template <typename... Args>
+ScalarType first_type(const Tensor& arg, const Args&... parameters) {
+  return arg.defined() ? arg.scalar_type() : first_type(parameters...);
+}
+
+// A transform is mixed type if the parameters are higher precision than the
+// input
+template <typename... Args>
+bool is_mixed_type(const Tensor& input, const Args&... parameters) {
+  const auto parameter_type = first_type(parameters...);
+  return (
+      (parameter_type != ScalarType::Undefined) &&
+      (parameter_type != input.scalar_type()));
+}
+
+enum class Impl {
+  Contiguous,
+  ChannelsLast,
+  General,
+};
+
+inline Impl batch_norm_choose_impl(const Tensor& self) {
+  if (!canUse32BitIndexMath(self)) {
+    return Impl::General;
+  }
+
+  if (self.is_contiguous()) {
+    return self.strides()[1] == 1 ? Impl::ChannelsLast : Impl::Contiguous;
+  }
+
+  if (self.is_contiguous(at::MemoryFormat::ChannelsLast)) {
+    return Impl::ChannelsLast;
+  }
+
+  return Impl::General;
+}
+
+template <
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    bool train,
+    typename index_t>
+struct BatchNormTransformInputKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto group_idx_x = item.get_group().get_group_id(1);
+    index_t plane = group_idx_x;
+
+    if (plane >= numPlane_) {
+      return;
+    }
+
+    stat_accscalar_t gamma = weight_ptr_ != nullptr
+        ? static_cast<stat_accscalar_t>(weight_ptr_[plane])
+        : static_cast<stat_accscalar_t>(1);
+    stat_accscalar_t beta = bias_ptr_ != nullptr
+        ? static_cast<stat_accscalar_t>(bias_ptr_[plane])
+        : static_cast<stat_accscalar_t>(0);
+
+    stat_accscalar_t mean = static_cast<stat_accscalar_t>(mean_ptr_[plane]);
+    stat_accscalar_t invstd;
+    if constexpr (train) {
+      invstd = var_or_invstd_ptr_[plane];
+    } else {
+      invstd = static_cast<stat_accscalar_t>(1) /
+          std::sqrt(
+                   static_cast<stat_accscalar_t>(var_or_invstd_ptr_[plane]) +
+                   epsilon_);
+    }
+
+    index_t bstep = item.get_global_range(0);
+    for (index_t batch = item.get_global_id(0); batch < bs_; batch += bstep) {
+      auto batch_offset = batch * numPlane_ * fs_ + plane * fs_;
+      for (index_t feature = item.get_local_id(1); feature < fs_;
+           feature += item.get_local_range(1)) {
+        output_ptr_[batch_offset + feature] = static_cast<input_scalar_t>(
+            gamma * (input_ptr_[batch_offset + feature] - mean) * invstd +
+            beta);
+      }
+    }
+  }
+
+  BatchNormTransformInputKernelFunctor(
+      stat_accscalar_t epsilon,
+      int numPlane,
+      int64_t target_tile_size,
+      int64_t wg_size,
+      int bs,
+      int fs,
+      int weight_size,
+      int bias_size,
+      int tf,
+      int tb,
+      input_scalar_t* input_ptr,
+      input_scalar_t* output_ptr,
+      stat_scalar_t* weight_ptr,
+      stat_scalar_t* bias_ptr,
+      stat_accscalar_t* mean_ptr,
+      stat_accscalar_t* var_or_invstd_ptr)
+      : epsilon_(epsilon),
+        numPlane_(numPlane),
+        target_tile_size_(target_tile_size),
+        wg_size_(wg_size),
+        bs_(bs),
+        fs_(fs),
+        weight_size_(weight_size),
+        bias_size_(bias_size),
+        tf_(tf),
+        tb_(tb),
+        input_ptr_(input_ptr),
+        output_ptr_(output_ptr),
+        weight_ptr_(weight_ptr),
+        bias_ptr_(bias_ptr),
+        mean_ptr_(mean_ptr),
+        var_or_invstd_ptr_(var_or_invstd_ptr) {}
+
+ private:
+  stat_accscalar_t epsilon_;
+  int numPlane_;
+  int64_t target_tile_size_;
+  int64_t wg_size_;
+  int bs_;
+  int fs_;
+  int weight_size_;
+  int bias_size_;
+  int tf_;
+  int tb_;
+  input_scalar_t* input_ptr_;
+  input_scalar_t* output_ptr_;
+  stat_scalar_t* weight_ptr_;
+  stat_scalar_t* bias_ptr_;
+  stat_accscalar_t* mean_ptr_;
+  stat_accscalar_t* var_or_invstd_ptr_;
+};
+
+template <
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    bool train,
+    typename index_t>
+void batch_norm_transform_input_kernel(
+    const Tensor input,
+    Tensor& output,
+    const Tensor& mean_,
+    const Tensor& var_or_invstd,
+    const Tensor& weight,
+    const Tensor& bias,
+    stat_accscalar_t epsilon) {
+  auto& queue = getCurrentSYCLQueue();
+  int numPlane = input.size(1);
+  int64_t target_tile_size = syclMaxWorkItemsPerTile();
+  int64_t wg_size = syclMaxWorkItemsPerEU(); // for work group barrier
+  if (wg_size * numPlane < target_tile_size) {
+    wg_size = syclMaxWorkGroupSize(); // for higher occupancy
+  }
+
+  int bs = input.size(0);
+  int fs = input.size(2);
+  int weight_size = weight.size(0);
+  int bias_size = bias.size(0);
+
+  int tf = get_num_threads(fs, wg_size);
+  int tb = std::max<int>(wg_size / tf, 1);
+  sycl::range<2> local_range(tb, tf);
+  sycl::range<2> global_range((bs + tb - 1) / tb * tb, numPlane * tf);
+
+  auto input_ptr = input.data_ptr<input_scalar_t>();
+  auto output_ptr = output.data_ptr<input_scalar_t>();
+  auto weight_ptr =
+      weight.defined() ? weight.data_ptr<stat_scalar_t>() : nullptr;
+  auto bias_ptr = bias.defined() ? bias.data_ptr<stat_scalar_t>() : nullptr;
+  auto mean_ptr = mean_.data_ptr<stat_accscalar_t>();
+  auto var_or_invstd_ptr = var_or_invstd.data_ptr<stat_accscalar_t>();
+
+  auto caller = BatchNormTransformInputKernelFunctor<
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      train,
+      index_t>(
+      epsilon,
+      numPlane,
+      target_tile_size,
+      wg_size,
+      bs,
+      fs,
+      weight_size,
+      bias_size,
+      tf,
+      tb,
+      input_ptr,
+      output_ptr,
+      weight_ptr,
+      bias_ptr,
+      mean_ptr,
+      var_or_invstd_ptr);
+
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
+void batch_norm_elemt_template(
+    Tensor& output_,
+    const Tensor& input_,
+    const Tensor& weight_,
+    const Tensor& bias_,
+    const Tensor& mean_,
+    const Tensor& invstd_) {
+  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  auto input_reshaped = input_.reshape(
+      {input_.size(0),
+       input_.size(1),
+       -1}); // internally we merge the feature dimensions
+  auto output_reshaped = output_.view({input_.size(0), input_.size(1), -1});
+
+  // NOTE: We use transform_input_kernel in training mode, which ignores
+  // epsilon
+  const double dummy_epsilon = 1e-5;
+
+  batch_norm_transform_input_kernel<
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      true,
+      index_t>(
+      input_reshaped,
+      output_reshaped,
+      mean_,
+      invstd_,
+      weight_,
+      bias_,
+      dummy_epsilon);
+}
+
+template <typename scalar_t, typename acc_t>
+struct BatchNormElementwiseLoopsFunctor {
+  scalar_t operator()(
+      scalar_t input,
+      acc_t weight,
+      acc_t bias,
+      acc_t mean,
+      acc_t invstd) const {
+    return ((input - mean) * invstd) * weight + bias;
+  }
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    int vec_size,
+    typename vec_t,
+    typename vec_s_t>
+struct BatchNormTransformInputChannelsLastKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    // auto group_idx_x = item.get_group().get_group_id(1);
+
+    // int inner_loop_stride = item.get_global_range(0);
+    // offset along m dimension
+    int m_offset = item.get_global_id(0);
+    int c_offset_base = item.get_global_id(1) * vec_size;
+
+    if (c_offset_base >= stride_ || m_offset >= reduction_size_) {
+      return;
+    }
+
+    vec_s_t m_c = *(reinterpret_cast<vec_s_t*>(mean_ptr_ + c_offset_base));
+    vec_s_t inv_vec =
+        *(reinterpret_cast<vec_s_t*>(inv_std_ptr_ + c_offset_base));
+    vec_s_t w_c;
+    vec_s_t s_c;
+#pragma unroll
+    for (int j = 0; j < vec_size; j++) {
+      if (weight_ptr_ != nullptr) {
+        w_c[j] = static_cast<accscalar_t>(weight_ptr_[c_offset_base + j]) *
+            inv_vec[j];
+      } else {
+        w_c[j] = (inv_vec[j]);
+      }
+      if (shift_ptr_ != nullptr) {
+        s_c[j] = shift_ptr_[c_offset_base + j];
+      } else {
+        s_c[j] = static_cast<accscalar_t>(0.0f);
+      }
+    }
+
+    int address_base = m_offset * stride_ + c_offset_base;
+    int address_increment = item.get_global_range(0) * stride_;
+
+    vec_t output_vec;
+    for (; address_base < total_num_; address_base += address_increment) {
+      vec_t x_math_vec = *(reinterpret_cast<vec_t*>(input_ptr_ + address_base));
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        // auto c_offset = c_offset_base + j;
+
+        output_vec[j] =
+            w_c[j] * (static_cast<accscalar_t>(x_math_vec[j]) - m_c[j]) +
+            s_c[j];
+      }
+      *(reinterpret_cast<vec_t*>(output_ptr_ + address_base)) = output_vec;
+    }
+  }
+  BatchNormTransformInputChannelsLastKernelFunctor(
+      scalar_t* input_ptr,
+      const scalar_t* z_ptr,
+      accscalar_t* mean_ptr,
+      accscalar_t* inv_std_ptr,
+      const layerscalar_t* weight_ptr,
+      const layerscalar_t* shift_ptr,
+      scalar_t* output_ptr,
+      const int reduction_size,
+      const int stride,
+      const bool fuse_relu,
+      int64_t total_num)
+      : input_ptr_(input_ptr),
+        z_ptr_(z_ptr),
+        mean_ptr_(mean_ptr),
+        inv_std_ptr_(inv_std_ptr),
+        weight_ptr_(weight_ptr),
+        shift_ptr_(shift_ptr),
+        output_ptr_(output_ptr),
+        reduction_size_(reduction_size),
+        stride_(stride),
+        fuse_relu_(fuse_relu),
+        total_num_(total_num) {}
+
+ private:
+  scalar_t* input_ptr_;
+  const scalar_t* z_ptr_;
+  accscalar_t* mean_ptr_;
+  accscalar_t* inv_std_ptr_;
+  const layerscalar_t* weight_ptr_;
+  const layerscalar_t* shift_ptr_;
+  scalar_t* output_ptr_;
+  const int reduction_size_;
+  const int stride_;
+  const bool fuse_relu_;
+  int64_t total_num_;
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    int vec_size>
+void batch_norm_transform_input_channels_last_kernel(
+    scalar_t* input_ptr,
+    const scalar_t* z_ptr,
+    accscalar_t* mean_ptr,
+    accscalar_t* inv_std_ptr,
+    const layerscalar_t* weight_ptr,
+    const layerscalar_t* shift_ptr,
+    scalar_t* output_ptr,
+    const int reduction_size,
+    const int stride,
+    const bool fuse_relu) {
+  // tensor dimension (m,c)
+  // loop along m dimension
+  int64_t total_num = reduction_size * stride;
+  using vec_t = memory::aligned_vector<scalar_t, vec_size>;
+  using vec_s_t = memory::aligned_vector<accscalar_t, vec_size>;
+  auto& queue = getCurrentSYCLQueue();
+  sycl::range<2> global_range(1, 1), local_range(1, 1);
+  std::tie(global_range, local_range) =
+      flexible_launch_configs(reduction_size, stride / vec_size);
+
+  auto caller = BatchNormTransformInputChannelsLastKernelFunctor<
+      scalar_t,
+      accscalar_t,
+      layerscalar_t,
+      vec_size,
+      vec_t,
+      vec_s_t>(
+      input_ptr,
+      z_ptr,
+      mean_ptr,
+      inv_std_ptr,
+      weight_ptr,
+      shift_ptr,
+      output_ptr,
+      reduction_size,
+      stride,
+      fuse_relu,
+      total_num);
+
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+void batch_norm_elemt_channels_last_template(
+    Tensor& output,
+    const at::Tensor& input,
+    const at::Tensor& weight,
+    const at::Tensor& shift, // bias of BN
+    const at::Tensor& mean,
+    const at::Tensor& inv_std,
+    const at::optional<at::Tensor>& z = c10::nullopt, // bias after BN
+    const bool fuse_relu = false) {
+  const auto second_dtype = weight.defined()
+      ? weight.scalar_type()
+      : (shift.defined() ? shift.scalar_type() : input.scalar_type());
+  const auto stride = input.sizes()[1];
+  const auto reduction_size = input.numel() / stride;
+
+#define DISPATCH_TRANSFORM_INPUT_IMPL(vec_size)                   \
+  {                                                               \
+    batch_norm_transform_input_channels_last_kernel<              \
+        scalar_t,                                                 \
+        accscalar_t,                                              \
+        scalar_t,                                                 \
+        vec_size>(                                                \
+        input.data_ptr<scalar_t>(),                               \
+        z.has_value() ? z.value().data_ptr<scalar_t>() : nullptr, \
+        mean.data_ptr<accscalar_t>(),                             \
+        inv_std.data_ptr<accscalar_t>(),                          \
+        weight.defined() ? weight.data_ptr<scalar_t>() : nullptr, \
+        shift.defined() ? shift.data_ptr<scalar_t>() : nullptr,   \
+        output.data_ptr<scalar_t>(),                              \
+        reduction_size,                                           \
+        stride,                                                   \
+        fuse_relu);                                               \
+  }
+
+#define DISPATCH_TRANSFORM_ACC_INPUT_IMPL(vec_size)                  \
+  {                                                                  \
+    batch_norm_transform_input_channels_last_kernel<                 \
+        scalar_t,                                                    \
+        accscalar_t,                                                 \
+        accscalar_t,                                                 \
+        vec_size>(                                                   \
+        input.data_ptr<scalar_t>(),                                  \
+        z.has_value() ? z.value().data_ptr<scalar_t>() : nullptr,    \
+        mean.data_ptr<accscalar_t>(),                                \
+        inv_std.data_ptr<accscalar_t>(),                             \
+        weight.defined() ? weight.data_ptr<accscalar_t>() : nullptr, \
+        shift.defined() ? shift.data_ptr<accscalar_t>() : nullptr,   \
+        output.data_ptr<scalar_t>(),                                 \
+        reduction_size,                                              \
+        stride,                                                      \
+        fuse_relu);                                                  \
+  }
+
+  if (input.scalar_type() != second_dtype) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward", [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
+              input, reduction_size, stride);
+          switch (suggest_vec_size) {
+            case 8: {
+              DISPATCH_TRANSFORM_ACC_INPUT_IMPL(8);
+              break;
+            }
+            case 4: {
+              DISPATCH_TRANSFORM_ACC_INPUT_IMPL(4);
+              break;
+            }
+            default:
+              DISPATCH_TRANSFORM_ACC_INPUT_IMPL(1);
+          }
+        });
+  } else {
+    if (weight.defined()) {
+      TORCH_CHECK(
+          input.scalar_type() == weight.scalar_type(),
+          "batchnorm_forward: input.scalar_type() ",
+          input.scalar_type(),
+          " is not supported with weight.scalar_type() ",
+          weight.scalar_type());
+    }
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward", [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
+              input, reduction_size, stride);
+          switch (suggest_vec_size) {
+            case 8: {
+              DISPATCH_TRANSFORM_INPUT_IMPL(8);
+              break;
+            }
+            case 4: {
+              DISPATCH_TRANSFORM_INPUT_IMPL(4);
+              break;
+            }
+            default:
+              DISPATCH_TRANSFORM_INPUT_IMPL(1);
+          }
+        });
+  }
+#undef DISPATCH_TRANSFORM_INPUT_IMPL
+#undef DISPATCH_TRANSFORM_ACC_INPUT_IMPL
+}
+
+void batch_norm_elemt_kernel(
+    Tensor& out,
+    const Tensor& self,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& bias_opt,
+    const Tensor& mean_,
+    const Tensor& invstd_) {
+  switch (batch_norm_choose_impl(self)) {
+    case Impl::Contiguous: {
+      c10::MaybeOwned<Tensor> weight =
+          at::borrow_from_optional_tensor(weight_opt);
+      c10::MaybeOwned<Tensor> bias = at::borrow_from_optional_tensor(bias_opt);
+      at::native::resize_output(out, self.sizes());
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kBFloat16,
+          kHalf,
+          self.scalar_type(),
+          "batch_norm_elementwise_xpu",
+          [&] {
+            using accscalar_t = acc_type<scalar_t, true>;
+            const bool mixed_type = is_mixed_type(self, *weight, *bias);
+            if (mixed_type) {
+              batch_norm_elemt_template<scalar_t, accscalar_t, int32_t>(
+                  out, self, *weight, *bias, mean_, invstd_);
+            } else {
+              batch_norm_elemt_template<scalar_t, scalar_t, int32_t>(
+                  out, self, *weight, *bias, mean_, invstd_);
+            }
+          });
+      return;
+    }
+    case Impl::ChannelsLast: {
+      auto weight = at::borrow_from_optional_tensor(weight_opt);
+      auto bias = at::borrow_from_optional_tensor(bias_opt);
+
+      if (resize_output_check(out, self.sizes())) {
+        resize_impl_xpu_(
+            out.unsafeGetTensorImpl(), self.sizes(), self.strides());
+      }
+      if ((out.strides() == self.strides()) &&
+          (!weight->defined() || weight->is_contiguous()) &&
+          (!bias->defined() || bias->is_contiguous()) &&
+          (!mean_.defined() || mean_.is_contiguous()) &&
+          (!invstd_.defined() || invstd_.is_contiguous())) {
+        batch_norm_elemt_channels_last_template(
+            out, self, *weight, *bias, mean_, invstd_);
+        return;
+      }
+      [[fallthrough]];
+    }
+    case Impl::General: {
+      const int64_t ndim = self.dim();
+      DimVector sizes(ndim, 1), strides(ndim, 0);
+      // Helper to convert 1d tensors to an nd tensor that broadcasts with
+      // input All elements go into the channel dimension
+      auto as_nd = [&](const Tensor& t) {
+        TORCH_INTERNAL_ASSERT(t.defined() && t.dim() == 1);
+        sizes[1] = t.sizes()[0];
+        strides[1] = t.strides()[0];
+        return t.as_strided(sizes, strides);
+      };
+
+      auto weight = weight_opt.has_value() && weight_opt->defined()
+          ? as_nd(*weight_opt)
+          : at::scalar_tensor(1, mean_.options());
+      auto bias = bias_opt.has_value() && bias_opt->defined()
+          ? as_nd(*bias_opt)
+          : at::scalar_tensor(0, mean_.options());
+      auto mean = as_nd(mean_);
+      auto invstd = as_nd(invstd_);
+
+      auto iter = TensorIteratorConfig()
+                      .add_output(out)
+                      .add_input(self)
+                      .add_input(weight)
+                      .add_input(bias)
+                      .add_input(mean)
+                      .add_input(invstd)
+                      .check_all_same_dtype(false)
+                      .promote_inputs_to_common_dtype(false)
+                      .build();
+
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kBFloat16,
+          kHalf,
+          self.scalar_type(),
+          "batch_norm_elementwise_xpu",
+          [&] {
+            using acc_t = acc_type<scalar_t, true>;
+            auto f = BatchNormElementwiseLoopsFunctor<scalar_t, acc_t>();
+            gpu_kernel(iter, f);
+          });
+      return;
+    }
+  }
 }
 
 } // namespace xpu

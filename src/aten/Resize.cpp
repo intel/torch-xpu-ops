@@ -72,7 +72,7 @@ static inline void maybe_resize_storage_xpu(
   }
 }
 
-inline TensorImpl* resize_impl_xpu_(
+TensorImpl* resize_impl_xpu_(
     TensorImpl* self,
     IntArrayRef size,
     at::OptionalIntArrayRef stride,
