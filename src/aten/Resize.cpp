@@ -3,7 +3,15 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
+#include <c10/core/Allocator.h>
 #include <torch/library.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/set_native.h>
+#endif
 
 #include <aten/sycl/CopyKernel.h>
 
@@ -188,6 +196,18 @@ Tensor& XPUNativeFunctions::set_(
       : c10::nullopt;
   native::xpu::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
   return self;
+}
+
+Tensor& XPUNativeFunctions::set_(Tensor& self, const at::Tensor& source) {
+  return at::native::set_tensor_(self, source);
+}
+
+Tensor& XPUNativeFunctions::set_(Tensor& result) {
+  caffe2::TypeMeta dtype = result.dtype();
+  Storage storage(Storage::use_byte_size_t(), 0, c10::GetAllocator(kXPU), true);
+  result.set_(storage, 0, {0}, {});
+  TORCH_INTERNAL_ASSERT(dtype == result.dtype());
+  return result;
 }
 
 } // namespace at

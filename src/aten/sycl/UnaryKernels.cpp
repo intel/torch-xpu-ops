@@ -77,6 +77,13 @@ struct NegFunctor {
   }
 };
 
+template <typename scalar_t, typename acc_t = scalar_t>
+struct ExpFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::exp(static_cast<acc_t>(a));
+  }
+};
+
 template <typename scalar_t>
 struct SgnFunctor {
   scalar_t operator()(scalar_t a) const {
@@ -289,6 +296,27 @@ void bitwise_not_kernel(TensorIteratorBase& iter) {
     AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "bitwise_not_xpu", [&]() {
       gpu_kernel(iter, BitwiseNotFunctor<scalar_t>());
     });
+  }
+}
+
+void exp_kernel(TensorIteratorBase& iter) {
+  auto common_dtype = iter.common_dtype();
+  if (at::isComplexType(common_dtype)) {
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "exp_xpu", [&]() {
+      using opmath_t = at::opmath_type<scalar_t>;
+      auto caller = ExpFunctor<scalar_t, opmath_t>();
+      gpu_kernel(iter, caller);
+    });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        common_dtype,
+        "exp_xpu",
+        [&]() {
+          auto caller = ExpFunctor<scalar_t>();
+          gpu_kernel(iter, caller);
+        });
   }
 }
 
