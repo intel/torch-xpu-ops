@@ -9,8 +9,8 @@
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/MemoryAccessUtils.h>
 #include <aten/sycl/OffsetCalculator.h>
+#include <c10/core/Allocator.h>
 #include <c10/macros/Macros.h>
-#include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <functional>
@@ -1217,8 +1217,7 @@ class AccumulationBuffer {
       numerator_ = 1;
       denominator_ = 1;
     } else {
-      // buffer_ = getDeviceAllocator()->allocate(size);
-      buffer_ = c10::xpu::XPUCachingAllocator::get()->allocate(size);
+      buffer_ = c10::GetAllocator(kXPU)->allocate(size);
       acc_ptr_ = (char*)buffer_.get();
       numerator_ = acc_t_size;
       denominator_ = out_t_size;

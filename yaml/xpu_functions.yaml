@@ -90,11 +90,15 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat
+  - cat.out
   - isnan
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_add_
+  - index_add
   - index_select
   - index_select.out
   - gcd
@@ -149,6 +153,9 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+  - exp
+  - exp.out
+  - exp_
   - empty.memory_format
   - empty_strided
   - clone
@@ -158,6 +165,12 @@ supported:
   - random_
   - random_.from
   - normal_
+  - normal.Tensor_float_out
+  - normal.Tensor_float
+  - normal.float_Tensor_out
+  - normal.float_Tensor
+  - normal.Tensor_Tensor_out
+  - normal.Tensor_Tensor
   - uniform_
   - bernoulli_.Tensor
   - bernoulli_.float
@@ -173,18 +186,38 @@ supported:
   - resize_
   - set_.source_Storage
   - set_.source_Storage_storage_offset
+  - set_.source_Tensor
+  - set_
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  # - _copy_from  # hand-written registration
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
   - bitwise_not.out
   - where.self_out
   - where.self
+  - clamp
   - clamp.out
-  - clamp_min.out
+  - clamp_
+  - clamp.Tensor
+  - clamp.Tensor_out
+  - clamp_.Tensor
+  - clamp_max
   - clamp_max.out
+  - clamp_max_
+  - clamp_max.Tensor
+  - clamp_max.Tensor_out
+  - clamp_max_.Tensor
+  - clamp_min
+  - clamp_min.out
+  - clamp_min_
+  - clamp_min.Tensor
+  - clamp_min.Tensor_out
+  - clamp_min_.Tensor
+  - native_layer_norm
+  - native_layer_norm_backward
   - index.Tensor
   - index.Tensor_out
   - max
@@ -202,5 +235,68 @@ supported:
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices_backward
+  - max_pool2d_with_indices_backward.grad_input
+  - embedding_dense_backward
+  - _softmax.out
+  - _softmax
+  - _softmax_backward_data.out
+  - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - _softmax
+  - _softmax.out
+  - _log_softmax
+  - _log_softmax.out
+  - _softmax_backward_data
+  - _softmax_backward_data.out
+  - _log_softmax_backward_data
+  - _log_softmax_backward_data.out
+  - scatter.src
+  - scatter.src_out
+  - scatter_.src
+  - scatter.value
+  - scatter.value_out
+  - scatter_.value
+  - scatter.reduce
+  - scatter.reduce_out
+  - scatter_.reduce
+  - scatter.value_reduce
+  - scatter.value_reduce_out
+  - scatter_.value_reduce
+  - scatter_add
+  - scatter_add.out
+  - scatter_add_
+  - scatter_reduce.two
+  - scatter_reduce.two_out
+  - scatter_reduce_.two
+  - gather
+  - gather.out
+  - sort.stable
+  - sort.values_stable
+  - argsort.stable
+  - _foreach_add.Scalar
+  - _foreach_add_.Scalar
+  - _foreach_add.ScalarList
+  - _foreach_add_.ScalarList
+  - _foreach_add.List
+  - _foreach_add_.List
+  - maximum
+  - maximum.out
+  - minimum
+  - minimum.out
+  - flip
+  - tril.out
+  - tril
+  - tril_
+  - triu.out
+  - triu
+  - triu_
+  - im2col
+  - im2col.out
+  - col2im
+  - col2im.out
+  - nll_loss_forward.output
+  - nll_loss_forward
+  - nll_loss_backward.grad_input
+  - nll_loss_backward

@@ -58,22 +58,6 @@ void mul_kernel(TensorIteratorBase& iter) {
   }
 }
 
-void div_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
-  if (common_dtype == kComplexHalf) {
-    using scalar_t = c10::complex<c10::Half>;
-    using opmath_t = opmath_type<scalar_t>;
-    opmath_gpu_kernel_with_scalars<scalar_t>(iter, DivFunctor<opmath_t>());
-  } else {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-        kHalf, kBFloat16, kBool, iter.common_dtype(), "div_xpu", [&]() {
-          using opmath_t = opmath_type<scalar_t>;
-          opmath_gpu_kernel_with_scalars<scalar_t>(
-              iter, DivFunctor<opmath_t>());
-        });
-  }
-}
-
 } // namespace xpu
 } // namespace native
 } // namespace at
