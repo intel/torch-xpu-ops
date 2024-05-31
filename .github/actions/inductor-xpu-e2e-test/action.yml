@@ -46,7 +46,7 @@ runs:
       run: |
         source activate e2e_ci
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        if [ ${{ inputs.suite }} == *"torchbench"* ]; then
+        if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
           cd audio && git checkout $TORCHAUDIO_COMMIT_ID
           python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
@@ -58,10 +58,10 @@ runs:
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
         fi
-        if [ ${{ inputs.suite }} == *"huggingface"* ]; then
+        if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
-        if [ ${{ inputs.suite }} == *"timm_models"* ]; then
+        if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
           cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
           cd vision && git checkout $TORCHVISION_COMMIT_ID
           python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
