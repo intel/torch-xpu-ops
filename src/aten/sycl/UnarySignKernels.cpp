@@ -11,12 +11,13 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct SgnFunctor {
-  scalar_t operator()(scalar_t a) const {
+  scalar_t operator()(scalar_t z_) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    if (a == scalar_t(0, 0)) {
-      return scalar_t(0, 0);
+    opmath_t z = static_cast<opmath_t>(z_);
+    if (z == opmath_t(0, 0)) {
+      return opmath_t(0, 0);
     } else {
-      return a / std::abs(static_cast<opmath_t>(a));
+      return z / std::abs(z);
     }
   }
 };
@@ -37,8 +38,7 @@ struct SignFunctor<bool> {
 
 void sgn_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, iter.dtype(), "sgn_xpu", [&] {
-    using opmath_t = at::opmath_type<scalar_t>;
-    gpu_kernel(iter, SgnFunctor<opmath_t>());
+    gpu_kernel(iter, SgnFunctor<scalar_t>());
   });
 }
 
