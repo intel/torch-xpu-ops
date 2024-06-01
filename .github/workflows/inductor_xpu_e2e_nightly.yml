@@ -13,41 +13,25 @@ on:
         description: Specify triton commit, use pytorch pined commit by default
       suite:
         required: true
-        type: choice
+        type: string
         default: 'huggingface'
-        options:
-          - huggingface
-          - timm_models
-          - torchbench
-        description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
+        description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
       dt:
         required: true
-        type: choice
+        type: string
         default: 'float32'
-        options:
-          - float32
-          - bfloat16
-          - float16
-          - amp_bf16
-          - amp_fp16
-        description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
+        description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
       mode:
         required: true
-        type: choice
+        type: string
         default: 'inference'
-        options:
-          - inference
-          - training
-        description: inference / training test
+        description: inference,training. Delimiter is comma
       scenario:
         required: true
-        type: choice
+        type: string
         default: 'accuracy'
-        options:
-          - accuracy
-          - performance
-        description: accuracy / performance test
-  
+        description: accuracy,performance. Delimiter is comma
+
 
 permissions: read-all
 
@@ -65,7 +49,10 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda
-          if conda env list | grep -q "^e2e_ci "; then source activate e2e_ci; else conda create -n e2e_ci python=3.8 cmake ninja -y; fi
+          if ! conda env list | grep -q "^e2e_ci "; then
+            conda create -n e2e_ci python=3.8 cmake ninja -y
+          fi
+          source activate e2e_ci
           conda install intel::mkl-static intel::mkl-include -y
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
@@ -115,7 +102,7 @@ jobs:
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl      
+          pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
       - name: Nightly Huggingface FP32 Inference Accuracy Test
@@ -128,7 +115,6 @@ jobs:
           mode: inference
           scenario: accuracy
           expected_pass_num: 46
-          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
