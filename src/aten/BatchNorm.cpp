@@ -163,4 +163,38 @@ Tensor& XPUNativeFunctions::batch_norm_elemt_out(
       grad_out, input, mean, invstd, weight, input_g, weight_g, bias_g);
 }
 
+Tensor XPUNativeFunctions::batch_norm_backward_elemt(
+    const Tensor& grad_out,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const ::std::optional<Tensor>& weight,
+    const Tensor& sum_dy,
+    const Tensor& sum_dy_xmu,
+    const Tensor& count) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, grad_out, "xpu::batch_norm_backward_elemt", "grad_out");
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::batch_norm_backward_elemt", "input");
+  c10::impl::check_and_update_common_device(
+      common_device, mean, "xpu::batch_norm_backward_elemt", "mean");
+  c10::impl::check_and_update_common_device(
+      common_device, invstd, "xpu::batch_norm_backward_elemt", "invstd");
+  c10::impl::check_and_update_common_device(
+      common_device, weight, "xpu::batch_norm_backward_elemt", "weight");
+  c10::impl::check_and_update_common_device(
+      common_device, sum_dy, "xpu::batch_norm_backward_elemt", "sum_dy");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      sum_dy_xmu,
+      "xpu::batch_norm_backward_elemt",
+      "sum_dy_xmu");
+  c10::impl::check_and_update_common_device(
+      common_device, count, "xpu::batch_norm_backward_elemt", "count");
+  return native::xpu::batch_norm_backward_elemt_kernel(
+      grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+}
+
 } // namespace at

@@ -48,6 +48,16 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
     bool weight_g,
     bool bias_g);
 
+Tensor batch_norm_backward_elemt_kernel(
+    const Tensor& self,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const c10::optional<Tensor>& weight_opt,
+    const Tensor& sum_dy,
+    const Tensor& sum_dy_xmu,
+    const Tensor& count);
+
 } // namespace xpu
 } // namespace native
 } // namespace at

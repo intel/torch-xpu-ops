@@ -2972,6 +2972,591 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
       });
 }
 
+// ====================== batch_norm_backward_elemt ======================
+
+template <
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t,
+    bool has_count = false>
+struct BatchNormBackwardElemtKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    index_t plane = item.get_group(1);
+
+    if (plane >= numPlane_) {
+      return;
+    }
+
+    // Use float to calculate to avoid double issues in ATSM
+    auto norm_fct = static_cast<stat_accscalar_t>(
+        static_cast<float>(1.0) / reduction_size_);
+    if constexpr (has_count) {
+      int64_t total_numel = 0;
+      for (int i = 0; i < world_size_; i++) {
+        total_numel += numel_[i];
+      }
+      norm_fct =
+          static_cast<stat_accscalar_t>(static_cast<float>(1.0) / total_numel);
+    }
+
+    stat_accscalar_t m_c = mean_ptr_[plane];
+    stat_accscalar_t m_dy_c = sum_dy_ptr_[plane] * norm_fct;
+    stat_accscalar_t factor_1_c = invstd_ptr_[plane];
+    stat_accscalar_t factor_2_c = weight_ptr_ != nullptr
+        ? static_cast<stat_accscalar_t>(weight_ptr_[plane])
+        : stat_accscalar_t(1);
+    factor_2_c *= factor_1_c;
+    factor_1_c = factor_1_c * factor_1_c * sum_dy_xmu_ptr_[plane] * norm_fct;
+
+    index_t bstep = global_range_y_;
+    for (index_t batch = item.get_global_id(0); batch < N_; batch += bstep) {
+      auto g_i_offset = batch * gi_batch_stride_ + plane * gi_Hw_;
+      auto g_o_offset = batch * go_batch_stride_ + plane * go_Hw_;
+      auto i_offset = batch * i_batch_stride_ + plane * Hw_;
+      for (index_t feature = item.get_local_id(1); feature < Hw_;
+           feature += local_range_x_) {
+        grad_input_ptr_[g_i_offset + feature] = static_cast<input_scalar_t>(
+            (grad_output_ptr_[g_o_offset + feature] - m_dy_c -
+             (input_ptr_[i_offset + feature] - m_c) * factor_1_c) *
+            factor_2_c);
+      }
+    }
+  }
+  BatchNormBackwardElemtKernelFunctor(
+      const int* numel,
+      const int world_size,
+      int Hw,
+      int N,
+      int numPlane,
+      int weight_size,
+      int64_t target_tile_size,
+      int64_t wg_size,
+      int i_batch_stride,
+      int gi_batch_stride,
+      int go_batch_stride,
+      int gi_Hw,
+      int go_Hw,
+      int tf,
+      int tb,
+      int global_range_y,
+      int local_range_x,
+      input_scalar_t* input_ptr,
+      input_scalar_t* grad_output_ptr,
+      input_scalar_t* grad_input_ptr,
+      stat_accscalar_t* mean_ptr,
+      stat_accscalar_t* invstd_ptr,
+      stat_scalar_t* weight_ptr,
+      stat_accscalar_t* sum_dy_ptr,
+      stat_accscalar_t* sum_dy_xmu_ptr,
+      int n_input,
+      int reduction_size)
+      : numel_(numel),
+        world_size_(world_size),
+        Hw_(Hw),
+        N_(N),
+        numPlane_(numPlane),
+        weight_size_(weight_size),
+        target_tile_size_(target_tile_size),
+        wg_size_(wg_size),
+        i_batch_stride_(i_batch_stride),
+        gi_batch_stride_(gi_batch_stride),
+        go_batch_stride_(go_batch_stride),
+        gi_Hw_(gi_Hw),
+        go_Hw_(go_Hw),
+        tf_(tf),
+        tb_(tb),
+        global_range_y_(global_range_y),
+        local_range_x_(local_range_x),
+        input_ptr_(input_ptr),
+        grad_output_ptr_(grad_output_ptr),
+        grad_input_ptr_(grad_input_ptr),
+        mean_ptr_(mean_ptr),
+        invstd_ptr_(invstd_ptr),
+        weight_ptr_(weight_ptr),
+        sum_dy_ptr_(sum_dy_ptr),
+        sum_dy_xmu_ptr_(sum_dy_xmu_ptr),
+        n_input_(n_input),
+        reduction_size_(reduction_size) {}
+
+ private:
+  const int* numel_;
+  const int world_size_;
+  int Hw_;
+  int N_;
+  int numPlane_;
+  int weight_size_;
+  int64_t target_tile_size_;
+  int64_t wg_size_;
+  int i_batch_stride_;
+  int gi_batch_stride_;
+  int go_batch_stride_;
+  int gi_Hw_;
+  int go_Hw_;
+  int tf_;
+  int tb_;
+  int global_range_y_;
+  int local_range_x_;
+  input_scalar_t* input_ptr_;
+  input_scalar_t* grad_output_ptr_;
+  input_scalar_t* grad_input_ptr_;
+  stat_accscalar_t* mean_ptr_;
+  stat_accscalar_t* invstd_ptr_;
+  stat_scalar_t* weight_ptr_;
+  stat_accscalar_t* sum_dy_ptr_;
+  stat_accscalar_t* sum_dy_xmu_ptr_;
+  int n_input_;
+  int reduction_size_;
+};
+
+template <
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t,
+    bool has_count = false>
+void batch_norm_backward_elemt_kernel_impl(
+    const Tensor& input,
+    const Tensor& grad_output,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const Tensor& weight,
+    const Tensor& sum_dy,
+    const Tensor& sum_dy_xmu,
+    const int* numel,
+    const int world_size,
+    Tensor& grad_input) {
+  auto Hw = input.size(2);
+  auto N = input.size(0);
+  auto numPlane = input.size(1);
+  int weight_size = weight.size(0);
+
+  auto& queue = getCurrentSYCLQueue();
+  int64_t target_tile_size = syclMaxWorkItemsPerTile();
+  int64_t wg_size = syclMaxWorkItemsPerEU(); // for work group barrier
+  if (wg_size * numPlane < target_tile_size) {
+    wg_size = syclMaxWorkGroupSize(); // for higher occupancy
+  }
+  auto i_batch_stride = input.size(1) * input.size(2);
+  auto gi_batch_stride = grad_input.size(1) * grad_input.size(2);
+  auto go_batch_stride = grad_output.size(1) * grad_output.size(2);
+  auto gi_Hw = grad_input.size(2);
+  auto go_Hw = grad_output.size(2);
+
+  int tf = get_num_threads(Hw, wg_size);
+  int tb = std::max<int>(wg_size / tf, 1);
+  sycl::range<2> local_range(tb, tf);
+  sycl::range<2> global_range((N + tb - 1) / tb * tb, tf * numPlane);
+
+  int global_range_y = global_range[0];
+  int local_range_x = local_range[1];
+  auto input_ptr = input.data_ptr<input_scalar_t>();
+  auto grad_output_ptr = grad_output.data_ptr<input_scalar_t>();
+  auto grad_input_ptr = grad_input.data_ptr<input_scalar_t>();
+
+  auto mean_ptr = mean.data_ptr<stat_accscalar_t>();
+  auto invstd_ptr = invstd.data_ptr<stat_accscalar_t>();
+  auto weight_ptr =
+      weight.defined() ? weight.data_ptr<stat_scalar_t>() : nullptr;
+  auto sum_dy_ptr = sum_dy.data_ptr<stat_accscalar_t>();
+  auto sum_dy_xmu_ptr = sum_dy_xmu.data_ptr<stat_accscalar_t>();
+
+  auto n_input = input.size(1);
+  auto reduction_size = input.numel() / n_input;
+
+  auto caller = BatchNormBackwardElemtKernelFunctor<
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      index_t,
+      has_count>(
+      numel,
+      world_size,
+      Hw,
+      N,
+      numPlane,
+      weight_size,
+      target_tile_size,
+      wg_size,
+      i_batch_stride,
+      gi_batch_stride,
+      go_batch_stride,
+      gi_Hw,
+      go_Hw,
+      tf,
+      tb,
+      global_range_y,
+      local_range_x,
+      input_ptr,
+      grad_output_ptr,
+      grad_input_ptr,
+      mean_ptr,
+      invstd_ptr,
+      weight_ptr,
+      sum_dy_ptr,
+      sum_dy_xmu_ptr,
+      n_input,
+      reduction_size);
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    typename vec_t,
+    typename vec_s_t,
+    int vec_size = 1,
+    bool has_count = false>
+struct BatchNormBackwardElemtChannelsLastKernelImplFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    // tensor dimension (m,c)
+    // loop along m dimension
+    int inner_loop_stride = item.get_global_range(0);
+
+    // offset along m dimension
+    int m_offset = item.get_global_id(0);
+    int c_offset_base = item.get_global_id(1) * vec_size;
+
+    if (c_offset_base >= stride_ || m_offset >= reduction_size_) {
+      return;
+    }
+
+    vec_s_t m_c = *(reinterpret_cast<vec_s_t*>(mean_ + c_offset_base));
+    vec_s_t m_dy_c = *(reinterpret_cast<vec_s_t*>(sum_dy_ + c_offset_base));
+    vec_s_t sum_dy_xmu_vec =
+        *(reinterpret_cast<vec_s_t*>(sum_dyxmu_ + c_offset_base));
+    vec_s_t factor_1_c =
+        *(reinterpret_cast<vec_s_t*>(inv_std_ + c_offset_base));
+    vec_s_t factor_2_c;
+
+    // Use float to calculate to avoid double issues in ATSM
+    auto norm_fct =
+        static_cast<accscalar_t>(static_cast<float>(1.0) / reduction_size_);
+    if constexpr (has_count) {
+      int64_t total_numel = 0;
+      for (int i = 0; i < world_size_; i++) {
+        total_numel += numel_[i];
+      }
+      norm_fct =
+          static_cast<accscalar_t>(static_cast<float>(1.0) / total_numel);
+    }
+
+#pragma unroll
+    for (int j = 0; j < vec_size; j++) {
+      if (weight_ != nullptr) {
+        factor_2_c[j] = static_cast<accscalar_t>(weight_[c_offset_base + j]) *
+            factor_1_c[j];
+      } else {
+        factor_2_c[j] = accscalar_t(1.0f);
+      }
+      m_dy_c[j] = m_dy_c[j] * norm_fct;
+      factor_1_c[j] =
+          factor_1_c[j] * factor_1_c[j] * sum_dy_xmu_vec[j] * norm_fct;
+    }
+
+    int address_base = m_offset * stride_ + c_offset_base;
+    int address_increment = item.get_global_range(0) * stride_;
+
+    for (int m_offset_loop = item.get_global_id(0);
+         m_offset_loop < reduction_size_;
+         m_offset_loop += inner_loop_stride) {
+      vec_t input_vec = *(reinterpret_cast<vec_t*>(input_ + address_base));
+      vec_t grad_output_vec =
+          *(reinterpret_cast<vec_t*>(grad_output_ + address_base));
+      vec_t output_vec;
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        output_vec[j] = static_cast<scalar_t>(
+            (static_cast<accscalar_t>(grad_output_vec[j]) - m_dy_c[j] -
+             (static_cast<accscalar_t>(input_vec[j]) - m_c[j]) *
+                 factor_1_c[j]) *
+            factor_2_c[j]);
+      }
+      *(reinterpret_cast<vec_t*>(grad_input_ + address_base)) = output_vec;
+      address_base += address_increment;
+    }
+  }
+  BatchNormBackwardElemtChannelsLastKernelImplFunctor(
+      scalar_t* grad_output,
+      scalar_t* input,
+      accscalar_t* mean,
+      accscalar_t* inv_std,
+      const layerscalar_t* weight,
+      accscalar_t* sum_dy,
+      accscalar_t* sum_dyxmu,
+      const int* numel,
+      scalar_t* grad_input,
+      const int world_size,
+      const int reduction_size,
+      const int stride)
+      : grad_output_(grad_output),
+        input_(input),
+        mean_(mean),
+        inv_std_(inv_std),
+        weight_(weight),
+        sum_dy_(sum_dy),
+        sum_dyxmu_(sum_dyxmu),
+        numel_(numel),
+        grad_input_(grad_input),
+        world_size_(world_size),
+        reduction_size_(reduction_size),
+        stride_(stride) {}
+
+ private:
+  scalar_t* grad_output_;
+  scalar_t* input_;
+  accscalar_t* mean_;
+  accscalar_t* inv_std_;
+  const layerscalar_t* weight_;
+  accscalar_t* sum_dy_;
+  accscalar_t* sum_dyxmu_;
+  const int* numel_;
+  scalar_t* grad_input_;
+  const int world_size_;
+  const int reduction_size_;
+  const int stride_;
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    int vec_size = 1,
+    bool has_count = false>
+void batch_norm_backward_elemt_channels_last_kernel_impl(
+    scalar_t* grad_output,
+    scalar_t* input,
+    accscalar_t* mean,
+    accscalar_t* inv_std,
+    const layerscalar_t* weight,
+    accscalar_t* sum_dy,
+    accscalar_t* sum_dy_xmu,
+    const int* numel,
+    scalar_t* grad_input,
+    const int world_size,
+    const int reduction_size,
+    const int stride) {
+  auto& queue = getCurrentSYCLQueue();
+  sycl::range<2> global_range(1, 1), local_range(1, 1);
+  std::tie(global_range, local_range) =
+      flexible_launch_configs(reduction_size, stride / vec_size);
+  using vec_t = memory::aligned_vector<scalar_t, vec_size>;
+  using vec_s_t = memory::aligned_vector<accscalar_t, vec_size>;
+  auto caller = BatchNormBackwardElemtChannelsLastKernelImplFunctor<
+      scalar_t,
+      accscalar_t,
+      layerscalar_t,
+      vec_t,
+      vec_s_t,
+      vec_size,
+      has_count>(
+      grad_output,
+      input,
+      mean,
+      inv_std,
+      weight,
+      sum_dy,
+      sum_dy_xmu,
+      numel,
+      grad_input,
+      world_size,
+      reduction_size,
+      stride);
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+at::Tensor batch_norm_backward_elemt_channels_last_template(
+    const at::Tensor& grad_output,
+    const at::Tensor& input,
+    const at::Tensor& mean,
+    const at::Tensor& inv_std,
+    const at::Tensor& weight,
+    const at::Tensor& sum_dy,
+    const at::Tensor& sum_dy_xmu,
+    const at::Tensor& count) {
+  const auto stride = input.sizes()[1];
+  const auto reduction_size = input.numel() / stride;
+
+  // Input is guarunteed to be channels-last compatible
+  at::Tensor grad_input = at::empty_like(input);
+
+  if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        input.scalar_type(),
+        "batchnorm_backward_element",
+        [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          batch_norm_backward_elemt_channels_last_kernel_impl<
+              scalar_t,
+              accscalar_t,
+              accscalar_t,
+              1,
+              true>(
+              grad_output.data_ptr<scalar_t>(),
+              input.data_ptr<scalar_t>(),
+              mean.data_ptr<accscalar_t>(),
+              inv_std.data_ptr<accscalar_t>(),
+              weight.data_ptr<accscalar_t>(),
+              sum_dy.data_ptr<accscalar_t>(),
+              sum_dy_xmu.data_ptr<accscalar_t>(),
+              count.data_ptr<int>(),
+              grad_input.data_ptr<scalar_t>(),
+              count.numel(),
+              reduction_size,
+              stride);
+        });
+  } else {
+    if (weight.defined()) {
+      TORCH_CHECK(
+          input.scalar_type() == weight.scalar_type(),
+          "batchnorm_backward_element: input.scalar_type() ",
+          input.scalar_type(),
+          " is not supported with weight.scalar_type() ",
+          weight.scalar_type());
+    }
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "batchnorm_backward_element",
+        [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          batch_norm_backward_elemt_channels_last_kernel_impl<
+              scalar_t,
+              accscalar_t,
+              scalar_t,
+              1,
+              true>(
+              grad_output.data_ptr<scalar_t>(),
+              input.data_ptr<scalar_t>(),
+              mean.data_ptr<accscalar_t>(),
+              inv_std.data_ptr<accscalar_t>(),
+              weight.defined() ? weight.data_ptr<scalar_t>() : nullptr,
+              sum_dy.data_ptr<accscalar_t>(),
+              sum_dy_xmu.data_ptr<accscalar_t>(),
+              count.data_ptr<int>(),
+              grad_input.data_ptr<scalar_t>(),
+              count.numel(),
+              reduction_size,
+              stride);
+        });
+  }
+
+  return grad_input;
+}
+
+template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
+Tensor batch_norm_backward_elemt_template(
+    const Tensor& grad_out_,
+    const Tensor& input_,
+    const Tensor& mean_,
+    const Tensor& invstd_,
+    const Tensor& weight_,
+    const Tensor& sum_dy_,
+    const Tensor& sum_dy_xmu_,
+    const Tensor& count) {
+  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  // int64_t n_input = input_.size(1);
+  auto input_reshaped = input_.reshape(
+      {input_.size(0),
+       input_.size(1),
+       -1}); // internally we merge the feature dimensions
+  auto grad_output_reshaped = grad_out_.reshape(input_reshaped.sizes());
+  auto grad_input_reshaped =
+      at::empty_like(input_reshaped, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
+  batch_norm_backward_elemt_kernel_impl<
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      index_t,
+      true>(
+      input_reshaped,
+      grad_output_reshaped,
+      mean_,
+      invstd_,
+      weight_,
+      sum_dy_,
+      sum_dy_xmu_,
+      count.data_ptr<int>(),
+      count.numel(),
+      grad_input_reshaped);
+
+  return grad_input_reshaped.view(input_.sizes());
+}
+
+Tensor batch_norm_backward_elemt_kernel(
+    const Tensor& self,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const c10::optional<Tensor>& weight_opt,
+    const Tensor& sum_dy,
+    const Tensor& sum_dy_xmu,
+    const Tensor& count) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+
+  if (canUse32BitIndexMath(self) &&
+      batch_norm_use_channels_last_kernels(self) &&
+      batch_norm_use_channels_last_kernels(input)) {
+    return batch_norm_backward_elemt_channels_last_template(
+        self, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+  }
+
+  return AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      self.scalar_type(),
+      "batch_norm_backward_elemt",
+      [&] {
+        auto mean_st = mean.dtype();
+        auto invstd_st = invstd.dtype();
+        TORCH_CHECK(
+            mean_st == invstd_st,
+            "mean and invstd need to have the same data types");
+        bool is_half_float =
+            std::is_same<scalar_t, at::Half>::value && mean_st == at::kFloat;
+        bool is_bfloat16_float = std::is_same<scalar_t, at::BFloat16>::value &&
+            mean_st == at::kFloat;
+        using accscalar_t = acc_type<scalar_t, true>;
+        if (canUse32BitIndexMath(self)) {
+          if (is_half_float || is_bfloat16_float) {
+            return batch_norm_backward_elemt_template<
+                scalar_t,
+                accscalar_t,
+                int32_t>(
+                self, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+          } else {
+            return batch_norm_backward_elemt_template<
+                scalar_t,
+                scalar_t,
+                int32_t>(
+                self, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+          }
+        } else {
+          if (is_half_float || is_bfloat16_float) {
+            return batch_norm_backward_elemt_template<
+                scalar_t,
+                accscalar_t,
+                int64_t>(
+                self, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+          } else {
+            return batch_norm_backward_elemt_template<
+                scalar_t,
+                scalar_t,
+                int64_t>(
+                self, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
+          }
+        }
+      });
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
