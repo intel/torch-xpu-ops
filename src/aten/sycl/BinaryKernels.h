@@ -2,9 +2,7 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 void add_kernel(TensorIteratorBase& iter, const Scalar& alpha);
 
@@ -20,8 +18,4 @@ void div_trunc_kernel(TensorIteratorBase& iter);
 
 void div_floor_kernel(TensorIteratorBase& iter);
 
-void sigmoid_backward_kernel(TensorIteratorBase& iter);
-
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
