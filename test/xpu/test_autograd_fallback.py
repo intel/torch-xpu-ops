@@ -10,6 +10,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_autograd_fallback import TestAutogradFallback
 
+
 instantiate_parametrized_tests(TestAutogradFallback)
 
 
