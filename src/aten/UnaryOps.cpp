@@ -331,6 +331,7 @@ Tensor& XPUNativeFunctions::exp_(Tensor& self) {
   iter.build_borrowing_unary_float_op(self, self);
   native::xpu::exp_kernel(iter);
   return self;
+}
 
 Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
   Tensor out;
