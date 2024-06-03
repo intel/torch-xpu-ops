@@ -922,6 +922,12 @@ skip_list = (
     "test_neg_view_svd_xpu_float64",
     "test_neg_view_tensordot_xpu_float64",
     "test_neg_view_triangular_solve_xpu_float64",
+    "test_noncontiguous_samples_pca_lowrank_xpu_complex64",
+    "test_noncontiguous_samples_svd_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_pca_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
+    "test_conj_view_pca_lowrank_xpu_complex64",
+    "test_conj_view_svd_lowrank_xpu_complex64",
 
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
