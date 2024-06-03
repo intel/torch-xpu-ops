@@ -1870,6 +1870,1108 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
       self, mean, invstd, running_mean, running_var, momentum, epsilon, counts);
 }
 
+// ====================== batch_norm_backward_reduce ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct Float2 {
+  accscalar_t v1, v2;
+  Float2() {}
+
+  Float2(scalar_t v1, scalar_t v2)
+      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
+  Float2(int v)
+      : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
+  Float2& operator+=(const Float2& a) {
+    v1 += a.v1;
+    v2 += a.v2;
+    return *this;
+  }
+
+  friend Float2 operator+(Float2 a, const Float2& b) {
+    a += b;
+    return a;
+  }
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename tensor_ptr,
+    typename tensor_strides>
+struct GradOp {
+  GradOp(
+      accscalar_t m,
+      const tensor_ptr& i,
+      const tensor_ptr& g,
+      const tensor_strides& i_batch,
+      const tensor_strides& i_plane,
+      const tensor_strides& i_feature,
+      const tensor_strides& go_batch,
+      const tensor_strides& go_plane,
+      const tensor_strides& go_feature)
+      : mean(m),
+        input(i),
+        grad_output(g),
+        i_batch_stride(i_batch),
+        i_plane_stride(i_plane),
+        i_feature_stride(i_feature),
+        go_batch_stride(go_batch),
+        go_plane_stride(go_plane),
+        go_feature_stride(go_feature) {}
+  inline Float2<scalar_t, accscalar_t> operator()(int batch, int plane, int n) {
+    accscalar_t g = grad_output
+        [batch * go_batch_stride + plane * go_plane_stride +
+         n * go_feature_stride];
+    accscalar_t c = static_cast<accscalar_t>(
+                        input
+                            [batch * i_batch_stride + plane * i_plane_stride +
+                             n * i_feature_stride]) -
+        mean;
+    return Float2<scalar_t, accscalar_t>(g, g * c);
+  }
+  const accscalar_t mean;
+  const tensor_ptr& input;
+  const tensor_ptr& grad_output;
+  const tensor_strides& i_batch_stride;
+  const tensor_strides& i_plane_stride;
+  const tensor_strides& i_feature_stride;
+  const tensor_strides& go_batch_stride;
+  const tensor_strides& go_plane_stride;
+  const tensor_strides& go_feature_stride;
+};
+
+template <
+    int SIMD,
+    typename accscalar_t,
+    typename reduce_op,
+    typename item_t,
+    typename local_shared>
+static inline void group_reduce(
+    item_t item,
+    int sub_group_num,
+    accscalar_t& val,
+    accscalar_t init,
+    const local_shared& local_data,
+    reduce_op bin_op) {
+  auto sg = item.get_sub_group();
+  uint32_t lane_id = sg.get_local_linear_id();
+  uint32_t sg_id = sg.get_group_linear_id();
+
+  // dynamic get SIMD width result in big performance drop
+  // uint32_t SIMD = sg.get_local_range()[0];
+#pragma unroll
+  for (int i = 1; i < SIMD; i <<= 1) {
+    val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+  }
+  if (sub_group_num == 1) {
+    if (lane_id == 0) {
+      local_data[0] = val;
+    }
+    item.barrier(sycl_local_fence);
+    val = local_data[0];
+
+    return;
+  }
+
+  // reduce internal each subgroup, each subgroup will generate one result
+  // there are WGroupSize/subGroupSize elements after this step
+  if (lane_id == 0) {
+    local_data[sg_id] = val;
+  }
+  item.barrier(sycl_local_fence);
+
+  // use one subgroup to reduce WGroupSize/subGroupSize elements
+  // into the final result
+  if (sg_id == 0) {
+    val = init;
+    if (lane_id < sub_group_num) {
+      val = accscalar_t(local_data[lane_id]);
+    }
+    for (int i = lane_id + SIMD; i < sub_group_num; i += SIMD) {
+      val = bin_op(val, static_cast<accscalar_t>(local_data[i]));
+    }
+#pragma unroll
+    for (int i = 1; i < SIMD; i <<= 1) {
+      val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+      if (i >= ((sub_group_num + 1) >> 1))
+        break;
+    }
+
+    // the 0th WI (the 0th WI in the 0th sub_group) generate the final
+    // result
+    if (lane_id == 0) {
+      local_data[0] = val;
+    }
+  }
+
+  item.barrier(sycl_local_fence);
+  val = local_data[0];
+}
+
+template <
+    int SIMD,
+    typename scalar_t,
+    typename item_t,
+    typename Op,
+    typename local_shared>
+scalar_t plane_reduce(
+    item_t item,
+    Op grad_op,
+    int batch_size,
+    int hw,
+    int plane,
+    int sub_group_num,
+    const local_shared& shared) {
+  // first the reductions each thread does separately
+  scalar_t sum_value = static_cast<scalar_t>(0);
+  for (int batch = item.get_local_id(0); batch < batch_size;
+       batch += item.get_local_range(0)) {
+    for (int x = item.get_local_id(1); x < hw; x += item.get_local_range(1)) {
+      auto res = grad_op(batch, plane, x);
+
+      sum_value += res;
+    }
+  }
+  group_reduce<SIMD, scalar_t>(
+      item,
+      sub_group_num,
+      sum_value,
+      scalar_t(0),
+      shared,
+      [](scalar_t a, scalar_t b) { return a + b; });
+  if (item.get_local_linear_id() == 0) {
+    shared[0] = sum_value;
+  }
+  item.barrier(sycl_local_fence);
+  // Everyone picks it up, should be broadcast into the whole grad_input
+  return shared[0];
+}
+
+template <
+    int SIMD,
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t>
+struct BatchNormBackwardReduceKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<2> item) const {
+    index_t plane = item.get_group(0);
+    auto lidx = item.get_local_id(1);
+    // auto lidy = item.get_local_id(0);
+
+    if (plane >= numPlane_) {
+      return;
+    }
+
+    stat_accscalar_t r_mean = mean_ptr_[plane];
+    stat_accscalar_t factor = invstd_ptr_[plane];
+    GradOp<
+        input_scalar_t,
+        stat_accscalar_t,
+        decltype(input_ptr_),
+        decltype(i_batch_stride_)>
+        g(r_mean,
+          input_ptr_,
+          grad_output_ptr_,
+          i_batch_stride_,
+          i_plane_stride_,
+          i_feature_stride_,
+          go_batch_stride_,
+          go_plane_stride_,
+          go_feature_stride_);
+    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+        item, g, o_batch_size_, o_feature_size_, plane, sg_num_, local_sum_);
+
+    if (lidx == 0) {
+      if (grad_weight_ptr_ != nullptr) {
+        grad_weight_ptr_[plane] = static_cast<stat_scalar_t>(res.v2 * factor);
+      }
+      if (grad_bias_ptr_ != nullptr) {
+        grad_bias_ptr_[plane] = static_cast<stat_scalar_t>(res.v1);
+      }
+      if (sum_dy_ptr_ != nullptr) {
+        sum_dy_ptr_[plane] = static_cast<stat_accscalar_t>(res.v1);
+      }
+      if (sum_dy_xmu_ptr_ != nullptr) {
+        sum_dy_xmu_ptr_[plane] = static_cast<stat_accscalar_t>(res.v2);
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1>(
+        sycl::range<1>{(size_t)tx_ * ty_}, cgh);
+  }
+
+  BatchNormBackwardReduceKernelFunctor(
+      int numPlane,
+      int i_batch_size,
+      int i_feature_size,
+      int o_batch_size,
+      int o_feature_size,
+      int64_t wg_size,
+      int tx,
+      int ty,
+      input_scalar_t* input_ptr,
+      input_scalar_t* grad_output_ptr,
+      stat_accscalar_t* mean_ptr,
+      stat_accscalar_t* invstd_ptr,
+      stat_scalar_t* grad_weight_ptr,
+      stat_scalar_t* grad_bias_ptr,
+      stat_accscalar_t* sum_dy_ptr,
+      stat_accscalar_t* sum_dy_xmu_ptr,
+      index_t go_batch_stride,
+      index_t go_plane_stride,
+      index_t go_feature_stride,
+      index_t i_batch_stride,
+      index_t i_plane_stride,
+      index_t i_feature_stride,
+      int sg_num)
+      : numPlane_(numPlane),
+        i_batch_size_(i_batch_size),
+        i_feature_size_(i_feature_size),
+        o_batch_size_(o_batch_size),
+        o_feature_size_(o_feature_size),
+        wg_size_(wg_size),
+        tx_(tx),
+        ty_(ty),
+        input_ptr_(input_ptr),
+        grad_output_ptr_(grad_output_ptr),
+        mean_ptr_(mean_ptr),
+        invstd_ptr_(invstd_ptr),
+        grad_weight_ptr_(grad_weight_ptr),
+        grad_bias_ptr_(grad_bias_ptr),
+        sum_dy_ptr_(sum_dy_ptr),
+        sum_dy_xmu_ptr_(sum_dy_xmu_ptr),
+        go_batch_stride_(go_batch_stride),
+        go_plane_stride_(go_plane_stride),
+        go_feature_stride_(go_feature_stride),
+        i_batch_stride_(i_batch_stride),
+        i_plane_stride_(i_plane_stride),
+        i_feature_stride_(i_feature_stride),
+        sg_num_(sg_num) {}
+
+ private:
+  int numPlane_;
+  int i_batch_size_;
+  int i_feature_size_;
+  int o_batch_size_;
+  int o_feature_size_;
+  int64_t wg_size_;
+  int tx_;
+  int ty_;
+  input_scalar_t* input_ptr_;
+  input_scalar_t* grad_output_ptr_;
+  stat_accscalar_t* mean_ptr_;
+  stat_accscalar_t* invstd_ptr_;
+  stat_scalar_t* grad_weight_ptr_;
+  stat_scalar_t* grad_bias_ptr_;
+  stat_accscalar_t* sum_dy_ptr_;
+  stat_accscalar_t* sum_dy_xmu_ptr_;
+  index_t go_batch_stride_;
+  index_t go_plane_stride_;
+  index_t go_feature_stride_;
+  index_t i_batch_stride_;
+  index_t i_plane_stride_;
+  index_t i_feature_stride_;
+  int sg_num_;
+  sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1> local_sum_;
+};
+
+template <
+    int SIMD,
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t>
+void batch_norm_backward_reduce_kernel(
+    const Tensor& input,
+    const Tensor& grad_output,
+    const Tensor& mean,
+    const Tensor& invstd,
+    Tensor& sum_dy,
+    Tensor& sum_dy_xmu,
+    Tensor& grad_weight,
+    Tensor& grad_bias) {
+  int numPlane = input.size(1);
+  auto i_batch_size = input.size(0);
+  auto i_feature_size = input.size(2);
+  auto o_batch_size = grad_output.size(0);
+  auto o_feature_size = grad_output.size(2);
+
+  auto& queue = getCurrentSYCLQueue();
+  int64_t wg_size = get_prefer_wg_size(
+      i_batch_size * i_feature_size, SIMD); // for higher occupancy
+
+  int tx = get_num_threads(i_feature_size, wg_size);
+  int ty = std::min(int64_t(last_pow2(i_batch_size)), wg_size / tx);
+  ty = std::max(1, ty);
+  sycl::range<2> local_range(ty, tx);
+  sycl::range<2> global_range(numPlane * ty, tx);
+  auto input_ptr = input.data_ptr<input_scalar_t>();
+  auto grad_output_ptr = grad_output.data_ptr<input_scalar_t>();
+  auto mean_ptr = mean.data_ptr<stat_accscalar_t>();
+  auto invstd_ptr = invstd.data_ptr<stat_accscalar_t>();
+  stat_scalar_t* grad_weight_ptr =
+      grad_weight.size(0) > 0 ? grad_weight.data_ptr<stat_scalar_t>() : nullptr;
+  stat_scalar_t* grad_bias_ptr =
+      grad_bias.size(0) > 0 ? grad_bias.data_ptr<stat_scalar_t>() : nullptr;
+  stat_accscalar_t* sum_dy_ptr =
+      sum_dy.size(0) > 0 ? sum_dy.data_ptr<stat_accscalar_t>() : nullptr;
+  stat_accscalar_t* sum_dy_xmu_ptr = sum_dy_xmu.size(0) > 0
+      ? sum_dy_xmu.data_ptr<stat_accscalar_t>()
+      : nullptr;
+
+  index_t go_batch_stride = grad_output.stride(0);
+  index_t go_plane_stride = grad_output.stride(1);
+  index_t go_feature_stride = grad_output.stride(2);
+  index_t i_batch_stride = input.stride(0);
+  index_t i_plane_stride = input.stride(1);
+  index_t i_feature_stride = input.stride(2);
+
+  int sg_num = tx * ty / SIMD;
+  auto caller = BatchNormBackwardReduceKernelFunctor<
+      SIMD,
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      index_t>(
+      numPlane,
+      i_batch_size,
+      i_feature_size,
+      o_batch_size,
+      o_feature_size,
+      wg_size,
+      tx,
+      ty,
+      input_ptr,
+      grad_output_ptr,
+      mean_ptr,
+      invstd_ptr,
+      grad_weight_ptr,
+      grad_bias_ptr,
+      sum_dy_ptr,
+      sum_dy_xmu_ptr,
+      go_batch_stride,
+      go_plane_stride,
+      go_feature_stride,
+      i_batch_stride,
+      i_plane_stride,
+      i_feature_stride,
+      sg_num);
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+// supports CF and CL
+template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
+std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
+    const Tensor& grad_out_,
+    const Tensor& input_,
+    const Tensor& mean_,
+    const Tensor& invstd_,
+    const Tensor& weight_,
+    const bool input_g,
+    const bool weight_g,
+    const bool bias_g) {
+  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  int64_t n_input = input_.size(1);
+  Tensor sum_dy_;
+  Tensor sum_dy_xmu_;
+  Tensor grad_weight_;
+  Tensor grad_bias_;
+  auto new_shape = {
+      input_.size(0),
+      input_.size(1),
+      input_.numel() / input_.size(0) / input_.size(1)};
+  auto new_stride = {input_.stride(0), input_.stride(1), input_.stride(-1)};
+
+  auto input_reshaped = at::as_strided(input_, new_shape, new_stride);
+  auto grad_output_reshaped = at::as_strided(grad_out_, new_shape, new_stride);
+
+  if (input_g) {
+    sum_dy_ = at::empty_like(mean_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    sum_dy_xmu_ = at::empty_like(mean_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  }
+  if (weight_g) {
+    grad_weight_ = at::empty({n_input}, weight_.options());
+  }
+  if (bias_g) {
+    grad_bias_ = at::empty({n_input}, weight_.options());
+  }
+
+  int simd = get_prefer_simd(
+      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
+  if (simd == SIMD32) {
+    batch_norm_backward_reduce_kernel<
+        SIMD32,
+        input_scalar_t,
+        stat_scalar_t,
+        stat_accscalar_t,
+        index_t>(
+        input_reshaped,
+        grad_output_reshaped,
+        mean_,
+        invstd_,
+        sum_dy_,
+        sum_dy_xmu_,
+        grad_weight_,
+        grad_bias_);
+  } else {
+    batch_norm_backward_reduce_kernel<
+        SIMD16,
+        input_scalar_t,
+        stat_scalar_t,
+        stat_accscalar_t,
+        index_t>(
+        input_reshaped,
+        grad_output_reshaped,
+        mean_,
+        invstd_,
+        sum_dy_,
+        sum_dy_xmu_,
+        grad_weight_,
+        grad_bias_);
+  }
+  return std::make_tuple(sum_dy_, sum_dy_xmu_, grad_weight_, grad_bias_);
+}
+
+template <
+    int vec_size,
+    bool two_pass_reduce,
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    typename vec_t,
+    typename vec_y>
+struct BatchNormBackwardReduceChannelsLastKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<2> item) const {
+    // hide latency with concurrency
+    accscalar_t sum_dy[vec_size];
+    accscalar_t sum_dy_xmu[vec_size];
+
+#pragma unroll
+    for (int i = 0; i < vec_size; i++) {
+      sum_dy[i] = accscalar_t(0.0f);
+      sum_dy_xmu[i] = accscalar_t(0.0f);
+    }
+    // tensor dimension (m,c)
+
+    // loop along m dimension
+    int inner_loop_stride = item.get_global_range(0);
+
+    // offset along m dimension
+    int m_offset = item.get_global_id(0);
+    int c_offset_base = item.get_global_id(1) * vec_size;
+    // auto lidx = item.get_local_id(1);
+    auto lidy = item.get_local_id(0);
+    auto group_idx_y = item.get_group().get_group_id(0);
+    // auto group_idx_x = item.get_group().get_group_id(1);
+
+    int loop_count = 1 + (reduction_size_ - 1) / (inner_loop_stride);
+    int address_base = m_offset * stride_ + c_offset_base;
+    int address_increment = inner_loop_stride * stride_;
+
+    accscalar_t r_mean[vec_size] = {0.0f};
+    accscalar_t factor[vec_size] = {1.0f};
+#pragma unroll
+    for (int j = 0; j < vec_size; j++) {
+      if (c_offset_base + j < stride_) {
+        r_mean[j] = mean_ptr_[c_offset_base + j];
+        factor[j] = inv_std_[c_offset_base + j];
+      }
+    }
+    for (int i = 0; i < loop_count; i++) {
+      accscalar_t x_input[vec_size];
+      accscalar_t x_grad_output[vec_size];
+      vec_t input_vec;
+      vec_t grad_out_vec;
+      if ((c_offset_base) < stride_ && m_offset < reduction_size_) {
+        input_vec = *(reinterpret_cast<vec_t*>(input_ptr_ + address_base));
+        grad_out_vec = *(reinterpret_cast<vec_t*>(grad_output_ + address_base));
+      }
+
+      // load multiple data in
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        if (c_offset_base < stride_ && m_offset < reduction_size_) {
+          x_input[j] = input_vec[j];
+          x_grad_output[j] = grad_out_vec[j];
+        } else {
+          x_input[j] = accscalar_t(0);
+          x_grad_output[j] = accscalar_t(0);
+        }
+      }
+
+      // calculate sum_dy / sum_dy_xmu
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        sum_dy[j] += x_grad_output[j];
+        sum_dy_xmu[j] += x_grad_output[j] * (x_input[j] - r_mean[j]);
+      }
+      m_offset += inner_loop_stride;
+      address_base += address_increment;
+    }
+
+#pragma unroll
+    for (int j = 0; j < vec_size; j++) {
+      vec_y value;
+      value[0] = sum_dy[j];
+      value[1] = sum_dy_xmu[j];
+
+      value = group_y_reduce(
+          item, shared_, value, [](accscalar_t a, accscalar_t b) {
+            return a + b;
+          });
+      sum_dy[j] = value[0];
+      sum_dy_xmu[j] = value[1];
+
+      item.barrier(sycl_local_fence);
+    }
+
+    if constexpr (two_pass_reduce) {
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        int c_offset = c_offset_base + j;
+        if (lidy == 0 && (c_offset) < stride_) {
+          // write to temp[c][group_idx_y]
+          int offset = c_offset * group_num_y_ + group_idx_y;
+          temp_sum_dy_ptr_[offset] = sum_dy[j];
+          temp_sum_dy_xmu_ptr_[offset] = sum_dy_xmu[j];
+        }
+      }
+
+    } else {
+#pragma unroll
+      for (int j = 0; j < vec_size; j++) {
+        int c_offset = c_offset_base + j;
+        if (lidy == 0 && c_offset < stride_) {
+          if (grad_bias_ != nullptr) {
+            grad_bias_[c_offset] = static_cast<layerscalar_t>(sum_dy[j]);
+          }
+          if (grad_weight_ != nullptr) {
+            grad_weight_[c_offset] =
+                static_cast<layerscalar_t>(sum_dy_xmu[j] * factor[j]);
+          }
+          // mean_dy[c_offset] = sum_dy_th / reduction_size_;
+          // mean_dy_xmu[c_offset] = sum_dy_xmu_th / reduction_size_;
+          sum_dy_o_[c_offset] = sum_dy[j];
+          sum_dy_xmu_o_[c_offset] = sum_dy_xmu[j];
+        }
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    shared_ = sycl_local_acc_t<vec_y, 1>(sycl::range<1>{(size_t)wg_size_}, cgh);
+  }
+
+  BatchNormBackwardReduceChannelsLastKernelFunctor(
+      scalar_t* grad_output,
+      accscalar_t* inv_std,
+      layerscalar_t* grad_weight,
+      layerscalar_t* grad_bias,
+      const int reduction_size,
+      const int stride,
+      int loop_count,
+      int group_num_y,
+      int group_num_x,
+      int global_range_y,
+      int local_range_y,
+      int global_range_x,
+      int local_range_x,
+      int wg_size,
+      accscalar_t* sum_dy_o,
+      accscalar_t* sum_dy_xmu_o,
+      accscalar_t* temp_sum_dy_ptr,
+      accscalar_t* temp_sum_dy_xmu_ptr,
+      int total_count,
+      scalar_t* input_ptr,
+      accscalar_t* mean_ptr)
+      : grad_output_(grad_output),
+        inv_std_(inv_std),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
+        reduction_size_(reduction_size),
+        stride_(stride),
+        loop_count_(loop_count),
+        group_num_y_(group_num_y),
+        group_num_x_(group_num_x),
+        global_range_y_(global_range_y),
+        local_range_y_(local_range_y),
+        global_range_x_(global_range_x),
+        local_range_x_(local_range_x),
+        wg_size_(wg_size),
+        sum_dy_o_(sum_dy_o),
+        sum_dy_xmu_o_(sum_dy_xmu_o),
+        temp_sum_dy_ptr_(temp_sum_dy_ptr),
+        temp_sum_dy_xmu_ptr_(temp_sum_dy_xmu_ptr),
+        total_count_(total_count),
+        input_ptr_(input_ptr),
+        mean_ptr_(mean_ptr) {}
+
+ private:
+  scalar_t* grad_output_;
+  accscalar_t* inv_std_;
+  layerscalar_t* grad_weight_;
+  layerscalar_t* grad_bias_;
+  const int reduction_size_;
+  const int stride_;
+  int loop_count_;
+  int group_num_y_;
+  int group_num_x_;
+  int global_range_y_;
+  int local_range_y_;
+  int global_range_x_;
+  int local_range_x_;
+  int wg_size_;
+  accscalar_t* sum_dy_o_;
+  accscalar_t* sum_dy_xmu_o_;
+  accscalar_t* temp_sum_dy_ptr_;
+  accscalar_t* temp_sum_dy_xmu_ptr_;
+  int total_count_;
+  scalar_t* input_ptr_;
+  accscalar_t* mean_ptr_;
+  sycl_local_acc_t<vec_y, 1> shared_;
+};
+
+template <typename accscalar_t, typename layerscalar_t>
+struct BatchNormBackwardReduceChannelsLastTwoPassKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto local_id = item.get_local_linear_id();
+    // auto global_id = item.get_global_linear_id();
+    auto c_offset = item.get_group_linear_id();
+    accscalar_t r_mean = 0.0f;
+    accscalar_t factor = 1.0f;
+    if (c_offset < stride_) {
+      r_mean = mean_ptr_[c_offset];
+      factor = inv_std_[c_offset];
+    }
+
+    accscalar_t temp_sum_dy = 0.0f;
+    accscalar_t temp_sum_dy_xmu = 0.0f;
+    for (int i = local_id; i < group_num_y_; i += wg_size_) {
+      int offset = c_offset * group_num_y_ + i;
+      temp_sum_dy += temp_sum_dy_ptr_[offset];
+      temp_sum_dy_xmu += temp_sum_dy_xmu_ptr_[offset];
+    }
+    auto total_sum_dy = sycl::reduce_over_group(
+        item.get_group(), temp_sum_dy, sycl::plus<accscalar_t>());
+    auto total_sum_dy_xmu = sycl::reduce_over_group(
+        item.get_group(), temp_sum_dy_xmu, sycl::plus<accscalar_t>());
+    if (local_id == 0) {
+      sum_dy_o_[c_offset] = total_sum_dy;
+      sum_dy_xmu_o_[c_offset] = total_sum_dy_xmu;
+      if (grad_bias_ != nullptr) {
+        grad_bias_[c_offset] = static_cast<layerscalar_t>(total_sum_dy);
+      }
+      if (grad_weight_ != nullptr) {
+        grad_weight_[c_offset] =
+            static_cast<layerscalar_t>(total_sum_dy_xmu * factor);
+      }
+    }
+  }
+  BatchNormBackwardReduceChannelsLastTwoPassKernelFunctor(
+      accscalar_t* inv_std,
+      layerscalar_t* grad_weight,
+      layerscalar_t* grad_bias,
+      const int stride,
+      int group_num_y,
+      int wg_size,
+      accscalar_t* sum_dy_o,
+      accscalar_t* sum_dy_xmu_o,
+      accscalar_t* temp_sum_dy_ptr,
+      accscalar_t* temp_sum_dy_xmu_ptr,
+      accscalar_t* mean_ptr)
+      : inv_std_(inv_std),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
+        stride_(stride),
+        group_num_y_(group_num_y),
+        wg_size_(wg_size),
+        sum_dy_o_(sum_dy_o),
+        sum_dy_xmu_o_(sum_dy_xmu_o),
+        temp_sum_dy_ptr_(temp_sum_dy_ptr),
+        temp_sum_dy_xmu_ptr_(temp_sum_dy_xmu_ptr),
+        mean_ptr_(mean_ptr) {}
+
+ private:
+  accscalar_t* inv_std_;
+  layerscalar_t* grad_weight_;
+  layerscalar_t* grad_bias_;
+  const int stride_;
+  int group_num_y_;
+  int wg_size_;
+  accscalar_t* sum_dy_o_;
+  accscalar_t* sum_dy_xmu_o_;
+  accscalar_t* temp_sum_dy_ptr_;
+  accscalar_t* temp_sum_dy_xmu_ptr_;
+  accscalar_t* mean_ptr_;
+};
+
+template <
+    int vec_size,
+    bool two_pass_reduce,
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t>
+void batch_norm_backward_reduce_channels_last_kernel(
+    const Tensor& input,
+    scalar_t* grad_output,
+    const Tensor& mean,
+    accscalar_t* inv_std,
+    Tensor& sum_dy,
+    Tensor& sum_dy_xmu,
+    layerscalar_t* grad_weight,
+    layerscalar_t* grad_bias,
+    const int reduction_size,
+    const int stride) {
+  sycl::range<2> global_range(1, 1), local_range(1, 1);
+  std::tie(global_range, local_range) =
+      flexible_launch_configs(reduction_size, stride / vec_size);
+  int loop_count = 1 + (reduction_size - 1) / (global_range[0]);
+  int group_num_y = global_range[0] / local_range[0];
+  int group_num_x = global_range[1] / local_range[1];
+  int global_range_y = global_range[0];
+  int local_range_y = local_range[0];
+  int global_range_x = global_range[1];
+  int local_range_x = local_range[1];
+  auto wg_size = local_range[0] * local_range[1];
+  accscalar_t* sum_dy_o = sum_dy.data_ptr<accscalar_t>();
+  accscalar_t* sum_dy_xmu_o = sum_dy_xmu.data_ptr<accscalar_t>();
+  Tensor temp_sum_dy;
+  Tensor temp_sum_dy_xmu;
+  accscalar_t* temp_sum_dy_ptr;
+  accscalar_t* temp_sum_dy_xmu_ptr;
+
+  if constexpr (two_pass_reduce) {
+    temp_sum_dy = at::empty({group_num_y * stride}, sum_dy.options());
+    temp_sum_dy_xmu = at::empty({group_num_y * stride}, sum_dy_xmu.options());
+    temp_sum_dy_ptr = temp_sum_dy.data_ptr<accscalar_t>();
+    temp_sum_dy_xmu_ptr = temp_sum_dy_xmu.data_ptr<accscalar_t>();
+  }
+  auto& queue = getCurrentSYCLQueue();
+  int total_count = stride * reduction_size;
+
+  scalar_t* input_ptr = input.data_ptr<scalar_t>();
+  accscalar_t* mean_ptr = mean.data_ptr<accscalar_t>();
+  using vec_t = memory::aligned_vector<scalar_t, vec_size>;
+  using vec_y = at::detail::Array<accscalar_t, 2>;
+
+  auto caller = BatchNormBackwardReduceChannelsLastKernelFunctor<
+      vec_size,
+      two_pass_reduce,
+      scalar_t,
+      accscalar_t,
+      layerscalar_t,
+      vec_t,
+      vec_y>(
+      grad_output,
+      inv_std,
+      grad_weight,
+      grad_bias,
+      reduction_size,
+      stride,
+      loop_count,
+      group_num_y,
+      group_num_x,
+      global_range_y,
+      local_range_y,
+      global_range_x,
+      local_range_x,
+      wg_size,
+      sum_dy_o,
+      sum_dy_xmu_o,
+      temp_sum_dy_ptr,
+      temp_sum_dy_xmu_ptr,
+      total_count,
+      input_ptr,
+      mean_ptr);
+
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+
+  // reduce temp sum
+  if constexpr (two_pass_reduce) {
+    int wg_size = std::min(group_num_y, int(syclMaxWorkItemsPerEU()));
+    auto caller = BatchNormBackwardReduceChannelsLastTwoPassKernelFunctor<
+        accscalar_t,
+        layerscalar_t>(
+        inv_std,
+        grad_weight,
+        grad_bias,
+        stride,
+        group_num_y,
+        wg_size,
+        sum_dy_o,
+        sum_dy_xmu_o,
+        temp_sum_dy_ptr,
+        temp_sum_dy_xmu_ptr,
+        mean_ptr);
+    sycl_kernel_submit(stride * wg_size, wg_size, queue, caller);
+  }
+}
+
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+batch_norm_backward_reduce_channels_last_template(
+    const at::Tensor& grad_output,
+    const at::Tensor& input,
+    const at::Tensor& mean,
+    const at::Tensor& inv_std,
+    const at::Tensor& weight,
+    const bool input_g,
+    const bool weight_g,
+    const bool bias_g) {
+  const auto stride = input.sizes()[1];
+  const auto reduction_size = input.numel() / stride;
+
+  at::Tensor sumn_dy = at::zeros({stride}, mean.options());
+  at::Tensor sum_dy_xmu = at::zeros({stride}, mean.options());
+
+  at::Tensor grad_weight;
+  at::Tensor grad_bias;
+  if (weight.defined()) {
+    grad_weight = at::zeros({stride}, weight.options());
+    grad_bias = at::zeros({stride}, weight.options());
+  } else {
+    // because I cannot return an uninitialized at::Tensor
+    grad_weight = at::empty({0}, mean.options());
+    grad_bias = at::empty({0}, mean.options());
+  }
+
+#define DISPATCH_BWD_REDUCE_ACC_IMPL(vec_size, two_pass)               \
+  batch_norm_backward_reduce_channels_last_kernel<vec_size, two_pass>( \
+      input,                                                           \
+      grad_output.data_ptr<scalar_t>(),                                \
+      mean,                                                            \
+      inv_std.data_ptr<accscalar_t>(),                                 \
+      sumn_dy,                                                         \
+      sum_dy_xmu,                                                      \
+      grad_weight.data_ptr<accscalar_t>(),                             \
+      grad_bias.data_ptr<accscalar_t>(),                               \
+      reduction_size,                                                  \
+      stride);
+
+#define DISPATCH_BWD_REDUCE_IMPL(vec_size, two_pass)                   \
+  batch_norm_backward_reduce_channels_last_kernel<vec_size, two_pass>( \
+      input,                                                           \
+      grad_output.data_ptr<scalar_t>(),                                \
+      mean,                                                            \
+      inv_std.data_ptr<accscalar_t>(),                                 \
+      sumn_dy,                                                         \
+      sum_dy_xmu,                                                      \
+      weight.defined() ? grad_weight.data_ptr<scalar_t>() : nullptr,   \
+      weight.defined() ? grad_bias.data_ptr<scalar_t>() : nullptr,     \
+      reduction_size,                                                  \
+      stride);
+
+  sycl::range<2> global_range(1, 1), local_range(1, 1);
+  if (weight.defined() && input.scalar_type() != weight.scalar_type()) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        input.scalar_type(),
+        "batchnorm_backward_reduce",
+        [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
+              input, reduction_size, stride);
+
+          switch (suggest_vec_size) {
+            case 8: {
+              constexpr int vec_size = 8;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(8, true);
+              } else {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(8, false);
+              }
+              break;
+            }
+            case 4: {
+              constexpr int vec_size = 4;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(4, true);
+              } else {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(4, false);
+              }
+              break;
+            }
+            default: {
+              constexpr int vec_size = 1;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(1, true);
+              } else {
+                DISPATCH_BWD_REDUCE_ACC_IMPL(1, false);
+              }
+            }
+          }
+        });
+  } else {
+    if (weight.defined()) {
+      TORCH_CHECK(
+          input.scalar_type() == weight.scalar_type(),
+          "batchnorm_backward_reduce: input.scalar_type() ",
+          input.scalar_type(),
+          " is not supported with weight.scalar_type() ",
+          weight.scalar_type());
+    }
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        input.scalar_type(),
+        "batchnorm_backward_reduce",
+        [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+          int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
+              input, reduction_size, stride);
+          switch (suggest_vec_size) {
+            case 8: {
+              constexpr int vec_size = 8;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_IMPL(8, true);
+              } else {
+                DISPATCH_BWD_REDUCE_IMPL(8, false);
+              }
+              break;
+            }
+            case 4: {
+              constexpr int vec_size = 4;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_IMPL(4, true);
+              } else {
+                DISPATCH_BWD_REDUCE_IMPL(4, false);
+              }
+              break;
+            }
+            default: {
+              constexpr int vec_size = 1;
+              std::tie(global_range, local_range) = flexible_launch_configs(
+                  reduction_size, stride, false, vec_size);
+              int group_num_y = global_range[0] / local_range[0];
+              if (group_num_y > 1) {
+                DISPATCH_BWD_REDUCE_IMPL(1, true);
+              } else {
+                DISPATCH_BWD_REDUCE_IMPL(1, false);
+              }
+            }
+          }
+        });
+  }
+  return std::make_tuple(sumn_dy, sum_dy_xmu, grad_weight, grad_bias);
+}
+
+std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const c10::optional<Tensor>& weight_opt,
+    bool input_g,
+    bool weight_g,
+    bool bias_g) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+
+  if (canUse32BitIndexMath(grad_output) &&
+      batch_norm_use_channels_last_kernels(grad_output) &&
+      batch_norm_use_channels_last_kernels(input) &&
+      (!weight.defined() || weight.is_contiguous()) && mean.is_contiguous() &&
+      invstd.is_contiguous()) {
+    return batch_norm_backward_reduce_channels_last_template(
+        grad_output, input, mean, invstd, weight, input_g, weight_g, bias_g);
+  }
+  return AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      grad_output.scalar_type(),
+      "batch_norm_backward_reduce",
+      [&] {
+        auto mean_st = mean.dtype();
+        auto invstd_st = invstd.dtype();
+        TORCH_CHECK(
+            mean_st == invstd_st,
+            "mean and invstd need to have the same data types");
+        const bool mixed_type = is_mixed_type(input, weight);
+        using accscalar_t = acc_type<scalar_t, true>;
+
+        if (canUse32BitIndexMath(grad_output)) {
+          if (mixed_type) {
+            return batch_norm_backward_reduce_template<
+                scalar_t,
+                accscalar_t,
+                int32_t>(
+                grad_output,
+                input,
+                mean,
+                invstd,
+                weight,
+                input_g,
+                weight_g,
+                bias_g);
+          } else {
+            return batch_norm_backward_reduce_template<
+                scalar_t,
+                scalar_t,
+                int32_t>(
+                grad_output,
+                input,
+                mean,
+                invstd,
+                weight,
+                input_g,
+                weight_g,
+                bias_g);
+          }
+        } else {
+          if (mixed_type) {
+            return batch_norm_backward_reduce_template<
+                scalar_t,
+                accscalar_t,
+                int64_t>(
+                grad_output,
+                input,
+                mean,
+                invstd,
+                weight,
+                input_g,
+                weight_g,
+                bias_g);
+          } else {
+            return batch_norm_backward_reduce_template<
+                scalar_t,
+                scalar_t,
+                int64_t>(
+                grad_output,
+                input,
+                mean,
+                invstd,
+                weight,
+                input_g,
+                weight_g,
+                bias_g);
+          }
+        }
+      });
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

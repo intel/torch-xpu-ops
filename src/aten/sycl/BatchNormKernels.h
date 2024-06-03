@@ -38,6 +38,16 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
     double epsilon,
     const Tensor& counts);
 
+std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const c10::optional<Tensor>& weight_opt,
+    bool input_g,
+    bool weight_g,
+    bool bias_g);
+
 } // namespace xpu
 } // namespace native
 } // namespace at

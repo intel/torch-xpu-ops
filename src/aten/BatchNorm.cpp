@@ -137,4 +137,30 @@ Tensor& XPUNativeFunctions::batch_norm_elemt_out(
       input, mean, invstd, running_mean, running_var, momentum, eps, counts);
 }
 
+::std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
+    batch_norm_backward_reduce(
+        const Tensor& grad_out,
+        const Tensor& input,
+        const Tensor& mean,
+        const Tensor& invstd,
+        const ::std::optional<Tensor>& weight,
+        bool input_g,
+        bool weight_g,
+        bool bias_g) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, grad_out, "xpu::batch_norm_backward_reduce", "grad_out");
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::batch_norm_backward_reduce", "input");
+  c10::impl::check_and_update_common_device(
+      common_device, mean, "xpu::batch_norm_backward_reduce", "mean");
+  c10::impl::check_and_update_common_device(
+      common_device, invstd, "xpu::batch_norm_backward_reduce", "invstd");
+  c10::impl::check_and_update_common_device(
+      common_device, weight, "xpu::batch_norm_backward_reduce", "weight");
+  return native::xpu::batch_norm_backward_reduce_kernel(
+      grad_out, input, mean, invstd, weight, input_g, weight_g, bias_g);
+}
+
 } // namespace at

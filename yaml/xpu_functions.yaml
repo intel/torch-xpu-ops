@@ -305,3 +305,4 @@ supported:
   - batch_norm_elemt.out
   - batch_norm_gather_stats
   - batch_norm_gather_stats_with_counts
+  - batch_norm_backward_reduce
