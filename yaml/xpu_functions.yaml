@@ -153,6 +153,9 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+  - exp
+  - exp.out
+  - exp_
   - empty.memory_format
   - empty_strided
   - clone
@@ -161,6 +164,7 @@ supported:
   - zero_
   - random_
   - random_.from
+  - random_.to
   - normal_
   - normal.Tensor_float_out
   - normal.Tensor_float
