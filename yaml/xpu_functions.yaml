@@ -164,6 +164,7 @@ supported:
   - zero_
   - random_
   - random_.from
+  - random_.to
   - normal_
   - normal.Tensor_float_out
   - normal.Tensor_float

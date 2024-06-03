@@ -181,4 +181,11 @@ Tensor& XPUNativeFunctions::random_(
       self, from, to_opt, std::move(generator));
 }
 
+Tensor& XPUNativeFunctions::random_(
+    Tensor& self,
+    int64_t to,
+    ::std::optional<Generator> generator) {
+  return random_(self, 0, to, std::move(generator));
+}
+
 } // namespace at
