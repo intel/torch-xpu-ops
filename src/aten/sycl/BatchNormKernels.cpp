@@ -3557,6 +3557,147 @@ Tensor batch_norm_backward_elemt_kernel(
       });
 }
 
+// ====================== batch_norm_update_stats ======================
+
+template <typename scalar_t, typename acc_t>
+struct BatchNormUpdateStatsFunctor {
+  std::tuple<scalar_t, scalar_t> operator()(
+      acc_t mean,
+      acc_t var,
+      scalar_t running_mean,
+      scalar_t running_var) const {
+    const auto unbiased_var = var * bessel_correction_factor;
+    return std::tuple<scalar_t, scalar_t>{
+        mean * momentum + (1 - momentum) * running_mean,
+        unbiased_var * momentum + (1 - momentum) * running_var,
+    };
+  }
+
+  BatchNormUpdateStatsFunctor(
+      const acc_t bessel_correction_factor,
+      const acc_t momentum)
+      : bessel_correction_factor(bessel_correction_factor),
+        momentum(momentum) {}
+
+ private:
+  const acc_t bessel_correction_factor;
+  const acc_t momentum;
+};
+
+void batch_norm_update_stats(
+    const Tensor& save_mean,
+    const Tensor& save_var,
+    const Tensor& running_mean,
+    const Tensor& running_var,
+    double momentum_,
+    int64_t N) {
+  auto iter = TensorIteratorConfig()
+                  .add_output(running_mean)
+                  .add_output(running_var)
+                  .add_input(save_mean)
+                  .add_input(save_var)
+                  .add_input(running_mean)
+                  .add_input(running_var)
+                  .check_all_same_dtype(false)
+                  .promote_inputs_to_common_dtype(false)
+                  .build();
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      running_mean.scalar_type(),
+      "batch_norm_update_stats_xpu",
+      [&] {
+        using acc_t = acc_type<scalar_t, true>;
+        const auto bessel_correction_factor = static_cast<acc_t>(
+            static_cast<double>(N) / static_cast<double>(N - 1));
+        const auto momentum = static_cast<acc_t>(momentum_);
+        BatchNormUpdateStatsFunctor<scalar_t, acc_t> f(
+            bessel_correction_factor, momentum);
+        gpu_kernel_multiple_outputs(iter, f);
+      });
+}
+
+void batch_norm_mean_var(
+    const Tensor& self,
+    Tensor& save_mean,
+    Tensor& save_var) {
+  // NOTE: Epsilon is only used for InvStd, not Var. The value here is ignored.
+  const double dummy_epsilon = 1e-5;
+  switch (batch_norm_choose_impl(self)) {
+    case Impl::Contiguous: {
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
+            batch_norm_stats_template<scalar_t, int32_t, Var>(
+                save_mean, save_var, self, dummy_epsilon);
+          });
+      return;
+    }
+    case Impl::ChannelsLast: {
+      if ((!save_mean.defined() || save_mean.is_contiguous()) &&
+          (!save_var.defined() || save_var.is_contiguous())) {
+        AT_DISPATCH_FLOATING_TYPES_AND2(
+            kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
+              batch_norm_stats_channels_last_template<scalar_t, Var>(
+                  save_mean, save_var, self, dummy_epsilon);
+            });
+        return;
+      }
+      [[fallthrough]];
+    }
+    case Impl::General: {
+      const int64_t ndim = self.dim();
+      DimVector reduce_dims(ndim - 1);
+      reduce_dims[0] = 0;
+      for (int64_t i = 2; i < ndim; ++i) {
+        reduce_dims[i - 1] = i;
+      }
+
+      // For some reason this isn't an actual operator but it exists anyway...
+      var_mean_out(
+          save_var,
+          save_mean,
+          self,
+          /*dims=*/reduce_dims,
+          /*unbiased=*/false,
+          /*keepdim=*/false);
+      return;
+    }
+  }
+}
+
+std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
+    const Tensor& self,
+    const c10::optional<Tensor>& running_mean_opt,
+    const c10::optional<Tensor>& running_var_opt,
+    double momentum) {
+  c10::MaybeOwned<Tensor> running_mean =
+      at::borrow_from_optional_tensor(running_mean_opt);
+  c10::MaybeOwned<Tensor> running_var =
+      at::borrow_from_optional_tensor(running_var_opt);
+
+  const int64_t n_input = self.size(1);
+  TORCH_CHECK(
+      self.numel() != 0,
+      "input tensor must have at least one element, but got input_sizes = ",
+      self.sizes());
+
+  auto options =
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
+
+  auto save_mean = at::empty({n_input}, options);
+  auto save_var = at::empty({n_input}, options);
+
+  batch_norm_mean_var(self, save_mean, save_var);
+  TORCH_CHECK(running_mean->defined() == running_var->defined());
+  if (running_mean->defined()) {
+    const int64_t N = self.numel() / save_mean.numel();
+    batch_norm_update_stats(
+        save_mean, save_var, *running_mean, *running_var, momentum, N);
+  }
+  return std::tuple<Tensor, Tensor>(save_mean, save_var);
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

@@ -197,4 +197,27 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
 }
 
+::std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_update_stats(
+    const Tensor& input,
+    const ::std::optional<Tensor>& running_mean,
+    const ::std::optional<Tensor>& running_var,
+    double momentum) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::batch_norm_update_stats", "input");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_mean,
+      "xpu::batch_norm_update_stats",
+      "running_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_var,
+      "xpu::batch_norm_update_stats",
+      "running_var");
+  return native::xpu::batch_norm_update_stats_kernel(
+      input, running_mean, running_var, momentum);
+}
+
 } // namespace at

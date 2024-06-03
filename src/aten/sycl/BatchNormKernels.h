@@ -58,6 +58,12 @@ Tensor batch_norm_backward_elemt_kernel(
     const Tensor& sum_dy_xmu,
     const Tensor& count);
 
+std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
+    const Tensor& self,
+    const c10::optional<Tensor>& running_mean_opt,
+    const c10::optional<Tensor>& running_var_opt,
+    double momentum);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
