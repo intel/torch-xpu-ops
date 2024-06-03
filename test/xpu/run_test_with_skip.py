@@ -1613,6 +1613,12 @@ skip_list = (
     # CPU fallback fails (CPU vs Numpy).
     "test_ref_small_input_masked_prod_xpu_float16",
 
+
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
+
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
 skip_list=(
