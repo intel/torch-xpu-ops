@@ -22,6 +22,4 @@ void reciprocal_kernel(TensorIteratorBase& iter);
 
 void bitwise_not_kernel(TensorIteratorBase& iter);
 
-void sigmoid_kernel(TensorIteratorBase& iter);
-
 } // namespace at::native::xpu

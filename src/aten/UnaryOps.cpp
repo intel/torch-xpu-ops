@@ -5,6 +5,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
+#include <aten/sycl/UnarySpecialOpsKernels.h>
 #include <torch/library.h>
 
 namespace at {
