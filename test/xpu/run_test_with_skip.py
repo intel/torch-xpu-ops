@@ -1325,6 +1325,12 @@ skip_list = (
     "test_memory_format_nn_GroupNorm_xpu_float32",
     "test_memory_format_nn_GroupNorm_xpu_float64",
 
+    # CPU fallback fails
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
+
     # CUDA bias cases
     # AssertionError: Torch not compiled with CUDA enabled
     "test_multiple_device_transfer_nn_BCELoss_xpu_float32",
@@ -1612,15 +1618,9 @@ skip_list = (
 
     # CPU fallback fails (CPU vs Numpy).
     "test_ref_small_input_masked_prod_xpu_float16",
-
-
-    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
-    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
-    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
-    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
-
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
 skip_list=(
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
