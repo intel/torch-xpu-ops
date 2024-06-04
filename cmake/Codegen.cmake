@@ -39,6 +39,8 @@ function(GEN_XPU file_yaml)
     list(APPEND generated_files "${BUILD_TORCH_XPU_ATEN_GENERATED}/${f}")
   endforeach()
   file(GLOB_RECURSE depend_files ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml})
+  set(CODEGEN_TEMPLATE ${TORCH_XPU_OPS_ROOT}/yaml/)
+  execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE})
   add_custom_command(
     OUTPUT ${generated_files}
     COMMAND
