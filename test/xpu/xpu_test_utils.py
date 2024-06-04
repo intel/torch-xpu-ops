@@ -4,7 +4,7 @@ import copy
 import os
 import sys
 
-import torch
+from torch.testing._internal import common_device_type, common_utils
 
 
 def get_wrapped_fn(fn):
@@ -23,47 +23,57 @@ def DO_NOTHING(*args, **kwargs):
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test"
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
-        self.test_case_cls = torch.testing._internal.common_utils.TestCase
-        self.only_cuda_fn = torch.testing._internal.common_device_type.onlyCUDA
+        self.test_case_cls = common_utils.TestCase
+        self.only_cuda_fn = common_device_type.onlyCUDA
         self.only_native_device_types_fn = (
-            torch.testing._internal.common_device_type.onlyNativeDeviceTypes
+            common_device_type.onlyNativeDeviceTypes
         )
         self.instantiate_device_type_tests_fn = (
-            torch.testing._internal.common_device_type.instantiate_device_type_tests
+            common_device_type.instantiate_device_type_tests
+        )
+        self.instantiate_parametrized_tests_fn = (
+            common_utils.instantiate_parametrized_tests
         )
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
-        torch.testing._internal.common_device_type.onlyCUDA = (
-            torch.testing._internal.common_device_type.onlyXPU
+        common_device_type.onlyCUDA = (
+            common_device_type.onlyXPU
         )
-        torch.testing._internal.common_device_type.onlyNativeDeviceTypes = (
-            torch.testing._internal.common_device_type.onlyXPU
+        common_device_type.onlyNativeDeviceTypes = (
+            common_device_type.onlyXPU
         )
         if self.patch_test_case:
-            torch.testing._internal.common_utils.TestCase = (
-                torch.testing._internal.common_utils.NoTest
+            common_utils.TestCase = (
+                common_utils.NoTest
             )
-        torch.testing._internal.common_device_type.instantiate_device_type_tests = (
+        common_device_type.instantiate_device_type_tests = (
             DO_NOTHING
         )
-        sys.path.append(self.test_package)
+        common_utils.instantiate_parametrized_tests = (
+            DO_NOTHING
+        )
+        sys.path.extend(self.test_package)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         sys.path = self.original_path
-        torch.testing._internal.common_device_type.onlyCUDA = self.only_cuda_fn
-        torch.testing._internal.common_device_type.onlyNativeDeviceTypes = (
+        common_device_type.onlyCUDA = self.only_cuda_fn
+        common_device_type.onlyNativeDeviceTypes = (
             self.only_native_device_types_fn
         )
-        torch.testing._internal.common_device_type.instantiate_device_type_tests = (
+        common_device_type.instantiate_device_type_tests = (
             self.instantiate_device_type_tests_fn
         )
-        torch.testing._internal.common_utils.TestCase = self.test_case_cls
+        common_utils.instantiate_parametrized_tests = (
+            self.instantiate_parametrized_tests_fn
+        )
+        common_utils.TestCase = self.test_case_cls
 
 
 # Copy the test cases from generic_base_class to generic_test_class.

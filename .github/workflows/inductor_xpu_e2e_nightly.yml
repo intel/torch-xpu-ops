@@ -13,46 +13,30 @@ on:
         description: Specify triton commit, use pytorch pined commit by default
       suite:
         required: true
-        type: choice
+        type: string
         default: 'huggingface'
-        options:
-          - huggingface
-          - timm_models
-          - torchbench
-        description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
+        description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
       dt:
         required: true
-        type: choice
+        type: string
         default: 'float32'
-        options:
-          - float32
-          - bfloat16
-          - float16
-          - amp_bf16
-          - amp_fp16
-        description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
+        description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
       mode:
         required: true
-        type: choice
+        type: string
         default: 'inference'
-        options:
-          - inference
-          - training
-        description: inference / training test
+        description: inference,training. Delimiter is comma
       scenario:
         required: true
-        type: choice
+        type: string
         default: 'accuracy'
-        options:
-          - accuracy
-          - performance
-        description: accuracy / performance test
-  
+        description: accuracy,performance. Delimiter is comma
+
 
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.secnario }}
   cancel-in-progress: true
 
 jobs:
@@ -65,7 +49,10 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda
-          if conda env list | grep -q "^e2e_ci "; then source activate e2e_ci; else conda create -n e2e_ci python=3.8 cmake ninja -y; fi
+          if ! conda env list | grep -q "^e2e_ci "; then
+            conda create -n e2e_ci python=3.8 cmake ninja -y
+          fi
+          source activate e2e_ci
           conda install intel::mkl-static intel::mkl-include -y
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
@@ -73,11 +60,11 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b nightly --single-branch --depth=1 https://github.com/pytorch/pytorch pytorch
+          git clone -b main https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply-torch-pr.py -n 122472 124709 125587
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
@@ -91,11 +78,14 @@ jobs:
           else
             echo "TRITON_COMMIT_ID=${{ inputs.triton }}" >> "${GITHUB_ENV}"
           fi
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
           echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
           source activate e2e_ci
@@ -112,10 +102,10 @@ jobs:
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl      
+          pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
         run: echo "$GITHUB_ENV"
-      - name: Nightly HF FP32 Inference Accuracy Test
+      - name: Nightly Huggingface FP32 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -124,9 +114,9 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 45
+          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly HF BF16 Inference Accuracy Test
+      - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -135,44 +125,70 @@ jobs:
           mode: inference
           scenario: accuracy
           expected_pass_num: 46
-      - name: Nightly HF FP16 Inference Accuracy Test
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           dt: float16
           mode: inference
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP32 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface BF16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Huggingface FP16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: training
+          scenario: accuracy
+          expected_pass_num: 46
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly Torchbench BF16 Training Accuracy Test
+        if: ${{ !inputs.suite }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          dt: bfloat16
+          mode: training
           scenario: accuracy
           expected_pass_num: 39
-      - name: Nightly HF FP32 Training Accuracy Test
-        if: ${{ !inputs.suite }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
           env_prepare: true
-          dt: float32
-          mode: training
-          scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly HF BF16 Training Accuracy Test
+      - name: Nightly Timm_models FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
-          suite: huggingface
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          expected_pass_num: 46
-      - name: Nightly HF FP16 Training Accuracy Test
-        if: ${{ !inputs.suite }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
+          suite: timm_models
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 40
+          expected_pass_num: 22
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -183,3 +199,29 @@ jobs:
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
+  Tests-Failure-And-Report:
+    if: always() && ${{ !inputs.suite }}
+    runs-on: pvc_e2e
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    needs: Inductor-XPU-E2E-Nightly-Tests
+    steps:
+      - name: Report github issue for XPU OPS nightly
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }}
+        run: |
+          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ github.repository }}"
+          gh --repo $repo issue comment 304  \
+              --body "XPU OPS Nightly Successful $(date +'%F'), See: $build_url"
+      - name: Report github issue when failure detected
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'failure' }}
+        run: |
+          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          notification_list="${{ secrets.NIGHTLY_EMAIL_LIST }}"
+          repo="${{ github.repository }}"
+          gh --repo $repo issue comment 304  \
+              --body "XPU OPS Nightly Failed $(date +'%F'), See: $build_url
+                      cc $notification_list"

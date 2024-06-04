@@ -3,43 +3,27 @@ name: inductor-xpu-e2e-test
 inputs:
   suite:
     required: true
-    type: choice
+    type: string
     default: 'huggingface'
-    options:
-      - huggingface
-      - timm_models
-      - torchbench
-    description: Dynamo benchmarks test suite, huggingface / timm_models / torchbench
+    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
   env_prepare:
     required: false
     description: If set to any value, will prepare suite test env
   dt:
     required: true
-    type: choice
+    type: string
     default: 'float32'
-    options:
-      - float32
-      - bfloat16
-      - float16
-      - amp_bf16
-      - amp_fp16
-    description: Data precision of the test. float32 / bfloat16 / float16 / amp_fp16 / amp_bf16
+    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
   mode:
     required: true
-    type: choice
+    type: string
     default: 'inference'
-    options:
-      - inference
-      - training
-    description: inference / training test
+    description: inference,training. Delimiter is comma
   scenario:
     required: true
-    type: choice
+    type: string
     default: 'accuracy'
-    options:
-      - accuracy
-      - performance
-    description: accuracy / performance test
+    description: accuracy,performance. Delimiter is comma
   cards:
     required: false
     type: string
@@ -62,25 +46,25 @@ runs:
       run: |
         source activate e2e_ci
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        if [ ${{ inputs.suite }} == "torchbench" ]; then
+        if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
           cd audio && git checkout $TORCHAUDIO_COMMIT_ID
           python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-        fi 
-        if [ ${{ inputs.suite }} != "huggingface" ]; then
           cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
           cd vision && git checkout $TORCHVISION_COMMIT_ID
           python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-        else
-          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
-        fi
-        if [ ${{ inputs.suite }} == "torchbench" ]; then
           cd ../ && python -c "import torch, torchvision, torchaudio"
-          rm -rf benchmark && git clone https://github.com/weishi-deng/benchmark.git
-          cd benchmark && pip install --no-deps -r requirements.txt
+          rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
         fi
-        if [ ${{ inputs.suite }} == "timm_models" ]; then
+        if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+        fi
+        if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
+          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+          cd vision && git checkout $TORCHVISION_COMMIT_ID
+          python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           # install timm without dependencies
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
           # install timm dependencies without torch and torchvision
@@ -95,49 +79,131 @@ runs:
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        export PYTORCH_ENABLE_XPU_FALLBACK=1
         rm -rf inductor_log
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 0 static 8 0 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 1 static 8 1 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 2 static 8 2 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 3 static 8 3 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 4 static 8 4 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 5 static 8 5 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 6 static 8 6 & \
-        bash inductor_xpu_test.sh ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} xpu 7 static 8 7 & wait
-        LOG_NAME=inductor_${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_xpu_${{ inputs.scenario }}_all.log
-        for log in $(ls inductor_log/${{ inputs.suite }}/${{ inputs.dt }}/*card*.log); do cat $log >> inductor_log/${{ inputs.suite }}/${{ inputs.dt }}/${LOG_NAME}; done
-    - name: Test Results Overview (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        set -xe
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          do
+            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
+            $contains_status
+            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+            do
+              contains "inference,training" $mode
+              $contains_status
+              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+              do
+                contains "accuracy,performance" $scenario
+                $contains_status
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 2 static 8 2 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 3 static 8 3 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 4 static 8 4 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 5 static 8 5 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
+                wait
+              done
+            done
+          done
+        done
+
+    - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
-        set +e
-        cd ../pytorch/inductor_log/${{ inputs.suite }}
-        cd ${{ inputs.dt }}
-        echo -e "============ Summary for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }} ============" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
-        awk -i inplace '!seen[$0]++' inductor_${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_xpu_${{ inputs.scenario }}.csv
-        csv_lines=$(cat inductor_${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_xpu_${{ inputs.scenario }}.csv | wc -l)
-        let num_total=csv_lines-1
-        num_passed=$(grep -c "pass" inductor_${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_xpu_${{ inputs.scenario }}.csv)
-        let num_failed=num_total-num_passed
-        pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
-        echo "num_total: $num_total" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
-        echo "num_passed: $num_passed" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
-        echo "num_failed: $num_failed" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
-        echo "pass_rate: $pass_rate" | tee -a ./${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        cd ../pytorch
+        set -xe
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          do
+            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
+            $contains_status
+            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+            do
+              contains "inference,training" $mode
+              $contains_status
+              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+              do
+                contains "accuracy,performance" $scenario
+                $contains_status
+                LOG_DIR="inductor_log/${suite}/${dt}"
+                LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
+                rm -f ${LOG_DIR}/${LOG_NAME}
+                find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
+                echo -e "============ Summary for ${suite} ${dt} ${mode} ${scenario} ============" | tee ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+                awk -i inplace '!seen[$0]++' ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv
+                num_total=$(cat ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv |grep -v ',batch_size,' | wc -l)
+                num_passed=$(grep -c "pass" ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv)
+                num_failed=$(echo "$num_total - $num_passed" |bc)
+                pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
+                echo "num_total: $num_total" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+                echo "num_passed: $num_passed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+                echo "num_failed: $num_failed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+                echo "pass_rate: $pass_rate" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+              done
+            done
+          done
+        done
         cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
+        find inductor_log/ -name "inductor_*.csv" |xargs cat > inductor_log/summary.csv 2>&1
+        num_total=$(cat inductor_log/summary.csv |grep -v ',batch_size,' | wc -l)
+        num_passed=$(grep -c "pass" inductor_log/summary.csv)
+        num_failed=$(echo "$num_total - $num_passed" |bc)
+        pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
+        echo "num_total: $num_total" | tee inductor_log/summary.log
+        echo "num_passed: $num_passed" | tee -a inductor_log/summary.log
+        echo "num_failed: $num_failed" | tee -a inductor_log/summary.log
+        echo "pass_rate: $pass_rate" | tee -a inductor_log/summary.log
+
+    - name: Upload Inductor XPU E2E Data
+      if: ${{ ! inputs.expected_pass_num }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+        path: ${{ github.workspace }}/inductor_log
     - name: Upload Inductor XPU E2E Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      if: ${{ inputs.expected_pass_num }}
       uses: actions/upload-artifact@v4
       with:
         name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/inductor_log
+
     - name: Test Results Check (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.expected_pass_num }}
       shell: bash
       run: |
-        cd ../pytorch/inductor_log/${{ inputs.suite }}
-        cd ${{ inputs.dt }}
-        num_passed=$(grep "num_passed:" ${{ inputs.suite }}_${{ inputs.dt }}_${{ inputs.mode }}_${{ inputs.scenario }}_e2e_summary.log | sed -e 's/.*://;s/[^0-9.]//')
-        if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
+        cd ${{ github.workspace }}/inductor_log/
+        cat summary.csv summary.log
+        num_failed=$(grep "num_failed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
+        if [ $num_failed -ne 0 ]; then
           echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
           exit 1
         fi

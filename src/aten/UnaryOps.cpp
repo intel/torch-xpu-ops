@@ -5,6 +5,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
+#include <aten/sycl/UnarySpecialOpsKernels.h>
 #include <torch/library.h>
 
 namespace at {
@@ -307,6 +308,50 @@ Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_op(out, self);
   native::xpu::bitwise_not_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::exp(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::exp_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::exp_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::exp_kernel(iter);
+  return self;
+}
+
+Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::sigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
   return out;
 }
 
