@@ -6,7 +6,7 @@
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
 #include <aten/sycl/UnarySignKernels.h>
-#include <torch/library.h>
+#include <aten/sycl/UnarySpecialOpsKernels.h>
 
 namespace at {
 
@@ -333,6 +333,28 @@ Tensor& XPUNativeFunctions::exp_(Tensor& self) {
   return self;
 }
 
+Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::sigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::sgn(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -366,4 +388,5 @@ Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
   }
   return out;
 }
+
 } // namespace at

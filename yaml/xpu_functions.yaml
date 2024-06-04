@@ -164,6 +164,7 @@ supported:
   - zero_
   - random_
   - random_.from
+  - random_.to
   - normal_
   - normal.Tensor_float_out
   - normal.Tensor_float
@@ -286,9 +287,11 @@ supported:
   - minimum
   - minimum.out
   - flip
-  - sgn
-  - sgn.out
-  - sgn_
+  - sigmoid
+  - sigmoid.out
+  - sigmoid_
+  - sigmoid_backward.grad_input
+  - sigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -303,3 +306,6 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - sgn
+  - sgn.out
+  - sgn_
