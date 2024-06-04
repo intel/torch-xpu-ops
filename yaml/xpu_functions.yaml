@@ -287,6 +287,11 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - sigmoid
+  - sigmoid.out
+  - sigmoid_
+  - sigmoid_backward.grad_input
+  - sigmoid_backward
   - tril.out
   - tril
   - tril_

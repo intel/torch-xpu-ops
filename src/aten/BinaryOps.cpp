@@ -528,4 +528,24 @@ Tensor& XPUNativeFunctions::minimum_out(
   return output;
 }
 
+Tensor& XPUNativeFunctions::sigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& output,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::sigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& output) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
 } // namespace at
