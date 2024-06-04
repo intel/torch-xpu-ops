@@ -20,6 +20,56 @@ namespace xpu {
 #define SIMD32 32
 #define SIMD16 16
 
+// ========================== batch_norm utils ==========================
+
+ScalarType first_type() {
+  return ScalarType::Undefined;
+}
+
+template <typename... Args>
+ScalarType first_type(const Tensor& arg, const Args&... parameters) {
+  return arg.defined() ? arg.scalar_type() : first_type(parameters...);
+}
+
+// A transform is mixed type if the parameters are higher precision than the
+// input
+template <typename... Args>
+bool is_mixed_type(const Tensor& input, const Args&... parameters) {
+  const auto parameter_type = first_type(parameters...);
+  return (
+      (parameter_type != ScalarType::Undefined) &&
+      (parameter_type != input.scalar_type()));
+}
+
+inline bool batch_norm_use_channels_last_kernels(const at::Tensor& self) {
+  return (
+      self.is_contiguous(at::MemoryFormat::ChannelsLast) ||
+      self.is_contiguous(at::MemoryFormat::ChannelsLast3d) ||
+      (self.is_contiguous() && self.strides()[1] == 1));
+}
+
+enum class Impl {
+  Contiguous,
+  ChannelsLast,
+  General,
+};
+
+inline Impl batch_norm_choose_impl(const Tensor& self) {
+  if (!canUse32BitIndexMath(self)) {
+    return Impl::General;
+  }
+
+  if (self.is_contiguous()) {
+    return self.strides()[1] == 1 ? Impl::ChannelsLast : Impl::Contiguous;
+  }
+
+  if (self.is_contiguous(at::MemoryFormat::ChannelsLast)) {
+    return Impl::ChannelsLast;
+  }
+
+  return Impl::General;
+}
+
 template <
     typename scalar_t,
     int64_t dim,
@@ -54,13 +104,6 @@ packed_accessor_or_dummy(const Tensor& t, c10::string_view var_name) {
         nullptr, zeros.data(), zeros.data());
   }
   return get_packed_accessor<scalar_t, dim, PtrTraits, index_t>(t, var_name);
-}
-
-inline bool batch_norm_use_channels_last_kernels(const at::Tensor& self) {
-  return (
-      self.is_contiguous(at::MemoryFormat::ChannelsLast) ||
-      self.is_contiguous(at::MemoryFormat::ChannelsLast3d) ||
-      (self.is_contiguous() && self.strides()[1] == 1));
 }
 
 struct InvStd {
@@ -129,6 +172,216 @@ int get_prefer_simd(int numPlane, int nHw) {
     }
   }
   return simd;
+}
+
+template <typename scalar_t, typename accscalar_t>
+struct Float2 {
+  accscalar_t v1, v2;
+  Float2() {}
+
+  Float2(scalar_t v1, scalar_t v2)
+      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
+  Float2(int v)
+      : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
+  Float2& operator+=(const Float2& a) {
+    v1 += a.v1;
+    v2 += a.v2;
+    return *this;
+  }
+
+  friend Float2 operator+(Float2 a, const Float2& b) {
+    a += b;
+    return a;
+  }
+};
+
+template <typename scalar_t, typename accscalar_t, typename PTA>
+struct GradOp {
+  GradOp(accscalar_t m, const PTA& i, const PTA& g)
+      : mean(m), input(i), grad_output(g) {}
+  inline Float2<scalar_t, accscalar_t> operator()(int batch, int plane, int n) {
+    accscalar_t g = grad_output[batch][plane][n];
+    accscalar_t c = static_cast<accscalar_t>(input[batch][plane][n]) - mean;
+    return Float2<scalar_t, accscalar_t>(g, g * c);
+  }
+  const accscalar_t mean;
+  const PTA& input;
+  const PTA& grad_output;
+};
+
+template <
+    int SIMD,
+    typename accscalar_t,
+    typename reduce_op,
+    typename item_t,
+    typename local_shared_t>
+static inline void group_reduce(
+    item_t item,
+    int sub_group_num,
+    accscalar_t& val,
+    accscalar_t init,
+    const local_shared_t& local_data,
+    reduce_op bin_op) {
+  auto sg = item.get_sub_group();
+  uint32_t lane_id = sg.get_local_linear_id();
+  uint32_t sg_id = sg.get_group_linear_id();
+
+  // dynamic get SIMD width result in big performance drop
+  // uint32_t SIMD = sg.get_local_range()[0];
+#pragma unroll
+  for (int i = 1; i < SIMD; i <<= 1) {
+    val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+  }
+  if (sub_group_num == 1) {
+    if (lane_id == 0) {
+      local_data[0] = val;
+    }
+    item.barrier(sycl_local_fence);
+    val = local_data[0];
+
+    return;
+  }
+
+  // reduce internal each subgroup, each subgroup will generate one result
+  // there are WGroupSize/subGroupSize elements after this step
+  if (lane_id == 0) {
+    local_data[sg_id] = val;
+  }
+  item.barrier(sycl_local_fence);
+
+  // use one subgroup to reduce WGroupSize/subGroupSize elements
+  // into the final result
+  if (sg_id == 0) {
+    val = init;
+    if (lane_id < sub_group_num) {
+      val = accscalar_t(local_data[lane_id]);
+    }
+    for (int i = lane_id + SIMD; i < sub_group_num; i += SIMD) {
+      val = bin_op(val, static_cast<accscalar_t>(local_data[i]));
+    }
+#pragma unroll
+    for (int i = 1; i < SIMD; i <<= 1) {
+      val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+      if (i >= ((sub_group_num + 1) >> 1))
+        break;
+    }
+
+    // the 0th WI (the 0th WI in the 0th sub_group) generate the final
+    // result
+    if (lane_id == 0) {
+      local_data[0] = val;
+    }
+  }
+
+  item.barrier(sycl_local_fence);
+  val = local_data[0];
+}
+
+template <
+    int SIMD,
+    typename scalar_t,
+    typename item_t,
+    typename Op,
+    typename PTA,
+    typename local_shared_t>
+scalar_t plane_reduce(
+    item_t item,
+    Op grad_op,
+    PTA tensor,
+    int plane,
+    int sub_group_num,
+    const local_shared_t& shared) {
+  // first the reductions each thread does separately
+  scalar_t sum_value = static_cast<scalar_t>(0);
+  for (int batch = item.get_local_id(0); batch < tensor.size(0);
+       batch += item.get_local_range(0)) {
+    for (int x = item.get_local_id(1); x < tensor.size(2);
+         x += item.get_local_range(1)) {
+      auto res = grad_op(batch, plane, x);
+
+      sum_value += res;
+    }
+  }
+  group_reduce<SIMD, scalar_t>(
+      item,
+      sub_group_num,
+      sum_value,
+      scalar_t(0),
+      shared,
+      [](scalar_t a, scalar_t b) { return a + b; });
+  if (item.get_local_linear_id() == 0) {
+    shared[0] = sum_value;
+  }
+  item.barrier(sycl_local_fence);
+  // Everyone picks it up, should be broadcast into the whole grad_input
+  return shared[0];
+}
+
+template <typename scalar_t>
+int inline get_nhwc_suggest_vec_size(
+    const Tensor input,
+    int reduction_size,
+    int channels) {
+  if (!batch_norm_use_channels_last_kernels(input))
+    return 1;
+  // no need to vectorize if channels < 16
+  if (channels < 16)
+    return 1;
+  // if small reduction size, make no vectorization for higher occupancy
+  if (reduction_size < 8 * syclMaxWorkGroupSize())
+    return 1;
+
+  // just to load/store data
+  auto func = [](scalar_t a) { return a + static_cast<scalar_t>(1.0f); };
+  at::detail::Array<char*, 1> data;
+  data[0] = (char*)input.data_ptr();
+
+  int vec_size = memory::can_vectorize_up_to<decltype(func)>(data);
+
+  // for resnet50 shape, bf16 type, vec 4 have better performance
+  if (vec_size == 8 && reduction_size == 256 * 56 * 56 &&
+      (channels == 128 || channels == 256))
+    return 4;
+
+  if (channels % vec_size != 0)
+    return 1;
+  return vec_size;
+}
+
+inline int div_up(int a, int b) {
+  return (a + b - 1) / b;
+}
+
+std::tuple<sycl::range<2>, sycl::range<2>> flexible_launch_configs(
+    const int reduction,
+    const int stride,
+    const bool coop_flag = false,
+    const int loops_per_item = 1) {
+  int wg_size = syclMaxWorkItemsPerEU();
+  int group_x = std::min(last_pow2(stride), 32);
+  int group_y =
+      std::min(last_pow2(div_up(reduction, loops_per_item)), wg_size / group_x);
+  if (group_x * group_y != wg_size) {
+    group_x = std::min(last_pow2(stride), wg_size / group_y);
+  }
+
+  int grid_x = div_up(stride, group_x);
+  //  int grid_y = std::min(div_up(reduction, group_y * loops_per_item), 1024);
+  int grid_y = std::min(
+      div_up(reduction, group_y * loops_per_item),
+      int(syclMaxWorkItemsPerTile()) / (grid_x * group_x) / (group_y));
+  grid_y = std::max(grid_y, 1);
+
+  if (coop_flag) {
+    // it's not worth having a grid reduction if the reduction dimension is not
+    // big enough
+    grid_y = grid_y < 8 ? 1 : grid_y;
+  }
+
+  sycl::range<2> local_range(group_y, group_x);
+  sycl::range<2> global_range(grid_y * group_y, grid_x * group_x);
+
+  return std::make_tuple(global_range, local_range);
 }
 
 // ========================== batch_norm_stats ==========================
@@ -410,37 +663,6 @@ void batch_norm_stats_template(
   }
 }
 
-template <typename scalar_t>
-int inline get_nhwc_suggest_vec_size(
-    const Tensor input,
-    int reduction_size,
-    int channels) {
-  if (!batch_norm_use_channels_last_kernels(input))
-    return 1;
-  // no need to vectorize if channels < 16
-  if (channels < 16)
-    return 1;
-  // if small reduction size, make no vectorization for higher occupancy
-  if (reduction_size < 8 * syclMaxWorkGroupSize())
-    return 1;
-
-  // just to load/store data
-  auto func = [](scalar_t a) { return a + static_cast<scalar_t>(1.0f); };
-  at::detail::Array<char*, 1> data;
-  data[0] = (char*)input.data_ptr();
-
-  int vec_size = memory::can_vectorize_up_to<decltype(func)>(data);
-
-  // for resnet50 shape, bf16 type, vec 4 have better performance
-  if (vec_size == 8 && reduction_size == 256 * 56 * 56 &&
-      (channels == 128 || channels == 256))
-    return 4;
-
-  if (channels % vec_size != 0)
-    return 1;
-  return vec_size;
-}
-
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -617,42 +839,6 @@ struct BatchNormReduceSumChannelsLastTwoPassKernelFunctor {
   accscalar_t* out_mean_ptr_;
   accscalar_t* out_invstd_ptr_;
 };
-
-inline int div_up(int a, int b) {
-  return (a + b - 1) / b;
-}
-
-std::tuple<sycl::range<2>, sycl::range<2>> flexible_launch_configs(
-    const int reduction,
-    const int stride,
-    const bool coop_flag = false,
-    const int loops_per_item = 1) {
-  int wg_size = syclMaxWorkItemsPerEU();
-  int group_x = std::min(last_pow2(stride), 32);
-  int group_y =
-      std::min(last_pow2(div_up(reduction, loops_per_item)), wg_size / group_x);
-  if (group_x * group_y != wg_size) {
-    group_x = std::min(last_pow2(stride), wg_size / group_y);
-  }
-
-  int grid_x = div_up(stride, group_x);
-  //  int grid_y = std::min(div_up(reduction, group_y * loops_per_item), 1024);
-  int grid_y = std::min(
-      div_up(reduction, group_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (grid_x * group_x) / (group_y));
-  grid_y = std::max(grid_y, 1);
-
-  if (coop_flag) {
-    // it's not worth having a grid reduction if the reduction dimension is not
-    // big enough
-    grid_y = grid_y < 8 ? 1 : grid_y;
-  }
-
-  sycl::range<2> local_range(group_y, group_x);
-  sycl::range<2> global_range(grid_y * group_y, grid_x * group_x);
-
-  return std::make_tuple(global_range, local_range);
-}
 
 // sum x and x^2 in channels
 template <
@@ -912,47 +1098,6 @@ std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
 }
 
 // ========================== batch_norm_elemt ==========================
-
-ScalarType first_type() {
-  return ScalarType::Undefined;
-}
-
-template <typename... Args>
-ScalarType first_type(const Tensor& arg, const Args&... parameters) {
-  return arg.defined() ? arg.scalar_type() : first_type(parameters...);
-}
-
-// A transform is mixed type if the parameters are higher precision than the
-// input
-template <typename... Args>
-bool is_mixed_type(const Tensor& input, const Args&... parameters) {
-  const auto parameter_type = first_type(parameters...);
-  return (
-      (parameter_type != ScalarType::Undefined) &&
-      (parameter_type != input.scalar_type()));
-}
-
-enum class Impl {
-  Contiguous,
-  ChannelsLast,
-  General,
-};
-
-inline Impl batch_norm_choose_impl(const Tensor& self) {
-  if (!canUse32BitIndexMath(self)) {
-    return Impl::General;
-  }
-
-  if (self.is_contiguous()) {
-    return self.strides()[1] == 1 ? Impl::ChannelsLast : Impl::Contiguous;
-  }
-
-  if (self.is_contiguous(at::MemoryFormat::ChannelsLast)) {
-    return Impl::ChannelsLast;
-  }
-
-  return Impl::General;
-}
 
 template <
     typename input_scalar_t,
@@ -1572,620 +1717,7 @@ void batch_norm_elemt_kernel(
   }
 }
 
-// ========================== batch_norm_gather_stats ==========================
-
-template <typename scalar_t, typename accscalar_t, typename index_t>
-struct BatchNormGatherStatsReductionKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<2> item) const {
-    int global_row = item.get_global_id(0);
-    int global_col = item.get_global_id(1);
-    int group_row = item.get_group(0);
-    // int group_col = item.get_group(1);
-    int local_row = item.get_local_id(0);
-    int local_col = item.get_local_id(1);
-
-    int global_len = len_;
-    int local_len = len_;
-
-    if (global_row < global_len && global_col < feature_sz_) {
-      save_mean_local_mem_[local_row][local_col] =
-          save_mean_in_[global_row * feature_sz_ + global_col];
-      counts_local_mem_[local_row][local_col] = counts_in_[global_row];
-      accscalar_t v =
-          1.0f / save_invstd_in_[global_row * feature_sz_ + global_col];
-      var_n_local_mem_[local_row][local_col] =
-          (v * v - epsilon_) * counts_local_mem_[local_row][local_col];
-    }
-
-    // Do a tree reduction on work-items in work-group
-    for (int i = wgroup_size_batch_dim_ / 2; i > 0; i >>= 1) {
-      item.barrier(sycl::access::fence_space::local_space);
-      if (local_row < i && global_row < global_len &&
-          global_row + i < global_len && local_row < local_len &&
-          local_row + i < local_len && global_col < feature_sz_) {
-        index_t n_1 = counts_local_mem_[local_row + i][local_col];
-        index_t n_0 = counts_local_mem_[local_row][local_col];
-        accscalar_t m_1 = save_mean_local_mem_[local_row + i][local_col];
-        accscalar_t m_0 = save_mean_local_mem_[local_row][local_col];
-        accscalar_t v_1 = var_n_local_mem_[local_row + i][local_col];
-        accscalar_t v = std::sqrt(v_1 / n_1 + epsilon_);
-        v = (v * v - epsilon_) * n_1;
-        accscalar_t factor = 1.0f / (n_0 + n_1);
-
-        var_n_local_mem_[local_row][local_col] +=
-            v + (m_0 - m_1) * (m_0 - m_1) * n_0 * n_1 * factor;
-        save_mean_local_mem_[local_row][local_col] =
-            n_0 * factor * m_0 + n_1 * factor * m_1;
-        counts_local_mem_[local_row][local_col] += n_1;
-      }
-      local_len = i;
-      i = i + (i % 2 && i != 1);
-    }
-
-    if (local_row == 0 && global_col < feature_sz_) {
-      save_mean_out_[group_row * feature_sz_ + global_col] =
-          save_mean_local_mem_[0][local_col];
-      save_invstd_out_[group_row * feature_sz_ + global_col] =
-          static_cast<accscalar_t>(1.0f) /
-          std::sqrt(
-              var_n_local_mem_[0][local_col] / counts_local_mem_[0][local_col] +
-              epsilon_);
-      counts_out_[group_row] = counts_local_mem_[0][0];
-    }
-
-    if (n_wgroups_batch_dim_ == 1 && local_row == 0) {
-      if (running_mean_ != nullptr) {
-        running_mean_[global_col] = static_cast<scalar_t>(
-            (1 - momentum_) * running_mean_[global_col] +
-            momentum_ * save_mean_local_mem_[0][global_col]);
-      }
-      if (running_var_ != nullptr) {
-        running_var_[global_col] = static_cast<scalar_t>(
-            (1 - momentum_) * running_var_[global_col] +
-            momentum_ *
-                (var_n_local_mem_[0][global_col] /
-                 (counts_local_mem_[0][global_col] - 1)));
-      }
-    }
-  }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    save_mean_local_mem_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{
-            (size_t)wgroup_size_batch_dim_, (size_t)wgroup_size_feature_dim_},
-        cgh);
-    var_n_local_mem_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{
-            (size_t)wgroup_size_batch_dim_, (size_t)wgroup_size_feature_dim_},
-        cgh);
-    counts_local_mem_ = sycl_local_acc_t<accscalar_t, 2>(
-        sycl::range<2>{
-            (size_t)wgroup_size_batch_dim_, (size_t)wgroup_size_feature_dim_},
-        cgh);
-  }
-
-  BatchNormGatherStatsReductionKernelFunctor(
-      accscalar_t* save_mean_in,
-      accscalar_t* save_mean_out,
-      accscalar_t* save_invstd_in,
-      accscalar_t* save_invstd_out,
-      scalar_t* counts_in,
-      scalar_t* counts_out,
-      scalar_t* running_mean,
-      scalar_t* running_var,
-      int len,
-      int n_wgroups_batch_dim,
-      int wgroup_size_batch_dim,
-      int n_wgroups_feature_dim,
-      int wgroup_size_feature_dim,
-      int feature_sz,
-      float momentum,
-      float epsilon)
-      : save_mean_in_(save_mean_in),
-        save_mean_out_(save_mean_out),
-        save_invstd_in_(save_invstd_in),
-        save_invstd_out_(save_invstd_out),
-        counts_in_(counts_in),
-        counts_out_(counts_out),
-        running_mean_(running_mean),
-        running_var_(running_var),
-        len_(len),
-        n_wgroups_batch_dim_(n_wgroups_batch_dim),
-        wgroup_size_batch_dim_(wgroup_size_batch_dim),
-        n_wgroups_feature_dim_(n_wgroups_feature_dim),
-        wgroup_size_feature_dim_(wgroup_size_feature_dim),
-        feature_sz_(feature_sz),
-        momentum_(momentum),
-        epsilon_(epsilon) {}
-
- private:
-  accscalar_t* save_mean_in_;
-  accscalar_t* save_mean_out_;
-  accscalar_t* save_invstd_in_;
-  accscalar_t* save_invstd_out_;
-  scalar_t* counts_in_;
-  scalar_t* counts_out_;
-  scalar_t* running_mean_;
-  scalar_t* running_var_;
-  int len_;
-  int n_wgroups_batch_dim_;
-  int wgroup_size_batch_dim_;
-  int n_wgroups_feature_dim_;
-  int wgroup_size_feature_dim_;
-  int feature_sz_;
-  float momentum_;
-  float epsilon_;
-  sycl_local_acc_t<accscalar_t, 2> save_mean_local_mem_;
-  sycl_local_acc_t<accscalar_t, 2> var_n_local_mem_;
-  sycl_local_acc_t<accscalar_t, 2> counts_local_mem_;
-};
-
-// instead of having one thread (work-item) reduce one column,
-// split the column into chunks (work-groups) for each thread to
-// parallely compute a partial result for each chunk
-// until the number of chunks is 1
-template <typename scalar_t, typename accscalar_t, typename index_t>
-void batch_norm_gather_stats_reduction(
-    sycl::queue& q,
-    accscalar_t* save_mean_in,
-    accscalar_t* save_mean_out,
-    accscalar_t* save_invstd_in,
-    accscalar_t* save_invstd_out,
-    scalar_t* counts_in,
-    scalar_t* counts_out,
-    scalar_t* running_mean,
-    scalar_t* running_var,
-    int len,
-    int n_wgroups_batch_dim,
-    int wgroup_size_batch_dim,
-    int n_wgroups_feature_dim,
-    int wgroup_size_feature_dim,
-    int feature_sz,
-    float momentum_,
-    float epsilon_) {
-  sycl::range<2> global_range{
-      (size_t)n_wgroups_batch_dim * wgroup_size_batch_dim,
-      (size_t)n_wgroups_feature_dim * wgroup_size_feature_dim};
-  sycl::range<2> local_range{
-      (size_t)wgroup_size_batch_dim, (size_t)wgroup_size_feature_dim};
-
-  auto caller = BatchNormGatherStatsReductionKernelFunctor<
-      scalar_t,
-      accscalar_t,
-      index_t>(
-      save_mean_in,
-      save_mean_out,
-      save_invstd_in,
-      save_invstd_out,
-      counts_in,
-      counts_out,
-      running_mean,
-      running_var,
-      len,
-      n_wgroups_batch_dim,
-      wgroup_size_batch_dim,
-      n_wgroups_feature_dim,
-      wgroup_size_feature_dim,
-      feature_sz,
-      momentum_,
-      epsilon_);
-
-  sycl_kernel_submit(global_range, local_range, q, caller);
-}
-
-template <typename scalar_t, typename accscalar_t, typename index_t>
-std::tuple<Tensor, Tensor> batch_norm_gather_stats_xpu_template(
-    const Tensor& mean_,
-    const Tensor& invstd_,
-    const Tensor& running_mean_,
-    const Tensor& running_var_,
-    double momentum,
-    double epsilon,
-    const Tensor& counts_) {
-  int feature_sz = mean_.size(1);
-  int batch_sz = mean_.size(0);
-
-  auto input_options = mean_.options();
-  if (mean_.scalar_type() == at::ScalarType::Half ||
-      mean_.scalar_type() == at::ScalarType::BFloat16) {
-    input_options = input_options.dtype(ScalarType::Float);
-  }
-
-  auto counts_options = counts_.options();
-  if (counts_.scalar_type() == at::ScalarType::Half ||
-      counts_.scalar_type() == at::ScalarType::BFloat16) {
-    counts_options = counts_options.dtype(ScalarType::Float);
-  }
-
-  auto running_mean =
-      running_mean_.defined() ? running_mean_.data_ptr<scalar_t>() : nullptr;
-  auto running_var =
-      running_var_.defined() ? running_var_.data_ptr<scalar_t>() : nullptr;
-
-  // // Avoid double issues in ATSM
-  // float momentum_ = momentum;
-  // float epsilon_ = epsilon;
-  auto& queue = getCurrentSYCLQueue();
-  int max_work_items_per_eu = syclMaxWorkItemsPerEU();
-
-  int wgroup_size_feature_dim = std::min(feature_sz, 32);
-  int n_wgroups_feature_dim =
-      (feature_sz + wgroup_size_feature_dim - 1) / wgroup_size_feature_dim;
-
-  int len = batch_sz;
-
-  accscalar_t* save_mean_prev = mean_.data_ptr<accscalar_t>();
-  accscalar_t* save_invstd_prev = invstd_.data_ptr<accscalar_t>();
-  scalar_t* counts_prev = counts_.data_ptr<scalar_t>();
-
-  Tensor save_mean_tmp;
-  Tensor save_invstd_tmp;
-  Tensor counts_tmp;
-
-  if (len == 1) {
-    int wgroup_size_batch_dim = 2;
-    int n_wgroups_batch_dim = 1;
-
-    save_mean_tmp = at::empty({feature_sz}, input_options);
-    accscalar_t* save_mean_curr = save_mean_tmp.data_ptr<accscalar_t>();
-
-    save_invstd_tmp = at::empty({feature_sz}, input_options);
-    accscalar_t* save_invstd_curr = save_invstd_tmp.data_ptr<accscalar_t>();
-
-    counts_tmp = at::empty({1}, counts_options);
-    scalar_t* counts_curr = counts_tmp.data_ptr<scalar_t>();
-
-    batch_norm_gather_stats_reduction<scalar_t, accscalar_t, index_t>(
-        queue,
-        save_mean_prev,
-        save_mean_curr,
-        save_invstd_prev,
-        save_invstd_curr,
-        counts_prev,
-        counts_curr,
-        running_mean,
-        running_var,
-        len,
-        n_wgroups_batch_dim,
-        wgroup_size_batch_dim,
-        n_wgroups_feature_dim,
-        wgroup_size_feature_dim,
-        feature_sz,
-        (float)momentum,
-        (float)epsilon);
-
-    return std::make_tuple(save_mean_tmp, save_invstd_tmp);
-  }
-
-  while (len != 1) {
-    int wgroup_size = std::min(max_work_items_per_eu, len + (len % 2));
-    int wgroup_size_batch_dim = (wgroup_size_feature_dim == 1)
-        ? wgroup_size
-        : ((wgroup_size * wgroup_size_feature_dim <= max_work_items_per_eu)
-               ? wgroup_size
-               : max_work_items_per_eu /
-                   (wgroup_size_feature_dim + (wgroup_size_feature_dim % 2)));
-    wgroup_size_batch_dim = wgroup_size_batch_dim + (wgroup_size_batch_dim % 2);
-    int n_wgroups_batch_dim =
-        len / wgroup_size_batch_dim + (len % wgroup_size_batch_dim != 0);
-
-    save_mean_tmp =
-        at::empty({n_wgroups_batch_dim * feature_sz}, input_options);
-    accscalar_t* save_mean_curr = save_mean_tmp.data_ptr<accscalar_t>();
-
-    save_invstd_tmp =
-        at::empty({n_wgroups_batch_dim * feature_sz}, input_options);
-    accscalar_t* save_invstd_curr = save_invstd_tmp.data_ptr<accscalar_t>();
-
-    counts_tmp = at::empty({n_wgroups_batch_dim}, counts_options);
-    scalar_t* counts_curr = counts_tmp.data_ptr<scalar_t>();
-
-    batch_norm_gather_stats_reduction<scalar_t, accscalar_t, index_t>(
-        queue,
-        save_mean_prev,
-        save_mean_curr,
-        save_invstd_prev,
-        save_invstd_curr,
-        counts_prev,
-        counts_curr,
-        running_mean,
-        running_var,
-        len,
-        n_wgroups_batch_dim,
-        wgroup_size_batch_dim,
-        n_wgroups_feature_dim,
-        wgroup_size_feature_dim,
-        feature_sz,
-        (float)momentum,
-        (float)epsilon);
-
-    save_mean_prev = save_mean_curr;
-    save_invstd_prev = save_invstd_curr;
-    counts_prev = counts_curr;
-
-    len = n_wgroups_batch_dim;
-  }
-
-  return std::make_tuple(save_mean_tmp, save_invstd_tmp);
-}
-
-std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts(
-    const Tensor& self,
-    const Tensor& mean,
-    const Tensor& invstd,
-    const Tensor& running_mean /* optional */,
-    const Tensor& running_var /* optional */,
-    double momentum,
-    double epsilon,
-    const Tensor& counts) {
-  auto scalar_type =
-      running_mean.defined() ? running_mean.scalar_type() : self.scalar_type();
-  return AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      scalar_type,
-      "batch_norm_update_stats_xpu",
-      [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
-        if (canUse32BitIndexMath(self)) {
-          return batch_norm_gather_stats_xpu_template<
-              scalar_t,
-              accscalar_t,
-              int32_t>(
-              mean,
-              invstd,
-              running_mean,
-              running_var,
-              momentum,
-              epsilon,
-              counts);
-        } else {
-          return batch_norm_gather_stats_xpu_template<
-              scalar_t,
-              accscalar_t,
-              int64_t>(
-              mean,
-              invstd,
-              running_mean,
-              running_var,
-              momentum,
-              epsilon,
-              counts);
-        }
-      });
-}
-
-// accepting input(self) here to determine template data types, since
-// running_mean/running_var are optional
-std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
-    const Tensor& self,
-    const Tensor& mean,
-    const Tensor& invstd,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
-    double momentum,
-    double epsilon,
-    int64_t count) {
-  // See [Note: hacky wrapper removal for optional tensor]
-  c10::MaybeOwned<Tensor> running_mean_maybe_owned =
-      at::borrow_from_optional_tensor(running_mean_opt);
-  const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
-
-  Tensor counts_ = at::empty(
-      mean.size(0),
-      self.options().dtype(
-          running_mean.defined() ? running_mean.dtype() : self.dtype()));
-  counts_.fill_(count);
-  return batch_norm_gather_stats_with_counts(
-      self,
-      mean,
-      invstd,
-      running_mean,
-      running_var,
-      momentum,
-      epsilon,
-      counts_);
-}
-
-std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
-    const Tensor& self,
-    const Tensor& mean,
-    const Tensor& invstd,
-    const c10::optional<Tensor>& running_mean_opt /* optional */,
-    const c10::optional<Tensor>& running_var_opt /* optional */,
-    double momentum,
-    double epsilon,
-    const Tensor& counts) {
-  // See [Note: hacky wrapper removal for optional tensor]
-  c10::MaybeOwned<Tensor> running_mean_maybe_owned =
-      at::borrow_from_optional_tensor(running_mean_opt);
-  const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
-
-  return batch_norm_gather_stats_with_counts(
-      self, mean, invstd, running_mean, running_var, momentum, epsilon, counts);
-}
-
 // ====================== batch_norm_backward_reduce ======================
-
-template <typename scalar_t, typename accscalar_t>
-struct Float2 {
-  accscalar_t v1, v2;
-  Float2() {}
-
-  Float2(scalar_t v1, scalar_t v2)
-      : v1(static_cast<accscalar_t>(v1)), v2(static_cast<accscalar_t>(v2)) {}
-  Float2(int v)
-      : v1(static_cast<accscalar_t>(v)), v2(static_cast<accscalar_t>(v)) {}
-  Float2& operator+=(const Float2& a) {
-    v1 += a.v1;
-    v2 += a.v2;
-    return *this;
-  }
-
-  friend Float2 operator+(Float2 a, const Float2& b) {
-    a += b;
-    return a;
-  }
-};
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename tensor_ptr,
-    typename tensor_strides>
-struct GradOp {
-  GradOp(
-      accscalar_t m,
-      const tensor_ptr& i,
-      const tensor_ptr& g,
-      const tensor_strides& i_batch,
-      const tensor_strides& i_plane,
-      const tensor_strides& i_feature,
-      const tensor_strides& go_batch,
-      const tensor_strides& go_plane,
-      const tensor_strides& go_feature)
-      : mean(m),
-        input(i),
-        grad_output(g),
-        i_batch_stride(i_batch),
-        i_plane_stride(i_plane),
-        i_feature_stride(i_feature),
-        go_batch_stride(go_batch),
-        go_plane_stride(go_plane),
-        go_feature_stride(go_feature) {}
-  inline Float2<scalar_t, accscalar_t> operator()(int batch, int plane, int n) {
-    accscalar_t g = grad_output
-        [batch * go_batch_stride + plane * go_plane_stride +
-         n * go_feature_stride];
-    accscalar_t c = static_cast<accscalar_t>(
-                        input
-                            [batch * i_batch_stride + plane * i_plane_stride +
-                             n * i_feature_stride]) -
-        mean;
-    return Float2<scalar_t, accscalar_t>(g, g * c);
-  }
-  const accscalar_t mean;
-  const tensor_ptr& input;
-  const tensor_ptr& grad_output;
-  const tensor_strides& i_batch_stride;
-  const tensor_strides& i_plane_stride;
-  const tensor_strides& i_feature_stride;
-  const tensor_strides& go_batch_stride;
-  const tensor_strides& go_plane_stride;
-  const tensor_strides& go_feature_stride;
-};
-
-template <
-    int SIMD,
-    typename accscalar_t,
-    typename reduce_op,
-    typename item_t,
-    typename local_shared>
-static inline void group_reduce(
-    item_t item,
-    int sub_group_num,
-    accscalar_t& val,
-    accscalar_t init,
-    const local_shared& local_data,
-    reduce_op bin_op) {
-  auto sg = item.get_sub_group();
-  uint32_t lane_id = sg.get_local_linear_id();
-  uint32_t sg_id = sg.get_group_linear_id();
-
-  // dynamic get SIMD width result in big performance drop
-  // uint32_t SIMD = sg.get_local_range()[0];
-#pragma unroll
-  for (int i = 1; i < SIMD; i <<= 1) {
-    val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
-  }
-  if (sub_group_num == 1) {
-    if (lane_id == 0) {
-      local_data[0] = val;
-    }
-    item.barrier(sycl_local_fence);
-    val = local_data[0];
-
-    return;
-  }
-
-  // reduce internal each subgroup, each subgroup will generate one result
-  // there are WGroupSize/subGroupSize elements after this step
-  if (lane_id == 0) {
-    local_data[sg_id] = val;
-  }
-  item.barrier(sycl_local_fence);
-
-  // use one subgroup to reduce WGroupSize/subGroupSize elements
-  // into the final result
-  if (sg_id == 0) {
-    val = init;
-    if (lane_id < sub_group_num) {
-      val = accscalar_t(local_data[lane_id]);
-    }
-    for (int i = lane_id + SIMD; i < sub_group_num; i += SIMD) {
-      val = bin_op(val, static_cast<accscalar_t>(local_data[i]));
-    }
-#pragma unroll
-    for (int i = 1; i < SIMD; i <<= 1) {
-      val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
-      if (i >= ((sub_group_num + 1) >> 1))
-        break;
-    }
-
-    // the 0th WI (the 0th WI in the 0th sub_group) generate the final
-    // result
-    if (lane_id == 0) {
-      local_data[0] = val;
-    }
-  }
-
-  item.barrier(sycl_local_fence);
-  val = local_data[0];
-}
-
-template <
-    int SIMD,
-    typename scalar_t,
-    typename item_t,
-    typename Op,
-    typename local_shared>
-scalar_t plane_reduce(
-    item_t item,
-    Op grad_op,
-    int batch_size,
-    int hw,
-    int plane,
-    int sub_group_num,
-    const local_shared& shared) {
-  // first the reductions each thread does separately
-  scalar_t sum_value = static_cast<scalar_t>(0);
-  for (int batch = item.get_local_id(0); batch < batch_size;
-       batch += item.get_local_range(0)) {
-    for (int x = item.get_local_id(1); x < hw; x += item.get_local_range(1)) {
-      auto res = grad_op(batch, plane, x);
-
-      sum_value += res;
-    }
-  }
-  group_reduce<SIMD, scalar_t>(
-      item,
-      sub_group_num,
-      sum_value,
-      scalar_t(0),
-      shared,
-      [](scalar_t a, scalar_t b) { return a + b; });
-  if (item.get_local_linear_id() == 0) {
-    shared[0] = sum_value;
-  }
-  item.barrier(sycl_local_fence);
-  // Everyone picks it up, should be broadcast into the whole grad_input
-  return shared[0];
-}
 
 template <
     int SIMD,
@@ -2205,37 +1737,36 @@ struct BatchNormBackwardReduceKernelFunctor
       return;
     }
 
-    stat_accscalar_t r_mean = mean_ptr_[plane];
-    stat_accscalar_t factor = invstd_ptr_[plane];
+    stat_accscalar_t r_mean = mean_[plane];
+    stat_accscalar_t factor = invstd_[plane];
     GradOp<
         input_scalar_t,
         stat_accscalar_t,
-        decltype(input_ptr_),
-        decltype(i_batch_stride_)>
-        g(r_mean,
-          input_ptr_,
-          grad_output_ptr_,
-          i_batch_stride_,
-          i_plane_stride_,
-          i_feature_stride_,
-          go_batch_stride_,
-          go_plane_stride_,
-          go_feature_stride_);
+        GenericPackedTensorAccessor<
+            input_scalar_t,
+            3,
+            DefaultPtrTraits,
+            index_t>>
+        g(r_mean, input_, grad_output_);
     auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, o_batch_size_, o_feature_size_, plane, sg_num_, local_sum_);
+        item, g, grad_output_, plane, sg_num_, local_sum_);
 
     if (lidx == 0) {
-      if (grad_weight_ptr_ != nullptr) {
-        grad_weight_ptr_[plane] = static_cast<stat_scalar_t>(res.v2 * factor);
+      if (grad_weight_.size(0) > 0) {
+        auto grad_weight = grad_weight_;
+        grad_weight[plane] = static_cast<stat_scalar_t>(res.v2 * factor);
       }
-      if (grad_bias_ptr_ != nullptr) {
-        grad_bias_ptr_[plane] = static_cast<stat_scalar_t>(res.v1);
+      if (grad_bias_.size(0) > 0) {
+        auto grad_bias = grad_bias_;
+        grad_bias[plane] = static_cast<stat_scalar_t>(res.v1);
       }
-      if (sum_dy_ptr_ != nullptr) {
-        sum_dy_ptr_[plane] = static_cast<stat_accscalar_t>(res.v1);
+      if (sum_dy_.size(0) > 0) {
+        auto sum_dy = sum_dy_;
+        sum_dy[plane] = static_cast<stat_accscalar_t>(res.v1);
       }
-      if (sum_dy_xmu_ptr_ != nullptr) {
-        sum_dy_xmu_ptr_[plane] = static_cast<stat_accscalar_t>(res.v2);
+      if (sum_dy_xmu_.size(0) > 0) {
+        auto sum_dy_xmu = sum_dy_xmu_;
+        sum_dy_xmu[plane] = static_cast<stat_accscalar_t>(res.v2);
       }
     }
   }
@@ -2254,20 +1785,40 @@ struct BatchNormBackwardReduceKernelFunctor
       int64_t wg_size,
       int tx,
       int ty,
-      input_scalar_t* input_ptr,
-      input_scalar_t* grad_output_ptr,
-      stat_accscalar_t* mean_ptr,
-      stat_accscalar_t* invstd_ptr,
-      stat_scalar_t* grad_weight_ptr,
-      stat_scalar_t* grad_bias_ptr,
-      stat_accscalar_t* sum_dy_ptr,
-      stat_accscalar_t* sum_dy_xmu_ptr,
-      index_t go_batch_stride,
-      index_t go_plane_stride,
-      index_t go_feature_stride,
-      index_t i_batch_stride,
-      index_t i_plane_stride,
-      index_t i_feature_stride,
+      const GenericPackedTensorAccessor<
+          input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> input,
+      const GenericPackedTensorAccessor<
+          input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> grad_output,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> mean,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> invstd,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy_xmu,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_weight,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_bias,
       int sg_num)
       : numPlane_(numPlane),
         i_batch_size_(i_batch_size),
@@ -2277,20 +1828,14 @@ struct BatchNormBackwardReduceKernelFunctor
         wg_size_(wg_size),
         tx_(tx),
         ty_(ty),
-        input_ptr_(input_ptr),
-        grad_output_ptr_(grad_output_ptr),
-        mean_ptr_(mean_ptr),
-        invstd_ptr_(invstd_ptr),
-        grad_weight_ptr_(grad_weight_ptr),
-        grad_bias_ptr_(grad_bias_ptr),
-        sum_dy_ptr_(sum_dy_ptr),
-        sum_dy_xmu_ptr_(sum_dy_xmu_ptr),
-        go_batch_stride_(go_batch_stride),
-        go_plane_stride_(go_plane_stride),
-        go_feature_stride_(go_feature_stride),
-        i_batch_stride_(i_batch_stride),
-        i_plane_stride_(i_plane_stride),
-        i_feature_stride_(i_feature_stride),
+        input_(input),
+        grad_output_(grad_output),
+        mean_(mean),
+        invstd_(invstd),
+        sum_dy_(sum_dy),
+        sum_dy_xmu_(sum_dy_xmu),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
         sg_num_(sg_num) {}
 
  private:
@@ -2302,20 +1847,30 @@ struct BatchNormBackwardReduceKernelFunctor
   int64_t wg_size_;
   int tx_;
   int ty_;
-  input_scalar_t* input_ptr_;
-  input_scalar_t* grad_output_ptr_;
-  stat_accscalar_t* mean_ptr_;
-  stat_accscalar_t* invstd_ptr_;
-  stat_scalar_t* grad_weight_ptr_;
-  stat_scalar_t* grad_bias_ptr_;
-  stat_accscalar_t* sum_dy_ptr_;
-  stat_accscalar_t* sum_dy_xmu_ptr_;
-  index_t go_batch_stride_;
-  index_t go_plane_stride_;
-  index_t go_feature_stride_;
-  index_t i_batch_stride_;
-  index_t i_plane_stride_;
-  index_t i_feature_stride_;
+  const GenericPackedTensorAccessor<
+      input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      input_;
+  const GenericPackedTensorAccessor<
+      input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      grad_output_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      mean_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      invstd_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      sum_dy_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, DefaultPtrTraits, index_t>
+      sum_dy_xmu_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_weight_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_bias_;
   int sg_num_;
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1> local_sum_;
 };
@@ -2350,26 +1905,31 @@ void batch_norm_backward_reduce_kernel(
   ty = std::max(1, ty);
   sycl::range<2> local_range(ty, tx);
   sycl::range<2> global_range(numPlane * ty, tx);
-  auto input_ptr = input.data_ptr<input_scalar_t>();
-  auto grad_output_ptr = grad_output.data_ptr<input_scalar_t>();
-  auto mean_ptr = mean.data_ptr<stat_accscalar_t>();
-  auto invstd_ptr = invstd.data_ptr<stat_accscalar_t>();
-  stat_scalar_t* grad_weight_ptr =
-      grad_weight.size(0) > 0 ? grad_weight.data_ptr<stat_scalar_t>() : nullptr;
-  stat_scalar_t* grad_bias_ptr =
-      grad_bias.size(0) > 0 ? grad_bias.data_ptr<stat_scalar_t>() : nullptr;
-  stat_accscalar_t* sum_dy_ptr =
-      sum_dy.size(0) > 0 ? sum_dy.data_ptr<stat_accscalar_t>() : nullptr;
-  stat_accscalar_t* sum_dy_xmu_ptr = sum_dy_xmu.size(0) > 0
-      ? sum_dy_xmu.data_ptr<stat_accscalar_t>()
-      : nullptr;
 
-  index_t go_batch_stride = grad_output.stride(0);
-  index_t go_plane_stride = grad_output.stride(1);
-  index_t go_feature_stride = grad_output.stride(2);
-  index_t i_batch_stride = input.stride(0);
-  index_t i_plane_stride = input.stride(1);
-  index_t i_feature_stride = input.stride(2);
+  auto input_pa =
+      get_packed_accessor<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          input, "input");
+  auto grad_output_pa =
+      get_packed_accessor<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          grad_output, "grad_output");
+  auto grad_weight_pa =
+      packed_accessor_or_dummy<stat_scalar_t, 1, DefaultPtrTraits, index_t>(
+          grad_weight, "grad_weight");
+  auto grad_bias_pa =
+      packed_accessor_or_dummy<stat_scalar_t, 1, DefaultPtrTraits, index_t>(
+          grad_bias, "grad_bias");
+  auto mean_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          mean, "mean");
+  auto invstd_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          invstd, "invstd");
+  auto sum_dy_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          sum_dy, "sum_dy");
+  auto sum_dy_xmu_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          sum_dy_xmu, "sum_dy_xmu");
 
   int sg_num = tx * ty / SIMD;
   auto caller = BatchNormBackwardReduceKernelFunctor<
@@ -2386,20 +1946,14 @@ void batch_norm_backward_reduce_kernel(
       wg_size,
       tx,
       ty,
-      input_ptr,
-      grad_output_ptr,
-      mean_ptr,
-      invstd_ptr,
-      grad_weight_ptr,
-      grad_bias_ptr,
-      sum_dy_ptr,
-      sum_dy_xmu_ptr,
-      go_batch_stride,
-      go_plane_stride,
-      go_feature_stride,
-      i_batch_stride,
-      i_plane_stride,
-      i_feature_stride,
+      input_pa,
+      grad_output_pa,
+      mean_pa,
+      invstd_pa,
+      sum_dy_pa,
+      sum_dy_xmu_pa,
+      grad_weight_pa,
+      grad_bias_pa,
       sg_num);
   sycl_kernel_submit(global_range, local_range, queue, caller);
 }
@@ -4092,6 +3646,531 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_out_kernel(
   batch_norm_elementwise(
       output, self, weight_opt, bias_opt, save_mean, save_invstd);
   return std::tuple<Tensor&, Tensor&, Tensor&>(output, save_mean, save_invstd);
+}
+
+// ====================== native_batch_norm_bw ======================
+
+template <
+    int SIMD,
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t,
+    typename accscalar_t>
+struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<2> item) const {
+    index_t plane = item.get_group(0);
+    auto lix = item.get_local_id(1);
+    auto liy = item.get_local_id(0);
+    auto local_range_y = item.get_local_range(0);
+    auto local_range_x = item.get_local_range(1);
+
+    stat_accscalar_t mean, invstd;
+    if (train_) {
+      mean = save_mean_[plane];
+      invstd = save_invstd_[plane];
+    } else {
+      mean = static_cast<stat_accscalar_t>(running_mean_[plane]);
+      invstd =
+          static_cast<stat_accscalar_t>(1) /
+          std::sqrt(
+              static_cast<stat_accscalar_t>(running_var_[plane]) + epsilon_);
+    }
+
+    stat_accscalar_t weight_val = weight_.size(0) > 0
+        ? static_cast<stat_accscalar_t>(weight_[plane])
+        : stat_accscalar_t(1);
+    stat_accscalar_t norm = stat_accscalar_t(1) / numel_;
+
+    // Compute two values across (batch, x/y/z) in one pass:
+    // 1. Sum(grad_output)
+    // 2. DotProduct(input - mean, grad_output)
+    GradOp<
+        input_scalar_t,
+        stat_accscalar_t,
+        GenericPackedTensorAccessor<
+            const input_scalar_t,
+            3,
+            DefaultPtrTraits,
+            index_t>>
+        g(mean, input_, grad_output_);
+    auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
+        item, g, grad_output_, plane, sg_num_, local_sum_);
+
+    stat_accscalar_t grad_output_sum = res.v1;
+    stat_accscalar_t dot_p = res.v2;
+
+    stat_accscalar_t grad_mean = grad_output_sum * norm;
+    stat_accscalar_t proj_scale = dot_p * norm * invstd * invstd;
+    stat_accscalar_t grad_scale = invstd * weight_val;
+
+    auto grad_input = grad_input_;
+
+    if (grad_input_.data() != nullptr) {
+      for (int batch = liy; batch < N_; batch += local_range_y) {
+        for (int x = lix; x < Hw_; x += local_range_x) {
+          input_scalar_t go = grad_output_[batch][plane][x];
+          if (train_) {
+            stat_accscalar_t inp = input_[batch][plane][x];
+            stat_accscalar_t proj = (inp - mean) * proj_scale;
+            grad_input[batch][plane][x] = static_cast<input_scalar_t>(
+                (go - proj - grad_mean) * grad_scale);
+          } else {
+            grad_input[batch][plane][x] =
+                static_cast<input_scalar_t>(go * grad_scale);
+          }
+        }
+      }
+    }
+
+    if (grad_weight_.size(0) > 0) {
+      if (lix == 0) {
+        auto grad_weight = grad_weight_;
+        grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
+      }
+    }
+
+    if (grad_bias_.size(0) > 0) {
+      if (lix == 0) {
+        auto grad_bias = grad_bias_;
+        grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1>(
+        sycl::range<1>{(size_t)work_group_size_x_ * work_group_size_y_}, cgh);
+  }
+
+  BatchNormBackwardKernelFunctor(
+      bool train,
+      stat_accscalar_t epsilon,
+      int N,
+      int numPlane,
+      int Hw,
+      index_t numel,
+      int64_t wg_size,
+      int64_t work_group_size_x,
+      int64_t work_group_size_y,
+      int sg_num,
+      const GenericPackedTensorAccessor<
+          const input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> input,
+      const GenericPackedTensorAccessor<
+          const input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> grad_output,
+      GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
+          grad_input,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_weight,
+      GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+          grad_bias,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> weight,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> running_mean,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> running_var,
+      const GenericPackedTensorAccessor<
+          const stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> save_mean,
+      const GenericPackedTensorAccessor<
+          const stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> save_invstd)
+      : train_(train),
+        epsilon_(epsilon),
+        N_(N),
+        numPlane_(numPlane),
+        Hw_(Hw),
+        numel_(numel),
+        wg_size_(wg_size),
+        work_group_size_x_(work_group_size_x),
+        work_group_size_y_(work_group_size_y),
+        sg_num_(sg_num),
+        input_(input),
+        grad_output_(grad_output),
+        grad_input_(grad_input),
+        grad_weight_(grad_weight),
+        grad_bias_(grad_bias),
+        weight_(weight),
+        running_mean_(running_mean),
+        running_var_(running_var),
+        save_mean_(save_mean),
+        save_invstd_(save_invstd) {}
+
+ private:
+  bool train_;
+  stat_accscalar_t epsilon_;
+  int N_;
+  int numPlane_;
+  int Hw_;
+  index_t numel_;
+  int64_t wg_size_;
+  int64_t work_group_size_x_;
+  int64_t work_group_size_y_;
+  int sg_num_;
+  const GenericPackedTensorAccessor<
+      const input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      input_;
+  const GenericPackedTensorAccessor<
+      const input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      grad_output_;
+  GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
+      grad_input_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_weight_;
+  GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      grad_bias_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      weight_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      running_mean_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      running_var_;
+  const GenericPackedTensorAccessor<
+      const stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      save_mean_;
+  const GenericPackedTensorAccessor<
+      const stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      save_invstd_;
+  sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1> local_sum_;
+};
+
+template <
+    int SIMD,
+    typename input_scalar_t,
+    typename stat_scalar_t,
+    typename stat_accscalar_t,
+    typename index_t>
+void batch_norm_backward_kernel_impl(
+    const Tensor& input,
+    const Tensor& grad_output,
+    Tensor& grad_input,
+    Tensor& grad_weight,
+    Tensor& grad_bias,
+    const Tensor& weight,
+    const Tensor& running_mean,
+    const Tensor& running_var,
+    const Tensor& save_mean,
+    const Tensor save_invstd,
+    bool train,
+    stat_accscalar_t epsilon) {
+  using accscalar_t = acc_type<stat_scalar_t, true>;
+  auto& queue = getCurrentSYCLQueue();
+  auto N = grad_output.size(0);
+  auto numPlane = grad_output.size(1);
+  auto Hw = grad_output.size(2);
+  index_t numel = grad_output.size(0) * grad_output.size(2);
+
+  int64_t wg_size = get_prefer_wg_size(N * Hw, SIMD);
+
+  int64_t work_group_size_x = get_num_threads(Hw, wg_size);
+  int64_t work_group_size_y = std::max(int64_t(1), wg_size / work_group_size_x);
+  int sg_num = work_group_size_x * work_group_size_y / SIMD;
+
+  auto input_pa =
+      get_packed_accessor<const input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          input, "input");
+  auto grad_output_pa =
+      get_packed_accessor<const input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          grad_output, "grad_output");
+  auto grad_input_pa =
+      packed_accessor_or_dummy<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          grad_input, "grad_input");
+  auto weight_pa = packed_accessor_or_dummy<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>(weight, "weight");
+  auto grad_weight_pa =
+      packed_accessor_or_dummy<stat_scalar_t, 1, DefaultPtrTraits, index_t>(
+          grad_weight, "grad_weight");
+  auto grad_bias_pa =
+      packed_accessor_or_dummy<stat_scalar_t, 1, DefaultPtrTraits, index_t>(
+          grad_bias, "grad_bias");
+  auto running_mean_pa = packed_accessor_or_dummy<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>(running_mean, "running_mean");
+  auto running_var_pa = packed_accessor_or_dummy<
+      const stat_scalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>(running_var, "running_var");
+  auto save_mean_pa =
+      packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
+          save_mean, "save_mean");
+  auto save_invstd_pa =
+      packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
+          save_invstd, "save_invstd");
+
+  auto caller = BatchNormBackwardKernelFunctor<
+      SIMD,
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      index_t,
+      accscalar_t>(
+      train,
+      epsilon,
+      N,
+      numPlane,
+      Hw,
+      numel,
+      wg_size,
+      work_group_size_x,
+      work_group_size_y,
+      sg_num,
+      input_pa,
+      grad_output_pa,
+      grad_input_pa,
+      grad_weight_pa,
+      grad_bias_pa,
+      weight_pa,
+      running_mean_pa,
+      running_var_pa,
+      save_mean_pa,
+      save_invstd_pa);
+
+  auto global_range =
+      sycl::range<2>(numPlane * work_group_size_y, work_group_size_x);
+  auto local_range = sycl::range<2>(work_group_size_y, work_group_size_x);
+  sycl_kernel_submit(global_range, local_range, queue, caller);
+}
+
+template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
+std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
+    const Tensor& grad_out_,
+    const Tensor& input_,
+    const Tensor& weight_,
+    const Tensor& running_mean_,
+    const Tensor& running_var_,
+    const Tensor& save_mean_,
+    const Tensor& save_invstd_,
+    bool train,
+    double epsilon,
+    std::array<bool, 3> grad_input_mask) {
+  using accscalar_t = acc_type<stat_scalar_t, true>;
+  Tensor grad_input_;
+  Tensor grad_input_reshaped;
+  Tensor grad_weight_;
+  Tensor grad_bias_;
+  auto input_reshaped = input_.reshape({input_.size(0), input_.size(1), -1});
+  auto grad_output_reshaped = grad_out_.reshape(input_reshaped.sizes());
+
+  if (grad_input_mask[0]) {
+    grad_input_ = at::empty_like(input_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+    grad_input_reshaped = grad_input_.view(input_reshaped.sizes());
+  }
+  if (grad_input_mask[1]) {
+    grad_weight_ = at::empty_like(weight_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  }
+  if (grad_input_mask[2]) {
+    grad_bias_ = at::empty_like(weight_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  }
+
+  int simd = get_prefer_simd(
+      input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
+  if (simd == SIMD32) {
+    batch_norm_backward_kernel_impl<
+        SIMD32,
+        input_scalar_t,
+        stat_scalar_t,
+        accscalar_t,
+        index_t>(
+        input_reshaped,
+        grad_output_reshaped,
+        grad_input_reshaped,
+        grad_weight_,
+        grad_bias_,
+        weight_,
+        running_mean_,
+        running_var_,
+        save_mean_,
+        save_invstd_,
+        train,
+        epsilon);
+  } else {
+    batch_norm_backward_kernel_impl<
+        SIMD16,
+        input_scalar_t,
+        stat_scalar_t,
+        accscalar_t,
+        index_t>(
+        input_reshaped,
+        grad_output_reshaped,
+        grad_input_reshaped,
+        grad_weight_,
+        grad_bias_,
+        weight_,
+        running_mean_,
+        running_var_,
+        save_mean_,
+        save_invstd_,
+        train,
+        epsilon);
+  }
+  return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
+}
+
+std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
+    const Tensor& grad_out,
+    const Tensor& input,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& running_mean_opt,
+    const c10::optional<Tensor>& running_var_opt,
+    const c10::optional<Tensor>& save_mean_opt,
+    const c10::optional<Tensor>& save_invstd_opt,
+    bool train,
+    double epsilon,
+    std::array<bool, 3> grad_input_mask) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> weight = at::borrow_from_optional_tensor(weight_opt);
+  c10::MaybeOwned<Tensor> save_mean =
+      at::borrow_from_optional_tensor(save_mean_opt);
+  c10::MaybeOwned<Tensor> save_invstd =
+      at::borrow_from_optional_tensor(save_invstd_opt);
+  c10::MaybeOwned<Tensor> running_mean =
+      at::borrow_from_optional_tensor(running_mean_opt);
+  c10::MaybeOwned<Tensor> running_var =
+      at::borrow_from_optional_tensor(running_var_opt);
+
+  const bool needs_reduction =
+      train || grad_input_mask[1] || grad_input_mask[2];
+
+  // Fused reduction & elementwise kernel
+  if (needs_reduction && grad_input_mask[0] &&
+      !batch_norm_use_channels_last_kernels(input) &&
+      canUse32BitIndexMath(input) && canUse32BitIndexMath(grad_out)) {
+    return AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "batch_norm_backward_xpu", [&] {
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          const bool mixed_type =
+              is_mixed_type(input, *weight, *running_mean, *running_var);
+          if (mixed_type) {
+            return batch_norm_backward_template<scalar_t, accscalar_t, int32_t>(
+                grad_out,
+                input,
+                *weight,
+                *running_mean,
+                *running_var,
+                *save_mean,
+                *save_invstd,
+                train,
+                epsilon,
+                grad_input_mask);
+          } else {
+            return batch_norm_backward_template<scalar_t, scalar_t, int32_t>(
+                grad_out,
+                input,
+                *weight,
+                *running_mean,
+                *running_var,
+                *save_mean,
+                *save_invstd,
+                train,
+                epsilon,
+                grad_input_mask);
+          }
+        });
+  }
+
+  const auto acc_type = at::toAccumulateType(input.scalar_type(), true);
+  Tensor mean;
+  TORCH_INTERNAL_ASSERT(
+      save_mean->defined(), "save_mean should always be defined\n");
+  if (save_mean->numel() != 0) {
+    mean = *save_mean;
+  } else if (needs_reduction) {
+    TORCH_CHECK(!train && running_mean->defined());
+    mean = (running_mean->scalar_type() == acc_type)
+        ? *running_mean
+        : running_mean->to(acc_type);
+  }
+
+  Tensor invstd;
+  TORCH_INTERNAL_ASSERT(
+      save_invstd->defined(), "save_invstd should always be defined\n");
+  if (save_invstd->numel() != 0) {
+    invstd = *save_invstd;
+  } else {
+    TORCH_CHECK(!train && running_var->defined());
+    auto n_channels = input.sizes()[1];
+    invstd = at::empty({n_channels}, input.options().dtype(acc_type));
+    batch_norm_calc_invstd(invstd, *running_var, epsilon);
+  }
+
+  Tensor sum_dy, sum_dy_xmu, grad_weight, grad_bias;
+  if (needs_reduction) {
+    std::tie(sum_dy, sum_dy_xmu, grad_weight, grad_bias) =
+        batch_norm_backward_reduce(
+            grad_out,
+            input,
+            mean,
+            invstd,
+            *weight,
+            grad_input_mask[0],
+            grad_input_mask[1],
+            grad_input_mask[2]);
+  }
+
+  Tensor grad_input;
+  if (grad_input_mask[0]) {
+    if (train) {
+      // NOTE: sum_dy and sum_dy_xmy are defined, as train implies
+      // needs_reduction grad_input = batch_norm_elementwise_backward_train(
+      //     grad_out, input, mean, invstd, *weight, sum_dy, sum_dy_xmu);
+    } else {
+      // grad_input = batch_norm_elementwise_backward_eval(
+      //     grad_out, input, invstd, *weight);
+    }
+  }
+
+  return std::make_tuple(grad_input, grad_weight, grad_bias);
 }
 
 } // namespace xpu
