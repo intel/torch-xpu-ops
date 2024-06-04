@@ -804,7 +804,7 @@ void gpu_kernel_multiple_outputs_impl(
 template <typename func_t>
 void gpu_kernel_multiple_outputs(TensorIteratorBase& iter, const func_t& f) {
   for (int arg = 0; arg < iter.ntensors(); arg++) {
-    TORCH_INTERNAL_ASSERT(iter.device(arg).is_cuda());
+    TORCH_INTERNAL_ASSERT(iter.device(arg).is_xpu());
   }
 
   if (iter.numel() == 0) {

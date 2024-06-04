@@ -1,8 +1,10 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUContext.h>
 #include <aten/Resize.h>
@@ -17,6 +19,42 @@ namespace xpu {
 
 #define SIMD32 32
 #define SIMD16 16
+
+template <
+    typename scalar_t,
+    int64_t dim,
+    template <typename U> class PtrTraits = DefaultPtrTraits,
+    typename index_t = int64_t>
+static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
+get_packed_accessor(const Tensor& t, c10::string_view var_name) {
+  constexpr auto expect_type = c10::CppTypeToScalarType<
+      typename std::remove_const<scalar_t>::type>::value;
+  const auto actual_type = t.scalar_type();
+  TORCH_CHECK(
+      actual_type == expect_type,
+      "Expected ",
+      var_name,
+      " to have type ",
+      expect_type,
+      " but got ",
+      actual_type);
+  return t.generic_packed_accessor<scalar_t, dim, PtrTraits, index_t>();
+}
+
+template <
+    typename scalar_t,
+    int64_t dim,
+    template <typename U> class PtrTraits = DefaultPtrTraits,
+    typename index_t = int64_t>
+static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
+packed_accessor_or_dummy(const Tensor& t, c10::string_view var_name) {
+  if (!t.defined()) {
+    const std::array<index_t, dim> zeros{{0}};
+    return GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>(
+        nullptr, zeros.data(), zeros.data());
+  }
+  return get_packed_accessor<scalar_t, dim, PtrTraits, index_t>(t, var_name);
+}
 
 inline bool batch_norm_use_channels_last_kernels(const at::Tensor& self) {
   return (
@@ -44,8 +82,8 @@ struct Var {
 };
 
 static int get_num_threads(int nElem, int max_size) {
-  int threadSizes[6] = {16, 32, 64, 128, 256, max_size};
-  for (int i = 0; i < 6; ++i) {
+  int threadSizes[5] = {32, 64, 128, 256, max_size};
+  for (int i = 0; i < 5; ++i) {
     if (nElem <= threadSizes[i]) {
       return threadSizes[i];
     }
@@ -100,7 +138,8 @@ template <
     typename VarTransform,
     typename input_scalar_t,
     typename stat_scalar_t,
-    typename stat_accscalar_t>
+    typename stat_accscalar_t,
+    typename index_t>
 struct BatchNormCollectStatisticsKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
@@ -128,8 +167,7 @@ struct BatchNormCollectStatisticsKernelFunctor
          batch += item.get_local_range(0)) {
       for (int x = item.get_local_id(1); x < Hw_;
            x += item.get_local_range(1)) {
-        auto offset = batch * batch_stride_ + plane * Hw_ + x;
-        stat_accscalar_t v = input_[offset];
+        stat_accscalar_t v = input_[batch][plane][x];
         stat_accscalar_t d1 = v - avg;
         n++;
         avg += d1 / n;
@@ -183,12 +221,14 @@ struct BatchNormCollectStatisticsKernelFunctor
     }
 
     // Save the mean, variance, and moving averages
+    auto save_mean = save_mean_;
+    auto save_transformed_var = save_transformed_var_;
     if (tid == 0) {
-      if (save_mean_ != nullptr) {
-        save_mean_[plane] = avg;
+      if (save_mean_.data() != NULL) {
+        save_mean[plane] = avg;
       }
-      if (save_transformed_var_ != nullptr) {
-        save_transformed_var_[plane] =
+      if (save_transformed_var_.data() != NULL) {
+        save_transformed_var[plane] =
             VarTransform{}(var_n / (N_ * Hw_), epsilon_);
       }
     }
@@ -205,11 +245,23 @@ struct BatchNormCollectStatisticsKernelFunctor
       int N,
       int numPlane,
       int Hw,
-      const input_scalar_t* input,
+      const GenericPackedTensorAccessor<
+          const input_scalar_t,
+          3,
+          RestrictPtrTraits,
+          index_t> input,
       const stat_accscalar_t epsilon,
       const stat_accscalar_t momentum,
-      stat_accscalar_t* save_mean,
-      stat_accscalar_t* save_transformed_var,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> save_mean,
+      GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> save_transformed_var,
       int64_t sg_num,
       int batch_stride)
       : N_(N),
@@ -227,11 +279,18 @@ struct BatchNormCollectStatisticsKernelFunctor
   int N_;
   int numPlane_;
   int Hw_;
-  const input_scalar_t* input_;
+  const GenericPackedTensorAccessor<
+      const input_scalar_t,
+      3,
+      RestrictPtrTraits,
+      index_t>
+      input_;
   const stat_accscalar_t epsilon_;
   const stat_accscalar_t momentum_;
-  stat_accscalar_t* save_mean_;
-  stat_accscalar_t* save_transformed_var_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
+      save_mean_;
+  GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
+      save_transformed_var_;
   int64_t sg_num_;
   int batch_stride_;
   sycl_local_acc_t<stat_accscalar_t, 1> shared_n_;
@@ -246,15 +305,21 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 void batch_norm_collect_statistics_kernel(
-    int N,
-    int numPlane,
-    int Hw,
-    const input_scalar_t* input,
+    const GenericPackedTensorAccessor<
+        const input_scalar_t,
+        3,
+        RestrictPtrTraits,
+        index_t> input,
     const stat_accscalar_t epsilon,
     const stat_accscalar_t momentum,
-    stat_accscalar_t* save_mean,
-    stat_accscalar_t* save_transformed_var) {
+    GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
+        save_mean,
+    GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
+        save_transformed_var) {
   auto& queue = getCurrentSYCLQueue();
+  auto N = input.size(0);
+  auto numPlane = input.size(1);
+  auto Hw = input.size(2);
   int64_t wg_size = get_prefer_wg_size(N * Hw, SIMD);
   int64_t work_group_size_x = get_num_threads(Hw, wg_size);
   int64_t work_group_size_y = std::max(int64_t(1), wg_size / work_group_size_x);
@@ -266,7 +331,8 @@ void batch_norm_collect_statistics_kernel(
       VarTransform,
       input_scalar_t,
       stat_scalar_t,
-      stat_accscalar_t>(
+      stat_accscalar_t,
+      index_t>(
       N,
       numPlane,
       Hw,
@@ -299,22 +365,32 @@ void batch_norm_stats_template(
       {input_.size(0),
        input_.size(1),
        -1}); // internally we merge the feature dimensions
+
   int N = input_reshaped.size(0);
   int C = input_reshaped.size(1);
   int Hw = input_reshaped.size(2);
+  int simd = get_prefer_simd(C, N * Hw);
 
   at::native::resize_output(out_mean, {n_input});
   at::native::resize_output(out_invstd, {n_input});
+
+  auto input =
+      get_packed_accessor<const scalar_t, 3, RestrictPtrTraits, index_t>(
+          input_reshaped, "input");
+
   TORCH_INTERNAL_ASSERT(
       out_invstd.dim() == 1 && out_invstd.is_contiguous() &&
       out_invstd.sizes()[0]);
   TORCH_INTERNAL_ASSERT(
       out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
 
-  auto input_ptr = input_reshaped.data_ptr<scalar_t>();
-  auto mean_ptr = out_mean.data_ptr<accscalar_t>();
-  auto invstd_ptr = out_invstd.data_ptr<accscalar_t>();
-  int simd = get_prefer_simd(C, N * Hw);
+  auto mean =
+      packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
+          out_mean, "out_mean");
+  auto invstd =
+      packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
+          out_invstd, "out_invstd");
+
   if (simd == SIMD32) {
     batch_norm_collect_statistics_kernel<
         SIMD32,
@@ -322,7 +398,7 @@ void batch_norm_stats_template(
         scalar_t,
         scalar_t,
         accscalar_t,
-        index_t>(N, C, Hw, input_ptr, epsilon, 0.0, mean_ptr, invstd_ptr);
+        index_t>(input, epsilon, 0.0, mean, invstd);
   } else {
     batch_norm_collect_statistics_kernel<
         SIMD16,
@@ -330,7 +406,7 @@ void batch_norm_stats_template(
         scalar_t,
         scalar_t,
         accscalar_t,
-        index_t>(N, C, Hw, input_ptr, epsilon, 0.0, mean_ptr, invstd_ptr);
+        index_t>(input, epsilon, 0.0, mean, invstd);
   }
 }
 
@@ -893,32 +969,32 @@ struct BatchNormTransformInputKernelFunctor {
       return;
     }
 
-    stat_accscalar_t gamma = weight_ptr_ != nullptr
-        ? static_cast<stat_accscalar_t>(weight_ptr_[plane])
+    stat_accscalar_t gamma = weight_.size(0) > 0
+        ? static_cast<stat_accscalar_t>(weight_[plane])
         : static_cast<stat_accscalar_t>(1);
-    stat_accscalar_t beta = bias_ptr_ != nullptr
-        ? static_cast<stat_accscalar_t>(bias_ptr_[plane])
+    stat_accscalar_t beta = bias_.size(0) > 0
+        ? static_cast<stat_accscalar_t>(bias_[plane])
         : static_cast<stat_accscalar_t>(0);
 
-    stat_accscalar_t mean = static_cast<stat_accscalar_t>(mean_ptr_[plane]);
+    stat_accscalar_t mean = static_cast<stat_accscalar_t>(mean_[plane]);
     stat_accscalar_t invstd;
     if constexpr (train) {
-      invstd = var_or_invstd_ptr_[plane];
+      invstd = var_or_invstd_[plane];
     } else {
-      invstd = static_cast<stat_accscalar_t>(1) /
+      invstd =
+          static_cast<stat_accscalar_t>(1) /
           std::sqrt(
-                   static_cast<stat_accscalar_t>(var_or_invstd_ptr_[plane]) +
-                   epsilon_);
+              static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
     index_t bstep = item.get_global_range(0);
     for (index_t batch = item.get_global_id(0); batch < bs_; batch += bstep) {
-      auto batch_offset = batch * numPlane_ * fs_ + plane * fs_;
+      auto o = output_[batch][plane];
+      auto i = input_[batch][plane];
       for (index_t feature = item.get_local_id(1); feature < fs_;
            feature += item.get_local_range(1)) {
-        output_ptr_[batch_offset + feature] = static_cast<input_scalar_t>(
-            gamma * (input_ptr_[batch_offset + feature] - mean) * invstd +
-            beta);
+        o[feature] = static_cast<input_scalar_t>(
+            gamma * (i[feature] - mean) * invstd + beta);
       }
     }
   }
@@ -934,12 +1010,35 @@ struct BatchNormTransformInputKernelFunctor {
       int bias_size,
       int tf,
       int tb,
-      input_scalar_t* input_ptr,
-      input_scalar_t* output_ptr,
-      stat_scalar_t* weight_ptr,
-      stat_scalar_t* bias_ptr,
-      stat_accscalar_t* mean_ptr,
-      stat_accscalar_t* var_or_invstd_ptr)
+      const GenericPackedTensorAccessor<
+          const input_scalar_t,
+          3,
+          RestrictPtrTraits,
+          index_t> input,
+      GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
+          output,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> weight,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> bias,
+      const GenericPackedTensorAccessor<
+          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
+              type,
+          1,
+          RestrictPtrTraits,
+          index_t> mean,
+      const GenericPackedTensorAccessor<
+          typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
+              type,
+          1,
+          RestrictPtrTraits,
+          index_t> var_or_invstd)
       : epsilon_(epsilon),
         numPlane_(numPlane),
         target_tile_size_(target_tile_size),
@@ -950,12 +1049,12 @@ struct BatchNormTransformInputKernelFunctor {
         bias_size_(bias_size),
         tf_(tf),
         tb_(tb),
-        input_ptr_(input_ptr),
-        output_ptr_(output_ptr),
-        weight_ptr_(weight_ptr),
-        bias_ptr_(bias_ptr),
-        mean_ptr_(mean_ptr),
-        var_or_invstd_ptr_(var_or_invstd_ptr) {}
+        input_(input),
+        output_(output),
+        weight_(weight),
+        bias_(bias),
+        mean_(mean),
+        var_or_invstd_(var_or_invstd) {}
 
  private:
   stat_accscalar_t epsilon_;
@@ -968,12 +1067,38 @@ struct BatchNormTransformInputKernelFunctor {
   int bias_size_;
   int tf_;
   int tb_;
-  input_scalar_t* input_ptr_;
-  input_scalar_t* output_ptr_;
-  stat_scalar_t* weight_ptr_;
-  stat_scalar_t* bias_ptr_;
-  stat_accscalar_t* mean_ptr_;
-  stat_accscalar_t* var_or_invstd_ptr_;
+  const GenericPackedTensorAccessor<
+      const input_scalar_t,
+      3,
+      RestrictPtrTraits,
+      index_t>
+      input_;
+  GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
+      output_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      weight_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      bias_;
+  const GenericPackedTensorAccessor<
+      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      mean_;
+  const GenericPackedTensorAccessor<
+      typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      var_or_invstd_;
 };
 
 template <
@@ -1008,13 +1133,28 @@ void batch_norm_transform_input_kernel(
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range((bs + tb - 1) / tb * tb, numPlane * tf);
 
-  auto input_ptr = input.data_ptr<input_scalar_t>();
-  auto output_ptr = output.data_ptr<input_scalar_t>();
-  auto weight_ptr =
-      weight.defined() ? weight.data_ptr<stat_scalar_t>() : nullptr;
-  auto bias_ptr = bias.defined() ? bias.data_ptr<stat_scalar_t>() : nullptr;
-  auto mean_ptr = mean_.data_ptr<stat_accscalar_t>();
-  auto var_or_invstd_ptr = var_or_invstd.data_ptr<stat_accscalar_t>();
+  auto input_pa =
+      get_packed_accessor<const input_scalar_t, 3, RestrictPtrTraits, index_t>(
+          input, "input");
+  auto output_pa =
+      get_packed_accessor<input_scalar_t, 3, RestrictPtrTraits, index_t>(
+          output, "output");
+  auto weight_pa = packed_accessor_or_dummy<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>(weight, "weight");
+  auto bias_pa = packed_accessor_or_dummy<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>(bias, "bias");
+  auto mean_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, RestrictPtrTraits, index_t>(
+          mean_, "mean");
+  auto invstd_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, RestrictPtrTraits, index_t>(
+          var_or_invstd, "invstd");
 
   auto caller = BatchNormTransformInputKernelFunctor<
       input_scalar_t,
@@ -1032,19 +1172,19 @@ void batch_norm_transform_input_kernel(
       bias_size,
       tf,
       tb,
-      input_ptr,
-      output_ptr,
-      weight_ptr,
-      bias_ptr,
-      mean_ptr,
-      var_or_invstd_ptr);
+      input_pa,
+      output_pa,
+      weight_pa,
+      bias_pa,
+      mean_pa,
+      invstd_pa);
 
   sycl_kernel_submit(global_range, local_range, queue, caller);
 }
 
 template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
 void batch_norm_elemt_template(
-    Tensor& output_,
+    const Tensor& output_,
     const Tensor& input_,
     const Tensor& weight_,
     const Tensor& bias_,
@@ -1232,7 +1372,7 @@ void batch_norm_transform_input_channels_last_kernel(
 }
 
 void batch_norm_elemt_channels_last_template(
-    Tensor& output,
+    const Tensor& output,
     const at::Tensor& input,
     const at::Tensor& weight,
     const at::Tensor& shift, // bias of BN
@@ -3696,6 +3836,262 @@ std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
         save_mean, save_var, *running_mean, *running_var, momentum, N);
   }
   return std::tuple<Tensor, Tensor>(save_mean, save_var);
+}
+
+// ====================== native_batch_norm ======================
+
+template <typename scalar_t, typename acc_t>
+struct BatchNormUpdateStatsAndInvertFunctor {
+  std::tuple<scalar_t, scalar_t, acc_t> operator()(
+      acc_t mean,
+      acc_t var,
+      scalar_t running_mean,
+      scalar_t running_var) const {
+    const auto unbiased_var = var * bessel_correction_factor_;
+    return std::tuple<scalar_t, scalar_t, acc_t>{
+        mean * momentum_ + (1 - momentum_) * running_mean,
+        unbiased_var * momentum_ + (1 - momentum_) * running_var,
+        c10::xpu::compat::rsqrt(var + eps_)};
+  }
+
+  BatchNormUpdateStatsAndInvertFunctor(
+      const acc_t bessel_correction_factor,
+      const acc_t eps,
+      const acc_t momentum)
+      : bessel_correction_factor_(bessel_correction_factor),
+        eps_(eps),
+        momentum_(momentum) {}
+
+ private:
+  const acc_t bessel_correction_factor_;
+  const acc_t eps_;
+  const acc_t momentum_;
+};
+
+void batch_norm_update_stats_and_invert(
+    const Tensor& save_mean,
+    const Tensor& save_var,
+    const Tensor& running_mean,
+    const Tensor& running_var,
+    double momentum_,
+    double epsilon,
+    int64_t N) {
+  auto iter = TensorIteratorConfig()
+                  .add_output(running_mean)
+                  .add_output(running_var)
+                  .add_output(save_var)
+                  .add_const_input(save_mean)
+                  .add_input(save_var)
+                  .add_input(running_mean)
+                  .add_input(running_var)
+                  .check_all_same_dtype(false)
+                  .promote_inputs_to_common_dtype(false)
+                  .build();
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      running_mean.scalar_type(),
+      "batch_norm_update_stats_and_invert_xpu",
+      [&] {
+        using acc_t = acc_type<scalar_t, true>;
+        const auto bessel_correction_factor = static_cast<acc_t>(
+            static_cast<double>(N) / static_cast<double>(N - 1));
+        const auto eps = static_cast<acc_t>(epsilon);
+        const auto momentum = static_cast<acc_t>(momentum_);
+        BatchNormUpdateStatsAndInvertFunctor<scalar_t, acc_t> f(
+            bessel_correction_factor, eps, momentum);
+        gpu_kernel_multiple_outputs(iter, f);
+      });
+}
+
+template <typename scalar_t, typename acc_t>
+struct BatchNormCalcInvstdFunctor {
+  acc_t operator()(scalar_t var) const {
+    return c10::xpu::compat::rsqrt(var + eps_);
+  }
+
+  BatchNormCalcInvstdFunctor(acc_t eps) : eps_(eps) {}
+
+ private:
+  acc_t eps_;
+};
+
+void batch_norm_calc_invstd(
+    const Tensor& out_invstd,
+    const Tensor& running_var,
+    double epsilon) {
+  auto iter = TensorIteratorConfig()
+                  .add_output(out_invstd)
+                  .add_input(running_var)
+                  .check_all_same_dtype(false)
+                  .build();
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      running_var.scalar_type(),
+      "batch_norm_invert_std_xpu",
+      [&] {
+        using acc_t = at::acc_type<scalar_t, true>;
+        auto eps = static_cast<acc_t>(epsilon);
+        BatchNormCalcInvstdFunctor<scalar_t, acc_t> f(eps);
+        gpu_kernel(iter, f);
+      });
+}
+
+template <typename scalar_t, typename acc_t>
+struct BatchNormElementwiseFunctor {
+  scalar_t operator()(
+      scalar_t input,
+      acc_t weight,
+      acc_t bias,
+      acc_t mean,
+      acc_t invstd) const {
+    return ((input - mean) * invstd) * weight + bias;
+  }
+};
+
+void batch_norm_elementwise(
+    const Tensor& out,
+    const Tensor& self,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& bias_opt,
+    const Tensor& mean_,
+    const Tensor& invstd_) {
+  switch (batch_norm_choose_impl(self)) {
+    case Impl::Contiguous: {
+      c10::MaybeOwned<Tensor> weight =
+          at::borrow_from_optional_tensor(weight_opt);
+      c10::MaybeOwned<Tensor> bias = at::borrow_from_optional_tensor(bias_opt);
+      resize_output(out, self.sizes());
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kBFloat16,
+          kHalf,
+          self.scalar_type(),
+          "batch_norm_elementwise_xpu",
+          [&] {
+            using accscalar_t = at::acc_type<scalar_t, true>;
+            const bool mixed_type = is_mixed_type(self, *weight, *bias);
+            if (mixed_type) {
+              batch_norm_elemt_template<scalar_t, accscalar_t, int32_t>(
+                  out, self, *weight, *bias, mean_, invstd_);
+            } else {
+              batch_norm_elemt_template<scalar_t, scalar_t, int32_t>(
+                  out, self, *weight, *bias, mean_, invstd_);
+            }
+          });
+      return;
+    }
+    case Impl::ChannelsLast: {
+      auto weight = at::borrow_from_optional_tensor(weight_opt);
+      auto bias = at::borrow_from_optional_tensor(bias_opt);
+
+      if (resize_output_check(out, self.sizes())) {
+        resize_impl_xpu_(
+            out.unsafeGetTensorImpl(), self.sizes(), self.strides());
+      }
+      if ((out.strides() == self.strides()) &&
+          (!weight->defined() || weight->is_contiguous()) &&
+          (!bias->defined() || bias->is_contiguous()) &&
+          (!mean_.defined() || mean_.is_contiguous()) &&
+          (!invstd_.defined() || invstd_.is_contiguous())) {
+        batch_norm_elemt_channels_last_template(
+            out, self, *weight, *bias, mean_, invstd_);
+        return;
+      }
+      [[fallthrough]];
+    }
+    case Impl::General: {
+      const int64_t ndim = self.dim();
+      DimVector sizes(ndim, 1), strides(ndim, 0);
+      // Helper to convert 1d tensors to an nd tensor that broadcasts with input
+      // All elements go into the channel dimension
+      auto as_nd = [&](const Tensor& t) {
+        TORCH_INTERNAL_ASSERT(t.defined() && t.dim() == 1);
+        sizes[1] = t.sizes()[0];
+        strides[1] = t.strides()[0];
+        return t.as_strided(sizes, strides);
+      };
+
+      auto weight = weight_opt.has_value() && weight_opt->defined()
+          ? as_nd(*weight_opt)
+          : at::scalar_tensor(1, mean_.options());
+      auto bias = bias_opt.has_value() && bias_opt->defined()
+          ? as_nd(*bias_opt)
+          : at::scalar_tensor(0, mean_.options());
+      auto mean = as_nd(mean_);
+      auto invstd = as_nd(invstd_);
+
+      auto iter = TensorIteratorConfig()
+                      .add_output(out)
+                      .add_input(self)
+                      .add_input(weight)
+                      .add_input(bias)
+                      .add_input(mean)
+                      .add_input(invstd)
+                      .check_all_same_dtype(false)
+                      .promote_inputs_to_common_dtype(false)
+                      .build();
+
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kBFloat16,
+          kHalf,
+          self.scalar_type(),
+          "batch_norm_elementwise_xpu",
+          [&] {
+            using acc_t = at::acc_type<scalar_t, true>;
+            BatchNormElementwiseFunctor<scalar_t, acc_t> f;
+            gpu_kernel(iter, f);
+          });
+      return;
+    }
+  }
+}
+
+std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_out_kernel(
+    const Tensor& self,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& bias_opt,
+    const c10::optional<Tensor>& running_mean_opt,
+    const c10::optional<Tensor>& running_var_opt,
+    bool train,
+    double momentum,
+    double epsilon,
+    Tensor& output,
+    Tensor& save_mean,
+    Tensor& save_invstd) {
+  const bool has_running_mean =
+      (running_mean_opt.has_value() && running_mean_opt->defined());
+  const bool has_running_var =
+      (running_var_opt.has_value() && running_var_opt->defined());
+  TORCH_CHECK(has_running_mean == has_running_var);
+
+  if (train) {
+    batch_norm_mean_var(self, save_mean, save_invstd);
+    if (has_running_mean) {
+      const int64_t N = self.numel() / save_mean.numel();
+      batch_norm_update_stats_and_invert(
+          save_mean,
+          save_invstd,
+          *running_mean_opt,
+          *running_var_opt,
+          momentum,
+          epsilon,
+          N);
+    } else {
+      batch_norm_calc_invstd(save_invstd, save_invstd, epsilon);
+    }
+  } else {
+    TORCH_CHECK(has_running_mean);
+    at::native::resize_output(save_mean, running_mean_opt->sizes());
+    save_mean.copy_(*running_mean_opt, /*non_blocking=*/true);
+    batch_norm_calc_invstd(save_invstd, running_var_opt.value(), epsilon);
+  }
+
+  batch_norm_elementwise(
+      output, self, weight_opt, bias_opt, save_mean, save_invstd);
+  return std::tuple<Tensor&, Tensor&, Tensor&>(output, save_mean, save_invstd);
 }
 
 } // namespace xpu
