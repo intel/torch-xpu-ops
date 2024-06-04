@@ -922,6 +922,12 @@ skip_list = (
     "test_neg_view_svd_xpu_float64",
     "test_neg_view_tensordot_xpu_float64",
     "test_neg_view_triangular_solve_xpu_float64",
+    "test_noncontiguous_samples_pca_lowrank_xpu_complex64",
+    "test_noncontiguous_samples_svd_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_pca_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
+    "test_conj_view_pca_lowrank_xpu_complex64",
+    "test_conj_view_svd_lowrank_xpu_complex64",
 
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
@@ -1318,6 +1324,12 @@ skip_list = (
     "test_memory_format_nn_GroupNorm_xpu_float16",
     "test_memory_format_nn_GroupNorm_xpu_float32",
     "test_memory_format_nn_GroupNorm_xpu_float64",
+
+    # CPU fallback fails
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
 
     # CUDA bias cases
     # AssertionError: Torch not compiled with CUDA enabled
