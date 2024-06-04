@@ -52,7 +52,7 @@ skip_list = (
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_reciprocal_xpu",
-    "test_dtypes_sgn_xpu",
+    "test_dtypes_sgn_xpu", # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
     "test_dtypes_square_xpu",
     "test_errors_cat_xpu",
@@ -1663,14 +1663,11 @@ skip_list=(
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
-# test_content_store
-skip_list = (
-    # Storage compatibility in XPU tensor.
-    # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
-    "test_basic_xpu",
-    "test_load_tensor_xpu",
-)
 res += launch_test("test_content_store_xpu.py")
+
+res += launch_test("test_native_functions_xpu.py")
+
+res += launch_test("nn/test_init_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

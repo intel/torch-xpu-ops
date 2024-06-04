@@ -213,6 +213,17 @@ Tensor& XPUNativeFunctions::mean_out(
   return result;
 }
 
+Tensor XPUNativeFunctions::mean(
+    const Tensor& self,
+    OptionalIntArrayRef dim,
+    bool keepdim,
+    ::std::optional<at::ScalarType> dtype) {
+  Tensor out;
+  out = mean_meta(self, dim, keepdim, dtype, out);
+  out = XPUNativeFunctions::mean_out(self, dim, keepdim, dtype, out);
+  return out;
+}
+
 inline TensorIterator get_allany_iter(
     const Tensor& self,
     const Tensor& result,
