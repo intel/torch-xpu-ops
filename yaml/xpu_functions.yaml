@@ -215,6 +215,7 @@ supported:
   - min
   - min.unary_out
   - min.dim_min
+  - sum
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
