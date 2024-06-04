@@ -424,12 +424,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
-    set(SYCL_OFFLINE_COMPILER_FLAGS_OPTION "")
-    # TODO: enable AOT build on Windows
-    if(NOT WIN32)
-      set(SYCL_OFFLINE_COMPILER_FLAGS_OPTION -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}')
-    endif()
-
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
@@ -438,7 +432,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
-      ${SYCL_OFFLINE_COMPILER_FLAGS_OPTION}
+      -Xs "\"${SYCL_OFFLINE_COMPILER_FLAGS}\""
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
       )
