@@ -25,21 +25,22 @@ if(NOT SYCL_VERSION)
   return()
 endif()
 
-# On both Linux and Windows, the current version of SYCL runtime is 7.
-# On Linux, libsycl.so symbolic links to libsycl.so.7.
-# On Windows, sycl7.dll version suffix is used.
-foreach(sycl_lib_version "" 7)
-    set(SYCL_LIBRARY_NAME "sycl${sycl_lib_version}")
-
-    find_library(SYCL_LIBRARIES ${SYCL_LIBRARY_NAME} HINTS ${SYCL_LIBRARY_DIR})
-
-    if(EXISTS "${SYCL_LIBRARIES}")
-        set(SYCL_LIBRARIES_FOUND TRUE)
-        break()
-    endif()
-endforeach()
-if(NOT SYCL_LIBRARIES_FOUND)
-    message(FATAL_ERROR "Cannot find a SYCL library")
+find_library(SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
+# On Windows, currently there's no sycl.lib. Only sycl7.lib with version suffix,
+# where the current version of the SYCL runtime is 7.
+# Until oneAPI adds support to sycl.lib without the version suffix,
+# sycl_runtime_version needs to be hardcoded and uplifted when SYCL runtime version uplifts.
+# TODO: remove this when sycl.lib is supported on Windows
+if(WIN32)
+  set(sycl_runtime_version 7)
+  find_library(
+    SYCL_LIBRARIES
+    NAMES "sycl${sycl_runtime_version}"
+    HINTS ${SYCL_LIBRARY_DIR}
+  )
+  if(SYCL_LIBRARIES STREQUAL "SYCL_LIBRARIES-NOTFOUND")
+    message(FATAL_ERROR "Cannot find a SYCL library on Windows")
+  endif()
 endif()
 
 set(SYCL_COMPILER_VERSION)
