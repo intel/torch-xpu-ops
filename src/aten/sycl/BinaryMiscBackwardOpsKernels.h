@@ -2,12 +2,10 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu{
+
+void sigmoid_backward_kernel(TensorIteratorBase& iter);
 
 void tanh_backward_kernel(TensorIteratorBase& iter);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

@@ -174,14 +174,14 @@ Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
   Tensor out;
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::div_(Tensor& self, const Tensor& other) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(self, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return self;
 }
 
@@ -191,7 +191,7 @@ Tensor& XPUNativeFunctions::div_out(
     Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return out;
 }
 
@@ -526,6 +526,26 @@ Tensor& XPUNativeFunctions::minimum_out(
   auto iter = meta_func_minimum(self, other, output);
   native::xpu::minimum_kernel(iter);
   return output;
+}
+
+Tensor& XPUNativeFunctions::sigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& output,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::sigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& output) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return iter.output();
 }
 
 } // namespace at
