@@ -1,8 +1,6 @@
 #pragma once
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 template <typename scalar_t>
 static inline scalar_t cubic_convolution1(scalar_t x, scalar_t A) {
@@ -58,6 +56,4 @@ static inline accscalar_t cubic_interp1d(
   return x0 * coeffs[0] + x1 * coeffs[1] + x2 * coeffs[2] + x3 * coeffs[3];
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

@@ -2,9 +2,7 @@
 
 #include <ATen/ATen.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 Tensor grid_sampler_2d_kernel(
     const Tensor& input,
@@ -13,6 +11,4 @@ Tensor grid_sampler_2d_kernel(
     int64_t padding_mode,
     bool align_corners);
 
-}
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

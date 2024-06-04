@@ -1444,8 +1444,6 @@ skip_list = (
     # AssertionError: Torch not compiled with CUDA enabled
     "test_CTCLoss_cudnn_xpu",
     "test_ctc_loss_cudnn_xpu",
-    "test_grid_sample_bfloat16_precision_xpu",
-    "test_grid_sample_half_precision_xpu",
     "test_grid_sample_large_xpu",
     "test_layernorm_half_precision_xpu",
     "test_layernorm_weight_bias_xpu",

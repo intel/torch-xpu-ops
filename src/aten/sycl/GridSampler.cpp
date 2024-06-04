@@ -7,9 +7,7 @@
 #include <comm/TensorInfo.h>
 #include "UpSample.h"
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 using namespace at::xpu::detail;
 
@@ -244,7 +242,7 @@ struct GridSampler2dKernelFunctor {
 };
 
 template <typename scalar_t, typename index_t>
-void grid_sampler_2d_forward_kernel(
+void grid_sampler_2d_forward_template(
     const index_t nthreads,
     TensorInfo<scalar_t, index_t> input,
     TensorInfo<scalar_t, index_t> grid,
@@ -336,7 +334,7 @@ Tensor grid_sampler_2d_kernel(
         [&] {
           if (canUse32BitIndexMath(input) && canUse32BitIndexMath(grid) &&
               canUse32BitIndexMath(output)) {
-            grid_sampler_2d_forward_kernel<scalar_t>(
+            grid_sampler_2d_forward_template<scalar_t>(
                 static_cast<int>(count),
                 getTensorInfo<scalar_t, int>(input),
                 getTensorInfo<scalar_t, int>(grid),
@@ -345,7 +343,7 @@ Tensor grid_sampler_2d_kernel(
                 static_cast<GridSamplerPadding>(padding_mode),
                 align_corners);
           } else {
-            grid_sampler_2d_forward_kernel<scalar_t>(
+            grid_sampler_2d_forward_template<scalar_t>(
                 count,
                 getTensorInfo<scalar_t, int64_t>(input),
                 getTensorInfo<scalar_t, int64_t>(grid),
@@ -359,6 +357,4 @@ Tensor grid_sampler_2d_kernel(
   return output;
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
