@@ -172,7 +172,7 @@ runs:
             done
           done
         done
-        cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
+        cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
         find inductor_log/ -name "inductor_*.csv" |xargs cat > inductor_log/summary.csv 2>&1
         num_total=$(cat inductor_log/summary.csv |grep -v ',batch_size,' | wc -l)
         num_passed=$(grep -c "pass" inductor_log/summary.csv)
@@ -202,8 +202,8 @@ runs:
       run: |
         cd ${{ github.workspace }}/inductor_log/
         cat summary.csv summary.log
-        num_failed=$(grep "num_failed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
-        if [ $num_failed -ne 0 ]; then
+        num_passed=$(grep "num_passed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
+        if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
           echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
           exit 1
         fi

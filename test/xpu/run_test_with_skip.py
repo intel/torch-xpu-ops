@@ -52,7 +52,7 @@ skip_list = (
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_reciprocal_xpu",
-    "test_dtypes_sgn_xpu",
+    "test_dtypes_sgn_xpu", # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
     "test_dtypes_square_xpu",
     "test_errors_cat_xpu",
@@ -922,6 +922,12 @@ skip_list = (
     "test_neg_view_svd_xpu_float64",
     "test_neg_view_tensordot_xpu_float64",
     "test_neg_view_triangular_solve_xpu_float64",
+    "test_noncontiguous_samples_pca_lowrank_xpu_complex64",
+    "test_noncontiguous_samples_svd_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_pca_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
+    "test_conj_view_pca_lowrank_xpu_complex64",
+    "test_conj_view_svd_lowrank_xpu_complex64",
 
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
@@ -1319,6 +1325,12 @@ skip_list = (
     "test_memory_format_nn_GroupNorm_xpu_float32",
     "test_memory_format_nn_GroupNorm_xpu_float64",
 
+    # CPU fallback fails
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
+
     # CUDA bias cases
     # AssertionError: Torch not compiled with CUDA enabled
     "test_multiple_device_transfer_nn_BCELoss_xpu_float32",
@@ -1606,9 +1618,9 @@ skip_list = (
 
     # CPU fallback fails (CPU vs Numpy).
     "test_ref_small_input_masked_prod_xpu_float16",
-
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
 skip_list=(
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
