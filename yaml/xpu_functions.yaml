@@ -173,6 +173,7 @@ supported:
   - normal.Tensor_Tensor_out
   - normal.Tensor_Tensor
   - uniform_
+  - bernoulli.out
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
