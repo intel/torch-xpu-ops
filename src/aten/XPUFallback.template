@@ -374,7 +374,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "searchsorted.Tensor",
     "segment_reduce",
     "_segment_reduce_backward",
-    "sgn.out",
     "signbit.out",
     "sign.out",
     "silu.out",
