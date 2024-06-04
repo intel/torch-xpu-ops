@@ -173,6 +173,7 @@ supported:
   - normal.Tensor_Tensor_out
   - normal.Tensor_Tensor
   - uniform_
+  - bernoulli.out
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
@@ -287,6 +288,11 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - sigmoid
+  - sigmoid.out
+  - sigmoid_
+  - sigmoid_backward.grad_input
+  - sigmoid_backward
   - tril.out
   - tril
   - tril_
