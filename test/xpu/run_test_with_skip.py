@@ -52,7 +52,7 @@ skip_list = (
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_reciprocal_xpu",
-    "test_dtypes_sgn_xpu",
+    "test_dtypes_sgn_xpu", # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
     "test_dtypes_square_xpu",
     "test_errors_cat_xpu",
@@ -922,6 +922,12 @@ skip_list = (
     "test_neg_view_svd_xpu_float64",
     "test_neg_view_tensordot_xpu_float64",
     "test_neg_view_triangular_solve_xpu_float64",
+    "test_noncontiguous_samples_pca_lowrank_xpu_complex64",
+    "test_noncontiguous_samples_svd_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_pca_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
+    "test_conj_view_pca_lowrank_xpu_complex64",
+    "test_conj_view_svd_lowrank_xpu_complex64",
 
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
@@ -943,7 +949,7 @@ skip_list = (
     "jiterator", # Jiterator is only supported by CUDA
     "cuda", # Skip cuda hard-coded case
     "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
-    "test_div_rounding_numpy_xpu_float16", # CPU fail
+    "test_div_rounding_numpy_xpu_float16", # Calculation error. XPU implementation uses opmath type.
     "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
     "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
     "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
@@ -961,6 +967,8 @@ skip_list = (
     "test_logaddexp_xpu_complex64", # CPU fail
     "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
     "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_div_rounding_nonfinite_xpu_bfloat16", # CPU result is not golden reference
+    "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
@@ -1317,6 +1325,12 @@ skip_list = (
     "test_memory_format_nn_GroupNorm_xpu_float32",
     "test_memory_format_nn_GroupNorm_xpu_float64",
 
+    # CPU fallback fails
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
+
     # CUDA bias cases
     # AssertionError: Torch not compiled with CUDA enabled
     "test_multiple_device_transfer_nn_BCELoss_xpu_float32",
@@ -1537,6 +1551,237 @@ skip_list = (
     "test_randperm_xpu",
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
+
+# test_autocast
+skip_list = (
+    # Frontend API support
+    # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
+    # https://github.com/intel/torch-xpu-ops/issues/223
+    "test_cache_disabled",
+)
+res += launch_test("test_autocast_xpu.py", skip_list)
+
+# test_autograd
+skip_list = (
+    # Segment fault
+    "test_resize_version_bump_xpu",
+    # c10::NotImplementedError
+    "test_autograd_composite_implicit_and_dispatch_registration_xpu",
+    "test_autograd_multiple_dispatch_registrations_xpu",
+    # NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend。
+    "test_sparse_mask_autograd_xpu",
+    "test_sparse_ctor_getter_backward_xpu_float64",
+    "test_sparse_ctor_getter_backward_xpu_complex128",
+    "test_sparse_backward_xpu_float64",
+    "test_sparse_backward_xpu_complex128",
+    # AttributeError: module 'torch.xpu' has no attribute
+    "test_graph_save_on_cpu_cuda",
+    "test_checkpointing_without_reentrant_memory_savings",
+    # CUDA hard-code
+    "test_profiler_emit_nvtx_xpu",
+    # Could not run 'aten::_pin_memory' with arguments from the 'CUDA' backend
+    "test_pin_memory_xpu",
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_mv_grad_stride_0_xpu",
+    # module 'torch._C' has no attribute '_scatter'
+    "test_checkpointing_without_reentrant_dataparallel",
+    "test_dataparallel_saved_tensors_hooks",
+    # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
+    "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
+    # PyTorch was compiled without CUDA support
+    "test_checkpointing_non_reentrant_autocast_gpu",
+    # Skip if without LAPACK
+    "test_lobpcg",
+    # Skip device count < 2
+    "test_backward_device_xpu",
+    "test_inputbuffer_add_multidevice_xpu",
+    "test_unused_output_device_xpu",
+    # Skip CPU case
+    "test_copy__xpu",
+    "test_checkpointing_non_reentrant_autocast_cpu",
+    "test_per_dispatch_key_input_saving_xpu",
+)
+res += launch_test("test_autograd_xpu.py", skip_list)
+
+# test_reductions
+skip_list = (
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction",
+    "test_mode",
+    "test_dim_reduction_fns_fn_name_mode",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
+)
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
+skip_list=(
+    # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
+    "_jiterator_",
+
+    # CPU Fallback fails: Tensor-likes are not close!
+    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex64",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex128",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex64",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
+    "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_extremal_acos_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex64",
+    "test_reference_numerics_extremal_atan_xpu_complex128",
+    "test_reference_numerics_extremal_atan_xpu_complex64",
+    "test_reference_numerics_extremal_exp2_xpu_complex128",
+    "test_reference_numerics_extremal_exp2_xpu_complex64",
+    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_large__refs_atan_xpu_complex128",
+    "test_reference_numerics_large__refs_atan_xpu_complex64",
+    "test_reference_numerics_large_atan_xpu_complex128",
+    "test_reference_numerics_large_atan_xpu_complex64",
+    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_small__refs_atan_xpu_complex128",
+    "test_reference_numerics_small__refs_atan_xpu_complex64",
+    "test_reference_numerics_small_atan_xpu_complex128",
+    "test_reference_numerics_small_atan_xpu_complex64",
+
+    # For extreme value processing, Numpy and XPU results are inconsistent
+    "test_reference_numerics_extremal__refs_log_xpu_complex64",
+    "test_reference_numerics_extremal_log_xpu_complex64",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex128",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
+    "test_reference_numerics_extremal_tanh_xpu_complex128",
+    "test_reference_numerics_extremal_tanh_xpu_complex64",
+)
+res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
+
+skip_list=(
+    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). 
+    "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_amax_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amax_xpu_float16",
+    "test_mask_layout_strided_masked_amax_xpu_float32",
+    "test_mask_layout_strided_masked_amax_xpu_float64",
+    "test_mask_layout_strided_masked_amin_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amin_xpu_float16",
+    "test_mask_layout_strided_masked_amin_xpu_float32",
+    "test_mask_layout_strided_masked_amin_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_bfloat16",
+    "test_mask_layout_strided_masked_prod_xpu_bool",
+    "test_mask_layout_strided_masked_prod_xpu_complex128",
+    "test_mask_layout_strided_masked_prod_xpu_complex64",
+    "test_mask_layout_strided_masked_prod_xpu_float16",
+    "test_mask_layout_strided_masked_prod_xpu_float32",
+    "test_mask_layout_strided_masked_prod_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_int16",
+    "test_mask_layout_strided_masked_prod_xpu_int32",
+    "test_mask_layout_strided_masked_prod_xpu_int64",
+    "test_mask_layout_strided_masked_prod_xpu_int8",
+    "test_mask_layout_strided_masked_prod_xpu_uint8",
+    "test_mask_layout_strided_masked_sum_xpu_bfloat16",
+    "test_mask_layout_strided_masked_sum_xpu_bool",
+    "test_mask_layout_strided_masked_sum_xpu_complex128",
+    "test_mask_layout_strided_masked_sum_xpu_complex64",
+    "test_mask_layout_strided_masked_sum_xpu_float16",
+    "test_mask_layout_strided_masked_sum_xpu_float32",
+    "test_mask_layout_strided_masked_sum_xpu_float64",
+    "test_mask_layout_strided_masked_sum_xpu_int16",
+    "test_mask_layout_strided_masked_sum_xpu_int32",
+    "test_mask_layout_strided_masked_sum_xpu_int64",
+    "test_mask_layout_strided_masked_sum_xpu_int8",
+    "test_mask_layout_strided_masked_sum_xpu_uint8",
+
+    # CPU and CUDA bias code in SparseCsrTensor.cpp.
+    # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+    "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_mean_xpu_bfloat16",
+    "test_mask_layout_strided_masked_mean_xpu_float16",
+    "test_mask_layout_strided_masked_mean_xpu_float32",
+    "test_mask_layout_strided_masked_mean_xpu_float6"
+)
+res += launch_test("test_masked_xpu.py", skip_list)
+
+res += launch_test("test_content_store_xpu.py")
+
+res += launch_test("test_native_functions_xpu.py")
+
+res += launch_test("nn/test_init_xpu.py")
+
+res += launch_test("test_namedtensor_xpu.py")
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
 

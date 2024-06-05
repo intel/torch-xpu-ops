@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void sigmoid_backward_kernel(TensorIteratorBase& iter);
+void sgn_kernel(TensorIteratorBase& iter);
 
-void tanh_backward_kernel(TensorIteratorBase& iter);
+void sign_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu
