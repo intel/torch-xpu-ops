@@ -243,4 +243,54 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       save_invstd);
 }
 
+::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
+    native_batch_norm_backward(
+        const Tensor& grad_out,
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& running_mean,
+        const ::std::optional<Tensor>& running_var,
+        const ::std::optional<Tensor>& save_mean,
+        const ::std::optional<Tensor>& save_invstd,
+        bool train,
+        double eps,
+        ::std::array<bool, 3> output_mask) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, grad_out, "xpu::native_batch_norm_backward", "grad_out");
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::native_batch_norm_backward", "input");
+  c10::impl::check_and_update_common_device(
+      common_device, weight, "xpu::native_batch_norm_backward", "weight");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_mean,
+      "xpu::native_batch_norm_backward",
+      "running_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_var,
+      "xpu::native_batch_norm_backward",
+      "running_var");
+  c10::impl::check_and_update_common_device(
+      common_device, save_mean, "xpu::native_batch_norm_backward", "save_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      save_invstd,
+      "xpu::native_batch_norm_backward",
+      "save_invstd");
+  return native::xpu::batch_norm_backward_kernel(
+      grad_out,
+      input,
+      weight,
+      running_mean,
+      running_var,
+      save_mean,
+      save_invstd,
+      train,
+      eps,
+      output_mask);
+}
+
 } // namespace at

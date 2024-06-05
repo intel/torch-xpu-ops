@@ -57,6 +57,18 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_out_kernel(
     Tensor& save_mean,
     Tensor& save_invstd);
 
+std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
+    const Tensor& grad_out,
+    const Tensor& input,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& running_mean_opt,
+    const c10::optional<Tensor>& running_var_opt,
+    const c10::optional<Tensor>& save_mean_opt,
+    const c10::optional<Tensor>& save_invstd_opt,
+    bool train,
+    double epsilon,
+    std::array<bool, 3> grad_input_mask);
+
 } // namespace xpu
 } // namespace native
 } // namespace at

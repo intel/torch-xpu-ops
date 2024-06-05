@@ -70,6 +70,15 @@ inline Impl batch_norm_choose_impl(const Tensor& self) {
   return Impl::General;
 }
 
+inline Impl batch_norm_choose_impl(const Tensor& in1, const Tensor& in2) {
+  auto imp1 = batch_norm_choose_impl(in1);
+  if (imp1 == Impl::General) {
+    return imp1;
+  }
+  auto imp2 = batch_norm_choose_impl(in2);
+  return imp1 == imp2 ? imp1 : Impl::General;
+}
+
 template <
     typename scalar_t,
     int64_t dim,
@@ -1571,7 +1580,7 @@ void batch_norm_elemt_channels_last_template(
 
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward", [&] {
+        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
               input, reduction_size, stride);
@@ -1598,7 +1607,7 @@ void batch_norm_elemt_channels_last_template(
           weight.scalar_type());
     }
     AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward", [&] {
+        kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
               input, reduction_size, stride);
@@ -2466,7 +2475,7 @@ batch_norm_backward_reduce_channels_last_template(
         kHalf,
         kBFloat16,
         input.scalar_type(),
-        "batchnorm_backward_reduce",
+        "batchnorm_backward_reduce_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
@@ -2523,7 +2532,7 @@ batch_norm_backward_reduce_channels_last_template(
         kHalf,
         kBFloat16,
         input.scalar_type(),
-        "batchnorm_backward_reduce",
+        "batchnorm_backward_reduce_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           int suggest_vec_size = get_nhwc_suggest_vec_size<scalar_t>(
@@ -2596,7 +2605,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
       kHalf,
       kBFloat16,
       grad_output.scalar_type(),
-      "batch_norm_backward_reduce",
+      "batch_norm_backward_reduce_xpu",
       [&] {
         auto mean_st = mean.dtype();
         auto invstd_st = invstd.dtype();
@@ -2694,25 +2703,24 @@ struct BatchNormBackwardElemtKernelFunctor {
           static_cast<stat_accscalar_t>(static_cast<float>(1.0) / total_numel);
     }
 
-    stat_accscalar_t m_c = mean_ptr_[plane];
-    stat_accscalar_t m_dy_c = sum_dy_ptr_[plane] * norm_fct;
-    stat_accscalar_t factor_1_c = invstd_ptr_[plane];
-    stat_accscalar_t factor_2_c = weight_ptr_ != nullptr
-        ? static_cast<stat_accscalar_t>(weight_ptr_[plane])
+    stat_accscalar_t m_c = mean_[plane];
+    stat_accscalar_t m_dy_c = sum_dy_[plane] * norm_fct;
+    stat_accscalar_t factor_1_c = invstd_[plane];
+    stat_accscalar_t factor_2_c = weight_.size(0) > 0
+        ? static_cast<stat_accscalar_t>(weight_[plane])
         : stat_accscalar_t(1);
     factor_2_c *= factor_1_c;
-    factor_1_c = factor_1_c * factor_1_c * sum_dy_xmu_ptr_[plane] * norm_fct;
+    factor_1_c = factor_1_c * factor_1_c * sum_dy_xmu_[plane] * norm_fct;
 
     index_t bstep = global_range_y_;
     for (index_t batch = item.get_global_id(0); batch < N_; batch += bstep) {
-      auto g_i_offset = batch * gi_batch_stride_ + plane * gi_Hw_;
-      auto g_o_offset = batch * go_batch_stride_ + plane * go_Hw_;
-      auto i_offset = batch * i_batch_stride_ + plane * Hw_;
+      auto g_i = grad_input_[batch][plane];
+      auto g_o = grad_output_[batch][plane];
+      auto i = input_[batch][plane];
       for (index_t feature = item.get_local_id(1); feature < Hw_;
            feature += local_range_x_) {
-        grad_input_ptr_[g_i_offset + feature] = static_cast<input_scalar_t>(
-            (grad_output_ptr_[g_o_offset + feature] - m_dy_c -
-             (input_ptr_[i_offset + feature] - m_c) * factor_1_c) *
+        g_i[feature] = static_cast<input_scalar_t>(
+            (g_o[feature] - m_dy_c - (i[feature] - m_c) * factor_1_c) *
             factor_2_c);
       }
     }
@@ -2726,23 +2734,49 @@ struct BatchNormBackwardElemtKernelFunctor {
       int weight_size,
       int64_t target_tile_size,
       int64_t wg_size,
-      int i_batch_stride,
-      int gi_batch_stride,
-      int go_batch_stride,
       int gi_Hw,
       int go_Hw,
       int tf,
       int tb,
       int global_range_y,
       int local_range_x,
-      input_scalar_t* input_ptr,
-      input_scalar_t* grad_output_ptr,
-      input_scalar_t* grad_input_ptr,
-      stat_accscalar_t* mean_ptr,
-      stat_accscalar_t* invstd_ptr,
-      stat_scalar_t* weight_ptr,
-      stat_accscalar_t* sum_dy_ptr,
-      stat_accscalar_t* sum_dy_xmu_ptr,
+      const GenericPackedTensorAccessor<
+          input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> input,
+      const GenericPackedTensorAccessor<
+          input_scalar_t,
+          3,
+          DefaultPtrTraits,
+          index_t> grad_output,
+      const GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> mean,
+      const GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> invstd,
+      const GenericPackedTensorAccessor<
+          stat_scalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> weight,
+      const GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy,
+      const GenericPackedTensorAccessor<
+          stat_accscalar_t,
+          1,
+          DefaultPtrTraits,
+          index_t> sum_dy_xmu,
+      GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
+          grad_input,
       int n_input,
       int reduction_size)
       : numel_(numel),
@@ -2753,23 +2787,20 @@ struct BatchNormBackwardElemtKernelFunctor {
         weight_size_(weight_size),
         target_tile_size_(target_tile_size),
         wg_size_(wg_size),
-        i_batch_stride_(i_batch_stride),
-        gi_batch_stride_(gi_batch_stride),
-        go_batch_stride_(go_batch_stride),
         gi_Hw_(gi_Hw),
         go_Hw_(go_Hw),
         tf_(tf),
         tb_(tb),
         global_range_y_(global_range_y),
         local_range_x_(local_range_x),
-        input_ptr_(input_ptr),
-        grad_output_ptr_(grad_output_ptr),
-        grad_input_ptr_(grad_input_ptr),
-        mean_ptr_(mean_ptr),
-        invstd_ptr_(invstd_ptr),
-        weight_ptr_(weight_ptr),
-        sum_dy_ptr_(sum_dy_ptr),
-        sum_dy_xmu_ptr_(sum_dy_xmu_ptr),
+        input_(input),
+        grad_output_(grad_output),
+        mean_(mean),
+        invstd_(invstd),
+        weight_(weight),
+        sum_dy_(sum_dy),
+        sum_dy_xmu_(sum_dy_xmu),
+        grad_input_(grad_input),
         n_input_(n_input),
         reduction_size_(reduction_size) {}
 
@@ -2782,23 +2813,52 @@ struct BatchNormBackwardElemtKernelFunctor {
   int weight_size_;
   int64_t target_tile_size_;
   int64_t wg_size_;
-  int i_batch_stride_;
-  int gi_batch_stride_;
-  int go_batch_stride_;
   int gi_Hw_;
   int go_Hw_;
   int tf_;
   int tb_;
   int global_range_y_;
   int local_range_x_;
-  input_scalar_t* input_ptr_;
-  input_scalar_t* grad_output_ptr_;
-  input_scalar_t* grad_input_ptr_;
-  stat_accscalar_t* mean_ptr_;
-  stat_accscalar_t* invstd_ptr_;
-  stat_scalar_t* weight_ptr_;
-  stat_accscalar_t* sum_dy_ptr_;
-  stat_accscalar_t* sum_dy_xmu_ptr_;
+  const GenericPackedTensorAccessor<
+      input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      input_;
+  const GenericPackedTensorAccessor<
+      input_scalar_t,
+      3,
+      DefaultPtrTraits,
+      index_t>
+      grad_output_;
+  const GenericPackedTensorAccessor<
+      stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      mean_;
+  const GenericPackedTensorAccessor<
+      stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      invstd_;
+  const GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
+      weight_;
+  const GenericPackedTensorAccessor<
+      stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      sum_dy_;
+  const GenericPackedTensorAccessor<
+      stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>
+      sum_dy_xmu_;
+  GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
+      grad_input_;
   int n_input_;
   int reduction_size_;
 };
@@ -2831,9 +2891,7 @@ void batch_norm_backward_elemt_kernel_impl(
   if (wg_size * numPlane < target_tile_size) {
     wg_size = syclMaxWorkGroupSize(); // for higher occupancy
   }
-  auto i_batch_stride = input.size(1) * input.size(2);
-  auto gi_batch_stride = grad_input.size(1) * grad_input.size(2);
-  auto go_batch_stride = grad_output.size(1) * grad_output.size(2);
+
   auto gi_Hw = grad_input.size(2);
   auto go_Hw = grad_output.size(2);
 
@@ -2844,16 +2902,31 @@ void batch_norm_backward_elemt_kernel_impl(
 
   int global_range_y = global_range[0];
   int local_range_x = local_range[1];
-  auto input_ptr = input.data_ptr<input_scalar_t>();
-  auto grad_output_ptr = grad_output.data_ptr<input_scalar_t>();
-  auto grad_input_ptr = grad_input.data_ptr<input_scalar_t>();
 
-  auto mean_ptr = mean.data_ptr<stat_accscalar_t>();
-  auto invstd_ptr = invstd.data_ptr<stat_accscalar_t>();
-  auto weight_ptr =
-      weight.defined() ? weight.data_ptr<stat_scalar_t>() : nullptr;
-  auto sum_dy_ptr = sum_dy.data_ptr<stat_accscalar_t>();
-  auto sum_dy_xmu_ptr = sum_dy_xmu.data_ptr<stat_accscalar_t>();
+  auto input_pa =
+      get_packed_accessor<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          input, "input");
+  auto grad_input_pa =
+      get_packed_accessor<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          grad_input, "grad_input");
+  auto grad_output_pa =
+      get_packed_accessor<input_scalar_t, 3, DefaultPtrTraits, index_t>(
+          grad_output, "grad_output");
+  auto mean_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          mean, "mean");
+  auto invstd_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          invstd, "invstd");
+  auto weight_pa =
+      packed_accessor_or_dummy<stat_scalar_t, 1, DefaultPtrTraits, index_t>(
+          weight, "weight");
+  auto sum_dy_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          sum_dy, "sum_dy");
+  auto sum_dy_xmu_pa =
+      packed_accessor_or_dummy<stat_accscalar_t, 1, DefaultPtrTraits, index_t>(
+          sum_dy_xmu, "sum_dy_xmu");
 
   auto n_input = input.size(1);
   auto reduction_size = input.numel() / n_input;
@@ -2872,23 +2945,20 @@ void batch_norm_backward_elemt_kernel_impl(
       weight_size,
       target_tile_size,
       wg_size,
-      i_batch_stride,
-      gi_batch_stride,
-      go_batch_stride,
       gi_Hw,
       go_Hw,
       tf,
       tb,
       global_range_y,
       local_range_x,
-      input_ptr,
-      grad_output_ptr,
-      grad_input_ptr,
-      mean_ptr,
-      invstd_ptr,
-      weight_ptr,
-      sum_dy_ptr,
-      sum_dy_xmu_ptr,
+      input_pa,
+      grad_output_pa,
+      mean_pa,
+      invstd_pa,
+      weight_pa,
+      sum_dy_pa,
+      sum_dy_xmu_pa,
+      grad_input_pa,
       n_input,
       reduction_size);
   sycl_kernel_submit(global_range, local_range, queue, caller);
@@ -3080,7 +3150,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         kHalf,
         kBFloat16,
         input.scalar_type(),
-        "batchnorm_backward_element",
+        "batchnorm_backward_element_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           batch_norm_backward_elemt_channels_last_kernel_impl<
@@ -3115,7 +3185,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
         input.scalar_type(),
-        "batchnorm_backward_element",
+        "batchnorm_backward_element_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           batch_norm_backward_elemt_channels_last_kernel_impl<
@@ -3207,7 +3277,7 @@ Tensor batch_norm_backward_elemt_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "batch_norm_backward_elemt",
+      "batch_norm_backward_elemt_xpu",
       [&] {
         auto mean_st = mean.dtype();
         auto invstd_st = invstd.dtype();
@@ -4057,6 +4127,291 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
   return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
 }
 
+template <typename scalar_t, typename accscalar_t>
+struct BatchNormElementwiseBackwardTrainFunctor {
+  scalar_t operator()(
+      scalar_t gO,
+      scalar_t input,
+      accscalar_t weight,
+      accscalar_t mean,
+      accscalar_t invstd,
+      accscalar_t xmu,
+      accscalar_t dy) const {
+    auto factor_1_c = invstd * invstd * xmu * norm_fct_;
+    auto factor_2_c = weight * invstd;
+    auto m_dy_c = dy * norm_fct_;
+    return (gO - m_dy_c - (input - mean) * factor_1_c) * factor_2_c;
+  }
+
+  BatchNormElementwiseBackwardTrainFunctor(accscalar_t norm_fct)
+      : norm_fct_(norm_fct) {}
+
+ private:
+  accscalar_t norm_fct_;
+};
+
+template <typename input_scalar_t, typename stat_scalar_t, typename index_t>
+Tensor batch_norm_backward_elemt_template(
+    const Tensor& grad_out_,
+    const Tensor& input_,
+    const Tensor& mean_,
+    const Tensor& invstd_,
+    const Tensor& weight_,
+    const Tensor& sum_dy_,
+    const Tensor& sum_dy_xmu_) {
+  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  // int64_t n_input = input_.size(1);
+  auto input_reshaped = input_.reshape(
+      {input_.size(0),
+       input_.size(1),
+       -1}); // internally we merge the feature dimensions
+  auto grad_output_reshaped = grad_out_.reshape(input_reshaped.sizes());
+  auto grad_input_reshaped =
+      at::empty_like(input_reshaped, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
+  batch_norm_backward_elemt_kernel_impl<
+      input_scalar_t,
+      stat_scalar_t,
+      stat_accscalar_t,
+      index_t>(
+      input_reshaped,
+      grad_output_reshaped,
+      mean_,
+      invstd_,
+      weight_,
+      sum_dy_,
+      sum_dy_xmu_,
+      nullptr,
+      0,
+      grad_input_reshaped);
+
+  return grad_input_reshaped.view(input_.sizes());
+}
+
+at::Tensor batch_norm_backward_elemt_channels_last_template(
+    const at::Tensor& grad_output,
+    const at::Tensor& input,
+    const at::Tensor& mean,
+    const at::Tensor& inv_std,
+    const at::Tensor& weight,
+    const at::Tensor& sum_dy,
+    const at::Tensor& sum_dy_xmu) {
+  const auto stride = input.sizes()[1];
+  const auto reduction_size = input.numel() / stride;
+
+  // Input is guarunteed to be channels-last compatible
+  at::Tensor grad_input = at::empty_like(input);
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      input.scalar_type(),
+      "batchnorm_backward_element_xpu",
+      [&] {
+        using accscalar_t = acc_type<scalar_t, true>;
+
+        if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
+          batch_norm_backward_elemt_channels_last_kernel_impl(
+              grad_output.data_ptr<scalar_t>(),
+              input.data_ptr<scalar_t>(),
+              mean.data_ptr<accscalar_t>(),
+              inv_std.data_ptr<accscalar_t>(),
+              weight.data_ptr<accscalar_t>(),
+              sum_dy.data_ptr<accscalar_t>(),
+              sum_dy_xmu.data_ptr<accscalar_t>(),
+              nullptr,
+              grad_input.data_ptr<scalar_t>(),
+              0,
+              reduction_size,
+              stride);
+        } else {
+          batch_norm_backward_elemt_channels_last_kernel_impl(
+              grad_output.data_ptr<scalar_t>(),
+              input.data_ptr<scalar_t>(),
+              mean.data_ptr<accscalar_t>(),
+              inv_std.data_ptr<accscalar_t>(),
+              weight.defined() ? weight.data_ptr<scalar_t>() : nullptr,
+              sum_dy.data_ptr<accscalar_t>(),
+              sum_dy_xmu.data_ptr<accscalar_t>(),
+              nullptr,
+              grad_input.data_ptr<scalar_t>(),
+              0,
+              reduction_size,
+              stride);
+        }
+      });
+
+  return grad_input;
+}
+
+Tensor batch_norm_elementwise_backward_train(
+    const Tensor& grad_out,
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const Tensor& weight,
+    const Tensor& sum_dy,
+    const Tensor& sum_dy_xmu) {
+  switch (batch_norm_choose_impl(input, grad_out)) {
+    case Impl::Contiguous: {
+      return AT_DISPATCH_FLOATING_TYPES_AND2(
+          kHalf,
+          kBFloat16,
+          input.scalar_type(),
+          "batch_norm_backward_elemt_xpu",
+          [&] {
+            using accscalar_t = at::acc_type<scalar_t, true>;
+            const bool mixed_type = is_mixed_type(input, weight);
+            if (mixed_type) {
+              return batch_norm_backward_elemt_template<
+                  scalar_t,
+                  accscalar_t,
+                  int32_t>(
+                  grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu);
+            } else {
+              return batch_norm_backward_elemt_template<
+                  scalar_t,
+                  scalar_t,
+                  int32_t>(
+                  grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu);
+            }
+          });
+    }
+    case Impl::ChannelsLast: {
+      if ((!weight.defined() || weight.is_contiguous()) &&
+          mean.is_contiguous() && invstd.is_contiguous()) {
+        return batch_norm_backward_elemt_channels_last_template(
+            grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu);
+      }
+      [[fallthrough]];
+    }
+    case Impl::General: {
+      const auto ndim = input.dim();
+      DimVector sizes(ndim, 1), strides(ndim, 0);
+      auto as_nd = [&](const Tensor& t) {
+        TORCH_INTERNAL_ASSERT(t.defined() && t.dim() == 1);
+        sizes[1] = t.sizes()[0];
+        strides[1] = t.strides()[0];
+        return t.as_strided(sizes, strides);
+      };
+      auto invstd_nd = as_nd(invstd);
+      auto mean_nd = as_nd(mean);
+      auto sum_dy_nd = as_nd(sum_dy);
+      auto sum_dy_xmu_nd = as_nd(sum_dy_xmu);
+      auto weight_nd = weight.defined()
+          ? as_nd(weight)
+          : at::scalar_tensor(1.0, input.options().dtype(mean.scalar_type()));
+
+      Tensor grad_input = at::empty(
+          input.sizes(),
+          grad_out.options().memory_format(input.suggest_memory_format()));
+      auto iter = TensorIteratorConfig()
+                      .add_output(grad_input)
+                      .add_input(grad_out)
+                      .add_input(input)
+                      .add_input(weight_nd)
+                      .add_input(mean_nd)
+                      .add_input(invstd_nd)
+                      .add_input(sum_dy_xmu_nd)
+                      .add_input(sum_dy_nd)
+                      .check_all_same_dtype(false)
+                      .promote_inputs_to_common_dtype(false)
+                      .build();
+
+      AT_DISPATCH_FLOATING_TYPES_AND2(
+          kHalf,
+          kBFloat16,
+          grad_out.scalar_type(),
+          "batch_norm_eval_backward_xpu",
+          [&] {
+            using accscalar_t = at::acc_type<scalar_t, true>;
+            auto norm_fct =
+                static_cast<accscalar_t>(1.0 / (input.numel() / input.size(1)));
+            BatchNormElementwiseBackwardTrainFunctor<scalar_t, accscalar_t> f(
+                norm_fct);
+            gpu_kernel(iter, f);
+          });
+      return grad_input;
+    }
+  }
+  TORCH_INTERNAL_ASSERT(false);
+}
+
+template <typename scalar_t, typename accscalar_t>
+struct BatchNormElementwiseBackwardEvalWithWeightfunctor {
+  scalar_t operator()(scalar_t gO, accscalar_t invstd, accscalar_t weight)
+      const {
+    return gO * weight * invstd;
+  }
+};
+
+template <typename scalar_t, typename accscalar_t>
+struct BatchNormElementwiseBackwardEvalfunctor {
+  scalar_t operator()(scalar_t gO, accscalar_t invstd) const {
+    return gO * invstd;
+  }
+};
+
+Tensor batch_norm_elementwise_backward_eval(
+    const Tensor& grad_out,
+    const Tensor& input,
+    const Tensor& invstd,
+    const Tensor& weight) {
+  const auto ndim = input.dim();
+  DimVector shape(ndim, 1), strides(ndim, 0);
+  shape[1] = invstd.sizes()[0];
+  strides[1] = invstd.strides()[0];
+  auto invstd_nd = invstd.as_strided(shape, strides);
+  Tensor grad_input = at::empty(input.sizes(), grad_out.options());
+
+  if (weight.defined()) {
+    strides[1] = weight.strides()[0];
+    auto weight_nd = weight.as_strided(shape, strides);
+    auto iter = TensorIteratorConfig()
+                    .add_output(grad_input)
+                    .add_const_input(grad_out)
+                    .add_const_input(invstd_nd)
+                    .add_const_input(weight_nd)
+                    .check_all_same_dtype(false)
+                    .promote_inputs_to_common_dtype(false)
+                    .build();
+
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        grad_out.scalar_type(),
+        "batch_norm_eval_backward_xpu",
+        [&] {
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          BatchNormElementwiseBackwardEvalWithWeightfunctor<
+              scalar_t,
+              accscalar_t>
+              f;
+          gpu_kernel(iter, f);
+        });
+  } else {
+    auto iter = TensorIteratorConfig()
+                    .add_output(grad_input)
+                    .add_const_input(grad_out)
+                    .add_const_input(invstd_nd)
+                    .check_all_same_dtype(false)
+                    .promote_inputs_to_common_dtype(false)
+                    .build();
+
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        grad_out.scalar_type(),
+        "batch_norm_eval_backward_xpu",
+        [&] {
+          using accscalar_t = at::acc_type<scalar_t, true>;
+          BatchNormElementwiseBackwardEvalfunctor<scalar_t, accscalar_t> f;
+          gpu_kernel(iter, f);
+        });
+  }
+  return grad_input;
+}
+
 std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
     const Tensor& grad_out,
     const Tensor& input,
@@ -4162,11 +4517,12 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
   if (grad_input_mask[0]) {
     if (train) {
       // NOTE: sum_dy and sum_dy_xmy are defined, as train implies
-      // needs_reduction grad_input = batch_norm_elementwise_backward_train(
-      //     grad_out, input, mean, invstd, *weight, sum_dy, sum_dy_xmu);
+      // needs_reduction
+      grad_input = batch_norm_elementwise_backward_train(
+          grad_out, input, mean, invstd, *weight, sum_dy, sum_dy_xmu);
     } else {
-      // grad_input = batch_norm_elementwise_backward_eval(
-      //     grad_out, input, invstd, *weight);
+      grad_input = batch_norm_elementwise_backward_eval(
+          grad_out, input, invstd, *weight);
     }
   }
 

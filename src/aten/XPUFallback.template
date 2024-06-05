@@ -336,7 +336,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nanmedian.dim_values",
     "nansum",
     "nan_to_num.out",
-    "native_batch_norm_backward",
     "native_group_norm_backward",
     "nextafter.out",
     "norm.out",
