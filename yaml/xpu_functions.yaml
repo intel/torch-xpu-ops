@@ -232,8 +232,18 @@ supported:
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
+  - mean.dim
+  - all.dim
+  - all.out
+  - all.dims
+  - all.dims_out
+  - all
+  - all.all_out
   - any.dim
   - any.out
+  - any.dims
+  - any.dims_out
+  - any
   - any.all_out
   - argmax.out
   - _local_scalar_dense
@@ -307,3 +317,6 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - sgn
+  - sgn.out
+  - sgn_
