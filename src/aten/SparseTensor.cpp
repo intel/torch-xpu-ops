@@ -3,6 +3,7 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <torch/library.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -11,13 +12,13 @@
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors_native.h>
 #endif
 
-#include <ATen/SparseXPUNativeFunctions.h>
 namespace at {
+namespace native::xpu {
 
-Tensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
+Tensor _sparse_coo_tensor_with_dims_and_tensors(
     int64_t sparse_dim,
     int64_t dense_dim,
-    IntArrayRef size,
+    c10::SymIntArrayRef size,
     const Tensor& indices,
     const Tensor& values,
     c10::optional<at::ScalarType> dtype,
@@ -39,7 +40,7 @@ Tensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
   return at::native::new_with_dims_and_tensor_sparse_symint(
       sparse_dim,
       dense_dim,
-      c10::fromIntArrayRefSlow(size),
+      size,
       indices,
       values,
       dtype,
@@ -48,4 +49,12 @@ Tensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
       pin_memory,
       is_coalesced);
 }
+
+TORCH_LIBRARY_IMPL(aten, SparseXPU, m) {
+  m.impl(
+      TORCH_SELECTIVE_NAME("_sparse_coo_tensor_with_dims_and_tensors"),
+      TORCH_FN(_sparse_coo_tensor_with_dims_and_tensors));
+}
+
+} // namespace native::xpu
 } // namespace at
