@@ -288,13 +288,71 @@ Tensor& allany_meta(
   return result;
 }
 
-Tensor XPUNativeFunctions::any(const Tensor& self, int64_t dim, bool keepdim) {
-  Tensor result;
-  result = allany_meta(result, "any", self, dim, keepdim);
-  allany_impl<0>(self, result, dim, keepdim, native::xpu::or_kernel);
-  return result;
+// aten::all.dim
+Tensor XPUNativeFunctions::all(const Tensor& self, int64_t dim, bool keepdim) {
+  Tensor out;
+  out = allany_meta(out, "all", self, dim, keepdim);
+  allany_impl<1>(self, out, dim, keepdim, native::xpu::and_kernel);
+  return out;
 }
 
+// aten::all.out
+Tensor& XPUNativeFunctions::all_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    Tensor& out) {
+  out = allany_meta(out, "all", self, dim, keepdim);
+  allany_impl<1>(self, out, dim, keepdim, native::xpu::and_kernel);
+  return out;
+}
+
+// aten::all.dims
+Tensor XPUNativeFunctions::all(
+    const Tensor& self,
+    OptionalIntArrayRef dim,
+    bool keepdim) {
+  Tensor out;
+  out = allany_meta(out, "all", self, dim, keepdim);
+  allany_impl<1>(self, out, dim, keepdim, native::xpu::and_kernel);
+  return out;
+}
+
+// aten::all.dims_out
+Tensor& XPUNativeFunctions::all_out(
+    const Tensor& self,
+    OptionalIntArrayRef dim,
+    bool keepdim,
+    Tensor& out) {
+  out = allany_meta(out, "all", self, dim, keepdim);
+  allany_impl<1>(self, out, dim, keepdim, native::xpu::and_kernel);
+  return out;
+}
+
+// aten::all
+Tensor XPUNativeFunctions::all(const Tensor& self) {
+  Tensor out;
+  out = allany_meta(out, "all", self, {}, false);
+  allany_impl<1>(self, out, {}, false, native::xpu::and_kernel);
+  return out;
+}
+
+// aten::all.all_out
+Tensor& XPUNativeFunctions::all_out(const Tensor& self, Tensor& out) {
+  out = allany_meta(out, "all", self, {}, false);
+  allany_impl<1>(self, out, {}, false, native::xpu::and_kernel);
+  return out;
+}
+
+// aten::any.dim
+Tensor XPUNativeFunctions::any(const Tensor& self, int64_t dim, bool keepdim) {
+  Tensor out;
+  out = allany_meta(out, "any", self, dim, keepdim);
+  allany_impl<0>(self, out, dim, keepdim, native::xpu::or_kernel);
+  return out;
+}
+
+// aten::any.out
 Tensor& XPUNativeFunctions::any_out(
     const Tensor& self,
     int64_t dim,
@@ -305,6 +363,37 @@ Tensor& XPUNativeFunctions::any_out(
   return out;
 }
 
+// aten::any.dims
+Tensor XPUNativeFunctions::any(
+    const Tensor& self,
+    OptionalIntArrayRef dim,
+    bool keepdim) {
+  Tensor out;
+  out = allany_meta(out, "any", self, dim, keepdim);
+  allany_impl<0>(self, out, dim, keepdim, native::xpu::or_kernel);
+  return out;
+}
+
+// aten::any.dims_out
+Tensor& XPUNativeFunctions::any_out(
+    const Tensor& self,
+    OptionalIntArrayRef dim,
+    bool keepdim,
+    Tensor& out) {
+  out = allany_meta(out, "any", self, dim, keepdim);
+  allany_impl<0>(self, out, dim, keepdim, native::xpu::or_kernel);
+  return out;
+}
+
+// aten::any
+Tensor XPUNativeFunctions::any(const Tensor& self) {
+  Tensor out;
+  out = allany_meta(out, "any", self, {}, false);
+  allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);
+  return out;
+}
+
+// aten::any.any_out
 Tensor& XPUNativeFunctions::any_out(const Tensor& self, Tensor& out) {
   out = allany_meta(out, "any", self, {}, false);
   allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);

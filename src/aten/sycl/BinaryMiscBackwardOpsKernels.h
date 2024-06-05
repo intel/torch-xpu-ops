@@ -2,7 +2,7 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at::native::xpu{
+namespace at::native::xpu {
 
 void sigmoid_backward_kernel(TensorIteratorBase& iter);
 
