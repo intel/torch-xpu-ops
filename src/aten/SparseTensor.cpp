@@ -4,28 +4,17 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 
-#include <ATen/SparseXPUNativeFunctions.h>
-#include <ATen/native/SparseTensorUtils.h>
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors_native.h>
+#endif
 
+#include <ATen/SparseXPUNativeFunctions.h>
 namespace at {
 
-using namespace at::sparse;
-
-SparseTensor new_sparse(
-    c10::optional<ScalarType> dtype,
-    c10::optional<Layout> layout,
-    c10::optional<Device> device,
-    c10::optional<bool> pin_memory) {
-  AT_ASSERT(layout.has_value() && *layout == kSparse);
-  AT_ASSERT(device_or_default(device).is_xpu());
-  DispatchKey dispatch_key;
-  dispatch_key = DispatchKey::SparseXPU;
-  return detail::make_tensor<SparseTensorImpl>(
-      DispatchKeySet(dispatch_key),
-      scalarTypeToTypeMeta(dtype_or_default(dtype)));
-}
-
-SparseTensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
+Tensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
     int64_t sparse_dim,
     int64_t dense_dim,
     IntArrayRef size,
@@ -47,37 +36,16 @@ SparseTensor SparseXPUNativeFunctions::_sparse_coo_tensor_with_dims_and_tensors(
       values,
       "xpu::_sparse_coo_tensor_with_dims_and_tensors",
       "values");
-  SparseTensor self = new_sparse(dtype, layout, device, pin_memory);
-  auto impl = get_sparse_impl(self);
-  impl->resize_(sparse_dim, dense_dim, size);
-  // NOTE: There is no guarantee that `indices` and `values` don't contain
-  // AutogradMeta. However, we want to maintain the invariant that `indices_`
-  // and `values_` of a sparse tensor don't contain AutogradMeta, and to achieve
-  // that we shallow-copy `indices` and `values` here.
-  auto indices_shallow_copy =
-      Tensor(indices.unsafeGetTensorImpl()->shallow_copy_and_detach(
-          /*version_counter=*/indices.unsafeGetTensorImpl()->version_counter(),
-          /*allow_tensor_metadata_change=*/true));
-  auto values_shallow_copy =
-      Tensor(values.unsafeGetTensorImpl()->shallow_copy_and_detach(
-          /*version_counter=*/values.unsafeGetTensorImpl()->version_counter(),
-          /*allow_tensor_metadata_change=*/true));
-  alias_into_sparse(self, indices_shallow_copy, values_shallow_copy);
-  // alias_into_sparse overrides coalesced flag, so resetting the flag to
-  // the desired state here:
-  if (is_coalesced.has_value()) {
-    impl->set_coalesced(*is_coalesced);
-  }
-  // TODO: alias_into_sparse sets the coalesce flag to
-  // `self._values().shape[0] < 2`. There exist methods (e.g. permute
-  // on COO tensors when `dims[0] != 0` holds) that force coalesced
-  // flag to false even when nnz is less that 2. Here we cannot
-  // determine if this is the intention of such methods but it is
-  // likely that these methods are overly restrictive when estimating
-  // is_coalesced state. The condition `!is_coalesced && self._nnz() <
-  // 2` provides a way to detect and optimize such methods with
-  // respect to estimating the is_coalesced state.
-  return self;
+  return at::native::new_with_dims_and_tensor_sparse_symint(
+      sparse_dim,
+      dense_dim,
+      c10::fromIntArrayRefSlow(size),
+      indices,
+      values,
+      dtype,
+      layout,
+      device,
+      pin_memory,
+      is_coalesced);
 }
-
 } // namespace at
