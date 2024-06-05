@@ -79,7 +79,7 @@ void upsample_nearest1d_out_frame(
   int global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
 
-  auto caller = UpsampleNearest1dOutKernelFunctor<scalar_t, index_op_t>(
+  auto kfn = UpsampleNearest1dOutKernelFunctor<scalar_t, index_op_t>(
       n,
       input,
       dim_b,
@@ -90,7 +90,7 @@ void upsample_nearest1d_out_frame(
       scale_factor,
       index_op);
 
-  sycl_kernel_submit(global_range, work_group_size, queue, caller);
+  sycl_kernel_submit(global_range, work_group_size, queue, kfn);
 }
 
 void upsample_nearest1d_out_kernel(
