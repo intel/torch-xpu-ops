@@ -1035,7 +1035,7 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_half_xpu_int64_int32",
     "test_embedding_bag_half_xpu_int64_int64",
 
-    # skipped by CUDA due to performance issue
+    # skipped by CUDA for performance
     # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
     "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int32",
     "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int64",
@@ -1061,24 +1061,6 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int64",
     "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int32",
     "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
-
-    # AssertionError: Tensor-likes are not close!
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float64",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_float32",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_float64",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_float64",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_float32",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_float64",
 )
 res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 

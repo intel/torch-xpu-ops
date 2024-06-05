@@ -53,7 +53,7 @@ struct EmbeddingBagKernelFunctor {
         for (int i = 0; i < vec_size; i++) {
           value[i] = 0;
           value_max[i] = at::numeric_limits<accscalar_t>::lower_bound();
-          index_max[i] = 0;
+          index_max[i] = -1;
         }
 
         for (index_t off = start; off < end; off++) {
