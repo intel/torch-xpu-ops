@@ -1984,14 +1984,12 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
   Tensor sum_dy_xmu_;
   Tensor grad_weight_;
   Tensor grad_bias_;
-  auto new_shape = {
-      input_.size(0),
-      input_.size(1),
-      input_.numel() / input_.size(0) / input_.size(1)};
-  auto new_stride = {input_.stride(0), input_.stride(1), input_.stride(-1)};
 
-  auto input_reshaped = at::as_strided(input_, new_shape, new_stride);
-  auto grad_output_reshaped = at::as_strided(grad_out_, new_shape, new_stride);
+  auto input_reshaped = input_.reshape(
+      {input_.size(0),
+       input_.size(1),
+       -1}); // internally we merge the feature dimensions
+  auto grad_output_reshaped = grad_out_.reshape(input_reshaped.sizes());
 
   if (input_g) {
     sum_dy_ = at::empty_like(mean_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
