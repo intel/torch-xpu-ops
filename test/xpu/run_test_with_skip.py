@@ -1604,7 +1604,8 @@ skip_list=(
     "test_mask_layout_strided_masked_sum_xpu_int64",
     "test_mask_layout_strided_masked_sum_xpu_int8",
     "test_mask_layout_strided_masked_sum_xpu_uint8",
-#RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta 
+# CPU and CUDA bias code in SparseCsrTensor.cpp.
+# RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
     "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
     "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
     "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
