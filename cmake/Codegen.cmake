@@ -8,7 +8,6 @@ file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/aten/XPUFallback.template)
-
 function(GEN_BACKEND file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
@@ -36,6 +35,7 @@ GEN_BACKEND(
   xpu_functions.yaml
   XPUNativeFunctions.h
   RegisterXPU.cpp)
+
 
 list(APPEND xpu_generated_src ${RegisterXPU_PATH})
 add_custom_target(TORCH_XPU_GEN_TARGET DEPENDS ${xpu_generated_src})
