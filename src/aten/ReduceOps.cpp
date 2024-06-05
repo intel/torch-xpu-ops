@@ -157,6 +157,12 @@ Tensor XPUNativeFunctions::sum(
   return sum_out(self, dim, keepdim, opt_dtype, out);
 }
 
+Tensor XPUNativeFunctions::sum(
+    const Tensor& self,
+    std::optional<ScalarType> dtype) {
+  return XPUNativeFunctions::sum(self, IntArrayRef{}, false, dtype);
+}
+
 Tensor& mean_meta(
     const Tensor& self,
     OptionalIntArrayRef opt_dim,
