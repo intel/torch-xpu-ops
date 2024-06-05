@@ -169,8 +169,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "adaptive_max_pool3d.out",
     "addcdiv.out",
     "addcmul.out",
-    "all.all_out",
-    "all.out",
     "amax.out",
     "aminmax.out",
     "amin.out",
