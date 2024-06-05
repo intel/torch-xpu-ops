@@ -1661,14 +1661,13 @@ skip_list=(
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
-# test_content_store
-skip_list = (
-    # Storage compatibility in XPU tensor.
-    # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
-    "test_basic_xpu",
-    "test_load_tensor_xpu",
-)
 res += launch_test("test_content_store_xpu.py")
+
+res += launch_test("test_native_functions_xpu.py")
+
+res += launch_test("nn/test_init_xpu.py")
+
+res += launch_test("test_namedtensor_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
