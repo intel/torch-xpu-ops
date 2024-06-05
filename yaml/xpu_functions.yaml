@@ -300,3 +300,7 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _upsample_nearest_exact1d
+  - _upsample_nearest_exact1d.out
+  - upsample_nearest1d
+  - upsample_nearest1d.out
