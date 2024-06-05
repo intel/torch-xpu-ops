@@ -293,4 +293,246 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       output_mask);
 }
 
+::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
+    _native_batch_norm_legit(
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& bias,
+        Tensor& running_mean,
+        Tensor& running_var,
+        bool training,
+        double momentum,
+        double eps) {
+  return XPUNativeFunctions::native_batch_norm(
+      input, weight, bias, running_mean, running_var, training, momentum, eps);
+}
+
+::std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
+    _native_batch_norm_legit_out(
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& bias,
+        Tensor& running_mean,
+        Tensor& running_var,
+        bool training,
+        double momentum,
+        double eps,
+        Tensor& out,
+        Tensor& save_mean,
+        Tensor& save_invstd) {
+  return XPUNativeFunctions::native_batch_norm_out(
+      input,
+      weight,
+      bias,
+      running_mean,
+      running_var,
+      training,
+      momentum,
+      eps,
+      out,
+      save_mean,
+      save_invstd);
+}
+
+::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
+    _native_batch_norm_legit(
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& bias,
+        bool training,
+        double momentum,
+        double eps) {
+  return XPUNativeFunctions::native_batch_norm(
+      input, weight, bias, Tensor(), Tensor(), training, momentum, eps);
+}
+
+::std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> XPUNativeFunctions::
+    _native_batch_norm_legit_out(
+        const at::Tensor& input,
+        const ::std::optional<at::Tensor>& weight,
+        const ::std::optional<at::Tensor>& bias,
+        bool training,
+        double momentum,
+        double eps,
+        at::Tensor& out,
+        at::Tensor& save_mean,
+        at::Tensor& save_invstd) {
+  return XPUNativeFunctions::native_batch_norm_out(
+      input,
+      weight,
+      bias,
+      Tensor(),
+      Tensor(),
+      training,
+      momentum,
+      eps,
+      out,
+      save_mean,
+      save_invstd);
+}
+
+inline std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_with_update(
+    const Tensor& input,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& bias_opt,
+    Tensor& running_mean,
+    Tensor& running_var,
+    double momentum,
+    double eps) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  const Tensor& bias = c10::value_or_else(bias_opt, [] { return Tensor(); });
+  Tensor reserve;
+
+  reserve = at::empty({0}, input.options().dtype(kByte));
+
+  auto output = at::empty_like(input);
+  int64_t n_input = input.size(1);
+  auto options =
+      input.options().dtype(at::toAccumulateType(input.scalar_type(), true));
+  auto save_mean = at::empty({n_input}, options);
+  auto save_invstd = at::empty({n_input}, options);
+
+  native::xpu::batch_norm_out_kernel(
+      input,
+      weight,
+      bias,
+      running_mean,
+      running_var,
+      /*training*/ true,
+      momentum,
+      eps,
+      output,
+      save_mean,
+      save_invstd);
+
+  return std::tuple<Tensor, Tensor, Tensor, Tensor>(
+      output, save_mean, save_invstd, reserve);
+}
+
+inline std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> batch_norm_with_update_out(
+    const Tensor& input,
+    const c10::optional<Tensor>& weight_opt,
+    const c10::optional<Tensor>& bias_opt,
+    Tensor& running_mean,
+    Tensor& running_var,
+    double momentum,
+    double eps,
+    Tensor& out,
+    Tensor& save_mean,
+    Tensor& save_var,
+    Tensor& reserve) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  const Tensor& bias = c10::value_or_else(bias_opt, [] { return Tensor(); });
+
+  std::tie(out, save_mean, save_var) = native::xpu::batch_norm_out_kernel(
+      input,
+      weight,
+      bias,
+      running_mean,
+      running_var,
+      /*update*/ true,
+      momentum,
+      eps,
+      out,
+      save_mean,
+      save_var);
+
+  return std::tuple<Tensor&, Tensor&, Tensor&, Tensor&>(
+      out, save_mean, save_var, reserve);
+}
+
+::std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
+    _batch_norm_with_update(
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& bias,
+        Tensor& running_mean,
+        Tensor& running_var,
+        double momentum,
+        double eps) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::_batch_norm_with_update", "input");
+  c10::impl::check_and_update_common_device(
+      common_device, weight, "xpu::_batch_norm_with_update", "weight");
+  c10::impl::check_and_update_common_device(
+      common_device, bias, "xpu::_batch_norm_with_update", "bias");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_mean,
+      "xpu::_batch_norm_with_update",
+      "running_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_var,
+      "xpu::_batch_norm_with_update",
+      "running_var");
+  return batch_norm_with_update(
+      input, weight, bias, running_mean, running_var, momentum, eps);
+}
+
+::std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
+    _batch_norm_with_update_out(
+        const Tensor& input,
+        const ::std::optional<Tensor>& weight,
+        const ::std::optional<Tensor>& bias,
+        Tensor& running_mean,
+        Tensor& running_var,
+        double momentum,
+        double eps,
+        Tensor& out,
+        Tensor& save_mean,
+        Tensor& save_invstd,
+        Tensor& reserve) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::_batch_norm_with_update_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      save_mean,
+      "xpu::_batch_norm_with_update_out",
+      "save_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      save_invstd,
+      "xpu::_batch_norm_with_update_out",
+      "save_invstd");
+  c10::impl::check_and_update_common_device(
+      common_device, reserve, "xpu::_batch_norm_with_update_out", "reserve");
+  c10::impl::check_and_update_common_device(
+      common_device, input, "xpu::_batch_norm_with_update_out", "input");
+  c10::impl::check_and_update_common_device(
+      common_device, weight, "xpu::_batch_norm_with_update_out", "weight");
+  c10::impl::check_and_update_common_device(
+      common_device, bias, "xpu::_batch_norm_with_update_out", "bias");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_mean,
+      "xpu::_batch_norm_with_update_out",
+      "running_mean");
+  c10::impl::check_and_update_common_device(
+      common_device,
+      running_var,
+      "xpu::_batch_norm_with_update_out",
+      "running_var");
+  return batch_norm_with_update_out(
+      input,
+      weight,
+      bias,
+      running_mean,
+      running_var,
+      momentum,
+      eps,
+      out,
+      save_mean,
+      save_invstd,
+      reserve);
+}
+
 } // namespace at

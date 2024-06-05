@@ -149,7 +149,6 @@ skip_list = (
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
     "test_out_to_sparse_xpu_float32",
-    "test_out_warning__native_batch_norm_legit_xpu",
     "test_out_warning_jiterator_2inputs_2outputs_xpu",
     "test_out_warning_jiterator_4inputs_with_extra_args_xpu",
     "test_out_warning_jiterator_binary_return_by_ref_xpu",
@@ -358,12 +357,10 @@ skip_list = (
     "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
     "test_variant_consistency_eager_to_sparse_xpu_complex64",
     "test_variant_consistency_eager_to_sparse_xpu_float32",
-    "test_compare_cpu__native_batch_norm_legit_xpu_float32",
     "test_compare_cpu__refs_special_zeta_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_xpu_float32",
     "test_compare_cpu_linalg_lu_xpu_float32",
-    "test_compare_cpu_native_batch_norm_xpu_float32",
     "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
     "test_compare_cpu_special_zeta_xpu_float32",
     "test_out_cholesky_inverse_xpu_float32",
@@ -408,6 +405,8 @@ skip_list = (
     "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
     "test_out_native_batch_norm_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_out__native_batch_norm_legit_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_dtypes__batch_norm_with_update_xpu", # We are same as CUDA implementation. And CUDA skips these cases.
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
