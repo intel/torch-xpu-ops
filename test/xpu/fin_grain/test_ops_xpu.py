@@ -117,6 +117,7 @@ _xpu_computation_op_list = [
     "where",
     "zero",
     "add",
+    "all",
     "any",
     "arange",
     "as_strided",
