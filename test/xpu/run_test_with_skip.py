@@ -1669,5 +1669,7 @@ res += launch_test("test_native_functions_xpu.py")
 
 res += launch_test("nn/test_init_xpu.py")
 
+res += launch_test("test_namedtensor_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
