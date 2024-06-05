@@ -6,9 +6,9 @@ from styleframe import StyleFrame, Styler, utils
 
 parser = argparse.ArgumentParser(description="Generate report")
 parser.add_argument('-s', '--suite', default='huggingface', choices=["torchbench", "huggingface", "timm_models"], type=str, help='model suite name')
-parser.add_argument('-p', '--precision', default='amp_bf16 amp_fp16', nargs='*', type=str, help='precision')
+parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs='*', type=str, help='precision')
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
-parser.add_argument('-m', '--mode', default='inference training', nargs='*', type=str, help='mode name')
+parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 parser.add_argument('--html_off', action='store_true', help='turn off html file generate')
 args = parser.parse_args()
 
@@ -474,15 +474,19 @@ def update_summary(excel):
         sf.to_excel(sheet_name='Summary', excel_writer=excel)
 
 
-def generate_report(excel, precision_list):
+def generate_report(excel, precision_list, mode_list):
+    #print(type(precision_list))
     for p in precision_list:
-        for m in ['inference', 'training']:
+        #print(p)
+        for m in mode_list:
+        #for m in ['inference', 'training']:
             #init_passrate_geom_dict(p,m)
+            #print(m)
             update_details(p, m, excel)
     update_summary(excel)
 
 
-def excel_postprocess(file, precison):
+def excel_postprocess(file, precison, mode):
     wb = file.book
     # Summary
     ws = wb['Summary']
@@ -490,7 +494,7 @@ def excel_postprocess(file, precison):
         ws.merge_cells(start_row=i, end_row=i + 1, start_column=1, end_column=1)
     # details
     for p in precison:
-        for m in ['inference', 'training']:
+        for m in mode:
             wdt = wb[p + '_' + m]
             wdt.merge_cells(start_row=1, end_row=2, start_column=1, end_column=1)
             wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
@@ -527,6 +531,6 @@ def html_generate(html_off):
 
 if __name__ == '__main__':
     excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
-    generate_report(excel, args.precision)
-    excel_postprocess(excel, args.precision)
+    generate_report(excel, args.precision, args.mode)
+    excel_postprocess(excel, args.precision, args.mode)
     html_generate(args.html_off)
