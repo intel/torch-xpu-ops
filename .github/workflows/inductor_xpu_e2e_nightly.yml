@@ -49,7 +49,10 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda
-          if conda env list | grep -q "^e2e_ci "; then source activate e2e_ci; else conda create -n e2e_ci python=3.8 cmake ninja -y; fi
+          if ! conda env list | grep -q "^e2e_ci "; then
+            conda create -n e2e_ci python=3.8 cmake ninja -y
+          fi
+          source activate e2e_ci
           conda install intel::mkl-static intel::mkl-include -y
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
@@ -198,7 +201,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
   Tests-Failure-And-Report:
-    if: always() && ${{ !inputs.suite }}
+    if: always()
     runs-on: pvc_e2e
     permissions:
       issues: write
@@ -207,14 +210,14 @@ jobs:
     needs: Inductor-XPU-E2E-Nightly-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
-        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }}
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }} && ${{ !inputs.suite }}
         run: |
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           gh --repo $repo issue comment 304  \
               --body "XPU OPS Nightly Successful $(date +'%F'), See: $build_url"
       - name: Report github issue when failure detected
-        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'failure' }}
+        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'failure' }} && ${{ !inputs.suite }}
         run: |
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           notification_list="${{ secrets.NIGHTLY_EMAIL_LIST }}"

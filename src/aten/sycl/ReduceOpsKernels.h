@@ -6,6 +6,8 @@ namespace at::native::xpu {
 
 void argmax_kernel(TensorIterator& iter);
 
+void and_kernel(TensorIterator& iter);
+
 void or_kernel(TensorIterator& iter);
 
 void mean_kernel(TensorIterator& iter);
