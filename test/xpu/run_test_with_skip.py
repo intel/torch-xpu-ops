@@ -156,7 +156,6 @@ skip_list = (
     "test_out_warning_jiterator_binary_xpu",
     "test_out_warning_jiterator_unary_xpu",
     "test_out_warning_nanmean_xpu",
-    "test_out_warning_native_batch_norm_xpu",
     "test_out_warning_nn_functional_conv1d_xpu",
     "test_out_warning_nn_functional_conv2d_xpu",
     "test_out_warning_nn_functional_conv3d_xpu",
@@ -408,6 +407,7 @@ skip_list = (
     "test_non_standard_bool_values_argsort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
     "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
+    "test_out_native_batch_norm_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
