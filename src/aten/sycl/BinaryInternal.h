@@ -1,11 +1,13 @@
 #pragma once
 
+#include <comm/XPUMathCompat.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
 struct DivFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a / b;
+    return c10::xpu::compat::div(a, b);
   }
 };
 

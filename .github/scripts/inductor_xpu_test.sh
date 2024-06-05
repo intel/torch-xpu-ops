@@ -39,10 +39,10 @@ fi
 
 Real_DT=$DT
 DT_extra=''
-if [[ $DT == amp_bf16 ]]; then
+if [[ "$DT" == "amp_bf16" ]]; then
     Real_DT=amp
     DT_extra="--amp-dtype bfloat16 "
-elif [[ $DT == "amp_fp16" ]]; then
+elif [[ "$DT" == "amp_fp16" ]]; then
     Real_DT=amp
     DT_extra="--amp-dtype float16 "
 fi
@@ -59,4 +59,7 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
 fi
 
 ulimit -n 1048576
-ZE_AFFINITY_MASK=${CARD} python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d${DEVICE} -n10 --no-skip --dashboard ${DT_extra} ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra}  --backend=inductor --timeout=7200 --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
+ZE_AFFINITY_MASK=${CARD} \
+    python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n10 --no-skip --dashboard \
+    ${DT_extra} ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra} --backend=inductor --timeout=7200 \
+    --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log

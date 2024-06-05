@@ -3,10 +3,9 @@ name: E2E CI Tests
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
-  merge_group:
-    branches: [main]
-    types: [checks_requested]
+    branches:
+      - main
+      - release/*
 
 permissions: read-all
 
@@ -24,7 +23,10 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda
-          if conda env list | grep -q "^e2e_ci "; then source activate e2e_ci; else conda create -n e2e_ci python=3.8 cmake ninja -y; fi
+          if ! conda env list | grep -q "^e2e_ci "; then
+            conda create -n e2e_ci python=3.8 cmake ninja -y
+          fi
+          source activate e2e_ci
           conda install intel::mkl-static intel::mkl-include -y
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
