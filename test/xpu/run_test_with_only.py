@@ -32,6 +32,8 @@ res = 0
 # test_foreach
 execute_list = (
     "_foreach_add_ and not slowpath",
+    "_foreach_addcmul_ and not slowpath",
+    "_foreach_addcdiv_ and not slowpath",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
