@@ -117,6 +117,7 @@ _xpu_computation_op_list = [
     "where",
     "zero",
     "add",
+    "all",
     "any",
     "arange",
     "as_strided",
@@ -135,6 +136,8 @@ _xpu_computation_op_list = [
     "_upsample_nearest_exact1d",
     "upsample_nearest1d"
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "sigmoid",
+    "sgn",
 ]
 
 _xpu_computation_ops = [
