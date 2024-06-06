@@ -64,6 +64,19 @@ skip_list = (
     # https://en.cppreference.com/w/cpp/numeric/complex/exp
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
+   
+    # The operator is not currently implemented for the XPU device.
+    # https://github.com/intel/torch-xpu-ops/issues/379
+    "test_compare_cpu_nn_functional_interpolate_nearest-exact_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_nearest-exact_xpu_float16",
+    "test_compare_cpu_nn_functional_interpolate_nearest-exact_xpu_float32",
+    "test_compare_cpu_nn_functional_interpolate_nearest-exact_xpu_float64",
+    "test_compare_cpu_nn_functional_interpolate_nearest-exact_xpu_uint8",
+    "test_backward_nn_functional_interpolate_nearest-exact_xpu_float32",
+    "test_forward_ad_nn_functional_interpolate_nearest-exact_xpu_float32",
+    "test_operator_nn_functional_interpolate_nearest-exact_xpu_float32",
+    "test_view_replay_nn_functional_interpolate_nearest-exact_xpu_float32",
+    "test_backward_nn_functional_interpolate_nearest_xpu_float32",
 )
 
 
