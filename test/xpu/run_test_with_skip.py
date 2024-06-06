@@ -1677,6 +1677,118 @@ skip_list=(
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
+skip_list=(
+    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). 
+    "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_amax_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amax_xpu_float16",
+    "test_mask_layout_strided_masked_amax_xpu_float32",
+    "test_mask_layout_strided_masked_amax_xpu_float64",
+    "test_mask_layout_strided_masked_amin_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amin_xpu_float16",
+    "test_mask_layout_strided_masked_amin_xpu_float32",
+    "test_mask_layout_strided_masked_amin_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_bfloat16",
+    "test_mask_layout_strided_masked_prod_xpu_bool",
+    "test_mask_layout_strided_masked_prod_xpu_complex128",
+    "test_mask_layout_strided_masked_prod_xpu_complex64",
+    "test_mask_layout_strided_masked_prod_xpu_float16",
+    "test_mask_layout_strided_masked_prod_xpu_float32",
+    "test_mask_layout_strided_masked_prod_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_int16",
+    "test_mask_layout_strided_masked_prod_xpu_int32",
+    "test_mask_layout_strided_masked_prod_xpu_int64",
+    "test_mask_layout_strided_masked_prod_xpu_int8",
+    "test_mask_layout_strided_masked_prod_xpu_uint8",
+    "test_mask_layout_strided_masked_sum_xpu_bfloat16",
+    "test_mask_layout_strided_masked_sum_xpu_bool",
+    "test_mask_layout_strided_masked_sum_xpu_complex128",
+    "test_mask_layout_strided_masked_sum_xpu_complex64",
+    "test_mask_layout_strided_masked_sum_xpu_float16",
+    "test_mask_layout_strided_masked_sum_xpu_float32",
+    "test_mask_layout_strided_masked_sum_xpu_float64",
+    "test_mask_layout_strided_masked_sum_xpu_int16",
+    "test_mask_layout_strided_masked_sum_xpu_int32",
+    "test_mask_layout_strided_masked_sum_xpu_int64",
+    "test_mask_layout_strided_masked_sum_xpu_int8",
+    "test_mask_layout_strided_masked_sum_xpu_uint8",
+
+    # CPU and CUDA bias code in SparseCsrTensor.cpp.
+    # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+    "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_mean_xpu_bfloat16",
+    "test_mask_layout_strided_masked_mean_xpu_float16",
+    "test_mask_layout_strided_masked_mean_xpu_float32",
+    "test_mask_layout_strided_masked_mean_xpu_float6"
+)
+res += launch_test("test_masked_xpu.py", skip_list)
+
 res += launch_test("test_content_store_xpu.py")
 
 res += launch_test("test_native_functions_xpu.py")
@@ -1684,6 +1796,8 @@ res += launch_test("test_native_functions_xpu.py")
 res += launch_test("nn/test_init_xpu.py")
 
 res += launch_test("test_namedtensor_xpu.py")
+
+res += launch_test("nn/test_lazy_modules_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
