@@ -645,7 +645,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       weight.scalar_type(),
-      "embedding_bag_kernel",
+      "embedding_bag_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_bag_kernel", [&] {
