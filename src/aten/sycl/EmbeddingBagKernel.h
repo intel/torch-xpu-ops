@@ -9,7 +9,7 @@
 
 namespace at::native::xpu {
 
-namespace detail {
+namespace {
 
 constexpr int MODE_SUM = 0;
 constexpr int MODE_MEAN = 1;
@@ -26,23 +26,23 @@ template <
     typename vec_idx_t>
 struct EmbeddingBagKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
-    auto desc = cfg.get_item_desc(item);
+    auto desc = cfg_.get_item_desc(item);
     index_t start = 0, end = 0;
     int64_t off_off = -1;
 
     do {
-      if (desc.glb_problem < cfg.problem_ &&
-          desc.glb_batch < cfg.problem_batch_) {
+      if (desc.glb_problem < cfg_.problem_ &&
+          desc.glb_batch < cfg_.problem_batch_) {
         bool walk_on_bag = desc.glb_batch != off_off;
         if (walk_on_bag) {
           off_off = desc.glb_batch;
-          bool last_bag = off_off == bag_num - 1;
-          if (!ignore_offsets) {
-            start = offset[off_off];
-            end = last_bag ? index_size : offset[off_off + 1];
+          bool last_bag = off_off == bag_num_ - 1;
+          if (!ignore_offsets_) {
+            start = offset_[off_off];
+            end = last_bag ? index_size_ : offset_[off_off + 1];
           } else {
-            start = off_off * fixing_bag_size;
-            end = start + fixing_bag_size;
+            start = off_off * fixing_bag_size_;
+            end = start + fixing_bag_size_;
           }
         }
 
@@ -58,21 +58,21 @@ struct EmbeddingBagKernelFunctor {
 
         for (index_t off = start; off < end; off++) {
           index_t index_off = off;
-          index_t vec_idx = index[index_off];
+          index_t vec_idx = index_[index_off];
 
           if (walk_on_bag && desc.glb_problem == 0) {
-            offset2bag[index_off] = off_off;
+            offset2bag_[index_off] = off_off;
           }
 
-          if (padding_idx != vec_idx) {
-            index_t i_off = vec_idx * vec_len + desc.glb_problem;
-            vec_t other = w_vec[i_off];
+          if (padding_idx_ != vec_idx) {
+            index_t i_off = vec_idx * vec_len_ + desc.glb_problem;
+            vec_t other = w_vec_[i_off];
 
             if constexpr (mode == MODE_SUM) {
 #pragma unroll
               for (int i = 0; i < vec_size; i++) {
-                if (per_sample_weights) {
-                  other[i] *= per_sample_weights[index_off];
+                if (per_sample_weights_) {
+                  other[i] *= per_sample_weights_[index_off];
                 }
                 value[i] += other[i];
               }
@@ -86,7 +86,7 @@ struct EmbeddingBagKernelFunctor {
               for (int i = 0; i < vec_size; i++) {
                 if (other[i] > value_max[i]) {
                   value_max[i] = other[i];
-                  if (max_index) {
+                  if (max_index_) {
                     index_max[i] = vec_idx;
                   }
                 }
@@ -99,17 +99,17 @@ struct EmbeddingBagKernelFunctor {
 
         int64_t bsize = end - start - padding_cnt;
         if (desc.glb_problem == 0) {
-          bag_size[off_off] = bsize;
+          bag_size_[off_off] = bsize;
         }
 
-        index_t o_off = off_off * vec_len + desc.glb_problem;
+        index_t o_off = off_off * vec_len_ + desc.glb_problem;
         if constexpr (mode == MODE_SUM) {
           vec_t o;
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
             o[i] = value[i];
           }
-          o_vec[o_off] = o;
+          o_vec_[o_off] = o;
         } else if constexpr (mode == MODE_MEAN) {
           vec_t o;
           bsize = bsize == 0 ? 1 : bsize;
@@ -117,75 +117,75 @@ struct EmbeddingBagKernelFunctor {
           for (int i = 0; i < vec_size; i++) {
             o[i] = value[i] / bsize;
           }
-          o_vec[o_off] = o;
+          o_vec_[o_off] = o;
         } else if constexpr (mode == MODE_MAX) {
           vec_t padding;
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
             padding[i] = 0;
           }
-          o_vec[o_off] =
+          o_vec_[o_off] =
               value_max[0] == at::numeric_limits<accscalar_t>::lower_bound()
               ? padding
               : value_max;
-          if (max_index) {
-            max_idx_vec[o_off] = index_max;
+          if (max_index_) {
+            max_idx_vec_[o_off] = index_max;
           }
         }
       }
-    } while (cfg.next(item, desc));
+    } while (cfg_.next(item, desc));
   }
   EmbeddingBagKernelFunctor(
-      index_t* const index_,
-      index_t* const offset_,
-      index_t* const offset2bag_,
-      index_t* const bag_size_,
-      index_t* const max_index_,
-      scalar_t* const per_sample_weights_,
-      int64_t index_size_,
-      int64_t bag_num_,
-      int64_t vec_len_,
-      index_t padding_idx_,
-      bool ignore_offsets_,
-      vec_t* o_vec_,
-      vec_t* w_vec_,
-      vec_idx_t* max_idx_vec_,
-      BatchKernelConfig cfg_,
-      index_t fixing_bag_size_)
-      : index(index_),
-        offset(offset_),
-        offset2bag(offset2bag_),
-        bag_size(bag_size_),
-        max_index(max_index_),
-        per_sample_weights(per_sample_weights_),
-        index_size(index_size_),
-        bag_num(bag_num_),
-        vec_len(vec_len_),
-        padding_idx(padding_idx_),
-        ignore_offsets(ignore_offsets_),
-        o_vec(o_vec_),
-        w_vec(w_vec_),
-        max_idx_vec(max_idx_vec_),
-        cfg(cfg_),
-        fixing_bag_size(fixing_bag_size_) {}
+      index_t* const index,
+      index_t* const offset,
+      index_t* const offset2bag,
+      index_t* const bag_size,
+      index_t* const max_index,
+      scalar_t* const per_sample_weights,
+      int64_t index_size,
+      int64_t bag_num,
+      int64_t vec_len,
+      index_t padding_idx,
+      bool ignore_offsets,
+      vec_t* o_vec,
+      vec_t* w_vec,
+      vec_idx_t* max_idx_vec,
+      BatchKernelConfig cfg,
+      index_t fixing_bag_size)
+      : index_(index),
+        offset_(offset),
+        offset2bag_(offset2bag),
+        bag_size_(bag_size),
+        max_index_(max_index),
+        per_sample_weights_(per_sample_weights),
+        index_size_(index_size),
+        bag_num_(bag_num),
+        vec_len_(vec_len),
+        padding_idx_(padding_idx),
+        ignore_offsets_(ignore_offsets),
+        o_vec_(o_vec),
+        w_vec_(w_vec),
+        max_idx_vec_(max_idx_vec),
+        cfg_(cfg),
+        fixing_bag_size_(fixing_bag_size) {}
 
  private:
-  index_t* const index;
-  index_t* const offset;
-  index_t* const offset2bag;
-  index_t* const bag_size;
-  index_t* const max_index;
-  scalar_t* const per_sample_weights;
-  int64_t index_size;
-  int64_t bag_num;
-  int64_t vec_len;
-  index_t padding_idx;
-  bool ignore_offsets;
-  vec_t* o_vec;
-  vec_t* w_vec;
-  vec_idx_t* max_idx_vec;
-  BatchKernelConfig cfg;
-  index_t fixing_bag_size;
+  index_t* const index_;
+  index_t* const offset_;
+  index_t* const offset2bag_;
+  index_t* const bag_size_;
+  index_t* const max_index_;
+  scalar_t* const per_sample_weights_;
+  int64_t index_size_;
+  int64_t bag_num_;
+  int64_t vec_len_;
+  index_t padding_idx_;
+  bool ignore_offsets_;
+  vec_t* o_vec_;
+  vec_t* w_vec_;
+  vec_idx_t* max_idx_vec_;
+  BatchKernelConfig cfg_;
+  index_t fixing_bag_size_;
 };
 
 template <
@@ -472,200 +472,112 @@ struct EmbeddingBagUpdateOutputKernelFunctor {
         scalar_t,
         accscalar_t,
         index_t>(
-        mode,
-        input,
-        offset,
-        weight,
-        output,
-        offset2bag,
-        bag_size,
-        per_sample_weights_defined,
-        per_sample_weights,
-        per_sample_weights_stride,
-        max_indices,
-        WGNumber,
-        numBags,
-        weight_total_elem,
-        chunk_size,
-        bag_chunk_num,
-        bag_wi_num,
-        bagsPerLoop,
-        input_length,
-        weight_stride0,
-        weight_stride1,
-        include_last_offset,
-        padding_idx,
-        if_align_vector,
+        mode_,
+        input_,
+        offset_,
+        weight_,
+        output_,
+        offset2bag_,
+        bag_size_,
+        per_sample_weights_defined_,
+        per_sample_weights_,
+        per_sample_weights_stride_,
+        max_indices_,
+        WGNumber_,
+        numBags_,
+        weight_total_elem_,
+        chunk_size_,
+        bag_chunk_num_,
+        bag_wi_num_,
+        bagsPerLoop_,
+        input_length_,
+        weight_stride0_,
+        weight_stride1_,
+        include_last_offset_,
+        padding_idx_,
+        if_align_vector_,
         item);
   }
   EmbeddingBagUpdateOutputKernelFunctor(
-      const int64_t mode_,
-      index_t* input_,
-      index_t* offset_,
-      scalar_t* weight_,
-      scalar_t* output_,
-      index_t* offset2bag_,
-      index_t* bag_size_,
-      bool per_sample_weights_defined_,
-      scalar_t* per_sample_weights_,
-      int64_t per_sample_weights_stride_,
-      index_t* max_indices_,
-      int64_t WGNumber_,
-      int64_t numBags_,
-      int64_t weight_total_elem_,
-      int64_t chunk_size_,
-      int64_t bag_chunk_num_,
-      int64_t bag_wi_num_,
-      int64_t bagsPerLoop_,
-      int64_t input_length_,
-      int64_t weight_stride0_,
-      int64_t weight_stride1_,
-      bool include_last_offset_,
-      index_t padding_idx_,
-      bool if_align_vector_)
-      : mode(mode_),
-        input(input_),
-        offset(offset_),
-        weight(weight_),
-        output(output_),
-        offset2bag(offset2bag_),
-        bag_size(bag_size_),
-        per_sample_weights_defined(per_sample_weights_defined_),
-        per_sample_weights(per_sample_weights_),
-        per_sample_weights_stride(per_sample_weights_stride_),
-        max_indices(max_indices_),
-        WGNumber(WGNumber_),
-        numBags(numBags_),
-        weight_total_elem(weight_total_elem_),
-        chunk_size(chunk_size_),
-        bag_chunk_num(bag_chunk_num_),
-        bag_wi_num(bag_wi_num_),
-        bagsPerLoop(bagsPerLoop_),
-        input_length(input_length_),
-        weight_stride0(weight_stride0_),
-        weight_stride1(weight_stride1_),
-        include_last_offset(include_last_offset_),
-        padding_idx(padding_idx_),
-        if_align_vector(if_align_vector_) {}
+      const int64_t mode,
+      index_t* input,
+      index_t* offset,
+      scalar_t* weight,
+      scalar_t* output,
+      index_t* offset2bag,
+      index_t* bag_size,
+      bool per_sample_weights_defined,
+      scalar_t* per_sample_weights,
+      int64_t per_sample_weights_stride,
+      index_t* max_indices,
+      int64_t WGNumber,
+      int64_t numBags,
+      int64_t weight_total_elem,
+      int64_t chunk_size,
+      int64_t bag_chunk_num,
+      int64_t bag_wi_num,
+      int64_t bagsPerLoop,
+      int64_t input_length,
+      int64_t weight_stride0,
+      int64_t weight_stride1,
+      bool include_last_offset,
+      index_t padding_idx,
+      bool if_align_vector)
+      : mode_(mode),
+        input_(input),
+        offset_(offset),
+        weight_(weight),
+        output_(output),
+        offset2bag_(offset2bag),
+        bag_size_(bag_size),
+        per_sample_weights_defined_(per_sample_weights_defined),
+        per_sample_weights_(per_sample_weights),
+        per_sample_weights_stride_(per_sample_weights_stride),
+        max_indices_(max_indices),
+        WGNumber_(WGNumber),
+        numBags_(numBags),
+        weight_total_elem_(weight_total_elem),
+        chunk_size_(chunk_size),
+        bag_chunk_num_(bag_chunk_num),
+        bag_wi_num_(bag_wi_num),
+        bagsPerLoop_(bagsPerLoop),
+        input_length_(input_length),
+        weight_stride0_(weight_stride0),
+        weight_stride1_(weight_stride1),
+        include_last_offset_(include_last_offset),
+        padding_idx_(padding_idx),
+        if_align_vector_(if_align_vector) {}
 
  private:
-  const int64_t mode;
-  index_t* input;
-  index_t* offset;
-  scalar_t* weight;
-  scalar_t* output;
-  index_t* offset2bag;
-  index_t* bag_size;
-  bool per_sample_weights_defined;
-  scalar_t* per_sample_weights;
-  int64_t per_sample_weights_stride;
-  index_t* max_indices;
-  int64_t WGNumber;
-  int64_t numBags;
-  int64_t weight_total_elem;
-  int64_t chunk_size;
-  int64_t bag_chunk_num;
-  int64_t bag_wi_num;
-  int64_t bagsPerLoop;
-  int64_t input_length;
-  int64_t weight_stride0;
-  int64_t weight_stride1;
-  const bool include_last_offset;
-  const index_t padding_idx;
-  const bool if_align_vector;
+  const int64_t mode_;
+  index_t* input_;
+  index_t* offset_;
+  scalar_t* weight_;
+  scalar_t* output_;
+  index_t* offset2bag_;
+  index_t* bag_size_;
+  bool per_sample_weights_defined_;
+  scalar_t* per_sample_weights_;
+  int64_t per_sample_weights_stride_;
+  index_t* max_indices_;
+  int64_t WGNumber_;
+  int64_t numBags_;
+  int64_t weight_total_elem_;
+  int64_t chunk_size_;
+  int64_t bag_chunk_num_;
+  int64_t bag_wi_num_;
+  int64_t bagsPerLoop_;
+  int64_t input_length_;
+  int64_t weight_stride0_;
+  int64_t weight_stride1_;
+  const bool include_last_offset_;
+  const index_t padding_idx_;
+  const bool if_align_vector_;
 };
 
-template <typename index_t>
-struct embedding_bag_backward_dpcpp_sum_avg_functor {
-  auto operator()(index_t a, index_t b) const {
-    return a == b;
-  }
-};
+} // namespace
 
-template <typename scalar_t, typename index_t, typename accscalar_t>
-struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    int idx = item_id.get_global_linear_id();
-    auto sg = item_id.get_sub_group();
-    int sgSize =
-        sg.get_local_range()[0]; // number of work-items in this sub-group
-    int sgId = idx / sgSize; // subgroup index
-    int sglid =
-        sg.get_local_id()[0]; // index of the work-item in this sub-group
-
-    int num_sg = num_group * max_group_size / sgSize; // number of sub-groups
-    for (int sample_idx = sgId; sample_idx < num_samples;
-         sample_idx += num_sg) {
-      accscalar_t result = 0.;
-      const int bag_idx = (int)offset2bag[sample_idx];
-      const int embedding_idx = (int)indices[sample_idx];
-      if (embedding_idx != padding_idx) {
-        for (int feature_idx = sglid; feature_idx < embedding_features;
-             feature_idx += sgSize) {
-          result += grad[grad_stride0 * bag_idx + grad_stride1 * feature_idx] *
-              weight[weight_stride0 * embedding_idx +
-                     weight_stride1 * feature_idx];
-        }
-      }
-      // subgroup reduce sum
-      for (int offset = sgSize / 2; offset > 0; offset /= 2) {
-        result += sycl::shift_group_left(sg, result, offset);
-      };
-      if (sglid == 0) {
-        output[sample_idx] = result;
-      }
-    }
-  }
-  EmbeddingBagPerSampleWeightsBackwardKernelFunctor(
-      const scalar_t* grad_,
-      int64_t grad_stride0_,
-      int64_t grad_stride1_,
-      const scalar_t* weight_,
-      int64_t weight_stride0_,
-      int64_t weight_stride1_,
-      const index_t* indices_,
-      const index_t* offset2bag_,
-      int64_t num_samples_,
-      int64_t embedding_features_,
-      scalar_t* output_,
-      index_t padding_idx_,
-      int64_t num_group_,
-      int64_t max_group_size_)
-      : grad(grad_),
-        grad_stride0(grad_stride0_),
-        grad_stride1(grad_stride1_),
-        weight(weight_),
-        weight_stride0(weight_stride0_),
-        weight_stride1(weight_stride1_),
-        indices(indices_),
-        offset2bag(offset2bag_),
-        num_samples(num_samples_),
-        embedding_features(embedding_features_),
-        output(output_),
-        padding_idx(padding_idx_),
-        num_group(num_group_),
-        max_group_size(max_group_size_) {}
-
- private:
-  const scalar_t* grad;
-  int64_t grad_stride0;
-  int64_t grad_stride1;
-  const scalar_t* weight;
-  int64_t weight_stride0;
-  int64_t weight_stride1;
-  const index_t* indices;
-  const index_t* offset2bag;
-  int64_t num_samples;
-  int64_t embedding_features;
-  scalar_t* output;
-  index_t padding_idx;
-  int64_t num_group;
-  int64_t max_group_size;
-};
-
-} // namespace detail
-
-std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_dpcpp(
+::std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     const Tensor& weight_t,
     const Tensor& indices_t,
     const Tensor& offsets_t,
@@ -674,38 +586,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_dpcpp(
     bool sparse,
     const Tensor& per_sample_weights_t,
     bool include_last_offset,
-    int64_t padding_idx);
-
-std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only(
-    const Tensor& weight,
-    const Tensor& indices,
-    const Tensor& offsets,
-    bool scale_grad_by_freq,
-    int64_t mode,
-    bool sparse,
-    const c10::optional<Tensor>& per_sample_weights_opt,
-    bool include_last_offset,
-    int64_t padding_idx);
-
-Tensor _embedding_bag_dense_backward_dpcpp(
-    const Tensor& grad_t,
-    const Tensor& indices,
-    const Tensor& offset2bag,
-    const Tensor& bag_size,
-    const Tensor& max_indices,
-    int64_t num_weights,
-    bool scale_grad_by_freq,
-    int64_t mode,
-    const Tensor& per_sample_weights,
-    int64_t padding_idx);
-
-Tensor _embedding_bag_per_sample_weights_backward_dpcpp(
-    const Tensor& grad,
-    const Tensor& weight, // NB: embedding table, not per_sample_weights
-    const Tensor& indices_,
-    const Tensor& offsets_,
-    const Tensor& offset2bag,
-    int64_t mode,
     int64_t padding_idx);
 
 } // namespace at::native::xpu
