@@ -1288,6 +1288,7 @@ skip_list = (
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
 skip_list = ( 
+    # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend. 
     "test_flatten_xpu",
     "test_ravel_xpu",
 )
