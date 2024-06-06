@@ -1,6 +1,6 @@
 #include <ATen/ATen.h>
 #include <aten/sycl/UpSample.h>
-namespace at ::native {
+namespace at::native {
 namespace xpu {
 
 void upsample_nearest1d_kernel(
