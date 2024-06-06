@@ -1,12 +1,19 @@
 #include <ATen/ATen.h>
 #include <ATen/CPUFunctions.h>
-#include <ATen/TensorUtils.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/xpu/PinnedMemoryAllocator.h>
-#include <ATen/xpu/detail/XPUHooks.h>
-#include <c10/core/Storage.h>
 
 namespace at {
+
+// Note: The user must call is_pinned(device='xpu') to explicitly call here.
+bool XPUNativeFunctions::is_pinned(
+    const Tensor& self,
+    c10::optional<Device> device) {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      !device.has_value() || device->type() == c10::DeviceType::XPU);
+
+  return at::detail::getXPUHooks().isPinnedPtr(self.storage().data());
+}
 
 // Note: The user must call tensor.pin_memory(device='xpu') to explicitly call
 // here.
