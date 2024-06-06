@@ -111,7 +111,7 @@ inline bool should_use_acc_buffer(at::TensorIterator& iter) {
   return true;
 }
 
-Tensor& sum_out(
+Tensor& XPUNativeFunctions::sum_out(
     const Tensor& self,
     OptionalIntArrayRef opt_dim,
     bool keepdim,
@@ -154,7 +154,7 @@ Tensor XPUNativeFunctions::sum(
     bool keepdim,
     c10::optional<ScalarType> opt_dtype) {
   Tensor out;
-  return sum_out(self, dim, keepdim, opt_dtype, out);
+  return XPUNativeFunctions::sum_out(self, dim, keepdim, opt_dtype, out);
 }
 
 Tensor XPUNativeFunctions::sum(
