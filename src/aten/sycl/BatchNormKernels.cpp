@@ -361,34 +361,37 @@ inline int div_up(int a, int b) {
   return (a + b - 1) / b;
 }
 
+constexpr int ELEMENTS_PER_ITER =
+    4; // enables concurrency within each thread to hide latency
+
 std::tuple<sycl::range<2>, sycl::range<2>> flexible_launch_configs(
     const int reduction,
     const int stride,
     const bool coop_flag = false,
     const int loops_per_item = 1) {
-  int wg_size = syclMaxWorkItemsPerEU();
+  int max_wg_size = syclMaxWorkItemsPerEU();
   int group_x = std::min(last_pow2(stride), 32);
-  int group_y =
-      std::min(last_pow2(div_up(reduction, loops_per_item)), wg_size / group_x);
-  if (group_x * group_y != wg_size) {
-    group_x = std::min(last_pow2(stride), wg_size / group_y);
+  int group_y = std::min(
+      last_pow2(div_up(reduction, loops_per_item)), max_wg_size / group_x);
+  if (group_x * group_y != max_wg_size) {
+    group_x = std::min(last_pow2(stride), max_wg_size / group_y);
   }
 
-  int grid_x = div_up(stride, group_x);
+  int nwg_x = div_up(stride, group_x);
   //  int grid_y = std::min(div_up(reduction, group_y * loops_per_item), 1024);
-  int grid_y = std::min(
+  int nwg_y = std::min(
       div_up(reduction, group_y * loops_per_item),
-      int(syclMaxWorkItemsPerTile()) / (grid_x * group_x) / (group_y));
-  grid_y = std::max(grid_y, 1);
+      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_x) / (group_y));
+  nwg_y = std::max(nwg_y, 1);
 
   if (coop_flag) {
     // it's not worth having a grid reduction if the reduction dimension is not
     // big enough
-    grid_y = grid_y < 8 ? 1 : grid_y;
+    nwg_y = nwg_y < 8 ? 1 : nwg_y;
   }
 
   sycl::range<2> local_range(group_y, group_x);
-  sycl::range<2> global_range(grid_y * group_y, grid_x * group_x);
+  sycl::range<2> global_range(nwg_y * group_y, nwg_x * group_x);
 
   return std::make_tuple(global_range, local_range);
 }
@@ -861,9 +864,10 @@ void batch_norm_reduce_sum_channels_last_kernel(
     Tensor& out_invstd,
     const int reduction_size,
     const int stride) {
-  sycl::range<2> global_range(1, 1), local_range(1, 1);
-  std::tie(global_range, local_range) =
+  auto workload =
       flexible_launch_configs(reduction_size, stride / vec_size, true);
+  auto global_range = std::get<0>(workload);
+  auto local_range = std::get<1>(workload);
   using vec_t = memory::aligned_vector<scalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
   auto global_range_y = global_range[0];
@@ -1499,9 +1503,7 @@ void batch_norm_transform_input_channels_last_kernel(
   using vec_t = memory::aligned_vector<scalar_t, vec_size>;
   using vec_s_t = memory::aligned_vector<accscalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
-  sycl::range<2> global_range(1, 1), local_range(1, 1);
-  std::tie(global_range, local_range) =
-      flexible_launch_configs(reduction_size, stride / vec_size);
+  auto workload = flexible_launch_configs(reduction_size, stride / vec_size);
 
   auto caller = BatchNormTransformInputChannelsLastKernelFunctor<
       scalar_t,
@@ -1522,7 +1524,8 @@ void batch_norm_transform_input_channels_last_kernel(
       fuse_relu,
       total_num);
 
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+  sycl_kernel_submit(
+      std::get<0>(workload), std::get<1>(workload), queue, caller);
 }
 
 void batch_norm_elemt_channels_last_template(
@@ -2329,9 +2332,9 @@ void batch_norm_backward_reduce_channels_last_kernel(
     layerscalar_t* grad_bias,
     const int reduction_size,
     const int stride) {
-  sycl::range<2> global_range(1, 1), local_range(1, 1);
-  std::tie(global_range, local_range) =
-      flexible_launch_configs(reduction_size, stride / vec_size);
+  auto workload = flexible_launch_configs(reduction_size, stride / vec_size);
+  auto global_range = std::get<0>(workload);
+  auto local_range = std::get<1>(workload);
   int loop_count = 1 + (reduction_size - 1) / (global_range[0]);
   int group_num_y = global_range[0] / local_range[0];
   int group_num_x = global_range[1] / local_range[1];
@@ -2963,156 +2966,135 @@ void batch_norm_backward_elemt_kernel_impl(
 }
 
 template <
+    int PARALLEL_LOADS,
     typename scalar_t,
     typename accscalar_t,
-    typename layerscalar_t,
-    typename vec_t,
-    typename vec_s_t,
-    int vec_size = 1,
-    bool has_count = false>
+    typename layerscalar_t>
 struct BatchNormBackwardElemtChannelsLastKernelImplFunctor {
   void operator()(sycl::nd_item<2> item) const {
-    // tensor dimension (m,c)
-    // loop along m dimension
-    int inner_loop_stride = item.get_global_range(0);
-
-    // offset along m dimension
-    int m_offset = item.get_global_id(0);
-    int c_offset_base = item.get_global_id(1) * vec_size;
-
-    if (c_offset_base >= stride_ || m_offset >= reduction_size_) {
-      return;
-    }
-
-    vec_s_t m_c = *(reinterpret_cast<vec_s_t*>(mean_ + c_offset_base));
-    vec_s_t m_dy_c = *(reinterpret_cast<vec_s_t*>(sum_dy_ + c_offset_base));
-    vec_s_t sum_dy_xmu_vec =
-        *(reinterpret_cast<vec_s_t*>(sum_dyxmu_ + c_offset_base));
-    vec_s_t factor_1_c =
-        *(reinterpret_cast<vec_s_t*>(inv_std_ + c_offset_base));
-    vec_s_t factor_2_c;
-
-    // Use float to calculate to avoid double issues in ATSM
-    auto norm_fct =
-        static_cast<accscalar_t>(static_cast<float>(1.0) / reduction_size_);
-    if constexpr (has_count) {
+    accscalar_t norm_fct;
+    if (numel_ != nullptr) {
       int64_t total_numel = 0;
       for (int i = 0; i < world_size_; i++) {
         total_numel += numel_[i];
       }
       norm_fct =
-          static_cast<accscalar_t>(static_cast<float>(1.0) / total_numel);
+          static_cast<accscalar_t>(1) / static_cast<accscalar_t>(total_numel);
+    } else {
+      norm_fct = static_cast<accscalar_t>(1) /
+          static_cast<accscalar_t>(reduction_size_);
     }
 
-#pragma unroll
-    for (int j = 0; j < vec_size; j++) {
-      if (weight_ != nullptr) {
-        factor_2_c[j] = static_cast<accscalar_t>(weight_[c_offset_base + j]) *
-            factor_1_c[j];
-      } else {
-        factor_2_c[j] = accscalar_t(1.0f);
-      }
-      m_dy_c[j] = m_dy_c[j] * norm_fct;
-      factor_1_c[j] =
-          factor_1_c[j] * factor_1_c[j] * sum_dy_xmu_vec[j] * norm_fct;
+    // tensor dimension (m,c)
+    // loop along m dimension
+    int inner_loop_stride = item.get_local_range(0) * item.get_group_range(0);
+
+    // offset along m dimension
+    int m_offset =
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    int c_offset =
+        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+
+    if (c_offset >= stride_ || m_offset >= reduction_size_) {
+      return;
     }
 
-    int address_base = m_offset * stride_ + c_offset_base;
-    int address_increment = item.get_global_range(0) * stride_;
+    auto m_c = mean_[c_offset];
+    auto m_dy_c = sum_dy_[c_offset] * norm_fct;
+    auto factor_1_c = inv_std_[c_offset];
+    auto factor_2_c =
+        (weight_ == nullptr ? accscalar_t(1.0)
+                            : static_cast<accscalar_t>(weight_[c_offset])) *
+        factor_1_c;
+    factor_1_c = factor_1_c * factor_1_c * sum_dy_xmu_[c_offset] * norm_fct;
 
-    for (int m_offset_loop = item.get_global_id(0);
-         m_offset_loop < reduction_size_;
-         m_offset_loop += inner_loop_stride) {
-      vec_t input_vec = *(reinterpret_cast<vec_t*>(input_ + address_base));
-      vec_t grad_output_vec =
-          *(reinterpret_cast<vec_t*>(grad_output_ + address_base));
-      vec_t output_vec;
+    int loop_count =
+        1 + (reduction_size_ - 1) / (inner_loop_stride * PARALLEL_LOADS);
+    int address_base = m_offset * stride_ + c_offset;
+    int address_increment = inner_loop_stride * stride_;
+
+    for (int i = 0; i < loop_count; i++) {
 #pragma unroll
-      for (int j = 0; j < vec_size; j++) {
-        output_vec[j] = static_cast<scalar_t>(
-            (static_cast<accscalar_t>(grad_output_vec[j]) - m_dy_c[j] -
-             (static_cast<accscalar_t>(input_vec[j]) - m_c[j]) *
-                 factor_1_c[j]) *
-            factor_2_c[j]);
+      for (int j = 0; j < PARALLEL_LOADS; j++) {
+        if (c_offset < stride_ && m_offset < reduction_size_) {
+          grad_input_[address_base] = static_cast<scalar_t>(
+              (static_cast<accscalar_t>(grad_output_[address_base]) - m_dy_c -
+               (static_cast<accscalar_t>(input_[address_base]) - m_c) *
+                   factor_1_c) *
+              factor_2_c);
+        }
+        m_offset += inner_loop_stride;
+        address_base += address_increment;
       }
-      *(reinterpret_cast<vec_t*>(grad_input_ + address_base)) = output_vec;
-      address_base += address_increment;
     }
   }
+
   BatchNormBackwardElemtChannelsLastKernelImplFunctor(
-      scalar_t* grad_output,
-      scalar_t* input,
-      accscalar_t* mean,
-      accscalar_t* inv_std,
+      const scalar_t* grad_output,
+      const scalar_t* input,
+      const accscalar_t* mean,
+      const accscalar_t* inv_std,
       const layerscalar_t* weight,
-      accscalar_t* sum_dy,
-      accscalar_t* sum_dyxmu,
-      const int* numel,
+      const accscalar_t* sum_dy,
+      const accscalar_t* sum_dy_xmu,
       scalar_t* grad_input,
-      const int world_size,
       const int reduction_size,
-      const int stride)
+      const int stride,
+      const int* numel,
+      const int64_t world_size)
       : grad_output_(grad_output),
         input_(input),
         mean_(mean),
         inv_std_(inv_std),
         weight_(weight),
         sum_dy_(sum_dy),
-        sum_dyxmu_(sum_dyxmu),
-        numel_(numel),
+        sum_dy_xmu_(sum_dy_xmu),
         grad_input_(grad_input),
-        world_size_(world_size),
         reduction_size_(reduction_size),
-        stride_(stride) {}
+        stride_(stride),
+        numel_(numel),
+        world_size_(world_size) {}
 
  private:
-  scalar_t* grad_output_;
-  scalar_t* input_;
-  accscalar_t* mean_;
-  accscalar_t* inv_std_;
+  const scalar_t* grad_output_;
+  const scalar_t* input_;
+  const accscalar_t* mean_;
+  const accscalar_t* inv_std_;
   const layerscalar_t* weight_;
-  accscalar_t* sum_dy_;
-  accscalar_t* sum_dyxmu_;
-  const int* numel_;
+  const accscalar_t* sum_dy_;
+  const accscalar_t* sum_dy_xmu_;
   scalar_t* grad_input_;
-  const int world_size_;
   const int reduction_size_;
   const int stride_;
+  const int* numel_;
+  const int64_t world_size_;
 };
 
 template <
+    int PARALLEL_LOADS,
     typename scalar_t,
     typename accscalar_t,
-    typename layerscalar_t,
-    int vec_size = 1,
-    bool has_count = false>
+    typename layerscalar_t>
 void batch_norm_backward_elemt_channels_last_kernel_impl(
-    scalar_t* grad_output,
-    scalar_t* input,
-    accscalar_t* mean,
-    accscalar_t* inv_std,
+    const scalar_t* grad_output,
+    const scalar_t* input,
+    const accscalar_t* mean,
+    const accscalar_t* inv_std,
     const layerscalar_t* weight,
-    accscalar_t* sum_dy,
-    accscalar_t* sum_dy_xmu,
-    const int* numel,
+    const accscalar_t* sum_dy,
+    const accscalar_t* sum_dy_xmu,
     scalar_t* grad_input,
-    const int world_size,
     const int reduction_size,
-    const int stride) {
+    const int stride,
+    const int* numel = nullptr,
+    const int world_size = 0) {
   auto& queue = getCurrentSYCLQueue();
-  sycl::range<2> global_range(1, 1), local_range(1, 1);
-  std::tie(global_range, local_range) =
-      flexible_launch_configs(reduction_size, stride / vec_size);
-  using vec_t = memory::aligned_vector<scalar_t, vec_size>;
-  using vec_s_t = memory::aligned_vector<accscalar_t, vec_size>;
+  auto workload = flexible_launch_configs(reduction_size, stride);
   auto caller = BatchNormBackwardElemtChannelsLastKernelImplFunctor<
+      PARALLEL_LOADS,
       scalar_t,
       accscalar_t,
-      layerscalar_t,
-      vec_t,
-      vec_s_t,
-      vec_size,
-      has_count>(
+      layerscalar_t>(
       grad_output,
       input,
       mean,
@@ -3120,12 +3102,13 @@ void batch_norm_backward_elemt_channels_last_kernel_impl(
       weight,
       sum_dy,
       sum_dy_xmu,
-      numel,
       grad_input,
-      world_size,
       reduction_size,
-      stride);
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+      stride,
+      numel,
+      world_size);
+  sycl_kernel_submit(
+      std::get<0>(workload), std::get<1>(workload), queue, caller);
 }
 
 at::Tensor batch_norm_backward_elemt_channels_last_template(
@@ -3152,11 +3135,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           batch_norm_backward_elemt_channels_last_kernel_impl<
-              scalar_t,
-              accscalar_t,
-              accscalar_t,
-              1,
-              true>(
+              ELEMENTS_PER_ITER>(
               grad_output.data_ptr<scalar_t>(),
               input.data_ptr<scalar_t>(),
               mean.data_ptr<accscalar_t>(),
@@ -3164,11 +3143,11 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               weight.data_ptr<accscalar_t>(),
               sum_dy.data_ptr<accscalar_t>(),
               sum_dy_xmu.data_ptr<accscalar_t>(),
-              count.data_ptr<int>(),
               grad_input.data_ptr<scalar_t>(),
-              count.numel(),
               reduction_size,
-              stride);
+              stride,
+              count.data_ptr<int>(),
+              count.numel());
         });
   } else {
     if (weight.defined()) {
@@ -3187,11 +3166,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
           batch_norm_backward_elemt_channels_last_kernel_impl<
-              scalar_t,
-              accscalar_t,
-              scalar_t,
-              1,
-              true>(
+              ELEMENTS_PER_ITER>(
               grad_output.data_ptr<scalar_t>(),
               input.data_ptr<scalar_t>(),
               mean.data_ptr<accscalar_t>(),
@@ -3199,11 +3174,11 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               weight.defined() ? weight.data_ptr<scalar_t>() : nullptr,
               sum_dy.data_ptr<accscalar_t>(),
               sum_dy_xmu.data_ptr<accscalar_t>(),
-              count.data_ptr<int>(),
               grad_input.data_ptr<scalar_t>(),
-              count.numel(),
               reduction_size,
-              stride);
+              stride,
+              count.data_ptr<int>(),
+              count.numel());
         });
   }
 
@@ -4209,7 +4184,8 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         using accscalar_t = acc_type<scalar_t, true>;
 
         if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
-          batch_norm_backward_elemt_channels_last_kernel_impl(
+          batch_norm_backward_elemt_channels_last_kernel_impl<
+              ELEMENTS_PER_ITER>(
               grad_output.data_ptr<scalar_t>(),
               input.data_ptr<scalar_t>(),
               mean.data_ptr<accscalar_t>(),
@@ -4217,13 +4193,14 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               weight.data_ptr<accscalar_t>(),
               sum_dy.data_ptr<accscalar_t>(),
               sum_dy_xmu.data_ptr<accscalar_t>(),
-              nullptr,
               grad_input.data_ptr<scalar_t>(),
-              0,
               reduction_size,
-              stride);
+              stride,
+              nullptr,
+              0);
         } else {
-          batch_norm_backward_elemt_channels_last_kernel_impl(
+          batch_norm_backward_elemt_channels_last_kernel_impl<
+              ELEMENTS_PER_ITER>(
               grad_output.data_ptr<scalar_t>(),
               input.data_ptr<scalar_t>(),
               mean.data_ptr<accscalar_t>(),
@@ -4231,11 +4208,11 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               weight.defined() ? weight.data_ptr<scalar_t>() : nullptr,
               sum_dy.data_ptr<accscalar_t>(),
               sum_dy_xmu.data_ptr<accscalar_t>(),
-              nullptr,
               grad_input.data_ptr<scalar_t>(),
-              0,
               reduction_size,
-              stride);
+              stride,
+              nullptr,
+              0);
         }
       });
 

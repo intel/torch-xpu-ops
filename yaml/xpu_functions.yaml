@@ -325,7 +325,7 @@ supported:
   - batch_norm_update_stats
   - native_batch_norm
   - native_batch_norm.out
-  # - native_batch_norm_backward
+  - native_batch_norm_backward
   - _native_batch_norm_legit
   - _native_batch_norm_legit.out
   - _native_batch_norm_legit.no_stats
