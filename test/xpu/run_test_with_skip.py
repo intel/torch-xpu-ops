@@ -1579,8 +1579,6 @@ skip_list = (
     "test_checkpointing_without_reentrant_memory_savings",
     # CUDA hard-code
     "test_profiler_emit_nvtx_xpu",
-    # Could not run 'aten::_pin_memory' with arguments from the 'CUDA' backend
-    "test_pin_memory_xpu",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_mv_grad_stride_0_xpu",
     # module 'torch._C' has no attribute '_scatter'

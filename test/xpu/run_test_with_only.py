@@ -44,6 +44,12 @@ execute_list = (
 )
 res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 
+# test_torch
+execute_list = (
+    "test_pin_memory",
+)
+res += launch_test("test_torch_xpu.py", exe_list=execute_list)
+
 # test_comparison_utils
 res += launch_test("test_comparison_utils_xpu.py")
 
