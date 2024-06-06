@@ -1,3 +1,4 @@
+
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
@@ -8,14 +9,17 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
+def select_cuda(self):
+    self._test_select('xpu')
+
+def as_strided_cuda(self):
+    self._test_as_strided('xpu')
+
 with XPUPatchForImport(False):
-    from test_ops import TestCommon
-    from test_ops import TestMathBits
+    from test_namedtensor import TestNamedTensor
 
+TestNamedTensor.test_select_cuda=select_cuda
+TestNamedTensor.test_as_strided_cuda=as_strided_cuda
 
-instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
-instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu")
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_tests()
