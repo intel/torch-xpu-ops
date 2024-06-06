@@ -1289,7 +1289,6 @@ res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
 skip_list = ( 
     "test_flatten_xpu",
-    "test_memory_format_resize_as_xpu",
     "test_ravel_xpu",
 )
 
