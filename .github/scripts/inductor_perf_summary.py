@@ -505,7 +505,7 @@ def excel_postprocess(file, precison, mode):
 def html_generate(html_off):
     if not html_off:
         try:
-            content = pd.read_excel('inductor_log/' + args.suite + '/Inductor_' + args.suite + '_E2E_Test_Report' + '.xlsx')
+            content = pd.read_excel('inductor_log/' + args.suite + '/Inductor_' + args.suite + '_' + args.precision + '_' + args.mode + '_E2E_Test_Report' + '.xlsx')
             #summary= pd.DataFrame(content[-1]).to_html(classes="table",index = False)
             #swinfo= pd.DataFrame(content[1]).to_html(classes="table",index = False)
             #refer_swinfo_html = ''
@@ -530,7 +530,7 @@ def html_generate(html_off):
 
 
 if __name__ == '__main__':
-    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
+    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + str(args.suite) + '_' + str(args.precision) + '_' + str(args.mode) + '_E2E_Test_Report.xlsx')
     generate_report(excel, args.precision, args.mode)
     excel_postprocess(excel, args.precision, args.mode)
     html_generate(args.html_off)
