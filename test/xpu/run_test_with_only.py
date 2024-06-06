@@ -47,6 +47,9 @@ res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 # test_comparison_utils
 res += launch_test("test_comparison_utils_xpu.py")
 
+# test_pruning
+res += launch_test("nn/test_pruning_xpu.py")
+
 # test_dynamic_shapes
 res += launch_test("test_dynamic_shapes_xpu.py")
 
