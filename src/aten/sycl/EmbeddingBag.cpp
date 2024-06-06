@@ -2,12 +2,10 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 
-#include <aten/sycl/EmbeddingBagKernel.h>
+#include <aten/sycl/EmbeddingBag.h>
 #include <aten/sycl/MemoryAccess.h>
 
 namespace at::native::xpu {
-
-namespace {
 
 std::pair<Tensor, Tensor> promoteIndicesAndOffsets(
     const Tensor& indices,
@@ -190,10 +188,10 @@ void embedding_bag_sum_template(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       weights.scalar_type(),
-      "embedding_bag_sum",
+      "embedding_bag_sum_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(
-            indices.scalar_type(), "embedding_bag_sum", [&] {
+            indices.scalar_type(), "embedding_bag_sum_xpu", [&] {
               using accscalar_t = at::acc_type<scalar_t, true>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
@@ -256,10 +254,10 @@ void embedding_bag_mean_template(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       weights.scalar_type(),
-      "embedding_bag_mean",
+      "embedding_bag_mean_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(
-            indices.scalar_type(), "embedding_bag_mean", [&] {
+            indices.scalar_type(), "embedding_bag_mean_xpu", [&] {
               using accscalar_t = at::acc_type<scalar_t, true>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
@@ -321,10 +319,10 @@ void embedding_bag_max_template(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       weights.scalar_type(),
-      "embedding_bag_max",
+      "embedding_bag_max_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(
-            indices.scalar_type(), "embedding_bag_max", [&] {
+            indices.scalar_type(), "embedding_bag_max_xpu", [&] {
               // using accscalar_t = at::acc_type<scalar_t, true>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
@@ -351,202 +349,6 @@ void embedding_bag_max_template(
 #undef EMBBAG_KERNEL_ACC
 #undef EMBBAG_KERNEL_NO_ACC
 
-/*
-  The kernel EmbeddingBag is optimized for memory coleascing and thread
-  efficiency. Vec design and chunk design are deployed for this kernel. In
-  additional, single bag is specifically considered.(for example, when
-  offset_data=0,1,2,3,4,5,...).
-  Thought:
-  0. Principle: One or multi chunks work for one Bag. One loop at least solves
-  one bag.
-  1. Implementation: Use vec<scalar_t, vec_size> to achieve higher bandwidth
-  both in ATS and PVC, because it is a memory bound kernel. Use chunk design,
-  chunk splitted from different WG to reach high occupancy especially when bag
-  dim is much larger. The vec size is determined by device. The chunk size is
-  determined by workload amounts and device resource.
-  2. If it is single bag specific situation, pure copy is done for kernel.
-  Single bag means offset is linear increase by 1.
-  3. Passing vec size as template to kernel.
-
-  Shortcoming:
-  1. Chunk design may cause some resource waste when work items is handling
-  the tail of last bag in one loop.
-*/
-template <typename scalar_t, typename index_t>
-void EmbeddingBag_updateOutputKernel(
-    const int64_t mode,
-    index_t* input_data,
-    index_t* offset_data,
-    scalar_t* weight_data,
-    scalar_t* output_data,
-    index_t* offset2bag_data,
-    int64_t weight_total_elem,
-    int64_t input_length,
-    int64_t numBags,
-    int64_t weight_stride0,
-    int64_t weight_stride1,
-    index_t* bag_size_data,
-    index_t* max_indices_data,
-    scalar_t* per_sample_weights_data,
-    int64_t per_sample_weights_stride,
-    const bool include_last_offset,
-    const index_t padding_idx,
-    const bool ignore_offsets) {
-  using accscalar_t = at::acc_type<scalar_t, true>;
-
-  // vector size, query it according to machine, scalar_t and weight_data
-  auto vec_size = memory::can_vectorize_up_to<scalar_t>(
-      reinterpret_cast<char*>(weight_data));
-
-  // determine per sample weights should be in calculation or not
-  bool per_sample_weights_defined = per_sample_weights_data ? true : false;
-
-  auto maxWGSize = syclMaxWorkGroupSize();
-
-  auto gpuEuCount = syclMaxWorkItemsPerEU();
-
-  // how many work items serve for one bag in vector sight
-  auto bag_wi_num = (weight_stride0 % vec_size == 0)
-      ? (weight_stride0 / vec_size)
-      : (weight_stride0 / vec_size + 1);
-
-  auto chunk_size = 32;
-
-  // how many chunks serve for one bag
-  auto bag_chunk_num = (bag_wi_num % chunk_size == 0)
-      ? (bag_wi_num / chunk_size)
-      : (bag_wi_num / chunk_size + 1);
-
-  // how many work items serve for one bag in chunk sight
-  bag_wi_num = bag_chunk_num * chunk_size;
-
-  // how many chunks serve for all bag
-  auto all_chunk_num = numBags * bag_chunk_num;
-
-  // how many wi serve for all bag
-  auto all_wi_num = all_chunk_num * chunk_size;
-
-  // For huge bags number, limited wg number is set to avoid overhead of
-  // groups over scheduling. WGNumber default in single tile in one time =
-  // Max compute unit * 8 threads * SIMD32 per thread / max WG size * 512.
-  auto WGNumber = gpuEuCount * 8 * 32 / maxWGSize * 512;
-
-  // one or multi chunks for one bag.
-  // all_wi_num <= maxWGSize: one wg is enough to finish all bags
-  // bag_wi_num > (maxWGSize * WGNumber): all wg is not enough to finish one
-  // bag. To avoid the inner-bag loop, all needed wg are launched
-  // else: one wg is not enough to finish all bags, but all wg can finish at
-  // least one bag
-  auto local_range = maxWGSize;
-  if (all_wi_num <= maxWGSize) {
-    local_range = all_wi_num;
-    WGNumber = 1;
-  } else if (bag_wi_num > (maxWGSize * WGNumber)) {
-    local_range = maxWGSize;
-    // at least, one loop finish one bag
-    WGNumber = (bag_wi_num + maxWGSize - 1) / maxWGSize;
-  } else {
-    for (auto factor = 0; (((maxWGSize - factor * 8) >= 8)); ++factor) {
-      auto infactor = maxWGSize - factor * 8;
-      if (all_wi_num % infactor == 0) {
-        if ((all_wi_num / infactor) > WGNumber) {
-          local_range = infactor;
-        } else {
-          WGNumber = all_wi_num / infactor;
-          local_range = infactor;
-        }
-        break;
-      }
-    }
-  }
-
-  // for outer bag loop, how many bag finish in one loop
-  auto bagsPerLoop = WGNumber * local_range / chunk_size / bag_chunk_num;
-
-  // total work item size
-  auto global_range = WGNumber * local_range;
-
-  bool if_align_vector = ((weight_stride0 % 2 == 0) || (sizeof(scalar_t) != 2));
-
-// launch vec kernel for embeddingbag, code pass according to vec size
-#define VEC_EMBBAG_KERNEL(vec_size)                                         \
-  {                                                                         \
-    auto input = input_data;                                                \
-    auto offset = offset_data;                                              \
-    auto weight = weight_data;                                              \
-    auto output = output_data;                                              \
-    auto offset2bag = offset2bag_data;                                      \
-    auto bag_size = bag_size_data;                                          \
-    auto per_sample_weights =                                               \
-        per_sample_weights_defined ? per_sample_weights_data : weight_data; \
-    auto max_indices = mode == MODE_MAX ? max_indices_data : nullptr;       \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;               \
-    auto caller = EmbeddingBagUpdateOutputKernelFunctor<                    \
-        vec_size,                                                           \
-        vec_t,                                                              \
-        scalar_t,                                                           \
-        accscalar_t,                                                        \
-        index_t>(                                                           \
-        mode,                                                               \
-        input,                                                              \
-        offset,                                                             \
-        weight,                                                             \
-        output,                                                             \
-        offset2bag,                                                         \
-        bag_size,                                                           \
-        per_sample_weights_defined,                                         \
-        per_sample_weights,                                                 \
-        per_sample_weights_stride,                                          \
-        max_indices,                                                        \
-        WGNumber,                                                           \
-        numBags,                                                            \
-        weight_total_elem,                                                  \
-        chunk_size,                                                         \
-        bag_chunk_num,                                                      \
-        bag_wi_num,                                                         \
-        bagsPerLoop,                                                        \
-        input_length,                                                       \
-        weight_stride0,                                                     \
-        weight_stride1,                                                     \
-        include_last_offset,                                                \
-        padding_idx,                                                        \
-        if_align_vector);                                                   \
-    sycl_kernel_submit(                                                     \
-        global_range, local_range, getCurrentSYCLQueue(), caller);          \
-  };
-
-  switch (vec_size) {
-    case 16: {
-      VEC_EMBBAG_KERNEL(16);
-      break;
-    }
-    case 8: {
-      VEC_EMBBAG_KERNEL(8);
-      break;
-    }
-    case 4: {
-      VEC_EMBBAG_KERNEL(4);
-      break;
-    }
-    case 2: {
-      VEC_EMBBAG_KERNEL(2);
-      break;
-    }
-    case 1: {
-      VEC_EMBBAG_KERNEL(1);
-      break;
-    }
-    default:
-      TORCH_INTERNAL_ASSERT(
-          false,
-          "Unexpected vectorization size for EmbeddingBag. vec size ",
-          vec_size);
-  }
-#undef VEC_EMBBAG_KERNEL
-}
-
-} // namespace
-
 std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     const Tensor& weight_t,
     const Tensor& indices_t,
@@ -557,21 +359,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     const Tensor& per_sample_weights_t,
     bool include_last_offset,
     int64_t padding_idx) {
-  TORCH_CHECK(
-      indices_t.dim() == 1 || indices_t.dim() == 2,
-      "input has to be a 1D or 2D Tensor, but got Tensor of dimension ",
-      indices_t.dim());
-  if (indices_t.dim() == 1) {
-    TORCH_CHECK(
-        offsets_t.dim() == 1,
-        "offsets has to be a 1D Tensor, but got Tensor of dimension ",
-        offsets_t.dim());
-  }
-  TORCH_CHECK(
-      weight_t.dim() == 2,
-      "weight has to be a 2D Tensor, but got Tensor of dimension ",
-      weight_t.dim());
-
   auto weight = weight_t.contiguous();
   auto indices_original = indices_t.contiguous();
   auto offsets_original = offsets_t.contiguous();
@@ -608,7 +395,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
 
   Tensor max_indices = at::empty({numBags, weight.size(1)}, indices.options());
 
-#ifndef VEC_EMBBAG_KERNEL_OPT
 #define EXTEND_EMBBAG_TEMPLATE(mode) \
   embedding_bag_##mode##_template(   \
       indices,                       \
@@ -639,41 +425,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
       TORCH_CHECK(0, "Invalid EmbeddingBag mode (max, sum, mean) ...");
   };
 #undef EXTEND_EMBBAG_TEMPLATE
-#else
-  int64_t weight_total_elem = weight.numel();
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      weight.scalar_type(),
-      "embedding_bag_xpu",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            indices.scalar_type(), "embedding_bag_kernel", [&] {
-              EmbeddingBag_updateOutputKernel<scalar_t, index_t>(
-                  mode,
-                  indices.data_ptr<index_t>(),
-                  offsets.data_ptr<index_t>(),
-                  weight.data_ptr<scalar_t>(),
-                  output.data_ptr<scalar_t>(),
-                  offset2bag.data_ptr<index_t>(),
-                  weight_total_elem,
-                  numIndices,
-                  numBags,
-                  weight.stride(0),
-                  weight.stride(1),
-                  bag_size.data_ptr<index_t>(),
-                  mode == MODE_MAX ? max_indices.data_ptr<index_t>() : NULL,
-                  per_sample_weights.defined()
-                      ? per_sample_weights.data_ptr<scalar_t>()
-                      : NULL,
-                  per_sample_weights.defined() ? per_sample_weights.stride(0)
-                                               : 0,
-                  include_last_offset,
-                  padding_idx,
-                  ignore_offsets);
-            });
-      });
-#endif
 
   return std::tuple<Tensor, Tensor, Tensor, Tensor>(
       output, offset2bag, bag_size, max_indices);

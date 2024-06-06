@@ -1043,6 +1043,7 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_half_xpu_int64_int32",
     "test_embedding_bag_half_xpu_int64_int64",
 
+    # CUDA implementation has no such functionality due to performance consideration.
     # skipped by CUDA for performance
     # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
     "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int32",
