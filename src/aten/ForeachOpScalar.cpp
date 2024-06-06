@@ -32,6 +32,8 @@ namespace at {
   }
 
 FOREACH_BINARY_OP_SCALAR(add, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALAR(mul, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALAR(div, /*div_op*/ true);
 
 #define FOREACH_POINTWISE_OP_SCALAR(NAME)                                     \
   std::vector<Tensor> XPUNativeFunctions::_foreach_##NAME(                    \
