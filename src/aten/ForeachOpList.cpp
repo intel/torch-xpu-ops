@@ -11,6 +11,31 @@
 
 namespace at {
 
+#define FOREACH_BINARY_OP_LIST(NAME, DIVISION_OP)                           \
+  void XPUNativeFunctions::_foreach_##NAME##_(                              \
+      TensorList tensors1, TensorList tensors2) {                           \
+    at::native::check_foreach_api_restrictions(tensors1, tensors2);         \
+    if (!at::native::can_use_fast_route(tensors1, tensors2, DIVISION_OP)) { \
+      return at::native::foreach_tensor_##NAME##_list_kernel_slow_(         \
+          tensors1, tensors2);                                              \
+    }                                                                       \
+                                                                            \
+    at::native::xpu::FOREACH_BINARY_LIST_INPLACE_KERNEL_NAME(NAME)(         \
+        tensors1, tensors2);                                                \
+  }                                                                         \
+                                                                            \
+  std::vector<Tensor> XPUNativeFunctions::_foreach_##NAME(                  \
+      TensorList tensors1, TensorList tensors2) {                           \
+    at::native::check_foreach_api_restrictions(tensors1, tensors2);         \
+    if (!at::native::can_use_fast_route(tensors1, tensors2, DIVISION_OP)) { \
+      return at::native::foreach_tensor_##NAME##_list_kernel_slow(          \
+          tensors1, tensors2);                                              \
+    }                                                                       \
+                                                                            \
+    return at::native::xpu::FOREACH_BINARY_LIST_KERNEL_NAME(NAME)(          \
+        tensors1, tensors2);                                                \
+  }
+
 #define FOREACH_BINARY_OP_LIST_ALPHA(NAME)                                \
   void XPUNativeFunctions::_foreach_##NAME##_(                            \
       TensorList tensors1, TensorList tensors2, const Scalar& alpha) {    \
@@ -37,6 +62,8 @@ namespace at {
   }
 
 FOREACH_BINARY_OP_LIST_ALPHA(add);
+FOREACH_BINARY_OP_LIST(mul, false);
+FOREACH_BINARY_OP_LIST(div, true);
 
 #define FOREACH_POINTWISE_OP_TENSOR(NAME)                                      \
   std::vector<Tensor> XPUNativeFunctions::_foreach_##NAME(                     \

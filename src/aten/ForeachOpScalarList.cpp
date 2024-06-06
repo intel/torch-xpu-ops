@@ -32,6 +32,8 @@ namespace at {
   }
 
 FOREACH_BINARY_OP_SCALARLIST(add, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALARLIST(mul, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALARLIST(div, /*div_op*/ true);
 
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME)                                  \
   std::vector<Tensor> XPUNativeFunctions::_foreach_##NAME(                     \
