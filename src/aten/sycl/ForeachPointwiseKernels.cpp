@@ -2,7 +2,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 
-#include <aten/sycl/BinaryInternal.h>
 #include <aten/sycl/ForeachFunctors.h>
 #include <aten/sycl/ForeachPointwiseOpScalarKernels.h>
 #include <aten/sycl/ForeachPointwiseOpScalarListKernels.h>
@@ -162,7 +161,7 @@ void foreach_pointwise_template_(
   }
 
 INSTANTIATE_FOREACH_POINTWISE_OP_SCALARLIST_KERNEL(addcmul, std::multiplies)
-INSTANTIATE_FOREACH_POINTWISE_OP_SCALARLIST_KERNEL(addcdiv, DivFunctor)
+INSTANTIATE_FOREACH_POINTWISE_OP_SCALARLIST_KERNEL(addcdiv, std::divides)
 
 #define INSTANTIATE_FOREACH_POINTWISE_OP_SCALAR_KERNEL(NAME, OP)              \
   FOREACH_POINTWISE_OP_SCALAR_KERNEL(NAME) {                                  \
@@ -174,6 +173,6 @@ INSTANTIATE_FOREACH_POINTWISE_OP_SCALARLIST_KERNEL(addcdiv, DivFunctor)
   }
 
 INSTANTIATE_FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcmul, std::multiplies)
-INSTANTIATE_FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcdiv, DivFunctor)
+INSTANTIATE_FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcdiv, std::divides)
 
 } // namespace at::native::xpu
