@@ -208,7 +208,7 @@ template <typename scalar_t, typename accscalar_t, typename PTA>
 struct GradOp {
   GradOp(accscalar_t m, const PTA& i, const PTA& g)
       : mean(m), input(i), grad_output(g) {}
-  inline Float2<scalar_t, accscalar_t> operator()(int batch, int plane, int n) {
+  Float2<scalar_t, accscalar_t> operator()(int batch, int plane, int n) const {
     accscalar_t g = grad_output[batch][plane][n];
     accscalar_t c = static_cast<accscalar_t>(input[batch][plane][n]) - mean;
     return Float2<scalar_t, accscalar_t>(g, g * c);
@@ -409,7 +409,7 @@ struct BatchNormCollectStatisticsKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
-    int plane = item.get_group(0);
+    int plane = item.get_group(1);
     int tid = item.get_local_linear_id();
     auto sg = item.get_sub_group();
     auto sg_lid = sg.get_local_linear_id();
@@ -428,9 +428,9 @@ struct BatchNormCollectStatisticsKernelFunctor
     stat_accscalar_t avg = 0;
     stat_accscalar_t var_n = 0;
     int n = 0;
-    for (int batch = item.get_local_id(0); batch < N_;
+    for (int batch = item.get_local_id(0); batch < input_.size(0);
          batch += item.get_local_range(0)) {
-      for (int x = item.get_local_id(1); x < Hw_;
+      for (int x = item.get_local_id(1); x < input_.size(2);
            x += item.get_local_range(1)) {
         stat_accscalar_t v = input_[batch][plane][x];
         stat_accscalar_t d1 = v - avg;
@@ -454,7 +454,6 @@ struct BatchNormCollectStatisticsKernelFunctor
     }
 
     // this writes each warps item into shared memory
-
     if (sg_lid == 0) {
       shared_n_[sg_id] = n;
       shared_avg_var_[sg_id * 2] = avg;
@@ -464,8 +463,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     // now have a second warpSum to reduce the intermediate values
     // from shared memory to a single number. The very first
     // thread writes it to shared memory.
-
-    if (tid < sg_num_) {
+    int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
+    if (tid < num_sg) {
       n = shared_n_[tid];
       avg = shared_avg_var_[2 * tid];
       var_n = shared_avg_var_[2 * tid + 1];
@@ -494,22 +493,18 @@ struct BatchNormCollectStatisticsKernelFunctor
       }
       if (save_transformed_var_.data() != NULL) {
         save_transformed_var[plane] =
-            VarTransform{}(var_n / (N_ * Hw_), epsilon_);
+            VarTransform{}(var_n / (input_.size(0) * input_.size(2)), epsilon_);
       }
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_n_ = sycl_local_acc_t<stat_accscalar_t, 1>(
-        sycl::range<1>{(size_t)sg_num_}, cgh);
+    shared_n_ = sycl_local_acc_t<int, 1>(sycl::range<1>{(size_t)SIMD}, cgh);
     shared_avg_var_ = sycl_local_acc_t<stat_accscalar_t, 1>(
-        sycl::range<1>{(size_t)sg_num_ * 2 + 2}, cgh);
+        sycl::range<1>{(size_t)SIMD * 2 * 2}, cgh);
   }
 
   BatchNormCollectStatisticsKernelFunctor(
-      int N,
-      int numPlane,
-      int Hw,
       const GenericPackedTensorAccessor<
           const input_scalar_t,
           3,
@@ -526,24 +521,14 @@ struct BatchNormCollectStatisticsKernelFunctor
           stat_accscalar_t,
           1,
           RestrictPtrTraits,
-          index_t> save_transformed_var,
-      int64_t sg_num,
-      int batch_stride)
-      : N_(N),
-        numPlane_(numPlane),
-        Hw_(Hw),
-        input_(input),
+          index_t> save_transformed_var)
+      : input_(input),
         epsilon_(epsilon),
         momentum_(momentum),
         save_mean_(save_mean),
-        save_transformed_var_(save_transformed_var),
-        sg_num_(sg_num),
-        batch_stride_(batch_stride) {}
+        save_transformed_var_(save_transformed_var) {}
 
  private:
-  int N_;
-  int numPlane_;
-  int Hw_;
   const GenericPackedTensorAccessor<
       const input_scalar_t,
       3,
@@ -556,9 +541,7 @@ struct BatchNormCollectStatisticsKernelFunctor
       save_mean_;
   GenericPackedTensorAccessor<stat_accscalar_t, 1, RestrictPtrTraits, index_t>
       save_transformed_var_;
-  int64_t sg_num_;
-  int batch_stride_;
-  sycl_local_acc_t<stat_accscalar_t, 1> shared_n_;
+  sycl_local_acc_t<int, 1> shared_n_;
   sycl_local_acc_t<stat_accscalar_t, 1> shared_avg_var_;
 };
 
@@ -588,29 +571,16 @@ void batch_norm_collect_statistics_kernel(
   int64_t wg_size = get_prefer_wg_size(N * Hw, SIMD);
   int64_t work_group_size_x = get_num_threads(Hw, wg_size);
   int64_t work_group_size_y = std::max(int64_t(1), wg_size / work_group_size_x);
-  work_group_size_y = std::min(int64_t(N), work_group_size_y);
-  int64_t sg_num = work_group_size_x * work_group_size_y / SIMD;
-  auto batch_stride = numPlane * Hw;
   auto caller = BatchNormCollectStatisticsKernelFunctor<
       SIMD,
       VarTransform,
       input_scalar_t,
       stat_scalar_t,
       stat_accscalar_t,
-      index_t>(
-      N,
-      numPlane,
-      Hw,
-      input,
-      epsilon,
-      momentum,
-      save_mean,
-      save_transformed_var,
-      sg_num,
-      batch_stride);
+      index_t>(input, epsilon, momentum, save_mean, save_transformed_var);
   sycl_kernel_submit(
       sycl::range<2>(
-          (size_t)numPlane * work_group_size_y, (size_t)work_group_size_x),
+          1 * work_group_size_y, (size_t)numPlane * work_group_size_x),
       sycl::range<2>((size_t)work_group_size_y, (size_t)work_group_size_x),
       queue,
       caller);
@@ -1120,10 +1090,9 @@ template <
     typename index_t>
 struct BatchNormTransformInputKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
-    auto group_idx_x = item.get_group().get_group_id(1);
-    index_t plane = group_idx_x;
+    index_t plane = item.get_group(1);
 
-    if (plane >= numPlane_) {
+    if (plane >= input_.size(1)) {
       return;
     }
 
@@ -1133,7 +1102,6 @@ struct BatchNormTransformInputKernelFunctor {
     stat_accscalar_t beta = bias_.size(0) > 0
         ? static_cast<stat_accscalar_t>(bias_[plane])
         : static_cast<stat_accscalar_t>(0);
-
     stat_accscalar_t mean = static_cast<stat_accscalar_t>(mean_[plane]);
     stat_accscalar_t invstd;
     if constexpr (train) {
@@ -1145,11 +1113,14 @@ struct BatchNormTransformInputKernelFunctor {
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
-    index_t bstep = item.get_global_range(0);
-    for (index_t batch = item.get_global_id(0); batch < bs_; batch += bstep) {
+    index_t bs = input_.size(0);
+    index_t fs = input_.size(2);
+
+    index_t bstep = item.get_local_range(0) * item.get_group_range(0);
+    for (index_t batch = item.get_global_id(0); batch < bs; batch += bstep) {
       auto o = output_[batch][plane];
       auto i = input_[batch][plane];
-      for (index_t feature = item.get_local_id(1); feature < fs_;
+      for (index_t feature = item.get_local_id(1); feature < fs;
            feature += item.get_local_range(1)) {
         o[feature] = static_cast<input_scalar_t>(
             gamma * (i[feature] - mean) * invstd + beta);
@@ -1158,16 +1129,6 @@ struct BatchNormTransformInputKernelFunctor {
   }
 
   BatchNormTransformInputKernelFunctor(
-      stat_accscalar_t epsilon,
-      int numPlane,
-      int64_t target_tile_size,
-      int64_t wg_size,
-      int bs,
-      int fs,
-      int weight_size,
-      int bias_size,
-      int tf,
-      int tb,
       const GenericPackedTensorAccessor<
           const input_scalar_t,
           3,
@@ -1175,16 +1136,6 @@ struct BatchNormTransformInputKernelFunctor {
           index_t> input,
       GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
           output,
-      const GenericPackedTensorAccessor<
-          const stat_scalar_t,
-          1,
-          RestrictPtrTraits,
-          index_t> weight,
-      const GenericPackedTensorAccessor<
-          const stat_scalar_t,
-          1,
-          RestrictPtrTraits,
-          index_t> bias,
       const GenericPackedTensorAccessor<
           typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::
               type,
@@ -1196,35 +1147,27 @@ struct BatchNormTransformInputKernelFunctor {
               type,
           1,
           RestrictPtrTraits,
-          index_t> var_or_invstd)
-      : epsilon_(epsilon),
-        numPlane_(numPlane),
-        target_tile_size_(target_tile_size),
-        wg_size_(wg_size),
-        bs_(bs),
-        fs_(fs),
-        weight_size_(weight_size),
-        bias_size_(bias_size),
-        tf_(tf),
-        tb_(tb),
-        input_(input),
+          index_t> var_or_invstd,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> weight,
+      const GenericPackedTensorAccessor<
+          const stat_scalar_t,
+          1,
+          RestrictPtrTraits,
+          index_t> bias,
+      stat_accscalar_t epsilon)
+      : input_(input),
         output_(output),
+        mean_(mean),
+        var_or_invstd_(var_or_invstd),
         weight_(weight),
         bias_(bias),
-        mean_(mean),
-        var_or_invstd_(var_or_invstd) {}
+        epsilon_(epsilon) {}
 
  private:
-  stat_accscalar_t epsilon_;
-  int numPlane_;
-  int64_t target_tile_size_;
-  int64_t wg_size_;
-  int bs_;
-  int fs_;
-  int weight_size_;
-  int bias_size_;
-  int tf_;
-  int tb_;
   const GenericPackedTensorAccessor<
       const input_scalar_t,
       3,
@@ -1233,18 +1176,6 @@ struct BatchNormTransformInputKernelFunctor {
       input_;
   GenericPackedTensorAccessor<input_scalar_t, 3, RestrictPtrTraits, index_t>
       output_;
-  const GenericPackedTensorAccessor<
-      const stat_scalar_t,
-      1,
-      RestrictPtrTraits,
-      index_t>
-      weight_;
-  const GenericPackedTensorAccessor<
-      const stat_scalar_t,
-      1,
-      RestrictPtrTraits,
-      index_t>
-      bias_;
   const GenericPackedTensorAccessor<
       typename std::conditional<train, stat_accscalar_t, stat_scalar_t>::type,
       1,
@@ -1257,6 +1188,19 @@ struct BatchNormTransformInputKernelFunctor {
       RestrictPtrTraits,
       index_t>
       var_or_invstd_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      weight_;
+  const GenericPackedTensorAccessor<
+      const stat_scalar_t,
+      1,
+      RestrictPtrTraits,
+      index_t>
+      bias_;
+  stat_accscalar_t epsilon_;
 };
 
 template <
@@ -1275,21 +1219,24 @@ void batch_norm_transform_input_kernel(
     stat_accscalar_t epsilon) {
   auto& queue = getCurrentSYCLQueue();
   int numPlane = input.size(1);
+
   int64_t target_tile_size = syclMaxWorkItemsPerTile();
   int64_t wg_size = syclMaxWorkItemsPerEU(); // for work group barrier
   if (wg_size * numPlane < target_tile_size) {
     wg_size = syclMaxWorkGroupSize(); // for higher occupancy
   }
 
-  int bs = input.size(0);
-  int fs = input.size(2);
-  int weight_size = weight.size(0);
-  int bias_size = bias.size(0);
-
-  int tf = get_num_threads(fs, wg_size);
+  int tf = get_num_threads(input.size(2), wg_size);
   int tb = std::max<int>(wg_size / tf, 1);
+
   sycl::range<2> local_range(tb, tf);
-  sycl::range<2> global_range((bs + tb - 1) / tb * tb, numPlane * tf);
+  int64_t global_y = std::min<int64_t>(
+      std::max<int>(
+          1,
+          std::min<int>(
+              (256 * 1024) / input.size(1), (input.size(0) + tb - 1) / tb)),
+      target_tile_size);
+  sycl::range<2> global_range(global_y * tb, numPlane * tf);
 
   auto input_pa =
       get_packed_accessor<const input_scalar_t, 3, RestrictPtrTraits, index_t>(
@@ -1320,22 +1267,7 @@ void batch_norm_transform_input_kernel(
       stat_accscalar_t,
       train,
       index_t>(
-      epsilon,
-      numPlane,
-      target_tile_size,
-      wg_size,
-      bs,
-      fs,
-      weight_size,
-      bias_size,
-      tf,
-      tb,
-      input_pa,
-      output_pa,
-      weight_pa,
-      bias_pa,
-      mean_pa,
-      invstd_pa);
+      input_pa, output_pa, mean_pa, invstd_pa, weight_pa, bias_pa, epsilon);
 
   sycl_kernel_submit(global_range, local_range, queue, caller);
 }
@@ -3444,11 +3376,12 @@ struct BatchNormUpdateStatsAndInvertFunctor {
       acc_t var,
       scalar_t running_mean,
       scalar_t running_var) const {
-    const auto unbiased_var = var * bessel_correction_factor_;
-    return std::tuple<scalar_t, scalar_t, acc_t>{
-        mean * momentum_ + (1 - momentum_) * running_mean,
-        unbiased_var * momentum_ + (1 - momentum_) * running_var,
-        c10::xpu::compat::rsqrt(var + eps_)};
+    const acc_t unbiased_var = var * bessel_correction_factor_;
+    volatile acc_t a = mean * momentum_ + (1 - momentum_) * (acc_t)running_mean;
+    volatile acc_t b =
+        unbiased_var * momentum_ + (1 - momentum_) * (acc_t)running_var;
+    volatile acc_t c = c10::xpu::compat::rsqrt(var + eps_);
+    return std::tuple<scalar_t, scalar_t, acc_t>{a, b, c};
   }
 
   BatchNormUpdateStatsAndInvertFunctor(
@@ -3698,16 +3631,12 @@ template <
     typename input_scalar_t,
     typename stat_scalar_t,
     typename stat_accscalar_t,
-    typename index_t,
-    typename accscalar_t>
+    typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
-    index_t plane = item.get_group(0);
-    auto lix = item.get_local_id(1);
-    auto liy = item.get_local_id(0);
-    auto local_range_y = item.get_local_range(0);
-    auto local_range_x = item.get_local_range(1);
+    index_t plane = item.get_group(1);
+    index_t N = grad_output_.size(0) * grad_output_.size(2);
 
     stat_accscalar_t mean, invstd;
     if (train_) {
@@ -3724,7 +3653,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     stat_accscalar_t weight_val = weight_.size(0) > 0
         ? static_cast<stat_accscalar_t>(weight_[plane])
         : stat_accscalar_t(1);
-    stat_accscalar_t norm = stat_accscalar_t(1) / numel_;
+    stat_accscalar_t norm = stat_accscalar_t(1) / N;
 
     // Compute two values across (batch, x/y/z) in one pass:
     // 1. Sum(grad_output)
@@ -3738,8 +3667,9 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             DefaultPtrTraits,
             index_t>>
         g(mean, input_, grad_output_);
+    int num_sg = item.get_local_range(1) * item.get_local_range(0) / SIMD;
     auto res = plane_reduce<SIMD, Float2<input_scalar_t, stat_accscalar_t>>(
-        item, g, grad_output_, plane, sg_num_, local_sum_);
+        item, g, grad_output_, plane, num_sg, local_sum_);
 
     stat_accscalar_t grad_output_sum = res.v1;
     stat_accscalar_t dot_p = res.v2;
@@ -3749,10 +3679,11 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     stat_accscalar_t grad_scale = invstd * weight_val;
 
     auto grad_input = grad_input_;
-
     if (grad_input_.data() != nullptr) {
-      for (int batch = liy; batch < N_; batch += local_range_y) {
-        for (int x = lix; x < Hw_; x += local_range_x) {
+      for (int batch = item.get_local_id(0); batch < grad_output_.size(0);
+           batch += item.get_local_range(0)) {
+        for (int x = item.get_local_id(1); x < grad_output_.size(2);
+             x += item.get_local_range(1)) {
           input_scalar_t go = grad_output_[batch][plane][x];
           if (train_) {
             stat_accscalar_t inp = input_[batch][plane][x];
@@ -3768,14 +3699,14 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
 
     if (grad_weight_.size(0) > 0) {
-      if (lix == 0) {
+      if (item.get_local_id(1) == 0) {
         auto grad_weight = grad_weight_;
         grad_weight[plane] = static_cast<stat_scalar_t>(dot_p * invstd);
       }
     }
 
     if (grad_bias_.size(0) > 0) {
-      if (lix == 0) {
+      if (item.get_local_id(1) == 0) {
         auto grad_bias = grad_bias_;
         grad_bias[plane] = static_cast<stat_scalar_t>(grad_output_sum);
       }
@@ -3788,16 +3719,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   BatchNormBackwardKernelFunctor(
-      bool train,
-      stat_accscalar_t epsilon,
-      int N,
-      int numPlane,
-      int Hw,
-      index_t numel,
-      int64_t wg_size,
       int64_t work_group_size_x,
       int64_t work_group_size_y,
-      int sg_num,
       const GenericPackedTensorAccessor<
           const input_scalar_t,
           3,
@@ -3838,17 +3761,11 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           const stat_accscalar_t,
           1,
           DefaultPtrTraits,
-          index_t> save_invstd)
-      : train_(train),
-        epsilon_(epsilon),
-        N_(N),
-        numPlane_(numPlane),
-        Hw_(Hw),
-        numel_(numel),
-        wg_size_(wg_size),
-        work_group_size_x_(work_group_size_x),
+          index_t> save_invstd,
+      bool train,
+      stat_accscalar_t epsilon)
+      : work_group_size_x_(work_group_size_x),
         work_group_size_y_(work_group_size_y),
-        sg_num_(sg_num),
         input_(input),
         grad_output_(grad_output),
         grad_input_(grad_input),
@@ -3858,19 +3775,13 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         running_mean_(running_mean),
         running_var_(running_var),
         save_mean_(save_mean),
-        save_invstd_(save_invstd) {}
+        save_invstd_(save_invstd),
+        train_(train),
+        epsilon_(epsilon) {}
 
  private:
-  bool train_;
-  stat_accscalar_t epsilon_;
-  int N_;
-  int numPlane_;
-  int Hw_;
-  index_t numel_;
-  int64_t wg_size_;
   int64_t work_group_size_x_;
   int64_t work_group_size_y_;
-  int sg_num_;
   const GenericPackedTensorAccessor<
       const input_scalar_t,
       3,
@@ -3919,6 +3830,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       DefaultPtrTraits,
       index_t>
       save_invstd_;
+  bool train_;
+  stat_accscalar_t epsilon_;
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>, 1> local_sum_;
 };
 
@@ -3941,18 +3854,15 @@ void batch_norm_backward_kernel_impl(
     const Tensor save_invstd,
     bool train,
     stat_accscalar_t epsilon) {
-  using accscalar_t = acc_type<stat_scalar_t, true>;
   auto& queue = getCurrentSYCLQueue();
   auto N = grad_output.size(0);
   auto numPlane = grad_output.size(1);
   auto Hw = grad_output.size(2);
-  index_t numel = grad_output.size(0) * grad_output.size(2);
 
   int64_t wg_size = get_prefer_wg_size(N * Hw, SIMD);
 
   int64_t work_group_size_x = get_num_threads(Hw, wg_size);
   int64_t work_group_size_y = std::max(int64_t(1), wg_size / work_group_size_x);
-  int sg_num = work_group_size_x * work_group_size_y / SIMD;
 
   auto input_pa =
       get_packed_accessor<const input_scalar_t, 3, DefaultPtrTraits, index_t>(
@@ -3984,30 +3894,25 @@ void batch_norm_backward_kernel_impl(
       1,
       DefaultPtrTraits,
       index_t>(running_var, "running_var");
-  auto save_mean_pa =
-      packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
-          save_mean, "save_mean");
-  auto save_invstd_pa =
-      packed_accessor_or_dummy<const accscalar_t, 1, DefaultPtrTraits, index_t>(
-          save_invstd, "save_invstd");
+  auto save_mean_pa = packed_accessor_or_dummy<
+      const stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>(save_mean, "save_mean");
+  auto save_invstd_pa = packed_accessor_or_dummy<
+      const stat_accscalar_t,
+      1,
+      DefaultPtrTraits,
+      index_t>(save_invstd, "save_invstd");
 
   auto caller = BatchNormBackwardKernelFunctor<
       SIMD,
       input_scalar_t,
       stat_scalar_t,
       stat_accscalar_t,
-      index_t,
-      accscalar_t>(
-      train,
-      epsilon,
-      N,
-      numPlane,
-      Hw,
-      numel,
-      wg_size,
+      index_t>(
       work_group_size_x,
       work_group_size_y,
-      sg_num,
       input_pa,
       grad_output_pa,
       grad_input_pa,
@@ -4017,10 +3922,12 @@ void batch_norm_backward_kernel_impl(
       running_mean_pa,
       running_var_pa,
       save_mean_pa,
-      save_invstd_pa);
+      save_invstd_pa,
+      train,
+      epsilon);
 
   auto global_range =
-      sycl::range<2>(numPlane * work_group_size_y, work_group_size_x);
+      sycl::range<2>(1 * work_group_size_y, numPlane * work_group_size_x);
   auto local_range = sycl::range<2>(work_group_size_y, work_group_size_x);
   sycl_kernel_submit(global_range, local_range, queue, caller);
 }
