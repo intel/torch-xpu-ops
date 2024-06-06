@@ -133,7 +133,7 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.embedding",
     "nn.functional.unfold",
-    "_upsample_nearest_exact1d",
+    "nn.functional.interpolate",
     "upsample_nearest1d"
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
     "sigmoid",

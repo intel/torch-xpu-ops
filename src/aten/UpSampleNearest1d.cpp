@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/UpSampleNearest1d.h>
+#include <aten/sycl/UpSampleNearest1dKernels.h>
 
 namespace at {
 // using namespace at::native;
@@ -33,18 +33,22 @@ Tensor& upsample_nearest_meta(
       ") and output (W: ",
       output_width,
       ")");
+  TORCH_CHECK(
+      (input.size(1) != 0 && input.size(2) != 0) && input.dim() == 3,
+      "Non-empty 3D data tensor expected but got a tensor with sizes ",
+      input.sizes());
 
-  output = at::empty({nbatch, channels, output_width}, input.options());
+  if (!output.defined())
+    output = at::empty({nbatch, channels, output_width}, input.options());
   return output;
 }
 Tensor XPUNativeFunctions::_upsample_nearest_exact1d(
     const Tensor& input,
     IntArrayRef output_size,
     c10::optional<double> scales) {
-  printf("upsample_ meng1\n");
   Tensor output;
   output = upsample_nearest_meta(input, output, output_size);
-  at::native::xpu::upsample_nearest1d_out_kernel(
+  at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, true);
   return output;
 }
@@ -54,8 +58,8 @@ Tensor& XPUNativeFunctions::_upsample_nearest_exact1d_out(
     IntArrayRef output_size,
     c10::optional<double> scales,
     Tensor& output) {
-  printf("upsample_ meng2\n");
-  at::native::xpu::upsample_nearest1d_out_kernel(
+  upsample_nearest_meta(input, output, output_size);
+  at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, true);
   return output;
 }
@@ -64,10 +68,9 @@ Tensor XPUNativeFunctions::upsample_nearest1d(
     const Tensor& input,
     IntArrayRef output_size,
     c10::optional<double> scales) {
-  printf("upsample_ meng3\n");
   Tensor output;
   output = upsample_nearest_meta(input, output, output_size);
-  at::native::xpu::upsample_nearest1d_out_kernel(
+  at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, false);
   return output;
 }
@@ -77,8 +80,8 @@ Tensor& XPUNativeFunctions::upsample_nearest1d_out(
     IntArrayRef output_size,
     c10::optional<double> scales,
     Tensor& output) {
-  printf("upsample_ meng4\n");
-  at::native::xpu::upsample_nearest1d_out_kernel(
+  upsample_nearest_meta(input, output, output_size);
+  at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, false);
   return output;
 }

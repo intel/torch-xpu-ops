@@ -132,22 +132,16 @@ static inline accscalar_t area_pixel_compute_source_index(
   }
 }
 
-struct Nearest_index_op {
+struct NearestIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
-    // index_f32 = (output_index) * scale
-    // input_index = round(index_f32)
-    // Same as a buggy OpenCV INTER_NEAREST
-    // We keep this method for BC and consider as deprecated.
-    // See nearest_exact as replacement
     const int src_index =
         min(static_cast<int>(floorf((dst_index)*scale)), input_size - 1);
     return src_index;
   }
 };
 
-struct Nearest_exact_index_op {
+struct NearestExactIndexOp {
   int operator()(const float scale, int dst_index, int input_size) const {
-    // Same as Pillow and Scikit-Image/Scipy ndi.zoom
     const int src_index = min(
         static_cast<int>(floorf((dst_index + static_cast<float>(0.5)) * scale)),
         input_size - 1);
@@ -155,20 +149,16 @@ struct Nearest_exact_index_op {
   }
 };
 
-struct Nearest_bw_index_op {
+struct NearestbwIndexOp {
   int operator()(const float scale, int dst_index, int output_size) const {
-    // Equivalent to buggy OpenCV INTER_NEAREST
-    // We keep this method for BC and consider as deprecated.
-    // See nearest_exact as replacement
     const int src_index =
         min(static_cast<int>(ceilf(dst_index * scale)), output_size);
     return src_index;
   }
 };
 
-struct Nearest_exact_bw_index_op {
+struct NearestExactBwIndexOp {
   int operator()(const float scale, int dst_index, int output_size) const {
-    // Equivalent to Pillow and Scikit-Image/Scipy ndi.zoom
     const int src_index = min(
         static_cast<int>(ceilf(dst_index * scale - static_cast<float>(0.5))),
         output_size);
