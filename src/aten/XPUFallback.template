@@ -193,7 +193,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "bucketize.Tensor",
     "cauchy_",
     "_cdist_backward",
-    "_cdist_forward",
     "ceil.out",
     "channel_shuffle",
     "cholesky",

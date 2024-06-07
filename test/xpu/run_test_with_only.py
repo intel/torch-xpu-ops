@@ -47,5 +47,31 @@ res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 # test_comparison_utils
 res += launch_test("test_comparison_utils_xpu.py")
 
+#test_meta
+execute_list = (
+    "test_dispatch_symbolic_meta_outplace_all_strides_cdist_xpu_float32",
+    "test_dispatch_symbolic_meta_outplace_cdist_xpu_float32",
+    "test_meta_outplace_cdist_xpu_float32",
+    "test_cdist_forward_xpu",
+    "test_dispatch_meta_outplace_cdist_xpu_float32",
+    # # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    # "test_meta_outplace_cdist_xpu_float64",
+    # "test_dispatch_symbolic_meta_outplace_cdist_xpu_float64",
+    # "test_dispatch_meta_outplace_cdist_xpu_float64",
+)
+res += launch_test("test_meta_xpu.py", execute_list)
+
+#test_testing
+execute_list = (
+    "test_opinfo_sample_generators_cdist_xpu_float32",
+)
+res += launch_test("test_testing_xpu.py", execute_list)
+
+# test_ops_jit_xpu.py
+execute_list = (
+    "test_variant_consistency_jit_cdist_xpu_float32",
+)
+res += launch_test("test_ops_jit_xpu.py", execute_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

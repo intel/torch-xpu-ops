@@ -311,3 +311,4 @@ supported:
   - sgn
   - sgn.out
   - sgn_
+  - _cdist_forward

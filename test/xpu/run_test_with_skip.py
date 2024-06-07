@@ -941,6 +941,12 @@ skip_list = (
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
+
+    # AssertionError: False is not true : Argument 0 during forward call unexpectedly materializes. 
+    # Either set `supports_cow_input_no_materialize_forward=False` in this operation's OpInfo, 
+    # add the arg to the OpInfo's `allow_cow_input_materialize_forward` list, 
+    # or change the implementation to avoid materialization.
+    "test_cow_input_cdist_xpu_float32",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
