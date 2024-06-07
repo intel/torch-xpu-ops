@@ -146,7 +146,7 @@ def backward_tls_stash(self, device):
 
 
 @onlyXPU
-def test_pin_memory(self, device):
+def pin_memory(self, device):
     x = torch.randn(2, 2, dtype=torch.double, requires_grad=True)
     self.assertEqual(x, x.pin_memory(device))
     self.assertIsNot(x, x.pin_memory(device))
@@ -420,7 +420,7 @@ with XPUPatchForImport(False):
     TestAutograd.test_graph_save_on_cpu_cuda = graph_save_on_cpu_cuda
 
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
-    TestAutogradDeviceType.test_pin_memory = test_pin_memory
+    TestAutogradDeviceType.test_pin_memory = pin_memory
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
     TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
