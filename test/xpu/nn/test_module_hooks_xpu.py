@@ -15,7 +15,6 @@ with XPUPatchForImport(False):
         TestStateDictHooks,
     )
 
-
 instantiate_parametrized_tests(TestModuleHooks)
 
 
