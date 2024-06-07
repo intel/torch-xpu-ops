@@ -13,6 +13,6 @@ Tensor embedding_dense_backward_kernel(
     int64_t padding_idx,
     bool scale_grad_by_freq);
 
-}
+} // namespace xpu
 } // namespace native
 } // namespace at
