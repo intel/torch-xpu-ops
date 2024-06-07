@@ -212,7 +212,8 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
 //   c10::impl::check_and_update_common_device(
 //       common_device, save_mean, "xpu::native_batch_norm_out", "save_mean");
 //   c10::impl::check_and_update_common_device(
-//       common_device, save_invstd, "xpu::native_batch_norm_out", "save_invstd");
+//       common_device, save_invstd, "xpu::native_batch_norm_out",
+//       "save_invstd");
 //   c10::impl::check_and_update_common_device(
 //       common_device, input, "xpu::native_batch_norm_out", "input");
 //   c10::impl::check_and_update_common_device(
@@ -258,7 +259,8 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
 //   std::optional<Device> common_device = std::nullopt;
 //   (void)common_device; // Suppress unused variable warning
 //   c10::impl::check_and_update_common_device(
-//       common_device, grad_out, "xpu::native_batch_norm_backward", "grad_out");
+//       common_device, grad_out, "xpu::native_batch_norm_backward",
+//       "grad_out");
 //   c10::impl::check_and_update_common_device(
 //       common_device, input, "xpu::native_batch_norm_backward", "input");
 //   c10::impl::check_and_update_common_device(
@@ -274,7 +276,8 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
 //       "xpu::native_batch_norm_backward",
 //       "running_var");
 //   c10::impl::check_and_update_common_device(
-//       common_device, save_mean, "xpu::native_batch_norm_backward", "save_mean");
+//       common_device, save_mean, "xpu::native_batch_norm_backward",
+//       "save_mean");
 //   c10::impl::check_and_update_common_device(
 //       common_device,
 //       save_invstd,
@@ -303,8 +306,11 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
         bool training,
         double momentum,
         double eps) {
-  return XPUNativeFunctions::native_batch_norm(
-      input, weight, bias, running_mean, running_var, training, momentum, eps);
+  //   return native::native_batch_norm(
+  //       input, weight, bias, running_mean, running_var, training, momentum,
+  //       eps);
+  Tensor a, b, c;
+  return {a, b, c};
 }
 
 ::std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
@@ -320,18 +326,19 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
         Tensor& out,
         Tensor& save_mean,
         Tensor& save_invstd) {
-  return XPUNativeFunctions::native_batch_norm_out(
-      input,
-      weight,
-      bias,
-      running_mean,
-      running_var,
-      training,
-      momentum,
-      eps,
-      out,
-      save_mean,
-      save_invstd);
+  //   return at::native_batch_norm_out(
+  //       input,
+  //       weight,
+  //       bias,
+  //       running_mean,
+  //       running_var,
+  //       training,
+  //       momentum,
+  //       eps,
+  //       out,
+  //       save_mean,
+  //       save_invstd);
+  return {out, save_mean, save_invstd};
 }
 
 ::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
@@ -342,8 +349,10 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
         bool training,
         double momentum,
         double eps) {
-  return XPUNativeFunctions::native_batch_norm(
-      input, weight, bias, Tensor(), Tensor(), training, momentum, eps);
+  //   return native::native_batch_norm(
+  //       input, weight, bias, Tensor(), Tensor(), training, momentum, eps);
+  Tensor a, b, c;
+  return {a, b, c};
 }
 
 ::std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> XPUNativeFunctions::
@@ -357,18 +366,19 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
         at::Tensor& out,
         at::Tensor& save_mean,
         at::Tensor& save_invstd) {
-  return XPUNativeFunctions::native_batch_norm_out(
-      input,
-      weight,
-      bias,
-      Tensor(),
-      Tensor(),
-      training,
-      momentum,
-      eps,
-      out,
-      save_mean,
-      save_invstd);
+  //   return native::native_batch_norm_out(
+  //       input,
+  //       weight,
+  //       bias,
+  //       Tensor(),
+  //       Tensor(),
+  //       training,
+  //       momentum,
+  //       eps,
+  //       out,
+  //       save_mean,
+  //       save_invstd);
+  return {out, save_mean, save_invstd};
 }
 
 inline std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_with_update(
