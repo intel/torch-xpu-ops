@@ -5,7 +5,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
-#include <torch/library.h>
+#include <aten/sycl/UnarySignKernels.h>
+#include <aten/sycl/UnarySpecialOpsKernels.h>
 
 namespace at {
 
@@ -330,6 +331,62 @@ Tensor& XPUNativeFunctions::exp_(Tensor& self) {
   iter.build_borrowing_unary_float_op(self, self);
   native::xpu::exp_kernel(iter);
   return self;
+}
+
+Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::sigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sigmoid_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::sgn(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sgn_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (self.is_complex()) {
+    native::xpu::sgn_kernel(iter);
+  } else {
+    native::xpu::sign_kernel(iter);
+  }
+  return out;
 }
 
 } // namespace at

@@ -117,6 +117,7 @@ _xpu_computation_op_list = [
     "where",
     "zero",
     "add",
+    "all",
     "any",
     "arange",
     "as_strided",
@@ -133,6 +134,9 @@ _xpu_computation_op_list = [
     "nn.functional.embedding",
     "nn.functional.unfold",
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "sigmoid",
+    "sgn",
+    "nn.functional.embedding_bag",
 ]
 
 _xpu_computation_ops = [

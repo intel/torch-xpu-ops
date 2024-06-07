@@ -136,6 +136,14 @@ Tensor& XPUNativeFunctions::bernoulli_(
       self, p, std::move(generator));
 }
 
+Tensor& XPUNativeFunctions::bernoulli_out(
+    const Tensor& self,
+    c10::optional<Generator> gen,
+    Tensor& result) {
+  return native::templates::bernoulli_out_impl<BernoulliStub, Generator>(
+      result, self, std::move(gen));
+}
+
 template <typename RNG>
 struct RandomStub {
   void operator()(TensorIteratorBase& iter, c10::optional<Generator> gen) {
@@ -171,6 +179,13 @@ Tensor& XPUNativeFunctions::random_(
     ::std::optional<Generator> generator) {
   return native::templates::random_from_to_impl<RandomFromToStub, Generator>(
       self, from, to_opt, std::move(generator));
+}
+
+Tensor& XPUNativeFunctions::random_(
+    Tensor& self,
+    int64_t to,
+    ::std::optional<Generator> generator) {
+  return random_(self, 0, to, std::move(generator));
 }
 
 } // namespace at
