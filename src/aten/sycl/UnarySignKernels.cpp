@@ -54,4 +54,4 @@ void sign_kernel(TensorIteratorBase& iter) {
   }
 }
 
-}
+} // namespace at::native::xpu

@@ -62,6 +62,18 @@ skip_list = (
     # https://en.cppreference.com/w/cpp/numeric/complex/exp
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
+
+    # Special handle (different calculation order) in CPU reference impl.
+    # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_float16",
+
+    # Not implemented operators, aten::embedding_renorm_.
+    # To retrieve cases when the operators are supported.
+    # https://github.com/intel/torch-xpu-ops/issues/380
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
+    "test_view_replay_nn_functional_embedding_bag_xpu_float32",
 )
 
 

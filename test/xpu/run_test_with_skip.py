@@ -1015,6 +1015,7 @@ res += launch_test("test_sort_and_select_xpu.py", skip_list)
 nn_test_embedding_skip_list = (
     # Skip list of base line
     # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
@@ -1023,10 +1024,17 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_1D_padding_idx_xpu_float64",
     "test_embedding_bag_2D_padding_idx_xpu_float32",
     "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int32",
     "test_embedding_bag_bfloat16_xpu_int32_int64",
     "test_embedding_bag_bfloat16_xpu_int64_int32",
     "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int32_float16",
+    "test_embedding_bag_device_xpu_int32_int32_float32",
     "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int64_float16",
+    "test_embedding_bag_device_xpu_int32_int64_float32",
     "test_embedding_bag_device_xpu_int32_int64_float64",
     "test_embedding_bag_device_xpu_int64_int32_bfloat16",
     "test_embedding_bag_device_xpu_int64_int32_float16",
@@ -1036,31 +1044,38 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_device_xpu_int64_int64_float16",
     "test_embedding_bag_device_xpu_int64_int64_float32",
     "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int32",
     "test_embedding_bag_half_xpu_int32_int64",
     "test_embedding_bag_half_xpu_int64_int32",
     "test_embedding_bag_half_xpu_int64_int64",
 
-    # CPU fallback error: RuntimeError: expected scalar type Long but found Int
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float32",
-    "test_embedding_bag_bfloat16_xpu_int32_int32",
-    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
-    "test_embedding_bag_device_xpu_int32_int32_float16",
-    "test_embedding_bag_device_xpu_int32_int32_float32",
-    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
-    "test_embedding_bag_device_xpu_int32_int64_float16",
-    "test_embedding_bag_device_xpu_int32_int64_float32",
-    "test_embedding_bag_half_xpu_int32_int32",
-
-    # CPU fallback error: AssertionError: Tensor-likes are not close!
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
+    # CUDA implementation has no such functionality due to performance consideration.
+    # skipped by CUDA for performance
+    # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
 )
 res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
@@ -1669,17 +1684,134 @@ skip_list=(
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
-# test_content_store
-skip_list = (
-    # Storage compatibility in XPU tensor.
-    # RuntimeError: don't know how to determine data location of torch.storage.UntypedStorage
-    "test_basic_xpu",
-    "test_load_tensor_xpu",
+skip_list=(
+    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). 
+    "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_amax_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amax_xpu_float16",
+    "test_mask_layout_strided_masked_amax_xpu_float32",
+    "test_mask_layout_strided_masked_amax_xpu_float64",
+    "test_mask_layout_strided_masked_amin_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amin_xpu_float16",
+    "test_mask_layout_strided_masked_amin_xpu_float32",
+    "test_mask_layout_strided_masked_amin_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_bfloat16",
+    "test_mask_layout_strided_masked_prod_xpu_bool",
+    "test_mask_layout_strided_masked_prod_xpu_complex128",
+    "test_mask_layout_strided_masked_prod_xpu_complex64",
+    "test_mask_layout_strided_masked_prod_xpu_float16",
+    "test_mask_layout_strided_masked_prod_xpu_float32",
+    "test_mask_layout_strided_masked_prod_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_int16",
+    "test_mask_layout_strided_masked_prod_xpu_int32",
+    "test_mask_layout_strided_masked_prod_xpu_int64",
+    "test_mask_layout_strided_masked_prod_xpu_int8",
+    "test_mask_layout_strided_masked_prod_xpu_uint8",
+    "test_mask_layout_strided_masked_sum_xpu_bfloat16",
+    "test_mask_layout_strided_masked_sum_xpu_bool",
+    "test_mask_layout_strided_masked_sum_xpu_complex128",
+    "test_mask_layout_strided_masked_sum_xpu_complex64",
+    "test_mask_layout_strided_masked_sum_xpu_float16",
+    "test_mask_layout_strided_masked_sum_xpu_float32",
+    "test_mask_layout_strided_masked_sum_xpu_float64",
+    "test_mask_layout_strided_masked_sum_xpu_int16",
+    "test_mask_layout_strided_masked_sum_xpu_int32",
+    "test_mask_layout_strided_masked_sum_xpu_int64",
+    "test_mask_layout_strided_masked_sum_xpu_int8",
+    "test_mask_layout_strided_masked_sum_xpu_uint8",
+
+    # CPU and CUDA bias code in SparseCsrTensor.cpp.
+    # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+    "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_mean_xpu_bfloat16",
+    "test_mask_layout_strided_masked_mean_xpu_float16",
+    "test_mask_layout_strided_masked_mean_xpu_float32",
+    "test_mask_layout_strided_masked_mean_xpu_float6"
 )
+res += launch_test("test_masked_xpu.py", skip_list)
+
+skip_list = ( 
+    # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend. 
+    "test_flatten_xpu",
+    "test_ravel_xpu",
+)
+res += launch_test("./test_view_ops_xpu.py", skip_list)
+
 res += launch_test("test_content_store_xpu.py")
 
-
 res += launch_test("test_native_functions_xpu.py")
+
+res += launch_test("nn/test_init_xpu.py")
+
+res += launch_test("test_namedtensor_xpu.py")
+
+res += launch_test("nn/test_lazy_modules_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

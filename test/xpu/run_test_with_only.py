@@ -32,6 +32,11 @@ res = 0
 # test_foreach
 execute_list = (
     "_foreach_add_ and not slowpath",
+    "_foreach_mul_ and not slowpath",
+    "_foreach_div_ and not slowpath",
+    "_foreach_addcmul_ and not slowpath",
+    # Compiler optimization on data type conversion brings the precision error.
+    "_foreach_addcdiv_ and not slowpath and not test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
@@ -72,6 +77,8 @@ execute_list = (
     "test_variant_consistency_jit_cdist_xpu_float32",
 )
 res += launch_test("test_ops_jit_xpu.py", execute_list)
+# test_pruning
+res += launch_test("nn/test_pruning_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
