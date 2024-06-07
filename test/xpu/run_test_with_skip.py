@@ -1790,6 +1790,13 @@ skip_list=(
 )
 res += launch_test("test_masked_xpu.py", skip_list)
 
+skip_list = ( 
+    # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend. 
+    "test_flatten_xpu",
+    "test_ravel_xpu",
+)
+res += launch_test("./test_view_ops_xpu.py", skip_list)
+
 res += launch_test("test_content_store_xpu.py")
 
 res += launch_test("test_native_functions_xpu.py")
