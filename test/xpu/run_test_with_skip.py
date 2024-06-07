@@ -1266,6 +1266,9 @@ skip_list = (
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
 skip_list = ( 
+        # Need quantization support.
+        # https://github.com/intel/torch-xpu-ops/issues/275
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend. 
         "test_flip_xpu_float32",
 )
 res += launch_test("test_shape_ops_xpu.py", skip_list)
