@@ -52,7 +52,7 @@ skip_list = (
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_reciprocal_xpu",
-    "test_dtypes_sgn_xpu",
+    "test_dtypes_sgn_xpu", # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
     "test_dtypes_square_xpu",
     "test_errors_cat_xpu",
@@ -390,6 +390,8 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+    "test_conj_view_conj_physical_xpu_complex64",
+    "test_neg_conj_view_conj_physical_xpu_complex128",
 
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
@@ -703,6 +705,242 @@ skip_list = (
     "test_variant_consistency_eager_svd_xpu_complex64",
     "test_variant_consistency_eager_tensordot_xpu_complex64",
     "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+    # oneDNN issues
+    # RuntimeError: value cannot be converted to type float without overflow
+    "test_conj_view_addbmm_xpu_complex64",
+    "test_neg_conj_view_addbmm_xpu_complex128",
+
+    # CPU fallback error: AssertionError: Tensor-likes are not close!
+    "test_neg_view_nn_functional_rrelu_xpu_float64",
+
+    # CPU fallback fails
+    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
+    "test_neg_view__refs_nn_functional_group_norm_xpu_float64",
+    "test_neg_view_nn_functional_group_norm_xpu_float64",
+
+    # CUDA skip,reproduce the UT in CUDA,CUDA fail
+    "test_neg_view_nn_functional_dropout_xpu_float64",
+
+    ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    # https://github.com/intel/torch-xpu-ops/issues/254
+    "test_conj_view___rmatmul___xpu_complex64",
+    "test_conj_view__refs_linalg_svd_xpu_complex64",
+    "test_conj_view_addmm_decomposed_xpu_complex64",
+    "test_conj_view_addmm_xpu_complex64",
+    "test_conj_view_addmv_xpu_complex64",
+    "test_conj_view_addr_xpu_complex64",
+    "test_conj_view_baddbmm_xpu_complex64",
+    "test_conj_view_bmm_xpu_complex64",
+    "test_conj_view_cholesky_inverse_xpu_complex64",
+    "test_conj_view_cholesky_solve_xpu_complex64",
+    "test_conj_view_cholesky_xpu_complex64",
+    "test_conj_view_corrcoef_xpu_complex64",
+    "test_conj_view_cov_xpu_complex64",
+    "test_conj_view_einsum_xpu_complex64",
+    "test_conj_view_geqrf_xpu_complex64",
+    "test_conj_view_inner_xpu_complex64",
+    "test_conj_view_linalg_cholesky_ex_xpu_complex64",
+    "test_conj_view_linalg_cholesky_xpu_complex64",
+    "test_conj_view_linalg_cond_xpu_complex64",
+    "test_conj_view_linalg_det_singular_xpu_complex64",
+    "test_conj_view_linalg_det_xpu_complex64",
+    "test_conj_view_linalg_eig_xpu_complex64",
+    "test_conj_view_linalg_eigh_xpu_complex64",
+    "test_conj_view_linalg_eigvals_xpu_complex64",
+    "test_conj_view_linalg_eigvalsh_xpu_complex64",
+    "test_conj_view_linalg_householder_product_xpu_complex64",
+    "test_conj_view_linalg_inv_ex_xpu_complex64",
+    "test_conj_view_linalg_inv_xpu_complex64",
+    "test_conj_view_linalg_ldl_factor_ex_xpu_complex64",
+    "test_conj_view_linalg_ldl_factor_xpu_complex64",
+    "test_conj_view_linalg_ldl_solve_xpu_complex64",
+    "test_conj_view_linalg_lstsq_grad_oriented_xpu_complex64",
+    "test_conj_view_linalg_lstsq_xpu_complex64",
+    "test_conj_view_linalg_lu_factor_xpu_complex64",
+    "test_conj_view_linalg_lu_solve_xpu_complex64",
+    "test_conj_view_linalg_matrix_norm_xpu_complex64",
+    "test_conj_view_linalg_matrix_power_xpu_complex64",
+    "test_conj_view_linalg_matrix_rank_hermitian_xpu_complex64",
+    "test_conj_view_linalg_matrix_rank_xpu_complex64",
+    "test_conj_view_linalg_multi_dot_xpu_complex64",
+    "test_conj_view_linalg_norm_subgradients_at_zero_xpu_complex64",
+    "test_conj_view_linalg_norm_xpu_complex64",
+    "test_conj_view_linalg_pinv_hermitian_xpu_complex64",
+    "test_conj_view_linalg_pinv_singular_xpu_complex64",
+    "test_conj_view_linalg_pinv_xpu_complex64",
+    "test_conj_view_linalg_qr_xpu_complex64",
+    "test_conj_view_linalg_slogdet_xpu_complex64",
+    "test_conj_view_linalg_solve_ex_xpu_complex64",
+    "test_conj_view_linalg_solve_triangular_xpu_complex64",
+    "test_conj_view_linalg_solve_xpu_complex64",
+    "test_conj_view_linalg_svd_xpu_complex64",
+    "test_conj_view_linalg_svdvals_xpu_complex64",
+    "test_conj_view_linalg_tensorinv_xpu_complex64",
+    "test_conj_view_linalg_tensorsolve_xpu_complex64",
+    "test_conj_view_logdet_xpu_complex64",
+    "test_conj_view_lu_solve_xpu_complex64",
+    "test_conj_view_lu_xpu_complex64",
+    "test_conj_view_matmul_xpu_complex64",
+    "test_conj_view_mm_xpu_complex64",
+    "test_conj_view_mv_xpu_complex64",
+    "test_conj_view_nn_functional_linear_xpu_complex64",
+    "test_conj_view_norm_nuc_xpu_complex64",
+    "test_conj_view_ormqr_xpu_complex64",
+    "test_conj_view_pinverse_xpu_complex64",
+    "test_conj_view_qr_xpu_complex64",
+    "test_conj_view_svd_xpu_complex64",
+    "test_conj_view_tensordot_xpu_complex64",
+    "test_conj_view_triangular_solve_xpu_complex64",
+    "test_neg_conj_view_addmm_decomposed_xpu_complex128",
+    "test_neg_conj_view_addmm_xpu_complex128",
+    "test_neg_conj_view_addmv_xpu_complex128",
+    "test_neg_conj_view_addr_xpu_complex128",
+    "test_neg_conj_view_baddbmm_xpu_complex128",
+    "test_neg_conj_view_bmm_xpu_complex128",
+    "test_neg_conj_view_cholesky_inverse_xpu_complex128",
+    "test_neg_conj_view_cholesky_solve_xpu_complex128",
+    "test_neg_conj_view_cholesky_xpu_complex128",
+    "test_neg_conj_view_corrcoef_xpu_complex128",
+    "test_neg_conj_view_cov_xpu_complex128",
+    "test_neg_conj_view_geqrf_xpu_complex128",
+    "test_neg_conj_view_inner_xpu_complex128",
+    "test_neg_conj_view_linalg_cholesky_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_cholesky_xpu_complex128",
+    "test_neg_conj_view_linalg_cond_xpu_complex128",
+    "test_neg_conj_view_linalg_det_singular_xpu_complex128",
+    "test_neg_conj_view_linalg_eig_xpu_complex128",
+    "test_neg_conj_view_linalg_eigh_xpu_complex128",
+    "test_neg_conj_view_linalg_eigvals_xpu_complex128",
+    "test_neg_conj_view_linalg_eigvalsh_xpu_complex128",
+    "test_neg_conj_view_linalg_householder_product_xpu_complex128",
+    "test_neg_conj_view_linalg_inv_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_inv_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_factor_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_factor_xpu_complex128",
+    "test_neg_conj_view_linalg_ldl_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_lstsq_grad_oriented_xpu_complex128",
+    "test_neg_conj_view_linalg_lstsq_xpu_complex128",
+    "test_neg_conj_view_linalg_lu_factor_xpu_complex128",
+    "test_neg_conj_view_linalg_lu_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_matrix_rank_hermitian_xpu_complex128",
+    "test_neg_conj_view_linalg_matrix_rank_xpu_complex128",
+    "test_neg_conj_view_linalg_multi_dot_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_hermitian_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_singular_xpu_complex128",
+    "test_neg_conj_view_linalg_pinv_xpu_complex128",
+    "test_neg_conj_view_linalg_qr_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_ex_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_triangular_xpu_complex128",
+    "test_neg_conj_view_linalg_solve_xpu_complex128",
+    "test_neg_conj_view_linalg_svdvals_xpu_complex128",
+    "test_neg_conj_view_linalg_tensorinv_xpu_complex128",
+    "test_neg_conj_view_linalg_tensorsolve_xpu_complex128",
+    "test_neg_conj_view_lu_solve_xpu_complex128",
+    "test_neg_conj_view_lu_xpu_complex128",
+    "test_neg_conj_view_mm_xpu_complex128",
+    "test_neg_conj_view_mv_xpu_complex128",
+    "test_neg_conj_view_nn_functional_linear_xpu_complex128",
+    "test_neg_conj_view_norm_nuc_xpu_complex128",
+    "test_neg_conj_view_ormqr_xpu_complex128",
+    "test_neg_conj_view_pinverse_xpu_complex128",
+    "test_neg_conj_view_qr_xpu_complex128",
+    "test_neg_conj_view_tensordot_xpu_complex128",
+    "test_neg_conj_view_triangular_solve_xpu_complex128",
+    "test_neg_view___rmatmul___xpu_float64",
+    "test_neg_view__refs_linalg_svd_xpu_float64",
+    "test_neg_view__refs_nn_functional_pdist_xpu_float64",
+    "test_neg_view_addbmm_xpu_float64",
+    "test_neg_view_addmm_decomposed_xpu_float64",
+    "test_neg_view_addmm_xpu_float64",
+    "test_neg_view_addmv_xpu_float64",
+    "test_neg_view_addr_xpu_float64",
+    "test_neg_view_baddbmm_xpu_float64",
+    "test_neg_view_bmm_xpu_float64",
+    "test_neg_view_cdist_xpu_float64",
+    "test_neg_view_cholesky_inverse_xpu_float64",
+    "test_neg_view_cholesky_solve_xpu_float64",
+    "test_neg_view_cholesky_xpu_float64",
+    "test_neg_view_corrcoef_xpu_float64",
+    "test_neg_view_cov_xpu_float64",
+    "test_neg_view_einsum_xpu_float64",
+    "test_neg_view_geqrf_xpu_float64",
+    "test_neg_view_inner_xpu_float64",
+    "test_neg_view_linalg_cholesky_ex_xpu_float64",
+    "test_neg_view_linalg_cholesky_xpu_float64",
+    "test_neg_view_linalg_cond_xpu_float64",
+    "test_neg_view_linalg_det_singular_xpu_float64",
+    "test_neg_view_linalg_det_xpu_float64",
+    "test_neg_view_linalg_eig_xpu_float64",
+    "test_neg_view_linalg_eigh_xpu_float64",
+    "test_neg_view_linalg_eigvals_xpu_float64",
+    "test_neg_view_linalg_eigvalsh_xpu_float64",
+    "test_neg_view_linalg_householder_product_xpu_float64",
+    "test_neg_view_linalg_inv_ex_xpu_float64",
+    "test_neg_view_linalg_inv_xpu_float64",
+    "test_neg_view_linalg_ldl_factor_ex_xpu_float64",
+    "test_neg_view_linalg_ldl_factor_xpu_float64",
+    "test_neg_view_linalg_ldl_solve_xpu_float64",
+    "test_neg_view_linalg_lstsq_grad_oriented_xpu_float64",
+    "test_neg_view_linalg_lstsq_xpu_float64",
+    "test_neg_view_linalg_lu_factor_xpu_float64",
+    "test_neg_view_linalg_lu_solve_xpu_float64",
+    "test_neg_view_linalg_matrix_norm_xpu_float64",
+    "test_neg_view_linalg_matrix_power_xpu_float64",
+    "test_neg_view_linalg_matrix_rank_hermitian_xpu_float64",
+    "test_neg_view_linalg_matrix_rank_xpu_float64",
+    "test_neg_view_linalg_multi_dot_xpu_float64",
+    "test_neg_view_linalg_norm_subgradients_at_zero_xpu_float64",
+    "test_neg_view_linalg_norm_xpu_float64",
+    "test_neg_view_linalg_pinv_hermitian_xpu_float64",
+    "test_neg_view_linalg_pinv_singular_xpu_float64",
+    "test_neg_view_linalg_pinv_xpu_float64",
+    "test_neg_view_linalg_qr_xpu_float64",
+    "test_neg_view_linalg_slogdet_xpu_float64",
+    "test_neg_view_linalg_solve_ex_xpu_float64",
+    "test_neg_view_linalg_solve_triangular_xpu_float64",
+    "test_neg_view_linalg_solve_xpu_float64",
+    "test_neg_view_linalg_svd_xpu_float64",
+    "test_neg_view_linalg_svdvals_xpu_float64",
+    "test_neg_view_linalg_tensorinv_xpu_float64",
+    "test_neg_view_linalg_tensorsolve_xpu_float64",
+    "test_neg_view_logdet_xpu_float64",
+    "test_neg_view_lu_solve_xpu_float64",
+    "test_neg_view_lu_xpu_float64",
+    "test_neg_view_matmul_xpu_float64",
+    "test_neg_view_mm_xpu_float64",
+    "test_neg_view_mv_xpu_float64",
+    "test_neg_view_nn_functional_bilinear_xpu_float64",
+    "test_neg_view_nn_functional_linear_xpu_float64",
+    "test_neg_view_nn_functional_multi_head_attention_forward_xpu_float64",
+    "test_neg_view_nn_functional_scaled_dot_product_attention_xpu_float64",
+    "test_neg_view_norm_nuc_xpu_float64",
+    "test_neg_view_ormqr_xpu_float64",
+    "test_neg_view_pca_lowrank_xpu_float64",
+    "test_neg_view_pinverse_xpu_float64",
+    "test_neg_view_qr_xpu_float64",
+    "test_neg_view_svd_lowrank_xpu_float64",
+    "test_neg_view_svd_xpu_float64",
+    "test_neg_view_tensordot_xpu_float64",
+    "test_neg_view_triangular_solve_xpu_float64",
+    "test_noncontiguous_samples_pca_lowrank_xpu_complex64",
+    "test_noncontiguous_samples_svd_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_pca_lowrank_xpu_complex64",
+    "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
+    "test_conj_view_pca_lowrank_xpu_complex64",
+    "test_conj_view_svd_lowrank_xpu_complex64",
+
+    ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
+    # https://github.com/intel/torch-xpu-ops/issues/253
+    "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
+    "test_conj_view_nn_functional_conv_transpose3d_xpu_complex64",
+    "test_neg_view_nn_functional_conv_transpose2d_xpu_float64",
+    "test_neg_view_nn_functional_conv_transpose3d_xpu_float64",
+
+    ### Error #2 in TestMathBitsXPU , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. 
+    # https://github.com/intel/torch-xpu-ops/issues/242
+    "test_conj_view_to_sparse_xpu_complex64",
+    "test_neg_conj_view_to_sparse_xpu_complex128",
+    "test_neg_view_to_sparse_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -711,7 +949,7 @@ skip_list = (
     "jiterator", # Jiterator is only supported by CUDA
     "cuda", # Skip cuda hard-coded case
     "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
-    "test_div_rounding_numpy_xpu_float16", # CPU fail
+    "test_div_rounding_numpy_xpu_float16", # Calculation error. XPU implementation uses opmath type.
     "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
     "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
     "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
@@ -729,6 +967,8 @@ skip_list = (
     "test_logaddexp_xpu_complex64", # CPU fail
     "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
     "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_div_rounding_nonfinite_xpu_bfloat16", # CPU result is not golden reference
+    "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
@@ -769,6 +1009,7 @@ res += launch_test("test_sort_and_select_xpu.py", skip_list)
 nn_test_embedding_skip_list = (
     # Skip list of base line
     # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
@@ -777,10 +1018,17 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_1D_padding_idx_xpu_float64",
     "test_embedding_bag_2D_padding_idx_xpu_float32",
     "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_bfloat16_xpu_int32_int32",
     "test_embedding_bag_bfloat16_xpu_int32_int64",
     "test_embedding_bag_bfloat16_xpu_int64_int32",
     "test_embedding_bag_bfloat16_xpu_int64_int64",
+    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int32_float16",
+    "test_embedding_bag_device_xpu_int32_int32_float32",
     "test_embedding_bag_device_xpu_int32_int32_float64",
+    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
+    "test_embedding_bag_device_xpu_int32_int64_float16",
+    "test_embedding_bag_device_xpu_int32_int64_float32",
     "test_embedding_bag_device_xpu_int32_int64_float64",
     "test_embedding_bag_device_xpu_int64_int32_bfloat16",
     "test_embedding_bag_device_xpu_int64_int32_float16",
@@ -790,31 +1038,38 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_device_xpu_int64_int64_float16",
     "test_embedding_bag_device_xpu_int64_int64_float32",
     "test_embedding_bag_device_xpu_int64_int64_float64",
+    "test_embedding_bag_half_xpu_int32_int32",
     "test_embedding_bag_half_xpu_int32_int64",
     "test_embedding_bag_half_xpu_int64_int32",
     "test_embedding_bag_half_xpu_int64_int64",
 
-    # CPU fallback error: RuntimeError: expected scalar type Long but found Int
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float16",
-    "test_EmbeddingBag_per_sample_weights_and_offsets_xpu_int32_int32_float32",
-    "test_embedding_bag_bfloat16_xpu_int32_int32",
-    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
-    "test_embedding_bag_device_xpu_int32_int32_float16",
-    "test_embedding_bag_device_xpu_int32_int32_float32",
-    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
-    "test_embedding_bag_device_xpu_int32_int64_float16",
-    "test_embedding_bag_device_xpu_int32_int64_float32",
-    "test_embedding_bag_half_xpu_int32_int32",
-
-    # CPU fallback error: AssertionError: Tensor-likes are not close!
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int32_int64_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int32_bfloat16",
-    "test_EmbeddingBag_per_sample_weights_and_new_offsets_xpu_int64_int64_bfloat16",
+    # CUDA implementation has no such functionality due to performance consideration.
+    # skipped by CUDA for performance
+    # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int64",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int32",
+    "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
 )
 res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
@@ -1085,6 +1340,12 @@ skip_list = (
     "test_memory_format_nn_GroupNorm_xpu_float32",
     "test_memory_format_nn_GroupNorm_xpu_float64",
 
+    # CPU fallback fails
+    # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+    "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
+    "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
+
     # CUDA bias cases
     # AssertionError: Torch not compiled with CUDA enabled
     "test_multiple_device_transfer_nn_BCELoss_xpu_float32",
@@ -1254,6 +1515,19 @@ skip_list = (
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
+# test_indexing
+skip_list = (
+    # CPU bias cases
+    # It is kernel assert on XPU implementation not exception on host.
+    # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_trivial_fancy_out_of_bounds_xpu",
+    "test_advancedindex",
+
+    # CUDA bias case
+    "test_index_put_accumulate_with_optional_tensors_xpu",
+)
+res += launch_test("test_indexing_xpu.py",skip_list)
+
 # test_pooling
 skip_list = (
     # CUDA bias case
@@ -1265,6 +1539,264 @@ skip_list = (
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
+# nn/test_dropout
+skip_list = (
+    # Cannot freeze rng state. Need enhance test infrastructure to make XPU
+    # compatible in freeze_rng_state.
+    # https://github.com/intel/torch-xpu-ops/issues/259
+    "test_Dropout1d_xpu",
+    "test_Dropout3d_xpu",
+)
+res += launch_test("nn/test_dropout_xpu.py", skip_list)
+
+# test_tensor_creation_ops
+skip_list = (
+    # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
+    "test_float_to_int_conversion_finite_xpu_int8",
+    "test_float_to_int_conversion_finite_xpu_int16",
+
+    # sparse
+    "test_tensor_ctor_device_inference_xpu",
+
+    # Dispatch issue. It is a composite operator. But it is implemented by
+    # DispatchStub. XPU doesn't support DispatchStub.
+    "test_kaiser_window_xpu",
+
+    # CUDA bias case
+    "test_randperm_xpu",
+)
+res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
+
+# test_autocast
+skip_list = (
+    # Frontend API support
+    # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
+    # https://github.com/intel/torch-xpu-ops/issues/223
+    "test_cache_disabled",
+)
+res += launch_test("test_autocast_xpu.py", skip_list)
+
+# test_autograd
+skip_list = (
+    # Segment fault
+    "test_resize_version_bump_xpu",
+    # c10::NotImplementedError
+    "test_autograd_composite_implicit_and_dispatch_registration_xpu",
+    "test_autograd_multiple_dispatch_registrations_xpu",
+    # NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend。
+    "test_sparse_mask_autograd_xpu",
+    "test_sparse_ctor_getter_backward_xpu_float64",
+    "test_sparse_ctor_getter_backward_xpu_complex128",
+    "test_sparse_backward_xpu_float64",
+    "test_sparse_backward_xpu_complex128",
+    # AttributeError: module 'torch.xpu' has no attribute
+    "test_graph_save_on_cpu_cuda",
+    "test_checkpointing_without_reentrant_memory_savings",
+    # CUDA hard-code
+    "test_profiler_emit_nvtx_xpu",
+    # Could not run 'aten::_pin_memory' with arguments from the 'CUDA' backend
+    "test_pin_memory_xpu",
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_mv_grad_stride_0_xpu",
+    # module 'torch._C' has no attribute '_scatter'
+    "test_checkpointing_without_reentrant_dataparallel",
+    "test_dataparallel_saved_tensors_hooks",
+    # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
+    "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
+    # PyTorch was compiled without CUDA support
+    "test_checkpointing_non_reentrant_autocast_gpu",
+    # Skip if without LAPACK
+    "test_lobpcg",
+    # Skip device count < 2
+    "test_backward_device_xpu",
+    "test_inputbuffer_add_multidevice_xpu",
+    "test_unused_output_device_xpu",
+    # Skip CPU case
+    "test_copy__xpu",
+    "test_checkpointing_non_reentrant_autocast_cpu",
+    "test_per_dispatch_key_input_saving_xpu",
+)
+res += launch_test("test_autograd_xpu.py", skip_list)
+
+# test_reductions
+skip_list = (
+    # CPU/CUDA bias code in aten::mode_out
+    # https://github.com/intel/torch-xpu-ops/issues/327
+    # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+    "test_dim_reduction",
+    "test_mode",
+    "test_dim_reduction_fns_fn_name_mode",
+
+    # CUDA skips the case in opdb.
+    # https://github.com/intel/torch-xpu-ops/issues/222
+    "test_ref_extremal_values_mean_xpu_complex64",
+
+    # CPU fallback fails (CPU vs Numpy).
+    "test_ref_small_input_masked_prod_xpu_float16",
+)
+res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+
+skip_list=(
+    # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
+    "_jiterator_",
+
+    # CPU Fallback fails: Tensor-likes are not close!
+    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex128",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex64",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex128",
+    "test_reference_numerics_extremal__refs_atan_xpu_complex64",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
+    "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
+    "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_extremal_acos_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex128",
+    "test_reference_numerics_extremal_asin_xpu_complex64",
+    "test_reference_numerics_extremal_atan_xpu_complex128",
+    "test_reference_numerics_extremal_atan_xpu_complex64",
+    "test_reference_numerics_extremal_exp2_xpu_complex128",
+    "test_reference_numerics_extremal_exp2_xpu_complex64",
+    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_large__refs_atan_xpu_complex128",
+    "test_reference_numerics_large__refs_atan_xpu_complex64",
+    "test_reference_numerics_large_atan_xpu_complex128",
+    "test_reference_numerics_large_atan_xpu_complex64",
+    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
+    "test_reference_numerics_small__refs_atan_xpu_complex128",
+    "test_reference_numerics_small__refs_atan_xpu_complex64",
+    "test_reference_numerics_small_atan_xpu_complex128",
+    "test_reference_numerics_small_atan_xpu_complex64",
+
+    # For extreme value processing, Numpy and XPU results are inconsistent
+    "test_reference_numerics_extremal__refs_log_xpu_complex64",
+    "test_reference_numerics_extremal_log_xpu_complex64",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex128",
+    "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
+    "test_reference_numerics_extremal_tanh_xpu_complex128",
+    "test_reference_numerics_extremal_tanh_xpu_complex64",
+)
+res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
+
+skip_list=(
+    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). 
+    "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_coo_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_amax_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amax_xpu_float16",
+    "test_mask_layout_strided_masked_amax_xpu_float32",
+    "test_mask_layout_strided_masked_amax_xpu_float64",
+    "test_mask_layout_strided_masked_amin_xpu_bfloat16",
+    "test_mask_layout_strided_masked_amin_xpu_float16",
+    "test_mask_layout_strided_masked_amin_xpu_float32",
+    "test_mask_layout_strided_masked_amin_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_bfloat16",
+    "test_mask_layout_strided_masked_prod_xpu_bool",
+    "test_mask_layout_strided_masked_prod_xpu_complex128",
+    "test_mask_layout_strided_masked_prod_xpu_complex64",
+    "test_mask_layout_strided_masked_prod_xpu_float16",
+    "test_mask_layout_strided_masked_prod_xpu_float32",
+    "test_mask_layout_strided_masked_prod_xpu_float64",
+    "test_mask_layout_strided_masked_prod_xpu_int16",
+    "test_mask_layout_strided_masked_prod_xpu_int32",
+    "test_mask_layout_strided_masked_prod_xpu_int64",
+    "test_mask_layout_strided_masked_prod_xpu_int8",
+    "test_mask_layout_strided_masked_prod_xpu_uint8",
+    "test_mask_layout_strided_masked_sum_xpu_bfloat16",
+    "test_mask_layout_strided_masked_sum_xpu_bool",
+    "test_mask_layout_strided_masked_sum_xpu_complex128",
+    "test_mask_layout_strided_masked_sum_xpu_complex64",
+    "test_mask_layout_strided_masked_sum_xpu_float16",
+    "test_mask_layout_strided_masked_sum_xpu_float32",
+    "test_mask_layout_strided_masked_sum_xpu_float64",
+    "test_mask_layout_strided_masked_sum_xpu_int16",
+    "test_mask_layout_strided_masked_sum_xpu_int32",
+    "test_mask_layout_strided_masked_sum_xpu_int64",
+    "test_mask_layout_strided_masked_sum_xpu_int8",
+    "test_mask_layout_strided_masked_sum_xpu_uint8",
+
+    # CPU and CUDA bias code in SparseCsrTensor.cpp.
+    # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+    "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amax_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_amin_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_mean_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_prod_xpu_uint8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bfloat16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_bool",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex128",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_complex64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_float64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int16",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int32",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int64",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_int8",
+    "test_mask_layout_sparse_csr_masked_sum_xpu_uint8",
+    "test_mask_layout_strided_masked_mean_xpu_bfloat16",
+    "test_mask_layout_strided_masked_mean_xpu_float16",
+    "test_mask_layout_strided_masked_mean_xpu_float32",
+    "test_mask_layout_strided_masked_mean_xpu_float6"
+)
+res += launch_test("test_masked_xpu.py", skip_list)
+
+skip_list = ( 
+    # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend. 
+    "test_flatten_xpu",
+    "test_ravel_xpu",
+)
+res += launch_test("./test_view_ops_xpu.py", skip_list)
+
 skip_list = ( 
         # Need quantization support.
         # https://github.com/intel/torch-xpu-ops/issues/275
@@ -1272,6 +1804,16 @@ skip_list = (
         "test_flip_xpu_float32",
 )
 res += launch_test("test_shape_ops_xpu.py", skip_list)
+
+res += launch_test("test_content_store_xpu.py")
+
+res += launch_test("test_native_functions_xpu.py")
+
+res += launch_test("nn/test_init_xpu.py")
+
+res += launch_test("test_namedtensor_xpu.py")
+
+res += launch_test("nn/test_lazy_modules_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

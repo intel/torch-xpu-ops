@@ -153,6 +153,9 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+  - exp
+  - exp.out
+  - exp_
   - empty.memory_format
   - empty_strided
   - clone
@@ -161,8 +164,16 @@ supported:
   - zero_
   - random_
   - random_.from
+  - random_.to
   - normal_
+  - normal.Tensor_float_out
+  - normal.Tensor_float
+  - normal.float_Tensor_out
+  - normal.float_Tensor
+  - normal.Tensor_Tensor_out
+  - normal.Tensor_Tensor
   - uniform_
+  - bernoulli.out
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
@@ -177,6 +188,8 @@ supported:
   - resize_
   - set_.source_Storage
   - set_.source_Storage_storage_offset
+  - set_.source_Tensor
+  - set_
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
@@ -219,8 +232,18 @@ supported:
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
+  - mean.dim
+  - all.dim
+  - all.out
+  - all.dims
+  - all.dims_out
+  - all
+  - all.all_out
   - any.dim
   - any.out
+  - any.dims
+  - any.dims_out
+  - any
   - any.all_out
   - argmax.out
   - _local_scalar_dense
@@ -270,11 +293,40 @@ supported:
   - _foreach_add_.ScalarList
   - _foreach_add.List
   - _foreach_add_.List
+  - _foreach_mul.Scalar
+  - _foreach_mul_.Scalar
+  - _foreach_mul.ScalarList
+  - _foreach_mul_.ScalarList
+  - _foreach_mul.List
+  - _foreach_mul_.List
+  - _foreach_div.Scalar
+  - _foreach_div_.Scalar
+  - _foreach_div.ScalarList
+  - _foreach_div_.ScalarList
+  - _foreach_div.List
+  - _foreach_div_.List
+  - _foreach_addcmul.Scalar
+  - _foreach_addcmul_.Scalar
+  - _foreach_addcmul.ScalarList
+  - _foreach_addcmul_.ScalarList
+  - _foreach_addcmul.Tensor
+  - _foreach_addcmul_.Tensor
+  - _foreach_addcdiv.Scalar
+  - _foreach_addcdiv_.Scalar
+  - _foreach_addcdiv.ScalarList
+  - _foreach_addcdiv_.ScalarList
+  - _foreach_addcdiv.Tensor
+  - _foreach_addcdiv_.Tensor
   - maximum
   - maximum.out
   - minimum
   - minimum.out
   - flip
+  - sigmoid
+  - sigmoid.out
+  - sigmoid_
+  - sigmoid_backward.grad_input
+  - sigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -289,3 +341,8 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _embedding_bag
+  - _embedding_bag_forward_only
+  - sgn
+  - sgn.out
+  - sgn_
