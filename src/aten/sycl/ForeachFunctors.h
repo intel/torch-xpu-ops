@@ -218,7 +218,7 @@ struct ZeroFunctor {
 };
 
 template <typename T, int depth, int r_args_depth, int res_arg_index>
-struct PointWiseOpScalarFunctor {
+struct PointwiseOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
@@ -284,7 +284,7 @@ struct PointWiseOpScalarFunctor {
 };
 
 template <typename T, int depth, int r_args_depth, int res_arg_index>
-struct PointWiseOpScalarListFunctor {
+struct PointwiseOpScalarListFunctor {
   using opmath_t = at::opmath_type<T>;
   template <typename Op, typename TLA, typename TLW>
   void operator()(
