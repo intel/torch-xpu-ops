@@ -356,6 +356,8 @@ supported:
   - _native_batch_norm_legit.no_stats_out
   - _batch_norm_with_update
   - _batch_norm_with_update.out
+  - _embedding_bag
+  - _embedding_bag_forward_only
   - sgn
   - sgn.out
   - sgn_
