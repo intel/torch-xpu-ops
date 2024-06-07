@@ -346,3 +346,5 @@ supported:
   - sgn
   - sgn.out
   - sgn_
+  - _pin_memory
+  - is_pinned
