@@ -4,8 +4,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
-#include <aten/sycl/ActivationHardtanhKernel.h>
-#include <aten/sycl/ActivationHardswishKernel.h>
+#include <aten/sycl/ActivationHardtanhKernels.h>
+#include <aten/sycl/ActivationHardswishKernels.h>
 
 namespace at {
 

@@ -21,9 +21,7 @@ from torch.testing._internal.common_utils import (
     slowTest,
     unMarkDynamoStrictTest,
 )
-import os
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_dir)
+
 try:
     from xpu_test_utils import get_wrapped_fn, XPUPatchForImport
 except Exception as e:
