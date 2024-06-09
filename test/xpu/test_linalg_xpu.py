@@ -1,9 +1,17 @@
 
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests,dtypes
-from torch.testing._internal.common_utils import run_tests,TestCase,setBlasBackendsToDefaultFinally,setLinalgBackendsToDefaultFinally
+from torch.testing._internal.common_device_type import instantiate_device_type_tests,dtypes,precisionOverride
+from torch.testing._internal.common_utils import run_tests,TestCase,setBlasBackendsToDefaultFinally,setLinalgBackendsToDefaultFinally,parametrize,IS_WINDOWS
+from torch.testing._internal.common_dtype import floating_and_complex_types_and
+from torch.testing._internal.common_cuda import tf32_on_and_off
+from torch.testing._internal.common_mkldnn import bf32_on_and_off
+from torch.testing import make_tensor
+import unittest
+import itertools
+from functools import partial
 import torch
+import numpy as np
 import math
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -27,23 +35,9 @@ def large_bmm_backward(self, device):
     (A @ B).backward(G)
 
 @setBlasBackendsToDefaultFinally
+@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    # The main purpose of this test is to make sure these "backend" calls work normally without raising exceptions.
-    m1 = torch.randint(2, 5, (2048, 2400), device='xpu', dtype=torch.float)
-    m2 = torch.randint(2, 5, (128, 2400), device='xpu', dtype=torch.float)
-
-    torch.backends.cuda.preferred_blas_library('cublaslt')
-    out1 = torch.nn.functional.linear(m1, m2)
-
-    torch.backends.cuda.preferred_blas_library('cublas')
-    out2 = torch.nn.functional.linear(m1, m2)
-
-    # Although blas preferred flags doesn't affect CPU currently,
-    # we set this to make sure the flag can switch back to default normally.
-    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
-
-    self.assertEqual(out1, out2)
-    self.assertEqual(out_ref, out2.cpu())
+    pass
 
 @dtypes(torch.float, torch.double)
 def eigh_svd_illcondition_matrix_input_should_not_crash(self, device, dtype):
@@ -74,24 +68,150 @@ def matmul_45724(self, device):
     torch.matmul(a, b, out=c)
     self.assertEqual(c, cpu_result)
 
+@unittest.skip("xpu does not support multi linalg")
 @setLinalgBackendsToDefaultFinally
 def preferred_linalg_library(self):
-    # The main purpose of this test is to make sure these "backend" calls work normally without raising exceptions.
-    x = torch.randint(2, 5, (2, 4, 4), device='xpu', dtype=torch.double)
+    pass
 
-    torch.backends.cuda.preferred_linalg_library('cusolver')
-    out1 = torch.linalg.inv(x)
+@precisionOverride({torch.half: 0.05, torch.bfloat16: 0.05})
+@dtypes(*floating_and_complex_types_and(torch.bfloat16, torch.half))
+@tf32_on_and_off(0.05)
+@bf32_on_and_off(0.05)
+def addbmm(self, device, dtype):
+    num_batches = 2
+    M, N, O = 16, 17, 18
 
-    torch.backends.cuda.preferred_linalg_library('magma')
-    out2 = torch.linalg.inv(x)
+    def invert_perm(p):
+        d = {x: i for i, x in enumerate(p)}
+        return (d[0], d[1], d[2])
 
-    torch.backends.cuda.preferred_linalg_library('default')
-    # Although linalg preferred flags doesn't affect CPU currently,
-    # we set this to make sure the flag can switch back to default normally.
-    out_ref = torch.linalg.inv(x.cpu())
+    def generate_tensor():
+        numpy_dtype = dtype if dtype != torch.bfloat16 else torch.float32
+        # transposed tensors
+        for perm1, perm2 in itertools.product(itertools.permutations((0, 1, 2)), repeat=2):
+            for perm3 in itertools.permutations((0, 1)):
+                b1 = make_tensor((num_batches, M, N), dtype=dtype, device=device, low=-1, high=1) * 0.1
+                b2 = make_tensor((num_batches, N, O), dtype=dtype, device=device, low=-1, high=1) * 0.1
+                b1 = b1.permute(perm1).contiguous().permute(invert_perm(perm1))
+                b2 = b2.permute(perm2).contiguous().permute(invert_perm(perm2))
+                ref = torch.from_numpy(
+                    b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy()
+                ).to(device=device, dtype=dtype).sum(0)
+                out_tensor = torch.zeros_like(ref).permute(perm3).contiguous().permute(perm3)
+                yield b1, b2, ref, out_tensor
+        # broadcasting tensors
+        for s1, s2, s3, s4, s5, s6 in itertools.product((True, False), repeat=6):
+            shape1 = (num_batches if s1 else 1, M if s2 else 1, N if s3 else 1)
+            shape2 = (num_batches if s4 else 1, N if s5 else 1, O if s6 else 1)
+            b1 = make_tensor(shape1, dtype=dtype, device=device, low=-1, high=1).expand(num_batches, M, N) * 0.1
+            b2 = make_tensor(shape2, dtype=dtype, device=device, low=-1, high=1).expand(num_batches, N, O) * 0.1
+            ref = torch.from_numpy(
+                b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy()
+            ).to(device=device, dtype=dtype).sum(0)
+            out_tensor = torch.zeros_like(ref)
+            yield b1, b2, ref, out_tensor
+        # zero-sized tensors
+        for z1, z2, z3, z4 in itertools.product((True, False), repeat=4):
+            shape1 = (num_batches if z1 else 0, M if z2 else 0, N if z3 else 0)
+            shape2 = (num_batches if z1 else 0, N if z3 else 0, O if z4 else 0)
+            b1 = make_tensor(shape1, dtype=dtype, device=device, low=-1, high=1) * 0.1
+            b2 = make_tensor(shape2, dtype=dtype, device=device, low=-1, high=1) * 0.1
+            ref = torch.from_numpy(
+                b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy()
+            ).to(device=device, dtype=dtype).sum(0)
+            out_tensor = torch.zeros_like(ref)
+            yield b1, b2, ref, out_tensor
 
-    self.assertEqual(out_ref, out1.cpu())
-    self.assertEqual(out1, out2)
+    for b1, b2, ref, out_tensor in generate_tensor():
+        self._test_addbmm_baddbmm("addbmm", b1, b2, ref, out_tensor)
+
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+@parametrize("k", [16, 32])
+@parametrize("n", [16, 32])
+@parametrize("use_transpose_a", [True, False])
+@parametrize("use_transpose_b", [True, False])
+def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
+    def genf_int_float(x, y, use_transpose):
+        if use_transpose:
+            x, y = y, x
+        x_int8 = torch.randint(-10, 10, (x, y), dtype=torch.int8, device=device)
+        x_float = x_int8.to(torch.float32)
+        if use_transpose:
+            return x_int8.t(), x_float.t()
+        return x_int8, x_float
+
+    def _test(m, k, n, transpose_a, transpose_b, test_equal=True):
+        a_int8, a_float = genf_int_float(m, k, transpose_a)
+        b_int8, b_float = genf_int_float(k, n, transpose_b)
+        c_int32 = torch._int_mm(a_int8, b_int8)
+        self.assertTrue(c_int32.dtype is torch.int32)
+        self.assertEqual(c_int32.device, torch.device(device))
+        if test_equal:
+            self.assertEqual(c_int32.float(), torch.mm(a_float, b_float))
+        else:
+            self.assertNotEqual(c_int32.float(), torch.mm(a_float, b_float))
+        c_int32_result = c_int32.new_empty(c_int32.size())
+        # Checking out variant
+        torch._int_mm(a_int8, b_int8, out=c_int32_result)
+        if test_equal:
+            self.assertEqual(c_int32_result.float(), torch.mm(a_float, b_float))
+        else:
+            self.assertNotEqual(c_int32_result.float(), torch.mm(a_float, b_float))
+
+
+    if not use_transpose_a and use_transpose_b:
+        _test(17, k, n, use_transpose_a, use_transpose_b)
+
+    if use_transpose_a and not use_transpose_b:
+        _test(17, k, n, use_transpose_a, use_transpose_b)
+
+    if use_transpose_a and use_transpose_b:
+        _test(17, k, n, use_transpose_a, use_transpose_b)
+
+    if not use_transpose_a and not use_transpose_b:
+        _test(17, k, n, use_transpose_a, use_transpose_b)
+
+@dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
+@setBlasBackendsToDefaultFinally
+def matmul_small_brute_force_1d_Nd(self, device, dtype):
+    for backend in ["cublas", "cublaslt"]:
+        if torch.device(device).type == 'cuda':
+            torch.backends.cuda.preferred_blas_library(backend)
+
+    make_arg = partial(make_tensor, device=device, dtype=dtype)
+
+    for (size_x, size_y), nctg_x, nctg_y in itertools.product(self.gen_sizes_matmul(1), (True, False), (True, False)):
+        x = make_arg(size_x, noncontiguous=nctg_x)
+        y = make_arg(size_y, noncontiguous=nctg_y)
+        self.check_single_matmul(x, y)
+
+@dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
+@setBlasBackendsToDefaultFinally
+def matmul_small_brute_force_2d_Nd(self, device, dtype):
+    for backend in ["cublas", "cublaslt"]:
+        if torch.device(device).type == 'cuda':
+            torch.backends.cuda.preferred_blas_library(backend)
+
+        make_arg = partial(make_tensor, device=device, dtype=dtype)
+
+        for (size_x, size_y), nctg_x, nctg_y in itertools.product(self.gen_sizes_matmul(2), (True, False), (True, False)):
+            x = make_arg(size_x, noncontiguous=nctg_x)
+            y = make_arg(size_y, noncontiguous=nctg_y)
+            self.check_single_matmul(x, y)
+
+@dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
+@setBlasBackendsToDefaultFinally
+def matmul_small_brute_force_3d_Nd(self, device, dtype):
+    for backend in ["cublas", "cublaslt"]:
+        if torch.device(device).type == 'cuda':
+            torch.backends.cuda.preferred_blas_library(backend)
+
+        make_arg = partial(make_tensor, device=device, dtype=dtype)
+
+        for (size_x, size_y), nctg_x, nctg_y in itertools.product(self.gen_sizes_matmul(3), (True, False), (True, False)):
+            x = make_arg(size_x, noncontiguous=nctg_x)
+            y = make_arg(size_y, noncontiguous=nctg_y)
+            self.check_single_matmul(x, y)
 
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
@@ -102,6 +222,12 @@ TestLinalg.test_preferred_blas_library=preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash=eigh_svd_illcondition_matrix_input_should_not_crash
 TestLinalg.test_matmul_45724=matmul_45724
 TestLinalg.test_preferred_linalg_library=preferred_linalg_library
+TestLinalg.test_addbmm=addbmm
+TestLinalg.test__int_mm=_int_mm
+TestLinalg.test_matmul_small_brute_force_1d_Nd=matmul_small_brute_force_1d_Nd
+TestLinalg.test_matmul_small_brute_force_2d_Nd=matmul_small_brute_force_2d_Nd
+TestLinalg.test_matmul_small_brute_force_3d_Nd=matmul_small_brute_force_3d_Nd
+
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(),only_for=("xpu"))
 

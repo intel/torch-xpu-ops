@@ -1813,13 +1813,6 @@ res += launch_test("test_namedtensor_xpu.py")
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
 skip_list=(
-# segment fault
-    "test_corner_cases_of_cublasltmatmul_xpu_int16",
-    "test_corner_cases_of_cublasltmatmul_xpu_int64",
-    "test_inverse_errors_large_xpu_complex128",
-    "test_inverse_errors_large_xpu_complex64",
-    "test_inverse_errors_large_xpu_float32",
-    "test_inverse_errors_large_xpu_float64",
 # RuntimeError: Double and complex datatype matmul is not supported in oneDNN 
     "test_1_sized_with_0_strided_xpu_float64",
     "test_addbmm_xpu_complex128",
@@ -1867,6 +1860,7 @@ skip_list=(
     "test_corner_cases_of_cublasltmatmul_xpu_complex64",
     "test_corner_cases_of_cublasltmatmul_xpu_float64",
     "test_det_logdet_slogdet_batched_xpu_float64",
+    "test_det_logdet_slogdet_xpu_float64",
     "test_eig_check_magma_xpu_float32",
     "test_einsum_random_xpu_complex128",
     "test_einsum_random_xpu_float64",
@@ -1977,6 +1971,7 @@ skip_list=(
     "test_solve_xpu_complex64",
     "test_solve_xpu_float64",
     "test_strided_mm_bmm_xpu_float64",
+    "test_svd_lowrank_xpu_complex128",
     "test_svd_lowrank_xpu_float64",
     "test_svd_xpu_complex128",
     "test_svd_xpu_complex64",
@@ -1993,26 +1988,11 @@ skip_list=(
     "test_triangular_solve_xpu_complex128",
     "test_triangular_solve_xpu_complex64",
     "test_triangular_solve_xpu_float64",
-# AssertionError: AssertionError not raised 
-    "test__int_mm_k_16_n_16_use_transpose_a_False_use_transpose_b_False_xpu",
-    "test__int_mm_k_16_n_16_use_transpose_a_False_use_transpose_b_True_xpu",
-    "test__int_mm_k_16_n_16_use_transpose_a_True_use_transpose_b_False_xpu",
-    "test__int_mm_k_16_n_16_use_transpose_a_True_use_transpose_b_True_xpu",
-    "test__int_mm_k_16_n_32_use_transpose_a_False_use_transpose_b_False_xpu",
-    "test__int_mm_k_16_n_32_use_transpose_a_False_use_transpose_b_True_xpu",
-    "test__int_mm_k_16_n_32_use_transpose_a_True_use_transpose_b_False_xpu",
-    "test__int_mm_k_16_n_32_use_transpose_a_True_use_transpose_b_True_xpu",
-    "test__int_mm_k_32_n_16_use_transpose_a_False_use_transpose_b_False_xpu",
-    "test__int_mm_k_32_n_16_use_transpose_a_False_use_transpose_b_True_xpu",
-    "test__int_mm_k_32_n_16_use_transpose_a_True_use_transpose_b_False_xpu",
-    "test__int_mm_k_32_n_16_use_transpose_a_True_use_transpose_b_True_xpu",
-    "test__int_mm_k_32_n_32_use_transpose_a_False_use_transpose_b_False_xpu",
-    "test__int_mm_k_32_n_32_use_transpose_a_False_use_transpose_b_True_xpu",
-    "test__int_mm_k_32_n_32_use_transpose_a_True_use_transpose_b_False_xpu",
-    "test__int_mm_k_32_n_32_use_transpose_a_True_use_transpose_b_True_xpu",
-# AssertionError: RuntimeError not raised by <lambda> 
-    "test_addbmm_xpu_bfloat16",
-# AssertionError: RuntimeError not raised 
+# addmm.out, addmv.out, addr, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU 
+    "test_addmm_sizes_xpu_complex128",
+    "test_addmm_sizes_xpu_complex64",
+    "test_blas_alpha_beta_empty_xpu_complex128",
+    "test_blas_alpha_beta_empty_xpu_complex64",
     "test_addr_float_and_complex_xpu_bfloat16",
     "test_addr_float_and_complex_xpu_complex128",
     "test_addr_float_and_complex_xpu_complex64",
@@ -2020,59 +2000,20 @@ skip_list=(
     "test_addr_float_and_complex_xpu_float32",
     "test_addr_float_and_complex_xpu_float64",
     "test_dot_invalid_args_xpu",
+    "test_vdot_invalid_args_xpu",
     "test_linalg_lstsq_input_checks_xpu_complex128",
     "test_linalg_lstsq_input_checks_xpu_complex64",
     "test_linalg_lstsq_input_checks_xpu_float32",
     "test_linalg_lstsq_input_checks_xpu_float64",
-    "test_vdot_invalid_args_xpu",
-# AssertionError: The values for attribute 'dtype' do not match: torch.int16 != torch.float64. 
     "test_addr_integral_xpu_int16",
-# AssertionError: The values for attribute 'dtype' do not match: torch.int32 != torch.float64. 
     "test_addr_integral_xpu_int32",
-# AssertionError: The values for attribute 'dtype' do not match: torch.int64 != torch.float64. 
     "test_addr_integral_xpu_int64",
-# AssertionError: The values for attribute 'dtype' do not match: torch.int8 != torch.float64. 
     "test_addr_integral_xpu_int8",
-# AssertionError: The values for attribute 'dtype' do not match: torch.uint8 != torch.float64. 
     "test_addr_integral_xpu_uint8",
-# RuntimeError: value cannot be converted to type float without overflow 
-    "test_blas_alpha_beta_empty_xpu_complex128",
-    "test_blas_alpha_beta_empty_xpu_complex64",
-# RuntimeError: Cannot find a working triton installation. More information on installing Triton can be found at https://github.com/openai/triton 
-    "test_compile_int4_mm_m_32_k_32_n_48_xpu",
-    "test_compile_int4_mm_m_32_k_32_n_64_xpu",
-    "test_compile_int4_mm_m_32_k_64_n_48_xpu",
-    "test_compile_int4_mm_m_32_k_64_n_64_xpu",
-    "test_compile_int4_mm_m_64_k_32_n_48_xpu",
-    "test_compile_int4_mm_m_64_k_32_n_64_xpu",
-    "test_compile_int4_mm_m_64_k_64_n_48_xpu",
-    "test_compile_int4_mm_m_64_k_64_n_64_xpu",
-# AssertionError: Scalars are not close! 
-    "test_cond_xpu_float64",
-    "test_det_logdet_slogdet_xpu_float64",
-    "test_det_xpu_float64",
-# RuntimeError: could not create a primitive descriptor for a matmul primitive 
-    "test_corner_cases_of_cublasltmatmul_xpu_int32",
-    "test_corner_cases_of_cublasltmatmul_xpu_uint8",
-    "test_mm_xpu_int32",
-# AssertionError: Tensor-likes are not close! 
-    "test_eigh_svd_illcondition_matrix_input_should_not_crash_xpu_float64",
-    "test_linalg_matrix_exp_analytic_xpu_float64",
-    "test_slogdet_xpu_float32",
-    "test_tensorinv_xpu_float64",
-    "test_tensorsolve_xpu_float64",
-# RuntimeError: Long is not supported in oneDNN! 
-    "test_matmul_small_brute_force_1d_Nd_xpu_int64",
-    "test_matmul_small_brute_force_2d_Nd_xpu_int64",
-    "test_matmul_small_brute_force_3d_Nd_xpu_int64",
-    "test_mm_xpu_int64",
-# AssertionError: True is not false 
-    "test_norm_fused_type_promotion_xpu_bfloat16",
-    "test_norm_fused_type_promotion_xpu_float16",
-# RuntimeError: Cannot set preferred backend to cuBLASLt if PyTorch has not been compiled with cuBLASLt. 
-    "test_preferred_blas_library_xpu",
-# RuntimeError: Cannot set preferred backend to cuSOLVER if PyTorch has not been compiled with cuSOLVER. 
-    "test_preferred_linalg_library_xpu"
+# xpu does not have '_cuda_tunableop_is_enabled' 
+    "test_matmul_small_brute_force_tunableop_xpu_float16",
+    "test_matmul_small_brute_force_tunableop_xpu_float32",
+    "test_matmul_small_brute_force_tunableop_xpu_float64",
     )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
