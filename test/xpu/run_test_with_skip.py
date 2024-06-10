@@ -1813,6 +1813,20 @@ res += launch_test("test_namedtensor_xpu.py")
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
 
-res += launch_test("test_matmul_cuda_xpu.py")
+skip_list = (
+    # eye fallbacks to CPU and does not support Float8_e4m3fn
+    "test_cache_disabled",
+    #_scaled_mm not support
+    "test_float8_bias_relu_edgecase_xpu",
+    "test_float8_bias_xpu",
+    "test_float8_scale_fast_accum_xpu",
+    "test_float8_scale_xpu",
+    "test_non_divisible_leading_dim_bias_False_xpu",
+    "test_non_divisible_leading_dim_bias_True_xpu",
+    "test_scaled_mm_vs_emulated_bfloat16_xpu",
+    "test_scaled_mm_vs_emulated_float16_xpu",
+    "test_scaled_mm_vs_emulated_float32_xpu",
+)
+res += launch_test("test_matmul_cuda_xpu.py",skip_list=skip_list)
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
