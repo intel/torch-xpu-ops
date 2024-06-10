@@ -301,29 +301,37 @@ scalar_t plane_reduce(
     int sub_group_num,
     const local_shared_t& shared) {
   // first the reductions each thread does separately
-  scalar_t sum_value = static_cast<scalar_t>(0);
+  scalar_t sum_value = 0;
   for (int batch = item.get_local_id(0); batch < tensor.size(0);
        batch += item.get_local_range(0)) {
     for (int x = item.get_local_id(1); x < tensor.size(2);
          x += item.get_local_range(1)) {
       auto res = grad_op(batch, plane, x);
-
       sum_value += res;
     }
   }
-  group_reduce<SIMD, scalar_t>(
-      item,
-      sub_group_num,
-      sum_value,
-      scalar_t(0),
-      shared,
-      [](scalar_t a, scalar_t b) { return a + b; });
-  if (item.get_local_linear_id() == 0) {
-    shared[0] = sum_value;
+  // group_reduce<SIMD, scalar_t>(
+  //     item,
+  //     sub_group_num,
+  //     sum_value,
+  //     scalar_t(0),
+  //     shared,
+  //     [](scalar_t a, scalar_t b) { return a + b; });
+  // if (item.get_local_linear_id() == 0) {
+  //   shared[0] = sum_value;
+  // }
+  // item.barrier(sycl_local_fence);
+  // // Everyone picks it up, should be broadcast into the whole grad_input
+  // return shared[0];
+
+  shared[item.get_local_linear_id()] = sum_value;
+  item.barrier(sycl_local_fence);
+  scalar_t output = 0;
+  for (int i = 0; i < SIMD * sub_group_num; i++) {
+    output += shared[i];
   }
   item.barrier(sycl_local_fence);
-  // Everyone picks it up, should be broadcast into the whole grad_input
-  return shared[0];
+  return output;
 }
 
 template <typename scalar_t>
