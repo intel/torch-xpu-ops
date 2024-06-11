@@ -1600,8 +1600,6 @@ skip_list = (
     "test_checkpointing_without_reentrant_memory_savings",
     # CUDA hard-code
     "test_profiler_emit_nvtx_xpu",
-    # Could not run 'aten::_pin_memory' with arguments from the 'CUDA' backend
-    "test_pin_memory_xpu",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_mv_grad_stride_0_xpu",
     # module 'torch._C' has no attribute '_scatter'
@@ -1802,6 +1800,14 @@ skip_list = (
     "test_ravel_xpu",
 )
 res += launch_test("./test_view_ops_xpu.py", skip_list)
+
+skip_list = ( 
+        # Need quantization support.
+        # https://github.com/intel/torch-xpu-ops/issues/275
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend. 
+        "test_flip_xpu_float32",
+)
+res += launch_test("test_shape_ops_xpu.py", skip_list)
 
 res += launch_test("test_content_store_xpu.py")
 
