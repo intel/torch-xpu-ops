@@ -149,7 +149,7 @@ struct NearestExactIndexOp {
   }
 };
 
-struct NearestbwIndexOp {
+struct NearestBwIndexOp {
   int operator()(const float scale, int dst_index, int output_size) const {
     const int src_index =
         min(static_cast<int>(ceilf(dst_index * scale)), output_size);
