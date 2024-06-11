@@ -113,6 +113,11 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
   - arange.start_out
   - abs
   - abs_

@@ -398,7 +398,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "sigmoid.out",
     "signbit.out",
     "sign.out",
-    "silu.out",
     "sinc.out",
     "sinh.out",
     "smooth_l1_loss_backward.grad_input",
