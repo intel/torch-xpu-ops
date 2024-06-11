@@ -105,12 +105,6 @@ Tensor XPUNativeFunctions::_cdist_forward(
     const Tensor& x2,
     const double p,
     c10::optional<int64_t> compute_mode) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, x1, "xpu::_cdist_forward", "x1");
-  c10::impl::check_and_update_common_device(
-      common_device, x2, "xpu::_cdist_forward", "x2");
-
   TORCH_CHECK(
       x1.dim() >= 2,
       "cdist only supports at least 2D tensors, X1 got: ",
