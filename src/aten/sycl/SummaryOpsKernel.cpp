@@ -17,17 +17,17 @@ using namespace at::native;
 using namespace at::xpu::detail;
 
 template <typename input_t, typename IndexType>
-static IndexType getBin(
-    input_t bVal,
-    at::acc_type<input_t, true> minvalue,
-    at::acc_type<input_t, true> maxvalue,
+static IndexType get_bin(
+    input_t b_val,
+    at::acc_type<input_t, true> min_value,
+    at::acc_type<input_t, true> max_value,
     int nbins) {
-  IndexType bin = (int)((bVal - minvalue) * nbins / (maxvalue - minvalue));
+  IndexType bin = (int)((b_val - min_value) * nbins / (max_value - min_value));
   // (only applicable for histc)
   // while each bin is inclusive at the lower end and exclusive at the higher,
   // i.e. [start, end)
   // the last bin is inclusive at both, i.e. [start, end], in order to include
-  // maxvalue if exists
+  // max_value if exists
   // therefore when bin == nbins, adjust bin to the last bin
   if (bin == nbins){
     bin -= 1;
@@ -45,61 +45,52 @@ template <
     typename Op>
 struct Histogram1DKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
-    auto out_ptr = out_data;
-    auto in_ptr = in_data;
-    auto weight_ptr = weight_data;
+    auto out_ptr = a_.data;
+    auto in_ptr = b_.data;
+    auto weight_ptr = c_.data;
 
-    auto linearIndex = item_id.get_id(0);
-    // Convert `linearIndex` into an offset of `b`
-    const IndexType bOffset =
-        IndexToOffset<input_t, IndexType>::get(linearIndex, b);
-    const auto bVal = in_ptr[bOffset];
-    if (bVal >= minvalue && bVal <= maxvalue) {
+    auto linear_index = item_id.get_id(0);
+    // Convert `linear_index` into an offset of `b`
+    const IndexType b_offset =
+        IndexToOffset<input_t, IndexType>::get(linear_index, b_);
+    const auto b_val = in_ptr[b_offset];
+    if (b_val >= min_value_ && b_val <= max_value_) {
       // Use value at `b` as an offset of `a`
       const IndexType bin =
-          getBin<input_t, IndexType>(bVal, minvalue, maxvalue, nbins);
-      const IndexType aOffset = IndexToOffset<output_t, IndexType>::get(bin, a);
+          get_bin<input_t, IndexType>(b_val, min_value_, max_value_, nbins_);
+      const IndexType a_offset = IndexToOffset<output_t, IndexType>::get(bin, a_);
       atomicAdd(
-          (sycl_global_ptr<output_t>) &out_ptr[aOffset],
-          getOp(weight_ptr, linearIndex));
+          (sycl_global_ptr<output_t>) &out_ptr[a_offset],
+          get_op_(weight_ptr, linear_index));
     }
   }
   Histogram1DKernelFunctor(
-      TensorInfo<output_t, IndexType> a_,
-      TensorInfo<input_t, IndexType> b_,
-      TensorInfo<output_t, IndexType> c_,
-      int nbins_,
-      at::acc_type<input_t, true> minvalue_,
-      at::acc_type<input_t, true> maxvalue_,
-      IndexType totalElements_,
-      Op getOp_,
-      output_t* out_data_,
-      input_t* in_data_,
-      output_t* weight_data_)
-      : a(a_),
-        b(b_),
-        c(c_),
-        nbins(nbins_),
-        minvalue(minvalue_),
-        maxvalue(maxvalue_),
-        totalElements(totalElements_),
-        getOp(getOp_),
-        out_data(out_data_),
-        in_data(in_data_),
-        weight_data(weight_data_) {}
+      TensorInfo<output_t, IndexType> a,
+      TensorInfo<input_t, IndexType> b,
+      TensorInfo<output_t, IndexType> c,
+      int nbins,
+      at::acc_type<input_t, true> minvalue,
+      at::acc_type<input_t, true> maxvalue,
+      IndexType totalElements,
+      Op get_op)
+      : a_(a),
+        b_(b),
+        c_(c),
+        nbins_(nbins),
+        min_value_(minvalue),
+        max_value_(maxvalue),
+        total_elements_(totalElements),
+        get_op_(get_op) {}
 
  private:
-  TensorInfo<output_t, IndexType> a;
-  TensorInfo<input_t, IndexType> b;
-  TensorInfo<output_t, IndexType> c;
-  int nbins;
-  at::acc_type<input_t, true> minvalue;
-  at::acc_type<input_t, true> maxvalue;
-  IndexType totalElements;
-  Op getOp;
-  output_t* out_data;
-  input_t* in_data;
-  output_t* weight_data;
+  TensorInfo<output_t, IndexType> a_;
+  TensorInfo<input_t, IndexType> b_;
+  TensorInfo<output_t, IndexType> c_;
+  int nbins_;
+  at::acc_type<input_t, true> min_value_;
+  at::acc_type<input_t, true> max_value_;
+  IndexType total_elements_;
+  Op get_op_;
 };
 
 /*
@@ -112,19 +103,16 @@ template <
     int ADims,
     bool has_weight,
     typename Op>
-void kernelHistogram1D(
+void histogram_1d_kernel(
     TensorInfo<output_t, IndexType> a, /* output */
     TensorInfo<input_t, IndexType> b, /* input */
     TensorInfo<output_t, IndexType> c, /* weight */
     int nbins,
-    at::acc_type<input_t, true> minvalue,
-    at::acc_type<input_t, true> maxvalue,
-    IndexType totalElements,
-    Op getOp) {
-  auto& sycl_queue = at::xpu::getCurrentSYCLQueue();;
-  auto out_data = a.data;
-  auto in_data = b.data;
-  auto weight_data = c.data;
+    at::acc_type<input_t, true> min_value,
+    at::acc_type<input_t, true> max_value,
+    IndexType total_elements,
+    Op get_op) {
+  auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
 
   Histogram1DKernelFunctor<
       output_t,
@@ -137,80 +125,77 @@ void kernelHistogram1D(
           b,
           c,
           nbins,
-          minvalue,
-          maxvalue,
-          totalElements,
-          getOp,
-          out_data,
-          in_data,
-          weight_data);
+          min_value,
+          max_value,
+          total_elements,
+          get_op);
 
-  sycl_kernel_submit(::sycl::range<1>(totalElements), sycl_queue, kfn);
+  sycl_kernel_submit(::sycl::range<1>(total_elements), sycl_queue, kfn);
 }
 
 #define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                       \
-  kernelHistogram1D<output_t, input_t, IndexType, 1, WITH_WEIGHT>( \
-      aInfo,                                                       \
-      bInfo,                                                       \
-      cInfo,                                                       \
+  histogram_1d_kernel<output_t, input_t, IndexType, 1, WITH_WEIGHT>( \
+      a_info,                                                       \
+      b_info,                                                       \
+      c_info,                                                       \
       nbins,                                                       \
-      minvalue,                                                    \
-      maxvalue,                                                    \
-      totalElements,                                               \
+      min_value,                                                    \
+      max_value,                                                    \
+      total_elements,                                               \
       WEIGHTS_OP);
 
-template <typename output_t, typename IndexType, typename info_t>
-struct xpu_tensor_histogram_functor {
-  auto operator()(output_t* cPtr, IndexType cIndex) const {
-    const IndexType cOffset =
-        IndexToOffset<output_t, IndexType>::get(cIndex, cInfo);
-    return cPtr[cOffset];
+template <typename output_t, typename index_type, typename info_t>
+struct IndexingFunctor {
+  auto operator()(output_t* c_ptr, index_type c_index) const {
+    const index_type c_offset =
+        IndexToOffset<output_t, index_type>::get(c_index, c_info);
+    return c_ptr[c_offset];
   }
 
-  xpu_tensor_histogram_functor(info_t cInfo) : cInfo(cInfo) {}
+  IndexingFunctor(info_t c_info) : c_info(c_info) {}
 
  private:
-  info_t cInfo;
+  info_t c_info;
 };
 
-template <typename output_t, typename IndexType>
-struct xpu_tensor_histogram_functor_2 {
-  auto operator()(output_t*, IndexType) const {
+template <typename output_t, typename index_type>
+struct DummyIndexingFunctor {
+  auto operator()(output_t*, index_type) const {
     return static_cast<output_t>(1);
   }
 };
-template <typename output_t, typename input_t, bool HasWeights>
+template <typename output_t, typename input_t, bool has_weights>
 void xpu_tensor_histogram(
   at::Tensor a, /* output */
   at::Tensor b, /* input */
   at::Tensor c, /* weights(optional) */
   int64_t nbins,
-  at::acc_type<input_t, true> minvalue,
-  at::acc_type<input_t, true> maxvalue) {
+  at::acc_type<input_t, true> min_value,
+  at::acc_type<input_t, true> max_value) {
   checkBackend("xpu_tensor_histogram", {a, b}, Backend::XPU);
-  if (HasWeights) {
+  if (has_weights) {
     checkBackend("xpu_tensor_histogram", {c}, Backend::XPU);
   }
-  auto totalElements = b.numel();
-  if (totalElements == 0) {
+  auto total_elements = b.numel();
+  if (total_elements == 0) {
     return ;
   }
 
   using IndexType = int64_t;
-  auto aInfo = getTensorInfo<output_t, IndexType>(a);
-  auto bInfo = getTensorInfo<input_t, IndexType>(b);
-  if (HasWeights) {
-    auto cInfo = getTensorInfo<output_t, IndexType>(c);
-    const xpu_tensor_histogram_functor<output_t, IndexType, decltype(cInfo)>
-        getWeightsOp(cInfo);
-    HANDLE_CASE(getWeightsOp, true);
+  auto a_info = getTensorInfo<output_t, IndexType>(a);
+  auto b_info = getTensorInfo<input_t, IndexType>(b);
+  if (has_weights) {
+    auto c_info = getTensorInfo<output_t, IndexType>(c);
+    const IndexingFunctor<output_t, IndexType, decltype(c_info)>
+        get_weights_op(c_info);
+    HANDLE_CASE(get_weights_op, true);
   } else {
-    TensorInfo<output_t, IndexType> cInfo;
+    TensorInfo<output_t, IndexType> c_info;
     // set the dummy cinfo with the ptr to the output
-    cInfo.data = aInfo.data;
-    static const xpu_tensor_histogram_functor_2<output_t, IndexType>
-        getDummyOp;
-    HANDLE_CASE(getDummyOp, false);
+    c_info.data = a_info.data;
+    static const DummyIndexingFunctor<output_t, IndexType>
+        get_dummyOp;
+    HANDLE_CASE(get_dummyOp, false);
   }
 
   return ;
@@ -240,8 +225,8 @@ Tensor bincount_template(
   const int64_t nbins =
       std::max(self.max().item<input_t>() + (int64_t)1, minlength);
   using bounds_t = at::acc_type<input_t, true>;
-  const bounds_t minvalue = 0;
-  const bounds_t maxvalue = nbins;
+  const bounds_t min_value = 0;
+  const bounds_t max_value = nbins;
   // alloc output counter on GPU
   Tensor output;
   if (has_weights) {
@@ -252,7 +237,7 @@ Tensor bincount_template(
         weights.options().device_opt(),
         weights.options().pinned_memory_opt());
         xpu_tensor_histogram<weights_t, input_t, true>(
-        output, self, weights, nbins, minvalue, maxvalue);
+        output, self, weights, nbins, min_value, max_value);
   } else {
     output = at::zeros(
         {nbins},
@@ -263,27 +248,17 @@ Tensor bincount_template(
     xpu_tensor_histogram<
         typename c10::impl::ScalarTypeToCPPType<kLong>::type,
         input_t,
-        false>(output, self, weights, nbins, minvalue, maxvalue);
+        false>(output, self, weights, nbins, min_value, max_value);
   }
   return output;
 }
 
 Tensor bincount_kernel(
 const Tensor& self,
-const c10::optional<Tensor>& weights_opt,
+const Tensor& weights,
 int64_t minlength) {
-  c10::MaybeOwned<Tensor> weights_maybe_owned = at::borrow_from_optional_tensor(weights_opt);
-  const Tensor& weights = *weights_maybe_owned;
-
-  if (weights_opt.has_value()) {
-      // See Note [Writing Nondeterministic Operations]
-      // Nondeterministic if weights are given, because of floating point
-      // atomicAdd usage
-      globalContext().alertNotDeterministic("_bincount_xpu");
-  }
-
   return AT_DISPATCH_INTEGRAL_TYPES(
-    self.scalar_type(), "bincount_kernel", [&] {
+    self.scalar_type(), "bincount_xpu", [&] {
       const auto scalar = weights.scalar_type();
       if (scalar == ScalarType::Undefined || scalar == ScalarType::Float)
         return bincount_template<scalar_t, float>(
