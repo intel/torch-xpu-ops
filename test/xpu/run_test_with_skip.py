@@ -1254,9 +1254,8 @@ skip_list = (
 res += launch_test("test_nn_xpu.py", skip_list)
 
 skip_list=(
-    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+    #RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse  
     "test_contiguous_xpu",
-    "test_diff_layouts_xpu",
     "test_invalid_sparse_coo_values_xpu",
     "test_to_dense_and_sparse_coo_xpu",
     "test_to_dense_xpu",
