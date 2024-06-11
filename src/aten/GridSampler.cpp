@@ -12,12 +12,6 @@ Tensor XPUNativeFunctions::grid_sampler_2d(
     int64_t interpolation_mode,
     int64_t padding_mode,
     bool align_corners) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::grid_sampler_2d", "input");
-
-  c10::impl::check_and_update_common_device(
-      common_device, grid, "xpu::grid_sampler_2d", "grid");
   return native::xpu::grid_sampler_2d_kernel(
       input, grid, interpolation_mode, padding_mode, align_corners);
 }

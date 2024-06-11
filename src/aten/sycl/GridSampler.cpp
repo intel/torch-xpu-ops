@@ -27,9 +27,9 @@ struct GridSampler2dKernelFunctor {
     opmath_t x = grid_.data[grid_offset];
     opmath_t y = grid_.data[grid_offset + grid_sCoor_];
 
-    opmath_t ix = grid_sampler_compute_source_index(
+    opmath_t ix = at::native::xpu::grid_sampler_compute_source_index(
         x, inp_W_, padding_mode_, align_corners_);
-    opmath_t iy = grid_sampler_compute_source_index(
+    opmath_t iy = at::native::xpu::grid_sampler_compute_source_index(
         y, inp_H_, padding_mode_, align_corners_);
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
@@ -107,7 +107,7 @@ struct GridSampler2dKernelFunctor {
 #pragma unroll 4
         for (index_t i = 0; i < 4; ++i) {
           coefficients[i] = cubic_interp1d(
-              get_value_bounded<scalar_t>(
+              at::native::xpu::get_value_bounded<scalar_t>(
                   inp_ptr_NC,
                   ix_nw - 1,
                   iy_nw - 1 + i,
@@ -117,7 +117,7 @@ struct GridSampler2dKernelFunctor {
                   inp_sH_,
                   padding_mode_,
                   align_corners_),
-              get_value_bounded<scalar_t>(
+              at::native::xpu::get_value_bounded<scalar_t>(
                   inp_ptr_NC,
                   ix_nw + 0,
                   iy_nw - 1 + i,
@@ -127,7 +127,7 @@ struct GridSampler2dKernelFunctor {
                   inp_sH_,
                   padding_mode_,
                   align_corners_),
-              get_value_bounded<scalar_t>(
+              at::native::xpu::get_value_bounded<scalar_t>(
                   inp_ptr_NC,
                   ix_nw + 1,
                   iy_nw - 1 + i,
@@ -137,7 +137,7 @@ struct GridSampler2dKernelFunctor {
                   inp_sH_,
                   padding_mode_,
                   align_corners_),
-              get_value_bounded<scalar_t>(
+              at::native::xpu::get_value_bounded<scalar_t>(
                   inp_ptr_NC,
                   ix_nw + 2,
                   iy_nw - 1 + i,
