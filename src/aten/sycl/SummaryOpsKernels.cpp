@@ -29,10 +29,10 @@ static IndexType get_bin(
   // the last bin is inclusive at both, i.e. [start, end], in order to include
   // max_value if exists
   // therefore when bin == nbins, adjust bin to the last bin
-  if (bin == nbins){
+  if (bin == nbins) {
     bin -= 1;
   }
-    
+
   return bin;
 }
 
@@ -58,9 +58,10 @@ struct Histogram1DKernelFunctor {
       // Use value at `b` as an offset of `a`
       const IndexType bin =
           get_bin<input_t, IndexType>(b_val, min_value_, max_value_, nbins_);
-      const IndexType a_offset = IndexToOffset<output_t, IndexType>::get(bin, a_);
+      const IndexType a_offset =
+          IndexToOffset<output_t, IndexType>::get(bin, a_);
       atomicAdd(
-          (sycl_global_ptr<output_t>) &out_ptr[a_offset],
+          (sycl_global_ptr<output_t>)&out_ptr[a_offset],
           get_op_(weight_ptr, linear_index));
     }
   }
@@ -114,34 +115,21 @@ void histogram_1d_kernel(
     Op get_op) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
 
-  Histogram1DKernelFunctor<
-      output_t,
-      input_t,
-      IndexType,
-      ADims,
-      has_weight,
-      Op>
-      kfn(a,
-          b,
-          c,
-          nbins,
-          min_value,
-          max_value,
-          total_elements,
-          get_op);
+  Histogram1DKernelFunctor<output_t, input_t, IndexType, ADims, has_weight, Op>
+      kfn(a, b, c, nbins, min_value, max_value, total_elements, get_op);
 
   sycl_kernel_submit(::sycl::range<1>(total_elements), sycl_queue, kfn);
 }
 
-#define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                       \
+#define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                         \
   histogram_1d_kernel<output_t, input_t, IndexType, 1, WITH_WEIGHT>( \
-      a_info,                                                       \
-      b_info,                                                       \
-      c_info,                                                       \
-      nbins,                                                       \
-      min_value,                                                    \
-      max_value,                                                    \
-      total_elements,                                               \
+      a_info,                                                        \
+      b_info,                                                        \
+      c_info,                                                        \
+      nbins,                                                         \
+      min_value,                                                     \
+      max_value,                                                     \
+      total_elements,                                                \
       WEIGHTS_OP);
 
 template <typename output_t, typename index_type, typename info_t>
@@ -165,20 +153,20 @@ struct DummyIndexingFunctor {
   }
 };
 template <typename output_t, typename input_t, bool has_weights>
-void xpu_tensor_histogram(
-  at::Tensor a, /* output */
-  at::Tensor b, /* input */
-  at::Tensor c, /* weights(optional) */
-  int64_t nbins,
-  at::acc_type<input_t, true> min_value,
-  at::acc_type<input_t, true> max_value) {
-  checkBackend("xpu_tensor_histogram", {a, b}, Backend::XPU);
+void tensor_histogram(
+    at::Tensor a, /* output */
+    at::Tensor b, /* input */
+    at::Tensor c, /* weights(optional) */
+    int64_t nbins,
+    at::acc_type<input_t, true> min_value,
+    at::acc_type<input_t, true> max_value) {
+  checkBackend("tensor_histogram", {a, b}, Backend::XPU);
   if (has_weights) {
-    checkBackend("xpu_tensor_histogram", {c}, Backend::XPU);
+    checkBackend("tensor_histogram", {c}, Backend::XPU);
   }
   auto total_elements = b.numel();
   if (total_elements == 0) {
-    return ;
+    return;
   }
 
   using IndexType = int64_t;
@@ -186,19 +174,18 @@ void xpu_tensor_histogram(
   auto b_info = getTensorInfo<input_t, IndexType>(b);
   if (has_weights) {
     auto c_info = getTensorInfo<output_t, IndexType>(c);
-    const IndexingFunctor<output_t, IndexType, decltype(c_info)>
-        get_weights_op(c_info);
+    const IndexingFunctor<output_t, IndexType, decltype(c_info)> get_weights_op(
+        c_info);
     HANDLE_CASE(get_weights_op, true);
   } else {
     TensorInfo<output_t, IndexType> c_info;
     // set the dummy cinfo with the ptr to the output
     c_info.data = a_info.data;
-    static const DummyIndexingFunctor<output_t, IndexType>
-        get_dummyOp;
+    static const DummyIndexingFunctor<output_t, IndexType> get_dummyOp;
     HANDLE_CASE(get_dummyOp, false);
   }
 
-  return ;
+  return;
 }
 template <typename input_t, typename weights_t>
 Tensor bincount_template(
@@ -236,7 +223,7 @@ Tensor bincount_template(
         weights.options().layout_opt(),
         weights.options().device_opt(),
         weights.options().pinned_memory_opt());
-        xpu_tensor_histogram<weights_t, input_t, true>(
+    tensor_histogram<weights_t, input_t, true>(
         output, self, weights, nbins, min_value, max_value);
   } else {
     output = at::zeros(
@@ -245,7 +232,7 @@ Tensor bincount_template(
         c10::nullopt /* layout */,
         DeviceType::XPU,
         c10::nullopt /* pin_memory */);
-    xpu_tensor_histogram<
+    tensor_histogram<
         typename c10::impl::ScalarTypeToCPPType<kLong>::type,
         input_t,
         false>(output, self, weights, nbins, min_value, max_value);
@@ -254,22 +241,18 @@ Tensor bincount_template(
 }
 
 Tensor bincount_kernel(
-const Tensor& self,
-const Tensor& weights,
-int64_t minlength) {
-  return AT_DISPATCH_INTEGRAL_TYPES(
-    self.scalar_type(), "bincount_xpu", [&] {
-      const auto scalar = weights.scalar_type();
-      if (scalar == ScalarType::Undefined || scalar == ScalarType::Float)
-        return bincount_template<scalar_t, float>(
-            self, weights, minlength);
-      return bincount_template<scalar_t, double>(
-          self, weights.to(kDouble), minlength);
-    });
+    const Tensor& self,
+    const Tensor& weights,
+    int64_t minlength) {
+  return AT_DISPATCH_INTEGRAL_TYPES(self.scalar_type(), "bincount_xpu", [&] {
+    const auto scalar = weights.scalar_type();
+    if (scalar == ScalarType::Undefined || scalar == ScalarType::Float)
+      return bincount_template<scalar_t, float>(self, weights, minlength);
+    return bincount_template<scalar_t, double>(
+        self, weights.to(kDouble), minlength);
+  });
 }
 } // namespace at::native::xpu
-
-
 
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
