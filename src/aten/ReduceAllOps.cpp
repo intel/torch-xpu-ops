@@ -67,40 +67,4 @@ Tensor& XPUNativeFunctions::max_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
-static void check_amax_amin(
-    const char* name,
-    const Tensor& self,
-    IntArrayRef dim,
-    const Tensor& out) {
-  TORCH_CHECK(
-      self.scalar_type() == out.scalar_type(),
-      name,
-      " got illegal dtype for self, and out:",
-      self.scalar_type(),
-      out.scalar_type());
-  if (self.numel() == 0) {
-    native::zero_numel_check_dims(self, dim, name);
-  }
-}
-
-Tensor& XPUNativeFunctions::amax_out(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool keepdim,
-    Tensor& out) {
-  check_amax_amin("amax()", self, dim, out);
-  max_all_kernel_impl(out, self.contiguous());
-  return out;
-}
-
-Tensor XPUNativeFunctions::amax(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool keepdim) {
-  Tensor out = at::empty({0}, self.options());
-  check_amax_amin("amax()", self, dim, out);
-  max_all_kernel_impl(out, self.contiguous());
-  return out;
-}
-
 } // namespace at

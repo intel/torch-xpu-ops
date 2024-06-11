@@ -8,6 +8,7 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/ReduceMaxValuesKernel.h>
 #include <aten/sycl/ReduceOpsKernels.h>
 #include <aten/sycl/ScanKernels.h>
 #include <aten/sycl/ScanUtils.h>
@@ -490,6 +491,57 @@ Tensor XPUNativeFunctions::argmax(
       common_device, self, "xpu::argmax", "self");
   out = argmax_meta(self, dim, keepdim, out);
   argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
+  return out;
+}
+
+void amax_impl(
+    Tensor& result,
+    const Tensor& input,
+    IntArrayRef dim,
+    bool keepdim) {
+  auto iter = native::make_reduction(
+      "amax", result, input, dim, keepdim, input.scalar_type());
+  native::xpu::max_all_launch_kernel(iter);
+}
+
+static void check_amin_amax(
+    Tensor& result,
+    const char* name,
+    const Tensor& self,
+    IntArrayRef dim,
+    bool keepdim) {
+  if (result.defined()) {
+    TORCH_CHECK(
+        self.scalar_type() == result.scalar_type(),
+        name,
+        " got illegal dtype for self, and out:",
+        self.scalar_type(),
+        result.scalar_type());
+  }
+  if (self.numel() == 0) {
+    native::zero_numel_check_dims(self, dim, name);
+  }
+}
+
+Tensor& XPUNativeFunctions::amax_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    bool keepdim,
+    Tensor& out) {
+  check_amin_amax(out, "amax()", self, dim, keepdim);
+  out = xpu::resize_reduction(out, self, dim, keepdim, self.scalar_type());
+  amax_impl(out, self, dim, keepdim);
+  return out;
+}
+
+Tensor XPUNativeFunctions::amax(
+    const Tensor& self,
+    IntArrayRef dim,
+    bool keepdim) {
+  Tensor out;
+  check_amin_amax(out, "amax()", self, dim, keepdim);
+  out = xpu::resize_reduction(out, self, dim, keepdim, self.scalar_type());
+  amax_impl(out, self, dim, keepdim);
   return out;
 }
 
