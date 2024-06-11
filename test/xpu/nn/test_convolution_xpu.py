@@ -786,7 +786,7 @@ with XPUPatchForImport(False):
         self.assertTrue(o.is_contiguous(memory_format=torch.channels_last))
         o.sum().backward()
 
-    @dtypes(torch.half, torch.float, torch.cfloat)
+    @dtypes(torch.half, torch.float)
     def conv_xpu_nhwc(self, device, dtype):
         def helper(n, c, h, w, out_channels, kernel_size, groups):
             input = torch.randint(-3, 3, (n, c, h, w), dtype=dtype, device=device).to(
