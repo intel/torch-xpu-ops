@@ -42,6 +42,7 @@ Tensor& upsample_nearest_meta(
     output = at::empty({nbatch, channels, output_width}, input.options());
   return output;
 }
+
 Tensor XPUNativeFunctions::_upsample_nearest_exact1d(
     const Tensor& input,
     IntArrayRef output_size,
