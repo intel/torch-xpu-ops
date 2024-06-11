@@ -470,9 +470,24 @@ Tensor& XPUNativeFunctions::argmax_out(
     Tensor& out) {
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
-      common_device, out, "XPUNativeFunctions::argmax_out", "out");
+      common_device, out, "xpu::argmax_out", "out");
   c10::impl::check_and_update_common_device(
-      common_device, self, "XPUNativeFunctions::argmax_out", "self");
+      common_device, self, "xpu::argmax_out", "self");
+  out = argmax_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
+  return out;
+}
+
+Tensor XPUNativeFunctions::argmax(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim) {
+  Tensor out;
+  std::optional<Device> common_device = std::nullopt;
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::argmax", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::argmax", "self");
   out = argmax_meta(self, dim, keepdim, out);
   argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
   return out;
