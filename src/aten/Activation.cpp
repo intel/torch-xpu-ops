@@ -198,3 +198,5 @@ Tensor& XPUNativeFunctions::silu_backward_out(
   native::xpu::silu_backward_kernel(iter);
   return grad_input;
 }
+
+}
