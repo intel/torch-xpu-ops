@@ -5,7 +5,7 @@
 
 namespace at {
 // using namespace at::native;
-Tensor& upsample_nearest_meta(
+Tensor& upsample_nearest1d_meta(
     const Tensor& input,
     Tensor& output,
     IntArrayRef output_size) {
@@ -48,7 +48,7 @@ Tensor XPUNativeFunctions::_upsample_nearest_exact1d(
     IntArrayRef output_size,
     c10::optional<double> scales) {
   Tensor output;
-  output = upsample_nearest_meta(input, output, output_size);
+  output = upsample_nearest1d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, true);
   return output;
@@ -59,7 +59,7 @@ Tensor& XPUNativeFunctions::_upsample_nearest_exact1d_out(
     IntArrayRef output_size,
     c10::optional<double> scales,
     Tensor& output) {
-  upsample_nearest_meta(input, output, output_size);
+  upsample_nearest1d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, true);
   return output;
@@ -70,7 +70,7 @@ Tensor XPUNativeFunctions::upsample_nearest1d(
     IntArrayRef output_size,
     c10::optional<double> scales) {
   Tensor output;
-  output = upsample_nearest_meta(input, output, output_size);
+  output = upsample_nearest1d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, false);
   return output;
@@ -81,7 +81,7 @@ Tensor& XPUNativeFunctions::upsample_nearest1d_out(
     IntArrayRef output_size,
     c10::optional<double> scales,
     Tensor& output) {
-  upsample_nearest_meta(input, output, output_size);
+  upsample_nearest1d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest1d_kernel(
       output, input, output_size, scales, false);
   return output;
