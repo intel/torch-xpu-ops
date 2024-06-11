@@ -74,6 +74,10 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
+
+    
+    #Double and complex datatype matmul is not supported in oneDNN
+    "test_compare_cpu_cdist_xpu_float64",
 )
 
 
