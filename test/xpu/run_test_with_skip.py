@@ -969,6 +969,10 @@ skip_list = (
     "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
     "test_div_rounding_nonfinite_xpu_bfloat16", # CPU result is not golden reference
     "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
+
+    # Regression failure after https://github.com/pytorch/pytorch/pull/127741.
+    # https://github.com/intel/torch-xpu-ops/issues/384
+    "test_autocast_torch_bf16",
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
@@ -1577,7 +1581,6 @@ skip_list = (
     # Regression failure after https://github.com/pytorch/pytorch/pull/127741.
     # https://github.com/intel/torch-xpu-ops/issues/384
     "test_cast_cache_is_global",
-    "test_autocast_torch_bf16",
 )
 res += launch_test("test_autocast_xpu.py", skip_list)
 
