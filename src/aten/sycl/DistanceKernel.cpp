@@ -21,7 +21,7 @@ static double device_sqrt(scalar_t val) {
 };
 
 template <typename scalar_t>
-class dists {
+class Dists {
  public:
   static scalar_t sign(scalar_t val) {
     return (0 < val) - (val < 0);
@@ -30,7 +30,7 @@ class dists {
 
 // Zero norm
 template <typename scalar_t>
-struct dists_zero {
+struct DistsZero {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
     agg += diff != 0.0f;
   }
@@ -44,7 +44,7 @@ struct dists_zero {
 
 // One norm
 template <typename scalar_t>
-struct dists_one {
+struct DistsOne {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
     agg += diff;
   }
@@ -59,13 +59,13 @@ struct dists_one {
       const scalar_t grad,
       const scalar_t dist,
       const scalar_t p) {
-    return grad * dists<scalar_t>::sign(diff);
+    return grad * Dists<scalar_t>::sign(diff);
   }
 };
 
 // Two norm
 template <typename scalar_t>
-struct dists_two {
+struct DistsTwo {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
     agg += diff * diff;
   }
@@ -86,25 +86,11 @@ struct dists_two {
 
 // General p norm
 template <typename scalar_t>
-struct dists_p {
+struct DistsP {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
-    // TODO:
-    // Here had an unknown bug which affected other code segments
-    // unexpectedly. See Jira:
-    // https://jira.devtools.intel.com/browse/PYTORCHDGQ-958 for details Below
-    // is what code we wrote before and will trigger the bug
-    //
-    // agg += Numerics<scalar_t>::pow(diff, p);
     agg += static_cast<scalar_t>(std::pow(static_cast<scalar_t>(diff), p));
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
-    // TODO:
-    // Here had an unknown bug which affected other code segments
-    // unexpectedly. See Jira:
-    // https://jira.devtools.intel.com/browse/PYTORCHDGQ-958 for details Below
-    // is what code we wrote before and will trigger the bug
-    //
-    // return Numerics<scalar_t>::pow(agg, static_cast<scalar_t>(1) / p);
     return static_cast<scalar_t>(
         std::pow(static_cast<scalar_t>(agg), 1.0f / p));
   }
@@ -115,7 +101,7 @@ struct dists_p {
 
 // Inf norm
 template <typename scalar_t>
-struct dists_inf {
+struct DistsInf {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
     if (diff > agg) {
       agg = diff;
@@ -134,7 +120,7 @@ struct dists_inf {
       const scalar_t grad,
       const scalar_t dist,
       const scalar_t p) {
-    return grad * dists<scalar_t>::sign(diff) *
+    return grad * Dists<scalar_t>::sign(diff) *
         (std::abs(diff) == dist);
   }
 };
@@ -328,7 +314,7 @@ void cdist_kernel_impl(Tensor& result, const Tensor& x1_expanded, const Tensor& 
         "cdist_forward_sycl",
         [&] {
           if (p == 0.0) {
-            cdist_forward_kernel_impl<scalar_t, dists_zero<scalar_t>, 0>(
+            cdist_forward_kernel_impl<scalar_t, DistsZero<scalar_t>, 0>(
                 result,
                 x1_expanded,
                 x2_expanded,
@@ -340,7 +326,7 @@ void cdist_kernel_impl(Tensor& result, const Tensor& x1_expanded, const Tensor& 
                 r1 * m,
                 r2 * m);
           } else if (p == 1.0) {
-            cdist_forward_kernel_impl<scalar_t, dists_one<scalar_t>, 1>(
+            cdist_forward_kernel_impl<scalar_t, DistsOne<scalar_t>, 1>(
                 result,
                 x1_expanded,
                 x2_expanded,
@@ -352,7 +338,7 @@ void cdist_kernel_impl(Tensor& result, const Tensor& x1_expanded, const Tensor& 
                 r1 * m,
                 r2 * m);
           } else if (p == 2.0) {
-            cdist_forward_kernel_impl<scalar_t, dists_two<scalar_t>, 2>(
+            cdist_forward_kernel_impl<scalar_t, DistsTwo<scalar_t>, 2>(
                 result,
                 x1_expanded,
                 x2_expanded,
@@ -364,7 +350,7 @@ void cdist_kernel_impl(Tensor& result, const Tensor& x1_expanded, const Tensor& 
                 r1 * m,
                 r2 * m);
           } else if (std::isinf(p)) {
-            cdist_forward_kernel_impl<scalar_t, dists_inf<scalar_t>, 3>(
+            cdist_forward_kernel_impl<scalar_t, DistsInf<scalar_t>, 3>(
                 result,
                 x1_expanded,
                 x2_expanded,
@@ -376,7 +362,7 @@ void cdist_kernel_impl(Tensor& result, const Tensor& x1_expanded, const Tensor& 
                 r1 * m,
                 r2 * m);
           } else {
-            cdist_forward_kernel_impl<scalar_t, dists_p<scalar_t>, 4>(
+            cdist_forward_kernel_impl<scalar_t, DistsP<scalar_t>, 4>(
                 result,
                 x1_expanded,
                 x2_expanded,
