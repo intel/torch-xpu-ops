@@ -4,7 +4,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
-
+#include <aten/sycl/ActivationSiluKernel.h>
 namespace at {
 
 Tensor XPUNativeFunctions::relu(const Tensor& self) {
@@ -156,6 +156,13 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
   return grad_input;
+}
+
+Tensor XPUNativeFunctions::silu(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::silu_kernel(iter);
+  return iter.output();
 }
 
 } // namespace at
