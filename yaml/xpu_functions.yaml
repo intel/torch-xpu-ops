@@ -341,7 +341,11 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _embedding_bag
+  - _embedding_bag_forward_only
   - sgn
   - sgn.out
   - sgn_
+  - _pin_memory
+  - is_pinned
   - grid_sampler_2d
