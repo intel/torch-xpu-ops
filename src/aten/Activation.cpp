@@ -199,4 +199,4 @@ Tensor& XPUNativeFunctions::silu_backward_out(
   return grad_input;
 }
 
-}
+} // namespace at

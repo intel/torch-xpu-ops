@@ -104,6 +104,7 @@ _xpu_computation_op_list = [
     "reshape",
     "rsqrt",
     "sin",
+    "silu",
     "sqrt",
     "sum",
     "tanh",
