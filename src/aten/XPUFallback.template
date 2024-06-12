@@ -243,7 +243,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "geqrf",
     "glu_backward",
     "glu.out",
-    "grid_sampler_2d_backward",
     "hardshrink_backward.grad_input",
     "hardshrink.out",
     "hardsigmoid_backward.grad_input",

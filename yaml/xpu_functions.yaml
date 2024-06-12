@@ -349,3 +349,4 @@ supported:
   - _pin_memory
   - is_pinned
   - grid_sampler_2d
+  - grid_sampler_2d_backward

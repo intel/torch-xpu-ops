@@ -73,4 +73,35 @@ static inline scalar_t grid_sampler_compute_source_index(
   return coord;
 }
 
+template <typename scalar_t>
+static inline scalar_t grid_sampler_compute_source_index_set_grad(
+    scalar_t coord,
+    int64_t size,
+    GridSamplerPadding padding_mode,
+    bool align_corners,
+    scalar_t* grad_in) {
+  scalar_t grad_clip, grad_refl;
+  coord =
+      grid_sampler_unnormalize_set_grad(coord, size, align_corners, grad_in);
+  if (padding_mode == GridSamplerPadding::Border) {
+    // clip coordinates to image borders
+    coord = clip_coordinates_set_grad(coord, size, &grad_clip);
+    *grad_in = (*grad_in) * grad_clip;
+  } else if (padding_mode == GridSamplerPadding::Reflection) {
+    // reflect coordinates by image borders
+    if (align_corners) {
+      coord =
+          reflect_coordinates_set_grad(coord, 0, 2 * (size - 1), &grad_refl);
+    } else {
+      coord = reflect_coordinates_set_grad(coord, -1, 2 * size - 1, &grad_refl);
+    }
+    // clip coordinates to image borders
+    coord = clip_coordinates_set_grad(coord, size, &grad_clip);
+    *grad_in = (*grad_in) * grad_refl * grad_clip;
+  }
+
+  coord = safe_downgrade_to_int_range(coord);
+  return coord;
+}
+
 } // namespace at::native::xpu

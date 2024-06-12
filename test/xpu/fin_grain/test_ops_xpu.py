@@ -138,6 +138,7 @@ _xpu_computation_op_list = [
     "sgn",
     "nn.functional.embedding_bag",
     "grid_sampler_2d",
+    "nn.functional.grid_sample",
 ]
 
 _xpu_computation_ops = [
