@@ -317,6 +317,10 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
   - maximum
   - maximum.out
   - minimum

@@ -37,6 +37,7 @@ execute_list = (
     "_foreach_addcmul_ and not slowpath",
     # Compiler optimization on data type conversion brings the precision error.
     "_foreach_addcdiv_ and not slowpath and not test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
+    "_foreach_lerp_ and not slowpath",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
