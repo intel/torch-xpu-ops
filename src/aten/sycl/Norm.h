@@ -1050,7 +1050,7 @@ void launch_norm_eltwise_update_kernel(Norm<scalar_t, mean_t, weight_t>& norm) {
   using vec_t = aligned_vector<scalar_t, vec_size>;
   int total_threads = syclMaxWorkItemsPerTile();
   auto workgroup_size = syclMaxWorkGroupSize();
-  index_t loops_end = (norm.numel + vec_size - 1) / vec_size;
+  index_t loops_end = (norm.numel() + vec_size - 1) / vec_size;
 
   auto kfn = NormEltwiseUpdateKernelFunctor<
       scalar_t,

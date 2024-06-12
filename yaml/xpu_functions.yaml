@@ -348,3 +348,4 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - native_group_norm
