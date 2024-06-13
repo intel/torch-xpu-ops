@@ -211,8 +211,8 @@ runs:
         do
           contains "huggingface,timm_models,torchbench" $suite
           $contains_status
-          dt = $(echo ${{ inputs.dt }} |sed 's/,/ /g')
-          mode = $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
           python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
         done
         cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
