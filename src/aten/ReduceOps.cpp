@@ -523,12 +523,17 @@ Tensor& amax_meta(
   const ScalarType& out_dtype =
       result.defined() ? result.scalar_type() : self.scalar_type();
   const Device& out_device = result.defined() ? result.device() : self.device();
+  Tensor meta;
   auto iter = TensorIteratorConfig()
                   .check_all_same_dtype(false)
                   .declare_static_dtype_and_device(out_dtype, out_device)
-                  .add_borrowed_output(result)
+                  .add_owned_output(meta)
                   .is_reduction(true)
                   .build();
+  {
+    auto& out = const_cast<Tensor&>(iter.output());
+    out.resize_(0);
+  }
   meta::resize_reduction(iter, self, dim, keepdim, out_dtype);
   result = iter.output();
   return result;
