@@ -190,13 +190,31 @@ runs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+
         source activate e2e_ci
         cp .github/scripts/inductor_perf_summary.py ../pytorch
         cd ../pytorch
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
         pip install styleFrame scipy pandas
         set -xe
-        python inductor_perf_summary.py -p ${{ inputs.dt }} -s ${{ inputs.suite }} -m ${{ inputs.mode }}
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          dt = $(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          mode = $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+          python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
+        done
         cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
 
     - name: Upload Inductor XPU E2E Data

@@ -530,7 +530,7 @@ def html_generate(html_off):
 
 
 if __name__ == '__main__':
-    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + str(args.suite) + '_' + str(args.precision) + '_' + str(args.mode) + '_E2E_Test_Report.xlsx')
+    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
     generate_report(excel, args.precision, args.mode)
     excel_postprocess(excel, args.precision, args.mode)
     html_generate(args.html_off)
