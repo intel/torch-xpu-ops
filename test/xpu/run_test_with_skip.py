@@ -2321,5 +2321,11 @@ skip_list=(
 )
 res += launch_test("test_ops_fwd_gradients_xpu.py", skip_list)
 
+skip_list = (
+    # eye fallbacks to CPU and does not support Float8_e4m3fn
+    "test_cache_disabled",
+)
+res += launch_test("test_matmul_cuda_xpu.py",skip_list=skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
