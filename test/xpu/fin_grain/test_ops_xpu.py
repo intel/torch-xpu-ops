@@ -137,8 +137,10 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
+    "acos",
+    "acosh",
+    "addr",
 ]
-
 _xpu_computation_ops = [
     op for op in ops_and_refs if op.name in _xpu_computation_op_list
 ]

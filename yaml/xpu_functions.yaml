@@ -348,3 +348,12 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
+

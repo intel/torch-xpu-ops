@@ -1,7 +1,7 @@
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, instantiate_parametrized_tests
+from torch.testing._internal.common_utils import run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -9,12 +9,9 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_nn import TestNNDeviceType, TestNN, TestAddRelu
+    from test_ops_jit import TestJit
 
-
-instantiate_device_type_tests(TestNNDeviceType, globals(), only_for="xpu")
-instantiate_parametrized_tests(TestNN)
-instantiate_parametrized_tests(TestAddRelu)
+instantiate_device_type_tests(TestJit, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

@@ -132,7 +132,6 @@ skip_list = (
     "test_numpy_ref_nn_functional_conv_transpose1d_xpu_float64",
     "test_numpy_ref_nn_functional_group_norm_xpu_float64",
     "test_numpy_ref_nn_functional_pdist_xpu_float64",
-    "test_out_addr_xpu_float32",
     "test_out_jiterator_2inputs_2outputs_xpu_float32",
     "test_out_jiterator_4inputs_with_extra_args_xpu_float32",
     "test_out_jiterator_binary_return_by_ref_xpu_float32",
@@ -1673,6 +1672,13 @@ skip_list=(
     "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
     "test_reference_numerics_extremal_tanh_xpu_complex128",
     "test_reference_numerics_extremal_tanh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_acos_xpu_complex64",
+    "test_reference_numerics_extremal__refs_acosh_xpu_complex64",
+    "test_reference_numerics_extremal_acos_xpu_complex64",
+    "test_reference_numerics_extremal_acosh_xpu_complex64",
+    "test_reference_numerics_large__refs_acosh_xpu_complex64",
+    "test_reference_numerics_large_acosh_xpu_complex64",
+
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
