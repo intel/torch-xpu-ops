@@ -18,4 +18,18 @@ void group_norm_kernel(
     Tensor& rstd,
     ScalarType dtype);
 
-}
+void group_norm_backward_kernel(
+    const Tensor& dY,
+    const Tensor& X,
+    const Tensor& mean,
+    const Tensor& rstd,
+    const Tensor& gamma,
+    int64_t N,
+    int64_t C,
+    int64_t HxW,
+    int64_t group,
+    Tensor& dX,
+    Tensor& dgamma,
+    Tensor& dbeta);
+
+} // namespace at::native::xpu

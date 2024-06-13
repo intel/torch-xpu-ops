@@ -12,37 +12,52 @@ namespace at {
 namespace native {
 namespace xpu {
 
-template <typename T, class ReduceOp, int SIMD>
-inline T SubgroupReduce(T val, const ReduceOp& op) {
+#define GROUP_REDUCE_WORK_SIZE 512
+
+template <int DIM>
+inline size_t get_local_linear_range(sycl::nd_item<DIM>& item) {
+  size_t n = item.get_local_range(0);
+#pragma unroll
+  for (int i = 1; i < DIM; ++i) {
+    n *= item.get_local_range(i);
+  }
+  return n;
+}
+
+template <typename T, int SIMD, int DIM>
+inline T& SubgroupReduceSum(sycl::nd_item<DIM>& item, T& val) {
+  auto sg = item.get_sub_group();
+  auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
   for (int offset = 1; offset < SIMD; offset <<= 1) {
-    val = op.combine(val, op.shfl_down(val, offset));
+    T temp = sycl::shift_group_left(sg, val, offset);
+    if (sg_tid < SIMD - offset) {
+      val += temp;
+    }
   }
   return val;
 }
 
-template <typename T, class ReduceOp, int SIMD, typename shared_t>
-inline T GroupReduce(
-    sycl::nd_item<1>& item,
-    T val,
-    const ReduceOp& op,
-    const T& identity_element,
-    shared_t shared) {
-  int tid = item.get_local_linear_id();
-  int sg_tid = tid % SIMD;
-  int sg_id = tid / SIMD;
-  int sg_n = item.get_local_range(0) / SIMD;
-  val = SubgroupReduce<T, ReduceOp, SIMD>(val, op);
-  item.barrier(
-      sycl::access::fence_space::local_space); // prevent races when GroupReduce
-                                               // are called in a row.
+template <typename T, int SIMD, typename shared_t, int DIM>
+inline T& GroupReduceSum(sycl::nd_item<DIM>& item, T& val, shared_t shared) {
+  auto sg = item.get_sub_group();
+  int sg_tid = sg.get_local_linear_id();
+  int sg_id = sg.get_group_linear_id();
+  int n_sg = get_local_linear_range<DIM>(item) / SIMD;
+  val = SubgroupReduceSum<T, SIMD, DIM>(item, val);
+  item.barrier(sycl_local_fence); // prevent races when GroupReduceSum are
+                                  // called in a row.
+  if (n_sg == 1) {
+    return val;
+  }
   if (sg_tid == 0) {
     shared[sg_id] = val;
   }
-  item.barrier(sycl::access::fence_space::local_space);
-  val = (tid < sg_n) ? shared[sg_tid] : identity_element;
+  item.barrier(sycl_local_fence);
   if (sg_id == 0) {
-    val = SubgroupReduce<T, ReduceOp, SIMD>(val, op);
+    for (int i = 1; i < n_sg; i++) {
+      val += shared[i];
+    }
   }
   return val;
 }
