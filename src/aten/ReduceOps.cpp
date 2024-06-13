@@ -489,9 +489,9 @@ void amax_impl(
     const Tensor& input,
     IntArrayRef dim,
     bool keepdim) {
-  auto iter = native::make_reduction(
-      "amax", result, input, dim, keepdim, input.scalar_type());
-  native::xpu::max_all_launch_kernel(iter);
+  auto iter =
+      meta::make_reduction(input, result, dim, keepdim, input.scalar_type());
+  native::xpu::max_all_kernel(iter);
 }
 
 static void check_amin_amax(
@@ -513,13 +513,33 @@ static void check_amin_amax(
   }
 }
 
+Tensor& amax_meta(
+    Tensor& result,
+    const char* name,
+    const Tensor& self,
+    IntArrayRef dim,
+    bool keepdim) {
+  check_amin_amax(result, name, self, dim, keepdim);
+  const ScalarType& out_dtype =
+      result.defined() ? result.scalar_type() : self.scalar_type();
+  const Device& out_device = result.defined() ? result.device() : self.device();
+  auto iter = TensorIteratorConfig()
+                  .check_all_same_dtype(false)
+                  .declare_static_dtype_and_device(out_dtype, out_device)
+                  .add_borrowed_output(result)
+                  .is_reduction(true)
+                  .build();
+  meta::resize_reduction(iter, self, dim, keepdim, out_dtype);
+  result = iter.output();
+  return result;
+}
+
 Tensor& XPUNativeFunctions::amax_out(
     const Tensor& self,
     IntArrayRef dim,
     bool keepdim,
     Tensor& out) {
-  check_amin_amax(out, "amax()", self, dim, keepdim);
-  out = xpu::resize_reduction(out, self, dim, keepdim, self.scalar_type());
+  out = amax_meta(out, "amax()", self, dim, keepdim);
   amax_impl(out, self, dim, keepdim);
   return out;
 }
@@ -529,9 +549,7 @@ Tensor XPUNativeFunctions::amax(
     IntArrayRef dim,
     bool keepdim) {
   Tensor out;
-  check_amin_amax(out, "amax()", self, dim, keepdim);
-  out = xpu::resize_reduction(out, self, dim, keepdim, self.scalar_type());
-  amax_impl(out, self, dim, keepdim);
+  out = amax_out(self, dim, keepdim, out);
   return out;
 }
 
