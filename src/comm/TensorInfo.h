@@ -33,7 +33,7 @@
 
 #include <ATen/CPUApplyUtils.h>
 
-#include <aten/sycl/IntegerDivider.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 
 namespace at {
 namespace xpu {

@@ -7,7 +7,7 @@ set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen/xpu")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/aten/XPUFallback.template)
+set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_BACKEND file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
@@ -32,7 +32,7 @@ function(GEN_BACKEND file_yaml)
 endfunction(GEN_BACKEND)
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/aten/XPUFallback.template)
+set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_XPU file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
@@ -40,7 +40,10 @@ function(GEN_XPU file_yaml)
   endforeach()
   file(GLOB_RECURSE depend_files ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml})
   set(CODEGEN_TEMPLATE ${TORCH_XPU_OPS_ROOT}/yaml/)
-  execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE})
+
+  # Codegen prepare process
+  execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE}) # soft link to pytorch templates
+
   add_custom_command(
     OUTPUT ${generated_files}
     COMMAND
@@ -50,13 +53,14 @@ function(GEN_XPU file_yaml)
     --per-operator-headers
     --static-dispatch-backend
     --backend-whitelist=XPU
-    --only_backend
     COMMAND
     cat ${XPUFallback_PATH} >> ${RegisterXPU_PATH}
+    # Codegen post-process
+    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
     ${SIMPLE_TRACE} 
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
-    ${depended_files}
+  ${depended_files}
     ${TORCH_XPU_OPS_ROOT}/yaml/native/${file_yaml}
     ${XPUFallback_PATH}
   )
@@ -72,6 +76,8 @@ GEN_XPU(
   XPUFunctions.h
   RegisterXPU.cpp
 )
+
+
 
 
 list(APPEND xpu_generated_src ${RegisterXPU_PATH})
