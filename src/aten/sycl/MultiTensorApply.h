@@ -48,6 +48,24 @@ struct TLMetaForWG {
   uint32_t wg_to_chunk;
 };
 
+int64_t multi_tensor_apply_kernel_get_wg_size() {
+  return syclMaxWorkGroupSize();
+}
+
+int64_t multi_tensor_apply_kernel_get_chunk_size() {
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size();
+  return max_wg_size * kElementPerThread;
+}
+
+int64_t multi_tensor_apply_fused_kernel_get_wg_size() {
+  return syclMaxWorkItemsPerEU();
+}
+
+int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
+  int64_t max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
+  return max_wg_size * kILP;
+}
+
 template <typename T, typename Y, typename U, typename... ArgTypes>
 struct MultiTensorApplyKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
@@ -99,12 +117,12 @@ void launch_multi_tensor_apply_kernel(
     int num_wg,
     ArgTypes... args) {
   auto& q = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize();
-  int64_t kChunkSize = max_wg_size * kElementPerThread;
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
 
   if constexpr (fused_kernel) {
-    max_wg_size = syclMaxWorkItemsPerEU();
-    kChunkSize = max_wg_size * kILP;
+    max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
+    kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
   MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
@@ -130,8 +148,7 @@ void multi_tensor_apply(
   using scalar_vals_t = typename T::opmath_t;
 
   auto& q = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize();
-  int64_t kChunkSize = kElementPerThread * max_wg_size;
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors)},
@@ -210,8 +227,7 @@ void multi_tensor_apply(
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize();
-  int64_t kChunkSize = kElementPerThread * max_wg_size;
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddress<depth>) * n_tensors)},
@@ -288,8 +304,7 @@ void multi_tensor_apply_for_fused_optimizer(
   const auto n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t wg_size = syclMaxWorkGroupSize();
-  int64_t kChunkSize = wg_size * kILP;
+  int64_t kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLFusedMetaForAddress<depth>) * n_tensors)},

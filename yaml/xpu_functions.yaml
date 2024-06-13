@@ -317,6 +317,7 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
