@@ -1988,6 +1988,7 @@ skip_list=(
     "test_triangular_solve_xpu_complex128",
     "test_triangular_solve_xpu_complex64",
     "test_triangular_solve_xpu_float64",
+# https://github.com/intel/torch-xpu-ops/issues/317
 # addmm.out, addmv.out, addr, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU 
     "test_addmm_sizes_xpu_complex128",
     "test_addmm_sizes_xpu_complex64",
@@ -2012,7 +2013,7 @@ skip_list=(
     "test_norm_fused_type_promotion_xpu_float16",
     "test_dot_invalid_args_xpu",
     "test_vdot_invalid_args_xpu",
-# xpu does not have '_cuda_tunableop_is_enabled' 
+# xpu does not have '_cuda_tunableop_is_enabled' API
     "test_matmul_small_brute_force_tunableop_xpu_float16",
     "test_matmul_small_brute_force_tunableop_xpu_float32",
     "test_matmul_small_brute_force_tunableop_xpu_float64",
