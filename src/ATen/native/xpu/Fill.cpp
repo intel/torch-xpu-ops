@@ -3,15 +3,10 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/Fill.h>
 #include <ATen/native/TensorIterator.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/FillKernel.h>
+#include <ATen/xpu/ops/_adaptive_avg_pool2d.h>
 
-#ifdef AT_PER_OPERATOR_HEADERS
-#include <ATen/ops/_adaptive_avg_pool2d.h>
-#else
-fuck
-#endif
 
 namespace at::native {
 
