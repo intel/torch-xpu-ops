@@ -196,7 +196,7 @@ runs:
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
         pip install styleFrame scipy pandas
         set -xe
-        python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
+        python inductor_perf_summary.py -p ${{ inputs.dt }} -s ${{ inputs.suite }} -m ${{ inputs.mode }}
         cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
 
     - name: Upload Inductor XPU E2E Data
