@@ -3,6 +3,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/GroupUtils.h>
 #include <aten/sycl/Loops.h>
@@ -11,38 +12,108 @@
 
 namespace at::native::xpu {
 
+template <
+    typename scalar_t,
+    typename acc_scalar_t,
+    typename index_t,
+    typename res_t>
+struct WelfordOps {
+  sycl::nd_item<1>& item;
+  acc_scalar_t correction;
+  bool take_sqrt;
+
+ public:
+  using acc_t = at::native::WelfordData<acc_scalar_t, index_t>;
+  inline acc_t reduce(acc_t acc, scalar_t data, index_t /*idx*/) const {
+    // We accumulate n in index_t to avoid cumulative rounding error, but still
+    // need nf for use in combine where int32 may overflow.
+    index_t new_n = acc.n + 1;
+    acc_scalar_t new_nf = static_cast<acc_scalar_t>(new_n);
+    acc_scalar_t delta = data - acc.mean;
+    acc_scalar_t new_mean = acc.mean + delta / new_nf;
+    acc_scalar_t new_delta = data - new_mean;
+    return {
+        new_mean,
+        acc.m2 + delta * new_delta,
+        new_n,
+        new_nf,
+    };
+  }
+  inline acc_t combine(acc_t a, acc_t b) const {
+    if (a.nf == 0) {
+      return b;
+    }
+    if (b.nf == 0) {
+      return a;
+    }
+    acc_scalar_t delta = b.mean - a.mean;
+    acc_scalar_t new_count = a.nf + b.nf;
+    acc_scalar_t nb_over_n = b.nf / new_count;
+    return {
+        a.mean + delta * nb_over_n,
+        a.m2 + b.m2 + delta * delta * a.nf * nb_over_n,
+        // setting acc.n as -1 since acc.n might not be able to represent the
+        // count correctly within its range, setting it to -1 to avoid confusion
+        -1,
+        new_count};
+  }
+  inline res_t project(acc_t acc) const __ubsan_ignore_float_divide_by_zero__ {
+    const auto mean = static_cast<scalar_t>(acc.mean);
+    const auto divisor = acc.nf > correction ? acc.nf - correction : 0;
+    const auto var = acc.m2 / divisor;
+    res_t results(take_sqrt ? device_sqrt(var) : var, mean);
+    return results;
+  }
+
+  static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
+    return acc;
+  }
+
+  inline acc_t shfl_down(acc_t acc, int offset) const {
+    auto sg = item.get_sub_group();
+    return {
+        sg.shuffle_down(acc.mean, offset),
+        sg.shuffle_down(acc.m2, offset),
+        sg.shuffle_down(acc.n, offset),
+        sg.shuffle_down(acc.nf, offset)};
+  }
+
+  WelfordOps(sycl::nd_item<1>& item, acc_scalar_t correction, bool take_sqrt)
+      : item(item), correction(correction), take_sqrt(take_sqrt) {}
+};
+
 template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type<T, true>;
+  using WelfordType = at::native::WelfordData<T_ACC, int64_t>;
+  using WelfordOp = at::native::xpu::
+      WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
-    auto i = item.get_group(0);
-    auto lid = item.get_local_id(0);
-    auto group_size = item.get_local_range(0);
-    auto X_data = X_ + i * N_;
-    T_ACC mean = T_ACC(0);
-    T_ACC m2 = T_ACC(0);
-    for (int64_t j = lid; j < N_; j += group_size) {
-      T_ACC x = static_cast<T_ACC>(X_data[j]);
-      mean += x;
-      m2 += x * x;
+    const int64_t i = item.get_group(0);
+    WelfordOp welford_op = {item, /*correction=*/0, /*take_sqrt=*/false};
+    WelfordType val(0, 0, 0, 0);
+    for (int64_t j = item.get_local_id(0); j < N_;
+         j += item.get_local_range(0)) {
+      const int64_t index = i * N_ + j;
+      val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
     }
-    mean = GroupReduceSum<T_ACC, SIMD>(item, mean, mean_shared_);
-    m2 = GroupReduceSum<T_ACC, SIMD>(item, m2, m2_shared_);
-    if (lid == 0) {
-      auto scale = static_cast<T_ACC>(N_);
-      m2 = (m2 - mean * mean / scale) / scale;
-      mean /= scale;
-      mean_[i] = mean;
-      rstd_[i] =
-          c10::xpu::compat::rsqrt(m2 < 0 ? 0 : m2 + static_cast<T_ACC>(eps_));
+
+    val = GroupReduce<WelfordType, WelfordOp, SIMD>(
+        item, val, welford_op, shared_);
+
+    if (item.get_local_id(0) == 0) {
+      T_ACC m1;
+      T_ACC m2;
+      std::tie(m2, m1) = welford_op.project(val);
+      mean_[i] = m1;
+      rstd_[i] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    mean_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
-    m2_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
+    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
   }
 
   GNRowwiseMomentsFunctor(int64_t N, T eps, const T* X, T* mean, T* rstd)
@@ -54,8 +125,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const T* X_;
   T* mean_;
   T* rstd_;
-  sycl_local_acc_t<T_ACC> mean_shared_;
-  sycl_local_acc_t<T_ACC> m2_shared_;
+  sycl_local_acc_t<WelfordType> shared_;
 };
 
 template <typename T, typename T_ACC>
@@ -201,7 +271,7 @@ struct GroupNormFunctor {
 
 template <typename T>
 void group_norm_kernel_impl(
-    const Tensor& X,
+    const Tensor& X_,
     const Tensor& gamma,
     const Tensor& beta,
     int64_t N,
@@ -212,6 +282,8 @@ void group_norm_kernel_impl(
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
+  auto X = X_.contiguous();
+
   using T_ACC = acc_type<T, true>;
   TORCH_CHECK(X.numel() == N * C * HxW);
   TORCH_CHECK(!gamma.defined() || gamma.numel() == C);
@@ -1041,8 +1113,8 @@ struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename T>
 void group_norm_backward_kernel_impl(
-    const Tensor& dY,
-    const Tensor& X,
+    const Tensor& dY_,
+    const Tensor& X_,
     const Tensor& mean,
     const Tensor& rstd,
     const Tensor& gamma,
@@ -1053,6 +1125,9 @@ void group_norm_backward_kernel_impl(
     Tensor& dX,
     Tensor& dgamma,
     Tensor& dbeta) {
+  auto dY = dY_.contiguous();
+  auto X = X_.contiguous();
+
   using T_ACC = acc_type<T, true>;
   const int64_t G = group;
   const int64_t D = C / G;
