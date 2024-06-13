@@ -293,6 +293,30 @@ supported:
   - _foreach_add_.ScalarList
   - _foreach_add.List
   - _foreach_add_.List
+  - _foreach_mul.Scalar
+  - _foreach_mul_.Scalar
+  - _foreach_mul.ScalarList
+  - _foreach_mul_.ScalarList
+  - _foreach_mul.List
+  - _foreach_mul_.List
+  - _foreach_div.Scalar
+  - _foreach_div_.Scalar
+  - _foreach_div.ScalarList
+  - _foreach_div_.ScalarList
+  - _foreach_div.List
+  - _foreach_div_.List
+  - _foreach_addcmul.Scalar
+  - _foreach_addcmul_.Scalar
+  - _foreach_addcmul.ScalarList
+  - _foreach_addcmul_.ScalarList
+  - _foreach_addcmul.Tensor
+  - _foreach_addcmul_.Tensor
+  - _foreach_addcdiv.Scalar
+  - _foreach_addcdiv_.Scalar
+  - _foreach_addcdiv.ScalarList
+  - _foreach_addcdiv_.ScalarList
+  - _foreach_addcdiv.Tensor
+  - _foreach_addcdiv_.Tensor
   - maximum
   - maximum.out
   - minimum
@@ -317,6 +341,10 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _embedding_bag
+  - _embedding_bag_forward_only
   - sgn
   - sgn.out
   - sgn_
+  - _pin_memory
+  - is_pinned
