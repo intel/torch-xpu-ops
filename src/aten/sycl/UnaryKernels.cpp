@@ -85,6 +85,20 @@ struct ExpFunctor {
 };
 
 template <typename scalar_t>
+struct ErfFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::erf(a);
+  }
+};
+
+template <typename scalar_t>
+struct ErfcFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::erfc(a);
+  }
+};
+
+template <typename scalar_t>
 inline scalar_t reciprocal_wrapper(scalar_t a) {
   return static_cast<scalar_t>(1) / a;
 }
@@ -292,6 +306,24 @@ void exp_kernel(TensorIteratorBase& iter) {
           gpu_kernel(iter, caller);
         });
   }
+}
+
+void erf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "erf_xpu",
+      [&]() { gpu_kernel(iter, ErfFunctor<scalar_t>()); });
+}
+
+void erfc_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "erfc_xpu",
+      [&]() { gpu_kernel(iter, ErfcFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
