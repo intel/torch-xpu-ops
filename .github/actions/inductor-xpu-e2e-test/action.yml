@@ -57,6 +57,11 @@ runs:
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
+          # deps for torchrec_dlrm
+          pip install pyre_extensions
+          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install torchmetrics==1.0.3
+          pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
