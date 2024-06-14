@@ -354,8 +354,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "randperm.generator_out",
     "reflection_pad1d_backward.grad_input",
     "reflection_pad1d.out",
-    "reflection_pad2d",
-    "reflection_pad2d_backward",
     "renorm.out",
     "repeat_interleave.Tensor",
     "replication_pad1d_backward.grad_input",
