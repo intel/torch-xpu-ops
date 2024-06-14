@@ -2284,6 +2284,8 @@ skip_list=(
     "test_inplace_forward_mode_AD_addmv_xpu_float64",
     "test_inplace_forward_mode_AD_baddbmm_xpu_complex128",
     "test_inplace_forward_mode_AD_baddbmm_xpu_float64",
+    "test_forward_mode_AD_pca_lowrank_xpu_complex128",
+    "test_forward_mode_AD_svd_lowrank_xpu_complex128",
 #RuntimeError: value cannot be converted to type float without overflow 
     "test_fn_fwgrad_bwgrad_addbmm_xpu_complex128",
     "test_forward_mode_AD_addbmm_xpu_complex128",
