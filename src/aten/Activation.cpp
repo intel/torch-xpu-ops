@@ -158,4 +158,52 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
   return grad_input;
 }
 
+Tensor XPUNativeFunctions::leaky_relu(
+    const Tensor& self,
+    const Scalar& negval) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::leaky_relu_kernel(iter, negval);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_(
+      Tensor& self,
+      const Scalar& negval) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::leaky_relu_kernel(iter, approximate);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_out(
+    const Tensor& self,
+    const Scalar& negval,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::leaky_relu_kernel(iter, negval);
+  return out;
+}
+
+Tensor XPUNativeFunctions::leaky_relu_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    c10::string_view approximate) {
+  Tensor grad_input;
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::leaky_relu_backward_kernel(iter, approximate);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    c10::string_view approximate,
+    Tensor& grad_input) {
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::leaky_relu_backward_kernel(iter, approximate);
+  return grad_input;
+}
+
 } // namespace at

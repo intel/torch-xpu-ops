@@ -100,6 +100,7 @@ _xpu_computation_op_list = [
     "reciprocal",
     "_refs.rsub",
     "relu",
+    "leakyrelu",
     "remainder",
     "reshape",
     "rsqrt",
