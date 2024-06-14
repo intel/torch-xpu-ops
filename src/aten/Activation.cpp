@@ -2,6 +2,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/ActivationEluKernel.h>
 #include <aten/sycl/ActivationGeluKernel.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
 
@@ -155,6 +156,64 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
   auto iter =
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
+  return grad_input;
+}
+
+Tensor& XPUNativeFunctions::elu_out(
+    const Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return out;
+}
+
+Tensor XPUNativeFunctions::elu(
+    const Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::elu_(
+    Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::elu_backward_out(
+    const Tensor& grad_output,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    bool is_result,
+    const Tensor& self_or_result,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::elu_backward(
+    const Tensor& grad_output,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    bool is_result,
+    const Tensor& self_or_result) {
+  Tensor grad_input = at::empty_like(grad_output);
+  TensorIterator iter;
+  native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
   return grad_input;
 }
 

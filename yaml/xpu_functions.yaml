@@ -348,3 +348,8 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - elu
+  - elu.out
+  - elu_
+  - elu_backward
+  - elu_backward.grad_input
