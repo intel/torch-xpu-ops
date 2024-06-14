@@ -87,6 +87,13 @@ struct ExpFunctor {
 template <typename scalar_t>
 struct ErfFunctor {
   scalar_t operator()(scalar_t a) const {
+    return std::erf(float(a));
+  }
+};
+
+template <>
+struct ErfFunctor<double> {
+  double operator()(double a) const {
     return std::erf(a);
   }
 };
@@ -94,6 +101,13 @@ struct ErfFunctor {
 template <typename scalar_t>
 struct ErfcFunctor {
   scalar_t operator()(scalar_t a) const {
+    return std::erfc(float(a));
+  }
+};
+
+template <>
+struct ErfcFunctor<double> {
+  double operator()(double a) const {
     return std::erfc(a);
   }
 };
