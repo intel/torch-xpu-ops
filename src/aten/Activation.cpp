@@ -199,7 +199,8 @@ Tensor& XPUNativeFunctions::elu_backward_out(
     bool is_result,
     const Tensor& self_or_result,
     Tensor& grad_input) {
-  TensorIterator iter;
+  auto iter =
+      TensorIterator::binary_op(grad_input, grad_output, self_or_result);
   native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
   return grad_input;
 }
@@ -212,9 +213,10 @@ Tensor XPUNativeFunctions::elu_backward(
     bool is_result,
     const Tensor& self_or_result) {
   Tensor grad_input = at::empty_like(grad_output);
-  TensorIterator iter;
+  auto iter =
+      TensorIterator::binary_op(grad_input, grad_output, self_or_result);
   native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
-  return grad_input;
+  return iter.output();
 }
 
 } // namespace at
