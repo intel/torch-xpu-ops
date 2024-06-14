@@ -155,12 +155,11 @@ Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
 }
 
-// Should not register the operator. Desc of resize_as_ and
+// Should not register the operator. Desc of
 // _copy_from_and_resize native_function.yaml is simplistic since PyTorch
 // intends backend should not register it (e.g. CPU/CUDA) or handle
 // sanity check by backend (e.g. MPS).
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
       TORCH_FN(_copy_from_and_resize));
