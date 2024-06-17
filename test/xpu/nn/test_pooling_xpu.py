@@ -12,7 +12,7 @@ with XPUPatchForImport(False):
     from test_pooling import TestPoolingNNDeviceType, TestPoolingNN
 
 
-instantiate_device_type_tests(TestPoolingNNDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestPoolingNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestPoolingNN)
 
 

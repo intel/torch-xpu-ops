@@ -64,7 +64,7 @@ with XPUPatchForImport(False):
 
     TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = multihead_self_attn_two_masks_fast_path_mock
 
-instantiate_device_type_tests(TestMultiheadAttentionNNDeviceType, globals(), only_for='xpu')
+instantiate_device_type_tests(TestMultiheadAttentionNNDeviceType, globals(), only_for='xpu', allow_xpu=True)
 instantiate_parametrized_tests(TestMultiheadAttentionNN)
 
 if __name__ == "__main__":

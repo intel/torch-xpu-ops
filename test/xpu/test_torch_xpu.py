@@ -11048,11 +11048,11 @@ class TestTensorDeviceOps(TestCase):
 # Note: test generation must be done at file scope, not within main, or
 # pytest will fail.
 add_neg_dim_tests()
-instantiate_device_type_tests(TestViewOps, globals(), only_for='xpu')
-instantiate_device_type_tests(TestVitalSignsCuda, globals(), only_for='xpu')
-instantiate_device_type_tests(TestTensorDeviceOps, globals(), only_for='xpu')
-instantiate_device_type_tests(TestTorchDeviceType, globals(), only_for='xpu')
-instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu')
+instantiate_device_type_tests(TestViewOps, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestVitalSignsCuda, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestTensorDeviceOps, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestTorchDeviceType, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu', allow_xpu=True)
 
 if __name__ == '__main__':
     TestCase._default_dtype_check_enabled = True
