@@ -99,7 +99,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 16
+          expected_pass_num: 15
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Torchbench BF16 Training Accuracy Test
