@@ -4,7 +4,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
-#include <aten/sycl/ActivationSiluKernels.h>
+
 namespace at {
 
 Tensor XPUNativeFunctions::relu(const Tensor& self) {
