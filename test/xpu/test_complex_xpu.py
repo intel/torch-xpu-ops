@@ -11,8 +11,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_complex import TestComplexTensor
 
-instantiate_device_type_tests(TestComplexTensor, globals(), only_for="xpu")
-
+instantiate_device_type_tests(TestComplexTensor, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":
