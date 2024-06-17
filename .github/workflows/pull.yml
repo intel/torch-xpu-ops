@@ -38,7 +38,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=3.8 cmake ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=3.10 cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           conda install -c intel mkl-static mkl-include -y
           cd ../pytorch
