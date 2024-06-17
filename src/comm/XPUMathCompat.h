@@ -54,11 +54,4 @@ inline c10::BFloat16 div<c10::BFloat16>(
   return res;
 }
 
-template <typename T>
-inline T div_trunc(const T& a, const T& b) {
-  // In the SYCL compilation environment, dividing the same numbers does not
-  // equal 1.f sometimes. Therefore, additional checks are required.
-  return ((a == b) && std::isfinite(a)) ? (T)1 : (T)std::trunc(div<T>(a, b));
-}
-
 } // namespace c10::xpu::compat
