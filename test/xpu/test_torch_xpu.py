@@ -8581,14 +8581,9 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         if not torch.cuda.is_available() or not torch.xpu.is_available():
             self.assertRaises(RuntimeError, lambda: x.pin_memory())
         else:
-            devices = []
-            if torch.cuda.is_available():
-                devices.append("cuda")
             if torch.xpu.is_available():
-                devices.append("xpu")
-            for device in devices:
+                device = 'xpu'
                 self.assertFalse(x.is_pinned(device))
-
                 pinned = x.pin_memory(device)
                 self.assertTrue(pinned.is_pinned(device))
                 self.assertEqual(pinned, x)
@@ -8596,6 +8591,16 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                 # test that pin_memory on already pinned tensor has no effect
                 self.assertIs(pinned, pinned.pin_memory(device))
                 self.assertEqual(pinned.data_ptr(), pinned.pin_memory(device).data_ptr())
+            else:
+                pinned = x.pin_memory()
+                self.assertTrue(pinned.is_pinned())
+                self.assertEqual(pinned, x)
+                self.assertNotEqual(pinned.data_ptr(), x.data_ptr())
+                # test that pin_memory on already pinned tensor has no effect
+                self.assertIs(pinned, pinned.pin_memory())
+                self.assertEqual(pinned.data_ptr(), pinned.pin_memory().data_ptr())
+
+
 
     def test_error_msg_type_translation(self):
         with self.assertRaisesRegex(
@@ -11043,11 +11048,11 @@ class TestTensorDeviceOps(TestCase):
 # Note: test generation must be done at file scope, not within main, or
 # pytest will fail.
 add_neg_dim_tests()
-instantiate_device_type_tests(TestViewOps, globals(), only_for='xpu')
-instantiate_device_type_tests(TestVitalSignsCuda, globals(), only_for='xpu')
-instantiate_device_type_tests(TestTensorDeviceOps, globals(), only_for='xpu')
-instantiate_device_type_tests(TestTorchDeviceType, globals(), only_for='xpu')
-instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu')
+instantiate_device_type_tests(TestViewOps, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestVitalSignsCuda, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestTensorDeviceOps, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestTorchDeviceType, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu', allow_xpu=True)
 
 if __name__ == '__main__':
     TestCase._default_dtype_check_enabled = True
