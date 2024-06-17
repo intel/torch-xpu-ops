@@ -1818,5 +1818,16 @@ res += launch_test("test_namedtensor_xpu.py")
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
 
+# test_convolution
+skip_list = (
+    # XPU unsupport ops, skip.
+    "test_cudnn_convolution_relu_xpu_float16",
+    "test_cudnn_convolution_relu_xpu_float32",
+    "test_cudnn_convolution_add_relu_xpu_float16",
+    "test_cudnn_convolution_add_relu_xpu_float32",
+    "test_conv_double_backward_xpu_float64",
+)
+res += launch_test("test_convolution_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
