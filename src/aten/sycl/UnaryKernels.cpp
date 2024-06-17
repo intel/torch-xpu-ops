@@ -71,13 +71,6 @@ struct TanhFunctor {
 };
 
 template <typename scalar_t>
-struct NegFunctor {
-  scalar_t operator()(scalar_t a) const {
-    return -a;
-  }
-};
-
-template <typename scalar_t>
 inline scalar_t reciprocal_wrapper(scalar_t a) {
   return static_cast<scalar_t>(1) / a;
 }
@@ -233,20 +226,6 @@ void tanh_kernel(TensorIteratorBase& iter) {
   }
 }
 
-void neg_kernel(TensorIteratorBase& iter) {
-  auto dtype = iter.dtype();
-  if (at::isComplexType(dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "neg_xpu", [&]() {
-      gpu_kernel(iter, NegFunctor<scalar_t>());
-    });
-  } else {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        ScalarType::Half, ScalarType::BFloat16, dtype, "neg_xpu", [&]() {
-          gpu_kernel(iter, NegFunctor<scalar_t>());
-        });
-  }
-}
-
 void reciprocal_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half,
@@ -265,5 +244,6 @@ void bitwise_not_kernel(TensorIteratorBase& iter) {
     });
   }
 }
+
 
 } // namespace at::native::xpu

@@ -5,6 +5,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
+#include <aten/sycl/UnarySignKernels.h>
 #include <torch/library.h>
 
 namespace at {
@@ -278,6 +279,30 @@ Tensor& XPUNativeFunctions::neg_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_op(out, self);
   native::xpu::neg_kernel(iter);
+  return out;
+}
+
+TensorIterator logical_not_meta(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build(TensorIteratorConfig()
+                 .check_all_same_dtype(false)
+                 .add_output(out)
+                 .add_const_input(self));
+  return iter;
+}
+
+Tensor XPUNativeFunctions::logical_not(const Tensor& self) {
+  Tensor out = at::empty({0}, self.options().dtype(kBool));
+  return at::logical_not_out(out, self);
+}
+
+Tensor& XPUNativeFunctions::logical_not_(Tensor& self) {
+  return at::logical_not_out(self, self);
+}
+
+Tensor& XPUNativeFunctions::logical_not_out(const Tensor& self, Tensor& out) {
+  auto iter = logical_not_meta(self, out);
+  native::xpu::logical_not_kernel(iter);
   return out;
 }
 

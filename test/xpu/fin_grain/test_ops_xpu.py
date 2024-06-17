@@ -85,6 +85,7 @@ _xpu_computation_op_list = [
     "le",
     "log",
     "lt",
+    "logical_not",
     "masked_fill",
     "maximum",
     "minimum",

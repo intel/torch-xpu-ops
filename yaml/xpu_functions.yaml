@@ -113,11 +113,6 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
-  - silu
-  - silu_
-  - silu.out
-  - silu_backward
-  - silu_backward.grad_input
   - arange.start_out
   - abs
   - abs_
@@ -131,6 +126,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
