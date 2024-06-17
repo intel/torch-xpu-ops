@@ -64,5 +64,8 @@ res += launch_test("nn/test_pruning_xpu.py")
 # test_dynamic_shapes
 res += launch_test("test_dynamic_shapes_xpu.py")
 
+# test_load_state_dict
+res += launch_test("nn/test_load_state_dict_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
