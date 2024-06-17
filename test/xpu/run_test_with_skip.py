@@ -1678,11 +1678,16 @@ skip_list=(
     "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
     "test_reference_numerics_extremal_tanh_xpu_complex128",
     "test_reference_numerics_extremal_tanh_xpu_complex64",
+
+    # CPU Fallback fails
+    # New ATen operators fails on CPU Fallback.
+    # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
+    "_special_"
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
 skip_list=(
-    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). 
+    #NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
     "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
     "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
