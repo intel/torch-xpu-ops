@@ -17,58 +17,13 @@ template <
     typename acc_scalar_t,
     typename index_t,
     typename res_t>
-struct WelfordOps {
+struct WelfordOpsXPU
+    : public at::native::WelfordOps<scalar_t, acc_scalar_t, index_t, res_t> {
   sycl::nd_item<1>& item;
-  acc_scalar_t correction;
-  bool take_sqrt;
 
  public:
-  using acc_t = at::native::WelfordData<acc_scalar_t, index_t>;
-  inline acc_t reduce(acc_t acc, scalar_t data, index_t /*idx*/) const {
-    // We accumulate n in index_t to avoid cumulative rounding error, but still
-    // need nf for use in combine where int32 may overflow.
-    index_t new_n = acc.n + 1;
-    acc_scalar_t new_nf = static_cast<acc_scalar_t>(new_n);
-    acc_scalar_t delta = data - acc.mean;
-    acc_scalar_t new_mean = acc.mean + delta / new_nf;
-    acc_scalar_t new_delta = data - new_mean;
-    return {
-        new_mean,
-        acc.m2 + delta * new_delta,
-        new_n,
-        new_nf,
-    };
-  }
-  inline acc_t combine(acc_t a, acc_t b) const {
-    if (a.nf == 0) {
-      return b;
-    }
-    if (b.nf == 0) {
-      return a;
-    }
-    acc_scalar_t delta = b.mean - a.mean;
-    acc_scalar_t new_count = a.nf + b.nf;
-    acc_scalar_t nb_over_n = b.nf / new_count;
-    return {
-        a.mean + delta * nb_over_n,
-        a.m2 + b.m2 + delta * delta * a.nf * nb_over_n,
-        // setting acc.n as -1 since acc.n might not be able to represent the
-        // count correctly within its range, setting it to -1 to avoid confusion
-        -1,
-        new_count};
-  }
-  inline res_t project(acc_t acc) const __ubsan_ignore_float_divide_by_zero__ {
-    const auto mean = static_cast<scalar_t>(acc.mean);
-    const auto divisor = acc.nf > correction ? acc.nf - correction : 0;
-    const auto var = acc.m2 / divisor;
-    res_t results(take_sqrt ? device_sqrt(var) : var, mean);
-    return results;
-  }
-
-  static acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
-    return acc;
-  }
-
+  using acc_t = typename at::native::
+      WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>::acc_t;
   inline acc_t shfl_down(acc_t acc, int offset) const {
     auto sg = item.get_sub_group();
     return {
@@ -78,21 +33,24 @@ struct WelfordOps {
         sg.shuffle_down(acc.nf, offset)};
   }
 
-  WelfordOps(sycl::nd_item<1>& item, acc_scalar_t correction, bool take_sqrt)
-      : item(item), correction(correction), take_sqrt(take_sqrt) {}
+  WelfordOpsXPU(acc_scalar_t correction, bool take_sqrt, sycl::nd_item<1>& item)
+      : at::native::WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>(
+            correction,
+            take_sqrt),
+        item(item) {}
 };
 
 template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type<T, true>;
   using WelfordType = at::native::WelfordData<T_ACC, int64_t>;
-  using WelfordOp = at::native::xpu::
-      WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using WelfordOp =
+      WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
-    WelfordOp welford_op = {item, /*correction=*/0, /*take_sqrt=*/false};
+    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
     WelfordType val(0, 0, 0, 0);
     for (int64_t j = item.get_local_id(0); j < N_;
          j += item.get_local_range(0)) {
@@ -298,14 +256,25 @@ void group_norm_kernel_impl(
   T* rstd_data = rstd.mutable_data_ptr<T>();
 
   auto& queue = getCurrentSYCLQueue();
-  constexpr int SIMD = 32; // TODO: cross-platform support
-  auto caller = GNRowwiseMomentsFunctor<T, SIMD>(
-      D * HxW, eps, X_data, mean_data, rstd_data);
-  const int64_t wg_size =
-      D * HxW < GROUP_REDUCE_WORK_SIZE ? SIMD : GROUP_REDUCE_WORK_SIZE;
+  int64_t simd = syclMaxSubGroupSize();
+  const int64_t wg_size = D * HxW < get_group_reduce_group_size()
+      ? simd
+      : get_group_reduce_group_size();
   int64_t nwg = N * G;
-  sycl_kernel_submit(
-      sycl::range<1>(nwg * wg_size), sycl::range<1>(wg_size), queue, caller);
+  auto global_range = sycl::range<1>(nwg * wg_size);
+  auto local_range = sycl::range<1>(wg_size);
+  sycl_kernel_submit_simd<
+      GNRowwiseMomentsFunctor<T, SIMD16>,
+      GNRowwiseMomentsFunctor<T, SIMD32>>(
+      simd,
+      global_range,
+      local_range,
+      queue,
+      D * HxW,
+      eps,
+      X_data,
+      mean_data,
+      rstd_data);
 
   if (HxW == 1) {
     group_norm_1d_forward<T>(X, mean, rstd, gamma, beta, N, C, G, Y);
@@ -330,9 +299,6 @@ void group_norm_kernel_impl(
     T_ACC* a_data = a.mutable_data_ptr<T_ACC>();
     T_ACC* b_data = b.mutable_data_ptr<T_ACC>();
 
-    // TODO: Since there is some issues in gpu_kernel_multiple_outputs, we are
-    // using manual kernel here. Make it using gpu_kernel_multiple_outputs once
-    // the issue fixed.
     auto caller = ComputeFusedParamsFunctor<T, T_ACC>(
         C, G, mean_data, rstd_data, gamma_data, beta_data, a_data, b_data);
     sycl_kernel_submit(sycl::range<1>(N * C), queue, caller);
@@ -366,7 +332,7 @@ void group_norm_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       X.scalar_type(),
-      "group_norm_kernel_xpu",
+      "group_norm_xpu",
       [&]() {
         group_norm_kernel_impl<scalar_t>(
             X,
@@ -418,8 +384,8 @@ struct Compute1dBackwardFusedParamsFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
+    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
   }
 
   Compute1dBackwardFusedParamsFunctor(
@@ -549,9 +515,7 @@ struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (c < C_) {
       const int64_t G = group_;
       const int64_t D = C_ / G;
-      // Accumulate each 32 cols into a 32 * 32 tile.
-      // Since the group size is (32, 16), accumulate twice for 1st and 2nd 16
-      // rows of a 32 contiguous elements.
+      // Accumulate each (subgroup_size) cols into a (subgroup_size^2) tile.
       for (int64_t n = item.get_local_id(0); n < N_;
            n += item.get_local_range(0) * 2) {
         const int64_t n1 = n;
@@ -687,7 +651,7 @@ void group_norm_1d_backward(
   const T* rstd_data = rstd.const_data_ptr<T>();
 
   auto& queue = getCurrentSYCLQueue();
-  constexpr int SIMD = 32; // TODO: cross-platform support
+  int64_t simd = syclMaxSubGroupSize();
 
   if (dX.defined()) {
     const T* gamma_data = gamma.defined() ? gamma.const_data_ptr<T>() : nullptr;
@@ -700,9 +664,18 @@ void group_norm_1d_backward(
     T_ACC* c2_data = c2.mutable_data_ptr<T_ACC>();
     T_ACC* c3_data = c3.mutable_data_ptr<T_ACC>();
 
-    const int64_t wg_size =
-        (C / G) < GROUP_REDUCE_WORK_SIZE ? SIMD : GROUP_REDUCE_WORK_SIZE;
-    auto caller = Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD>(
+    const int64_t wg_size = (C / G) < get_group_reduce_group_size()
+        ? simd
+        : get_group_reduce_group_size();
+    auto global_range = sycl::range<2>(G, N * wg_size);
+    auto local_range = sycl::range<2>(1, wg_size);
+    sycl_kernel_submit_simd<
+        Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD16>,
+        Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD32>>(
+        simd,
+        global_range,
+        local_range,
+        queue,
         C,
         G,
         dY_data,
@@ -712,9 +685,6 @@ void group_norm_1d_backward(
         gamma_data,
         c2_data,
         c3_data);
-    auto global_range = sycl::range<2>(G, N * wg_size);
-    auto local_range = sycl::range<2>(1, wg_size);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
@@ -747,7 +717,7 @@ void group_norm_1d_backward(
     T* dgamma_data = dgamma.defined() ? dgamma.mutable_data_ptr<T>() : nullptr;
     T* dbeta_data = dbeta.defined() ? dbeta.mutable_data_ptr<T>() : nullptr;
     if (N <= 128) {
-      const int64_t wg_size = GROUP_REDUCE_WORK_SIZE;
+      const int64_t wg_size = get_group_reduce_group_size();
       const int64_t B = (C + wg_size - 1) / wg_size;
       auto caller = GammaBeta1dBackwardSmallKernel<T>(
           N,
@@ -762,16 +732,21 @@ void group_norm_1d_backward(
       sycl_kernel_submit(
           sycl::range<1>(B * wg_size), sycl::range<1>(wg_size), queue, caller);
     } else {
-      const int kReduceTileSize = 32;
+      // The algorithm for colwise reduction here is to accumulate each
+      // (sub_group_size) cols to a (sub_group_size^2) tile and write the tile
+      // to shared memory. Then do subgroup reduce for each col in the tile.
+      const int64_t kReduceTileSize = simd;
       const int64_t B = (C + kReduceTileSize - 1) / kReduceTileSize;
-      // The algorithm for colwise reduction here is to accumulate each 32 cols
-      // to a 32 * 32 tile and write the tile to shared memory. Then do subgroup
-      // reduce for each col in the tile. So here the group size must be (32,
-      // 16).
       auto global_range =
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
-      auto caller = GammaBeta1dBackwardLargeKernel<T, SIMD, kReduceTileSize>(
+      sycl_kernel_submit_simd<
+          GammaBeta1dBackwardLargeKernel<T, SIMD16, SIMD16>,
+          GammaBeta1dBackwardLargeKernel<T, SIMD32, SIMD32>>(
+          simd,
+          global_range,
+          local_range,
+          queue,
           N,
           C,
           G,
@@ -781,7 +756,6 @@ void group_norm_1d_backward(
           rstd_data,
           dgamma_data,
           dbeta_data);
-      sycl_kernel_submit(global_range, local_range, queue, caller);
     }
   }
 }
@@ -810,8 +784,8 @@ struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
+    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
   }
 
   ComputeInternalGradientsFunctor(
@@ -883,8 +857,8 @@ struct ComputeBackwardFusedParamsFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(GROUP_REDUCE_WORK_SIZE, cgh);
+    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
   }
 
   ComputeBackwardFusedParamsFunctor(
@@ -1169,13 +1143,22 @@ void group_norm_backward_kernel_impl(
 
   auto& queue = getCurrentSYCLQueue();
 
-  constexpr int SIMD = 32; // TODO: cross-platform support
-  int64_t wg_size =
-      HxW < GROUP_REDUCE_WORK_SIZE ? SIMD : GROUP_REDUCE_WORK_SIZE;
-  auto caller = ComputeInternalGradientsFunctor<T, SIMD>(
-      HxW, dY_data, X_data, ds_data, db_data);
-  sycl_kernel_submit(
-      sycl::range<1>(N * C * wg_size), sycl::range<1>(wg_size), queue, caller);
+  int64_t simd = syclMaxSubGroupSize();
+  int64_t wg_size = HxW < get_group_reduce_group_size()
+      ? simd
+      : get_group_reduce_group_size();
+  sycl_kernel_submit_simd<
+      ComputeInternalGradientsFunctor<T, SIMD16>,
+      ComputeInternalGradientsFunctor<T, SIMD32>>(
+      simd,
+      sycl::range<1>(N * C * wg_size),
+      sycl::range<1>(wg_size),
+      queue,
+      HxW,
+      dY_data,
+      X_data,
+      ds_data,
+      db_data);
 
   if (dX.defined()) {
     Tensor c1 = at::empty({0}, X.options().dtype(kAccType));
@@ -1194,8 +1177,16 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
     }
 
-    wg_size = (C / G) < GROUP_REDUCE_WORK_SIZE ? SIMD : GROUP_REDUCE_WORK_SIZE;
-    auto caller = ComputeBackwardFusedParamsFunctor<T, SIMD>(
+    wg_size = (C / G) < get_group_reduce_group_size()
+        ? simd
+        : get_group_reduce_group_size();
+    sycl_kernel_submit_simd<
+        ComputeBackwardFusedParamsFunctor<T, SIMD16>,
+        ComputeBackwardFusedParamsFunctor<T, SIMD32>>(
+        simd,
+        sycl::range<2>(G, N * wg_size),
+        sycl::range<2>(1, wg_size),
+        queue,
         C,
         HxW,
         G,
@@ -1206,11 +1197,6 @@ void group_norm_backward_kernel_impl(
         db_data,
         c2_data,
         c3_data);
-    sycl_kernel_submit(
-        sycl::range<2>(G, N * wg_size),
-        sycl::range<2>(1, wg_size),
-        queue,
-        caller);
 
     if (gamma.defined()) {
       auto iter = TensorIteratorConfig()
@@ -1256,16 +1242,21 @@ void group_norm_backward_kernel_impl(
           dbeta_data);
       sycl_kernel_submit(sycl::range<1>(C), queue, caller);
     } else {
-      const int kReduceTileSize = 32;
+      // The algorithm for colwise reduction here is to accumulate each
+      // (subgroup_size) cols to a (subgroup_size^2) tile and write the tile to
+      // shared memory. Then do subgroup reduce for each col in the tile.
+      const int64_t kReduceTileSize = simd;
       const int64_t B = (C + kReduceTileSize - 1) / kReduceTileSize;
-      // The algorithm for colwise reduction here is to accumulate each 32 cols
-      // to a 32 * 32 tile and write the tile to shared memory. Then do subgroup
-      // reduce for each col in the tile. So here the gorup size must be (32,
-      // 16).
       auto global_range =
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
-      auto caller = GammaBetaBackwardFunctor<T, SIMD, kReduceTileSize>(
+      sycl_kernel_submit_simd<
+          GammaBetaBackwardFunctor<T, SIMD16, SIMD16>,
+          GammaBetaBackwardFunctor<T, SIMD32, SIMD32>>(
+          simd,
+          global_range,
+          local_range,
+          queue,
           N,
           C,
           G,
@@ -1275,7 +1266,6 @@ void group_norm_backward_kernel_impl(
           db_data,
           dgamma_data,
           dbeta_data);
-      sycl_kernel_submit(global_range, local_range, queue, caller);
     }
   }
 }
@@ -1297,7 +1287,7 @@ void group_norm_backward_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       X.scalar_type(),
-      "group_norm_backward_kernel_xpu",
+      "group_norm_backward_xpu",
       [&]() {
         group_norm_backward_kernel_impl<scalar_t>(
             dY, X, mean, rstd, gamma, N, C, HxW, group, dX, dgamma, dbeta);

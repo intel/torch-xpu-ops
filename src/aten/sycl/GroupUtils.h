@@ -12,7 +12,9 @@ namespace at {
 namespace native {
 namespace xpu {
 
-#define GROUP_REDUCE_WORK_SIZE 512
+inline size_t get_group_reduce_group_size() {
+  return syclMaxWorkGroupSize() / 2;
+}
 
 template <int DIM>
 inline size_t get_local_linear_range(sycl::nd_item<DIM>& item) {
