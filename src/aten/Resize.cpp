@@ -155,7 +155,7 @@ Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
 }
 
-// Should not register the operator. Desc of 
+// Should not register the operator. Desc of
 // _copy_from_and_resize native_function.yaml is simplistic since PyTorch
 // intends backend should not register it (e.g. CPU/CUDA) or handle
 // sanity check by backend (e.g. MPS).
