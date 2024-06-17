@@ -1,6 +1,6 @@
 #pragma once
 
-#include <aten/sycl/SortingCommon.h>
+#include <ATen/native/xpu/sycl/SortingCommon.h>
 
 namespace at {
 namespace native {

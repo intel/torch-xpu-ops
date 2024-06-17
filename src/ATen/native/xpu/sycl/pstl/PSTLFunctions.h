@@ -3,9 +3,9 @@
 #include <ATen/ceil_div.h>
 #include <ATen/record_function.h>
 
-#include <aten/sycl/MemoryAccess.h>
-#include <aten/sycl/MemoryAccessUtils.h>
-#include <aten/sycl/SortingKernels.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>

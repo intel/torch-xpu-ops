@@ -1,9 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <comm/xpu_aten.h>
 
-#include <aten/sycl/EmbeddingBag.h>
-#include <aten/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/EmbeddingBag.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 
 namespace at::native::xpu {
 

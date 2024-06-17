@@ -1,11 +1,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
-<<<<<<< HEAD:src/aten/sycl/ReduceLogicKernel.cpp
-#include <aten/sycl/Reduce.h>
-=======
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/sycl/ReduceLogicKernel.cpp
 
 namespace at::native::xpu {
 

@@ -1,9 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DispatchStub.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/DistributionTemplates.h>
 #include <ATen/native/Distributions.h>

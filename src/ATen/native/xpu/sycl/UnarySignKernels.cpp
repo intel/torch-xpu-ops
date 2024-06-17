@@ -1,11 +1,11 @@
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
 
-#include <aten/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
 

@@ -1,10 +1,10 @@
-#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/ATen.h>
+// #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
 #include <ATen/WrapDimUtilsMulti.h>
-#include <aten/sycl/MemoryAccess.h>
-#include <aten/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 

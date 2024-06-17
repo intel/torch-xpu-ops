@@ -1,10 +1,10 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Config.h>
 #include <ATen/NativeFunctions.h>
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/Pool.h>
 #include <comm/MemoryFormat.h>
+#include <comm/xpu_aten.h>
 #include <vector>
 
 namespace at::native::xpu {

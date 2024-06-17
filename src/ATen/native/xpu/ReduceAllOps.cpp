@@ -1,9 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/ReduceAllOps.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 // #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>

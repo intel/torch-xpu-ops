@@ -2,8 +2,8 @@
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <aten/sycl/BinaryInternal.h>
-#include <aten/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/BinaryInternal.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
 

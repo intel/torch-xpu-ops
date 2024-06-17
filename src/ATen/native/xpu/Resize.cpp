@@ -1,23 +1,13 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
 #include <c10/core/Allocator.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-<<<<<<< HEAD:src/aten/Resize.cpp
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/ops/set_native.h>
-#endif
 
-#include <aten/sycl/CopyKernel.h>
-=======
 #include <ATen/native/xpu/sycl/CopyKernel.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/Resize.cpp
-
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 

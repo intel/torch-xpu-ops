@@ -1,13 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
-<<<<<<< HEAD:src/aten/sycl/BinaryKernels.cpp
-#include <aten/sycl/BinaryInternal.h>
-#include <aten/sycl/Loops.h>
-=======
+#include <ATen/native/xpu/sycl/BinaryInternal.h>
 #include <ATen/native/xpu/sycl/Loops.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/sycl/BinaryKernels.cpp
 
 namespace at::native::xpu {
 

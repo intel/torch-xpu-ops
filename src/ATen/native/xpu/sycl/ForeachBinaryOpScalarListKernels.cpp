@@ -3,10 +3,11 @@
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <aten/sycl/ForeachBinaryOpScalarListKernels.h>
-#include <aten/sycl/ForeachFunctors.h>
-#include <aten/sycl/MultiTensorApply.h>
+#include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachFunctors.h>
+#include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
+#include <ATen/ops/empty_like_native.h>
 namespace at::native::xpu {
 
 template <typename scalar_t, template <class> class Op>

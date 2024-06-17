@@ -2,7 +2,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/pstl/PSTLFunctions.h>
+#include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

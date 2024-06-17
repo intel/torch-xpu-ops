@@ -1,7 +1,7 @@
-#include <ATen/ATen.h>
 #include <ATen/CPUFunctions.h>
-#include <ATen/XPUNativeFunctions.h>
+
 #include <ATen/xpu/PinnedMemoryAllocator.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 

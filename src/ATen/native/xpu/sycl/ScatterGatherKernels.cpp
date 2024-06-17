@@ -10,8 +10,8 @@
 #include <ATen/native/ReductionType.h>
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/Atomics.h>
-#include <aten/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
 namespace at {

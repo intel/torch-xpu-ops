@@ -1,10 +1,10 @@
-#include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
+
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <aten/sycl/LossNLLKernel.h>
+#include <ATen/native/xpu/sycl/LossNLLKernel.h>
 #include <comm/RegisterUtils.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 void nll_loss_forward_meta(

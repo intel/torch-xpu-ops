@@ -1,7 +1,7 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/NMSKernel.h>
+#include <ATen/native/xpu/sycl/NMSKernel.h>
 #include <comm/XPUGuard.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 namespace at::native::xpu {

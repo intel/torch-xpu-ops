@@ -1,15 +1,15 @@
-#include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
+
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/div_rtn.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-#include <aten/sycl/Im2ColKernel.h>
+#include <ATen/native/xpu/sycl/Im2ColKernel.h>
+#include <ATen/xpu/ops/im2col_native.h>
+namespace at::native {
 
-namespace at {
-
-Tensor& XPUNativeFunctions::im2col_out(
+Tensor& im2col_out_xpu(
     const Tensor& self,
     IntArrayRef kernel_size,
     IntArrayRef dilation,
@@ -26,7 +26,7 @@ Tensor& XPUNativeFunctions::im2col_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::im2col(
+Tensor im2col_xpu(
     const Tensor& self,
     IntArrayRef kernel_size,
     IntArrayRef dilation,
@@ -41,4 +41,4 @@ Tensor XPUNativeFunctions::im2col(
   return output;
 }
 
-} // namespace at
+} // namespace at::native

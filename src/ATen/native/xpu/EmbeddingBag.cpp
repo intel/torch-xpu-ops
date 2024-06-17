@@ -1,7 +1,7 @@
-#include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
 
-#include <aten/sycl/EmbeddingBagKernels.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
 
 namespace at {
 

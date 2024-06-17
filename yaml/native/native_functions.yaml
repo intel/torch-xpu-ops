@@ -1513,3 +1513,334 @@
   dispatch:
     XPU: _local_scalar_dense_xpu
   variants: function
+
+- func: col2im.out(Tensor self, SymInt[2] output_size, int[2] kernel_size, int[2] dilation, int[2] padding, int[2] stride, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: col2im_out_xpu
+
+- func: col2im(Tensor self, SymInt[2] output_size, int[2] kernel_size, int[2] dilation, int[2] padding, int[2] stride) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: col2im_xpu
+  tags: core
+
+- func: im2col.out(Tensor self, int[2] kernel_size, int[2] dilation, int[2] padding, int[2] stride, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: im2col_out_xpu
+
+- func: im2col(Tensor self, int[2] kernel_size, int[2] dilation, int[2] padding, int[2] stride) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: im2col_xpu
+
+- func: flip(Tensor self, int[] dims) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: flip
+  autogen: flip.out
+  tags: core
+
+- func: nonzero.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: nonzero_out_xpu
+  tags: dynamic_output_shape
+
+- func: nonzero(Tensor self) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: nonzero_xpu
+  tags: [dynamic_output_shape, core]
+
+- func: maximum(Tensor self, Tensor other) -> Tensor
+  structured_delegate: maximum.out
+  device_check: NoCheck   # TensorIterator
+  variants: method, function
+  tags: [core, pointwise]
+
+- func: maximum.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: maximum_out
+  tags: pointwise
+
+- func: minimum(Tensor self, Tensor other) -> Tensor
+  structured_delegate: minimum.out
+  device_check: NoCheck   # TensorIterator
+  variants: method, function
+  tags: [core, pointwise]
+
+- func: minimum.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: minimum_out
+  tags: pointwise
+
+- func: sigmoid_backward.grad_input(Tensor grad_output, Tensor output, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sigmoid_backward_out
+  tags: pointwise
+
+- func: sigmoid_backward(Tensor grad_output, Tensor output) -> Tensor
+  python_module: nn
+  structured_delegate: sigmoid_backward.grad_input
+  tags: pointwise
+
+- func: _softmax(Tensor self, int dim, bool half_to_float) -> Tensor
+  structured_delegate: _softmax.out
+  tags: core
+
+- func: _softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: softmax_xpu_out
+
+- func: _softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
+  structured_delegate: _softmax_backward_data.out
+
+- func: _softmax_backward_data.out(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype, *, Tensor(a!) grad_input) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: softmax_backward_xpu_out
+
+- func: _log_softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
+  structured_delegate: _log_softmax_backward_data.out
+
+- func: _log_softmax_backward_data.out(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: log_softmax_backward_xpu_out
+
+- func: exp(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: exp.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: exp_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: exp.out
+  variants: function, method
+  tags: pointwise
+
+- func: exp.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: exp_out
+  tags: pointwise
+
+- func: sigmoid(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sigmoid.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: sigmoid_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sigmoid.out
+  variants: function, method
+  tags: pointwise
+
+- func: sigmoid.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sigmoid_out
+  tags: pointwise
+
+- func: sgn(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: sgn.out
+  tags: pointwise
+
+- func: sgn_(Tensor(a!) self) -> Tensor(a!)
+  variants: method
+  structured_delegate: sgn.out
+  tags: pointwise
+
+- func: sgn.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sgn_out
+  tags: pointwise
+
+- func: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_list_kernel_xpu
+
+- func: _foreach_add_.List(Tensor(a!)[] self, Tensor[] other, *, Scalar alpha=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_list_kernel_xpu_
+  autogen: _foreach_add.List_out
+
+- func: _foreach_add.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalar_kernel_xpu
+
+- func: _foreach_add_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalar_kernel_xpu_
+  autogen: _foreach_add.Scalar_out
+
+- func: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_scalar_kernel_xpu
+
+- func: _foreach_mul.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_list_kernel_xpu
+
+- func: _foreach_mul_.List(Tensor(a!)[] self, Tensor[] other) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_list_kernel_xpu_
+  autogen: _foreach_mul.List_out
+
+- func: _foreach_mul_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_scalar_kernel_xpu_
+  autogen: _foreach_mul.Scalar_out
+
+- func: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_list_kernel_xpu
+
+- func: _foreach_div_.List(Tensor(a!)[] self, Tensor[] other) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_list_kernel_xpu_
+  autogen: _foreach_div.List_out
+
+- func: _foreach_div.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_scalar_kernel_xpu
+
+- func: _foreach_div_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_scalar_kernel_xpu_
+  autogen: _foreach_div.Scalar_out
+
+- func: _foreach_addcmul.Scalar(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_scalar_xpu
+
+- func: _foreach_addcmul_.Scalar(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_scalar_xpu_
+  autogen: _foreach_addcmul.Scalar_out
+
+
+- func: _foreach_addcmul.ScalarList(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_scalarlist_xpu
+
+- func: _foreach_addcmul_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_scalarlist_xpu_
+  autogen: _foreach_addcmul.ScalarList_out
+
+- func: _foreach_addcdiv_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_scalarlist_xpu_
+  autogen: _foreach_addcdiv.ScalarList_out
+
+- func: _foreach_addcdiv.ScalarList(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_scalarlist_xpu
+
+- func: _foreach_addcdiv.Scalar(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_scalar_xpu
+
+- func: _foreach_addcdiv_.Scalar(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_scalar_xpu_
+  autogen: _foreach_addcdiv.Scalar_out
+
+- func: native_layer_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight, Tensor? bias, float eps) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: layer_norm_xpu
+  autogen: native_layer_norm.out
+  tags: core
+
+- func: native_layer_norm_backward(Tensor grad_out, Tensor input, SymInt[] normalized_shape, Tensor mean, Tensor rstd, Tensor? weight, Tensor? bias, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: layer_norm_backward_xpu
+  autogen: native_layer_norm_backward.out
+  tags: core
+
+- func: tril.out(Tensor self, int diagonal=0, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: tril_xpu
+
+- func: tril(Tensor self, int diagonal=0) -> Tensor
+  structured_delegate: tril.out
+  variants: method, function
+
+- func: tril_(Tensor(a!) self, int diagonal=0) -> Tensor(a!)
+  structured_delegate: tril.out
+  variants: method
+
+- func: triu_(Tensor(a!) self, int diagonal=0) -> Tensor(a!)
+  structured_delegate: triu.out
+  variants: method
+
+- func: triu.out(Tensor self, int diagonal=0, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: triu_xpu
+
+- func: triu(Tensor self, int diagonal=0) -> Tensor
+  structured_delegate: triu.out
+  variants: method, function

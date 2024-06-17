@@ -4,8 +4,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <c10/util/generic_math.h>
 
-#include <aten/sycl/BinaryKernels.h>
-#include <aten/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/BinaryKernels.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
 

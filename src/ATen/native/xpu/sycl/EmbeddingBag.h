@@ -1,10 +1,10 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/core/Array.h>
+#include <comm/xpu_aten.h>
 
-#include <aten/sycl/BatchKernel.h>
-#include <aten/sycl/NumericLimits.h>
+#include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

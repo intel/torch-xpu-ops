@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/EmbeddingBackwardKernel.h>
-#include <aten/sycl/pstl/PSTLFunctions.h>
+#include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
+#include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

@@ -5,16 +5,11 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
 // #include <ATen/xpu/XPUNativeFunctions.h>
-<<<<<<< HEAD:src/aten/UnaryOps.cpp
-#include <aten/sycl/UnaryKernels.h>
-#include <aten/sycl/UnaryLogKernels.h>
-#include <aten/sycl/UnarySignKernels.h>
-#include <aten/sycl/UnarySpecialOpsKernels.h>
-=======
+
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
-#include <torch/library.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/UnaryOps.cpp
+#include <ATen/native/xpu/sycl/UnarySignKernels.h>
+#include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
@@ -33,6 +28,11 @@ REGISTER_XPU_DISPATCH(tanh_stub, native::xpu::tanh_kernel);
 REGISTER_XPU_DISPATCH(neg_stub, native::xpu::neg_kernel);
 REGISTER_XPU_DISPATCH(reciprocal_stub, native::xpu::reciprocal_kernel);
 REGISTER_XPU_DISPATCH(bitwise_not_stub, native::xpu::bitwise_not_kernel);
+REGISTER_XPU_DISPATCH(exp_stub, native::xpu::exp_kernel);
+REGISTER_XPU_DISPATCH(sigmoid_stub, native::xpu::sigmoid_kernel);
+REGISTER_XPU_DISPATCH(
+    sgn_stub,
+    native::xpu::sgn_kernel); // how to handle comple
 } // namespace native
 
 template <typename Stub>
@@ -326,14 +326,16 @@ static inline Tensor& unary_op_impl_(Tensor& self, OutImpl& out_impl) {
 //   return self;
 // }
 
-// Tensor& XPUNativeFunctions::reciprocal_out(const Tensor& self, Tensor& out) {
+// Tensor& XPUNativeFunctions::reciprocal_out(const Tensor& self, Tensor& out)
+// {
 //   TensorIterator iter;
 //   iter.build_borrowing_unary_float_op(out, self);
 //   native::xpu::reciprocal_kernel(iter);
 //   return out;
 // }
 
-// Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out)
+// Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor&
+// out)
 // {
 //   TensorIterator iter;
 //   iter.build_borrowing_unary_op(out, self);
@@ -341,82 +343,82 @@ static inline Tensor& unary_op_impl_(Tensor& self, OutImpl& out_impl) {
 //   return out;
 // }
 
-Tensor XPUNativeFunctions::exp(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::exp_kernel(iter);
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::exp(const Tensor& self) {
+//   Tensor out;
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(out, self);
+//   native::xpu::exp_kernel(iter);
+//   return iter.output();
+// }
 
-Tensor& XPUNativeFunctions::exp_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::exp_kernel(iter);
-  return out;
-}
+// Tensor& XPUNativeFunctions::exp_out(const Tensor& self, Tensor& out) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(out, self);
+//   native::xpu::exp_kernel(iter);
+//   return out;
+// }
 
-Tensor& XPUNativeFunctions::exp_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::exp_kernel(iter);
-  return self;
-}
+// Tensor& XPUNativeFunctions::exp_(Tensor& self) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(self, self);
+//   native::xpu::exp_kernel(iter);
+//   return self;
+// }
 
-Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sigmoid_kernel(iter);
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
+//   Tensor out;
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(out, self);
+//   native::xpu::sigmoid_kernel(iter);
+//   return iter.output();
+// }
 
-Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::sigmoid_kernel(iter);
-  return self;
-}
+// Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(self, self);
+//   native::xpu::sigmoid_kernel(iter);
+//   return self;
+// }
 
-Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sigmoid_kernel(iter);
-  return out;
-}
+// Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_float_op(out, self);
+//   native::xpu::sigmoid_kernel(iter);
+//   return out;
+// }
 
-Tensor XPUNativeFunctions::sgn(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::sgn(const Tensor& self) {
+//   Tensor out;
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_op(out, self);
+//   if (self.is_complex()) {
+//     native::xpu::sgn_kernel(iter);
+//   } else {
+//     native::xpu::sign_kernel(iter);
+//   }
+//   return iter.output();
+// }
 
-Tensor& XPUNativeFunctions::sgn_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(self, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return self;
-}
+// Tensor& XPUNativeFunctions::sgn_(Tensor& self) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_op(self, self);
+//   if (self.is_complex()) {
+//     native::xpu::sgn_kernel(iter);
+//   } else {
+//     native::xpu::sign_kernel(iter);
+//   }
+//   return self;
+// }
 
-Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return out;
-}
+// Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
+//   TensorIterator iter;
+//   iter.build_borrowing_unary_op(out, self);
+//   if (self.is_complex()) {
+//     native::xpu::sgn_kernel(iter);
+//   } else {
+//     native::xpu::sign_kernel(iter);
+//   }
+//   return out;
+// }
 
 } // namespace at

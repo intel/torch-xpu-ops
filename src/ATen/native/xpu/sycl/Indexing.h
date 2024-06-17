@@ -1,11 +1,7 @@
 #pragma once
 
-<<<<<<< HEAD:src/aten/sycl/Indexing.h
-#include <aten/sycl/BatchKernel.h>
-#include <aten/sycl/Loops.h>
-=======
 #include <ATen/native/xpu/sycl/BatchKernel.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/sycl/Indexing.h
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;

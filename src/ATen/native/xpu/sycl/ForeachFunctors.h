@@ -2,8 +2,8 @@
 #include <ATen/OpMathType.h>
 #include <ATen/native/ForeachUtils.h>
 
-#include <aten/sycl/MultiTensorApply.h>
-#include <aten/sycl/Pow.h>
+#include <ATen/native/xpu/sycl/MultiTensorApply.h>
+#include <ATen/native/xpu/sycl/Pow.h>
 
 namespace at::native::xpu {
 namespace {

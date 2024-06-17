@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
@@ -9,6 +8,7 @@
 #include <ATen/xpu/detail/XPUHooks.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>

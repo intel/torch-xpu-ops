@@ -2,7 +2,7 @@
 // will upstream to pytorch when in tree
 #pragma once
 
-// #include <ATen/ATen.h>
+// #include <comm/xpu_aten.h>
 #include <ATen/Context.h>
 #include <ATen/Device.h>
 #include <ATen/DeviceGuard.h>

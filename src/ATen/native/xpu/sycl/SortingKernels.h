@@ -1,7 +1,7 @@
 #pragma once
 
-#include <aten/sycl/SortingCommon.h>
-#include <aten/sycl/SortingRadixSort.h>
+#include <ATen/native/xpu/sycl/SortingCommon.h>
+#include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
 

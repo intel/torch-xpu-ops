@@ -5,9 +5,6 @@
 #include <ATen/native/TensorIterator.h>
 
 #include <ATen/native/xpu/sycl/FillKernel.h>
-#include <ATen/xpu/ops/_adaptive_avg_pool2d.h>
-
-
 namespace at::native {
 
 // Tensor& fill_out(Tensor& self, const Scalar& value) {

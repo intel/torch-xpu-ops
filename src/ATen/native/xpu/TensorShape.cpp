@@ -6,12 +6,11 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
-#include <aten/sycl/ShapeKernels.h>
+#include <ATen/native/xpu/sycl/ShapeKernels.h>
 #include <comm/RegisterUtils.h>
 
 #include <ATen/xpu/ops/as_strided_copy_native.h>
 #include <ATen/xpu/ops/as_strided_native.h>
-
 
 namespace at {
 

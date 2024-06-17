@@ -1,8 +1,8 @@
-#include <ATen/XPUNativeFunctions.h>
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
-#include <aten/sycl/DilatedMaxPool2d.h>
+#include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {

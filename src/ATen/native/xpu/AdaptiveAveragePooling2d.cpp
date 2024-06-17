@@ -1,7 +1,7 @@
-#include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
+
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/AdaptiveAveragePooling2dKernel.h>
+#include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernel.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 

@@ -5,20 +5,12 @@
 // #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/DispatchStub.h>
 
-<<<<<<< HEAD:src/aten/BinaryOps.cpp
-#include <aten/sycl/BinaryBitwiseOpsKernels.h>
-#include <aten/sycl/BinaryKernels.h>
-#include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
-#include <aten/sycl/BinaryRemainderKernel.h>
-#include <aten/sycl/GcdLcmKernels.h>
-#include <aten/sycl/MaxMinElementwiseKernels.h>
-=======
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/BinaryOps.cpp
+#include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
 
@@ -35,6 +27,11 @@ REGISTER_XPU_DISPATCH(bitwise_and_stub, xpu::bitwise_and_kernel);
 REGISTER_XPU_DISPATCH(bitwise_or_stub, xpu::bitwise_or_kernel);
 REGISTER_XPU_DISPATCH(bitwise_xor_stub, xpu::bitwise_xor_kernel);
 REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
+
+REGISTER_XPU_DISPATCH(maximum_stub, xpu::maximum_kernel);
+REGISTER_XPU_DISPATCH(minimum_stub, xpu::minimum_kernel);
+REGISTER_XPU_DISPATCH(sigmoid_backward_stub, xpu::sigmoid_backward_kernel);
+
 } // namespace native
 
 // Tensor XPUNativeFunctions::add(
@@ -186,7 +183,6 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   return XPUNativeFunctions::mul_(self, wrapper);
 // }
 
-
 // Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
 //   Tensor out;
 //   TensorIterator iter;
@@ -233,7 +229,6 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   native::xpu::div_kernel(iter);
 //   return self;
 // }
->>>>>>> 3ba6c0b (Buffer src file for easier build)
 
 // Tensor& XPUNativeFunctions::div_out(
 //     const Tensor& self,
@@ -255,7 +250,6 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   return XPUNativeFunctions::div_(self, wrapper);
 // }
 
-
 // static inline TensorIterator meta_func_div_Tensor_mode(
 //     const Tensor& self,
 //     const Tensor& other,
@@ -272,9 +266,8 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   } else {
 //     TORCH_CHECK(
 //         false,
-//         "div expected rounding_mode to be one of None, 'trunc', or 'floor' "
-//         "but found '",
-//         *rounding_mode,
+//         "div expected rounding_mode to be one of None, 'trunc', or 'floor'
+//         " "but found '", *rounding_mode,
 //         "'");
 //   }
 //   return iter;
@@ -370,7 +363,8 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //       native::wrapped_scalar_tensor(other), self, alpha, out);
 // }
 
-// Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor& other)
+// Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor&
+// other)
 // {
 //   Tensor out;
 //   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
@@ -393,7 +387,8 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   return out;
 // }
 
-// Tensor XPUNativeFunctions::remainder(const Tensor& self, const Scalar& other)
+// Tensor XPUNativeFunctions::remainder(const Tensor& self, const Scalar&
+// other)
 // {
 //   auto wrapper = native::wrapped_scalar_tensor(other);
 //   return XPUNativeFunctions::remainder(self, wrapper);
@@ -412,7 +407,8 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   return XPUNativeFunctions::remainder_out(self, wrapper, out);
 // }
 
-// Tensor XPUNativeFunctions::remainder(const Scalar& self, const Tensor& other)
+// Tensor XPUNativeFunctions::remainder(const Scalar& self, const Tensor&
+// other)
 // {
 //   auto wrapper = native::wrapped_scalar_tensor(self);
 //   return XPUNativeFunctions::remainder(wrapper, other);
@@ -470,9 +466,8 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //     const Tensor& grad_output,
 //     const Tensor& output) {
 //   Tensor out;
-//   auto iter = TensorIterator::borrowing_binary_op(out, grad_output, output);
-//   native::xpu::tanh_backward_kernel(iter);
-//   return iter.output();
+//   auto iter = TensorIterator::borrowing_binary_op(out, grad_output,
+//   output); native::xpu::tanh_backward_kernel(iter); return iter.output();
 // }
 
 // Tensor& XPUNativeFunctions::tanh_backward_out(
@@ -534,78 +529,78 @@ REGISTER_XPU_DISPATCH(gcd_stub, xpu::gcd_kernel);
 //   return out;
 // }
 
-static inline TensorIterator meta_func_maximum(
-    const Tensor& self,
-    const Tensor& other,
-    Tensor& output) {
-  TORCH_CHECK(
-      !self.is_complex() && !other.is_complex(),
-      "maximum not implemented for complex tensors.");
-  auto iter = TensorIterator::borrowing_binary_op(output, self, other);
-  return iter;
-}
+// static inline TensorIterator meta_func_maximum(
+//     const Tensor& self,
+//     const Tensor& other,
+//     Tensor& output) {
+//   TORCH_CHECK(
+//       !self.is_complex() && !other.is_complex(),
+//       "maximum not implemented for complex tensors.");
+//   auto iter = TensorIterator::borrowing_binary_op(output, self, other);
+//   return iter;
+// }
 
-Tensor XPUNativeFunctions::maximum(const Tensor& self, const Tensor& other) {
-  Tensor output;
-  auto iter = meta_func_maximum(self, other, output);
-  native::xpu::maximum_kernel(iter);
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::maximum(const Tensor& self, const Tensor& other) {
+//   Tensor output;
+//   auto iter = meta_func_maximum(self, other, output);
+//   native::xpu::maximum_kernel(iter);
+//   return iter.output();
+// }
 
-Tensor& XPUNativeFunctions::maximum_out(
-    const Tensor& self,
-    const Tensor& other,
-    Tensor& output) {
-  auto iter = meta_func_maximum(self, other, output);
-  native::xpu::maximum_kernel(iter);
-  return output;
-}
+// Tensor& XPUNativeFunctions::maximum_out(
+//     const Tensor& self,
+//     const Tensor& other,
+//     Tensor& output) {
+//   auto iter = meta_func_maximum(self, other, output);
+//   native::xpu::maximum_kernel(iter);
+//   return output;
+// }
 
-static inline TensorIterator meta_func_minimum(
-    const Tensor& self,
-    const Tensor& other,
-    Tensor& output) {
-  TORCH_CHECK(
-      !self.is_complex() && !other.is_complex(),
-      "minimum not implemented for complex tensors.");
-  auto iter = TensorIterator::borrowing_binary_op(output, self, other);
-  return iter;
-}
+// static inline TensorIterator meta_func_minimum(
+//     const Tensor& self,
+//     const Tensor& other,
+//     Tensor& output) {
+//   TORCH_CHECK(
+//       !self.is_complex() && !other.is_complex(),
+//       "minimum not implemented for complex tensors.");
+//   auto iter = TensorIterator::borrowing_binary_op(output, self, other);
+//   return iter;
+// }
 
-Tensor XPUNativeFunctions::minimum(const Tensor& self, const Tensor& other) {
-  Tensor output;
-  auto iter = meta_func_minimum(self, other, output);
-  native::xpu::minimum_kernel(iter);
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::minimum(const Tensor& self, const Tensor& other) {
+//   Tensor output;
+//   auto iter = meta_func_minimum(self, other, output);
+//   native::xpu::minimum_kernel(iter);
+//   return iter.output();
+// }
 
-Tensor& XPUNativeFunctions::minimum_out(
-    const Tensor& self,
-    const Tensor& other,
-    Tensor& output) {
-  auto iter = meta_func_minimum(self, other, output);
-  native::xpu::minimum_kernel(iter);
-  return output;
-}
+// Tensor& XPUNativeFunctions::minimum_out(
+//     const Tensor& self,
+//     const Tensor& other,
+//     Tensor& output) {
+//   auto iter = meta_func_minimum(self, other, output);
+//   native::xpu::minimum_kernel(iter);
+//   return output;
+// }
 
-Tensor& XPUNativeFunctions::sigmoid_backward_out(
-    const Tensor& grad_output,
-    const Tensor& output,
-    Tensor& grad_input) {
-  TensorIterator iter;
-  iter.build_borrowing_binary_op(grad_input, grad_output, output);
-  native::xpu::sigmoid_backward_kernel(iter);
-  return grad_input;
-}
+// Tensor& XPUNativeFunctions::sigmoid_backward_out(
+//     const Tensor& grad_output,
+//     const Tensor& output,
+//     Tensor& grad_input) {
+//   TensorIterator iter;
+//   iter.build_borrowing_binary_op(grad_input, grad_output, output);
+//   native::xpu::sigmoid_backward_kernel(iter);
+//   return grad_input;
+// }
 
-Tensor XPUNativeFunctions::sigmoid_backward(
-    const Tensor& grad_output,
-    const Tensor& output) {
-  Tensor grad_input;
-  TensorIterator iter;
-  iter.build_borrowing_binary_op(grad_input, grad_output, output);
-  native::xpu::sigmoid_backward_kernel(iter);
-  return iter.output();
-}
+// Tensor XPUNativeFunctions::sigmoid_backward(
+//     const Tensor& grad_output,
+//     const Tensor& output) {
+//   Tensor grad_input;
+//   TensorIterator iter;
+//   iter.build_borrowing_binary_op(grad_input, grad_output, output);
+//   native::xpu::sigmoid_backward_kernel(iter);
+//   return iter.output();
+// }
 
 } // namespace at

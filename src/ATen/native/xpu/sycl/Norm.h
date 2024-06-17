@@ -1,12 +1,12 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
-#include <aten/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

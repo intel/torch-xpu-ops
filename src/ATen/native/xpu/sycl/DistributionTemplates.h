@@ -11,6 +11,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
+#include <ATen/ops/empty.h>
+
 namespace at {
 namespace native {
 namespace xpu {

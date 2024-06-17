@@ -4,22 +4,17 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-<<<<<<< HEAD:src/aten/sycl/Indexing.cpp
-#include <aten/sycl/Atomics.h>
-#include <aten/sycl/Indexing.h>
-#include <aten/sycl/IndexingUtils.h>
-#include <aten/sycl/Loops.h>
-#include <aten/sycl/pstl/PSTLFunctions.h>
-=======
+#include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/Indexing.h>
+#include <ATen/native/xpu/sycl/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
->>>>>>> 9222b7f (Align file structure to PyTorch):src/ATen/native/xpu/sycl/Indexing.cpp
+#include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <comm/xpu_aten.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
