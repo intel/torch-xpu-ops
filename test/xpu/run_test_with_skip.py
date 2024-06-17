@@ -1450,6 +1450,10 @@ skip_list = (
     "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float32",
     "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float32",
     "test_multiple_device_transfer_nn_Transformer_xpu_float32",
+
+    # Reflection_pad2d doesn't support channel last, CUDA skipped too.
+    "test_memory_format_nn_ReflectionPad2d_xpu_float32",
+    "test_memory_format_nn_ReflectionPad2d_xpu_float64",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 
