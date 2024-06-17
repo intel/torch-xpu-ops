@@ -1549,6 +1549,13 @@ skip_list = (
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
+# test_dataloader
+skip_list = (
+    # Skip for XPU didn't support
+    "test_nested_tensor_multiprocessing",
+)
+res += launch_test("test_dataloader_xpu.py", skip_list)
+
 # test_tensor_creation_ops
 skip_list = (
     # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
