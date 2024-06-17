@@ -1578,8 +1578,6 @@ res += launch_test("test_autocast_xpu.py", skip_list)
 
 # test_autograd
 skip_list = (
-    # Segment fault
-    "test_resize_version_bump_xpu",
     # c10::NotImplementedError
     "test_autograd_composite_implicit_and_dispatch_registration_xpu",
     "test_autograd_multiple_dispatch_registrations_xpu",
