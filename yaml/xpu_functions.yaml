@@ -348,3 +348,7 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
