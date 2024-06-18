@@ -11,7 +11,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_shape_ops import TestShapeOps
 
-instantiate_device_type_tests(TestShapeOps, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestShapeOps, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

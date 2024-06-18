@@ -12,7 +12,7 @@ with XPUPatchForImport(False):
     from test_modules import TestModule
 
 
-instantiate_device_type_tests(TestModule, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestModule, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

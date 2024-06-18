@@ -11,7 +11,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_reductions import TestReductions
 
-instantiate_device_type_tests(TestReductions, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestReductions, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

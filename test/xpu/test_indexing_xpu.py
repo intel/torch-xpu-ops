@@ -12,8 +12,8 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_indexing import NumpyTests,TestIndexing
 
-instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"))
 
-instantiate_device_type_tests(TestIndexing, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(TestIndexing, globals(), only_for=("xpu"))
 if __name__ == "__main__":
     run_tests()

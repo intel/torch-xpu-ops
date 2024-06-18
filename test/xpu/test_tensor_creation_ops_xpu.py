@@ -4153,11 +4153,11 @@ class TestAsArray(TestCase):
         self.assertNotEqual(original.data_ptr(), tensor.data_ptr())
 
 
-instantiate_device_type_tests(TestTensorCreation, globals(), only_for='xpu', allow_xpu=True)
-instantiate_device_type_tests(TestRandomTensorCreation, globals(), only_for='xpu', allow_xpu=True)
-instantiate_device_type_tests(TestLikeTensorCreation, globals(), only_for='xpu', allow_xpu=True)
-instantiate_device_type_tests(TestBufferProtocol, globals(), only_for="cpu", allow_xpu=True)
-instantiate_device_type_tests(TestAsArray, globals(),only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestTensorCreation, globals(), only_for='xpu')
+instantiate_device_type_tests(TestRandomTensorCreation, globals(), only_for='xpu')
+instantiate_device_type_tests(TestLikeTensorCreation, globals(), only_for='xpu')
+instantiate_device_type_tests(TestBufferProtocol, globals(), only_for="cpu")
+instantiate_device_type_tests(TestAsArray, globals(),only_for='xpu')
 
 if __name__ == '__main__':
     TestCase._default_dtype_check_enabled = True

@@ -70,7 +70,6 @@ runs:
           # install timm dependencies without torch and torchvision
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
-        pip install numpy==1.26.4
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash
       env:

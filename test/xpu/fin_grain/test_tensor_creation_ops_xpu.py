@@ -34,7 +34,7 @@ copy_tests(
     TestTensorCreationBase,
     applicable_list=["test_empty_strided"],
 )
-instantiate_device_type_tests(TestTensorCreationXPU, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestTensorCreationXPU, globals(), only_for="xpu")
 
 
 if __name__ == "__main__":

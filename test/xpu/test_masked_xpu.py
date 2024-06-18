@@ -12,6 +12,6 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_masked import TestMasked
 
-instantiate_device_type_tests(TestMasked, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(TestMasked, globals(), only_for='xpu')
 if __name__ == "__main__":
     run_tests()
