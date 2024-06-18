@@ -334,3 +334,5 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - upsample_bilinear2d.out
+  - upsample_bilinear2d_backward.grad_input
