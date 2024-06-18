@@ -242,6 +242,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
