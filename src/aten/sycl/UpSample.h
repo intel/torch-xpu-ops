@@ -115,7 +115,7 @@ static inline accscalar_t area_pixel_compute_scale(
 
 template <typename scalar_t>
 static scalar_t upsample_get_value_bounded(
-    const PackedTensorAccessor64<scalar_t, 4>& data,
+    const PackedTensorAccessor64<const scalar_t, 4>& data,
     int batch,
     int channel,
     int width,

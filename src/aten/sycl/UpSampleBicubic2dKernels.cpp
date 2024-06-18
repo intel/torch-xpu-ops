@@ -96,7 +96,7 @@ struct UpsampleBicubic2dOutFrameKernelFunctor {
   }
   UpsampleBicubic2dOutFrameKernelFunctor(
       PackedTensorAccessor64<scalar_t, 4> out_data,
-      const PackedTensorAccessor64<scalar_t, 4> in_data,
+      const PackedTensorAccessor64<const scalar_t, 4> in_data,
       int64_t onum,
       bool align_corners,
       const accscalar_t height_scale,
@@ -110,7 +110,7 @@ struct UpsampleBicubic2dOutFrameKernelFunctor {
 
  private:
   PackedTensorAccessor64<scalar_t, 4> out_data_;
-  const PackedTensorAccessor64<scalar_t, 4> in_data_;
+  const PackedTensorAccessor64<const scalar_t, 4> in_data_;
   int64_t onum_;
   bool align_corners_;
   const accscalar_t height_scale_;
@@ -120,7 +120,7 @@ struct UpsampleBicubic2dOutFrameKernelFunctor {
 template <typename scalar_t, typename accscalar_t>
 static void upsample_bicubic2d_out_frame(
     PackedTensorAccessor64<scalar_t, 4> odata,
-    const PackedTensorAccessor64<scalar_t, 4> idata,
+    const PackedTensorAccessor64<const scalar_t, 4> idata,
     int64_t onum,
     bool align_corners,
     const accscalar_t height_scale,
@@ -166,7 +166,7 @@ void upsample_bicubic2d_out_kernel(
       input.scalar_type(),
       "upsample_bicubic2d_out_kernel",
       [&] {
-        auto idata = input.packed_accessor64<scalar_t, 4>();
+        auto idata = input.packed_accessor64<const scalar_t, 4>();
         auto odata = output.packed_accessor64<scalar_t, 4>();
 
         // Get scaling factors
