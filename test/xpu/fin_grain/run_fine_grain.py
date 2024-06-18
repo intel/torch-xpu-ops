@@ -89,6 +89,12 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
+
+    # CPU reference fail. `abs_cpu` does not support bool.
+    # The case should be skipped by PyTorch test infrastructure, but not be
+    # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
+    # https://github.com/intel/torch-xpu-ops/issues/412
+    "test_compare_cpu_abs_xpu_bool",
 )
 
 

@@ -34,7 +34,7 @@ class WeightDTypeCastCounterMode(TorchDispatchMode):
         if (
             func is torch.ops.aten._to_copy.default
             and args[0] is self.weight
-            and kwargs["dtype"] is torch.bfloat16
+            and kwargs["dtype"] is torch.float16
         ):
             self.dtype_cast_counter += 1
         return func(*args, **kwargs)

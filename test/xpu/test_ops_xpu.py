@@ -13,8 +13,8 @@ with XPUPatchForImport(False):
     from test_ops import TestMathBits
 
 
-instantiate_device_type_tests(TestCommon, globals(), only_for="xpu")
-instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu")
+instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":
