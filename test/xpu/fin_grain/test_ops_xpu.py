@@ -82,6 +82,7 @@ _xpu_computation_op_list = [
     "ge",
     "gelu",
     "gt",
+    "hypot",
     "index_add",
     "index_put",
     "index_select",

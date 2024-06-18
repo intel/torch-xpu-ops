@@ -9,6 +9,7 @@
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
 #include <aten/sycl/GcdLcmKernels.h>
+#include <aten/sycl/BinaryGeometricKernels.h>
 #include <aten/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
@@ -471,6 +472,28 @@ Tensor& XPUNativeFunctions::gcd_out(
     Tensor& out) {
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::gcd_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::hypot(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hypot_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::hypot_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hypot_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
   return out;
 }
 
