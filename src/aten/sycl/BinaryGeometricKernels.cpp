@@ -16,8 +16,10 @@ struct HypotFunctor {
 
 void hypot_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half, at::ScalarType::BFloat16,
-      iter.common_dtype(), "hypot_xpu",
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "hypot_xpu",
       [&]() {
         opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(
             iter, HypotFunctor<scalar_t>());

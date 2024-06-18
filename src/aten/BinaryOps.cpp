@@ -5,11 +5,11 @@
 #include <ATen/native/TensorIterator.h>
 
 #include <aten/sycl/BinaryBitwiseOpsKernels.h>
+#include <aten/sycl/BinaryGeometricKernels.h>
 #include <aten/sycl/BinaryKernels.h>
 #include <aten/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <aten/sycl/BinaryRemainderKernel.h>
 #include <aten/sycl/GcdLcmKernels.h>
-#include <aten/sycl/BinaryGeometricKernels.h>
 #include <aten/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
