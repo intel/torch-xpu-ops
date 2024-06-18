@@ -992,6 +992,7 @@ res += launch_test("test_autograd_fallback.py")
 # test_sort_and_select
 skip_list = (
     # The following isin case fails on CPU fallback, as it could be backend-specific.
+    "test_isin_xpu_float16", # RuntimeError: "isin_default_cpu" not implemented for 'Half'
     "test_isin_different_devices_xpu_float32", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_float64", # AssertionError: RuntimeError not raised
     "test_isin_different_devices_xpu_int16", # AssertionError: RuntimeError not raised
@@ -3097,7 +3098,7 @@ skip_list = (
     # issue 302, 11
     "test_cuda_vitals_gpu_only_xpu",
 )
-res = launch_test("test_torch_xpu.py", skip_list)
+res += launch_test("test_torch_xpu.py", skip_list)
 
 skip_list = (
     # known oneDNN issue
@@ -3112,7 +3113,7 @@ skip_list = (
     "test_multihead_self_attn_two_masks_fast_path_mock_xpu",
 )
 
-res = launch_test("nn/test_multihead_attention_xpu.py", skip_list)
+res += launch_test("nn/test_multihead_attention_xpu.py", skip_list)
 
 
 exit_code = os.WEXITSTATUS(res)
