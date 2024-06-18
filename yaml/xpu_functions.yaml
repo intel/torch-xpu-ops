@@ -334,3 +334,6 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - addcmul.out
+  - addcmul
+  - addcmul_
