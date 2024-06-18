@@ -5,6 +5,7 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationGluKernel.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
@@ -394,6 +395,50 @@ Tensor XPUNativeFunctions::hardswish_backward(
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::hardswish_backward_kernel(iter);
   return iter.output();
+}
+
+static void check_even_dimension(const Tensor& input, int64_t dim) {
+  auto wrap_dim = maybe_wrap_dim(dim, input.dim());
+  const int64_t nln = input.size(wrap_dim);
+  TORCH_CHECK(
+      nln % 2 == 0,
+      "Halving dimension must be even, but dimension",
+      wrap_dim,
+      " is size ",
+      nln);
+}
+
+Tensor& XPUNativeFunctions::glu_out(
+    const Tensor& self,
+    int64_t dim,
+    Tensor& out) {
+  check_even_dimension(self, dim);
+  native::xpu::glu_kernel(self, dim, out);
+  return out;
+}
+
+Tensor XPUNativeFunctions::glu(const Tensor& self, int64_t dim) {
+  Tensor out = at::empty({}, self.options());
+  return XPUNativeFunctions::glu_out(self, dim, out);
+}
+
+Tensor& XPUNativeFunctions::glu_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    int64_t dim,
+    Tensor& grad_input) {
+  TORCH_CHECK(self.dim() > 0, "glu does not support 0-dimensional tensors");
+  check_even_dimension(self, dim);
+  native::xpu::glu_backward_kernel(grad_output, self, dim, grad_input);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::glu_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    int64_t dim) {
+  Tensor grad_input = at::empty({}, self.options());
+  return glu_backward_out(grad_output, self, dim, grad_input);
 }
 
 } // namespace at

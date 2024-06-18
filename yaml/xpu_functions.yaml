@@ -382,3 +382,7 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
