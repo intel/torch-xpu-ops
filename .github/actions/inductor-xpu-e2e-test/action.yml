@@ -185,6 +185,24 @@ runs:
         echo "num_failed: $num_failed" | tee -a inductor_log/summary.log
         echo "pass_rate: $pass_rate" | tee -a inductor_log/summary.log
 
+        #Accuracy summary 
+        cp .github/scripts/inductor_accuracy_summary.py ../pytorch
+        cd ../pytorch
+        source /opt/intel/oneapi/compiler/latest/env/vars.sh
+        pip install styleFrame scipy pandas
+        set -xe
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
+          mkdir -p target
+          cp -r inductor_log target
+          python inductor_accuracy_summary.py -r target -p ${dt} -s ${suite} -m ${mode}
+        done
+        cd ${{ github.workspace }}/inductor_log && cp -r ../pytorch/target .
+
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.scenario == 'performance'}}
       shell: bash
@@ -216,7 +234,7 @@ runs:
           mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
           python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
         done
-        cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
+        cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
 
     - name: Upload Inductor XPU E2E Data
       if: ${{ ! inputs.expected_pass_num }}
