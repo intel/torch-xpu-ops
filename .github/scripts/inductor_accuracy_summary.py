@@ -7,7 +7,7 @@ from styleframe import StyleFrame, Styler, utils
 parser = argparse.ArgumentParser(description="Generate report")
 parser.add_argument('-s', '--suite', default='huggingface', choices=["torchbench", "huggingface", "timm_models"], type=str, help='model suite name')
 parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs='*', type=str, help='precision')
-parser.add_argument('-t', '--target', type=str, help='target log files')
+#parser.add_argument('-t', '--target', type=str, help='target log files')
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 args = parser.parse_args()
@@ -46,7 +46,7 @@ def caculate_passrate(df, key_word):
 #         return False
 
 def get_acc_csv(precision, mode):
-    target_path = args.target + '/inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_accuracy.csv'
+    target_path = 'inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_accuracy.csv'
     #target_data = pd.DataFrame()
     #if validate_csv_files(target_path):
     target_ori_data = pd.read_csv(target_path)
@@ -362,7 +362,7 @@ def excel_postprocess(file, precison, mode):
 
 
 if __name__ == '__main__':
-    summary_path = args.target + '/Inductor_' + args.suite + '_E2E_Test_Acc_Report.xlsx'
+    summary_path = 'inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Acc_Report.xlsx'
     excel = StyleFrame.ExcelWriter(summary_path)
     print(f"=========Acc Check Summary file located in {summary_path}==================")
     generate_report(excel, args.precision, args.mode)

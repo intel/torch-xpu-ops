@@ -197,11 +197,9 @@ runs:
           $contains_status
           dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
           mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
-          mkdir -p target
-          cp -r inductor_log target
-          python inductor_accuracy_summary.py -r target -p ${dt} -s ${suite} -m ${mode}
+          python inductor_accuracy_summary.py -p ${dt} -s ${suite} -m ${mode}
         done
-        cd ${{ github.workspace }}/inductor_log && cp -r ../pytorch/target .
+        cd ${{ github.workspace }}/inductor_log && cp -r ../pytorch/inductor_log/* .
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.scenario == 'performance'}}
@@ -234,7 +232,7 @@ runs:
           mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
           python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
         done
-        cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
+        cd ${{ github.workspace }}/inductor_log && cp -r ../pytorch/inductor_log/* .
 
     - name: Upload Inductor XPU E2E Data
       if: ${{ ! inputs.expected_pass_num }}
