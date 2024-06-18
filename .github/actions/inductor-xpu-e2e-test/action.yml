@@ -123,7 +123,7 @@ runs:
         done
 
     - name: Summary E2E Accuracy Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ contains(fromJSON('["accuracy"]'), inputs.scenario)}}
+      if: ${{ inputs.scenario == 'accuracy' || inputs.scenario == 'accuracy,performance'}}
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -186,9 +186,10 @@ runs:
         echo "pass_rate: $pass_rate" | tee -a inductor_log/summary.log
 
         #Accuracy summary 
+        source activate e2e_ci
+        cd ${{ github.workspace }}
         cp .github/scripts/inductor_accuracy_summary.py ../pytorch
         cd ../pytorch
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
         pip install styleFrame scipy pandas
         set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
@@ -202,7 +203,7 @@ runs:
         cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ contains(fromJSON('["performance"]'), inputs.scenario)}}
+      if: ${{ inputs.scenario == 'performance' || inputs.scenario == 'accuracy,performance'}}
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
