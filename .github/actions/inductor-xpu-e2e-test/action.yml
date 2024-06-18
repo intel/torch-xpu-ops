@@ -123,7 +123,7 @@ runs:
         done
 
     - name: Summary E2E Accuracy Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.scenario == 'accuracy' || 'accuracy,performance' }}
+      if: ${{ contains(fromJSON('["accuracy"]'), inputs.scenario)}}
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -202,7 +202,7 @@ runs:
         cd ${{ github.workspace }} && cp -r ../pytorch/inductor_log .
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.scenario == 'performance' || 'accuracy,performance' }}
+      if: ${{ contains(fromJSON('["performance"]'), inputs.scenario)}}
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
