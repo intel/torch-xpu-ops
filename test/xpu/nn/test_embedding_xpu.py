@@ -12,7 +12,7 @@ with XPUPatchForImport(False):
     from test_embedding import TestEmbeddingNNDeviceType
 
 
-instantiate_device_type_tests(TestEmbeddingNNDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestEmbeddingNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":
