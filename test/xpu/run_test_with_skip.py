@@ -1008,34 +1008,32 @@ skip_list = (
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
 
 nn_test_embedding_skip_list = (
-    # Skip list of base line
-    # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors'
+    # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float16",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
+    "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float16",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
     "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
+    "test_embedding_backward_xpu_float16",
     "test_embedding_backward_xpu_float64",
-    "test_embedding_bag_1D_padding_idx_xpu_float32",
-    "test_embedding_bag_1D_padding_idx_xpu_float64",
-    "test_embedding_bag_2D_padding_idx_xpu_float32",
-    "test_embedding_bag_2D_padding_idx_xpu_float64",
+    "test_embedding_bag_1D_padding_idx_xpu_bfloat16",
+    "test_embedding_bag_1D_padding_idx_xpu_float16",
+    "test_embedding_bag_2D_padding_idx_xpu_bfloat16",
+    "test_embedding_bag_2D_padding_idx_xpu_float16",
     "test_embedding_bag_bfloat16_xpu_int32_int32",
     "test_embedding_bag_bfloat16_xpu_int32_int64",
     "test_embedding_bag_bfloat16_xpu_int64_int32",
     "test_embedding_bag_bfloat16_xpu_int64_int64",
-    "test_embedding_bag_device_xpu_int32_int32_bfloat16",
     "test_embedding_bag_device_xpu_int32_int32_float16",
     "test_embedding_bag_device_xpu_int32_int32_float32",
     "test_embedding_bag_device_xpu_int32_int32_float64",
-    "test_embedding_bag_device_xpu_int32_int64_bfloat16",
     "test_embedding_bag_device_xpu_int32_int64_float16",
     "test_embedding_bag_device_xpu_int32_int64_float32",
     "test_embedding_bag_device_xpu_int32_int64_float64",
-    "test_embedding_bag_device_xpu_int64_int32_bfloat16",
     "test_embedding_bag_device_xpu_int64_int32_float16",
     "test_embedding_bag_device_xpu_int64_int32_float32",
     "test_embedding_bag_device_xpu_int64_int32_float64",
-    "test_embedding_bag_device_xpu_int64_int64_bfloat16",
     "test_embedding_bag_device_xpu_int64_int64_float16",
     "test_embedding_bag_device_xpu_int64_int64_float32",
     "test_embedding_bag_device_xpu_int64_int64_float64",
@@ -1480,12 +1478,16 @@ skip_list = (
     "test_module_to_empty_xpu_float64",
     "test_rnn_fused_xpu_float64",
     "test_rnn_retain_variables_xpu_float64",
+    "test_transformerencoderlayer_xpu_float64",
+    "test_variable_sequence_xpu_float64",
 
     # CPU fallback fails
     # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
     "test_GroupNorm_empty_xpu",
     # AssertionError: Tensor-likes are not close!
     "test_GroupNorm_memory_format_xpu",
+    "test_transformerencoderlayer_gelu_xpu_float16",
+    "test_transformerencoderlayer_xpu_float16",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
@@ -1495,6 +1497,7 @@ skip_list = (
     "test_batchnorm_simple_average_mixed_xpu_float16",
     "test_batchnorm_simple_average_xpu_float32",
     "test_batchnorm_update_stats_xpu",
+    "test_batchnorm_simple_average_xpu_bfloat16",
     # AssertionError: False is not true
     "test_device_mask_xpu",
     "test_overwrite_module_params_on_conversion_cpu_device_xpu",
@@ -1513,6 +1516,8 @@ skip_list = (
     # CPU fallback could not cover
     # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
     "test_rnn_fused_xpu_float32",
+    "test_rnn_retain_variables_xpu_float16",
+    "test_rnn_retain_variables_xpu_float32",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
@@ -1537,6 +1542,11 @@ skip_list = (
 
     # CPU fallback fails
     "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+    "test_AdaptiveMaxPool3d_indices_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
+    "test_max_pool_nan_inf_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
+    "test_maxpool_indices_no_batch_dim_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
+    "test_pool_large_size_xpu_bfloat16", # "avg_pool3d_out_frame" not implemented for 'BFloat16'
+    "test_pool_large_size_xpu_float16", # "avg_pool3d_out_frame" not implemented for 'Half'
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
@@ -1666,6 +1676,10 @@ skip_list=(
     "test_reference_numerics_small__refs_atan_xpu_complex64",
     "test_reference_numerics_small_atan_xpu_complex128",
     "test_reference_numerics_small_atan_xpu_complex64",
+    "test_reference_numerics_large__refs_atan_xpu_complex32",
+    "test_reference_numerics_large__refs_tanh_xpu_complex32",
+    "test_reference_numerics_large_tanh_xpu_complex32",
+    "test_reference_numerics_small__refs_atan_xpu_complex32",
 
     # For extreme value processing, Numpy and XPU results are inconsistent
     "test_reference_numerics_extremal__refs_log_xpu_complex64",
@@ -1678,7 +1692,23 @@ skip_list=(
     # CPU Fallback fails
     # New ATen operators fails on CPU Fallback.
     # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
-    "_special_"
+    "_special_",
+
+    # Failed: Unexpected success
+    "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
+    "test_reference_numerics_large_rsqrt_xpu_complex32",
+
+    # RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_batch_vs_slicing_sigmoid_xpu_complex32",
+    "test_contig_size1_large_dim_sigmoid_xpu_complex32",
+    "test_contig_size1_sigmoid_xpu_complex32",
+    "test_contig_vs_every_other_sigmoid_xpu_complex32",
+    "test_contig_vs_transposed_sigmoid_xpu_complex32",
+    "test_non_contig_expand_sigmoid_xpu_complex32",
+    "test_non_contig_index_sigmoid_xpu_complex32",
+    "test_non_contig_sigmoid_xpu_complex32",
+    "test_reference_numerics_normal_sigmoid_xpu_complex32",
+    "test_reference_numerics_small_sigmoid_xpu_complex32",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
@@ -1807,6 +1837,8 @@ skip_list = (
         # https://github.com/intel/torch-xpu-ops/issues/275
         # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend. 
         "test_flip_xpu_float32",
+        # RuntimeError: "trace" not implemented for 'Half'
+        "test_trace_xpu_float16",
 )
 res += launch_test("test_shape_ops_xpu.py", skip_list)
 
@@ -2789,6 +2821,10 @@ skip_list = (
     "test_inplace_gradgrad_addr_xpu_float64",
     "test_inplace_gradgrad_baddbmm_xpu_complex128",
     "test_inplace_gradgrad_baddbmm_xpu_float64",
+    "test_fn_grad_pca_lowrank_xpu_complex128",
+    "test_fn_grad_svd_lowrank_xpu_complex128",
+    "test_fn_gradgrad_pca_lowrank_xpu_complex128",
+    "test_fn_gradgrad_svd_lowrank_xpu_complex128",
 
     ### Error #1 in TestBwdGradientsXPU , totally 4 , RuntimeError: value cannot be converted to type float without overflow
     
@@ -3097,6 +3133,9 @@ skip_list = (
     "test_typed_storage_internal_no_warning",
     # issue 302, 11
     "test_cuda_vitals_gpu_only_xpu",
+
+    # torch.utils.swap_tensors AssertionError: RuntimeError not raised
+    "test_swap_basic",
 )
 res += launch_test("test_torch_xpu.py", skip_list)
 
