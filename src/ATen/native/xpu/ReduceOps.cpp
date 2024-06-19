@@ -9,7 +9,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
+
 #include <ATen/native/xpu/sycl/ReduceOps.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
@@ -45,47 +45,6 @@ void impl_func_cum_ops(
   }
 }
 
-// Tensor& XPUNativeFunctions::cumsum_out(
-//     const Tensor& self,
-//     int64_t dim,
-//     c10::optional<ScalarType> dtype,
-//     Tensor& result) {
-//   // Checking whether 'dim' is valid.
-//   maybe_wrap_dim(dim, self.dim());
-
-//   ScalarType out_dtype;
-
-//   if (!result.defined()) {
-//     auto is_integral =
-//         at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-//     out_dtype =
-//         dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-//     result = at::empty_strided(
-//         self.sizes(), self.strides(), self.options().dtype(out_dtype));
-//   } else {
-//     at::native::resize_output(result, self.sizes());
-//     result.as_strided_(self.sizes(), self.strides());
-//   }
-
-//   impl_func_cum_ops(self, dim, result, at::native::xpu::cumsum_kernel);
-//   return result;
-// }
-
-// Tensor XPUNativeFunctions::cumsum(
-//     const Tensor& self,
-//     int64_t dim,
-//     c10::optional<ScalarType> dtype) {
-//   Tensor result;
-//   return cumsum_out(self, dim, dtype, result);
-// }
-
-// Tensor& XPUNativeFunctions::cumsum_(
-//     Tensor& self,
-//     int64_t dim,
-//     c10::optional<ScalarType> dtype) {
-//   return cumsum_out(self, dim, dtype, self);
-// }
-
 static ScalarType infer_dtype_from_optional(
     const Tensor& self,
     const optional<ScalarType>& opt_dtype,
@@ -120,114 +79,6 @@ inline bool should_use_acc_buffer(at::TensorIterator& iter) {
   }
   return true;
 }
-
-// Tensor& XPUNativeFunctions::sum_out(
-//     const Tensor& self,
-//     OptionalIntArrayRef opt_dim,
-//     bool keepdim,
-//     c10::optional<ScalarType> opt_dtype,
-//     Tensor& result) {
-//   auto out_dtype = infer_dtype_from_optional(self, opt_dtype, result);
-//   result = resize_reduction(result, self, opt_dim, keepdim, out_dtype);
-//   auto iter = meta::make_reduction_from_out_ty(
-//       self, result, opt_dim, keepdim, result.scalar_type());
-//   if (iter.numel() == 0) {
-//     result.zero_();
-//   } else {
-//     // Here is a limitation of TensorIterator reductions for permuted input
-//     with
-//     // lower precision on CPU. Consider the case: TensorIterator coalesces
-//     such
-//     // input and output to >= 2 dims tensors, and the output stride is [0, 0,
-//     x,
-//     // x, ...] with x >= 0 (two reduced dimensions and non-reduced dims).
-//     Since
-//     // the reduction loop only operates on two dimensions at a time, the
-//     // intermediate sums is forced to do accumulation in the second reduced
-//     dim
-//     // with lower precision. See
-//     https://github.com/pytorch/pytorch/issues/83149 if
-//     (should_use_acc_buffer(iter)) {
-//       auto tmp_output =
-//           at::empty(result.sizes(), result.options().dtype(kFloat));
-//       at::sum_outf(
-//           self.to(ScalarType::Float),
-//           opt_dim,
-//           keepdim,
-//           /*dtype=*/c10::nullopt,
-//           tmp_output);
-//       result.copy_(tmp_output);
-//     } else {
-//       native::xpu::sum_kernel(iter);
-//     }
-//   }
-//   return result;
-// }
-
-// Tensor XPUNativeFunctions::sum(
-//     const Tensor& self,
-//     OptionalIntArrayRef dim,
-//     bool keepdim,
-//     c10::optional<ScalarType> opt_dtype) {
-//   Tensor out;
-//   return XPUNativeFunctions::sum_out(self, dim, keepdim, opt_dtype, out);
-// }
-
-// Tensor& XPUNativeFunctions::sum_out(
-//     const Tensor& self,
-//     c10::optional<ScalarType> dtype,
-//     Tensor& out) {
-//   return XPUNativeFunctions::sum_out(self, IntArrayRef{}, false, dtype, out);
-// }
-
-// Tensor& mean_meta(
-//     const Tensor& self,
-//     OptionalIntArrayRef opt_dim,
-//     bool keepdim,
-//     optional<ScalarType> opt_dtype,
-//     Tensor& out) {
-//   auto in_dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
-//   if (!at::isFloatingType(in_dtype) && !at::isComplexType(in_dtype)) {
-//     std::string what = "Input";
-//     std::string dtype = toString(self.scalar_type());
-
-//     if (opt_dtype.has_value()) {
-//       what = "Optional";
-//       dtype = toString(opt_dtype.value());
-//     }
-
-//     TORCH_CHECK(
-//         false,
-//         "mean(): could not infer output dtype. ",
-//         what,
-//         " dtype must be either a floating point or complex dtype. ",
-//         "Got: ",
-//         dtype);
-//   }
-
-//   auto out_dtype = infer_dtype_from_optional(self, opt_dtype, out);
-//   out = resize_reduction(out, self, opt_dim, keepdim, out_dtype);
-//   return out;
-// }
-
-// Tensor& XPUNativeFunctions::mean_out(
-//     const Tensor& self,
-//     OptionalIntArrayRef opt_dim,
-//     bool keepdim,
-//     c10::optional<ScalarType> opt_dtype,
-//     Tensor& result) {
-//   result = mean_meta(self, opt_dim, keepdim, opt_dtype, result);
-//   ScalarType dtype = result.scalar_type();
-//   // device is not CPU
-//   auto iter = at::meta::make_reduction_from_out_ty(
-//       self, result, opt_dim, keepdim, dtype);
-//   if (iter.numel() == 0) {
-//     result.fill_(std::numeric_limits<double>::quiet_NaN());
-//   } else {
-//     native::xpu::mean_kernel(iter);
-//   }
-//   return result;
-// }
 
 inline TensorIterator get_allany_iter(
     const Tensor& self,
@@ -293,30 +144,6 @@ Tensor& allany_meta(
   return result;
 }
 
-// Tensor XPUNativeFunctions::any(const Tensor& self, int64_t dim, bool keepdim)
-// {
-//   Tensor result;
-//   result = allany_meta(result, "any", self, dim, keepdim);
-//   allany_impl<0>(self, result, dim, keepdim, native::xpu::or_kernel);
-//   return result;
-// }
-
-// Tensor& XPUNativeFunctions::any_out(
-//     const Tensor& self,
-//     int64_t dim,
-//     bool keepdim,
-//     Tensor& out) {
-//   out = allany_meta(out, "any", self, dim, keepdim);
-//   allany_impl<0>(self, out, dim, keepdim, native::xpu::or_kernel);
-//   return out;
-// }
-
-// Tensor& XPUNativeFunctions::any_out(const Tensor& self, Tensor& out) {
-//   out = allany_meta(out, "any", self, {}, false);
-//   allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);
-//   return out;
-// }
-
 template <class Stub>
 void argmax_argmin_impl(
     const Tensor& self,
@@ -370,30 +197,5 @@ static void check_argmax_argmin(
 static IntArrayRef optional_to_arrayref(const c10::optional<int64_t>& opt) {
   return opt.has_value() ? opt.value() : IntArrayRef{};
 }
-
-// Tensor& argmax_meta(
-//     const Tensor& self,
-//     c10::optional<int64_t> dim,
-//     bool keepdim,
-//     Tensor& out) {
-//   check_argmax_argmin("argmax()", self, dim);
-//   return resize_reduction(out, self, optional_to_arrayref(dim), keepdim,
-//   kLong);
-// }
-
-// Tensor& XPUNativeFunctions::argmax_out(
-//     const Tensor& self,
-//     c10::optional<int64_t> dim,
-//     bool keepdim,
-//     Tensor& out) {
-//   std::optional<Device> common_device = std::nullopt;
-//   c10::impl::check_and_update_common_device(
-//       common_device, out, "XPUNativeFunctions::argmax_out", "out");
-//   c10::impl::check_and_update_common_device(
-//       common_device, self, "XPUNativeFunctions::argmax_out", "self");
-//   out = argmax_meta(self, dim, keepdim, out);
-//   argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
-//   return out;
-// }
 
 } // namespace at

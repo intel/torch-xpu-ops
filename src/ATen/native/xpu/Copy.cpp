@@ -329,28 +329,4 @@ Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
 namespace native {
 REGISTER_XPU_DISPATCH(copy_stub, &native::xpu::_copy_xpu);
 }
-// Tensor& XPUNativeFunctions::copy_(
-//     Tensor& self,
-//     const Tensor& src,
-//     bool non_blocking) {
-//   return native::xpu::_copy_xpu(self, src, non_blocking);
-// }
-
-// Tensor XPUNativeFunctions::_to_copy(
-//     const Tensor& self,
-//     c10::optional<ScalarType> dtype,
-//     c10::optional<Layout> layout,
-//     c10::optional<Device> device,
-//     c10::optional<bool> pin_memory,
-//     bool non_blocking,
-//     c10::optional<c10::MemoryFormat> optional_memory_format) {
-//   return at::native::_to_copy(
-//       self,
-//       dtype,
-//       layout,
-//       device,
-//       pin_memory,
-//       non_blocking,
-//       optional_memory_format);
-// }
 } // namespace at

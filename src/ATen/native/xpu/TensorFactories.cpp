@@ -59,11 +59,4 @@ Tensor empty_strided_xpu(
 }
 
 } // namespace native
-
-// Tensor XPUNativeFunctions::clone(
-//     const Tensor& self,
-//     c10::optional<MemoryFormat> memory_format) {
-//   return at::native::clone(self, memory_format);
-// }
-
 } // namespace at

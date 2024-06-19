@@ -43,13 +43,5 @@ Tensor index_select_xpu_(const Tensor& self, int64_t dim, const Tensor& index) {
   return at::native::index_select_out_xpu(self, dim, index, result);
 }
 
-// Tensor XPUNativeFunctions::index_select(
-//     const Tensor& self,
-//     int64_t dim,
-//     const Tensor& index) {
-//   auto out = at::empty({0}, self.options());
-//   return index_select_out(self, dim, index, out);
-// }
-
 } // namespace native
 } // namespace at

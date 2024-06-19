@@ -177,12 +177,6 @@ const at::Tensor& resize_xpu_(
   return native::xpu::resize_xpu_(self, size, memory_format);
 }
 
-// Tensor& XPUNativeFunctions::set_(Tensor& self, Storage source) {
-//   int64_t new_size =
-//       static_cast<int64_t>(source.nbytes() / self.dtype().itemsize());
-//   return self.set_(source, 0, new_size, {});
-// }
-
 Tensor& set_storage_xpu_(
     Tensor& self,
     Storage source,
@@ -206,11 +200,5 @@ Tensor& set_xpu_(Tensor& result) {
   TORCH_INTERNAL_ASSERT(dtype == result.dtype());
   return result;
 }
-
 } // namespace native
-
-// Tensor& set_(Tensor& self, const at::Tensor& source) {
-//   return at::native::set_tensor_(self, source);
-// }
-
 } // namespace at

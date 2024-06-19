@@ -9,10 +9,9 @@
 #include <ATen/native/IndexKernel.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorIterator.h>
-#include <comm/xpu_aten.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/IndexingKernel.h>
 #include <comm/RegisterUtils.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 #include <ATen/ops/index_add_meta.h>
@@ -41,74 +40,7 @@ TORCH_IMPL_FUNC(index_add_xpu_out)
   //   index_func_meta_impl(result, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, result);
 }
-
-// Tensor index_select_xpu_(const Tensor& self, int64_t dim, const Tensor&
-// index) {
-//   Tensor result = at::empty({0}, self.options());
-//   return at::native::index_select_out_xpu(self, dim, index, result);
-// }
-
 } // namespace native
-
-// Tensor& XPUNativeFunctions::masked_fill_(
-//     Tensor& self,
-//     const Tensor& mask,
-//     const Scalar& value) {
-//   TORCH_CHECK(
-//       self.device() == mask.device(),
-//       "expected self and mask to be on the same device, but got mask on ",
-//       mask.device(),
-//       " and self on ",
-//       self.device());
-//   TORCH_CHECK(
-//       mask.scalar_type() == kBool,
-//       "masked_fill only supports boolean masks, but got dtype ",
-//       mask.scalar_type());
-//   auto maybe_outnames =
-//       namedinference::broadcast_to_outnames(self, mask, "masked_fill_");
-//   if (at::has_internal_overlap(self) == MemOverlap::Yes) {
-//     TORCH_WARN(
-//         "Use of masked_fill_ on expanded tensors is deprecated. "
-//         "Please clone() the tensor before performing this operation. "
-//         "This also applies to advanced indexing e.g. tensor[mask] = scalar");
-//   }
-//   at::assert_no_partial_overlap(self, mask);
-
-//   c10::MaybeOwned<Tensor> b_mask = expand_inplace(self, mask,
-//   "masked_fill_");
-
-//   auto iter = TensorIteratorConfig()
-//                   .set_check_mem_overlap(false)
-//                   .check_all_same_dtype(false)
-//                   .resize_outputs(false)
-//                   .add_output(self)
-//                   .add_const_input(self)
-//                   .add_const_input(*b_mask)
-//                   .build();
-
-//   native::xpu::masked_fill_kernel(iter, value);
-//   namedinference::propagate_names_if_nonempty(self, maybe_outnames);
-//   return self;
-// }
-
-// Tensor& XPUNativeFunctions::masked_fill_(
-//     Tensor& self,
-//     const Tensor& mask,
-//     const Tensor& value) {
-//   TORCH_CHECK(
-//       value.dim() == 0,
-//       "masked_fill_ only supports a 0-dimensional value tensor, but got
-//       tensor " "with ", value.dim(), " dimension(s).");
-//   // We hit this function if either of the input tensor lives on XPU.
-//   // It is ok, if `value` is `CPU` tensor but we should not allow `self` or
-//   // `mask` to be CPU tensor. Check for `self` and `mask` being on same
-//   device
-//   // exists in `masked_fill_` (Scalar version).
-//   TORCH_CHECK(
-//       self.device().is_xpu(),
-//       "masked_fill_: Expected inputs to be on same device")
-//   return XPUNativeFunctions::masked_fill_(self, mask, value.item());
-// }
 
 void index_func_meta_impl(
     Tensor& result,
@@ -195,25 +127,5 @@ void index_func_meta_impl(
         TensorIterator::borrowing_binary_op(selfSlice, selfSlice, sourceSlice);
   }
 }
-
-// Tensor& XPUNativeFunctions::index_add_out(
-//     const Tensor& self,
-//     int64_t dim,
-//     const Tensor& index,
-//     const Tensor& source,
-//     const Scalar& alpha,
-//     Tensor& out) {
-//   std::optional<Device> common_device = std::nullopt;
-//   c10::impl::check_and_update_common_device(
-//       common_device, self, "xpu::index_add_out", "self");
-//   c10::impl::check_and_update_common_device(
-//       common_device, index, "xpu::index_add_out", "index");
-//   c10::impl::check_and_update_common_device(
-//       common_device, source, "xpu::index_add_out", "source");
-//   dim = maybe_wrap_dim(dim, self.dim());
-//   index_func_meta_impl(out, self, dim, index, source, "index_add");
-//   native::xpu::index_add_kernel(self, dim, index, source, alpha, out);
-//   return out;
-// }
 
 } // namespace at

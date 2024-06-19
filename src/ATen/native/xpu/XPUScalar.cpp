@@ -2,7 +2,6 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
