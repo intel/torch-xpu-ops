@@ -4,6 +4,7 @@ import sys
 
 # Cases in the file is too slow to run all suites on CPU. So add white list.
 
+
 def launch_test(test_case, skip_list=None, exe_list=None):
     if skip_list != None:
         skip_options = " -k 'not " + skip_list[0]
@@ -11,7 +12,10 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += "'"
-        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
         test_command += skip_options
         return os.system(test_command)
     elif exe_list != None:
@@ -20,12 +24,19 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += "'"
-        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
         test_command += exe_options
         return os.system(test_command)
     else:
-        test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
         return os.system(test_command)
+
 
 res = 0
 
@@ -47,71 +58,71 @@ execute_list = (
     "test_comprehensive_nn_functional_nll_loss_xpu_float32",
     "test_comprehensive_nn_functional_nll_loss_xpu_float64",
     "test_comprehensive_nn_functional_unfold_xpu_complex128",
-"test_comprehensive_nn_functional_unfold_xpu_complex64",
-"test_comprehensive_nn_functional_unfold_xpu_float64",
-"test_comprehensive_nn_functional_unfold_xpu_float32",
-"test_comprehensive_unfold_copy_xpu_complex128",
-"test_comprehensive_unfold_copy_xpu_complex64",
-"test_comprehensive_nn_functional_unfold_xpu_bfloat16",
-"test_comprehensive_nn_functional_unfold_xpu_float16",
-"test_comprehensive_unfold_xpu_complex128",
-"test_comprehensive_unfold_xpu_complex64",
-"test_comprehensive_unfold_copy_xpu_float32",
-"test_comprehensive_unfold_copy_xpu_float64",
-"test_comprehensive_unfold_copy_xpu_complex32",
-"test_comprehensive_unfold_xpu_float32",
-"test_comprehensive_unfold_xpu_float64",
-"test_comprehensive_unfold_copy_xpu_bool",
-"test_comprehensive_unfold_copy_xpu_int16",
-"test_comprehensive_unfold_copy_xpu_int32",
-"test_quick_nn_functional_unfold_xpu_complex128",
-"test_comprehensive_unfold_copy_xpu_int64",
-"test_comprehensive_unfold_copy_xpu_int8",
-"test_comprehensive_unfold_copy_xpu_uint8",
-"test_quick_nn_functional_unfold_xpu_complex64",
-"test_quick_unfold_xpu_complex32",
-"test_quick_unfold_xpu_complex128",
-"test_quick_unfold_copy_xpu_complex64",
-"test_quick_unfold_copy_xpu_complex32",
-"test_quick_unfold_copy_xpu_complex128",
-"test_comprehensive_unfold_xpu_complex32",
-"test_quick_unfold_xpu_complex64",
-"test_quick_nn_functional_unfold_xpu_float64",
-"test_quick_nn_functional_unfold_xpu_float32",
-"test_quick_unfold_copy_xpu_float64",
-"test_quick_unfold_copy_xpu_float32",
-"test_quick_unfold_xpu_float64",
-"test_quick_unfold_xpu_float32",
-"test_comprehensive_unfold_xpu_int16",
-"test_comprehensive_unfold_copy_xpu_bfloat16",
-"test_comprehensive_unfold_xpu_int32",
-"test_comprehensive_unfold_xpu_int64",
-"test_comprehensive_unfold_xpu_int8",
-"test_comprehensive_unfold_xpu_uint8",
-"test_quick_unfold_copy_xpu_bool",
-"test_quick_unfold_copy_xpu_int32",
-"test_quick_unfold_copy_xpu_int64",
-"test_quick_unfold_copy_xpu_int16",
-"test_quick_unfold_xpu_bool",
-"test_quick_unfold_xpu_int64",
-"test_quick_unfold_xpu_int32",
-"test_comprehensive_unfold_xpu_bool",
-"test_quick_unfold_xpu_int16",
-"test_quick_unfold_copy_xpu_int8",
-"test_quick_unfold_copy_xpu_uint8",
-"test_quick_unfold_xpu_int8",
-"test_quick_unfold_xpu_uint8",
-"test_comprehensive_unfold_copy_xpu_float16",
-"test_comprehensive_unfold_xpu_float16",
-"test_comprehensive_unfold_xpu_bfloat16",
-"test_quick_nn_functional_unfold_xpu_bfloat16",
-"test_quick_nn_functional_unfold_xpu_float16",
-"test_quick_unfold_copy_xpu_float16",
-"test_quick_unfold_copy_xpu_bfloat16",
-"test_quick_unfold_xpu_bfloat16",
-"test_quick_unfold_xpu_float16",
-"test_quick_core_backward_nn_functional_unfold_xpu_float64",
-"test_quick_core_backward_unfold_copy_xpu_float64",
+    "test_comprehensive_nn_functional_unfold_xpu_complex64",
+    "test_comprehensive_nn_functional_unfold_xpu_float64",
+    "test_comprehensive_nn_functional_unfold_xpu_float32",
+    "test_comprehensive_unfold_copy_xpu_complex128",
+    "test_comprehensive_unfold_copy_xpu_complex64",
+    "test_comprehensive_nn_functional_unfold_xpu_bfloat16",
+    "test_comprehensive_nn_functional_unfold_xpu_float16",
+    "test_comprehensive_unfold_xpu_complex128",
+    "test_comprehensive_unfold_xpu_complex64",
+    "test_comprehensive_unfold_copy_xpu_float32",
+    "test_comprehensive_unfold_copy_xpu_float64",
+    "test_comprehensive_unfold_copy_xpu_complex32",
+    "test_comprehensive_unfold_xpu_float32",
+    "test_comprehensive_unfold_xpu_float64",
+    "test_comprehensive_unfold_copy_xpu_bool",
+    "test_comprehensive_unfold_copy_xpu_int16",
+    "test_comprehensive_unfold_copy_xpu_int32",
+    "test_quick_nn_functional_unfold_xpu_complex128",
+    "test_comprehensive_unfold_copy_xpu_int64",
+    "test_comprehensive_unfold_copy_xpu_int8",
+    "test_comprehensive_unfold_copy_xpu_uint8",
+    "test_quick_nn_functional_unfold_xpu_complex64",
+    "test_quick_unfold_xpu_complex32",
+    "test_quick_unfold_xpu_complex128",
+    "test_quick_unfold_copy_xpu_complex64",
+    "test_quick_unfold_copy_xpu_complex32",
+    "test_quick_unfold_copy_xpu_complex128",
+    "test_comprehensive_unfold_xpu_complex32",
+    "test_quick_unfold_xpu_complex64",
+    "test_quick_nn_functional_unfold_xpu_float64",
+    "test_quick_nn_functional_unfold_xpu_float32",
+    "test_quick_unfold_copy_xpu_float64",
+    "test_quick_unfold_copy_xpu_float32",
+    "test_quick_unfold_xpu_float64",
+    "test_quick_unfold_xpu_float32",
+    "test_comprehensive_unfold_xpu_int16",
+    "test_comprehensive_unfold_copy_xpu_bfloat16",
+    "test_comprehensive_unfold_xpu_int32",
+    "test_comprehensive_unfold_xpu_int64",
+    "test_comprehensive_unfold_xpu_int8",
+    "test_comprehensive_unfold_xpu_uint8",
+    "test_quick_unfold_copy_xpu_bool",
+    "test_quick_unfold_copy_xpu_int32",
+    "test_quick_unfold_copy_xpu_int64",
+    "test_quick_unfold_copy_xpu_int16",
+    "test_quick_unfold_xpu_bool",
+    "test_quick_unfold_xpu_int64",
+    "test_quick_unfold_xpu_int32",
+    "test_comprehensive_unfold_xpu_bool",
+    "test_quick_unfold_xpu_int16",
+    "test_quick_unfold_copy_xpu_int8",
+    "test_quick_unfold_copy_xpu_uint8",
+    "test_quick_unfold_xpu_int8",
+    "test_quick_unfold_xpu_uint8",
+    "test_comprehensive_unfold_copy_xpu_float16",
+    "test_comprehensive_unfold_xpu_float16",
+    "test_comprehensive_unfold_xpu_bfloat16",
+    "test_quick_nn_functional_unfold_xpu_bfloat16",
+    "test_quick_nn_functional_unfold_xpu_float16",
+    "test_quick_unfold_copy_xpu_float16",
+    "test_quick_unfold_copy_xpu_bfloat16",
+    "test_quick_unfold_xpu_bfloat16",
+    "test_quick_unfold_xpu_float16",
+    "test_quick_core_backward_nn_functional_unfold_xpu_float64",
+    "test_quick_core_backward_unfold_copy_xpu_float64",
 )
 res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 
@@ -121,7 +132,6 @@ execute_list = (
     "test_unfold_scalars_xpu",
     "test_unfold_neg_dim",
     "test_unfold_all_devices_and_dtypes_xpu",
-
 )
 res += launch_test("test_torch_xpu.py", exe_list=execute_list)
 

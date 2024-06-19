@@ -137,7 +137,6 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
-    "unfold_backward",
 ]
 
 _xpu_computation_ops = [

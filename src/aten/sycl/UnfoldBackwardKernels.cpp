@@ -1,94 +1,20 @@
 #include <ATen/ATen.h>
-
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/NonEmptyUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <c10/core/ScalarType.h>
-
-#include <aten/sycl/CopyKernel.h>
+#include <ATen/native/UnfoldBackward.h>
 #include <aten/sycl/Loops.h>
+#include <c10/core/ScalarType.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
 constexpr int n_elems_per_work_item = 4; // UNROLLED_ELEM_PER_WORK_ITEM;
 
-static TensorIterator _make_unfold_backward_iter_over_grad_out(
-    Tensor& grad_out,
-    const Tensor& grad_in,
-    int64_t dim,
-    int64_t size,
-    int64_t step) {
-  dim = maybe_wrap_dim(dim, grad_out.dim());
-  // last dim stores the folds
-
-  auto grad_out_dim_size = ensure_nonempty_size(grad_out, dim);
-  auto grad_in_dim_size = ensure_nonempty_size(grad_in, dim);
-  // dictates the number of elements to iterate over in dimension `dim`
-  auto iter_dim_size =
-      std::min(grad_out_dim_size, (grad_in_dim_size - 1) * step + size);
-
-  /* prepare grad_out for TensorIterator { */
-  auto grad_out_strides = ensure_nonempty_vec(grad_out.strides().vec());
-  auto grad_out_sizes = ensure_nonempty_vec(grad_out.sizes().vec());
-  grad_out_sizes[dim] = iter_dim_size;
-  auto grad_out_restrided =
-      grad_out.as_strided(grad_out_sizes, grad_out_strides);
-  /* } */
-
-  /* prepare grad_in for TensorIterator { */
-  auto grad_in_strides = ensure_nonempty_vec(grad_in.strides().vec());
-  auto grad_in_sizes = ensure_nonempty_vec(grad_in.sizes().vec());
-
-  // set strides for dim to 0
-  // and size to 1 because this dimension is indexed inside the kernel
-  grad_in_strides[dim] = 0;
-  grad_in_sizes[dim] = 1;
-
-  grad_in_strides.pop_back();
-  grad_in_sizes.pop_back();
-
-  auto grad_in_restrided =
-      grad_in.squeeze(-1).as_strided(grad_in_sizes, grad_in_strides);
-  /* } */
-
-  // During the TensorIterator iteration we have to know
-  // i_dim in grad_out[i_1,...,i_dim,...i_n],
-  // idx_dim stores this information
-  /* prepare idx_dim for TensorIterator { */
-  auto idx_dim =
-      at::arange(0, iter_dim_size, grad_in.options().dtype(at::kLong));
-
-  auto grad_out_dim = ensure_nonempty_dim(grad_out.dim());
-
-  auto idx_dim_strides = std::vector<int64_t>(grad_out_dim, 0);
-  auto idx_dim_sizes = std::vector<int64_t>(grad_out_dim, 1);
-
-  idx_dim_strides[dim] = 1;
-  idx_dim_sizes[dim] = iter_dim_size;
-
-  // idx_dim size will broadcast over determined by grad_out sizes in
-  // TensorIterator
-  auto idx_dim_restrided = idx_dim.as_strided(idx_dim_sizes, idx_dim_strides);
-  /* } */
-
-  auto iter = TensorIteratorConfig()
-                  .set_check_mem_overlap(false)
-                  .check_all_same_dtype(false)
-                  .resize_outputs(false)
-                  .add_owned_output(grad_out_restrided)
-                  .add_owned_const_input(grad_in_restrided)
-                  .add_owned_const_input(idx_dim_restrided)
-                  .build();
-
-  return iter;
-}
-
 template <int n_elems_per_work_item, typename func_t>
 struct UnfoldBackwardElementwiseKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    int idx = item_id.get_linear_id();
+  void operator()(sycl::item<1> item) const {
+    int idx = item.get_linear_id();
 #pragma unroll
     for (int i = 0; i < n_elems_per_work_item; ++i) {
       if (idx < total_n_elems_) {
