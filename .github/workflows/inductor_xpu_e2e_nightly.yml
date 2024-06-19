@@ -237,7 +237,7 @@ jobs:
             test_status=None
           fi
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            cc_comment="CC ${GITHUB_TRIGGERING_ACTOR}"
+            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
             test_scope="Inputs: triton=${{ inputs.triton }}; suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }}"
             test_sw="SW info: XPU=${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}, Torch=${TORCH_COMMIT_ID} on ${TORCH_BRANCH_ID}"
             test_hw="HW info: Run on ${RUNNER_NAME} with DKMS=${DKMS_VERSION} and DPCPP=${DPCPP_VERSION}"
