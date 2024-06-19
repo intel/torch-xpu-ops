@@ -24,8 +24,4 @@ void bitwise_not_kernel(TensorIteratorBase& iter);
 
 void exp_kernel(TensorIteratorBase& iter);
 
-void acos_kernel(TensorIteratorBase& iter);
-
-void acosh_kernel(TensorIteratorBase& iter);
-
 } // namespace at::native::xpu

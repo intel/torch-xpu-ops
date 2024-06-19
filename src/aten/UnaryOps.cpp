@@ -3,6 +3,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/UnaryGeometricAcosKernel.h>
+#include <aten/sycl/UnaryGeometricAcoshKernel.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
 #include <aten/sycl/UnarySignKernels.h>
