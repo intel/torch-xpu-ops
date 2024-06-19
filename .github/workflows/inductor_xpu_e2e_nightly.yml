@@ -78,6 +78,7 @@ jobs:
           else
             echo "TRITON_COMMIT_ID=${{ inputs.triton }}" >> "${GITHUB_ENV}"
           fi
+          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
@@ -100,6 +101,8 @@ jobs:
           pip install -r requirements.txt
           export USE_XPU=1
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          echo "DKMS_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" >> "${GITHUB_ENV}"
+          echo "DPCPP_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" >> "${GITHUB_ENV}"
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
@@ -213,8 +216,10 @@ jobs:
         run: |
           if [ "${{ inputs.suite }}" != "" ];then
             report_issue_id=426
+            test_type="On-demand"
           else
-            report_issue_id=304
+            report_issue_id=432
+            test_type="Nightly"
           fi
           if [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "success" ];then
             test_status=Success
@@ -224,13 +229,19 @@ jobs:
           else
             test_status=None
           fi
-          if [ "${report_issue_id}" == "426" ];then
+          if [ "${{ inputs.suite }}" != "" ];then
             cc_comment="CC ${{ github.actor }}"
+            test_scope="Inputs: triton=${{ inputs.triton }}; suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }}"
+            test_sw="SW info: XPU=${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}, Torch=${TORCH_COMMIT_ID} on ${TORCH_BRANCH_ID}"
+            test_hw="HW info: Run on ${RUNNER_NAME} with DKMS=${DKMS_VERSION} and DPCPP=${DPCPP_VERSION}"
           fi
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           if [ "${test_status}" != "None" ];then
-            gh --repo $repo issue comment $report_issue_id --body "XPU OPS Nightly ${test_status} $(date +'%F')
+            gh --repo $repo issue comment $report_issue_id --body "$cc_comment
+                  $(date +'%F') $test_type Test Status: ${test_status}
                   See: $build_url
-                  $cc_comment"
+                  $test_scope
+                  $test_sw
+                  $test_hw"
           fi
