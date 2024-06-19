@@ -80,6 +80,11 @@ skip_list = (
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
+
+    # CUDA/XPU use accumulate datatype
+    # CUDA only tests float32
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_float16",
 )
 
 
