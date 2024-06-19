@@ -3,7 +3,7 @@ name: E2E Nightly_OnDemand Tests
 on:
   schedule:
     # GMT+8 21:00 every day
-    - cron: '0 3 * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       triton:
@@ -74,6 +74,9 @@ jobs:
             cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
           else
             test_status=None
+          fi
+          if [ "${report_issue_id}" == "426" ];then
+            cc_comment="CC ${{ github.actor }}"
           fi
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
