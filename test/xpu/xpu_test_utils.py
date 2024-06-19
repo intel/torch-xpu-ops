@@ -3,7 +3,7 @@
 import copy
 import os
 import sys
-
+from torch import bfloat16
 from torch.testing._internal import common_device_type, common_methods_invocations, common_utils
 
 
@@ -133,6 +133,8 @@ class XPUPatchForImport:
         self.instantiate_parametrized_tests_fn = (
             common_utils.instantiate_parametrized_tests
         )
+        self.python_ref_db = common_methods_invocations.python_ref_db
+        self.ops_and_refs = common_methods_invocations.ops_and_refs
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -159,6 +161,12 @@ class XPUPatchForImport:
         for op in common_methods_invocations.op_db:
             if op.name not in _xpu_computation_op_list:
                 op.dtypesIfXPU = op.dtypes
+            else:
+                backward_dtypes = set(op.backward_dtypesIfCUDA)
+                backward_dtypes.add(bfloat16)
+                op.backward_dtypes = tuple(backward_dtypes)
+        common_methods_invocations.python_ref_db = [op for op in self.python_ref_db if op.torch_opinfo_name in _xpu_computation_op_list]
+        common_methods_invocations.ops_and_refs = common_methods_invocations.op_db + common_methods_invocations.python_ref_db
 
         sys.path.extend(self.test_package)
         return self
@@ -177,6 +185,8 @@ class XPUPatchForImport:
             self.instantiate_parametrized_tests_fn
         )
         common_utils.TestCase = self.test_case_cls
+        common_methods_invocations.python_ref_db = self.python_ref_db
+        common_methods_invocations.ops_and_refs = self.ops_and_refs
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
