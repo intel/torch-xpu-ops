@@ -91,7 +91,7 @@ with XPUPatchForImport(False):
 
     TestModule._test_gradients_helper = _gradients_helper
 
-instantiate_device_type_tests(TestModule, globals(), only_for="xpu")
+instantiate_device_type_tests(TestModule, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":
