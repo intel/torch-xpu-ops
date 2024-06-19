@@ -54,11 +54,16 @@ int64_t _nnz(const SparseTensor& self) {
   return at::native::_nnz_sparse(self);
 }
 
+Tensor _values(const SparseTensor& self) {
+  return at::native::_values_sparse(self);
+}
+
 TORCH_LIBRARY_IMPL(aten, SparseXPU, m) {
   m.impl(
       TORCH_SELECTIVE_NAME("_sparse_coo_tensor_with_dims_and_tensors"),
       TORCH_FN(_sparse_coo_tensor_with_dims_and_tensors));
   m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz));
+  m.impl(TORCH_SELECTIVE_NAME("_values"), TORCH_FN(_values));
 }
 
 } // namespace at::native::xpu
