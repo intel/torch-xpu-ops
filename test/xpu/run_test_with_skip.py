@@ -1556,6 +1556,7 @@ skip_list = (
     "test_maxpool_indices_no_batch_dim_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
     "test_pool_large_size_xpu_bfloat16", # "avg_pool3d_out_frame" not implemented for 'BFloat16'
     "test_pool_large_size_xpu_float16", # "avg_pool3d_out_frame" not implemented for 'Half'
+    "test_adaptive_pooling_empty_output_size_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
