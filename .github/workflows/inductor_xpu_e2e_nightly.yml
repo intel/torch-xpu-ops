@@ -31,6 +31,11 @@ on:
         type: string
         default: 'accuracy'
         description: accuracy,performance. Delimiter is comma
+      model:
+        required: false
+        type: string
+        default: ''
+        description: If set, will only launch this one
 
 
 permissions: read-all
@@ -86,6 +91,7 @@ jobs:
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          echo "MODEL_ONLY_NAME=${{ inputs.model }}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
