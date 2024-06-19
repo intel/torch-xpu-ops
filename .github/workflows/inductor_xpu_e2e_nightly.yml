@@ -210,18 +210,24 @@ jobs:
     needs: Inductor-XPU-E2E-Nightly-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
-        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'success' }} && ${{ !inputs.suite }}
         run: |
+          if [ "${{ inputs.suite }}" != "" ];then
+            report_issue_id=426
+          else
+            report_issue_id=304
+          fi
+          if [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "success" ];then
+            test_status=Success
+          elif [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "failure" ];then
+            test_status=Failure
+            cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
+          else
+            test_status=None
+          fi
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
-          gh --repo $repo issue comment 304  \
-              --body "XPU OPS Nightly Successful $(date +'%F'), See: $build_url"
-      - name: Report github issue when failure detected
-        if: ${{ needs.Inductor-XPU-E2E-Nightly-Tests.result == 'failure' }} && ${{ !inputs.suite }}
-        run: |
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          notification_list="${{ secrets.NIGHTLY_EMAIL_LIST }}"
-          repo="${{ github.repository }}"
-          gh --repo $repo issue comment 304  \
-              --body "XPU OPS Nightly Failed $(date +'%F'), See: $build_url
-                      cc $notification_list"
+          if [ "${test_status}" != "None" ];then
+            gh --repo $repo issue comment $report_issue_id --body "XPU OPS Nightly ${test_status} $(date +'%F')
+                  See: $build_url
+                  $cc_comment"
+          fi
