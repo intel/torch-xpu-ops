@@ -3,6 +3,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
+#include <aten/sycl/ActivationHardsigmoidKernels.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
 
 namespace at {
@@ -155,6 +156,58 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
   auto iter =
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::hardsigmoid(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_float_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_(Tensor& self) {
+  auto iter = TensorIterator::unary_float_op(self, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_float_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return out;
+}
+
+TensorIterator hardsigmoid_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  TORCH_CHECK(self.numel() == grad_output.numel(), "different elements ...");
+  TensorIterator iter;
+  iter = TensorIteratorConfig()
+             .set_check_mem_overlap(true)
+             .add_output(grad_input)
+             .add_input(grad_output)
+             .add_input(self)
+             .build();
+  return iter;
+}
+
+Tensor XPUNativeFunctions::hardsigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
+  Tensor grad_input;
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
   return grad_input;
 }
 

@@ -334,3 +334,8 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - hardsigmoid.out
+  - hardsigmoid
+  - hardsigmoid_
+  - hardsigmoid_backward.grad_input
+  - hardsigmoid_backward
