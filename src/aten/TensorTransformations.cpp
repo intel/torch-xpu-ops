@@ -1,9 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <aten/sycl/TensorTransformationsKernel.h>
+#include <ATen/native/TensorTransformations.h>
+#include <aten/sycl/TensorTransformationsKernels.h>
 
 namespace at {
 
@@ -77,4 +77,27 @@ Tensor XPUNativeFunctions::flip(const Tensor& self, IntArrayRef dims) {
   at::native::xpu::flip_kernel(iter);
   return out_tensor;
 }
+
+Tensor XPUNativeFunctions::roll(
+    const Tensor& self,
+    IntArrayRef shifts,
+    IntArrayRef dims) {
+  if (dims.size() != 1 || shifts.size() != 1) {
+    return at::native::roll_common(self, shifts, dims);
+  }
+
+  auto in_tensor = self;
+  if (!self.is_contiguous()) {
+    in_tensor = self.contiguous();
+  }
+  auto out_tensor = at::empty_like(in_tensor, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  if (out_tensor.numel() == 0) {
+    return out_tensor;
+  }
+
+  native::xpu::roll_kernel(in_tensor, out_tensor, shifts, dims);
+
+  return out_tensor;
+}
+
 } // namespace at
