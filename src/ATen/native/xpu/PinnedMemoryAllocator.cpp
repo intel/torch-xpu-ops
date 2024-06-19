@@ -3,12 +3,12 @@
 #include <ATen/xpu/PinnedMemoryAllocator.h>
 #include <comm/xpu_aten.h>
 
-namespace at {
+#include <ATen/xpu/ops/is_pinned_native.h>
 
+namespace at {
+namespace native {
 // Note: The user must call is_pinned(device='xpu') to explicitly call here.
-bool XPUNativeFunctions::is_pinned(
-    const Tensor& self,
-    c10::optional<Device> device) {
+bool is_pinned_xpu(const Tensor& self, c10::optional<Device> device) {
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
       !device.has_value() || device->type() == c10::DeviceType::XPU);
 
@@ -17,9 +17,7 @@ bool XPUNativeFunctions::is_pinned(
 
 // Note: The user must call tensor.pin_memory(device='xpu') to explicitly call
 // here.
-Tensor XPUNativeFunctions::_pin_memory(
-    const Tensor& self,
-    c10::optional<Device> device) {
+Tensor _pin_memory_xpu(const Tensor& self, c10::optional<Device> device) {
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
       !device.has_value() || device->type() == c10::DeviceType::XPU);
 
@@ -36,4 +34,5 @@ Tensor XPUNativeFunctions::_pin_memory(
   return tensor;
 }
 
+} // namespace native
 } // namespace at

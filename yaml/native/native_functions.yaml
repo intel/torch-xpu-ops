@@ -1844,3 +1844,122 @@
 - func: triu(Tensor self, int diagonal=0) -> Tensor
   structured_delegate: triu.out
   variants: method, function
+
+- func: set_(Tensor(a!) self) -> Tensor(a!)
+  variants: method
+  dispatch:
+    XPU: set_xpu_
+  autogen: set, set.out
+  tags: inplace_view
+
+- func: set_.source_Tensor(Tensor(a!) self, Tensor source) -> Tensor(a!)
+  variants: method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    XPU: set_tensor_
+  autogen: set.source_Tensor, set.source_Tensor_out
+  tags: inplace_view
+
+- func: nll_loss_forward.output(Tensor self, Tensor target, Tensor? weight, int reduction, SymInt ignore_index, *, Tensor(a!) output, Tensor(b!) total_weight) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: nll_loss_forward_out_xpu
+
+- func: nll_loss_forward(Tensor self, Tensor target, Tensor? weight, int reduction, SymInt ignore_index) -> (Tensor output, Tensor total_weight)
+  python_module: nn
+  structured_delegate: nll_loss_forward.output
+
+- func: nll_loss_backward.grad_input(Tensor grad_output, Tensor self, Tensor target, Tensor? weight, int reduction, SymInt ignore_index, Tensor total_weight, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: nll_loss_backward_out_xpu
+
+- func: nll_loss_backward(Tensor grad_output, Tensor self, Tensor target, Tensor? weight, int reduction, SymInt ignore_index, Tensor total_weight) -> Tensor
+  python_module: nn
+  structured_delegate: nll_loss_backward.grad_input
+
+# - func: sort.values(Tensor self, int dim=-1, bool descending=False, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+#   device_check: NoCheck   # TensorIterator
+#   dispatch:
+#     CompositeExplicitAutograd: sort_out
+
+# - func: sort.values_stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+#   structured: True
+#   dispatch:
+#     XPU: sort_stable_out
+
+# - func: sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method, function
+#   dispatch:
+#     CompositeExplicitAutograd: sort
+#   tags: core
+
+# - func: sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)
+#   structured_delegate: sort.values_stable
+#   variants: method, function
+
+- func: cat(Tensor[] tensors, int dim=0) -> Tensor
+  structured_delegate: cat.out
+  tags: core
+
+- func: cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  precomputed:
+  - dim -> int dim, int valid, bool all_contiguous, bool all_same_dtype, bool all_same_sizes_and_stride, MemoryFormat memory_format
+  dispatch:
+    XPU: cat_out_xpu
+
+- func: is_pinned(Tensor self, Device? device=None) -> bool
+  variants: method
+  dispatch:
+    XPU: is_pinned_xpu
+
+# TODO: add a copy kwarg that guarantees that the tensor is put into fresh
+# pinned memory
+- func: pin_memory(Tensor(a) self, Device? device=None) -> Tensor(a)
+  variants: method
+
+# Unlike pin_memory, this is guaranteed to give a new non-aliasing tensor
+- func: _pin_memory(Tensor self, Device? device=None) -> Tensor
+  dispatch:
+    XPU: _pin_memory_xpu
+  autogen: _pin_memory.out
+
+- func: _embedding_bag_forward_only(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _embedding_bag_forward_only_xpu
+  autogen: _embedding_bag_forward_only.out
+
+- func: _embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _embedding_bag_xpu
+  autogen: _embedding_bag.out
+  tags: core
+
+- func: max_pool2d_with_indices_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, int[2] dilation, bool ceil_mode, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: max_pool2d_with_indices_backward_out_xpu
+
+- func: max_pool2d_with_indices_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, int[2] dilation, bool ceil_mode, Tensor indices) -> Tensor
+  python_module: nn
+  structured_delegate: max_pool2d_with_indices_backward.grad_input
+  tags: core
+
+- func: _adaptive_avg_pool2d_backward(Tensor grad_output, Tensor self) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: adaptive_avg_pool2d_backward_xpu
+  autogen: _adaptive_avg_pool2d_backward.out
+  tags: core
+
+- func: embedding_dense_backward(Tensor grad_output, Tensor indices, SymInt num_weights, SymInt padding_idx, bool scale_grad_by_freq) -> Tensor
+  dispatch:
+    XPU: embedding_dense_backward_xpu
+  autogen: embedding_dense_backward.out
+  tags: core

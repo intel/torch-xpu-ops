@@ -9,7 +9,7 @@
 
 namespace at::native {
 
-REGISTER_XPU_DISPATCH(flip_stub, xpu::flip_kernel);
+// REGISTER_XPU_DISPATCH(flip_stub, xpu::flip_kernel);
 // Tensor XPUNativeFunctions::flip(const Tensor& self, IntArrayRef dims) {
 //   std::optional<Device> common_device = std::nullopt;
 //   c10::impl::check_and_update_common_device(

@@ -310,8 +310,8 @@ void max_pool2d_backward_out_frame(
   }
 }
 
-Tensor& max_pool2d_with_indices_backward_out_kernel(
-    Tensor& gradInput,
+void max_pool2d_with_indices_backward_out_kernel(
+    const Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
     const Tensor& indices,
@@ -430,7 +430,6 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
-  return gradInput;
 }
 
 } // namespace xpu

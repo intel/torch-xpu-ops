@@ -6,8 +6,8 @@ namespace at {
 namespace native {
 namespace xpu {
 
-Tensor& max_pool2d_with_indices_backward_out_kernel(
-    Tensor& gradInput,
+void max_pool2d_with_indices_backward_out_kernel(
+    const Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
     const Tensor& indices,

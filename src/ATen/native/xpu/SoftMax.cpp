@@ -5,7 +5,7 @@
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
-// #include <ATen/xpu/ops/_log_softmax_backward_data_native.h>
+#include <ATen/xpu/ops/_log_softmax_backward_data_native.h>
 #include <ATen/xpu/ops/_softmax_backward_data_native.h>
 #include <ATen/xpu/ops/_softmax_native.h>
 namespace at::native {
@@ -32,7 +32,7 @@ TORCH_IMPL_FUNC(softmax_backward_xpu_out)
       "grad_input");
   c10::impl::check_and_update_common_device(
       common_device,
-      grad_output,
+      output,
       "xpu::_softmax_backward_data_out_out",
       "grad_output");
   c10::impl::check_and_update_common_device(
@@ -55,7 +55,7 @@ TORCH_IMPL_FUNC(log_softmax_backward_xpu_out)
       "grad_input");
   c10::impl::check_and_update_common_device(
       common_device,
-      grad_output,
+      output,
       "xpu::_log_softmax_backward_data_out_out",
       "grad_output");
   c10::impl::check_and_update_common_device(

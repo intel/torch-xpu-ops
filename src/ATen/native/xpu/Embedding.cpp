@@ -2,10 +2,11 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
+#include <ATen/xpu/ops/embedding_dense_backward_native.h>
 
 namespace at {
-
-Tensor XPUNativeFunctions::embedding_dense_backward(
+namespace native {
+Tensor embedding_dense_backward_xpu(
     const Tensor& grad_output,
     const Tensor& indices,
     int64_t num_weights,
@@ -19,9 +20,10 @@ Tensor XPUNativeFunctions::embedding_dense_backward(
       "grad_output");
   c10::impl::check_and_update_common_device(
       common_device, indices, "xpu::embedding_dense_backward", "indices");
-  return native::xpu::embedding_dense_backward_kernel(
+  return xpu::embedding_dense_backward_kernel(
       grad_output, indices, num_weights, padding_idx, scale_grad_by_freq);
   ;
 }
+} // namespace native
 
 } // namespace at

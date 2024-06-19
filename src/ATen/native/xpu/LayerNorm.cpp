@@ -18,7 +18,7 @@
 
 namespace at {
 namespace native {
-::std::tuple<at::Tensor, at::Tensor, at::Tensor> native_layer_norm_xpu(
+::std::tuple<at::Tensor, at::Tensor, at::Tensor> layer_norm_xpu(
     const at::Tensor& input,
     at::IntArrayRef normalized_shape,
     const ::std::optional<at::Tensor>& weight_opt,
@@ -79,7 +79,7 @@ namespace native {
   return std::make_tuple(std::move(Y), std::move(mean), std::move(rstd));
 }
 
-::std::tuple<at::Tensor, at::Tensor, at::Tensor> native_layer_norm_backward_xpu(
+::std::tuple<at::Tensor, at::Tensor, at::Tensor> layer_norm_backward_xpu(
     const at::Tensor& grad_output,
     const at::Tensor& input,
     at::IntArrayRef normalized_shape,

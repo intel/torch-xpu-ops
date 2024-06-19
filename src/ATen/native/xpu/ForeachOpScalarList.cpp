@@ -49,7 +49,7 @@ void foreach_tensor_div_scalarlist_kernel_slow_(
     at::ArrayRef<at::Scalar> scalars);
 
 #define FOREACH_BINARY_OP_SCALARLIST(NAME, DIV_OP)                             \
-  void _foreach_tensor_##NAME##_scalar_kernel_xpu_(                            \
+  void foreach_tensor_##NAME##_scalar_kernel_xpu_(                             \
       TensorList tensors, at::ArrayRef<Scalar> scalars) {                      \
     check_foreach_api_restrictions(tensors, scalars);                          \
     if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                       \
@@ -61,7 +61,7 @@ void foreach_tensor_div_scalarlist_kernel_slow_(
         tensors, scalars);                                                     \
   }                                                                            \
                                                                                \
-  std::vector<Tensor> _foreach_tensor_##NAME##_scalar_kernel_xpu(              \
+  std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_xpu(               \
       TensorList tensors, at::ArrayRef<Scalar> scalars) {                      \
     check_foreach_api_restrictions(tensors, scalars);                          \
     if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                       \
@@ -117,7 +117,7 @@ void foreach_tensor_addcdiv_scalarlist_slow_(
     at::ArrayRef<at::Scalar> scalars);
 
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME)                                \
-  std::vector<Tensor> _foreach_##NAME##_scalarlist_xpu(                      \
+  std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_xpu(                \
       TensorList input,                                                      \
       TensorList tensors1,                                                   \
       TensorList tensors2,                                                   \
@@ -133,7 +133,7 @@ void foreach_tensor_addcdiv_scalarlist_slow_(
     return xpu::foreach_##NAME##_kernel(input, tensors1, tensors2, scalars); \
   }                                                                          \
                                                                              \
-  void _foreach_##NAME##_scalarlist_xpu_(                                    \
+  void foreach_tensor_##NAME##_scalarlist_xpu_(                              \
       TensorList input,                                                      \
       TensorList tensors1,                                                   \
       TensorList tensors2,                                                   \

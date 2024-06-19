@@ -214,9 +214,9 @@ template <typename scalar_t, typename index_t>
 void nll_loss_forward_template(
     const Tensor& input,
     const Tensor& target,
-    Tensor& output,
+    const Tensor& output,
     const Tensor& weight,
-    Tensor& total_weight,
+    const Tensor& total_weight,
     int64_t reduction,
     int64_t ignore_index) {
   int n_dims = input.dim();
@@ -514,7 +514,7 @@ static inline void nll_loss_backward_template(
     const Tensor& input,
     const Tensor& target,
     const Tensor& gradOutput,
-    Tensor& gradInput,
+    const Tensor& gradInput,
     int64_t reduction,
     const Tensor& weight,
     const Tensor& total_weight,
@@ -633,14 +633,14 @@ static inline void nll_loss_backward_template(
           AT_PRIVATE_CASE_TYPE_USING_HINT(                \
               at::ScalarType::Long, index_t, __VA_ARGS__))
 
-std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
+void nll_loss_forward_kernel(
     const Tensor& self,
     const Tensor& target,
     const OptionalTensorRef weight_opt,
     int64_t reduction,
     int64_t ignore_index,
-    Tensor& output,
-    Tensor& total_weight) {
+    const Tensor& output,
+    const Tensor& total_weight) {
   const Tensor& weight = weight_opt.getTensorRef();
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
@@ -661,10 +661,10 @@ std::tuple<Tensor&, Tensor&> nll_loss_forward_kernel(
             });
       });
 
-  return std::tuple<Tensor&, Tensor&>(output, total_weight);
+  // return std::tuple<Tensor&, Tensor&>(output, total_weight);
 }
 
-Tensor& nll_loss_backward_kernel(
+void nll_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -672,7 +672,7 @@ Tensor& nll_loss_backward_kernel(
     int64_t reduction,
     int64_t ignore_index,
     const Tensor& total_weight,
-    Tensor& grad_input) {
+    const Tensor& grad_input) {
   const Tensor& weight = weight_opt.getTensorRef();
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
@@ -693,7 +693,7 @@ Tensor& nll_loss_backward_kernel(
                   ignore_index);
             });
       });
-  return grad_input;
+  // return grad_input;
 }
 
 #undef AT_DISPATCH_NLL_LOSS_INDEX_TYPES

@@ -3,9 +3,13 @@
 
 #include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
 
-namespace at {
+#include <ATen/xpu/ops/_embedding_bag_forward_only_native.h>
+#include <ATen/xpu/ops/_embedding_bag_native.h>
 
-std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::_embedding_bag(
+namespace at {
+namespace native {
+
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_xpu(
     const Tensor& weight,
     const Tensor& indices,
     const Tensor& offsets,
@@ -46,18 +50,17 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::_embedding_bag(
       padding_idx);
 }
 
-std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
-    _embedding_bag_forward_only(
-        const Tensor& weight,
-        const Tensor& indices,
-        const Tensor& offsets,
-        bool scale_grad_by_freq,
-        int64_t mode,
-        bool sparse,
-        const c10::optional<Tensor>& per_sample_weights_opt,
-        bool include_last_offset,
-        int64_t padding_idx) {
-  return _embedding_bag(
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only_xpu(
+    const Tensor& weight,
+    const Tensor& indices,
+    const Tensor& offsets,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    bool sparse,
+    const c10::optional<Tensor>& per_sample_weights_opt,
+    bool include_last_offset,
+    int64_t padding_idx) {
+  return _embedding_bag_xpu(
       weight,
       indices,
       offsets,
@@ -68,4 +71,5 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
       include_last_offset,
       padding_idx);
 }
+} // namespace native
 } // namespace at

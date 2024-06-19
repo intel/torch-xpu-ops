@@ -5,13 +5,22 @@
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-#include <ATen/ops/set_native.h>
+#include <ATen/native/Resize.h>
+#include <ATen/xpu/ops/resize_native.h>
+#include <ATen/xpu/ops/set_native.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
 namespace at {
+
+namespace native {
+const at::Tensor& resize_(
+    const at::Tensor& self,
+    at::IntArrayRef size,
+    ::std::optional<at::MemoryFormat> memory_format = ::std::nullopt);
+}
 namespace native::xpu {
 
 extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
@@ -129,7 +138,7 @@ const Tensor& resize_as_(
     const Tensor& self,
     const Tensor& the_template,
     c10::optional<MemoryFormat> optional_memory_format = c10::nullopt) {
-  return resize_(self, the_template.sizes(), optional_memory_format);
+  return resize_xpu_(self, the_template.sizes(), optional_memory_format);
 }
 
 Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
@@ -142,20 +151,12 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
-<<<<<<< HEAD:src/aten/temp_backup/Resize.cpp
-// For test infrastructure
-=======
->>>>>>> 309c232 (v0.0, build-able version):src/aten/Resize.cpp
 Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
   dst.resize_as_(self);
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
 }
 
-<<<<<<< HEAD:src/aten/temp_backup/Resize.cpp
-// Should not register the operator. Desc of 
-=======
 // Should not register the operator. Desc of resize_as_ and
->>>>>>> 309c232 (v0.0, build-able version):src/aten/Resize.cpp
 // _copy_from_and_resize native_function.yaml is simplistic since PyTorch
 // intends backend should not register it (e.g. CPU/CUDA) or handle
 // sanity check by backend (e.g. MPS).
@@ -197,18 +198,19 @@ Tensor& set_storage_xpu_(
   native::xpu::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
   return self;
 }
-} // namespace native
 
-Tensor& XPUNativeFunctions::set_(Tensor& self, const at::Tensor& source) {
-  return at::native::set_tensor_(self, source);
-}
-
-Tensor& XPUNativeFunctions::set_(Tensor& result) {
+Tensor& set_xpu_(Tensor& result) {
   caffe2::TypeMeta dtype = result.dtype();
   Storage storage(Storage::use_byte_size_t(), 0, c10::GetAllocator(kXPU), true);
   result.set_(storage, 0, {0}, {});
   TORCH_INTERNAL_ASSERT(dtype == result.dtype());
   return result;
 }
+
+} // namespace native
+
+// Tensor& set_(Tensor& self, const at::Tensor& source) {
+//   return at::native::set_tensor_(self, source);
+// }
 
 } // namespace at
