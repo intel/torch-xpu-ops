@@ -152,25 +152,21 @@ runs:
             do
               contains "inference,training" $mode
               $contains_status
-              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-              do
-                contains "accuracy,performance" $scenario
-                $contains_status
-                LOG_DIR="inductor_log/${suite}/${dt}"
-                LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
-                rm -f ${LOG_DIR}/${LOG_NAME}
-                find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
-                echo -e "============ Summary for ${suite} ${dt} ${mode} ${scenario} ============" | tee ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
-                awk -i inplace '!seen[$0]++' ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv
-                num_total=$(cat ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv |grep -v ',batch_size,' | wc -l)
-                num_passed=$(grep -c "pass" ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv)
-                num_failed=$(echo "$num_total - $num_passed" |bc)
-                pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
-                echo "num_total: $num_total" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
-                echo "num_passed: $num_passed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
-                echo "num_failed: $num_failed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
-                echo "pass_rate: $pass_rate" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
-              done
+              scenario=$(echo accuracy)
+              LOG_DIR="inductor_log/${suite}/${dt}"
+              LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
+              rm -f ${LOG_DIR}/${LOG_NAME}
+              find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
+              echo -e "============ Summary for ${suite} ${dt} ${mode} ${scenario} ============" | tee ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+              awk -i inplace '!seen[$0]++' ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv
+              num_total=$(cat ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv |grep -v ',batch_size,' | wc -l)
+              num_passed=$(grep -c "pass" ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv)
+              num_failed=$(echo "$num_total - $num_passed" |bc)
+              pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
+              echo "num_total: $num_total" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+              echo "num_passed: $num_passed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+              echo "num_failed: $num_failed" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
+              echo "pass_rate: $pass_rate" | tee -a ${LOG_DIR}/${suite}_${dt}_${mode}_${scenario}_e2e_summary.log
             done
           done
         done
