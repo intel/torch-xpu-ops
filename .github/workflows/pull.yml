@@ -47,6 +47,7 @@ jobs:
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          pip install -r .ci/docker/requirements-ci.txt
       - name: Run XPU OP Examples
         if: ${{ hashFiles('examples/') != '' }}
         run: |
@@ -94,7 +95,6 @@ jobs:
             fi
           done
           # Run Pytorch XPU python UT
-          pip install -r .ci/docker/requirements-ci.txt
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           sed -i 's/selected_tests = exclude_tests(XPU_BLOCKLIST.*/selected_tests = XPU_TEST/g' ./test/run_test.py
           python test/run_test.py --xpu
