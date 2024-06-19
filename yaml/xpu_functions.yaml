@@ -334,3 +334,5 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - _amp_foreach_non_finite_check_and_unscale_
+  - _amp_update_scale_
