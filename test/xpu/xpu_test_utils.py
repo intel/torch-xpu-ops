@@ -30,6 +30,7 @@ class XPUPatchForImport:
         self.original_path = sys.path.copy()
         self.test_case_cls = common_utils.TestCase
         self.only_cuda_fn = common_device_type.onlyCUDA
+        self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
         self.only_native_device_types_fn = (
             common_device_type.onlyNativeDeviceTypes
         )
@@ -45,6 +46,10 @@ class XPUPatchForImport:
         common_device_type.onlyCUDA = (
             common_device_type.onlyXPU
         )
+        class dtypesIfXPU(common_device_type.dtypes):
+            def __init__(self, *args):
+                super().__init__(*args, device_type='xpu')
+        common_device_type.dtypesIfCUDA=dtypesIfXPU
         common_device_type.onlyNativeDeviceTypes = (
             common_device_type.onlyXPU
         )
@@ -64,6 +69,7 @@ class XPUPatchForImport:
     def __exit__(self, exc_type, exc_value, traceback):
         sys.path = self.original_path
         common_device_type.onlyCUDA = self.only_cuda_fn
+        common_device_type.dtypesIfCUDA=self.dtypes_if_cuda_fn
         common_device_type.onlyNativeDeviceTypes = (
             self.only_native_device_types_fn
         )
