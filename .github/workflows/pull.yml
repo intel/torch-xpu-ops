@@ -33,9 +33,12 @@ jobs:
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Build Pytorch XPU
         run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=3.10 cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          conda install cmake ninja -y
-          conda install intel::mkl-static intel::mkl-include -y
+          conda install -c intel mkl-static mkl-include -y
           cd ../pytorch
           pip install -r requirements.txt
           export USE_XPU=1
@@ -43,10 +46,8 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
-          for i in {1..3}; do
-            pip uninstall -y torchvision
-          done
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          pip install -r .ci/docker/requirements-ci.txt
       - name: Run XPU OP Examples
         if: ${{ hashFiles('examples/') != '' }}
         run: |
@@ -54,6 +55,7 @@ jobs:
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd examples
+          pip install pytest
           timeout 8000 pytest -v
       - name: Run XPU OP UT Finegrain
         if: ${{ hashFiles('test/xpu/') != '' }}
