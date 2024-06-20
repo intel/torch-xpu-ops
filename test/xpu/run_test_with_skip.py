@@ -2453,6 +2453,9 @@ skip_list=(
     "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
 #RuntimeError: DispatchStub: unsupported device typexpu 
     "test_inplace_forward_mode_AD_conj_physical_xpu_complex128",
+# NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+    "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
+    "test_forward_mode_AD_to_sparse_xpu_float64",
 )
 res += launch_test("test_ops_fwd_gradients_xpu.py", skip_list)
 if res != 0:
