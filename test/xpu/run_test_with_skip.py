@@ -952,6 +952,9 @@ skip_list = (
     "test_neg_view_to_sparse_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_binary_ufuncs
 skip_list = (
@@ -980,6 +983,9 @@ skip_list = (
     "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_scatter_gather_ops
 skip_list = (
@@ -995,8 +1001,14 @@ skip_list = (
     "test_scatter_reduce_prod_xpu_complex64", # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
 )
 res += launch_test("test_scatter_gather_ops_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("test_autograd_fallback.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_sort_and_select
 skip_list = (
@@ -1015,6 +1027,9 @@ skip_list = (
     "test_sort_large_slice_xpu", # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 nn_test_embedding_skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
@@ -1080,6 +1095,9 @@ nn_test_embedding_skip_list = (
     "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
 )
 res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_transformers
 skip_list = (
@@ -1138,6 +1156,9 @@ skip_list = (
     "test_mha_native_args_nb_heads_1_bias_False_xpu",
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_complex
 skip_list = (
@@ -1148,6 +1169,9 @@ skip_list = (
     "test_ne_xpu_complex64",
 )
 res += launch_test("test_complex_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_modules
 skip_list = (
@@ -1460,6 +1484,9 @@ skip_list = (
     "test_multiple_device_transfer_nn_Transformer_xpu_float32",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_nn
 skip_list = (
@@ -1529,6 +1556,9 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float32",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_indexing
 skip_list = (
@@ -1542,6 +1572,9 @@ skip_list = (
     "test_index_put_accumulate_with_optional_tensors_xpu",
 )
 res += launch_test("test_indexing_xpu.py",skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_pooling
 skip_list = (
@@ -1559,6 +1592,9 @@ skip_list = (
     "test_adaptive_pooling_empty_output_size_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'
 )
 res += launch_test("nn/test_pooling_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # nn/test_dropout
 skip_list = (
@@ -1569,6 +1605,9 @@ skip_list = (
     "test_Dropout3d_xpu",
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_tensor_creation_ops
 skip_list = (
@@ -1587,6 +1626,9 @@ skip_list = (
     "test_randperm_xpu",
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_autocast
 skip_list = (
@@ -1596,6 +1638,9 @@ skip_list = (
     "test_cache_disabled",
 )
 res += launch_test("test_autocast_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_autograd
 skip_list = (
@@ -1636,6 +1681,9 @@ skip_list = (
     "test_per_dispatch_key_input_saving_xpu",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 # test_reductions
 skip_list = (
@@ -1654,6 +1702,9 @@ skip_list = (
     "test_ref_small_input_masked_prod_xpu_float16",
 )
 res += launch_test("test_reductions_xpu.py", skip_list=skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list=(
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -1721,6 +1772,9 @@ skip_list=(
     "test_reference_numerics_small_sigmoid_xpu_complex32",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list=(
     # RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse.
@@ -1834,6 +1888,9 @@ skip_list=(
     "test_mask_layout_strided_masked_sum_xpu_uint8",
 )
 res += launch_test("test_masked_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = ( 
     # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend. 
@@ -1841,6 +1898,9 @@ skip_list = (
     "test_ravel_xpu",
 )
 res += launch_test("./test_view_ops_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = ( 
         # Need quantization support.
@@ -1851,16 +1911,35 @@ skip_list = (
         "test_trace_xpu_float16",
 )
 res += launch_test("test_shape_ops_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("test_content_store_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("test_native_functions_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("nn/test_init_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("test_namedtensor_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("nn/test_lazy_modules_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
+
 skip_list=(
 # RuntimeError: Double and complex datatype matmul is not supported in oneDNN 
     "test_1_sized_with_0_strided_xpu_float64",
@@ -2077,6 +2156,9 @@ skip_list=(
     "test_compile_int4_mm_m_64_k_64_n_64_xpu",
     )
 res += launch_test("test_linalg_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list=(
 #RuntimeError: Double and complex datatype matmul is not supported in oneDNN 
@@ -2370,15 +2452,21 @@ skip_list=(
     "test_inplace_forward_mode_AD_conj_physical_xpu_complex128",
 )
 res += launch_test("test_ops_fwd_gradients_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = (
     # eye fallbacks to CPU and does not support Float8_e4m3fn
     "test_cache_disabled",
 )
 res += launch_test("test_matmul_cuda_xpu.py",skip_list=skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 
-skip_list=(
+skip_list = (
     #RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse  
     "test_contiguous_xpu",
     "test_invalid_sparse_coo_values_xpu",
@@ -2552,10 +2640,16 @@ skip_list=(
     "test_reduction_all_prod_layout2_xpu_float64",
     "test_reduction_all_sum_layout2_xpu_float16",
     "test_reduction_all_sum_layout2_xpu_float64",
-    )
+)
 res += launch_test("test_maskedtensor_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 res += launch_test("nn/test_packed_sequence_xpu.py")
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = (
     ### Error #0 in TestBwdGradientsXPU , totally 271 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
@@ -2901,6 +2995,9 @@ skip_list = (
 )
 
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = (
     # issue 302
@@ -3148,6 +3245,9 @@ skip_list = (
     "test_swap_basic",
 )
 res += launch_test("test_torch_xpu.py", skip_list)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
 
 skip_list = (
     # known oneDNN issue
@@ -3163,7 +3263,6 @@ skip_list = (
 )
 
 res += launch_test("nn/test_multihead_attention_xpu.py", skip_list)
-
-
-exit_code = os.WEXITSTATUS(res)
-sys.exit(exit_code)
+if res != 0:
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
