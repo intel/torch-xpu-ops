@@ -6,6 +6,8 @@ inputs:
     type: string
     default: 'op_example'
     description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
+  torch_xpu_ops:
+    
 
 runs:
   using: composite

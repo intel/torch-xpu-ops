@@ -36,6 +36,11 @@ on:
         type: string
         default: 'op_example'
         description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
+      torch_xpu_ops_update:
+        required: false
+        type: string
+        default: 'true'
+        description: Define if update xpu-ops, true means update.
 
 
 permissions: read-all
@@ -72,7 +77,15 @@ jobs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          if [ -z ${{ inputs.torch_xpu_ops_update }} ]; then
+            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          else
+            if [[ ${{ inputs.torch_xpu_ops_update }} == 'true' ]]; then
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+            else
+              echo "Not update torch-xpu-ops"
+            fi
+          fi
           # Workaround for torch-xpu-ops ci test
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Identify pinned versions
@@ -217,7 +230,15 @@ jobs:
           cd ../ && rm -rf pytorch
           git clone -b main https://github.com/pytorch/pytorch
           cd pytorch && git log -n 1 && git submodule sync && git submodule update --init --recursive
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          if [ -z ${{ inputs.torch_xpu_ops_update }} ]; then
+            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          else
+            if [[ ${{ inputs.torch_xpu_ops_update }} == 'true' ]]; then
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+            else
+              echo "Not update torch-xpu-ops"
+            fi
+          fi
           # Workaround for torch-xpu-ops ci test
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Build Pytorch XPU
