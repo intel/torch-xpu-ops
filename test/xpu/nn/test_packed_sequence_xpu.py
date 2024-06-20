@@ -53,7 +53,7 @@ with XPUPatchForImport(False):
                     "xpu",
                     "xpu:0" if torch.xpu.device_count() == 1 else "xpu:1",
                 ]:
-                    b = a.xpu(device=xpu)
+                    b = a.xpu()
                     self.assertIs(b, b.to(xpu))
                     self.assertIs(b, b.xpu())
                     self.assertEqual(a, b.to("cpu"))
