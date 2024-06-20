@@ -334,3 +334,7 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - mse_loss
+  - mse_loss.out
+  - mse_loss_backward
+  - mse_loss_backward.grad_input
