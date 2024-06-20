@@ -145,6 +145,7 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - _efficientzerotensor
   - clone
   - fill_.Scalar
   - fill_.Tensor

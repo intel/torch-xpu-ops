@@ -2,6 +2,7 @@
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
+#include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -60,6 +61,25 @@ Tensor XPUNativeFunctions::clone(
     const Tensor& self,
     c10::optional<MemoryFormat> memory_format) {
   return at::native::clone(self, memory_format);
+}
+
+Tensor XPUNativeFunctions::_efficientzerotensor(
+    IntArrayRef size,
+    std::optional<ScalarType> dtype,
+    std::optional<Layout> layout,
+    std::optional<Device> device,
+    std::optional<bool> pin_memory) {
+  auto device_ = device_or_default(device);
+  if (!device_.has_index()) {
+    device_.set_index(c10::xpu::current_device());
+  }
+  auto allocator = at::native::ZeroTensorAllocator(device_);
+  auto dtype_ = dtype_or_default(dtype);
+  auto zero_ks = at::DispatchKeySet(c10::DispatchKey::XPU) |
+      at::DispatchKeySet(c10::DispatchKey::ZeroTensor);
+  auto out = at::detail::empty_generic(
+      size, &allocator, zero_ks, dtype_, c10::nullopt);
+  return out;
 }
 
 } // namespace at

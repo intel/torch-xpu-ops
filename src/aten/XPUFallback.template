@@ -211,7 +211,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "digamma.out",
     "dot",
     "_efficient_attention_forward",
-    "_efficientzerotensor",
     "elu_backward.grad_input",
     "elu.out",
     "_embedding_bag_dense_backward",
