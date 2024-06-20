@@ -31,6 +31,11 @@ on:
         type: string
         default: 'accuracy'
         description: accuracy,performance. Delimiter is comma
+      ut_suite:
+        required: true
+        type: string
+        default: 'op_example'
+        description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
 
 
 permissions: read-all
