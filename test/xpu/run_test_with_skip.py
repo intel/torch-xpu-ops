@@ -2561,7 +2561,11 @@ skip_list = (
 )
 res += launch_test("test_maskedtensor_xpu.py", skip_list)
 
-res += launch_test("nn/test_packed_sequence_xpu.py")
+skip_list = (
+    # test case porting issue
+    "test_to and not test_to_memory and not test_total",
+)
+res += launch_test("nn/test_packed_sequence_xpu.py", skip_list)
 
 skip_list = (
     ### Error #0 in TestBwdGradientsXPU , totally 271 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
