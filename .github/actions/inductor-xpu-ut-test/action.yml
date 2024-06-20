@@ -29,7 +29,7 @@ runs:
         set -xe
         for ut_suite in $(echo ${{ inputs.ut_suite }} |sed 's/,/ /g')
         do
-          contains "op_example,op_finegrain,op_ut,torch_xpu" $suite
+          contains "op_example,op_finegrain,op_ut,torch_xpu" $ut_suite
           $contains_status
           if [[ ${ut_suite} == 'op_example' ]]; then
             unset PYTORCH_TEST_WITH_SLOW
