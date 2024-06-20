@@ -3,7 +3,15 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
+#include <c10/core/Allocator.h>
 #include <torch/library.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/set_native.h>
+#endif
 
 #include <aten/sycl/CopyKernel.h>
 
@@ -141,15 +149,21 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
 }
 
-// Should not register the operator. Desc of resize_as_ and
+// For test infrastructure
+Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
+  dst.resize_as_(self);
+  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
+}
+
+// Should not register the operator. Desc of
 // _copy_from_and_resize native_function.yaml is simplistic since PyTorch
 // intends backend should not register it (e.g. CPU/CUDA) or handle
 // sanity check by backend (e.g. MPS).
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("aten::resize_as_"), TORCH_FN(resize_as_));
   m.impl(
       TORCH_SELECTIVE_NAME("aten::_copy_from_and_resize"),
       TORCH_FN(_copy_from_and_resize));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_copy_from"), TORCH_FN(_copy_from));
 }
 
 } // namespace native::xpu
@@ -181,6 +195,18 @@ Tensor& XPUNativeFunctions::set_(
       : c10::nullopt;
   native::xpu::resize_impl_xpu_(self.unsafeGetTensorImpl(), size, stride_opt);
   return self;
+}
+
+Tensor& XPUNativeFunctions::set_(Tensor& self, const at::Tensor& source) {
+  return at::native::set_tensor_(self, source);
+}
+
+Tensor& XPUNativeFunctions::set_(Tensor& result) {
+  caffe2::TypeMeta dtype = result.dtype();
+  Storage storage(Storage::use_byte_size_t(), 0, c10::GetAllocator(kXPU), true);
+  result.set_(storage, 0, {0}, {});
+  TORCH_INTERNAL_ASSERT(dtype == result.dtype());
+  return result;
 }
 
 } // namespace at

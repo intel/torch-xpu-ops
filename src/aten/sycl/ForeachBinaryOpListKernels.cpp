@@ -163,4 +163,22 @@ FOREACH_BINARY_LIST_ALPHA_KERNEL(add) {
       tensor1, tensor2, alpha);
 }
 
+FOREACH_BINARY_LIST_INPLACE_KERNEL(mul) {
+  return all_types_complex_bool_half_bfloat16_<std::multiplies>(
+      tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_KERNEL(mul) {
+  return all_types_complex_bool_half_bfloat16<std::multiplies>(
+      tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_INPLACE_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16_<std::divides>(tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16<std::divides>(tensor1, tensor2);
+}
+
 } // namespace at::native::xpu

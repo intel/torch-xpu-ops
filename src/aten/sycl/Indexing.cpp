@@ -317,6 +317,14 @@ void index_add_kernel(
     result.copy_(self);
   }
 
+  auto numel = index.numel();
+
+  if (result.dim() > 1) {
+      if (numel == 0 || self.numel() == 0) {
+          return;
+      }
+  }
+
   // Scalars are treated as 1-d tensor
   const Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
   const Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
@@ -493,6 +501,9 @@ void index_put_deterministic_kernel(
     }
     if (nElemBefore > 1) {
       expanded_size.insert(expanded_size.begin(), nElemBefore);
+    }
+    if (sliceSize > 1) {
+      expanded_size.insert(expanded_size.end(), sliceSize);
     }
     expandedValue = expandedValue.expand(expanded_size);
   }

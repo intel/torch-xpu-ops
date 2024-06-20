@@ -3,18 +3,24 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/IndexingUtils.h>
+#include <ATen/native/ReduceOpsUtils.h>
+#include <ATen/native/ReductionType.h>
+#include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-
-#include <ATen/XPUNativeFunctions.h>
 #include <aten/sycl/IndexingKernel.h>
+#include <aten/sycl/ScatterGatherKernels.h>
 #include <comm/ReduceOpsUtils.h>
 
 namespace at {
+
+using namespace at::native;
+using namespace at::native::xpu;
 
 // TODO: Should reuse source in stock PyTorch when in-tree.
 
@@ -246,7 +252,12 @@ void index_func_meta_impl(
   // set_output_raw_strided
   auto options = self.options();
   auto sizes = self.sizes();
-  at::xpu::resize_out(result, sizes, {}, options);
+  if (is_defined) {
+    at::xpu::resize_out(result, sizes, {}, options);
+  } else {
+    result = at::xpu::create_out(sizes, {}, options);
+  }
+
   if (is_defined) {
     at::assert_no_internal_overlap(result);
     at::assert_no_overlap(result, index);
@@ -283,6 +294,25 @@ Tensor& XPUNativeFunctions::index_add_out(
   index_func_meta_impl(out, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, out);
   return out;
+}
+
+Tensor& XPUNativeFunctions::index_add_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    const Scalar& alpha) {
+  return index_add_out(self, dim, index, source, alpha, self);
+}
+
+Tensor XPUNativeFunctions::index_add(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    const Scalar& alpha) {
+  Tensor out;
+  return index_add_out(self, dim, index, source, alpha, out);
 }
 
 void check_indices_on_cpu_or_selfdevice(
@@ -505,6 +535,874 @@ Tensor& XPUNativeFunctions::_index_put_impl_(
       IntArrayRef{},
       accumulate);
   return self;
+}
+
+// ============================= scatter =============================
+
+static void scatter_reduce_exclude_self_helper(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const ReductionType& op) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      self.scalar_type(),
+      "scatter_reduce_exclude_input_init",
+      [&] {
+        scalar_t init_val;
+        switch (op) {
+          case ReductionType::SUM:
+            init_val = (scalar_t)0;
+            break;
+          case ReductionType::PROD:
+            init_val = (scalar_t)1;
+            break;
+          case ReductionType::MAX:
+            init_val = std::numeric_limits<scalar_t>::has_infinity
+                ? -std::numeric_limits<scalar_t>::infinity()
+                : std::numeric_limits<scalar_t>::lowest();
+            break;
+          case ReductionType::MIN:
+            init_val = std::numeric_limits<scalar_t>::has_infinity
+                ? std::numeric_limits<scalar_t>::infinity()
+                : std::numeric_limits<scalar_t>::max();
+            break;
+          case ReductionType::MEAN:
+            init_val = (scalar_t)0;
+            break;
+        }
+        self.scatter_(dim, index, init_val);
+      });
+}
+
+static void _scatter_via_index_put(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const Tensor& mut_out,
+    bool accumulate) {
+  if (self.dim() == 1) {
+    torch::List<c10::optional<Tensor>> indices;
+    indices.reserve(1);
+    indices.push_back(index);
+    mut_out.index_put_(indices, src, accumulate);
+  } else {
+    Tensor mut_out_contig = mut_out.contiguous();
+
+    auto index_coords_sizes = index.sizes().vec();
+    index_coords_sizes.push_back(self.dim());
+    auto index_coords = at::empty(
+        index_coords_sizes,
+        at::TensorOptions().dtype(at::ScalarType::Long).device(self.device()));
+
+    for (int64_t dim_other = 0; dim_other < self.dim(); dim_other++) {
+      if (dim_other == dim) {
+        continue;
+      }
+      auto dim_coord_vals = at::arange(
+          index.size(dim_other), at::TensorOptions().device(self.device()));
+
+      for (int64_t dim_unsqueeze = 0; dim_unsqueeze < self.dim() - 1;
+           dim_unsqueeze++) {
+        dim_coord_vals =
+            dim_coord_vals.unsqueeze((dim_unsqueeze >= dim_other) ? -1 : 0);
+      }
+
+      auto view_sizes = index.sizes().vec();
+      view_sizes.push_back(1);
+      auto view_strides = index_coords.strides().vec();
+      view_strides[self.dim()] = self.dim();
+
+      at::as_strided(index_coords, view_sizes, view_strides, dim_other)
+          .copy_(dim_coord_vals.unsqueeze(-1));
+    }
+
+    auto view_sizes = index.sizes().vec();
+    view_sizes.push_back(1);
+    auto view_strides = index_coords.strides().vec();
+    view_strides[self.dim()] = self.dim();
+
+    at::as_strided(index_coords, view_sizes, view_strides, dim)
+        .copy_(index.unsqueeze(-1));
+
+    Tensor index_coords_flat = index_coords.flatten(0, -2);
+
+    // Copy mut_out_contig's strides into a tensor
+    // TODO: Is there a utility function that already does this?
+    IntArrayRef mut_out_contig_strides = mut_out_contig.strides();
+    Tensor coord_strides = at::empty(
+        {mut_out_contig.dim()},
+        TensorOptions().dtype(at::ScalarType::Long).device(at::kCPU));
+    std::memcpy(
+        coord_strides.mutable_data_ptr(),
+        mut_out_contig_strides.data(),
+        coord_strides.nbytes());
+    coord_strides = coord_strides.to(mut_out_contig.device());
+
+    // `index_flat` contains the 1-D indices corresponding with the
+    // flattened `mut_out`
+    Tensor index_flat = (index_coords_flat * coord_strides).sum({-1});
+    Tensor mut_out_flat = mut_out_contig.flatten();
+    Tensor src_flat =
+        at::as_strided(src, index.sizes(), src.strides()).flatten();
+
+    torch::List<c10::optional<Tensor>> indices;
+    indices.reserve(1);
+    indices.push_back(index_flat);
+
+    mut_out_flat.index_put_(indices, src_flat, accumulate);
+
+    if (!mut_out.is_contiguous()) {
+      mut_out.copy_(mut_out_flat.reshape(mut_out.sizes()));
+    }
+  }
+}
+
+template <
+    bool use_new_options = false,
+    typename T,
+    typename ReduceStub,
+    typename FillStub>
+void scatter_impl(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const T& src,
+    const Tensor& out,
+    ReduceStub& reduce_stub,
+    FillStub& fill_stub,
+    const c10::optional<c10::string_view> reduce = nullopt,
+    bool reduce_includes_self = true) {
+  dim = at::maybe_wrap_dim(dim, self.dim());
+  auto mut_out = const_cast<Tensor&>(out);
+
+  if (!self.is_same(mut_out)) {
+    mut_out.copy_(self);
+  }
+
+  if (index.numel() == 0)
+    return;
+
+  auto op = ReductionType::SUM;
+  bool deterministic = globalContext().deterministicAlgorithms() &&
+      self.device().type() == DeviceType::XPU;
+
+  if (reduce.has_value()) {
+    op = get_operator_enum(reduce.value(), use_new_options);
+    if (!reduce_includes_self) {
+      // scatter inits for reduction to appropriate indices (used by
+      // scatter_reduce.two)
+      scatter_reduce_exclude_self_helper(mut_out, dim, index, op);
+    }
+    // _scatter_via_index_put can only handle sum and mean reduction type
+    deterministic = deterministic &&
+        (op == ReductionType::SUM || op == ReductionType::MEAN);
+  }
+
+  // Scalar src should already be deterministic
+  if (deterministic && std::is_same_v<T, Tensor>) {
+    // both runtime and compile check are required
+    if constexpr (std::is_same_v<T, Tensor>) {
+      bool accumulate = reduce.has_value();
+      _scatter_via_index_put(self, dim, index, src, mut_out, accumulate);
+      return;
+    }
+  }
+
+  if (reduce.has_value()) {
+    reduce_stub(mut_out, dim, index, src, op);
+  } else {
+    fill_stub(mut_out, dim, index, src);
+  }
+}
+
+template <bool use_new_options = false>
+Tensor& scatter_meta_impl(
+    Tensor& output,
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const c10::optional<Tensor>& src = nullopt,
+    const c10::optional<c10::string_view> reduce = nullopt) {
+  int64_t wrapped_dim = at::maybe_wrap_dim(dim, self.dim());
+  at::native::scatter_gather_dtype_check("scatter", self, index, src);
+  at::native::scatter_shape_check(self, wrapped_dim, index, src);
+
+  if (output.defined()) {
+    at::assert_no_internal_overlap(output);
+    at::assert_no_overlap(output, index);
+    if (src.has_value()) {
+      at::assert_no_overlap(output, src.value());
+    }
+  }
+
+  if (output.defined()) {
+    at::xpu::resize_out(output, self.sizes(), {}, self.options());
+  } else {
+    output = at::xpu::create_out(self.sizes(), {}, self.options());
+  }
+
+  if (reduce.has_value()) {
+    // Check if we have a valid reduce operator.
+    at::native::get_operator_enum(reduce.value(), use_new_options);
+  }
+
+  return output;
+}
+
+Tensor& scatter_src_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    Tensor& out) {
+  return scatter_meta_impl(out, self, dim, index, src);
+}
+
+Tensor& scatter_value_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    Tensor& out) {
+  return scatter_meta_impl(out, self, dim, index);
+}
+
+Tensor& scatter_reduce_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const c10::string_view reduce,
+    Tensor& out) {
+  TORCH_WARN_ONCE(
+      "The reduce argument of torch.scatter with Tensor src is deprecated and will be removed ",
+      "in a future PyTorch release. Use torch.scatter_reduce instead for more reduction options.");
+  return scatter_meta_impl(out, self, dim, index, src, reduce);
+}
+
+Tensor& scatter_value_reduce_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& src,
+    const c10::string_view reduce,
+    Tensor& out) {
+  return scatter_meta_impl(out, self, dim, index, nullopt, reduce);
+}
+
+Tensor& scatter_add_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    Tensor& out) {
+  return scatter_meta_impl(out, self, dim, index, src, "add");
+}
+
+Tensor& scatter_reduce_two_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const c10::string_view reduce,
+    bool include_self,
+    Tensor& out) {
+  (void)include_self;
+  return scatter_meta_impl</*use_new_options=*/true>(
+      out, self, dim, index, src, reduce);
+}
+
+Tensor XPUNativeFunctions::scatter(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_src", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_src", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_src", "src");
+  Tensor out;
+  out = scatter_src_meta(self, dim, index, src, out);
+  scatter_impl(
+      self, dim, index, src, out, scatter_reduce_kernel, scatter_kernel);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_out_src_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_out_src_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_out_src_out", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_out_src_out", "src");
+  out = scatter_src_meta(self, dim, index, src, out);
+  scatter_impl(
+      self, dim, index, src, out, scatter_reduce_kernel, scatter_kernel);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter__src", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter__src", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter__src", "src");
+  self = scatter_src_meta(self, dim, index, src, self);
+  scatter_impl(
+      self, dim, index, src, self, scatter_reduce_kernel, scatter_kernel);
+  return self;
+}
+
+Tensor XPUNativeFunctions::scatter(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_value", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_value", "index");
+  Tensor out;
+  out = scatter_value_meta(self, dim, index, value, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      out,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_out_value_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_out_value_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_out_value_out", "index");
+  out = scatter_value_meta(self, dim, index, value, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      out,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter__value", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter__value", "index");
+  self = scatter_value_meta(self, dim, index, value, self);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      self,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel);
+  return self;
+}
+
+Tensor XPUNativeFunctions::scatter(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_reduce", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_reduce", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_reduce", "src");
+  Tensor out;
+  out = scatter_reduce_meta(self, dim, index, src, reduce, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      src,
+      out,
+      scatter_reduce_kernel,
+      scatter_kernel,
+      reduce);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_out_reduce_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_out_reduce_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_out_reduce_out", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_out_reduce_out", "src");
+  out = scatter_reduce_meta(self, dim, index, src, reduce, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      src,
+      out,
+      scatter_reduce_kernel,
+      scatter_kernel,
+      reduce);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter__reduce", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter__reduce", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter__reduce", "src");
+  self = scatter_reduce_meta(self, dim, index, src, reduce, self);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      src,
+      self,
+      scatter_reduce_kernel,
+      scatter_kernel,
+      reduce);
+  return self;
+}
+
+Tensor XPUNativeFunctions::scatter(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    c10::string_view reduce) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_value_reduce", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_value_reduce", "index");
+  Tensor out;
+  out = scatter_value_reduce_meta(self, dim, index, value, reduce, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      out,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel,
+      reduce);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    c10::string_view reduce,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_out_value_reduce_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_out_value_reduce_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_out_value_reduce_out", "index");
+  out = scatter_value_reduce_meta(self, dim, index, value, reduce, out);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      out,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel,
+      reduce);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& value,
+    c10::string_view reduce) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter__value_reduce", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter__value_reduce", "index");
+  self = scatter_value_reduce_meta(self, dim, index, value, reduce, self);
+  scatter_impl(
+      self,
+      dim,
+      index,
+      value,
+      self,
+      scatter_scalar_reduce_kernel,
+      scatter_fill_kernel,
+      reduce);
+  return self;
+}
+
+Tensor& scatter_add_impl(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    Tensor& out) {
+  auto mut_out = const_cast<Tensor&>(out);
+  dim = maybe_wrap_dim(dim, self.dim());
+
+  if (!self.is_same(mut_out)) {
+    mut_out.copy_(self);
+  }
+
+  if (index.numel() == 0)
+    return out;
+
+  // See Note [Enabling Deterministic Operations]
+  // Avoid gpuAtomicAdd for XPU if deterministic mode is turned on
+  if (globalContext().deterministicAlgorithms() &&
+      self.device().type() == DeviceType::XPU) {
+    _scatter_via_index_put(self, dim, index, src, mut_out, /*accumulate*/ true);
+  } else {
+    // TODO: enable fast paths for GNN usage (scatter_add_expanded_index_kernel)
+    scatter_add_kernel(mut_out, dim, index, src);
+  }
+  return out;
+}
+
+Tensor XPUNativeFunctions::scatter_add(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_add", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_add", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_add", "src");
+  Tensor out;
+  out = scatter_add_meta(self, dim, index, src, out);
+  out = scatter_add_impl(self, dim, index, src, out);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_add_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_add_out_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_add_out_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_add_out_out", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_add_out_out", "src");
+  out = scatter_add_meta(self, dim, index, src, out);
+  out = scatter_add_impl(self, dim, index, src, out);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_add_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_add_", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_add_", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_add_", "src");
+  self = scatter_add_meta(self, dim, index, src, self);
+  self = scatter_add_impl(self, dim, index, src, self);
+  return self;
+}
+
+Tensor& scatter_reduce_two_impl(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    const c10::string_view reduce,
+    bool include_self,
+    Tensor& out) {
+  dim = at::maybe_wrap_dim(dim, self.dim());
+
+  if (!self.is_same(out)) {
+    out.copy_(self);
+  }
+
+  const auto op = get_operator_enum(reduce, true);
+
+  // TODO: enable scatter_reduce_expanded_index_kernel
+
+  scatter_impl</*use_new_options=*/true>(
+      self,
+      dim,
+      index,
+      src,
+      out,
+      scatter_reduce_two_kernel,
+      scatter_kernel,
+      reduce,
+      include_self);
+
+  if (op == ReductionType::MEAN) {
+    auto ones = at::ones_like(src);
+    auto count = include_self ? at::ones_like(out) : at::zeros_like(out);
+    count.scatter_add_(dim, index, ones);
+    count.masked_fill_(count == 0, 1);
+
+    if (out.is_floating_point() || out.is_complex()) {
+      out.div_(count);
+    } else {
+      out.div_(count, "floor");
+    }
+  }
+
+  return out;
+}
+
+Tensor XPUNativeFunctions::scatter_reduce(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce,
+    bool include_self) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_reduce_two", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_reduce_two", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_reduce_two", "src");
+  Tensor out;
+  out =
+      scatter_reduce_two_meta(self, dim, index, src, reduce, include_self, out);
+  out =
+      scatter_reduce_two_impl(self, dim, index, src, reduce, include_self, out);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_reduce_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce,
+    bool include_self,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::scatter_reduce_out_two_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_reduce_out_two_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_reduce_out_two_out", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_reduce_out_two_out", "src");
+  out =
+      scatter_reduce_two_meta(self, dim, index, src, reduce, include_self, out);
+  out =
+      scatter_reduce_two_impl(self, dim, index, src, reduce, include_self, out);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::scatter_reduce_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& src,
+    c10::string_view reduce,
+    bool include_self) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::scatter_reduce__two", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::scatter_reduce__two", "index");
+  c10::impl::check_and_update_common_device(
+      common_device, src, "xpu::scatter_reduce__two", "src");
+  self = scatter_reduce_two_meta(
+      self, dim, index, src, reduce, include_self, self);
+  self = scatter_reduce_two_impl(
+      self, dim, index, src, reduce, include_self, self);
+  return self;
+}
+
+// ============================= gather =============================
+
+Tensor& gather_meta(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    bool sparse_grad,
+    Tensor& result) {
+  int64_t wrapped_dim = at::maybe_wrap_dim(dim, self.dim());
+
+  // Memory overlap checks need to be done after resizing (if required) is done.
+  // But it only makes sense to do these checks when result was defined, hence
+  // the boolean variable `check_result` here.
+  // For more details, see:
+  // https://github.com/pytorch/pytorch/pull/63312#discussion_r694794832 and
+  // https://github.com/pytorch/pytorch/issues/63837
+  bool check_result = result.defined();
+
+  if (result.defined()) {
+    at::xpu::resize_out(result, index.sizes(), {}, self.options());
+  } else {
+    result = at::xpu::create_out(index.sizes(), {}, self.options());
+  }
+
+  if (check_result) {
+    at::assert_no_internal_overlap(result);
+    at::assert_no_overlap(result, self);
+    at::assert_no_partial_overlap(result, index);
+  }
+
+  auto is_index_empty = index.numel() == 0;
+  if (!is_index_empty) {
+    TORCH_CHECK(
+        index.scalar_type() == at::ScalarType::Long,
+        "gather",
+        "(): Expected dtype int64 for index");
+  }
+  if (is_index_empty)
+    return result;
+  at::native::gather_shape_check(self, wrapped_dim, index);
+
+  return result;
+}
+
+Tensor XPUNativeFunctions::gather(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    bool sparse_grad) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::gather", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::gather", "index");
+  Tensor out;
+  out = gather_meta(self, dim, index, sparse_grad, out);
+
+  if (index.numel() == 0)
+    return out;
+  dim = at::maybe_wrap_dim(dim, self.dim());
+  // TODO: enable gather_expanded_index_kernel
+  gather_kernel(out, self, dim, index);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::gather_out(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    bool sparse_grad,
+    Tensor& out) {
+  std::optional<Device> common_device = std::nullopt;
+  (void)common_device; // Suppress unused variable warning
+  c10::impl::check_and_update_common_device(
+      common_device, out, "xpu::gather_out_out", "out");
+  c10::impl::check_and_update_common_device(
+      common_device, self, "xpu::gather_out_out", "self");
+  c10::impl::check_and_update_common_device(
+      common_device, index, "xpu::gather_out_out", "index");
+  out = gather_meta(self, dim, index, sparse_grad, out);
+
+  if (index.numel() == 0)
+    return out;
+  dim = at::maybe_wrap_dim(dim, self.dim());
+  // TODO: enable gather_expanded_index_kernel
+  gather_kernel(out, self, dim, index);
+  return out;
 }
 
 } // namespace at

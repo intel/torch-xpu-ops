@@ -8,6 +8,17 @@ static bool DEBUG_XPU_FALLBACK = false;
 static void xpu_fallback_impl(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
+  if (!DEBUG_XPU_FALLBACK) {
+    TORCH_WARN_ONCE(
+        "Aten Op fallback from XPU to CPU happends.",
+        " This may have performance implications.",
+        " If need debug the fallback ops please set environment variable `PYTORCH_DEBUG_XPU_FALLBACK=1` ");
+  } else {
+    TORCH_WARN(
+        "The operator '",
+        op.schema().operator_name(),
+        " on the XPU backend is falling back to run on the CPU.");
+  }
   native::cpu_fallback(op, stack, true);
 }
 
@@ -78,18 +89,6 @@ static void xpu_fallback(
     torch::jit::Stack* stack) {
   if (lazy_registration_and_redispatch(op, stack)) {
     return;
-  }
-
-  if (!DEBUG_XPU_FALLBACK) {
-    TORCH_WARN_ONCE(
-        "Aten Op fallback from XPU to CPU happends.",
-        " This may have performance implications.",
-        " If need debug the fallback ops please set environment variable `PYTORCH_DEBUG_XPU_FALLBACK=1` ");
-  } else {
-    TORCH_WARN(
-        "The operator '",
-        op.schema().operator_name(),
-        " on the XPU backend is falling back to run on the CPU.");
   }
 
   // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
@@ -169,11 +168,11 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "adaptive_max_pool3d.out",
     "addcdiv.out",
     "addcmul.out",
-    "all.all_out",
-    "all.out",
     "amax.out",
     "aminmax.out",
     "amin.out",
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_amp_update_scale_",
     "angle",
     "argmin.out",
     "asinh.out",
@@ -191,7 +190,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "bitwise_left_shift.Tensor_out",
     "bitwise_right_shift.Tensor_out",
     "bucketize.Tensor",
-    "cat.out",
     "cauchy_",
     "_cdist_backward",
     "_cdist_forward",
@@ -200,7 +198,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
-    "col2im",
     "complex.out",
     "conj_physical.out",
     "copysign.out",
@@ -217,10 +214,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_efficientzerotensor",
     "elu_backward.grad_input",
     "elu.out",
-    "_embedding_bag",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
-    "embedding_dense_backward",
     "equal",
     "erfc.out",
     "erfinv.out",
@@ -228,7 +223,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "exp2.out",
     "expm1.out",
     "exponential_",
-    "exp.out",
     "eye.m_out",
     "_fft_c2c",
     "_fft_c2r",
@@ -245,7 +239,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "fractional_max_pool3d.output",
     "frexp.Tensor_out",
     "_fused_moving_avg_obs_fq_helper",
-    "gather.out",
     "geometric_",
     "geqrf",
     "glu_backward",
@@ -264,7 +257,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "i0.out",
     "igammac.out",
     "igamma.out",
-    "im2col",
     "index_copy.out",
     "index_fill_.int_Scalar",
     "index_fill_.int_Tensor",
@@ -315,13 +307,10 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "log_normal_",
     "log_sigmoid_backward",
     "log_sigmoid_forward",
-    "_log_softmax_backward_data.out",
-    "_log_softmax.out",
     "logspace.out",
     "lu_unpack.out",
     "masked_scatter_",
     "masked_select",
-    "max_pool2d_with_indices_backward.grad_input",
     "max_pool2d_with_indices.out",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
@@ -343,11 +332,9 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nan_to_num.out",
     "native_batch_norm",
     "native_batch_norm_backward",
+    "native_group_norm",
     "native_group_norm_backward",
     "nextafter.out",
-    "nll_loss_backward.grad_input",
-    "nll_loss_forward.output",
-    "normal.Tensor_Tensor",
     "norm.out",
     "ormqr",
     "_pdist_backward",
@@ -359,7 +346,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "random_.to",
     "randperm.generator_out",
     "reflection_pad1d_backward.grad_input",
     "reflection_pad1d.out",
@@ -378,18 +364,9 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "__rshift__.Scalar",
     "_scaled_dot_product_efficient_attention",
     "_scaled_mm",
-    "scatter_add.out",
-    "scatter.reduce_out",
-    "scatter_reduce.two_out",
-    "scatter.src_out",
-    "scatter.value_out",
-    "scatter.value_reduce_out",
     "searchsorted.Tensor",
     "segment_reduce",
     "_segment_reduce_backward",
-    "sgn.out",
-    "sigmoid_backward.grad_input",
-    "sigmoid.out",
     "signbit.out",
     "sign.out",
     "silu.out",
@@ -397,13 +374,10 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "sinh.out",
     "smooth_l1_loss_backward.grad_input",
     "smooth_l1_loss.out",
-    "_softmax_backward_data.out",
-    "_softmax.out",
     "softplus_backward.grad_input",
     "softplus.out",
     "softshrink_backward.grad_input",
     "softshrink.out",
-    "sort.values_stable",
     "special_airy_ai.out",
     "special_bessel_j0.out",
     "special_bessel_j1.out",
@@ -448,9 +422,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "trace",
     "triangular_solve.X",
     "tril_indices",
-    "tril.out",
     "triu_indices",
-    "triu.out",
     "trunc.out",
     "unfold_backward",
     "_unique2",
