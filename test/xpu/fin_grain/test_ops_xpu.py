@@ -137,6 +137,8 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
+    "nn.functional.upsample_nearest",
+    "nn.functional.interpolate",
 ]
 
 _xpu_computation_ops = [
