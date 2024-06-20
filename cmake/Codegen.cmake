@@ -3,11 +3,11 @@ if(Codegen_GPU_cmake_included)
 endif()
 set(Codegen_GPU_cmake_included true)
 
-set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen")
+set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen/xpu")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/aten/XPUFallback.template)
+set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_BACKEND file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
@@ -22,6 +22,7 @@ function(GEN_BACKEND file_yaml)
     --source_yaml ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml}
     COMMAND
     cat ${XPUFallback_PATH} >> ${RegisterXPU_PATH}
+    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/rm_empty_tensor.py --register_xpu_path "${CMAKE_BINARY_DIR}/aten/src/ATen/RegisterXPU.cpp"
     ${SIMPLE_TRACE}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
