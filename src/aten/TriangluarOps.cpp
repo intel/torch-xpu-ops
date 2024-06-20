@@ -68,4 +68,10 @@ Tensor& XPUNativeFunctions::triu_(Tensor& self, int64_t diagonal) {
   xpu::check_inplace(self, self.sizes(), self.options());
   return triu_out(self, diagonal, self);
 }
+
+Tensor XPUNativeFunctions::trace(const Tensor& self) {
+  TORCH_CHECK(self.dim() == 2, "expected a matrix");
+  return self.diagonal().sum();
+}
+
 } // namespace at

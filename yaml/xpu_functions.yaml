@@ -334,3 +334,4 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - trace

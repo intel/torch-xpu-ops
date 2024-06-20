@@ -425,7 +425,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "topk.values",
     "_to_sparse",
     "_to_sparse_csr",
-    "trace",
     "triangular_solve.X",
     "tril_indices",
     "triu_indices",
