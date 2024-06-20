@@ -13,9 +13,8 @@ runs:
     - name: UT Test (${{ inputs.ut_suite }})
       shell: bash
       run: |
-        source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
         source activate xpu_op_${ZE_AFFINITY_MASK}
+        source /opt/intel/oneapi/compiler/latest/env/vars.sh
 
         # check param
         function contains() {
