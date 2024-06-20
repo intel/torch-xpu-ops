@@ -249,7 +249,7 @@ jobs:
           fi
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-            test_scope="Inputs: triton=${{ inputs.triton }}; suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }}"
+            test_scope="Inputs: suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }}; triton=${{ inputs.triton }}; model=${{ inputs.model }}"
             test_sw="SW info: XPU=${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}, "
             test_sw+="Torch=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_COMMIT_ID }} on ${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_BRANCH_ID }}"
             test_hw="HW info: Run on ${RUNNER_NAME} with DKMS=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DKMS_VERSION }} and DPCPP=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DPCPP_VERSION }}"
