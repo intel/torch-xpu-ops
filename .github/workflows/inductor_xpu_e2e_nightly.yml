@@ -263,22 +263,22 @@ jobs:
         with:
           ut_suite: op_example
       - name: Nightly XPU OP Finegrain UT Test
-        if: ${{ !inputs.ut_suite}}
+        if: ${{ !inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: op_finegrain
       - name: Nightly XPU OP UT Test
-        if: ${{ !inputs.ut_suite}}
+        if: ${{ !inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with: 
           ut_suite: op_ut
       - name: Nightly Torch XPU UT Test
-        if: ${{ !inputs.ut_suite}}
+        if: ${{ !inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: torch_xpu
       - name: OnDemand UT Test (${{ inputs.ut_suite }})
-        if: ${{ inputs.ut_suite}}
+        if: ${{ inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: ${{ inputs.ut_suite }}
