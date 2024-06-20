@@ -219,6 +219,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims

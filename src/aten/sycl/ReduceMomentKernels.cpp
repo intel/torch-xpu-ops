@@ -1,3 +1,4 @@
+#include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
@@ -7,6 +8,41 @@
 namespace at {
 namespace native {
 namespace xpu {
+
+template <typename scalar_t, typename out_t = scalar_t>
+void std_var_template(
+    TensorIterator& iter,
+    double correction_opt,
+    bool take_sqrt) {
+  // reducing unrolling factor to 2 for welford kernel
+  // This is necessary to lower register usage that leads to register spills.
+  using accscalar_t = at::acc_type<scalar_t, true>;
+  using ops_t =
+      WelfordOps<scalar_t, accscalar_t, int32_t, std::pair<out_t, out_t>>;
+  ops_t ops(static_cast<accscalar_t>(correction_opt), take_sqrt);
+  gpu_reduce_kernel<scalar_t, out_t, 2>(iter, ops, typename ops_t::acc_t{});
+}
+
+void std_var_kernel(
+    TensorIterator& iter,
+    double correction_opt,
+    bool take_sqrt) {
+  const auto input_dtype = iter.input_dtype();
+  if (input_dtype == kHalf && iter.dtype() == kFloat) {
+    // type promotion that does cast and reduction in a single kernel
+    std_var_template<at::Half, float>(iter, correction_opt, take_sqrt);
+  } else if (input_dtype == kBFloat16 && iter.dtype() == kFloat) {
+    // type promotion that does cast and reduction in a single kernel
+    std_var_template<at::BFloat16, float>(iter, correction_opt, take_sqrt);
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        iter.dtype(),
+        "std_var_xpu",
+        [&]() { std_var_template<scalar_t>(iter, correction_opt, take_sqrt); });
+  }
+}
 
 template <
     typename scalar_t,
