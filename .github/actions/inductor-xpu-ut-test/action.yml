@@ -34,6 +34,7 @@ runs:
           if [[ ${ut_suite} == 'op_example' ]]; then
             unset PYTORCH_TEST_WITH_SLOW
             unset PYTORCH_ENABLE_XPU_FALLBACK
+            cd ${{ github.workspace }}
             cd examples
             timeout 8000 pytest -v
           fi
