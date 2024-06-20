@@ -120,8 +120,6 @@ jobs:
           pip install -r requirements.txt
           export USE_XPU=1
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
-          echo "DKMS_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" >> "${GITHUB_ENV}"
-          echo "DPCPP_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" >> "${GITHUB_ENV}"
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
