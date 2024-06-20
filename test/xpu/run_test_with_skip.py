@@ -1997,6 +1997,7 @@ skip_list=(
     "test_einsum_xpu_complex128",
     "test_einsum_xpu_float64",
     "test_inner_xpu_complex64",
+    "test_invariance_error_spectral_decompositions_xpu_complex128",
     "test_inverse_many_batches_xpu_complex128",
     "test_inverse_many_batches_xpu_complex64",
     "test_inverse_many_batches_xpu_float64",
@@ -2154,6 +2155,8 @@ skip_list=(
     "test_compile_int4_mm_m_64_k_32_n_64_xpu",
     "test_compile_int4_mm_m_64_k_64_n_48_xpu",
     "test_compile_int4_mm_m_64_k_64_n_64_xpu",
+# Short is not supported in oneDNN!
+    "test_mm_empty_inputs_mixed_dtype_errors_xpu",
     )
 res += launch_test("test_linalg_xpu.py", skip_list)
 if res != 0:
