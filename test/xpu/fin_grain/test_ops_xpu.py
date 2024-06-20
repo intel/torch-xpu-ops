@@ -137,7 +137,7 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
-    "native_group_norm",
+    "nn.functional.group_norm",
 ]
 
 _xpu_computation_ops = [
