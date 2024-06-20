@@ -247,6 +247,8 @@ supported:
   - any.all_out
   - amax
   - amax.out
+  - amin
+  - amin.out
   - argmax
   - argmax.out
   - _local_scalar_dense

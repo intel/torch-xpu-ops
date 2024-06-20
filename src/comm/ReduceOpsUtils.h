@@ -70,5 +70,40 @@ inline std::tuple<Tensor&, Tensor&> resize_reduction_with_indices(
   return std::forward_as_tuple(out, out_indice);
 }
 
+using DimMask = TensorIterator::DimMask;
+
+static DimMask make_dim_mask(IntArrayRef dims, int64_t ndim) {
+  auto mask = DimMask();
+  if (dims.empty()) {
+    mask.flip();
+  } else {
+    mask = at::dim_list_to_bitset(dims, ndim);
+  }
+  return mask;
+}
+
+inline void allocate_reduction_result(
+    Tensor& result,
+    const Tensor& self,
+    DimMask mask,
+    bool keepdim,
+    ScalarType dtype) {
+  auto shape = DimVector(self.sizes());
+  for (int dim = shape.size() - 1; dim >= 0; dim--) {
+    if (mask[dim]) {
+      if (keepdim) {
+        shape[dim] = 1;
+      } else {
+        shape.erase(shape.begin() + dim);
+      }
+    }
+  }
+  if (result.defined()) {
+    result.resize_(shape);
+  } else {
+    result = at::empty(shape, self.options().dtype(dtype));
+  }
+}
+
 } // namespace xpu
 } // namespace at
