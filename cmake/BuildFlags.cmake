@@ -46,6 +46,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
   # TODO: Align with PyTorch and switch to ABI=0 eventually, after
   # resolving incompatible implementation in SYCL runtime.
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=1)
@@ -65,6 +66,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
 
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-intel-enable-auto-large-GRF-mode\"")
+  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-fp32-correctly-rounded-divide-sqrt\"")
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
     set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
   else()
