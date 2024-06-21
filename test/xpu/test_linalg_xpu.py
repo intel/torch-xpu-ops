@@ -229,7 +229,7 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd=matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd=matmul_small_brute_force_3d_Nd
 
 TestLinalg._default_dtype_check_enabled = True
-instantiate_device_type_tests(TestLinalg, globals(),only_for=("xpu"))
+instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
 
 if __name__ == '__main__':
     TestCase._default_dtype_check_enabled = True
