@@ -7,17 +7,19 @@
 #include <aten/sycl/MultiTensorApply.h>
 #include <comm/SYCLContext.h>
 
+enum class NormType { L1, L2 };
+
 namespace at::native::xpu {
 template <
     typename T,
-    int NormType,
+    int norm_type,
     typename opmath_t,
     int depth = 1,
     int r_args_depth = 1,
     int res_arg_index = 0>
 struct LpNormFunctor {
   static_assert(
-      NormType == 1 || NormType == 2,
+      norm_type == NormType::L1 || norm_type == NormType::L2,
       "foreach_norm supports only L1 and L2 norm");
   template <typename TLA, typename TLW>
   void operator()(
@@ -53,7 +55,7 @@ struct LpNormFunctor {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
-          vals[ii] += NormType == 1
+          vals[ii] += norm_type == NormType::L1
               ? static_cast<opmath_t>(std::fabs((opmath_t)next))
               : static_cast<opmath_t>(next * next);
         }
@@ -66,7 +68,7 @@ struct LpNormFunctor {
           int i = i_start + item_idx + ii * item_range;
           if (i < n && i < chunk_size) {
             opmath_t next = static_cast<opmath_t>(x[i]);
-            vals[ii] += NormType == 1
+            vals[ii] += norm_type == NormType::L1
                 ? static_cast<opmath_t>(std::fabs((opmath_t)next))
                 : static_cast<opmath_t>(next * next);
           }
@@ -89,7 +91,7 @@ struct LpNormFunctor {
   }
 };
 
-template <typename out_t, int NormType, typename opmath_t>
+template <typename out_t, int norm_type, typename opmath_t>
 struct lpnormChunkReduceKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     auto lid = item_id.get_local_linear_id();
@@ -105,7 +107,7 @@ struct lpnormChunkReduceKernelFunctor {
         item_id.get_group(), val, sycl::plus<opmath_t>());
     if (lid == 0) {
       ret_per_tensor_[group_id] =
-          NormType == 1 ? sum_val : std::sqrt((opmath_t)sum_val);
+          norm_type == NormType::L1 ? sum_val : std::sqrt((opmath_t)sum_val);
     }
   }
   lpnormChunkReduceKernelFunctor(
@@ -125,14 +127,14 @@ struct lpnormChunkReduceKernelFunctor {
   int wg_size_;
 };
 
-template <typename out_t, int NormType, typename out_opmath_t>
+template <typename out_t, int norm_type, typename out_opmath_t>
 void launch_lpnorm_chunk_reduce_kernel(
     const out_opmath_t* output_per_tensor,
     out_t* ret_per_tensor,
     int wg_size,
     int max_chunks_per_tensor,
     int n_tensor) {
-  lpnormChunkReduceKernelFunctor<out_t, NormType, out_opmath_t> kfn(
+  lpnormChunkReduceKernelFunctor<out_t, norm_type, out_opmath_t> kfn(
       output_per_tensor, ret_per_tensor, max_chunks_per_tensor, wg_size);
 
   sycl_kernel_submit(
@@ -199,11 +201,11 @@ std::vector<Tensor> foreach_norm_kernel(
                 // sum temp val for each chunk
                 multi_tensor_apply<1>(
                     tensor_lists,
-                    LpNormFunctor<scalar_t, 1, out_opmath_t>(),
+                    LpNormFunctor<scalar_t, NormType::L1, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
                 // sum final val for all chunks
-                launch_lpnorm_chunk_reduce_kernel<out_t, 1, out_opmath_t>(
+                launch_lpnorm_chunk_reduce_kernel<out_t, NormType::L1, out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     ret_per_tensor.mutable_data_ptr<out_t>(),
                     wg_size,
@@ -223,10 +225,10 @@ std::vector<Tensor> foreach_norm_kernel(
                 using out_opmath_t = typename at::opmath_type<out_t>;
                 multi_tensor_apply<1>(
                     tensor_lists,
-                    LpNormFunctor<scalar_t, 2, out_opmath_t>(),
+                    LpNormFunctor<scalar_t, NormType::L2, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
-                launch_lpnorm_chunk_reduce_kernel<out_t, 2, out_opmath_t>(
+                launch_lpnorm_chunk_reduce_kernel<out_t, NormType::L2, out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     ret_per_tensor.mutable_data_ptr<out_t>(),
                     wg_size,
