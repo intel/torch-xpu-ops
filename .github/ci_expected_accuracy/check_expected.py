@@ -43,6 +43,7 @@ for index, row in refer_data.iterrows():
 total = len(refer_names)
 failed = len(failed_models)
 pass_rate = 1 - (failed / total)
+print("============ Summary for {} {} {} accuracy ============".format(args.suite, args.dtype, args.mode))
 print("Total:", total)
 print("Failed:", failed, failed_models)
 print("Passed", total - failed)
