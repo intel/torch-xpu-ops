@@ -1320,19 +1320,7 @@ def _test_cross_entropy_loss_2d_out_of_bounds_class_index(self, device, dtype):
 
 
 
-
-
-
-
 #!/usr/bin/env python3
-
-
-
-
-
-
-
-
 
 
 
@@ -1344,15 +1332,7 @@ import torch
 
 
 
-
-
-
-
 import torch.nn.functional as F
-
-
-
-
 
 
 
@@ -1364,19 +1344,7 @@ from torch.testing._internal.common_utils import (run_tests, TestCase)
 
 
 
-
-
-
-
-
-
-
-
 class TestThatContainsCUDAAssert(TestCase):
-
-
-
-
 
 
 
@@ -1384,15 +1352,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     device = '{str(device)}'
-
-
-
-
 
 
 
@@ -1400,15 +1360,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     ignore_index = 255
-
-
-
-
 
 
 
@@ -1416,15 +1368,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     n_classes = 3
-
-
-
-
 
 
 
@@ -1432,15 +1376,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     h = 1024
-
-
-
-
 
 
 
@@ -1448,15 +1384,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     labels = torch.zeros(b, w, h, dtype=torch.int64, device=device)
-
-
-
-
 
 
 
@@ -1464,15 +1392,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     # Set invalid class index
-
-
-
-
 
 
 
@@ -1484,19 +1404,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
-
-
-
-
     x = F.cross_entropy(
-
-
-
-
 
 
 
@@ -1504,15 +1412,7 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
     )
-
-
-
-
 
 
 
@@ -1528,31 +1428,11 @@ def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == '__main__':
 
 
 
-
-
-
-
 run_tests()
-
-
-
-
 
 
 
