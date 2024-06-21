@@ -56,8 +56,10 @@ jobs:
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
-      DKMS_VERSION: ${{ steps.pinned.outputs.DKMS_VERSION }}
-      DPCPP_VERSION: ${{ steps.pinned.outputs.DPCPP_VERSION }}
+      DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
+      OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
+      GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -103,8 +105,11 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" >> "${GITHUB_ENV}"
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
-          echo "DKMS_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DPCPP_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          . /etc/os-release
+          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
@@ -232,13 +237,7 @@ jobs:
       - name: Report github issue for XPU OPS nightly
         run: |
           set -xe
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            report_issue_id=426
-            test_type="On-demand"
-          else
-            report_issue_id=432
-            test_type="Nightly"
-          fi
+          # Test status
           if [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "success" ];then
             test_status=Success
           elif [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "failure" ];then
@@ -246,21 +245,52 @@ jobs:
             cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
           else
             test_status=None
-          fi
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-            test_scope="Inputs: suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }}; triton=${{ inputs.triton }}; model=${{ inputs.model }}"
-            test_sw="SW info: XPU=${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}, "
-            test_sw+="Torch=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_COMMIT_ID }} on ${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_BRANCH_ID }}"
-            test_hw="HW info: Run on ${RUNNER_NAME} with DKMS=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DKMS_VERSION }} and DPCPP=${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DPCPP_VERSION }}"
+            exit 0
           fi
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
-          if [ "${test_status}" != "None" ];then
-            gh --repo $repo issue comment $report_issue_id --body "$cc_comment
-                  $(date +'%F') $test_type Test Status: ${test_status}
+          test_xpu="${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}"
+          test_torch="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_COMMIT_ID }} on ${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_BRANCH_ID }}"
+          test_driver="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DRIVER_VERSION }}"
+          test_bundle="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.BUNDLE_VERSION }}"
+          test_os="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.OS_PRETTY_NAME }}"
+          test_gcc"${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
+
+          # On-demand
+          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
+            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
+            test_scope="Inputs|suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }};"
+            if [ "${{ inputs.triton }}" != "" ];then
+              test_scope+=" triton=${{ inputs.triton }};"
+            fi
+            if [ "${{ inputs.model }}" != "" ];then
+              test_scope+=" model=${{ inputs.model }};"
+            fi
+            gh --repo $repo issue comment 426 --body "$cc_comment
+                  $(date +'%F') On-demand Test Status: **${test_status}**
                   See: $build_url
-                  $test_scope
-                  $test_sw
-                  $test_hw"
+                  Torch-xpu-ops | PyTorch
+                  --- | ---
+                  $test_xpu | $test_torch
+
+                  Device | OS | GCC | Python | Driver | Bundle
+                  --- | --- | --- | --- | --- | ---
+                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
+
+                  Inputs | $test_scope
+                  --- | ---
+                  "
+          # Nightly
+          else
+            gh --repo $repo issue comment 432 --body "$cc_comment
+                  $(date +'%F') Nightly Test Status: **${test_status}**
+                  See: $build_url
+                  Torch-xpu-ops | PyTorch
+                  --- | ---
+                  $test_xpu | $test_torch
+
+                  Device | OS | GCC | Python | Driver | Bundle
+                  --- | --- | --- | --- | --- | ---
+                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
+                  "
           fi
