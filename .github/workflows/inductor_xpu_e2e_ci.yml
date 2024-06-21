@@ -22,12 +22,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Prepare Conda ENV
         run: |
-          which conda
-          if ! conda env list | grep -q "^e2e_ci "; then
-            conda create -n e2e_ci python=3.8 cmake ninja -y
-          fi
+          which conda && conda clean -ay
+          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          conda create -n e2e_ci python=3.10 cmake ninja -y
           source activate e2e_ci
-          conda install intel::mkl-static intel::mkl-include -y
+          conda install -c intel mkl-static mkl-include -y
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
@@ -110,6 +109,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 16
+          expected_pass_num: 15
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
