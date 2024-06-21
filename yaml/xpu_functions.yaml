@@ -65,6 +65,12 @@ supported:
   - le.Tensor
   - le.Tensor_out
   - le_.Tensor
+  - lerp.Tensor
+  - lerp.Tensor_out
+  - lerp_.Tensor
+  - lerp.Scalar
+  - lerp.Scalar_out
+  - lerp_.Scalar
   - gt.Scalar
   - gt.Scalar_out
   - gt_.Scalar
