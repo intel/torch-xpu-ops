@@ -3,8 +3,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/ReduceMaxValuesKernel.h>
-#include <aten/sycl/ReduceMinValuesKernel.h>
+#include <aten/sycl/ReduceMaxValuesKernels.h>
+#include <aten/sycl/ReduceMinValuesKernels.h>
 #include <torch/library.h>
 
 namespace at {

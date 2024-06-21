@@ -7,8 +7,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
 #include <aten/sycl/MaxMinElementwiseKernels.h>
-#include <aten/sycl/ReduceMaxValuesKernel.h>
-#include <aten/sycl/ReduceMinValuesKernel.h>
+#include <aten/sycl/ReduceMaxValuesKernels.h>
+#include <aten/sycl/ReduceMinValuesKernels.h>
 #include <aten/sycl/TensorCompareKernels.h>
 #include <comm/ReduceOpsUtils.h>
 

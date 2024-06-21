@@ -8,8 +8,8 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <aten/sycl/ReduceMaxValuesKernel.h>
-#include <aten/sycl/ReduceMinValuesKernel.h>
+#include <aten/sycl/ReduceMaxValuesKernels.h>
+#include <aten/sycl/ReduceMinValuesKernels.h>
 #include <aten/sycl/ReduceOpsKernels.h>
 #include <aten/sycl/ScanKernels.h>
 #include <aten/sycl/ScanUtils.h>
@@ -507,7 +507,7 @@ static TensorIterator amin_amax_meta(
   auto out_dtype = result.defined() ? result.scalar_type() : self.scalar_type();
 
   int64_t ndim = self.dim();
-  auto mask = make_dim_mask(dim, ndim);
+  auto mask = native::make_dim_mask(dim, ndim);
   allocate_reduction_result(result, self, mask, keepdim, out_dtype);
 
   auto iter = meta::make_reduction(self, result, dim, keepdim, out_dtype);

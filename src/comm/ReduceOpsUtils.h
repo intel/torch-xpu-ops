@@ -70,22 +70,10 @@ inline std::tuple<Tensor&, Tensor&> resize_reduction_with_indices(
   return std::forward_as_tuple(out, out_indice);
 }
 
-using DimMask = TensorIterator::DimMask;
-
-static DimMask make_dim_mask(IntArrayRef dims, int64_t ndim) {
-  auto mask = DimMask();
-  if (dims.empty()) {
-    mask.flip();
-  } else {
-    mask = at::dim_list_to_bitset(dims, ndim);
-  }
-  return mask;
-}
-
 inline void allocate_reduction_result(
     Tensor& result,
     const Tensor& self,
-    DimMask mask,
+    native::DimMask mask,
     bool keepdim,
     ScalarType dtype) {
   auto shape = DimVector(self.sizes());
