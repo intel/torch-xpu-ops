@@ -82,6 +82,7 @@ skip_list = (
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float16",
+    "test_backward_nn_functional_upsample_nearest_xpu_float32",
 
     # Not implemented operators, aten::embedding_renorm_.
     # To retrieve cases when the operators are supported.

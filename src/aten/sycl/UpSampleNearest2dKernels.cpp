@@ -1,5 +1,6 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
+#include <aten/sycl/LaunchUtils.h>
 #include <aten/sycl/UpSampleNearest2dKernels.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
@@ -7,26 +8,6 @@
 
 namespace at::native {
 namespace xpu {
-
-inline size_t idx_cl(
-    const size_t n,
-    const size_t h,
-    const size_t w,
-    const size_t c,
-    const size_t height,
-    const size_t width,
-    const size_t channel) {
-  return ((n * height + h) * width + w) * channel + c;
-}
-
-static int lastPow2(unsigned int n) {
-  n |= (n >> 1);
-  n |= (n >> 2);
-  n |= (n >> 4);
-  n |= (n >> 8);
-  n |= (n >> 16);
-  return std::max<int>(1, n - (n >> 1));
-}
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest2dBackwardKernelFunctor {

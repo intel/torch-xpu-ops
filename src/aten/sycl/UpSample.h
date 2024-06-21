@@ -13,26 +13,16 @@ namespace at {
 namespace native {
 namespace xpu {
 
-namespace upsample {
-
-TORCH_API c10::SmallVector<int64_t, 3> compute_output_size(
-    c10::IntArrayRef input_size, // Full input tensor size.
-    at::OptionalIntArrayRef output_size,
-    c10::optional<c10::ArrayRef<double>> scale_factors);
-} // namespace upsample
-
-namespace upsample_xpu {
-
-inline c10::optional<double> get_scale_value(
-    c10::optional<c10::ArrayRef<double>> scales,
-    int idx) {
-  if (!scales) {
-    return nullopt;
-  }
-  return scales->at(idx);
+inline size_t idx_cl(
+    const size_t n,
+    const size_t h,
+    const size_t w,
+    const size_t c,
+    const size_t height,
+    const size_t width,
+    const size_t channel) {
+  return ((n * height + h) * width + w) * channel + c;
 }
-
-} // namespace upsample_xpu
 
 /* TODO: move this to a common place */
 template <typename scalar_t>
@@ -166,190 +156,6 @@ struct NearestExactBwIndexOp {
   }
 };
 
-/* Used by UpSampleBicubic2d.cu */
-template <typename scalar_t>
-static inline scalar_t upsample_get_value_bounded(
-    const PackedTensorAccessor64<const scalar_t, 4>& data,
-    int batch,
-    int channel,
-    int height,
-    int width,
-    int y,
-    int x) {
-  int access_y = max(min(y, height - 1), 0);
-  int access_x = max(min(x, width - 1), 0);
-  return data[batch][channel][access_y][access_x];
-}
-
-/* Used by UpSampleBicubic2d.cu */
-template <typename scalar_t, typename accscalar_t>
-static inline void upsample_increment_value_bounded(
-    PackedTensorAccessor64<scalar_t, 4>& data,
-    int batch,
-    int channel,
-    int height,
-    int width,
-    int y,
-    int x,
-    accscalar_t value) {
-  int access_y = max(min(y, height - 1), 0);
-  int access_x = max(min(x, width - 1), 0);
-  /* TODO: result here is truncated to scalar_t,
-     check: https://github.com/pytorch/pytorch/pull/19630#discussion_r281426912
-   */
-  atomicAdd(
-      &data[batch][channel][access_y][access_x], static_cast<scalar_t>(value));
-}
-
-// Based on
-// https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
-template <typename accscalar_t>
-static inline accscalar_t cubic_convolution1(accscalar_t x, accscalar_t A) {
-  return ((A + 2) * x - (A + 3)) * x * x + 1;
-}
-
-template <typename accscalar_t>
-static inline accscalar_t cubic_convolution2(accscalar_t x, accscalar_t A) {
-  return ((A * x - 5 * A) * x + 8 * A) * x - 4 * A;
-}
-
-template <typename accscalar_t>
-static inline void get_cubic_upsampling_coefficients(
-    accscalar_t coeffs[4],
-    accscalar_t t) {
-  accscalar_t A = -0.75f;
-
-  accscalar_t x1 = t;
-  coeffs[0] = cubic_convolution2<accscalar_t>(x1 + 1.0, A);
-  coeffs[1] = cubic_convolution1<accscalar_t>(x1, A);
-
-  // opposite coefficients
-  accscalar_t x2 = 1.0 - t;
-  coeffs[2] = cubic_convolution1<accscalar_t>(x2, A);
-  coeffs[3] = cubic_convolution2<accscalar_t>(x2 + 1.0, A);
-}
-
-template <typename scalar_t, typename accscalar_t>
-static inline accscalar_t cubic_interp1d(
-    scalar_t x0,
-    scalar_t x1,
-    scalar_t x2,
-    scalar_t x3,
-    accscalar_t t) {
-  accscalar_t coeffs[4];
-  get_cubic_upsampling_coefficients<accscalar_t>(coeffs, t);
-
-  return x0 * coeffs[0] + x1 * coeffs[1] + x2 * coeffs[2] + x3 * coeffs[3];
-}
-
-namespace upsample_antialias {
-
-// taken from
-// https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
-// src/libImaging/Resample.c#L20-L29
-struct BilinearFilterFunctor {
-  template <typename accscalar_t>
-  accscalar_t operator()(accscalar_t x) const {
-    if (x < 0) {
-      x = -x;
-    }
-    if (x < 1) {
-      return 1 - x;
-    }
-    return 0;
-  }
-
-  static const int size = 2;
-};
-
-// taken from
-// https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
-// src/libImaging/Resample.c#L46-L62
-struct BicubicFilterFunctor {
-  template <typename accscalar_t>
-  accscalar_t operator()(accscalar_t x) const {
-    // https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
-    const accscalar_t a = -0.5;
-    if (x < 0) {
-      x = -x;
-    }
-    if (x < 1) {
-      return ((a + 2) * x - (a + 3)) * x * x + 1;
-    }
-    if (x < 2) {
-      return (((x - 5) * x + 8) * x - 4) * a;
-    }
-    return 0;
-  }
-
-  static const int size = 4;
-};
-
-template <typename accscalar_t>
-static inline void _compute_weights_span(
-    const int i,
-    const int input_size,
-    const accscalar_t scale,
-    const accscalar_t support,
-    int& xmin,
-    int& xsize,
-    accscalar_t& center) {
-  center = scale * (i + static_cast<accscalar_t>(0.5));
-  xmin =
-      max(static_cast<int>(center - support + static_cast<accscalar_t>(0.5)),
-          static_cast<int>(0));
-  xsize =
-      min(static_cast<int>(center + support + static_cast<accscalar_t>(0.5)),
-          input_size) -
-      xmin;
-}
-
-template <typename scalar_t, typename accscalar_t, typename interp_filter_t>
-static inline void _compute_weights(
-    scalar_t* wt_ptr,
-    const accscalar_t scale,
-    int interp_size,
-    const interp_filter_t& interp_filter,
-    accscalar_t xmin_m_center,
-    int xsize) {
-  accscalar_t invscale = (scale >= 1.0) ? 1.0 / scale : 1.0;
-  accscalar_t total_w = 0.0;
-  int j = 0;
-  for (j = 0; j < xsize; j++) {
-    accscalar_t w = interp_filter(
-        (j + xmin_m_center + static_cast<accscalar_t>(0.5)) * invscale);
-    wt_ptr[j] = static_cast<scalar_t>(w);
-    total_w += w;
-  }
-  for (j = 0; j < xsize; j++) {
-    if (total_w != 0.0) {
-      wt_ptr[j] /= total_w;
-    }
-  }
-  for (; j < interp_size; j++) {
-    wt_ptr[j] = static_cast<scalar_t>(0.0);
-  }
-}
-
-template <typename scalar_t, typename accscalar_t>
-static inline accscalar_t interpolate_aa_single_dim(
-    const scalar_t* src,
-    const scalar_t* weights,
-    int size) {
-  scalar_t t = static_cast<accscalar_t>(*src);
-  scalar_t wts = static_cast<accscalar_t>(weights[0]);
-  accscalar_t output = t * wts;
-
-  int j = 1;
-  for (; j < size; j++) {
-    wts = static_cast<accscalar_t>(weights[j]);
-    t = static_cast<accscalar_t>(*(src + j));
-    output += t * wts;
-  }
-  return output;
-}
-
-} // namespace upsample_antialias
 } // namespace xpu
 } // namespace native
 } // namespace at
