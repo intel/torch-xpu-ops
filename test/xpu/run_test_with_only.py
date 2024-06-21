@@ -37,6 +37,7 @@ execute_list = (
     "_foreach_addcmul_ and not slowpath",
     # Compiler optimization on data type conversion brings the precision error.
     "_foreach_addcdiv_ and not slowpath and not test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
+    "_foreach_sqrt_ and not slowpath",
     # CPU Fallback fail
     # RuntimeError: linalg.vector_norm: Expected a floating point or complex tensor as input. Got Char
     # test_foreach_reduce_large_input__foreach_norm_xpu_uint8
