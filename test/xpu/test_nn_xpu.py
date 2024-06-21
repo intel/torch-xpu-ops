@@ -103,7 +103,7 @@ with XPUPatchForImport(False):
     TestNNDeviceType.test_grid_sample_large = grid_sample_large
 
 
-instantiate_device_type_tests(TestNNDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestNN)
 
 
