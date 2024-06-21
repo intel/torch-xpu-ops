@@ -104,6 +104,15 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - hardtanh
+  - hardtanh.out
+  - hardtanh_
+  - hardtanh_backward.grad_input
+  - hardtanh_backward
+  - hardswish
+  - hardswish.out
+  - hardswish_
+  - hardswish_backward
   - arange.start_out
   - abs
   - abs_
@@ -308,6 +317,8 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
   - maximum
   - maximum.out
   - minimum

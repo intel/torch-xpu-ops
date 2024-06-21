@@ -4,6 +4,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
 #include <aten/sycl/ActivationThresholdKernel.h>
+#include <aten/sycl/ActivationHardtanhKernels.h>
+#include <aten/sycl/ActivationHardswishKernels.h>
 
 namespace at {
 
@@ -156,6 +158,92 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
   return grad_input;
+}
+
+Tensor XPUNativeFunctions::hardtanh(
+    const Tensor& self,
+    const Scalar& min,
+    const Scalar& max) {
+  Tensor result = at::empty_like(self);
+  return at::hardtanh_out(result, self, min, max);
+}
+
+Tensor& XPUNativeFunctions::hardtanh_out(
+    const Tensor& self,
+    const Scalar& min,
+    const Scalar& max,
+    Tensor& result) {
+  TORCH_CHECK(
+      self.scalar_type() != at::kBool, "Boolean inputs not supported for hardtanh");
+  Scalar min_, max_;
+  if (at::isIntegralType(self.scalar_type(), /*include_bool*/false)) {
+    int64_t minval = min.toLong();
+    int64_t maxval = max.toLong();
+    TORCH_CHECK(
+      self.dtype() != at::kByte || (minval >= 0 && maxval >=0), 
+      "cannot do hardtanh on an unsigned type with negative limits");
+    min_ = minval;
+    max_ = maxval;
+  } else {
+    min_ = min;
+    max_ = max;
+  }
+  return at::clamp_out(result, self, min_, max_);
+}
+
+Tensor& XPUNativeFunctions::hardtanh_(
+    Tensor& self,
+    const Scalar& min,
+    const Scalar& max) {
+  return at::hardtanh_out(self, self, min, max);
+}
+
+Tensor& XPUNativeFunctions::hardtanh_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& min,
+    const Scalar& max,
+    Tensor& grad_input) {
+  auto iter = TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::hardtanh_backward_kernel(iter, min, max);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::hardtanh_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& min,
+    const Scalar& max) {
+  Tensor result;
+  auto iter = TensorIterator::borrowing_binary_op(result, grad_output, self);
+  native::xpu::hardtanh_backward_kernel(iter, min, max);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::hardswish(const Tensor& self) {
+  Tensor result;
+  auto iter = TensorIterator::unary_op(result, self);
+  native::xpu::hardswish_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardswish_out(const Tensor& self, Tensor& result) {
+  auto iter = TensorIterator::unary_op(result, self);
+  native::xpu::hardswish_kernel(iter);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::hardswish_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::hardswish_kernel(iter);
+  return self;
+}
+
+Tensor XPUNativeFunctions::hardswish_backward(const Tensor& grad_output, const Tensor& self) {
+  Tensor grad_input;
+  auto iter = TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::hardswish_backward_kernel(iter);
+  return iter.output();
 }
 
 } // namespace at
