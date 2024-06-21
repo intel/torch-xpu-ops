@@ -36,6 +36,11 @@ on:
         type: string
         default: 'accuracy'
         description: accuracy,performance. Delimiter is comma
+      test_ut:
+        required: true
+        type: string
+        default: 'true'
+        description: True will run UT, false will not
       ut_suite:
         required: false
         type: string
@@ -46,6 +51,7 @@ on:
         type: string
         default: 'true'
         description: Define if update xpu-ops, true means update.
+
       
 
 
@@ -224,6 +230,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
   Inductor-XPU-UT-Nightly-Tests:
+    if: inputs.test_ut == 'true'
     runs-on: linux.idc.xpu
     timeout-minutes: 900
     steps:
@@ -267,7 +274,7 @@ jobs:
           done
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
       - name: Nightly XPU OP Examples UT Test
-        if: ${{ !inputs.ut_suite}}
+        if: ${{ !inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: op_example
