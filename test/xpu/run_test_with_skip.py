@@ -951,6 +951,9 @@ skip_list = (
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
+
+    # Double and complex datatype matmul is not supported in oneDNN
+    "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
