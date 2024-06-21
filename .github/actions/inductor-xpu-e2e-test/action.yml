@@ -132,7 +132,8 @@ runs:
                         --suite $suite \
                         --mode $mode \
                         --dtype $dt \
-                        --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv
+                        --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv \
+                        --update
                 fi
               done
             done
