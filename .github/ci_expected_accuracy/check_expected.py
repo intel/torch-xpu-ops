@@ -60,4 +60,4 @@ if len(new_pass_models) > 0:
     print("NOTE: New passed models, please update the reference", new_pass_models)
     if args.update:
         refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)
-        print("Reference data updated")
+        print("Updated. Now, confirm the changes to .csvs and `git add` them if satisfied.")
