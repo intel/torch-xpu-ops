@@ -41,6 +41,7 @@ on:
         type: string
         default: 'true'
         description: Define if update xpu-ops, true means update.
+      
 
 
 permissions: read-all
@@ -243,6 +244,10 @@ jobs:
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Build Pytorch XPU
         run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=3.10 cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           conda install cmake ninja -y
           conda install intel::mkl-static intel::mkl-include -y
