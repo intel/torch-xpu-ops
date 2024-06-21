@@ -85,7 +85,7 @@ runs:
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
         source /opt/intel/oneapi/compiler/latest/env/vars.sh
-        rm -rf inductor_log
+        rm -f ${{ github.workspace }}/summary_accuracy.log
         # check param
         function contains() {
             contains_status="echo 'Start $2 ...'"
@@ -132,7 +132,8 @@ runs:
                         --suite $suite \
                         --mode $mode \
                         --dtype $dt \
-                        --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv
+                        --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv \
+                        2>&1 |tee -a ${{ github.workspace }}/summary_accuracy.log
                 fi
               done
             done
@@ -145,20 +146,19 @@ runs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
-        cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
+        cd ../pytorch
+        rm -f inductor_log/summary_accuracy.csv
         for var in $(find inductor_log/ -name "inductor_*.csv")
         do
           sed -i "s/$/,$(basename $var)/" $var
-          cat $var >> inductor_log/summary.csv
+          cat $var >> inductor_log/summary_accuracy.csv
         done
-        num_total=$(cat inductor_log/summary.csv |grep -v ',batch_size,' | wc -l || true)
-        num_passed=$(grep -c "pass" inductor_log/summary.csv || true)
-        num_failed=$(echo "$num_total - $num_passed" |bc)
-        pass_rate=`awk 'BEGIN{printf "%.2f%%\n",('$num_passed'/'$num_total')*100}'`
-        echo "num_total: $num_total" | tee inductor_log/summary.log
-        echo "num_passed: $num_passed" | tee -a inductor_log/summary.log
-        echo "num_failed: $num_failed" | tee -a inductor_log/summary.log
-        echo "pass_rate: $pass_rate" | tee -a inductor_log/summary.log
+        cat ${{ github.workspace }}/summary_accuracy.log |tee -a inductor_log/summary_accuracy.log
+        failed_case=$(grep "Failed: [1-9]" ${{ github.workspace }}/summary_accuracy.log |wc -l || true)
+        if [ $${failed_case} -ne 0 ];then
+          grep -E "Failed: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+          exit 1
+        fi
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: ${{ inputs.scenario == 'performance'}}
@@ -191,29 +191,3 @@ runs:
           mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
           python inductor_perf_summary.py -p ${dt} -s ${suite} -m ${mode}
         done
-        cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
-
-    - name: Upload Inductor XPU E2E Data
-      if: ${{ ! inputs.expected_pass_num }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
-        path: ${{ github.workspace }}/inductor_log
-    - name: Upload Inductor XPU E2E Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.expected_pass_num }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
-        path: ${{ github.workspace }}/inductor_log
-
-    - name: Test Results Check (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.expected_pass_num }}
-      shell: bash
-      run: |
-        cd ${{ github.workspace }}/inductor_log/
-        cat summary.csv summary.log
-        num_passed=$(grep "num_passed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
-        if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
-          echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
-          exit 1
-        fi
