@@ -26,9 +26,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport
+    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
 except Exception as e:
-    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport
+    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
 
 with XPUPatchForImport():
     from test_ops import TestCommon as TestCommonBase
@@ -47,100 +47,6 @@ any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
 cpu_xpu_all = (torch.bfloat16, torch.complex128, torch.complex64, torch.float16, torch.float32, torch.float64, torch.int16, torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool)
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
-_xpu_computation_op_list = [
-    "fill",
-    "zeros",
-    "zeros_like",
-    "clone",
-    "view_as_real",
-    "view_as_complex",
-    "view",
-    "resize_",
-    "resize_as_",
-    "add",
-    "sub",
-    "mul",
-    "div",
-    "abs",
-    "bernoulli",
-    "bitwise_and",
-    "bitwise_not",
-    "bitwise_or",
-    "bitwise_xor",
-    "clamp",
-    "clamp_max",
-    "clamp_min",
-    "clone",
-    "copy",
-    "cos",
-    "cumsum",
-    "empty",
-    "eq",
-    "fill",
-    "fmod",
-    "gcd",
-    "ge",
-    "gelu",
-    "gt",
-    "index_add",
-    "index_put",
-    "index_select",
-    "isnan",
-    "le",
-    "log",
-    "lt",
-    "masked_fill",
-    "maximum",
-    "minimum",
-    "mul",
-    "native_dropout_backward",
-    "ne",
-    "neg",
-    "nn.functional.adaptive_avg_pool2d",
-    "nn.functional.threshold",
-    "nonzero",
-    "normal",
-    "pow",
-    "reciprocal",
-    "_refs.rsub",
-    "relu",
-    "remainder",
-    "reshape",
-    "rsqrt",
-    "sin",
-    "sqrt",
-    "sum",
-    "tanh",
-    "unfold",
-    "uniform",
-    "view",
-    "where",
-    "zero",
-    "add",
-    "all",
-    "any",
-    "arange",
-    "as_strided",
-    # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
-    "flip",
-    "tril",
-    "triu",
-    "cat",
-    "log_softmax",
-    "softmax",
-    "scatter",
-    "gather",
-    "max_pool2d_with_indices_backward",
-    "nn.functional.embedding",
-    "nn.functional.unfold",
-    # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
-    "sigmoid",
-    "sgn",
-    "nn.functional.embedding_bag",
-    "acos",
-    "acosh",
-    "addr",
-]
 _xpu_computation_ops = [
     op for op in ops_and_refs if op.name in _xpu_computation_op_list
 ]
