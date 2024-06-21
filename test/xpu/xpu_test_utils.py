@@ -42,6 +42,8 @@ _xpu_computation_op_list = [
     "ge",
     "gelu",
     "gt",
+    "hardtanh",
+    "hardswish",
     "index_add",
     "index_put",
     "index_select",
