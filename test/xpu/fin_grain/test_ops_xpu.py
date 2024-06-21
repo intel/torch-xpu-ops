@@ -89,6 +89,7 @@ _xpu_computation_op_list = [
     "le",
     "log",
     "lt",
+    "lerp",
     "masked_fill",
     "maximum",
     "minimum",
