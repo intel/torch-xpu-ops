@@ -7,7 +7,7 @@ from torch.testing._internal.common_device_type import (
     toleranceOverride,
     tol as xtol,
     ) 
-from torch.testing._internal.common_utils import run_tests,TestCase,parametrize,IS_WINDOWS
+from torch.testing._internal.common_utils import run_tests, TestCase, parametrize, IS_WINDOWS
 import torch
 from functools import partial
 from torch.testing import make_tensor
@@ -280,11 +280,11 @@ class TestFP8MatmulCuda(TestCase):
 TestMixedDtypesLinearCuda._default_dtype_check_enabled = True
 TestFP8MatmulCuda._default_dtype_check_enabled = True
 TestMatmulCuda._default_dtype_check_enabled = True
-instantiate_device_type_tests(TestMixedDtypesLinearCuda, globals(), only_for=("xpu"))
+instantiate_device_type_tests(TestMixedDtypesLinearCuda, globals(), only_for=("xpu"), allow_xpu=True)
 
-instantiate_device_type_tests(TestFP8MatmulCuda, globals(), only_for=("xpu"))
+instantiate_device_type_tests(TestFP8MatmulCuda, globals(), only_for=("xpu"), allow_xpu=True)
 
-instantiate_device_type_tests(TestMatmulCuda, globals(), only_for=("xpu"))
+instantiate_device_type_tests(TestMatmulCuda, globals(), only_for=("xpu"), allow_xpu=True)
 if __name__ == '__main__':
     TestCase._default_dtype_check_enabled = True
     run_tests()
