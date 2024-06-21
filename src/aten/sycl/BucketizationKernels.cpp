@@ -1,0 +1,207 @@
+#include <ATen/ATen.h>
+#include <ATen/Dispatch.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/TensorIterator.h>
+#include <c10/core/ScalarType.h>
+#include <comm/Runtime.h>
+#include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
+
+namespace at::native::xpu {
+
+// customized lower_bound func to ensure the low bound of 'nan', 'inf' etc. be
+// the end of boundary and we can properly handle a sorter argument
+// std::lower_bound can not be used here since its customized comparator need
+// strict weak ordering and the customized comparators require both arguments to
+// have the same type, which wouldn't happen when comparing val of input_t to an
+// indexer value from sorter of int64
+template <typename input_t>
+int64_t cus_lower_bound(
+    int64_t start,
+    int64_t end,
+    const input_t val,
+    const input_t* bd,
+    const int64_t* sort) {
+  // sorter gives relative ordering for ND tensors, so we need to save and add
+  // the non-updated start as an offset i.e. the second row of a 3x3 tensors
+  // starts at element 3 but sorter's second row only contains 0, 1, or 2
+  const int64_t orig_start = start;
+  while (start < end) {
+    const int64_t mid = start + ((end - start) >> 1);
+    const input_t mid_val = sort ? bd[sort[mid] + orig_start] : bd[mid];
+    if (!(mid_val >= val)) {
+      start = mid + 1;
+    } else {
+      end = mid;
+    }
+  }
+  return start;
+}
+
+// customized upper_bound func to ensure we can properly handle a sorter
+// argument std::upper_bound can not be used here since its customized
+// comparator requires both arguments to have the same type, which wouldn't
+// happen when comparing val of input_t to an indexer value from sorter of int64
+template <typename input_t>
+int64_t cus_upper_bound(
+    int64_t start,
+    int64_t end,
+    const input_t val,
+    const input_t* bd,
+    const int64_t* sort) {
+  // sorter gives relative ordering for ND tensors, so we need to save and add
+  // the non-updated start as an offset i.e. the second row of a 3x3 tensors
+  // starts at element 3 but sorter's second row only contains 0, 1, or 2
+  const int64_t orig_start = start;
+  while (start < end) {
+    const int64_t mid = start + ((end - start) >> 1);
+    const input_t mid_val = sort ? bd[sort[mid] + orig_start] : bd[mid];
+    if (!(mid_val > val)) {
+      start = mid + 1;
+    } else {
+      end = mid;
+    }
+  }
+  return start;
+}
+
+template <typename input_t, typename output_t>
+struct SearchsortedFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    for (int64_t i = item.get_global_id(0); i < numel_in_;
+         i += item.get_global_range()[0]) {
+      // If boundaries tensor is 1d, we always search the entire boundary
+      // tensor
+      int64_t start_bd = is_1d_boundaries_ ? 0 : i / idim_in_ * idim_bd_;
+      int64_t end_bd = start_bd + idim_bd_;
+
+      int64_t pos = !right_
+          ? cus_lower_bound(
+                start_bd, end_bd, data_in_data_[i], data_bd_data_, data_st_) -
+              start_bd
+          : cus_upper_bound(
+                start_bd, end_bd, data_in_data_[i], data_bd_data_, data_st_) -
+              start_bd;
+
+      // type conversion might happen here
+      data_out_data_[i] = pos;
+    }
+  }
+
+  SearchsortedFunctor(
+      const bool right,
+      int64_t numel_in,
+      int64_t idim_in,
+      int64_t idim_bd,
+      const int64_t* data_st,
+      output_t* data_out,
+      bool is_1d_boundaries,
+      input_t* data_in_data,
+      input_t* data_bd_data,
+      output_t* data_out_data)
+      : right_(right),
+        numel_in_(numel_in),
+        idim_in_(idim_in),
+        idim_bd_(idim_bd),
+        data_st_(data_st),
+        data_out_(data_out),
+        is_1d_boundaries_(is_1d_boundaries),
+        data_in_data_(data_in_data),
+        data_bd_data_(data_bd_data),
+        data_out_data_(data_out_data) {}
+
+ private:
+  const bool right_;
+  int64_t numel_in_;
+  int64_t idim_in_;
+  int64_t idim_bd_;
+  const int64_t* data_st_;
+  output_t* data_out_;
+  bool is_1d_boundaries_;
+  input_t* data_in_data_;
+  input_t* data_bd_data_;
+  output_t* data_out_data_;
+};
+template <typename input_t, typename output_t>
+void searchsorted_template(
+    Tensor& result,
+    const Tensor& input,
+    const Tensor& boundaries,
+    const bool& right,
+    const Tensor& sorter) {
+  int64_t numel_in = input.numel();
+  int64_t rng, grng, tile_size;
+  tile_size = syclMaxWorkGroupSize();
+  rng = numel_in;
+  if (rng == 0) {
+    rng = static_cast<int64_t>(1);
+  }
+
+  grng = rng;
+  if (tile_size > grng) {
+    tile_size = grng;
+  } else if (grng > tile_size) {
+    int64_t xMode = static_cast<int64_t>(grng % tile_size);
+    if (xMode != 0) {
+      grng += static_cast<int64_t>(tile_size - xMode);
+    }
+  }
+
+  bool is_scalar_input = input.dim() == 0 && numel_in == 1;
+  // inner most dim size of input and boundaries
+  int64_t idim_in = is_scalar_input ? 1 : input.sizes().back();
+  int64_t idim_bd = boundaries.sizes().back();
+
+  const int64_t* data_st =
+      sorter.defined() ? sorter.data_ptr<int64_t>() : nullptr;
+  output_t* data_out = result.data_ptr<output_t>();
+
+  bool is_1d_boundaries = boundaries.dim() == 1;
+  auto data_in_data = input.data_ptr<input_t>();
+  auto data_bd_data = boundaries.data_ptr<input_t>();
+  auto data_out_data = result.data_ptr<output_t>();
+  SearchsortedFunctor<input_t, output_t> kfn(
+      right,
+      numel_in,
+      idim_in,
+      idim_bd,
+      data_st,
+      data_out,
+      is_1d_boundaries,
+      data_in_data,
+      data_bd_data,
+      data_out_data);
+
+  sycl_kernel_submit(grng, tile_size, getCurrentSYCLQueue(), kfn);
+}
+
+void searchsorted_kernel(
+    Tensor& result,
+    const Tensor& input,
+    const Tensor& boundaries,
+    bool out_int32,
+    bool right,
+    const Tensor& sorter) {
+  if (!out_int32) {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "searchsorted_out_xpu",
+        [&] {
+          searchsorted_template<scalar_t, int64_t>(
+              result, input, boundaries, right, sorter);
+        });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "searchsorted_out_xpu",
+        [&] {
+          searchsorted_template<scalar_t, int>(
+              result, input, boundaries, right, sorter);
+        });
+  }
+}
+} // namespace at::native::xpu

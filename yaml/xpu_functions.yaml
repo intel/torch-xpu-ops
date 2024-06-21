@@ -334,3 +334,10 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
