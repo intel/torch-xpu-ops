@@ -61,7 +61,6 @@ void hardswish_backward_kernel(TensorIterator& iter) {
       [&]() { gpu_kernel(iter, HardswishBackwardFunctor<scalar_t>()); });
 }
 
-
 } // namespace xpu
 } // namespace native
 } // namespace at

@@ -22,9 +22,9 @@ struct HardtanhBackwardFunctor {
   HardtanhBackwardFunctor(scalar_t min_val, scalar_t max_val)
       : min_val_(min_val), max_val_(max_val) {}
 
-  private:
-    scalar_t min_val_;
-    scalar_t max_val_;
+ private:
+  scalar_t min_val_;
+  scalar_t max_val_;
 };
 
 void hardtanh_backward_kernel(

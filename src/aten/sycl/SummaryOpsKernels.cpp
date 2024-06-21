@@ -206,7 +206,7 @@ Tensor bincount_template(
 
   bool has_weights = weights.defined();
   if (has_weights && (weights.dim() != 1 || weights.size(0) != self.size(0))) {
-    TORCH_CHECK(0, "input and weights should have the same length");
+    TORCH_CHECK(0, "weights should be 1-d and have the same length as input");
   }
 
   const int64_t nbins =
