@@ -16,9 +16,6 @@ supported:
   - sub.Tensor
   - sub_.Tensor
   - sub.out
-  - sub.Scalar
-  - sub_.Scalar
-  - sub.Scalar_out
   - mul.Tensor
   - mul_.Tensor
   - mul.out
@@ -35,23 +32,13 @@ supported:
   - div_.Tensor_mode
   - div.out_mode
   - rsub.Tensor
-  - rsub.Tensor_out
-  - rsub.Scalar
-  - rsub.Scalar_out
   - remainder.Tensor
   - remainder_.Tensor
   - remainder.Tensor_out
-  - remainder.Scalar
-  - remainder_.Scalar
-  - remainder.Scalar_out
   - remainder.Scalar_Tensor
-  - remainder.Scalar_Tensor_out
   - fmod.Tensor
   - fmod_.Tensor
   - fmod.Tensor_out
-  - fmod.Scalar
-  - fmod_.Scalar
-  - fmod.Scalar_out
   - tanh_backward
   - tanh_backward.grad_input
   - eq.Scalar
@@ -90,11 +77,15 @@ supported:
   - ge.Tensor
   - ge.Tensor_out
   - ge_.Tensor
+  - cat
+  - cat.out
   - isnan
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - index_add.out
+  - index_add_
+  - index_add
   - index_select
   - index_select.out
   - gcd
@@ -113,6 +104,15 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - hardtanh
+  - hardtanh.out
+  - hardtanh_
+  - hardtanh_backward.grad_input
+  - hardtanh_backward
+  - hardswish
+  - hardswish.out
+  - hardswish_
+  - hardswish_backward
   - arange.start_out
   - abs
   - abs_
@@ -152,6 +152,9 @@ supported:
   - pow.Tensor_Scalar_out
   - pow.Scalar
   - pow.Scalar_out
+  - exp
+  - exp.out
+  - exp_
   - empty.memory_format
   - empty_strided
   - clone
@@ -160,8 +163,16 @@ supported:
   - zero_
   - random_
   - random_.from
+  - random_.to
   - normal_
+  - normal.Tensor_float_out
+  - normal.Tensor_float
+  - normal.float_Tensor_out
+  - normal.float_Tensor
+  - normal.Tensor_Tensor_out
+  - normal.Tensor_Tensor
   - uniform_
+  - bernoulli.out
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
@@ -176,9 +187,12 @@ supported:
   - resize_
   - set_.source_Storage
   - set_.source_Storage_storage_offset
+  - set_.source_Tensor
+  - set_
   - unfold
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
+  # - _copy_from  # hand-written registration
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
@@ -213,32 +227,134 @@ supported:
   - min
   - min.unary_out
   - min.dim_min
-  - sum.out
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
+  - mean.dim
+  - all.dim
+  - all.out
+  - all.dims
+  - all.dims_out
+  - all
+  - all.all_out
   - any.dim
   - any.out
+  - any.dims
+  - any.dims_out
+  - any
   - any.all_out
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices_backward
+  - max_pool2d_with_indices_backward.grad_input
+  - embedding_dense_backward
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
   - _softmax_backward_data
-  - tril.out
-  - tril
-  - tril_
   - _index_put_impl_
   - nonzero
+  - _softmax
+  - _softmax.out
+  - _log_softmax
+  - _log_softmax.out
+  - _softmax_backward_data
+  - _softmax_backward_data.out
+  - _log_softmax_backward_data
+  - _log_softmax_backward_data.out
+  - scatter.src
+  - scatter.src_out
+  - scatter_.src
+  - scatter.value
+  - scatter.value_out
+  - scatter_.value
+  - scatter.reduce
+  - scatter.reduce_out
+  - scatter_.reduce
+  - scatter.value_reduce
+  - scatter.value_reduce_out
+  - scatter_.value_reduce
+  - scatter_add
+  - scatter_add.out
+  - scatter_add_
+  - scatter_reduce.two
+  - scatter_reduce.two_out
+  - scatter_reduce_.two
+  - gather
+  - gather.out
+  - sort.stable
+  - sort.values_stable
+  - argsort.stable
   - _foreach_add.Scalar
   - _foreach_add_.Scalar
   - _foreach_add.ScalarList
   - _foreach_add_.ScalarList
   - _foreach_add.List
   - _foreach_add_.List
+  - _foreach_mul.Scalar
+  - _foreach_mul_.Scalar
+  - _foreach_mul.ScalarList
+  - _foreach_mul_.ScalarList
+  - _foreach_mul.List
+  - _foreach_mul_.List
+  - _foreach_div.Scalar
+  - _foreach_div_.Scalar
+  - _foreach_div.ScalarList
+  - _foreach_div_.ScalarList
+  - _foreach_div.List
+  - _foreach_div_.List
+  - _foreach_addcmul.Scalar
+  - _foreach_addcmul_.Scalar
+  - _foreach_addcmul.ScalarList
+  - _foreach_addcmul_.ScalarList
+  - _foreach_addcmul.Tensor
+  - _foreach_addcmul_.Tensor
+  - _foreach_addcdiv.Scalar
+  - _foreach_addcdiv_.Scalar
+  - _foreach_addcdiv.ScalarList
+  - _foreach_addcdiv_.ScalarList
+  - _foreach_addcdiv.Tensor
+  - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
   - maximum
   - maximum.out
   - minimum
   - minimum.out
   - flip
+  - sigmoid
+  - sigmoid.out
+  - sigmoid_
+  - sigmoid_backward.grad_input
+  - sigmoid_backward
+  - tril.out
+  - tril
+  - tril_
+  - triu.out
+  - triu
+  - triu_
+  - im2col
+  - im2col.out
+  - col2im
+  - col2im.out
+  - nll_loss_forward.output
+  - nll_loss_forward
+  - nll_loss_backward.grad_input
+  - nll_loss_backward
+  - _embedding_bag
+  - _embedding_bag_forward_only
+  - sgn
+  - sgn.out
+  - sgn_
+  - _pin_memory
+  - is_pinned
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out

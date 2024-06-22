@@ -105,31 +105,6 @@ Tensor& XPUNativeFunctions::sub_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::sub(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::sub(self, wrapper, alpha);
-}
-
-Tensor& XPUNativeFunctions::sub_(
-    Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::sub_(self, wrapper, alpha);
-}
-
-Tensor& XPUNativeFunctions::sub_out(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::sub_out(self, wrapper, alpha, out);
-}
-
 Tensor XPUNativeFunctions::mul(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
@@ -174,14 +149,14 @@ Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
   Tensor out;
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::div_(Tensor& self, const Tensor& other) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(self, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return self;
 }
 
@@ -191,7 +166,7 @@ Tensor& XPUNativeFunctions::div_out(
     Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_binary_float_op(out, self, other);
-  native::xpu::div_kernel(iter);
+  native::xpu::div_true_kernel(iter);
   return out;
 }
 
@@ -288,31 +263,6 @@ Tensor XPUNativeFunctions::rsub(
   return XPUNativeFunctions::sub(other, self, alpha);
 }
 
-Tensor& XPUNativeFunctions::rsub_out(
-    const Tensor& self,
-    const Tensor& other,
-    const Scalar& alpha,
-    Tensor& out) {
-  return XPUNativeFunctions::sub_out(other, self, alpha, out);
-}
-
-Tensor XPUNativeFunctions::rsub(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha) {
-  return XPUNativeFunctions::sub(
-      native::wrapped_scalar_tensor(other), self, alpha);
-}
-
-Tensor& XPUNativeFunctions::rsub_out(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha,
-    Tensor& out) {
-  return XPUNativeFunctions::sub_out(
-      native::wrapped_scalar_tensor(other), self, alpha, out);
-}
-
 Tensor XPUNativeFunctions::remainder(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
@@ -335,35 +285,9 @@ Tensor& XPUNativeFunctions::remainder_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::remainder(const Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::remainder(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::remainder_(Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::remainder_(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::remainder_out(
-    const Tensor& self,
-    const Scalar& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::remainder_out(self, wrapper, out);
-}
-
 Tensor XPUNativeFunctions::remainder(const Scalar& self, const Tensor& other) {
   auto wrapper = native::wrapped_scalar_tensor(self);
   return XPUNativeFunctions::remainder(wrapper, other);
-}
-
-Tensor& XPUNativeFunctions::remainder_out(
-    const Scalar& self,
-    const Tensor& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(self);
-  return XPUNativeFunctions::remainder_out(wrapper, other, out);
 }
 
 Tensor XPUNativeFunctions::fmod(const Tensor& self, const Tensor& other) {
@@ -386,24 +310,6 @@ Tensor& XPUNativeFunctions::fmod_out(
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::fmod_kernel(iter);
   return out;
-}
-
-Tensor XPUNativeFunctions::fmod(const Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::fmod(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::fmod_(Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::fmod_(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::fmod_out(
-    const Tensor& self,
-    const Scalar& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::fmod_out(self, wrapper, out);
 }
 
 Tensor XPUNativeFunctions::tanh_backward(
@@ -526,6 +432,26 @@ Tensor& XPUNativeFunctions::minimum_out(
   auto iter = meta_func_minimum(self, other, output);
   native::xpu::minimum_kernel(iter);
   return output;
+}
+
+Tensor& XPUNativeFunctions::sigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& output,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::sigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& output) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, output);
+  native::xpu::sigmoid_backward_kernel(iter);
+  return iter.output();
 }
 
 } // namespace at

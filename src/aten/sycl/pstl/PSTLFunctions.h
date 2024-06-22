@@ -5,6 +5,7 @@
 
 #include <aten/sycl/MemoryAccess.h>
 #include <aten/sycl/MemoryAccessUtils.h>
+#include <aten/sycl/SortingKernels.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
@@ -12,6 +13,8 @@
 #include <functional>
 
 namespace at::native::xpu::pstl {
+
+using namespace at::xpu;
 
 template <int scan_type, class InputIt, class OutputIt, class T>
 struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
@@ -106,7 +109,7 @@ struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_scan_ = sycl_local_acc_t<T>(N_, cgh);
+    local_scan_ = sycl_local_acc_t<T>(wgroup_size_, cgh);
   }
 
   KSScanWithCarrierKernelFunctor(
@@ -151,6 +154,7 @@ struct ScanAccumulateKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
+    local_carry_ = sycl_local_acc_t<T>(1, cgh);
     return;
   }
 
@@ -771,10 +775,17 @@ OutputIt adjacent_difference(
   return d_first + N;
 }
 
+struct AdjacentDifferenceFunctor {
+  template <typename T>
+  auto operator()(T l, T r) const {
+    return r - l;
+  }
+};
+
 template <typename output_t, class InputIt, class OutputIt>
 OutputIt adjacent_difference(InputIt first, InputIt last, OutputIt d_first) {
-  return adjacent_difference<output_t>(
-      first, last, d_first, [](auto l, auto r) { return r - l; });
+  auto fn = AdjacentDifferenceFunctor();
+  return adjacent_difference<output_t>(first, last, d_first, fn);
 }
 
 template <typename output_t, typename index_t, class OutputIt>
@@ -792,6 +803,18 @@ struct IndexCopyKernelFunctor {
   OutputIt d_first_;
   output_t* range_ptr_;
   index_t* tpos_ptr_;
+};
+
+template <typename output_t, typename index_t>
+struct CountBySegmentCopyIfKernelFunctor {
+  auto operator()(output_t a) const {
+    return gmask_ptr_[a] != 0;
+  }
+  CountBySegmentCopyIfKernelFunctor(index_t* gmask_ptr)
+      : gmask_ptr_(gmask_ptr) {}
+
+ private:
+  index_t* gmask_ptr_;
 };
 
 template <
@@ -835,10 +858,9 @@ OutputIt count_by_segment(
   output_t* picked_range_ptr = picked_range.data_ptr<output_t>();
   auto picked_range_begin = picked_range_ptr;
   auto picked_range_end = picked_range_begin;
-  picked_range_end = copy_if<index_t>(
-      range_begin, range_begin + N, picked_range_begin, [=](output_t a) {
-        return gmask_ptr[a] != 0;
-      });
+  auto fn = CountBySegmentCopyIfKernelFunctor<output_t, index_t>(gmask_ptr);
+  picked_range_end =
+      copy_if<index_t>(range_begin, range_begin + N, picked_range_begin, fn);
   auto num_out = std::distance(picked_range_begin, picked_range_end);
   picked_range[num_out] = N;
   // notice: the temp tensor `range` will be re-used to store the result of
@@ -1396,15 +1418,8 @@ void sort(
     const int64_t sort_sz,
     bool descending) {
   RECORD_FUNCTION("pstl::sort", {});
-
-  // TODO: Support radix sort for fast path.
-  if (descending) {
-    merge_sort<KeyType, ValueType>(
-        out_key, out_val, sort_sz, GTFunctor<KeyType>());
-  } else {
-    merge_sort<KeyType, ValueType>(
-        out_key, out_val, sort_sz, LSFunctor<KeyType>());
-  }
+  sort_pairs<KeyType, ValueType>(
+      in_key, out_key, nullptr, out_val, sort_sz, descending);
 }
 
 } // namespace at::native::xpu::pstl
