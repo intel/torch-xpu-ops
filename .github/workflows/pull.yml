@@ -26,11 +26,10 @@ jobs:
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          git clone -b main https://github.com/pytorch/pytorch
-          cd pytorch && git log -n 1 && git submodule sync && git submodule update --init --recursive
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-          # Workaround for torch-xpu-ops ci test
-          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+          git clone https://github.com/pytorch/pytorch
+          cd pytorch
+          git checkout release/2.4
+          git log -n 1 && git submodule sync && git submodule update --init --recursive
       - name: Build Pytorch XPU
         run: |
           which conda && conda clean -ay
@@ -46,7 +45,11 @@ jobs:
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
-          git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+          git clone https://github.com/pytorch/vision
+          cd vision
+          git checkout ${TORCHVISION_COMMIT_ID}
+          python setup.py install && cd ..
           pip install -r .ci/docker/requirements-ci.txt
       - name: Run XPU OP Examples
         if: ${{ hashFiles('examples/') != '' }}

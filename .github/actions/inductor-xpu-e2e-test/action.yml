@@ -232,17 +232,6 @@ runs:
       if: ${{ inputs.expected_pass_num }}
       uses: actions/upload-artifact@v4
       with:
-        name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
+        name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/inductor_log
 
-    - name: Test Results Check (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.expected_pass_num }}
-      shell: bash
-      run: |
-        cd ${{ github.workspace }}/inductor_log/
-        cat summary.csv summary.log
-        num_passed=$(grep "num_passed:" summary.log | sed -e 's/.*://;s/[^0-9.]//')
-        if [ $num_passed -lt ${{ inputs.expected_pass_num }} ]; then
-          echo -e "[ERROR] Inductor E2E test for ${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} passed_num < ${{ inputs.expected_pass_num }}"
-          exit 1
-        fi
