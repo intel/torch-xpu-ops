@@ -8,6 +8,7 @@
 #endif
 #include <aten/sycl/ForeachBinaryOpListKernels.h>
 #include <aten/sycl/ForeachPointwiseOpListKernels.h>
+#include <aten/sycl/ForeachTernaryOpListKernels.h>
 
 namespace at {
 
@@ -106,5 +107,46 @@ FOREACH_BINARY_OP_LIST(div, true);
 
 FOREACH_POINTWISE_OP_TENSOR(addcmul)
 FOREACH_POINTWISE_OP_TENSOR(addcdiv)
+
+std::vector<at::Tensor> XPUNativeFunctions::_foreach_lerp(
+    TensorList tensors1,
+    TensorList tensors2,
+    TensorList tensors3) {
+  at::native::check_foreach_api_restrictions(tensors1, tensors2, tensors3);
+  if (!at::native::can_use_fast_route(
+          {tensors1, tensors2, tensors3}, {}, true)) {
+    return at::native::foreach_tensor_ternary_lerp_slow(
+        tensors1, tensors2, tensors3);
+  }
+
+  std::vector<at::Tensor> vec_res;
+  vec_res.reserve(tensors1.size());
+  for (const auto& t : tensors1) {
+    vec_res.emplace_back(at::native::empty_like(t));
+  }
+
+  native::xpu::foreach_lerp_list_kernel(tensors1, tensors2, tensors3, vec_res);
+  return vec_res;
+}
+
+void XPUNativeFunctions::_foreach_lerp_(
+    TensorList tensors1,
+    TensorList tensors2,
+    TensorList tensors3) {
+  at::native::check_foreach_api_restrictions(tensors1, tensors2, tensors3);
+  if (!at::native::can_use_fast_route(
+          {tensors1, tensors2, tensors3}, {}, true)) {
+    return at::native::foreach_tensor_ternary_lerp_slow_(
+        tensors1, tensors2, tensors3);
+  }
+
+  native::xpu::foreach_lerp_list_kernel_(tensors1, tensors2, tensors3);
+
+  // TODO: Handle version bump in codegen.
+  // increment_version
+  for (const auto& t : tensors1) {
+    t.unsafeGetTensorImpl()->bump_version();
+  }
+}
 
 } // namespace at
