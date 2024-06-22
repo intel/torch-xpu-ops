@@ -3,6 +3,7 @@
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/Loops.h>
+#include <aten/sycl/UnaryFractionKernels.h>
 #include <aten/sycl/UnaryKernels.h>
 
 namespace at {
