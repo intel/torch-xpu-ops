@@ -22,6 +22,8 @@ _xpu_computation_op_list = [
     "mul",
     "div",
     "abs",
+    "erf",
+    "erfc",
     "bernoulli",
     "bitwise_and",
     "bitwise_not",
