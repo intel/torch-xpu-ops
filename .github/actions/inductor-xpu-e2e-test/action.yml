@@ -113,14 +113,18 @@ runs:
               do
                 contains "accuracy,performance" $scenario
                 $contains_status
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 2 static 8 2 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 3 static 8 3 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 4 static 8 4 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 5 static 8 5 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
-                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
+                if [ "${MODEL_ONLY_NAME}" == "" ];then
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 8 0 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 1 static 8 1 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 2 static 8 2 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 3 static 8 3 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 4 static 8 4 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 5 static 8 5 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 6 static 8 6 &
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 7 static 8 7 &
+                else
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
+                fi
                 wait
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
