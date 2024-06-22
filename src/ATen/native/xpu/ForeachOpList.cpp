@@ -1,7 +1,7 @@
 #include <ATen/native/ForeachUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/XPUNativeFunctions.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #else
 #include <ATen/ops/_foreach_add_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>

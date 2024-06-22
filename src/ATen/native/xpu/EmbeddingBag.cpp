@@ -1,5 +1,5 @@
 #include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
 

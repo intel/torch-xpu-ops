@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
-#include <ATen/XPUNativeFunctions.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Fill.h>

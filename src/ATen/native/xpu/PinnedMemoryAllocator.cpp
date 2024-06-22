@@ -1,6 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/CPUFunctions.h>
-#include <ATen/XPUNativeFunctions.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/xpu/PinnedMemoryAllocator.h>
 
 namespace at {
