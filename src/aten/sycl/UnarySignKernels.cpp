@@ -55,6 +55,25 @@ void sign_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
+struct LogicalNotFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return static_cast<bool>(!a);
+  }
+};
+
+void logical_not_kernel(TensorIteratorBase& iter) {
+  // error check -- this is just ensuring we don't dispatch on types that aren't
+  // in ALL_TYPES_AND_COMPLEX_AND3(...) so we don't have to maintain a separate
+  // list or to do double dispatch.
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      kBool, kHalf, kBFloat16, iter.dtype(0), "logical_not_xpu", [&]() {});
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      kBool, kHalf, kBFloat16, iter.dtype(1), "logical_not_xpu", [&]() {
+        gpu_kernel(iter, LogicalNotFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
 struct NegFunctor {
   scalar_t operator()(scalar_t a) const {
     return -a;

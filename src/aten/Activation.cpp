@@ -3,9 +3,9 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <aten/sycl/ActivationGeluKernel.h>
-#include <aten/sycl/ActivationThresholdKernel.h>
-#include <aten/sycl/ActivationHardtanhKernels.h>
 #include <aten/sycl/ActivationHardswishKernels.h>
+#include <aten/sycl/ActivationHardtanhKernels.h>
+#include <aten/sycl/ActivationThresholdKernel.h>
 
 namespace at {
 
@@ -174,14 +174,15 @@ Tensor& XPUNativeFunctions::hardtanh_out(
     const Scalar& max,
     Tensor& result) {
   TORCH_CHECK(
-      self.scalar_type() != at::kBool, "Boolean inputs not supported for hardtanh");
+      self.scalar_type() != at::kBool,
+      "Boolean inputs not supported for hardtanh");
   Scalar min_, max_;
-  if (at::isIntegralType(self.scalar_type(), /*include_bool*/false)) {
+  if (at::isIntegralType(self.scalar_type(), /*include_bool*/ false)) {
     int64_t minval = min.toLong();
     int64_t maxval = max.toLong();
     TORCH_CHECK(
-      self.dtype() != at::kByte || (minval >= 0 && maxval >=0), 
-      "cannot do hardtanh on an unsigned type with negative limits");
+        self.dtype() != at::kByte || (minval >= 0 && maxval >= 0),
+        "cannot do hardtanh on an unsigned type with negative limits");
     min_ = minval;
     max_ = maxval;
   } else {
@@ -204,7 +205,8 @@ Tensor& XPUNativeFunctions::hardtanh_backward_out(
     const Scalar& min,
     const Scalar& max,
     Tensor& grad_input) {
-  auto iter = TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::hardtanh_backward_kernel(iter, min, max);
   return grad_input;
 }
@@ -239,9 +241,12 @@ Tensor& XPUNativeFunctions::hardswish_(Tensor& self) {
   return self;
 }
 
-Tensor XPUNativeFunctions::hardswish_backward(const Tensor& grad_output, const Tensor& self) {
+Tensor XPUNativeFunctions::hardswish_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
   Tensor grad_input;
-  auto iter = TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::hardswish_backward_kernel(iter);
   return iter.output();
 }
