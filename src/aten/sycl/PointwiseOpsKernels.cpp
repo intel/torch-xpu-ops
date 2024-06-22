@@ -2,7 +2,6 @@
 #include <ATen/OpMathType.h>
 
 #include <aten/sycl/Loops.h>
-#include <aten/sycl/PointwiseOpsKernels.h>
 
 namespace at::native::xpu {
 
