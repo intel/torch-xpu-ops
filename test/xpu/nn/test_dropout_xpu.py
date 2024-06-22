@@ -312,7 +312,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         self.assertEqual(out.size(), x.size())
 
 
-instantiate_device_type_tests(TestDropoutNNDeviceType, globals(), only_for='xpu')
+instantiate_device_type_tests(TestDropoutNNDeviceType, globals(), only_for='xpu', allow_xpu=True)
 instantiate_parametrized_tests(TestDropoutNN)
 
 if __name__ == "__main__":
