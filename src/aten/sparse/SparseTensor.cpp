@@ -9,11 +9,11 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/_nnz_native.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors_native.h>
 #endif
 
-namespace at {
-namespace native::xpu {
+namespace at::native::xpu {
 
 Tensor _sparse_coo_tensor_with_dims_and_tensors(
     int64_t sparse_dim,
@@ -50,11 +50,20 @@ Tensor _sparse_coo_tensor_with_dims_and_tensors(
       is_coalesced);
 }
 
+int64_t _nnz(const Tensor& self) {
+  return at::native::_nnz_sparse(self);
+}
+
+Tensor _values(const Tensor& self) {
+  return at::native::_values_sparse(self);
+}
+
 TORCH_LIBRARY_IMPL(aten, SparseXPU, m) {
   m.impl(
       TORCH_SELECTIVE_NAME("_sparse_coo_tensor_with_dims_and_tensors"),
       TORCH_FN(_sparse_coo_tensor_with_dims_and_tensors));
+  m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz));
+  m.impl(TORCH_SELECTIVE_NAME("_values"), TORCH_FN(_values));
 }
 
-} // namespace native::xpu
-} // namespace at
+} // namespace at::native::xpu

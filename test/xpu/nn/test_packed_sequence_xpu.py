@@ -1,6 +1,5 @@
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
 
 try:
@@ -21,7 +20,7 @@ with XPUPatchForImport(False):
             return self.to(*args, **kwargs)
         return self.to(*args, device='xpu', **kwargs)
 
-    rnn_utils.PackedSequence.xpu = types.MethodType(run_utils.PackedSequence, myxpu)
+    rnn_utils.PackedSequence.xpu = types.MethodType(rnn_utils.PackedSequence, myxpu)
 
     def my_test_to(self):
         for enforce_sorted in (True, False):
@@ -54,7 +53,7 @@ with XPUPatchForImport(False):
                     "xpu",
                     "xpu:0" if torch.xpu.device_count() == 1 else "xpu:1",
                 ]:
-                    b = a.xpu(device=xpu)
+                    b = a.xpu()
                     self.assertIs(b, b.to(xpu))
                     self.assertIs(b, b.xpu())
                     self.assertEqual(a, b.to("cpu"))
@@ -62,11 +61,8 @@ with XPUPatchForImport(False):
                     self.assertEqual(a, b.to("cpu", dtype=torch.int32))
                     self.assertIs(b, b.to(dtype=torch.int32))
                     self.assertEqual(b.long(), b.to(dtype=torch.int64))
-    
+
     PackedSequenceTest.test_to = my_test_to
 
 if __name__ == "__main__":
     run_tests()
-
-
-
