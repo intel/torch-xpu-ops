@@ -349,3 +349,9 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out

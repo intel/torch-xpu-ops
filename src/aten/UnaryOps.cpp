@@ -3,6 +3,11 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <aten/sycl/AbsKernel.h>
+#include <aten/sycl/UnaryFractionKernels.h>
+#include <aten/sycl/UnaryGeometricCosKernel.h>
+#include <aten/sycl/UnaryGeometricSinKernel.h>
+#include <aten/sycl/UnaryGeometricTanhKernel.h>
 #include <aten/sycl/UnaryKernels.h>
 #include <aten/sycl/UnaryLogKernels.h>
 #include <aten/sycl/UnarySignKernels.h>
@@ -389,4 +394,47 @@ Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::erf(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erf_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::erf_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::erf_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::erf_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erf_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::erfc(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erfc_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::erfc_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::erfc_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erfc_kernel(iter);
+  return out;
+}
 } // namespace at

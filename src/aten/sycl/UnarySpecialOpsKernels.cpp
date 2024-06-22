@@ -28,4 +28,50 @@ void sigmoid_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, SigmoidFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct ErfFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::erf(float(a));
+  }
+};
+
+template <>
+struct ErfFunctor<double> {
+  double operator()(double a) const {
+    return std::erf(a);
+  }
+};
+
+template <typename scalar_t>
+struct ErfcFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::erfc(float(a));
+  }
+};
+
+template <>
+struct ErfcFunctor<double> {
+  double operator()(double a) const {
+    return std::erfc(a);
+  }
+};
+
+void erf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "erf_xpu",
+      [&]() { gpu_kernel(iter, ErfFunctor<scalar_t>()); });
+}
+
+void erfc_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "erfc_xpu",
+      [&]() { gpu_kernel(iter, ErfcFunctor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu
