@@ -5,9 +5,7 @@
 #include <ATen/native/xpu/sycl/BinaryInternal.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 template <typename opmath_t>
 struct AddFunctor {
@@ -58,6 +56,4 @@ void mul_kernel(TensorIteratorBase& iter) {
   }
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu

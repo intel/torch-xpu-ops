@@ -1,7 +1,5 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 
 namespace at::native::xpu {
