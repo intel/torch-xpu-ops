@@ -2,11 +2,12 @@
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ScalarOps.h>
+#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DistributionTemplates.h>
 #include <ATen/native/TensorIterator.h>
+
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 
@@ -136,6 +137,14 @@ Tensor& XPUNativeFunctions::bernoulli_(
       self, p, std::move(generator));
 }
 
+Tensor& XPUNativeFunctions::bernoulli_out(
+    const Tensor& self,
+    c10::optional<Generator> gen,
+    Tensor& result) {
+  return native::templates::bernoulli_out_impl<BernoulliStub, Generator>(
+      result, self, std::move(gen));
+}
+
 template <typename RNG>
 struct RandomStub {
   void operator()(TensorIteratorBase& iter, c10::optional<Generator> gen) {
@@ -171,6 +180,13 @@ Tensor& XPUNativeFunctions::random_(
     ::std::optional<Generator> generator) {
   return native::templates::random_from_to_impl<RandomFromToStub, Generator>(
       self, from, to_opt, std::move(generator));
+}
+
+Tensor& XPUNativeFunctions::random_(
+    Tensor& self,
+    int64_t to,
+    ::std::optional<Generator> generator) {
+  return random_(self, 0, to, std::move(generator));
 }
 
 } // namespace at

@@ -136,4 +136,22 @@ FOREACH_BINARY_SCALARLIST_KERNEL(add) {
   return all_types_complex_bool_half_bfloat16<std::plus>(tensors, scalars);
 }
 
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(mul) {
+  return all_types_complex_bool_half_bfloat16_<std::multiplies>(
+      tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(mul) {
+  return all_types_complex_bool_half_bfloat16<std::multiplies>(
+      tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16_<std::divides>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalars);
+}
+
 } // namespace at::native::xpu

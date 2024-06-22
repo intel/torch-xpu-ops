@@ -22,7 +22,6 @@ function(GEN_BACKEND file_yaml)
     --source_yaml ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml}
     COMMAND
     cat ${XPUFallback_PATH} >> ${RegisterXPU_PATH}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/rm_empty_tensor.py --register_xpu_path "${CMAKE_BINARY_DIR}/aten/src/ATen/RegisterXPU.cpp"
     ${SIMPLE_TRACE}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
