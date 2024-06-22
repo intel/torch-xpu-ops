@@ -12,12 +12,12 @@
 
 namespace at::native::xpu {
 
-int64_t _nnz(const SparseCsrTensor& self) {
+int64_t _nnz_csr(const Tensor& self) {
   return at::native::_nnz_sparse_csr(self);
 }
 
 TORCH_LIBRARY_IMPL(aten, SparseCsrXPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz));
+  m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz_csr));
 }
 
 } // namespace at::native::xpu

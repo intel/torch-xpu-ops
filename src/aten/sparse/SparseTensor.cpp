@@ -50,11 +50,11 @@ Tensor _sparse_coo_tensor_with_dims_and_tensors(
       is_coalesced);
 }
 
-int64_t _nnz(const SparseTensor& self) {
+int64_t _nnz(const Tensor& self) {
   return at::native::_nnz_sparse(self);
 }
 
-Tensor _values(const SparseTensor& self) {
+Tensor _values(const Tensor& self) {
   return at::native::_values_sparse(self);
 }
 
