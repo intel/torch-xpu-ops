@@ -7,6 +7,7 @@
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
+#include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
 namespace at {
 
@@ -158,6 +159,47 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
   auto iter =
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::silu(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::silu_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::silu_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::silu_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::silu_out(
+    const Tensor& self,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::silu_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::silu_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
+  Tensor grad_input;
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::silu_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::silu_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::silu_backward_kernel(iter);
   return grad_input;
 }
 
