@@ -70,28 +70,5 @@ inline std::tuple<Tensor&, Tensor&> resize_reduction_with_indices(
   return std::forward_as_tuple(out, out_indice);
 }
 
-inline void allocate_reduction_result(
-    Tensor& result,
-    const Tensor& self,
-    native::DimMask mask,
-    bool keepdim,
-    ScalarType dtype) {
-  auto shape = DimVector(self.sizes());
-  for (int dim = shape.size() - 1; dim >= 0; dim--) {
-    if (mask[dim]) {
-      if (keepdim) {
-        shape[dim] = 1;
-      } else {
-        shape.erase(shape.begin() + dim);
-      }
-    }
-  }
-  if (result.defined()) {
-    result.resize_(shape);
-  } else {
-    result = at::empty(shape, self.options().dtype(dtype));
-  }
-}
-
 } // namespace xpu
 } // namespace at

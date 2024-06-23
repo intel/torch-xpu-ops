@@ -76,6 +76,8 @@ _xpu_computation_op_list = [
     "sin",
     "sqrt",
     "sum",
+    "amin",
+    "amax",
     "tanh",
     "unfold",
     "uniform",

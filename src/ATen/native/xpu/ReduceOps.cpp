@@ -1,13 +1,13 @@
 #include <ATen/ATen.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Fill.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
@@ -478,7 +478,7 @@ Tensor XPUNativeFunctions::argmax(
   return out;
 }
 
-static void check_amin_amax(
+static Tensor amax_amin_meta(
     Tensor& result,
     const char* name,
     const Tensor& self,
@@ -487,36 +487,32 @@ static void check_amin_amax(
   if (result.defined()) {
     TORCH_CHECK(
         self.scalar_type() == result.scalar_type(),
-        name,
-        " got illegal dtype for self, and out:",
+        "Expected the dtype for input and out to match, but got ",
         self.scalar_type(),
-        result.scalar_type());
+        " for input's dtype and ",
+        result.scalar_type(),
+        " for out's dtype.");
   }
   if (self.numel() == 0) {
-    native::zero_numel_check_dims(self, dim, name);
+    at::native::zero_numel_check_dims(self, dim, "amax()");
   }
+  const ScalarType& out_dtype =
+      result.defined() ? result.scalar_type() : self.scalar_type();
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
 }
 
-static TensorIterator amin_amax_meta(
-    Tensor& result,
-    const char* name,
+template <class Stub>
+void amax_amin_impl(
     const Tensor& self,
     IntArrayRef dim,
-    bool keepdim) {
-  check_amin_amax(result, name, self, dim, keepdim);
-  auto out_dtype = result.defined() ? result.scalar_type() : self.scalar_type();
+    bool keepdim,
+    const Tensor& result,
+    Stub& stub) {
+  auto iter =
+      meta::make_reduction(self, result, dim, keepdim, self.scalar_type());
 
-  int64_t ndim = self.dim();
-  auto mask = native::make_dim_mask(dim, ndim);
-  allocate_reduction_result(result, self, mask, keepdim, out_dtype);
-
-  auto iter = meta::make_reduction(self, result, dim, keepdim, out_dtype);
-  return iter;
-}
-
-void amax_impl(TensorIterator iter) {
   if (iter.numel() != 0) {
-    native::xpu::max_all_kernel(iter);
+    stub(iter);
   }
 }
 
@@ -525,8 +521,8 @@ Tensor& XPUNativeFunctions::amax_out(
     IntArrayRef dim,
     bool keepdim,
     Tensor& out) {
-  auto iter = amin_amax_meta(out, "amax()", self, dim, keepdim);
-  amax_impl(iter);
+  out = amax_amin_meta(out, "amax()", self, dim, keepdim);
+  amax_amin_impl(self, dim, keepdim, out, native::xpu::max_all_kernel);
   return out;
 }
 
@@ -535,13 +531,9 @@ Tensor XPUNativeFunctions::amax(
     IntArrayRef dim,
     bool keepdim) {
   Tensor out;
-  return amax_out(self, dim, keepdim, out);
-}
-
-void amin_impl(TensorIterator iter) {
-  if (iter.numel() != 0) {
-    native::xpu::min_all_kernel(iter);
-  }
+  out = amax_amin_meta(out, "amax()", self, dim, keepdim);
+  amax_amin_impl(self, dim, keepdim, out, native::xpu::max_all_kernel);
+  return out;
 }
 
 Tensor& XPUNativeFunctions::amin_out(
@@ -549,8 +541,8 @@ Tensor& XPUNativeFunctions::amin_out(
     IntArrayRef dim,
     bool keepdim,
     Tensor& out) {
-  auto iter = amin_amax_meta(out, "amin()", self, dim, keepdim);
-  amin_impl(iter);
+  out = amax_amin_meta(out, "amin()", self, dim, keepdim);
+  amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
 }
 
@@ -559,7 +551,9 @@ Tensor XPUNativeFunctions::amin(
     IntArrayRef dim,
     bool keepdim) {
   Tensor out;
-  return amin_out(self, dim, keepdim, out);
+  out = amax_amin_meta(out, "amin()", self, dim, keepdim);
+  amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
+  return out;
 }
 
 } // namespace at
