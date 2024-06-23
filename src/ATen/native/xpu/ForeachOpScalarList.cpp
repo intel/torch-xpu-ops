@@ -1,8 +1,8 @@
 #include <ATen/native/ForeachUtils.h>
 
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 

@@ -7,8 +7,8 @@
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
-#include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
+#include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
 namespace at {
 
@@ -279,9 +279,7 @@ Tensor& XPUNativeFunctions::silu_(Tensor& self) {
   return self;
 }
 
-Tensor& XPUNativeFunctions::silu_out(
-    const Tensor& self,
-    Tensor& out) {
+Tensor& XPUNativeFunctions::silu_out(const Tensor& self, Tensor& out) {
   auto iter = TensorIterator::unary_op(out, self);
   native::xpu::silu_kernel(iter);
   return out;

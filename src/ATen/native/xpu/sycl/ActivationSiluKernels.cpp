@@ -13,8 +13,8 @@ template <typename scalar_t>
 struct SiluFunctor {
   scalar_t operator()(scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-          const opmath_t x_acc = static_cast<opmath_t>(x);
-          return x_acc / (opmath_t(1) +  std::exp(-x_acc));
+    const opmath_t x_acc = static_cast<opmath_t>(x);
+    return x_acc / (opmath_t(1) + std::exp(-x_acc));
   }
 };
 
@@ -22,11 +22,10 @@ template <typename scalar_t>
 struct SiluBackwardFunctor {
   scalar_t operator()(scalar_t dy, scalar_t x) const {
     using opmath_t = at::opmath_type<scalar_t>;
-          const opmath_t dy_acc = static_cast<opmath_t>(dy);
-          const opmath_t x_acc = static_cast<opmath_t>(x);
-          const opmath_t s_acc =
-              opmath_t(1) / (opmath_t(1) + std::exp(-x_acc));
-          return dy_acc * s_acc * (opmath_t(1) + x_acc * (opmath_t(1) - s_acc));
+    const opmath_t dy_acc = static_cast<opmath_t>(dy);
+    const opmath_t x_acc = static_cast<opmath_t>(x);
+    const opmath_t s_acc = opmath_t(1) / (opmath_t(1) + std::exp(-x_acc));
+    return dy_acc * s_acc * (opmath_t(1) + x_acc * (opmath_t(1) - s_acc));
   }
 };
 
@@ -36,8 +35,7 @@ void silu_kernel(TensorIteratorBase& iter) {
       at::ScalarType::BFloat16,
       iter.dtype(),
       "silu_xpu",
-      [&]() {
-        gpu_kernel(iter, SiluFunctor<scalar_t>()); });
+      [&]() { gpu_kernel(iter, SiluFunctor<scalar_t>()); });
 }
 
 void silu_backward_kernel(TensorIteratorBase& iter) {
@@ -46,8 +44,7 @@ void silu_backward_kernel(TensorIteratorBase& iter) {
       at::ScalarType::BFloat16,
       iter.dtype(),
       "silu_backward_xpu",
-      [&]() {
-        gpu_kernel(iter, SiluBackwardFunctor<scalar_t>()); });
+      [&]() { gpu_kernel(iter, SiluBackwardFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
