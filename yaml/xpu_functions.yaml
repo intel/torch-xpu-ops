@@ -126,6 +126,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -312,6 +315,12 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -343,5 +352,11 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
