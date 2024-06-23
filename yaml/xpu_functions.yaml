@@ -104,6 +104,11 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
   - hardtanh
   - hardtanh.out
   - hardtanh_
@@ -126,6 +131,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -314,6 +322,10 @@ supported:
   - _foreach_addcdiv_.Tensor
   - _foreach_sqrt
   - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -345,6 +357,12 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
   - acos
   - acos_
   - acos.out
@@ -353,4 +371,3 @@ supported:
   - acosh.out
   - addr
   - addr.out
-
