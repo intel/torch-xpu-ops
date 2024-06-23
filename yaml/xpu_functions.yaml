@@ -104,6 +104,11 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
   - hardtanh
   - hardtanh.out
   - hardtanh_
@@ -126,6 +131,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -350,3 +358,14 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - elu
+  - elu.out
+  - elu_
+  - elu_backward
+  - elu_backward.grad_input
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
