@@ -478,40 +478,21 @@ Tensor XPUNativeFunctions::argmax(
   return out;
 }
 
-static void check_amin_amax(
-    Tensor& result,
-    const char* name,
-    const Tensor& self,
-    IntArrayRef dim,
-    bool keepdim) {
-  if (result.defined()) {
-    TORCH_CHECK(
-        self.scalar_type() == result.scalar_type(),
-        name,
-        " got illegal dtype for self, and out:",
-        self.scalar_type(),
-        result.scalar_type());
-  }
-  if (self.numel() == 0) {
-    native::zero_numel_check_dims(self, dim, name);
-  }
-}
-
 static TensorIterator amin_amax_meta(
     Tensor& result,
     const char* name,
     const Tensor& self,
     IntArrayRef dim,
     bool keepdim) {
-  check_amin_amax(result, name, self, dim, keepdim);
-  auto out_dtype = result.defined() ? result.scalar_type() : self.scalar_type();
-
-  int64_t ndim = self.dim();
-  auto mask = native::make_dim_mask(dim, ndim);
-  allocate_reduction_result(result, self, mask, keepdim, out_dtype);
-
-  auto iter = meta::make_reduction(self, result, dim, keepdim, out_dtype);
-  return iter;
+  if (result.defined()) {
+    TORCH_CHECK(self.scalar_type() == result.scalar_type(), "Expected the dtype for input and out to match, but got ",
+            self.scalar_type(), " for input's dtype and ", result.scalar_type(), " for out's dtype.");
+  }
+  if (self.numel() == 0) {
+    at::native::zero_numel_check_dims(self, dim, "amax()");
+  }
+  const ScalarType& out_dtype = result.defined() ? result.scalar_type() : self.scalar_type();
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
 }
 
 void amax_impl(TensorIterator iter) {
@@ -535,7 +516,9 @@ Tensor XPUNativeFunctions::amax(
     IntArrayRef dim,
     bool keepdim) {
   Tensor out;
-  return amax_out(self, dim, keepdim, out);
+  auto iter = amin_amax_meta(out, "amax()", self, dim, keepdim);
+  amax_impl(iter);
+  return iter.output();
 }
 
 void amin_impl(TensorIterator iter) {
@@ -559,7 +542,9 @@ Tensor XPUNativeFunctions::amin(
     IntArrayRef dim,
     bool keepdim) {
   Tensor out;
-  return amin_out(self, dim, keepdim, out);
+  auto iter = amin_amax_meta(out, "amin()", self, dim, keepdim);
+  amin_impl(iter);
+  return iter.output();
 }
 
 } // namespace at
