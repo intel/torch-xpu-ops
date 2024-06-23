@@ -253,7 +253,7 @@ Tensor XPUNativeFunctions::elu_backward(
     const Scalar& input_scale,
     bool is_result,
     const Tensor& self_or_result) {
-  Tensor grad_input = at::empty_like(grad_output);
+  Tensor grad_input;
   auto iter = elu_backward_meta(
       grad_output,
       alpha,
@@ -263,6 +263,7 @@ Tensor XPUNativeFunctions::elu_backward(
       self_or_result,
       grad_input);
   native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
+  return iter.output();
 }
 
 Tensor XPUNativeFunctions::silu(const Tensor& self) {
