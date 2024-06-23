@@ -3,11 +3,11 @@ if(Codegen_GPU_cmake_included)
 endif()
 set(Codegen_GPU_cmake_included true)
 
-set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen")
+set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen/xpu")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/aten/XPUFallback.template)
+set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_BACKEND file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
