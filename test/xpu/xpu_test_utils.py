@@ -3,8 +3,107 @@
 import copy
 import os
 import sys
+from torch import bfloat16
+from torch.testing._internal import common_device_type, common_methods_invocations, common_utils
 
-from torch.testing._internal import common_device_type, common_utils
+
+_xpu_computation_op_list = [
+    "fill",
+    "zeros",
+    "zeros_like",
+    "clone",
+    "view_as_real",
+    "view_as_complex",
+    "view",
+    "resize_",
+    "resize_as_",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "abs",
+    "erf",
+    "erfc",
+    "bernoulli",
+    "bitwise_and",
+    "bitwise_not",
+    "bitwise_or",
+    "bitwise_xor",
+    "clamp",
+    "clamp_max",
+    "clamp_min",
+    "clone",
+    "copy",
+    "cos",
+    "cumsum",
+    "empty",
+    "eq",
+    "fill",
+    "fmod",
+    "gcd",
+    "ge",
+    "gelu",
+    "gt",
+    "hardtanh",
+    "hardswish",
+    "index_add",
+    "index_put",
+    "index_select",
+    "isnan",
+    "le",
+    "log",
+    "lt",
+    "logical_not",
+    "masked_fill",
+    "maximum",
+    "minimum",
+    "mul",
+    "native_dropout_backward",
+    "ne",
+    "neg",
+    "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.threshold",
+    "nn.functional.silu",
+    "nonzero",
+    "normal",
+    "pow",
+    "reciprocal",
+    "_refs.rsub",
+    "relu",
+    "remainder",
+    "reshape",
+    "rsqrt",
+    "sin",
+    "sqrt",
+    "sum",
+    "tanh",
+    "unfold",
+    "uniform",
+    "view",
+    "where",
+    "zero",
+    "add",
+    "all",
+    "any",
+    "arange",
+    "as_strided",
+    # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    "flip",
+    "tril",
+    "triu",
+    "cat",
+    "log_softmax",
+    "softmax",
+    "scatter",
+    "gather",
+    "max_pool2d_with_indices_backward",
+    "nn.functional.embedding",
+    "nn.functional.unfold",
+    # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "sigmoid",
+    "sgn",
+    "nn.functional.embedding_bag",
+]
 
 
 def get_wrapped_fn(fn):
@@ -30,6 +129,7 @@ class XPUPatchForImport:
         self.original_path = sys.path.copy()
         self.test_case_cls = common_utils.TestCase
         self.only_cuda_fn = common_device_type.onlyCUDA
+        self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
         self.only_native_device_types_fn = (
             common_device_type.onlyNativeDeviceTypes
         )
@@ -39,12 +139,18 @@ class XPUPatchForImport:
         self.instantiate_parametrized_tests_fn = (
             common_utils.instantiate_parametrized_tests
         )
+        self.python_ref_db = common_methods_invocations.python_ref_db
+        self.ops_and_refs = common_methods_invocations.ops_and_refs
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
         common_device_type.onlyCUDA = (
             common_device_type.onlyXPU
         )
+        class dtypesIfXPU(common_device_type.dtypes):
+            def __init__(self, *args):
+                super().__init__(*args, device_type='xpu')
+        common_device_type.dtypesIfCUDA=dtypesIfXPU
         common_device_type.onlyNativeDeviceTypes = (
             common_device_type.onlyXPU
         )
@@ -58,12 +164,23 @@ class XPUPatchForImport:
         common_utils.instantiate_parametrized_tests = (
             DO_NOTHING
         )
+        for op in common_methods_invocations.op_db:
+            if op.name not in _xpu_computation_op_list:
+                op.dtypesIfXPU = op.dtypes
+            else:
+                backward_dtypes = set(op.backward_dtypesIfCUDA)
+                backward_dtypes.add(bfloat16)
+                op.backward_dtypes = tuple(backward_dtypes)
+        common_methods_invocations.python_ref_db = [op for op in self.python_ref_db if op.torch_opinfo_name in _xpu_computation_op_list]
+        common_methods_invocations.ops_and_refs = common_methods_invocations.op_db + common_methods_invocations.python_ref_db
+
         sys.path.extend(self.test_package)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         sys.path = self.original_path
         common_device_type.onlyCUDA = self.only_cuda_fn
+        common_device_type.dtypesIfCUDA=self.dtypes_if_cuda_fn
         common_device_type.onlyNativeDeviceTypes = (
             self.only_native_device_types_fn
         )
@@ -74,6 +191,8 @@ class XPUPatchForImport:
             self.instantiate_parametrized_tests_fn
         )
         common_utils.TestCase = self.test_case_cls
+        common_methods_invocations.python_ref_db = self.python_ref_db
+        common_methods_invocations.ops_and_refs = self.ops_and_refs
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
