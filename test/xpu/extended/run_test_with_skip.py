@@ -80,6 +80,13 @@ skip_list = (
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
+
+    # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
+
+    # NotImplementedError: The operator 'aten::grid_sampler_3d' is not currently implemented for the XPU device.
+    "test_operator_nn_functional_grid_sample_xpu_float32",
+    "test_view_replay_nn_functional_grid_sample_xpu_float32",
 )
 
 
