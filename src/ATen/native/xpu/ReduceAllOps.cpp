@@ -2,10 +2,10 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
-#include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
-#include <torch/library.h>
+
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 
 namespace at {
 
@@ -13,7 +13,7 @@ void min_all_kernel_impl(Tensor& result, const Tensor& input) {
   auto dtype = input.scalar_type();
   auto iter = native::make_reduction(
       "min_all", result, input, IntArrayRef{}, false, dtype);
-  native::xpu::min_all_launch_kernel(iter);
+  native::xpu::min_all_kernel(iter);
 }
 
 Tensor XPUNativeFunctions::min(const Tensor& self) {
@@ -42,7 +42,7 @@ void max_all_kernel_impl(Tensor& result, const Tensor& input) {
   auto dtype = input.scalar_type();
   auto iter = native::make_reduction(
       "max_all", result, input, IntArrayRef{}, false, dtype);
-  native::xpu::max_all_launch_kernel(iter);
+  native::xpu::max_all_kernel(iter);
 }
 
 Tensor XPUNativeFunctions::max(const Tensor& self) {
