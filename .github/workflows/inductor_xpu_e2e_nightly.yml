@@ -254,7 +254,7 @@ jobs:
           test_driver="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DRIVER_VERSION }}"
           test_bundle="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.BUNDLE_VERSION }}"
           test_os="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.OS_PRETTY_NAME }}"
-          test_gcc"${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
+          test_gcc="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
 
           # On-demand
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
