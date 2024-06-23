@@ -74,15 +74,15 @@ class TestCommon(TestCase):
     @suppress_warnings
     @slowTest
     #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
-    @ops(_xpu_computation_ops, dtypes=OpDTypes.supported)
+    @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
-        # check if CPU supports
-        if dtype in op.dtypes:
+        # check if supported both by CPU and XPU
+        if dtype in op.dtypes and dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCommonProxy()
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
         else:
-            pytest.skip(f"{op.name} has not supported {dtype} yet for cpu")
+            pytest.skip(f"{op.name} has not supported {dtype} yet both for cpu and xpu")
 
     @onlyXPU
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.bool,))
