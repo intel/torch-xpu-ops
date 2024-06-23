@@ -3,7 +3,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
-#include <ATen/native/xpu/sycl/ActivationEluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
