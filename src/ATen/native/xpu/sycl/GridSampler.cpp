@@ -1,3 +1,9 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -398,7 +404,7 @@ struct GridSampler2dBackwardKernelFunctor {
 
         if (input_requires_grad) {
           // calculate and set grad_input
-          safe_add_2d(
+          at::native::xpu::safe_add_2d(
               gInp_ptr_NC,
               iy_nw,
               ix_nw,
@@ -407,7 +413,7 @@ struct GridSampler2dBackwardKernelFunctor {
               inp_H,
               inp_W,
               nw * gOut);
-          safe_add_2d(
+          at::native::xpu::safe_add_2d(
               gInp_ptr_NC,
               iy_ne,
               ix_ne,
@@ -416,7 +422,7 @@ struct GridSampler2dBackwardKernelFunctor {
               inp_H,
               inp_W,
               ne * gOut);
-          safe_add_2d(
+          at::native::xpu::safe_add_2d(
               gInp_ptr_NC,
               iy_sw,
               ix_sw,
@@ -425,7 +431,7 @@ struct GridSampler2dBackwardKernelFunctor {
               inp_H,
               inp_W,
               sw * gOut);
-          safe_add_2d(
+          at::native::xpu::safe_add_2d(
               gInp_ptr_NC,
               iy_se,
               ix_se,
@@ -478,7 +484,7 @@ struct GridSampler2dBackwardKernelFunctor {
         for (index_t c = 0; c < C;
              ++c, gInp_ptr_NC += gInp_sC, gOut_ptr_NCHW += gOut_sC) {
           // calculate and set grad_input
-          safe_add_2d(
+          at::native::xpu::safe_add_2d(
               gInp_ptr_NC,
               iy_nearest,
               ix_nearest,
@@ -538,7 +544,7 @@ struct GridSampler2dBackwardKernelFunctor {
 #pragma unroll 4
           for (index_t j = 0; j < 4; ++j) {
             if (input_requires_grad) {
-              add_value_bounded<scalar_t>(
+              at::native::xpu::add_value_bounded<scalar_t>(
                   grad_input.data,
                   ix_nw - 1 + i,
                   iy_nw - 1 + j,
@@ -849,3 +855,6 @@ void grid_sampler_2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
