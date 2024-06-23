@@ -6,7 +6,7 @@ set(ATen_XPU_SYCL_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
 
-add_subdirectory(aten)
+add_subdirectory(ATen)
 
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
