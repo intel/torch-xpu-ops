@@ -62,6 +62,7 @@ _xpu_computation_op_list = [
     "ne",
     "neg",
     "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.elu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nonzero",
