@@ -85,10 +85,6 @@ skip_list = (
     "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
 
     # NotImplementedError: The operator 'aten::grid_sampler_3d' is not currently implemented for the XPU device.
-    # Double and complex datatype matmul is not supported in oneDNN
-    "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
-
-    # Not implemented operators, aten::grid_sampler_3d
     "test_operator_nn_functional_grid_sample_xpu_float32",
     "test_view_replay_nn_functional_grid_sample_xpu_float32",
 )
