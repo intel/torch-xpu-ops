@@ -6,7 +6,7 @@
 
 namespace at::native::xpu {
 
-template <typename scalar_t>
+template <typename scalar_t, typename index_t>
 static inline void safe_add_2d(
     scalar_t* data,
     int64_t h,
@@ -15,31 +15,12 @@ static inline void safe_add_2d(
     int64_t sW,
     int64_t H,
     int64_t W,
-    scalar_t delta) {
-  if (within_bounds_2d(h, w, H, W)) {
-    atomicAdd((sycl_global_ptr<scalar_t>)&data[h * sH + w * sW], delta);
-  }
-}
-
-template <typename scalar_t>
-static inline void add_value_bounded(
-    scalar_t* data,
-    scalar_t x,
-    scalar_t y,
-    int64_t W,
-    int64_t H,
-    int64_t sW,
-    int64_t sH,
     scalar_t delta,
-    GridSamplerPadding padding_mode,
-    bool align_corners) {
-  x = compute_coordinates(x, W, padding_mode, align_corners);
-  y = compute_coordinates(y, H, padding_mode, align_corners);
-
-  int64_t ix = static_cast<int64_t>(x);
-  int64_t iy = static_cast<int64_t>(y);
-
-  at::native::xpu::safe_add_2d(data, iy, ix, sH, sW, H, W, delta);
+    index_t NC_offset) {
+  if (within_bounds_2d(h, w, H, W)) {
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&data[NC_offset + h * sH + w * sW], delta);
+  }
 }
 
 template <typename scalar_t>
@@ -98,6 +79,28 @@ static inline scalar_t get_value_bounded(
     return data[iy * sH + ix * sW];
   }
   return static_cast<scalar_t>(0);
+}
+
+template <typename scalar_t, typename index_t>
+static inline void add_value_bounded(
+    scalar_t* data,
+    scalar_t x,
+    scalar_t y,
+    int64_t W,
+    int64_t H,
+    int64_t sW,
+    int64_t sH,
+    scalar_t delta,
+    GridSamplerPadding padding_mode,
+    bool align_corners,
+    const index_t NC_offset) {
+  x = at::native::xpu::compute_coordinates(x, W, padding_mode, align_corners);
+  y = at::native::xpu::compute_coordinates(y, H, padding_mode, align_corners);
+
+  int64_t ix = static_cast<int64_t>(x);
+  int64_t iy = static_cast<int64_t>(y);
+
+  at::native::xpu::safe_add_2d(data, iy, ix, sH, sW, H, W, delta, NC_offset);
 }
 
 template <typename scalar_t>

@@ -393,53 +393,57 @@ struct GridSampler2dBackwardKernelFunctor {
 
       scalar_t gix = static_cast<scalar_t>(0), giy = static_cast<scalar_t>(0);
       scalar_t* gOut_ptr_NCHW =
-          grad_output_data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
-      scalar_t* gInp_ptr_NC = grad_input_data + n * gInp_sN;
-      scalar_t* inp_ptr_NC = input_data + n * inp_sN;
+          grad_output.data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
+      index_t NC_offset = n * gInp_sN;
+      scalar_t* inp_ptr_NC = input.data + n * inp_sN;
       for (index_t c = 0; c < C; ++c,
                    inp_ptr_NC += inp_sC,
-                   gInp_ptr_NC += gInp_sC,
+                   NC_offset += gInp_sC,
                    gOut_ptr_NCHW += gOut_sC) {
         scalar_t gOut = *gOut_ptr_NCHW;
 
         if (input_requires_grad) {
           // calculate and set grad_input
           at::native::xpu::safe_add_2d(
-              gInp_ptr_NC,
+              grad_input.data,
               iy_nw,
               ix_nw,
               gInp_sH,
               gInp_sW,
               inp_H,
               inp_W,
-              nw * gOut);
+              nw * gOut,
+              NC_offset);
           at::native::xpu::safe_add_2d(
-              gInp_ptr_NC,
+              grad_input.data,
               iy_ne,
               ix_ne,
               gInp_sH,
               gInp_sW,
               inp_H,
               inp_W,
-              ne * gOut);
+              ne * gOut,
+              NC_offset);
           at::native::xpu::safe_add_2d(
-              gInp_ptr_NC,
+              grad_input.data,
               iy_sw,
               ix_sw,
               gInp_sH,
               gInp_sW,
               inp_H,
               inp_W,
-              sw * gOut);
+              sw * gOut,
+              NC_offset);
           at::native::xpu::safe_add_2d(
-              gInp_ptr_NC,
+              grad_input.data,
               iy_se,
               ix_se,
               gInp_sH,
               gInp_sW,
               inp_H,
               inp_W,
-              se * gOut);
+              se * gOut,
+              NC_offset);
         }
 
         // calculate grad_grid
@@ -469,7 +473,7 @@ struct GridSampler2dBackwardKernelFunctor {
       // thus we can
       //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
       //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-      scalar_t* gGrid_ptr_NHW = grad_grid_data + index * gGrid_sW;
+      scalar_t* gGrid_ptr_NHW = grad_grid.data + index * gGrid_sW;
       gGrid_ptr_NHW[0] = gix_mult * gix;
       gGrid_ptr_NHW[1] = giy_mult * giy;
     } else if (interpolation_mode == GridSamplerInterpolation::Nearest) {
@@ -479,20 +483,21 @@ struct GridSampler2dBackwardKernelFunctor {
 
         // assign nearest neighor pixel value to output pixel
         scalar_t* gOut_ptr_NCHW =
-            grad_output_data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
-        scalar_t* gInp_ptr_NC = grad_input_data + n * gInp_sN;
+            grad_output.data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
+        index_t NC_offset = n * gInp_sN;
         for (index_t c = 0; c < C;
-             ++c, gInp_ptr_NC += gInp_sC, gOut_ptr_NCHW += gOut_sC) {
+             ++c, NC_offset += gInp_sC, gOut_ptr_NCHW += gOut_sC) {
           // calculate and set grad_input
           at::native::xpu::safe_add_2d(
-              gInp_ptr_NC,
+              grad_input.data,
               iy_nearest,
               ix_nearest,
               gInp_sH,
               gInp_sW,
               inp_H,
               inp_W,
-              *gOut_ptr_NCHW);
+              *gOut_ptr_NCHW,
+              NC_offset);
         }
       }
 
@@ -500,7 +505,7 @@ struct GridSampler2dBackwardKernelFunctor {
       // thus we can
       //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
       //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-      scalar_t* gGrid_ptr_NHW = grad_grid_data + index * gGrid_sW;
+      scalar_t* gGrid_ptr_NHW = grad_grid.data + index * gGrid_sW;
       gGrid_ptr_NHW[0] = static_cast<scalar_t>(0);
       gGrid_ptr_NHW[1] = static_cast<scalar_t>(0);
     } else if (interpolation_mode == GridSamplerInterpolation::Bicubic) {
@@ -554,7 +559,8 @@ struct GridSampler2dBackwardKernelFunctor {
                   gInp_sH,
                   gOut * x_coeffs[i] * y_coeffs[j],
                   padding_mode,
-                  align_corners);
+                  align_corners,
+                  NC_offset);
             }
 
             // set grid gradient
@@ -612,12 +618,7 @@ struct GridSampler2dBackwardKernelFunctor {
       index_t gInp_sC_,
       index_t gInp_sH_,
       index_t gInp_sW_,
-      index_t gGrid_sW_,
-      scalar_t* grid_data_,
-      scalar_t* input_data_,
-      scalar_t* grad_output_data_,
-      scalar_t* grad_input_data_,
-      scalar_t* grad_grid_data_)
+      index_t gGrid_sW_)
       : nthreads(nthreads_),
         grad_output(grad_output_),
         input(input_),
@@ -649,12 +650,7 @@ struct GridSampler2dBackwardKernelFunctor {
         gInp_sC(gInp_sC_),
         gInp_sH(gInp_sH_),
         gInp_sW(gInp_sW_),
-        gGrid_sW(gGrid_sW_),
-        grid_data(grid_data_),
-        input_data(input_data_),
-        grad_output_data(grad_output_data_),
-        grad_input_data(grad_input_data_),
-        grad_grid_data(grad_grid_data_) {}
+        gGrid_sW(gGrid_sW_) {}
 
  private:
   const index_t nthreads;
@@ -689,11 +685,6 @@ struct GridSampler2dBackwardKernelFunctor {
   index_t gInp_sH;
   index_t gInp_sW;
   index_t gGrid_sW;
-  scalar_t* grid_data;
-  scalar_t* input_data;
-  scalar_t* grad_output_data;
-  scalar_t* grad_input_data;
-  scalar_t* grad_grid_data;
 };
 
 template <typename scalar_t, typename index_t>
@@ -744,12 +735,6 @@ void grid_sampler_2d_backward_template(
   }
   index_t gGrid_sW = grad_grid.strides[2];
 
-  auto grid_data = grid.data;
-  auto input_data = input.data;
-  auto grad_output_data = grad_output.data;
-  auto grad_input_data = grad_input.data;
-  auto grad_grid_data = grad_grid.data;
-
   GridSampler2dBackwardKernelFunctor<scalar_t, index_t> kfn(
       nthreads,
       grad_output,
@@ -782,12 +767,7 @@ void grid_sampler_2d_backward_template(
       gInp_sC,
       gInp_sH,
       gInp_sW,
-      gGrid_sW,
-      grid_data,
-      input_data,
-      grad_output_data,
-      grad_input_data,
-      grad_grid_data);
+      gGrid_sW);
   sycl_kernel_submit(
       sycl::range<1>(ngroups * wgroup_size),
       sycl::range<1>(wgroup_size),
