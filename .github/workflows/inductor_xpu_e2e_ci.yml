@@ -7,6 +7,7 @@ on:
       - opened
       - synchronize
       - reopened
+      - converted_to_draft
       - ready_for_review
     branches:
       - main
