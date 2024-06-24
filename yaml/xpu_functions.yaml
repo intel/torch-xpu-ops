@@ -384,3 +384,6 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - addcmul.out
+  - addcmul
+  - addcmul_
