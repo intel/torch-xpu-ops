@@ -39,24 +39,19 @@ struct UnfoldBackwardElementwiseKernelFunctor {
 };
 
 template <int n_elems_per_work_item, typename func_t>
-void _unfold_backward_elementwise_kernel(int total_n_elems, func_t f) {
-  int total_work_items =
-      (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
-  UnfoldBackwardElementwiseKernelFunctor<n_elems_per_work_item, func_t> kfn(
-      total_work_items, total_n_elems, f);
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(sycl::range<1>(total_work_items), queue, kfn);
-}
-
-template <int n_elems_per_work_item, typename func_t>
 static void _launch_unfold_backward_kernel(int total_n_elems, func_t f) {
   TORCH_INTERNAL_ASSERT(
       total_n_elems >= 0 &&
       total_n_elems <=
           std::numeric_limits<int32_t>::max()); // INT_MAX when int32_t
 
-  _unfold_backward_elementwise_kernel<n_elems_per_work_item, func_t>(
-      total_n_elems, f);
+  int total_work_items =
+      (total_n_elems + n_elems_per_work_item - 1) / n_elems_per_work_item;
+  UnfoldBackwardElementwiseKernelFunctor<n_elems_per_work_item, func_t> kfn(
+      total_work_items, total_n_elems, f);
+  auto& queue = getCurrentSYCLQueue();
+
+  sycl_kernel_submit(sycl::range<1>(total_work_items), queue, kfn);
 }
 
 template <typename scalar_t, typename offset_calc_t>

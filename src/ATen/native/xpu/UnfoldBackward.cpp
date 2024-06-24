@@ -1,7 +1,5 @@
 #include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/core/op_registration/adaption.h>
-#include <ATen/native/utils/ParamUtils.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/UnfoldBackwardKernels.h>
