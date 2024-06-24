@@ -381,3 +381,6 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - asinh
+  - asinh.out
+  - asinh_

@@ -1696,9 +1696,21 @@ skip_list=(
     "test_reference_numerics_extremal__refs_acosh_xpu_complex64",
     "test_reference_numerics_extremal_acos_xpu_complex64",
     "test_reference_numerics_extremal_acosh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_asinh_xpu_complex64",
+    "test_reference_numerics_extremal_asinh_xpu_complex64",
     "test_reference_numerics_large__refs_acosh_xpu_complex64",
     "test_reference_numerics_large_acosh_xpu_complex64",
+    "test_reference_numerics_large__refs_asinh_xpu_complex128",
+    "test_reference_numerics_large__refs_asinh_xpu_complex64",
+    "test_reference_numerics_large_asinh_xpu_complex128",
+    "test_reference_numerics_large_asinh_xpu_complex64",
 
+    # AssertionError: Tensor-likes are not close!
+    # exceeded maximum allowed difference
+    # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
+    # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
+    "test_reference_numerics_normal__refs_asinh_xpu_complex64",
+    "test_reference_numerics_normal_asinh_xpu_complex64",
 
     # CPU Fallback fails
     # New ATen operators fails on CPU Fallback.

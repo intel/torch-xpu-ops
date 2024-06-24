@@ -171,7 +171,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_amp_update_scale_",
     "angle",
     "argmin.out",
-    "asinh.out",
     "asin.out",
     "atan2.out",
     "atanh.out",
