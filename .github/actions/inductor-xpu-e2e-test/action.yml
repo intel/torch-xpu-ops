@@ -145,7 +145,7 @@ runs:
         done
 
     - name: Summary E2E Accuracy Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.scenario == 'accuracy'}}
+      if: contains(inputs.scenario, "accuracy")
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -165,7 +165,7 @@ runs:
         fi
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.scenario == 'performance'}}
+      if: contains(inputs.scenario, "performance")
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
