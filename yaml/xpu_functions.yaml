@@ -374,6 +374,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - linalg_vector_norm
+  - linalg_vector_norm.out
   - acos
   - acos_
   - acos.out
