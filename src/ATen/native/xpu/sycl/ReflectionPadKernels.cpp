@@ -307,7 +307,7 @@ void reflection_pad2d_kernel(
       kHalf,
       kBFloat16,
       input.scalar_type(),
-      "reflection_pad2d_out_kernel",
+      "reflection_pad2d_xpu",
       [&] {
         reflection_pad2d_template<scalar_t>(
             input.data_ptr<scalar_t>(),
@@ -384,7 +384,7 @@ void reflection_pad2d_backward_kernel(
       kHalf,
       kBFloat16,
       input.scalar_type(),
-      "reflection_pad2d_backward_out_kernel",
+      "reflection_pad2d_backward_xpu",
       [&] {
         reflection_pad2d_backward_template<scalar_t>(
             grad_input.data_ptr<scalar_t>(),
