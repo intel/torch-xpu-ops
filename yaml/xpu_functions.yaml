@@ -331,6 +331,7 @@ supported:
   - _foreach_lerp_.List
   - _foreach_lerp.Scalar
   - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -373,3 +374,11 @@ supported:
   - erf
   - erf_
   - erf.out
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out

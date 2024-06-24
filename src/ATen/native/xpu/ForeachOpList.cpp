@@ -1,11 +1,6 @@
 #include <ATen/native/ForeachUtils.h>
-
-#ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/xpu/XPUNativeFunctions.h>
-#else
-#include <ATen/ops/_foreach_add_native.h>
-#include <ATen/ops/_foreach_addcdiv_native.h>
-#endif
+
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>

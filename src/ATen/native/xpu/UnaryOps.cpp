@@ -6,6 +6,8 @@
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
@@ -419,6 +421,56 @@ Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::acos(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::acos_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::acos_(Tensor& self) {
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::acos_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::acos_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::acos_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::acosh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::acosh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::acosh_(Tensor& self) {
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::acosh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::acosh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::acosh_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::erf(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -462,4 +514,5 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   native::xpu::erfc_kernel(iter);
   return out;
 }
+
 } // namespace at
