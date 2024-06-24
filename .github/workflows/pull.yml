@@ -2,6 +2,11 @@ name: pull
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     branches:
       - main
       - release/*
@@ -14,8 +19,8 @@ permissions: read-all
 
 jobs:
   preci-ut:
-    # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-ut
     runs-on: linux.idc.xpu
     timeout-minutes: 240

@@ -3,6 +3,11 @@ name: E2E CI Tests
 on:
   workflow_dispatch:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     branches:
       - main
       - release/*
@@ -16,6 +21,8 @@ concurrency:
 jobs:
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops

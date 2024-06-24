@@ -52,6 +52,8 @@ concurrency:
 jobs:
   Inductor-XPU-E2E-Nightly-Tests:
     runs-on: pvc_e2e
+    # Don't run on forked repos
+    if: github.repository_owner == 'intel'
     timeout-minutes: 900
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
@@ -235,6 +237,7 @@ jobs:
     needs: Inductor-XPU-E2E-Nightly-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
+        if: github.repository_owner == 'intel'
         run: |
           set -xe
           # Test status
