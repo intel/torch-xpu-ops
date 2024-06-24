@@ -3,9 +3,11 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
+#include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
+#include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
 namespace at {
@@ -158,6 +160,148 @@ Tensor& XPUNativeFunctions::gelu_backward_out(
   auto iter =
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::gelu_backward_kernel(iter, approximate);
+  return grad_input;
+}
+
+TensorIterator elu_meta(
+    const Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    Tensor& out) {
+  TensorIterator iter;
+  iter = TensorIterator::unary_op(out, self);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::elu_out(
+    const Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    Tensor& out) {
+  auto iter = elu_meta(self, alpha, scale, input_scale, out);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return out;
+}
+
+Tensor XPUNativeFunctions::elu(
+    const Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale) {
+  Tensor out;
+  auto iter = elu_meta(self, alpha, scale, input_scale, out);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::elu_(
+    Tensor& self,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale) {
+  auto iter = elu_meta(self, alpha, scale, input_scale, self);
+  native::xpu::elu_kernel(iter, alpha, scale, input_scale);
+  return self;
+}
+
+TensorIterator elu_backward_meta(
+    const Tensor& grad_output,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    bool is_result,
+    const Tensor& self_or_result,
+    Tensor& grad_input) {
+  TORCH_CHECK(
+      !is_result || alpha.to<double>() >= 0.0,
+      "In-place elu backward calculation is triggered with a negative slope which is not supported. "
+      "This is caused by calling in-place forward function with a negative slope, "
+      "please call out-of-place version instead.");
+
+  TensorIterator iter;
+  iter = TensorIterator::borrowing_binary_op(
+      grad_input, grad_output, self_or_result);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::elu_backward_out(
+    const Tensor& grad_output,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    bool is_result,
+    const Tensor& self_or_result,
+    Tensor& grad_input) {
+  auto iter = elu_backward_meta(
+      grad_output,
+      alpha,
+      scale,
+      input_scale,
+      is_result,
+      self_or_result,
+      grad_input);
+  native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::elu_backward(
+    const Tensor& grad_output,
+    const Scalar& alpha,
+    const Scalar& scale,
+    const Scalar& input_scale,
+    bool is_result,
+    const Tensor& self_or_result) {
+  Tensor grad_input;
+  auto iter = elu_backward_meta(
+      grad_output,
+      alpha,
+      scale,
+      input_scale,
+      is_result,
+      self_or_result,
+      grad_input);
+  native::xpu::elu_backward_kernel(iter, alpha, scale, input_scale, is_result);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::silu(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::silu_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::silu_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::silu_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::silu_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::silu_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::silu_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
+  Tensor grad_input;
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::silu_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::silu_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  native::xpu::silu_backward_kernel(iter);
   return grad_input;
 }
 

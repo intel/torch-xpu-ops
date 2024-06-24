@@ -5,11 +5,12 @@
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
-#include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
-#include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
-#include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>
-#include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+
+#include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
+#include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <comm/ReduceOpsUtils.h>
 
 namespace at {
@@ -498,7 +499,7 @@ void min_kernel_impl(
     bool keepdim) {
   auto iter = meta::make_reduction(
       self, result, indice, dim, keepdim, self.scalar_type(), kLong);
-  native::xpu::min_launch_kernel(iter);
+  native::xpu::min_kernel(iter);
 }
 
 void max_kernel_impl(
@@ -509,7 +510,7 @@ void max_kernel_impl(
     bool keepdim) {
   auto iter = meta::make_reduction(
       self, result, indice, dim, keepdim, self.scalar_type(), kLong);
-  native::xpu::max_launch_kernel(iter);
+  native::xpu::max_kernel(iter);
 }
 
 template <class Stub>

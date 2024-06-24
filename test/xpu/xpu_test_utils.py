@@ -29,6 +29,7 @@ _xpu_computation_op_list = [
     "bitwise_not",
     "bitwise_or",
     "bitwise_xor",
+    "addcmul",
     "clamp",
     "clamp_max",
     "clamp_min",
@@ -62,7 +63,9 @@ _xpu_computation_op_list = [
     "ne",
     "neg",
     "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.elu",
     "nn.functional.threshold",
+    "nn.functional.silu",
     "nonzero",
     "normal",
     "pow",
@@ -73,9 +76,10 @@ _xpu_computation_op_list = [
     "reshape",
     "rsqrt",
     "sin",
-    "silu",
     "sqrt",
     "sum",
+    "amin",
+    "amax",
     "tanh",
     "unfold",
     "uniform",
@@ -105,6 +109,10 @@ _xpu_computation_op_list = [
     "nn.functional.embedding_bag",
     "grid_sampler_2d",
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
+    "acos",
+    "acosh",
+    "addr",
+    "bincount",
 ]
 
 
