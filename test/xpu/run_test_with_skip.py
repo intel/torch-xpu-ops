@@ -132,7 +132,6 @@ skip_list = (
     "test_numpy_ref_nn_functional_conv_transpose1d_xpu_float64",
     "test_numpy_ref_nn_functional_group_norm_xpu_float64",
     "test_numpy_ref_nn_functional_pdist_xpu_float64",
-    "test_out_addr_xpu_float32",
     "test_out_jiterator_2inputs_2outputs_xpu_float32",
     "test_out_jiterator_4inputs_with_extra_args_xpu_float32",
     "test_out_jiterator_binary_return_by_ref_xpu_float32",
@@ -408,12 +407,7 @@ skip_list = (
     "test_non_standard_bool_values_argsort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
     "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
-    "test_complex_half_reference_testing_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_dtypes_sigmoid_xpu", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_python_ref__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
     "test_python_ref_errors__refs_where_xpu", # align with CUDA, AssertionError: "Expected all tensors to be on the same device" does not match "Tensor on device xpu:0 is not on the expected device cpu!"
-    "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
     "test_dtypes_view_as_complex_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
     "test_dtypes_view_as_real_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32", # Didn't align with CUDA, Unexpected success
@@ -1704,6 +1698,13 @@ skip_list=(
     "test_reference_numerics_extremal__refs_tanh_xpu_complex64",
     "test_reference_numerics_extremal_tanh_xpu_complex128",
     "test_reference_numerics_extremal_tanh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_acos_xpu_complex64",
+    "test_reference_numerics_extremal__refs_acosh_xpu_complex64",
+    "test_reference_numerics_extremal_acos_xpu_complex64",
+    "test_reference_numerics_extremal_acosh_xpu_complex64",
+    "test_reference_numerics_large__refs_acosh_xpu_complex64",
+    "test_reference_numerics_large_acosh_xpu_complex64",
+
 
     # CPU Fallback fails
     # New ATen operators fails on CPU Fallback.
@@ -1713,18 +1714,6 @@ skip_list=(
     # Failed: Unexpected success
     "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
-
-    # RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_batch_vs_slicing_sigmoid_xpu_complex32",
-    "test_contig_size1_large_dim_sigmoid_xpu_complex32",
-    "test_contig_size1_sigmoid_xpu_complex32",
-    "test_contig_vs_every_other_sigmoid_xpu_complex32",
-    "test_contig_vs_transposed_sigmoid_xpu_complex32",
-    "test_non_contig_expand_sigmoid_xpu_complex32",
-    "test_non_contig_index_sigmoid_xpu_complex32",
-    "test_non_contig_sigmoid_xpu_complex32",
-    "test_reference_numerics_normal_sigmoid_xpu_complex32",
-    "test_reference_numerics_small_sigmoid_xpu_complex32",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
@@ -3129,6 +3118,12 @@ skip_list = (
     "test_multihead_self_attn_two_masks_fast_path_mock_xpu",
 )
 res += launch_test("nn/test_multihead_attention_xpu.py", skip_list)
+
+# test_comparison_utils
+res += launch_test("test_comparison_utils_xpu.py")
+
+# test_pruning
+res += launch_test("nn/test_pruning_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
