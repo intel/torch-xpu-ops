@@ -373,6 +373,14 @@ supported:
   - erf
   - erf_
   - erf.out
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
   - addcmul.out
   - addcmul
   - addcmul_

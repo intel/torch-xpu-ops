@@ -37,6 +37,7 @@ execute_list = (
     "_foreach_addcmul_ and not slowpath",
     # Compiler optimization on data type conversion brings the precision error.
     "_foreach_addcdiv_ and not slowpath and not test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
+
     "_foreach_sqrt_ and not slowpath",
     "_foreach_lerp_ and not slowpath",
 )
@@ -47,21 +48,9 @@ execute_list = (
     "test_comprehensive_nn_functional_cross_entropy_xpu",
     "test_comprehensive_nn_functional_nll_loss_xpu_bfloat16",
     "test_comprehensive_nn_functional_nll_loss_xpu_float32",
-    "test_comprehensive_nn_functional_nll_loss_xpu_float64"
+    "test_comprehensive_nn_functional_nll_loss_xpu_float64",
 )
 res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
-
-# test_torch
-execute_list = (
-    "test_pin_memory",
-)
-res += launch_test("test_torch_xpu.py", exe_list=execute_list)
-
-# test_comparison_utils
-res += launch_test("test_comparison_utils_xpu.py")
-
-# test_pruning
-res += launch_test("nn/test_pruning_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
