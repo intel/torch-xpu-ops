@@ -31,17 +31,18 @@ refer_names = [row["name"] for index, row in refer_data.iterrows()]
 # summary
 new_pass_models = []
 failed_models = []
+missed_models = []
 for index, row in refer_data.iterrows():
     test_accuracy = next((line["accuracy"] for i, line in test_data.iterrows() if line["name"] == row["name"]), "None")
     if test_accuracy == "None":
-        failed_models.append([row["name"], "N/A"])
+        missed_models.append([row["name"], "N/A"])
     elif test_accuracy != row[args.dtype] and "pass" not in test_accuracy and "pass" not in row[args.dtype]:
         failed_models.append([row["name"], test_accuracy])
         # update failed info for reference data
         refer_data.at[index, args.dtype] = test_accuracy
     elif test_accuracy != row[args.dtype] and "pass" not in test_accuracy:
         failed_models.append([row["name"], test_accuracy])
-    elif test_accuracy != row[args.dtype] and "pass" in test_accuracy:
+    elif test_accuracy != row[args.dtype]:
         new_pass_models.append([row["name"], test_accuracy])
         # update new pass for reference data
         refer_data.at[index, args.dtype] = test_accuracy
@@ -49,11 +50,13 @@ for index, row in refer_data.iterrows():
 # pass rate
 total = len(refer_names)
 failed = len(failed_models)
+missed = len(missed_models)
 pass_rate = 1 - (failed / total)
 print("============ Summary for {} {} {} accuracy ============".format(args.suite, args.dtype, args.mode))
 print("Total:", total)
 print("Failed:", failed, failed_models)
-print("Passed", total - failed)
+print("Missed:", missed, missed_models)
+print("Passed", total - failed - missed)
 print("Pass rate: {:.2f}%".format(pass_rate * 100))
 
 if len(new_pass_models) > 0:
