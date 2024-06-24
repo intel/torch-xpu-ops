@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/native/GridSampler.h>
-#include <aten/sycl/Atomics.h>
+
+#include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {

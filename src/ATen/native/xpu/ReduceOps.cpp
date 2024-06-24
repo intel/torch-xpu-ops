@@ -1,13 +1,13 @@
 #include <ATen/ATen.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Fill.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>

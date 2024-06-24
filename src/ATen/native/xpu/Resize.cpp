@@ -1,8 +1,8 @@
 #include <ATen/ATen.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/ResizeCommon.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <c10/core/Allocator.h>
 #include <torch/library.h>
 

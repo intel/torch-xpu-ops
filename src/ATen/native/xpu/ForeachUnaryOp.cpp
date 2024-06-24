@@ -1,6 +1,6 @@
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 

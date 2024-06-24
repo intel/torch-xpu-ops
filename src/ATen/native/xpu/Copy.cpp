@@ -1,11 +1,11 @@
 #include <ATen/ATen.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/xpu/detail/XPUHooks.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
