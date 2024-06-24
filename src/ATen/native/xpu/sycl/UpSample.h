@@ -1,6 +1,6 @@
 #pragma once
 #include <ATen/core/TensorAccessor.h>
-#include <aten/sycl/Atomics.h>
+#include <ATen/native/xpu/sycl/Atomics.h>
 
 #include <c10/util/ArrayRef.h>
 #include <c10/util/Optional.h>

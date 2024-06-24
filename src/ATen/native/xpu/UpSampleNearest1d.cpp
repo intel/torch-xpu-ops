@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/UpSampleNearest1dKernels.h>
+#include <ATen/native/xpu/sycl//UpSampleNearest1dKernels.h>
 
 namespace at {
 // using namespace at::native;

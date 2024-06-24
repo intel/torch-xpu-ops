@@ -1,6 +1,6 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/UpSampleNearest1dKernels.h>
+#include <ATen/native/xpu/sycl//UpSampleNearest1dKernels.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
