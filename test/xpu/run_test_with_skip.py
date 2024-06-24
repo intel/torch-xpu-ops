@@ -401,9 +401,9 @@ skip_list = (
     "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
     "test_complex_half_reference_testing_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
     "test_python_ref__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_python_ref_errors__refs_where_xpu", # align with CUDA, AssertionError: "Expected all tensors to be on the same device" does not match "Tensor on device xpu:0 is not on the expected device cpu!"
     "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
     "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_python_ref_errors__refs_where_xpu", # align with CUDA, AssertionError: "Expected all tensors to be on the same device" does not match "Tensor on device xpu:0 is not on the expected device cpu!"
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32", # Didn't align with CUDA, Unexpected success
 
     # https://github.com/intel/torch-xpu-ops/issues/157
@@ -1691,18 +1691,6 @@ skip_list=(
     # Failed: Unexpected success
     "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
-
-    # RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
-    "test_batch_vs_slicing_sigmoid_xpu_complex32",
-    "test_contig_size1_large_dim_sigmoid_xpu_complex32",
-    "test_contig_size1_sigmoid_xpu_complex32",
-    "test_contig_vs_every_other_sigmoid_xpu_complex32",
-    "test_contig_vs_transposed_sigmoid_xpu_complex32",
-    "test_non_contig_expand_sigmoid_xpu_complex32",
-    "test_non_contig_index_sigmoid_xpu_complex32",
-    "test_non_contig_sigmoid_xpu_complex32",
-    "test_reference_numerics_normal_sigmoid_xpu_complex32",
-    "test_reference_numerics_small_sigmoid_xpu_complex32",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
