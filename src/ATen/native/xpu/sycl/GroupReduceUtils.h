@@ -4,7 +4,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
-#include <aten/sycl/MemoryAccess.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 
@@ -104,6 +104,32 @@ inline T& GroupReduce(
     }
   }
   return val;
+}
+
+#define SIMD16 16
+#define SIMD32 32
+
+template <
+    typename fn_simd_16,
+    typename fn_simd_32,
+    typename range_t,
+    typename... args_t>
+static inline void sycl_kernel_submit_with_simd_switch(
+    int simd,
+    range_t global_range,
+    range_t local_range,
+    ::sycl::queue q,
+    args_t... args) {
+  switch (simd) {
+    case 16: {
+      auto fn = fn_simd_16(args...);
+      sycl_kernel_submit(global_range, local_range, q, fn);
+    } break;
+    default: {
+      auto fn = fn_simd_32(args...);
+      sycl_kernel_submit(global_range, local_range, q, fn);
+    } break;
+  }
 }
 
 } // namespace xpu

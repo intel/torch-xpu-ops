@@ -1,8 +1,8 @@
 #include <ATen/ATen.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/cpu/mixed_data_type.h>
-#include <aten/sycl/GroupNormKernels.h>
+#include <ATen/native/xpu/sycl/GroupNormKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 
