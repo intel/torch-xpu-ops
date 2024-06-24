@@ -334,7 +334,3 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
-  - avg_pool2d
-  - avg_pool2d.out
-  - avg_pool2d_backward
-  - avg_pool2d_backward.grad_input
