@@ -28,7 +28,10 @@ void asinh_kernel(TensorIteratorBase& iter) {
         ScalarType::BFloat16,
         common_dtype,
         "asinh_xpu",
-        [&]() { gpu_kernel(iter, AsinhFunctor<scalar_t>()); });
+        [&]() {
+          using opmath_t = at::opmath_type<scalar_t>;
+          gpu_kernel(iter, AsinhFunctor<opmath_t>());
+        });
   }
 }
 

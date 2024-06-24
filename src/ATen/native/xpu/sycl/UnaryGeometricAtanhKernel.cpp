@@ -8,29 +8,29 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct AtanFunctor {
+struct AtanhFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::atan(a);
+    return std::atanh(a);
   }
 };
 
-void atan_kernel(TensorIteratorBase& iter) {
+void atanh_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
     AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "atan_xpu", [&]() {
+        kComplexHalf, common_dtype, "atanh_xpu", [&]() {
           using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, AtanFunctor<opmath_t>());
+          gpu_kernel(iter, AtanhFunctor<opmath_t>());
         });
   } else {
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
         ScalarType::Half,
         ScalarType::BFloat16,
         common_dtype,
-        "atan_xpu",
+        "atanh_xpu",
         [&]() {
           using opmath_t = at::opmath_type<scalar_t>;
-          gpu_kernel(iter, AtanFunctor<opmath_t>());
+          gpu_kernel(iter, AtanhFunctor<opmath_t>());
         });
   }
 }

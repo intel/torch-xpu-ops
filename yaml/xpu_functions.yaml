@@ -390,3 +390,6 @@ supported:
   - atan2
   - atan2.out
   - atan2_
+  - atanh
+  - atanh.out
+  - atanh_
