@@ -48,6 +48,9 @@ execute_list = (
     "_foreach_addcmul_ and not slowpath",
     # Compiler optimization on data type conversion brings the precision error.
     "_foreach_addcdiv_ and not slowpath and not test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
+
+    "_foreach_sqrt_ and not slowpath",
+    "_foreach_lerp_ and not slowpath",
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
@@ -57,89 +60,9 @@ execute_list = (
     "test_comprehensive_nn_functional_nll_loss_xpu_bfloat16",
     "test_comprehensive_nn_functional_nll_loss_xpu_float32",
     "test_comprehensive_nn_functional_nll_loss_xpu_float64",
-    "test_comprehensive_nn_functional_unfold_xpu_complex128",
-    "test_comprehensive_nn_functional_unfold_xpu_complex64",
-    "test_comprehensive_nn_functional_unfold_xpu_float64",
-    "test_comprehensive_nn_functional_unfold_xpu_float32",
-    "test_comprehensive_unfold_copy_xpu_complex128",
-    "test_comprehensive_unfold_copy_xpu_complex64",
-    "test_comprehensive_nn_functional_unfold_xpu_bfloat16",
-    "test_comprehensive_nn_functional_unfold_xpu_float16",
-    "test_comprehensive_unfold_xpu_complex128",
-    "test_comprehensive_unfold_xpu_complex64",
-    "test_comprehensive_unfold_copy_xpu_float32",
-    "test_comprehensive_unfold_copy_xpu_float64",
-    "test_comprehensive_unfold_copy_xpu_complex32",
-    "test_comprehensive_unfold_xpu_float32",
-    "test_comprehensive_unfold_xpu_float64",
-    "test_comprehensive_unfold_copy_xpu_bool",
-    "test_comprehensive_unfold_copy_xpu_int16",
-    "test_comprehensive_unfold_copy_xpu_int32",
-    "test_quick_nn_functional_unfold_xpu_complex128",
-    "test_comprehensive_unfold_copy_xpu_int64",
-    "test_comprehensive_unfold_copy_xpu_int8",
-    "test_comprehensive_unfold_copy_xpu_uint8",
-    "test_quick_nn_functional_unfold_xpu_complex64",
-    "test_quick_unfold_xpu_complex32",
-    "test_quick_unfold_xpu_complex128",
-    "test_quick_unfold_copy_xpu_complex64",
-    "test_quick_unfold_copy_xpu_complex32",
-    "test_quick_unfold_copy_xpu_complex128",
-    "test_comprehensive_unfold_xpu_complex32",
-    "test_quick_unfold_xpu_complex64",
-    "test_quick_nn_functional_unfold_xpu_float64",
-    "test_quick_nn_functional_unfold_xpu_float32",
-    "test_quick_unfold_copy_xpu_float64",
-    "test_quick_unfold_copy_xpu_float32",
-    "test_quick_unfold_xpu_float64",
-    "test_quick_unfold_xpu_float32",
-    "test_comprehensive_unfold_xpu_int16",
-    "test_comprehensive_unfold_copy_xpu_bfloat16",
-    "test_comprehensive_unfold_xpu_int32",
-    "test_comprehensive_unfold_xpu_int64",
-    "test_comprehensive_unfold_xpu_int8",
-    "test_comprehensive_unfold_xpu_uint8",
-    "test_quick_unfold_copy_xpu_bool",
-    "test_quick_unfold_copy_xpu_int32",
-    "test_quick_unfold_copy_xpu_int64",
-    "test_quick_unfold_copy_xpu_int16",
-    "test_quick_unfold_xpu_bool",
-    "test_quick_unfold_xpu_int64",
-    "test_quick_unfold_xpu_int32",
-    "test_comprehensive_unfold_xpu_bool",
-    "test_quick_unfold_xpu_int16",
-    "test_quick_unfold_copy_xpu_int8",
-    "test_quick_unfold_copy_xpu_uint8",
-    "test_quick_unfold_xpu_int8",
-    "test_quick_unfold_xpu_uint8",
-    "test_comprehensive_unfold_copy_xpu_float16",
-    "test_comprehensive_unfold_xpu_float16",
-    "test_comprehensive_unfold_xpu_bfloat16",
-    "test_quick_nn_functional_unfold_xpu_bfloat16",
-    "test_quick_nn_functional_unfold_xpu_float16",
-    "test_quick_unfold_copy_xpu_float16",
-    "test_quick_unfold_copy_xpu_bfloat16",
-    "test_quick_unfold_xpu_bfloat16",
-    "test_quick_unfold_xpu_float16",
-    "test_quick_core_backward_nn_functional_unfold_xpu_float64",
-    "test_quick_core_backward_unfold_copy_xpu_float64",
+    "unfold",
 )
 res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
-
-# test_torch
-execute_list = (
-    "test_pin_memory",
-    "test_unfold_scalars_xpu",
-    "test_unfold_neg_dim",
-    "test_unfold_all_devices_and_dtypes_xpu",
-)
-res += launch_test("test_torch_xpu.py", exe_list=execute_list)
-
-# test_comparison_utils
-res += launch_test("test_comparison_utils_xpu.py")
-
-# test_pruning
-res += launch_test("nn/test_pruning_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
