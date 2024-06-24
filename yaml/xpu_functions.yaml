@@ -332,6 +332,7 @@ supported:
   - _foreach_lerp_.List
   - _foreach_lerp.Scalar
   - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -356,6 +357,7 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
   - sgn
@@ -382,3 +384,6 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - addcmul.out
+  - addcmul
+  - addcmul_

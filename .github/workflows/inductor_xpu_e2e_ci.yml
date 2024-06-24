@@ -72,7 +72,9 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
-        run: echo "$GITHUB_ENV"
+        run: |
+          echo "$GITHUB_ENV"
+          rm -rf ../pytorch/inductor_log
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -112,3 +114,13 @@ jobs:
           expected_pass_num: 15
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Summarize archieve files
+        run: |
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+      - name: Upload Inductor XPU E2E Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
