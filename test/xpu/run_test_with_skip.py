@@ -2977,7 +2977,6 @@ skip_list = (
     "test_nondeterministic_alert_ReplicationPad1d_xpu",
     "test_nondeterministic_alert_ReplicationPad2d_xpu",
     "test_nondeterministic_alert_ReplicationPad3d_xpu",
-    "test_nondeterministic_alert_bincount_xpu",
     "test_nondeterministic_alert_grid_sample_2d_xpu",
     "test_nondeterministic_alert_grid_sample_3d_xpu",
     "test_nondeterministic_alert_histc_xpu",
