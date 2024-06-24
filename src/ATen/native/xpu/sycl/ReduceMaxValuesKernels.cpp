@@ -31,7 +31,7 @@ void max_values_kernel(TensorIterator& iter) {
       });
 }
 
-void max_launch_kernel(TensorIterator& iter) {
+void max_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.input_dtype(), "max_xpu", [&]() {
         gpu_reduce_kernel<scalar_t, scalar_t>(
@@ -42,7 +42,7 @@ void max_launch_kernel(TensorIterator& iter) {
       });
 }
 
-void max_all_launch_kernel(TensorIterator& iter) {
+void max_all_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.input_dtype(), "max_all_xpu", [&] {
         max_values_kernel_xpu_impl<scalar_t>(iter);

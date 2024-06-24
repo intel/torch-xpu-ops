@@ -77,6 +77,8 @@ _xpu_computation_op_list = [
     "sin",
     "sqrt",
     "sum",
+    "amin",
+    "amax",
     "tanh",
     "unfold",
     "uniform",
@@ -104,6 +106,9 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
+    "acos",
+    "acosh",
+    "addr",
 ]
 
 

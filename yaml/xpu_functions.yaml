@@ -248,6 +248,11 @@ supported:
   - any.dims_out
   - any
   - any.all_out
+  - amax
+  - amax.out
+  - amin
+  - amin.out
+  - argmax
   - argmax.out
   - _local_scalar_dense
   - max_pool2d_with_indices_backward
@@ -369,3 +374,11 @@ supported:
   - erf
   - erf_
   - erf.out
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
