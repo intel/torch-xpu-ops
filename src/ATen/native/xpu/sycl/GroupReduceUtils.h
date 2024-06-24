@@ -114,7 +114,7 @@ template <
     typename fn_simd_32,
     typename range_t,
     typename... args_t>
-static inline void sycl_kernel_submit_with_simd_switch(
+static inline void group_norm_kernel_simd_choice_and_launch(
     int simd,
     range_t global_range,
     range_t local_range,

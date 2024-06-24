@@ -263,7 +263,7 @@ void group_norm_kernel_impl(
   int64_t nwg = N * G;
   auto global_range = sycl::range<1>(nwg * wg_size);
   auto local_range = sycl::range<1>(wg_size);
-  sycl_kernel_submit_with_simd_switch<
+  group_norm_kernel_simd_choice_and_launch<
       GNRowwiseMomentsFunctor<T, SIMD16>,
       GNRowwiseMomentsFunctor<T, SIMD32>>(
       simd,
@@ -669,7 +669,7 @@ void group_norm_1d_backward(
         : get_group_reduce_group_size();
     auto global_range = sycl::range<2>(G, N * wg_size);
     auto local_range = sycl::range<2>(1, wg_size);
-    sycl_kernel_submit_with_simd_switch<
+    group_norm_kernel_simd_choice_and_launch<
         Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD16>,
         Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD32>>(
         simd,
@@ -740,7 +740,7 @@ void group_norm_1d_backward(
       auto global_range =
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
-      sycl_kernel_submit_with_simd_switch<
+      group_norm_kernel_simd_choice_and_launch<
           GammaBeta1dBackwardLargeKernel<T, SIMD16, SIMD16>,
           GammaBeta1dBackwardLargeKernel<T, SIMD32, SIMD32>>(
           simd,
@@ -1147,7 +1147,7 @@ void group_norm_backward_kernel_impl(
   int64_t wg_size = HxW < get_group_reduce_group_size()
       ? simd
       : get_group_reduce_group_size();
-  sycl_kernel_submit_with_simd_switch<
+  group_norm_kernel_simd_choice_and_launch<
       ComputeInternalGradientsFunctor<T, SIMD16>,
       ComputeInternalGradientsFunctor<T, SIMD32>>(
       simd,
@@ -1180,7 +1180,7 @@ void group_norm_backward_kernel_impl(
     wg_size = (C / G) < get_group_reduce_group_size()
         ? simd
         : get_group_reduce_group_size();
-    sycl_kernel_submit_with_simd_switch<
+    group_norm_kernel_simd_choice_and_launch<
         ComputeBackwardFusedParamsFunctor<T, SIMD16>,
         ComputeBackwardFusedParamsFunctor<T, SIMD32>>(
         simd,
@@ -1250,7 +1250,7 @@ void group_norm_backward_kernel_impl(
       auto global_range =
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
-      sycl_kernel_submit_with_simd_switch<
+      group_norm_kernel_simd_choice_and_launch<
           GammaBetaBackwardFunctor<T, SIMD16, SIMD16>,
           GammaBetaBackwardFunctor<T, SIMD32, SIMD32>>(
           simd,
