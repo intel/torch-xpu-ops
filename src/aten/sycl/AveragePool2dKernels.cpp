@@ -1,0 +1,845 @@
+#include <ATen / AccumulateType.h>
+#include <ATen/ceil_div.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
+#include <aten/sycl/AveragePool2dKernels.h>
+#include <comm/Runtime.h>
+#include <comm/SYCLContext.h>
+#include <comm/SYCLHelpers.h>
+
+namespace at::native {
+namespace xpu {
+
+inline int min(int a, int b) {
+  return a <= b ? a : b;
+}
+
+inline int max(int a, int b) {
+  return a >= b ? a : b;
+}
+
+template <typename scalar_t, typename accscalar_t>
+struct AvgPool2dFrameKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
+
+    if (index < total_elements) {
+      const int pw = index % pooled_width;
+      const int ph = (index / pooled_width) % pooled_height;
+      const int c = (index / pooled_width / pooled_height) % channels;
+      const int n = index / pooled_width / pooled_height / channels;
+
+      int hstart = ph * stride_h - pad_h;
+      int wstart = pw * stride_w - pad_w;
+      int hend = min(hstart + kernel_h, height + pad_h);
+      int wend = min(wstart + kernel_w, width + pad_w);
+      const int pool_size = (hend - hstart) * (wend - wstart);
+      hstart = max(hstart, 0);
+      wstart = max(wstart, 0);
+      hend = min(hend, height);
+      wend = min(wend, width);
+
+      if (hstart >= hend || wstart >= wend) {
+        top_data[index] = scalar_t(0);
+        return;
+      }
+
+      accscalar_t aveval = accscalar_t(0);
+      const scalar_t* const bottom_slice =
+          bottom_data + (n * channels + c) * height * width;
+
+      for (int h = hstart; h < hend; ++h) {
+        for (int w = wstart; w < wend; ++w) {
+          aveval += bottom_slice[h * width + w];
+        }
+      }
+      int divide_factor;
+      if (use_divisor) {
+        divide_factor = divisor_override;
+      } else {
+        if (count_include_pad) {
+          divide_factor = pool_size;
+        } else {
+          divide_factor = (hend - hstart) * (wend - wstart);
+        }
+      }
+      top_data[index] = static_cast<scalar_t>(aveval / divide_factor);
+    }
+  }
+  AvgPool2dFrameKernelFunctor(
+      scalar_t* top_data_,
+      const scalar_t* bottom_data_,
+      int64_t total_elements_,
+      int64_t channels_,
+      int64_t height_,
+      int64_t width_,
+      int pooled_height_,
+      int pooled_width_,
+      int kernel_h_,
+      int kernel_w_,
+      int stride_h_,
+      int stride_w_,
+      int pad_h_,
+      int pad_w_,
+      int divisor_override_,
+      bool count_include_pad_,
+      bool use_divisor_)
+      : top_data(top_data_),
+        bottom_data(bottom_data_),
+        total_elements(total_elements_),
+        channels(channels_),
+        height(height_),
+        width(width_),
+        pooled_height(pooled_height_),
+        pooled_width(pooled_width_),
+        kernel_h(kernel_h_),
+        kernel_w(kernel_w_),
+        stride_h(stride_h_),
+        stride_w(stride_w_),
+        pad_h(pad_h_),
+        pad_w(pad_w_),
+        divisor_override(divisor_override_),
+        count_include_pad(count_include_pad_),
+        use_divisor(use_divisor_) {}
+
+ private:
+  scalar_t* top_data;
+  const scalar_t* bottom_data;
+  int64_t total_elements;
+  int64_t channels;
+  int64_t height;
+  int64_t width;
+  int pooled_height;
+  int pooled_width;
+  int kernel_h;
+  int kernel_w;
+  int stride_h;
+  int stride_w;
+  int pad_h;
+  int pad_w;
+  int divisor_override;
+  bool count_include_pad;
+  bool use_divisor;
+};
+
+template <typename scalar_t, typename accscalar_t>
+struct AvgPool2dChannelsLastFrameKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
+
+    if (index < total_elements) {
+      const int c = index % channels;
+      const int pw = (index / channels) % pooled_width;
+      const int ph = (index / channels / pooled_width) % pooled_height;
+      const int n = index / channels / pooled_width / pooled_height;
+      int hstart = ph * stride_h - pad_h;
+      int wstart = pw * stride_w - pad_w;
+      int hend = min(hstart + kernel_h, height + pad_h);
+      int wend = min(wstart + kernel_w, width + pad_w);
+      const int pool_size = (hend - hstart) * (wend - wstart);
+      hstart = max(hstart, 0);
+      wstart = max(wstart, 0);
+      hend = min(hend, height);
+      wend = min(wend, width);
+
+      if (hstart >= hend || wstart >= wend) {
+        top_data[index] = scalar_t(0);
+        return;
+      }
+
+      accscalar_t aveval = accscalar_t(0);
+      const scalar_t* const bottom_slice =
+          bottom_data + n * channels * height * width + c;
+      for (int h = hstart; h < hend; ++h) {
+        for (int w = wstart; w < wend; ++w) {
+          aveval += bottom_slice[(h * width + w) * channels];
+        }
+      }
+      int divide_factor;
+      if (use_divisor) {
+        divide_factor = divisor_override;
+      } else {
+        if (count_include_pad) {
+          divide_factor = pool_size;
+        } else {
+          divide_factor = (hend - hstart) * (wend - wstart);
+        }
+      }
+      top_data[index] = static_cast<scalar_t>(aveval / divide_factor);
+    }
+  }
+  AvgPool2dChannelsLastFrameKernelFunctor(
+      scalar_t* top_data_,
+      const scalar_t* bottom_data_,
+      int64_t total_elements_,
+      int64_t channels_,
+      int64_t height_,
+      int64_t width_,
+      int pooled_height_,
+      int pooled_width_,
+      int kernel_h_,
+      int kernel_w_,
+      int stride_h_,
+      int stride_w_,
+      int pad_h_,
+      int pad_w_,
+      int divisor_override_,
+      bool count_include_pad_,
+      bool use_divisor_)
+      : top_data(top_data_),
+        bottom_data(bottom_data_),
+        total_elements(total_elements_),
+        channels(channels_),
+        height(height_),
+        width(width_),
+        pooled_height(pooled_height_),
+        pooled_width(pooled_width_),
+        kernel_h(kernel_h_),
+        kernel_w(kernel_w_),
+        stride_h(stride_h_),
+        stride_w(stride_w_),
+        pad_h(pad_h_),
+        pad_w(pad_w_),
+        divisor_override(divisor_override_),
+        count_include_pad(count_include_pad_),
+        use_divisor(use_divisor_) {}
+
+ private:
+  scalar_t* top_data;
+  const scalar_t* bottom_data;
+  int64_t total_elements;
+  int64_t channels;
+  int64_t height;
+  int64_t width;
+  int pooled_height;
+  int pooled_width;
+  int kernel_h;
+  int kernel_w;
+  int stride_h;
+  int stride_w;
+  int pad_h;
+  int pad_w;
+  int divisor_override;
+  bool count_include_pad;
+  bool use_divisor;
+};
+
+template <typename scalar_t, typename accscalar_t>
+void avg_pool2d_channels_last_frame(
+    const int total_elements,
+    const Tensor& input,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int pooled_height,
+    const int pooled_width,
+    const int kernel_h,
+    const int kernel_w,
+    const int stride_h,
+    const int stride_w,
+    const int pad_h,
+    const int pad_w,
+    Tensor& output,
+    const int divisor_override,
+    const bool count_include_pad,
+    const bool use_divisor) {
+  scalar_t* top_data = output.data_ptr<scalar_t>();
+  const scalar_t* bottom_data = input.data_ptr<scalar_t>();
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const uint32_t group_size =
+      std::min(static_cast<int>(syclMaxWorkItemsPerEU()), 1024);
+  const uint32_t global_range =
+      ceil_div<uint32_t>(total_elements, group_size) * group_size;
+
+  auto caller = AvgPool2dChannelsLastFrameKernelFunctor<scalar_t, accscalar_t>(
+      top_data,
+      bottom_data,
+      total_elements,
+      channels,
+      height,
+      width,
+      pooled_height,
+      pooled_width,
+      kernel_h,
+      kernel_w,
+      stride_h,
+      stride_w,
+      pad_h,
+      pad_w,
+      divisor_override,
+      count_include_pad,
+      use_divisor);
+  sycl_kernel_submit(global_range, group_size, queue, caller);
+}
+template <typename scalar_t, typename accscalar_t>
+void avg_pool2d_frame(
+    const int total_elements,
+    const Tensor& input,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int pooled_height,
+    const int pooled_width,
+    const int kernel_h,
+    const int kernel_w,
+    const int stride_h,
+    const int stride_w,
+    const int pad_h,
+    const int pad_w,
+    Tensor& output,
+    const int divisor_override,
+    const bool count_include_pad,
+    const bool use_divisor) {
+  scalar_t* top_data = output.data_ptr<scalar_t>();
+  const scalar_t* bottom_data = input.data_ptr<scalar_t>();
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const uint32_t group_size =
+      std::min(static_cast<int>(syclMaxWorkItemsPerEU()), 1024);
+  const uint32_t global_range =
+      ceil_div<uint32_t>(total_elements, group_size) * group_size;
+
+  auto caller = AvgPool2dFrameKernelFunctor<scalar_t, accscalar_t>(
+      top_data,
+      bottom_data,
+      total_elements,
+      channels,
+      height,
+      width,
+      pooled_height,
+      pooled_width,
+      kernel_h,
+      kernel_w,
+      stride_h,
+      stride_w,
+      pad_h,
+      pad_w,
+      divisor_override,
+      count_include_pad,
+      use_divisor);
+  sycl_kernel_submit(global_range, group_size, queue, caller);
+}
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+struct AvgPool2dChannelsLastBackwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    index_t index = item.get_global_linear_id();
+    if (index < total_elements) {
+      const int c = index % channels;
+      const int w = (index / channels) % width + pad_w;
+      const int h = (index / channels / width) % height + pad_h;
+      const int n = index / channels / width / height;
+      const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
+      const int phend = min(h / stride_h + 1, pooled_height);
+      const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
+      const int pwend = min(w / stride_w + 1, pooled_width);
+      accscalar_t gradient = accscalar_t(0);
+      const scalar_t* const top_slice =
+          top_data + n * channels * pooled_height * pooled_width + c;
+      for (int ph = phstart; ph < phend; ++ph) {
+        for (int pw = pwstart; pw < pwend; ++pw) {
+          // figure out the pooling size
+          int hstart = ph * stride_h - pad_h;
+          int wstart = pw * stride_w - pad_w;
+          int hend = min(hstart + kernel_h, height + pad_h);
+          int wend = min(wstart + kernel_w, width + pad_w);
+          int pool_size = (hend - hstart) * (wend - wstart);
+          hstart = max(hstart, 0);
+          wstart = max(wstart, 0);
+          hend = min(hend, height);
+          wend = min(wend, width);
+          if (hstart >= hend || wstart >= wend) {
+            continue;
+          }
+          int divide_factor;
+          if (use_divisor) {
+            divide_factor = divisor_override;
+          } else {
+            if (count_include_pad) {
+              divide_factor = pool_size;
+            } else {
+              divide_factor = (hend - hstart) * (wend - wstart);
+            }
+          }
+          gradient +=
+              top_slice[(ph * pooled_width + pw) * channels] / divide_factor;
+        }
+      }
+      bottom_data[index] = static_cast<scalar_t>(gradient);
+    }
+  }
+  AvgPool2dChannelsLastBackwardKernelFunctor(
+      const scalar_t* top_data_,
+      scalar_t* bottom_data_,
+      int64_t total_elements_,
+      int64_t channels_,
+      int64_t height_,
+      int64_t width_,
+      int pooled_height_,
+      int pooled_width_,
+      int kernel_h_,
+      int kernel_w_,
+      int stride_h_,
+      int stride_w_,
+      int pad_h_,
+      int pad_w_,
+      int divisor_override_,
+      bool count_include_pad_,
+      bool use_divisor_)
+      : top_data(top_data_),
+        bottom_data(bottom_data_),
+        total_elements(total_elements_),
+        channels(channels_),
+        height(height_),
+        width(width_),
+        pooled_height(pooled_height_),
+        pooled_width(pooled_width_),
+        kernel_h(kernel_h_),
+        kernel_w(kernel_w_),
+        stride_h(stride_h_),
+        stride_w(stride_w_),
+        pad_h(pad_h_),
+        pad_w(pad_w_),
+        divisor_override(divisor_override_),
+        count_include_pad(count_include_pad_),
+        use_divisor(use_divisor_) {}
+
+ private:
+  const scalar_t* top_data;
+  scalar_t* bottom_data;
+  int64_t total_elements;
+  int64_t channels;
+  int64_t height;
+  int64_t width;
+  int pooled_height;
+  int pooled_width;
+  int kernel_h;
+  int kernel_w;
+  int stride_h;
+  int stride_w;
+  int pad_h;
+  int pad_w;
+  int divisor_override;
+  bool count_include_pad;
+  bool use_divisor;
+};
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+struct AvgPool2dBackwarKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    index_t index = item.get_global_linear_id();
+    if (index < total_elements) {
+      // find out the local index
+      // find out the local offset
+      const int w = index % width + pad_w;
+      const int h = (index / width) % height + pad_h;
+      const int c = (index / width / height) % channels;
+      const int n = index / width / height / channels;
+      const int phstart = (h < kernel_h) ? 0 : (h - kernel_h) / stride_h + 1;
+      const int phend = min(h / stride_h + 1, pooled_height);
+      const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
+      const int pwend = min(w / stride_w + 1, pooled_width);
+      accscalar_t gradient = accscalar_t(0);
+      const scalar_t* const top_data_slice =
+          top_data + (n * channels + c) * pooled_height * pooled_width;
+      for (int ph = phstart; ph < phend; ++ph) {
+        for (int pw = pwstart; pw < pwend; ++pw) {
+          // figure out the pooling size
+          int hstart = ph * stride_h - pad_h;
+          int wstart = pw * stride_w - pad_w;
+          int hend = min(hstart + kernel_h, height + pad_h);
+          int wend = min(wstart + kernel_w, width + pad_w);
+          int pool_size = (hend - hstart) * (wend - wstart);
+          hstart = max(hstart, 0);
+          wstart = max(wstart, 0);
+          hend = min(hend, height);
+          wend = min(wend, width);
+          if (hstart >= hend || wstart >= wend) {
+            continue;
+          }
+          int divide_factor;
+          if (use_divisor) {
+            divide_factor = divisor_override;
+          } else {
+            if (count_include_pad) {
+              divide_factor = pool_size;
+            } else {
+              divide_factor = (hend - hstart) * (wend - wstart);
+            }
+          }
+          gradient += top_data_slice[ph * pooled_width + pw] / divide_factor;
+        }
+      }
+      bottom_data[index] = static_cast<scalar_t>(gradient);
+    }
+  }
+  AvgPool2dBackwarKernelFunctor(
+      const scalar_t* top_data_,
+      scalar_t* bottom_data_,
+      int64_t total_elements_,
+      int64_t channels_,
+      int64_t height_,
+      int64_t width_,
+      int pooled_height_,
+      int pooled_width_,
+      int kernel_h_,
+      int kernel_w_,
+      int stride_h_,
+      int stride_w_,
+      int pad_h_,
+      int pad_w_,
+      int divisor_override_,
+      bool count_include_pad_,
+      bool use_divisor_)
+      : top_data(top_data_),
+        bottom_data(bottom_data_),
+        total_elements(total_elements_),
+        channels(channels_),
+        height(height_),
+        width(width_),
+        pooled_height(pooled_height_),
+        pooled_width(pooled_width_),
+        kernel_h(kernel_h_),
+        kernel_w(kernel_w_),
+        stride_h(stride_h_),
+        stride_w(stride_w_),
+        pad_h(pad_h_),
+        pad_w(pad_w_),
+        divisor_override(divisor_override_),
+        count_include_pad(count_include_pad_),
+        use_divisor(use_divisor_) {}
+
+ private:
+  const scalar_t* top_data;
+  scalar_t* bottom_data;
+  int64_t total_elements;
+  int64_t channels;
+  int64_t height;
+  int64_t width;
+  int pooled_height;
+  int pooled_width;
+  int kernel_h;
+  int kernel_w;
+  int stride_h;
+  int stride_w;
+  int pad_h;
+  int pad_w;
+  int divisor_override;
+  bool count_include_pad;
+  bool use_divisor;
+};
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+void avg_pool2d_backward_channels_last_frame(
+    const index_t total_elements,
+    const Tensor& grad_output,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int pooled_height,
+    const int pooled_width,
+    const int kernel_h,
+    const int kernel_w,
+    const int stride_h,
+    const int stride_w,
+    const int pad_h,
+    const int pad_w,
+    Tensor& grad_input,
+    const int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  const scalar_t* top_data = grad_output.data_ptr<scalar_t>();
+  scalar_t* bottom_data = grad_input.data_ptr<scalar_t>();
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const uint32_t group_size =
+      std::min(static_cast<int>(syclMaxWorkItemsPerEU()), 1024);
+  const uint32_t global_range =
+      ceil_div<uint32_t>(total_elements, group_size) * group_size;
+
+  auto caller = AvgPool2dChannelsLastBackwardKernelFunctor<
+      scalar_t,
+      accscalar_t,
+      index_t>(
+      top_data,
+      bottom_data,
+      total_elements,
+      channels,
+      height,
+      width,
+      pooled_height,
+      pooled_width,
+      kernel_h,
+      kernel_w,
+      stride_h,
+      stride_w,
+      pad_h,
+      pad_w,
+      divisor_override,
+      count_include_pad,
+      use_divisor);
+  sycl_kernel_submit(global_range, group_size, queue, caller);
+}
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+void avg_pool2d_backward_frame(
+    const index_t total_elements,
+    const Tensor& grad_output,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int pooled_height,
+    const int pooled_width,
+    const int kernel_h,
+    const int kernel_w,
+    const int stride_h,
+    const int stride_w,
+    const int pad_h,
+    const int pad_w,
+    Tensor& grad_input,
+    const int divisor_override,
+    bool count_include_pad,
+    bool use_divisor) {
+  const scalar_t* top_data = grad_output.data_ptr<scalar_t>();
+  scalar_t* bottom_data = grad_input.data_ptr<scalar_t>();
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const uint32_t group_size =
+      std::min(static_cast<int>(syclMaxWorkItemsPerEU()), 1024);
+  const uint32_t global_range =
+      ceil_div<uint32_t>(total_elements, group_size) * group_size;
+
+  auto caller = AvgPool2dBackwarKernelFunctor<scalar_t, accscalar_t, index_t>(
+      top_data,
+      bottom_data,
+      total_elements,
+      channels,
+      height,
+      width,
+      pooled_height,
+      pooled_width,
+      kernel_h,
+      kernel_w,
+      stride_h,
+      stride_w,
+      pad_h,
+      pad_w,
+      divisor_override,
+      count_include_pad,
+      use_divisor);
+  sycl_kernel_submit(global_range, group_size, queue, caller);
+}
+
+void avg_pool2d_kernel(
+    const Tensor& input_,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    bool ceil_mode,
+    bool count_include_pad,
+    c10::optional<int64_t> divisor_override,
+    Tensor& output) {
+  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
+  const int kW = kernel_size.size() == 1
+      ? kH
+      : safe_downcast<int, int64_t>(kernel_size[1]);
+
+  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int dW = stride.empty() ? kW
+      : stride.size() == 1      ? dH
+                                : safe_downcast<int, int64_t>(stride[1]);
+
+  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padW =
+      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+
+  const int64_t nInputPlane = input_.size(-3);
+  const int64_t inputHeight = input_.size(-2);
+  const int64_t inputWidth = input_.size(-1);
+
+  int64_t outputWidth =
+      pooling_output_shape<int64_t>(inputWidth, kW, padW, dW, 1, ceil_mode);
+  int64_t outputHeight =
+      pooling_output_shape<int64_t>(inputHeight, kH, padH, dH, 1, ceil_mode);
+  const auto memory_format = input_.suggest_memory_format();
+
+  Tensor input = input_.contiguous(memory_format);
+  const auto count = safe_downcast<int32_t, int64_t>(output.numel());
+
+  bool use_divisor = divisor_override.has_value();
+  const auto divisor_override_value =
+      use_divisor ? divisor_override.value() : 0;
+  if (count != 0) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_out_xpu", [&] {
+          using accscalar_t = acc_type<scalar_t, true>;
+
+          switch (memory_format) {
+            case MemoryFormat::ChannelsLast: {
+              output.unsafeGetTensorImpl()->empty_tensor_restride(
+                  MemoryFormat::ChannelsLast);
+              avg_pool2d_channels_last_frame<scalar_t, accscalar_t>(
+                  count,
+                  input,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  output,
+                  divisor_override_value,
+                  count_include_pad,
+                  use_divisor);
+              break;
+            }
+            case MemoryFormat::Contiguous: {
+              avg_pool2d_frame<scalar_t, accscalar_t>(
+                  count,
+                  input,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  output,
+                  divisor_override_value,
+                  count_include_pad,
+                  use_divisor);
+              break;
+            }
+            default:
+              TORCH_CHECK(
+                  false,
+                  "Unsupported memory format. Supports only "
+                  "ChannelsLast, Contiguous");
+          }
+        });
+  }
+}
+
+void avg_pool2d_backward_kernel(
+    const Tensor& gradOutput_,
+    const Tensor& input_,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    bool ceil_mode,
+    bool count_include_pad,
+    c10::optional<int64_t> divisor_override,
+    Tensor& gradInput) {
+  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
+  const int kW = kernel_size.size() == 1
+      ? kH
+      : safe_downcast<int, int64_t>(kernel_size[1]);
+
+  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int dW = stride.empty() ? kW
+      : stride.size() == 1      ? dH
+                                : safe_downcast<int, int64_t>(stride[1]);
+
+  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padW =
+      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+
+  const auto memory_format = input_.suggest_memory_format();
+  const Tensor input = input_.contiguous(memory_format);
+  const Tensor gradOutput = gradOutput_.contiguous(memory_format);
+
+  const int64_t nInputPlane = input_.size(-3);
+  const int64_t inputHeight = input_.size(-2);
+  const int64_t inputWidth = input_.size(-1);
+
+  int64_t outputWidth =
+      pooling_output_shape<int64_t>(inputWidth, kW, padW, dW, 1, ceil_mode);
+  int64_t outputHeight =
+      pooling_output_shape<int64_t>(inputHeight, kH, padH, dH, 1, ceil_mode);
+
+  const auto count = input.numel();
+  if (count == 0) {
+    return;
+  }
+  bool use_divisor = divisor_override.has_value();
+  const auto divisor_override_value =
+      use_divisor ? divisor_override.value() : 0;
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_backward_xpu", [&] {
+        using accscalar_t = acc_type<scalar_t, true>;
+
+        AT_DISPATCH_INDEX_TYPES(
+            at::native::canUse32BitIndexMath(input, INT_MAX) ? ScalarType::Int
+                                                             : ScalarType::Long,
+            "avg_pool2d_backward_xpu_launcher",
+            [&] {
+              switch (memory_format) {
+                case MemoryFormat::ChannelsLast: {
+                  gradInput.unsafeGetTensorImpl()->empty_tensor_restride(
+                      MemoryFormat::ChannelsLast);
+                  avg_pool2d_backward_channels_last_frame<
+                      scalar_t,
+                      accscalar_t,
+                      index_t>(
+                      count,
+                      gradOutput,
+                      nInputPlane,
+                      inputHeight,
+                      inputWidth,
+                      outputHeight,
+                      outputWidth,
+                      kH,
+                      kW,
+                      dH,
+                      dW,
+                      padH,
+                      padW,
+                      gradInput,
+                      divisor_override_value,
+                      count_include_pad,
+                      use_divisor);
+                  break;
+                }
+                case MemoryFormat::Contiguous: {
+                  avg_pool2d_backward_frame<scalar_t, accscalar_t, index_t>(
+                      count,
+                      gradOutput,
+                      nInputPlane,
+                      inputHeight,
+                      inputWidth,
+                      outputHeight,
+                      outputWidth,
+                      kH,
+                      kW,
+                      dH,
+                      dW,
+                      padH,
+                      padW,
+                      gradInput,
+                      divisor_override_value,
+                      count_include_pad,
+                      use_divisor);
+                  break;
+                }
+                default:
+                  TORCH_CHECK(
+                      false,
+                      "Unsupported memory format. Supports only "
+                      "ChannelsLast, Contiguous");
+              }
+            });
+      });
+}
+
+} // namespace xpu
+} // namespace at::native

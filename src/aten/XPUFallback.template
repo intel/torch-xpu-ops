@@ -180,8 +180,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "atan2.out",
     "atanh.out",
     "atan.out",
-    "avg_pool2d_backward.grad_input",
-    "avg_pool2d.out",
     "avg_pool3d_backward.grad_input",
     "avg_pool3d.out",
     "binary_cross_entropy",
