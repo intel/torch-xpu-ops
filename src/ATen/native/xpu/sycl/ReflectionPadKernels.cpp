@@ -9,16 +9,11 @@
 #include <ATen/ceil_div.h>
 #include <ATen/native/IndexingUtils.h>
 #include <ATen/native/Padding.h>
-#include <aten/sycl/Atomics.h>
+#include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
-#include <comm/SYCLHelpers.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
-
-template <typename T, typename V>
-inline auto CeilDiv(T a, V b) {
-  return (a + b - 1) / b;
-}
 
 inline std::pair<int64_t, int64_t> get_index_mapping2d(
     int64_t input_dim_x,
@@ -59,7 +54,7 @@ inline std::pair<int64_t, int64_t> get_index_mapping2d(
 }
 
 template <typename scalar_t>
-struct ReflectionPad2dOutKernellFunctor {
+struct ReflectionPad2dKernellFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_xy = item.get_global_id(0);
 
@@ -77,7 +72,7 @@ struct ReflectionPad2dOutKernellFunctor {
       output_[index_pair.second] = input_[index_pair.first];
     }
   }
-  ReflectionPad2dOutKernellFunctor(
+  ReflectionPad2dKernellFunctor(
       scalar_t* input,
       scalar_t* output,
       int64_t input_dim_x,
@@ -107,7 +102,7 @@ struct ReflectionPad2dOutKernellFunctor {
 };
 
 template <typename scalar_t>
-void reflection_pad2d_out_kernel_impl(
+void reflection_pad2d_template(
     scalar_t* input,
     scalar_t* output,
     int64_t input_dim_x,
@@ -121,12 +116,12 @@ void reflection_pad2d_out_kernel_impl(
   int64_t output_dim_x = input_dim_x + pad_l + pad_r;
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
 
-  auto queue = at::xpu::getCurrentSYCLQueue();
-  int work_group_size =
-      output_dim_x * output_dim_y > 256 ? 256 : output_dim_x * output_dim_y;
-  int work_group_num = at::ceil_div(output_dim_x * output_dim_y, (int64_t)256);
+  auto queue = getCurrentSYCLQueue();
+  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_num =
+      at::ceil_div(output_dim_x * output_dim_y, work_group_size);
 
-  ReflectionPad2dOutKernellFunctor<scalar_t> kfn(
+  ReflectionPad2dKernellFunctor<scalar_t> kfn(
       input,
       output,
       input_dim_x,
@@ -143,7 +138,7 @@ void reflection_pad2d_out_kernel_impl(
 }
 
 template <typename scalar_t>
-struct ReflectionPad2dBackwardOutKernelFunctor {
+struct ReflectionPad2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_xy = item.get_global_id(0);
 
@@ -163,7 +158,7 @@ struct ReflectionPad2dBackwardOutKernelFunctor {
           grad_output_[index_pair.second]);
     }
   }
-  ReflectionPad2dBackwardOutKernelFunctor(
+  ReflectionPad2dBackwardKernelFunctor(
       scalar_t* grad_input,
       scalar_t* grad_output,
       int64_t input_dim_x,
@@ -193,7 +188,7 @@ struct ReflectionPad2dBackwardOutKernelFunctor {
 };
 
 template <typename scalar_t>
-void reflection_pad2d_backward_out_kernel_impl(
+void reflection_pad2d_backward_template(
     scalar_t* grad_input,
     scalar_t* grad_output,
     int64_t input_dim_x,
@@ -204,14 +199,14 @@ void reflection_pad2d_backward_out_kernel_impl(
     int64_t pad_r,
     int64_t nbatch,
     int64_t nplane) {
-  auto queue = at::xpu::getCurrentSYCLQueue();
+  auto queue = getCurrentSYCLQueue();
   int64_t output_dim_x = input_dim_x + pad_l + pad_r;
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
-  int work_group_size =
-      output_dim_x * output_dim_y > 256 ? 256 : output_dim_x * output_dim_y;
-  int work_group_num = at::ceil_div(output_dim_x * output_dim_y, (int64_t)256);
+  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_num =
+      at::ceil_div(output_dim_x * output_dim_y, work_group_size);
 
-  ReflectionPad2dBackwardOutKernelFunctor<scalar_t> kfn(
+  ReflectionPad2dBackwardKernelFunctor<scalar_t> kfn(
       grad_input,
       grad_output,
       input_dim_x,
@@ -227,7 +222,7 @@ void reflection_pad2d_backward_out_kernel_impl(
       kfn);
 }
 
-void reflection_pad2d_out_kernel(
+void reflection_pad2d_kernel(
     Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
@@ -314,7 +309,7 @@ void reflection_pad2d_out_kernel(
       input.scalar_type(),
       "reflection_pad2d_out_kernel",
       [&] {
-        reflection_pad2d_out_kernel_impl<scalar_t>(
+        reflection_pad2d_template<scalar_t>(
             input.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             input_w,
@@ -328,7 +323,7 @@ void reflection_pad2d_out_kernel(
       });
 }
 
-void reflection_pad2d_backward_out_kernel(
+void reflection_pad2d_backward_kernel(
     Tensor& grad_input,
     const Tensor& grad_output_,
     const Tensor& input,
@@ -391,7 +386,7 @@ void reflection_pad2d_backward_out_kernel(
       input.scalar_type(),
       "reflection_pad2d_backward_out_kernel",
       [&] {
-        reflection_pad2d_backward_out_kernel_impl<scalar_t>(
+        reflection_pad2d_backward_template<scalar_t>(
             grad_input.data_ptr<scalar_t>(),
             grad_output.data_ptr<scalar_t>(),
             input_w,
