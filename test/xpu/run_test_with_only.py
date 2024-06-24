@@ -40,6 +40,10 @@ execute_list = (
 
     "_foreach_sqrt_ and not slowpath",
     "_foreach_lerp_ and not slowpath",
+    # CPU Fallback fail
+    # RuntimeError: linalg.vector_norm: Expected a floating point or complex tensor as input. Got Char
+    # test_foreach_reduce_large_input__foreach_norm_xpu_uint8
+    "_foreach_norm_ and not slow and not cuda and not test_foreach_reduce_large_input__foreach_norm_xpu_bool and not test_foreach_reduce_large_input__foreach_norm_xpu_int16 and not test_foreach_reduce_large_input__foreach_norm_xpu_int32 and not test_foreach_reduce_large_input__foreach_norm_xpu_int64 and not test_foreach_reduce_large_input__foreach_norm_xpu_int8 and not test_foreach_reduce_large_input__foreach_norm_xpu_uint8"
 )
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
