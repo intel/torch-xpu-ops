@@ -1,4 +1,4 @@
-#include <ATen / AccumulateType.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
