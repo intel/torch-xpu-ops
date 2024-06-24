@@ -356,25 +356,25 @@ template <typename scalar_t, typename index_t>
 struct GridSampler2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     auto index = item_id.get_global_linear_id();
-    if (index >= nthreads)
+    if (index >= nthreads_)
       return;
-    const index_t w = index % out_W;
-    const index_t h = (index / out_W) % out_H;
-    const index_t n = index / (out_H * out_W);
-    const auto grid_offset = n * grid_sN + h * grid_sH + w * grid_sW;
+    const index_t w = index % out_W_;
+    const index_t h = (index / out_W_) % out_H_;
+    const index_t n = index / (out_H_ * out_W_);
+    const auto grid_offset = n * grid_sN_ + h * grid_sH_ + w * grid_sW_;
 
     // get the corresponding input x, y co-ordinates from grid
-    scalar_t x = grid.data[grid_offset];
-    scalar_t y = grid.data[grid_offset + grid_sCoor];
+    scalar_t x = grid_.data[grid_offset];
+    scalar_t y = grid_.data[grid_offset + grid_sCoor_];
 
     // multipliers for gradients on ix and iy
     scalar_t gix_mult, giy_mult;
     scalar_t ix = at::native::xpu::grid_sampler_compute_source_index_set_grad(
-        x, inp_W, padding_mode, align_corners, &gix_mult);
+        x, inp_W_, padding_mode_, align_corners_, &gix_mult);
     scalar_t iy = at::native::xpu::grid_sampler_compute_source_index_set_grad(
-        y, inp_H, padding_mode, align_corners, &giy_mult);
+        y, inp_H_, padding_mode_, align_corners_, &giy_mult);
 
-    if (interpolation_mode == GridSamplerInterpolation::Bilinear) {
+    if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
       index_t ix_nw = static_cast<index_t>(std::floor(ix));
       index_t iy_nw = static_cast<index_t>(std::floor(iy));
@@ -393,77 +393,77 @@ struct GridSampler2dBackwardKernelFunctor {
 
       scalar_t gix = static_cast<scalar_t>(0), giy = static_cast<scalar_t>(0);
       scalar_t* gOut_ptr_NCHW =
-          grad_output.data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
-      index_t NC_offset = n * gInp_sN;
-      scalar_t* inp_ptr_NC = input.data + n * inp_sN;
-      for (index_t c = 0; c < C; ++c,
-                   inp_ptr_NC += inp_sC,
-                   NC_offset += gInp_sC,
-                   gOut_ptr_NCHW += gOut_sC) {
+          grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
+      index_t NC_offset = n * gInp_sN_;
+      scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
+      for (index_t c = 0; c < C_; ++c,
+                   inp_ptr_NC += inp_sC_,
+                   NC_offset += gInp_sC_,
+                   gOut_ptr_NCHW += gOut_sC_) {
         scalar_t gOut = *gOut_ptr_NCHW;
 
-        if (input_requires_grad) {
+        if (input_requires_grad_) {
           // calculate and set grad_input
           at::native::xpu::safe_add_2d(
-              grad_input.data,
+              grad_input_.data,
               iy_nw,
               ix_nw,
-              gInp_sH,
-              gInp_sW,
-              inp_H,
-              inp_W,
+              gInp_sH_,
+              gInp_sW_,
+              inp_H_,
+              inp_W_,
               nw * gOut,
               NC_offset);
           at::native::xpu::safe_add_2d(
-              grad_input.data,
+              grad_input_.data,
               iy_ne,
               ix_ne,
-              gInp_sH,
-              gInp_sW,
-              inp_H,
-              inp_W,
+              gInp_sH_,
+              gInp_sW_,
+              inp_H_,
+              inp_W_,
               ne * gOut,
               NC_offset);
           at::native::xpu::safe_add_2d(
-              grad_input.data,
+              grad_input_.data,
               iy_sw,
               ix_sw,
-              gInp_sH,
-              gInp_sW,
-              inp_H,
-              inp_W,
+              gInp_sH_,
+              gInp_sW_,
+              inp_H_,
+              inp_W_,
               sw * gOut,
               NC_offset);
           at::native::xpu::safe_add_2d(
-              grad_input.data,
+              grad_input_.data,
               iy_se,
               ix_se,
-              gInp_sH,
-              gInp_sW,
-              inp_H,
-              inp_W,
+              gInp_sH_,
+              gInp_sW_,
+              inp_H_,
+              inp_W_,
               se * gOut,
               NC_offset);
         }
 
         // calculate grad_grid
-        if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
-          scalar_t nw_val = inp_ptr_NC[iy_nw * inp_sH + ix_nw * inp_sW];
+        if (within_bounds_2d(iy_nw, ix_nw, inp_H_, inp_W_)) {
+          scalar_t nw_val = inp_ptr_NC[iy_nw * inp_sH_ + ix_nw * inp_sW_];
           gix -= nw_val * (iy_se - iy) * gOut;
           giy -= nw_val * (ix_se - ix) * gOut;
         }
-        if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
-          scalar_t ne_val = inp_ptr_NC[iy_ne * inp_sH + ix_ne * inp_sW];
+        if (within_bounds_2d(iy_ne, ix_ne, inp_H_, inp_W_)) {
+          scalar_t ne_val = inp_ptr_NC[iy_ne * inp_sH_ + ix_ne * inp_sW_];
           gix += ne_val * (iy_sw - iy) * gOut;
           giy -= ne_val * (ix - ix_sw) * gOut;
         }
-        if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
-          scalar_t sw_val = inp_ptr_NC[iy_sw * inp_sH + ix_sw * inp_sW];
+        if (within_bounds_2d(iy_sw, ix_sw, inp_H_, inp_W_)) {
+          scalar_t sw_val = inp_ptr_NC[iy_sw * inp_sH_ + ix_sw * inp_sW_];
           gix -= sw_val * (iy - iy_ne) * gOut;
           giy += sw_val * (ix_ne - ix) * gOut;
         }
-        if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
-          scalar_t se_val = inp_ptr_NC[iy_se * inp_sH + ix_se * inp_sW];
+        if (within_bounds_2d(iy_se, ix_se, inp_H_, inp_W_)) {
+          scalar_t se_val = inp_ptr_NC[iy_se * inp_sH_ + ix_se * inp_sW_];
           gix += se_val * (iy - iy_nw) * gOut;
           giy += se_val * (ix - ix_nw) * gOut;
         }
@@ -473,29 +473,29 @@ struct GridSampler2dBackwardKernelFunctor {
       // thus we can
       //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
       //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-      scalar_t* gGrid_ptr_NHW = grad_grid.data + index * gGrid_sW;
+      scalar_t* gGrid_ptr_NHW = grad_grid_.data + index * gGrid_sW_;
       gGrid_ptr_NHW[0] = gix_mult * gix;
       gGrid_ptr_NHW[1] = giy_mult * giy;
-    } else if (interpolation_mode == GridSamplerInterpolation::Nearest) {
-      if (input_requires_grad) {
+    } else if (interpolation_mode_ == GridSamplerInterpolation::Nearest) {
+      if (input_requires_grad_) {
         index_t ix_nearest = static_cast<index_t>(std::nearbyint(ix));
         index_t iy_nearest = static_cast<index_t>(std::nearbyint(iy));
 
         // assign nearest neighor pixel value to output pixel
         scalar_t* gOut_ptr_NCHW =
-            grad_output.data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
-        index_t NC_offset = n * gInp_sN;
-        for (index_t c = 0; c < C;
-             ++c, NC_offset += gInp_sC, gOut_ptr_NCHW += gOut_sC) {
+            grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
+        index_t NC_offset = n * gInp_sN_;
+        for (index_t c = 0; c < C_;
+             ++c, NC_offset += gInp_sC_, gOut_ptr_NCHW += gOut_sC_) {
           // calculate and set grad_input
           at::native::xpu::safe_add_2d(
-              grad_input.data,
+              grad_input_.data,
               iy_nearest,
               ix_nearest,
-              gInp_sH,
-              gInp_sW,
-              inp_H,
-              inp_W,
+              gInp_sH_,
+              gInp_sW_,
+              inp_H_,
+              inp_W_,
               *gOut_ptr_NCHW,
               NC_offset);
         }
@@ -505,14 +505,14 @@ struct GridSampler2dBackwardKernelFunctor {
       // thus we can
       //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
       //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-      scalar_t* gGrid_ptr_NHW = grad_grid.data + index * gGrid_sW;
+      scalar_t* gGrid_ptr_NHW = grad_grid_.data + index * gGrid_sW_;
       gGrid_ptr_NHW[0] = static_cast<scalar_t>(0);
       gGrid_ptr_NHW[1] = static_cast<scalar_t>(0);
-    } else if (interpolation_mode == GridSamplerInterpolation::Bicubic) {
-      ix =
-          grid_sampler_unnormalize_set_grad(x, inp_W, align_corners, &gix_mult);
-      iy =
-          grid_sampler_unnormalize_set_grad(y, inp_H, align_corners, &giy_mult);
+    } else if (interpolation_mode_ == GridSamplerInterpolation::Bicubic) {
+      ix = grid_sampler_unnormalize_set_grad(
+          x, inp_W_, align_corners_, &gix_mult);
+      iy = grid_sampler_unnormalize_set_grad(
+          y, inp_H_, align_corners_, &giy_mult);
 
       scalar_t ix_nw = std::floor(ix);
       scalar_t iy_nw = std::floor(iy);
@@ -534,32 +534,32 @@ struct GridSampler2dBackwardKernelFunctor {
       scalar_t giy = static_cast<scalar_t>(0);
 
       scalar_t* gOut_ptr_NCHW =
-          grad_output.data + n * gOut_sN + h * gOut_sH + w * gOut_sW;
-      index_t NC_offset = n * gInp_sN;
-      scalar_t* inp_ptr_NC = input.data + n * inp_sN;
+          grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
+      index_t NC_offset = n * gInp_sN_;
+      scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
 
-      for (index_t c = 0; c < C; ++c,
-                   gOut_ptr_NCHW += gOut_sC,
-                   NC_offset += gInp_sC,
-                   inp_ptr_NC += inp_sC) {
+      for (index_t c = 0; c < C_; ++c,
+                   gOut_ptr_NCHW += gOut_sC_,
+                   NC_offset += gInp_sC_,
+                   inp_ptr_NC += inp_sC_) {
         scalar_t gOut = *gOut_ptr_NCHW;
 
 #pragma unroll 4
         for (index_t i = 0; i < 4; ++i) {
 #pragma unroll 4
           for (index_t j = 0; j < 4; ++j) {
-            if (input_requires_grad) {
+            if (input_requires_grad_) {
               at::native::xpu::add_value_bounded<scalar_t>(
-                  grad_input.data,
+                  grad_input_.data,
                   ix_nw - 1 + i,
                   iy_nw - 1 + j,
-                  inp_W,
-                  inp_H,
-                  gInp_sW,
-                  gInp_sH,
+                  inp_W_,
+                  inp_H_,
+                  gInp_sW_,
+                  gInp_sH_,
                   gOut * x_coeffs[i] * y_coeffs[j],
-                  padding_mode,
-                  align_corners,
+                  padding_mode_,
+                  align_corners_,
                   NC_offset);
             }
 
@@ -568,12 +568,12 @@ struct GridSampler2dBackwardKernelFunctor {
                 inp_ptr_NC,
                 ix_nw - 1 + i,
                 iy_nw - 1 + j,
-                inp_W,
-                inp_H,
-                inp_sW,
-                inp_sH,
-                padding_mode,
-                align_corners);
+                inp_W_,
+                inp_H_,
+                inp_sW_,
+                inp_sH_,
+                padding_mode_,
+                align_corners_);
 
             gix -= val * x_coeffs_grad[i] * y_coeffs[j] * gOut;
             giy -= val * y_coeffs_grad[j] * x_coeffs[i] * gOut;
@@ -581,110 +581,110 @@ struct GridSampler2dBackwardKernelFunctor {
         }
       }
 
-      scalar_t* gGrid_ptr_NHW = grad_grid.data + index * gGrid_sW;
+      scalar_t* gGrid_ptr_NHW = grad_grid_.data + index * gGrid_sW_;
       gGrid_ptr_NHW[0] = gix_mult * gix;
       gGrid_ptr_NHW[1] = giy_mult * giy;
     }
   }
   GridSampler2dBackwardKernelFunctor(
-      const index_t nthreads_,
-      TensorInfo<scalar_t, index_t> grad_output_,
-      TensorInfo<scalar_t, index_t> input_,
-      TensorInfo<scalar_t, index_t> grid_,
-      TensorInfo<scalar_t, index_t> grad_input_,
-      TensorInfo<scalar_t, index_t> grad_grid_,
-      const GridSamplerInterpolation interpolation_mode_,
-      const GridSamplerPadding padding_mode_,
-      bool align_corners_,
-      const bool input_requires_grad_,
-      index_t C_,
-      index_t inp_H_,
-      index_t inp_W_,
-      index_t out_H_,
-      index_t out_W_,
-      index_t inp_sN_,
-      index_t inp_sC_,
-      index_t inp_sH_,
-      index_t inp_sW_,
-      index_t grid_sN_,
-      index_t grid_sH_,
-      index_t grid_sW_,
-      index_t grid_sCoor_,
-      index_t gOut_sN_,
-      index_t gOut_sC_,
-      index_t gOut_sH_,
-      index_t gOut_sW_,
-      index_t gInp_sN_,
-      index_t gInp_sC_,
-      index_t gInp_sH_,
-      index_t gInp_sW_,
-      index_t gGrid_sW_)
-      : nthreads(nthreads_),
-        grad_output(grad_output_),
-        input(input_),
-        grid(grid_),
-        grad_input(grad_input_),
-        grad_grid(grad_grid_),
-        interpolation_mode(interpolation_mode_),
-        padding_mode(padding_mode_),
-        align_corners(align_corners_),
-        input_requires_grad(input_requires_grad_),
-        C(C_),
-        inp_H(inp_H_),
-        inp_W(inp_W_),
-        out_H(out_H_),
-        out_W(out_W_),
-        inp_sN(inp_sN_),
-        inp_sC(inp_sC_),
-        inp_sH(inp_sH_),
-        inp_sW(inp_sW_),
-        grid_sN(grid_sN_),
-        grid_sH(grid_sH_),
-        grid_sW(grid_sW_),
-        grid_sCoor(grid_sCoor_),
-        gOut_sN(gOut_sN_),
-        gOut_sC(gOut_sC_),
-        gOut_sH(gOut_sH_),
-        gOut_sW(gOut_sW_),
-        gInp_sN(gInp_sN_),
-        gInp_sC(gInp_sC_),
-        gInp_sH(gInp_sH_),
-        gInp_sW(gInp_sW_),
-        gGrid_sW(gGrid_sW_) {}
+      const index_t nthreads,
+      TensorInfo<scalar_t, index_t> grad_output,
+      TensorInfo<scalar_t, index_t> input,
+      TensorInfo<scalar_t, index_t> grid,
+      TensorInfo<scalar_t, index_t> grad_input,
+      TensorInfo<scalar_t, index_t> grad_grid,
+      const GridSamplerInterpolation interpolation_mode,
+      const GridSamplerPadding padding_mode,
+      bool align_corners,
+      const bool input_requires_grad,
+      index_t C,
+      index_t inp_H,
+      index_t inp_W,
+      index_t out_H,
+      index_t out_W,
+      index_t inp_sN,
+      index_t inp_sC,
+      index_t inp_sH,
+      index_t inp_sW,
+      index_t grid_sN,
+      index_t grid_sH,
+      index_t grid_sW,
+      index_t grid_sCoor,
+      index_t gOut_sN,
+      index_t gOut_sC,
+      index_t gOut_sH,
+      index_t gOut_sW,
+      index_t gInp_sN,
+      index_t gInp_sC,
+      index_t gInp_sH,
+      index_t gInp_sW,
+      index_t gGrid_sW)
+      : nthreads_(nthreads),
+        grad_output_(grad_output),
+        input_(input),
+        grid_(grid),
+        grad_input_(grad_input),
+        grad_grid_(grad_grid),
+        interpolation_mode_(interpolation_mode),
+        padding_mode_(padding_mode),
+        align_corners_(align_corners),
+        input_requires_grad_(input_requires_grad),
+        C_(C),
+        inp_H_(inp_H),
+        inp_W_(inp_W),
+        out_H_(out_H),
+        out_W_(out_W),
+        inp_sN_(inp_sN),
+        inp_sC_(inp_sC),
+        inp_sH_(inp_sH),
+        inp_sW_(inp_sW),
+        grid_sN_(grid_sN),
+        grid_sH_(grid_sH),
+        grid_sW_(grid_sW),
+        grid_sCoor_(grid_sCoor),
+        gOut_sN_(gOut_sN),
+        gOut_sC_(gOut_sC),
+        gOut_sH_(gOut_sH),
+        gOut_sW_(gOut_sW),
+        gInp_sN_(gInp_sN),
+        gInp_sC_(gInp_sC),
+        gInp_sH_(gInp_sH),
+        gInp_sW_(gInp_sW),
+        gGrid_sW_(gGrid_sW) {}
 
  private:
-  const index_t nthreads;
-  TensorInfo<scalar_t, index_t> grad_output;
-  TensorInfo<scalar_t, index_t> input;
-  TensorInfo<scalar_t, index_t> grid;
-  TensorInfo<scalar_t, index_t> grad_input;
-  TensorInfo<scalar_t, index_t> grad_grid;
-  const GridSamplerInterpolation interpolation_mode;
-  const GridSamplerPadding padding_mode;
-  bool align_corners;
-  const bool input_requires_grad;
-  index_t C;
-  index_t inp_H;
-  index_t inp_W;
-  index_t out_H;
-  index_t out_W;
-  index_t inp_sN;
-  index_t inp_sC;
-  index_t inp_sH;
-  index_t inp_sW;
-  index_t grid_sN;
-  index_t grid_sH;
-  index_t grid_sW;
-  index_t grid_sCoor;
-  index_t gOut_sN;
-  index_t gOut_sC;
-  index_t gOut_sH;
-  index_t gOut_sW;
-  index_t gInp_sN;
-  index_t gInp_sC;
-  index_t gInp_sH;
-  index_t gInp_sW;
-  index_t gGrid_sW;
+  const index_t nthreads_;
+  TensorInfo<scalar_t, index_t> grad_output_;
+  TensorInfo<scalar_t, index_t> input_;
+  TensorInfo<scalar_t, index_t> grid_;
+  TensorInfo<scalar_t, index_t> grad_input_;
+  TensorInfo<scalar_t, index_t> grad_grid_;
+  const GridSamplerInterpolation interpolation_mode_;
+  const GridSamplerPadding padding_mode_;
+  bool align_corners_;
+  const bool input_requires_grad_;
+  index_t C_;
+  index_t inp_H_;
+  index_t inp_W_;
+  index_t out_H_;
+  index_t out_W_;
+  index_t inp_sN_;
+  index_t inp_sC_;
+  index_t inp_sH_;
+  index_t inp_sW_;
+  index_t grid_sN_;
+  index_t grid_sH_;
+  index_t grid_sW_;
+  index_t grid_sCoor_;
+  index_t gOut_sN_;
+  index_t gOut_sC_;
+  index_t gOut_sH_;
+  index_t gOut_sW_;
+  index_t gInp_sN_;
+  index_t gInp_sC_;
+  index_t gInp_sH_;
+  index_t gInp_sW_;
+  index_t gGrid_sW_;
 };
 
 template <typename scalar_t, typename index_t>
