@@ -14,6 +14,7 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_utils import (
     gradcheck,
+    gradgradcheck,
     instantiate_parametrized_tests,
     run_tests,
     slowTest,
@@ -142,6 +143,16 @@ def backward_tls_stash(self, device):
     inp = torch.rand(10, device=device, requires_grad=True)
     TestFn.apply(inp, None).sum().backward()
     self.assertEqual(local.my_obj[10], 5)
+
+
+@onlyXPU
+def pin_memory(self, device):
+    x = torch.randn(2, 2, dtype=torch.double, requires_grad=True)
+    self.assertEqual(x, x.pin_memory(device))
+    self.assertIsNot(x, x.pin_memory(device))
+    self.assertTrue(x.pin_memory(device).requires_grad)
+    gradcheck(lambda x: x.pin_memory(device), [x])
+    gradgradcheck(lambda x: x.pin_memory(device), [x])
 
 
 def checkpointing_without_reentrant_dataparallel(self):
@@ -409,6 +420,7 @@ with XPUPatchForImport(False):
     TestAutograd.test_graph_save_on_cpu_cuda = graph_save_on_cpu_cuda
 
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
+    TestAutogradDeviceType.test_pin_memory = pin_memory
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
     TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
@@ -417,10 +429,10 @@ with XPUPatchForImport(False):
     TestAutogradMultipleDispatch.test_backward_single_threaded = backward_single_threaded
     TestAutogradMultipleDispatch.test_backward_tls_stash = backward_tls_stash
 
-instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(
-    TestAutogradMultipleDispatch, globals(), only_for="xpu"
+    TestAutogradMultipleDispatch, globals(), only_for="xpu", allow_xpu=True
 )
 
 instantiate_parametrized_tests(TestAutograd)
