@@ -104,6 +104,20 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
+  - hardtanh
+  - hardtanh.out
+  - hardtanh_
+  - hardtanh_backward.grad_input
+  - hardtanh_backward
+  - hardswish
+  - hardswish.out
+  - hardswish_
+  - hardswish_backward
   - arange.start_out
   - abs
   - abs_
@@ -117,6 +131,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -231,6 +248,11 @@ supported:
   - any.dims_out
   - any
   - any.all_out
+  - amax
+  - amax.out
+  - amin
+  - amin.out
+  - argmax
   - argmax.out
   - _local_scalar_dense
   - max_pool2d_with_indices_backward
@@ -303,6 +325,13 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -336,3 +365,22 @@ supported:
   - is_pinned
   - native_group_norm
   - native_group_norm_backward
+  - elu
+  - elu.out
+  - elu_
+  - elu_backward
+  - elu_backward.grad_input
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
