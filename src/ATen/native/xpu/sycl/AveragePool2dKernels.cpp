@@ -2,7 +2,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
-#include <aten/sycl/AveragePool2dKernels.h>
+#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
