@@ -6,11 +6,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
-#include <comm/SYCLHelpers.h>
-#include <comm/TensorInfo.h>
-#include "ATen/Dispatch.h"
 
 namespace at::native::xpu {
 template <typename scalar_t>
