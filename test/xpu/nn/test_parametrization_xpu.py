@@ -12,7 +12,7 @@ with XPUPatchForImport(False):
     from test_parametrization import TestNNParametrization, TestNNParametrizationDevice
 
 
-instantiate_device_type_tests(TestNNParametrizationDevice, globals(), only_for="xpu")
+instantiate_device_type_tests(TestNNParametrizationDevice, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestNNParametrization)
 
 

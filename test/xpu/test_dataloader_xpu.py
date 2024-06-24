@@ -161,7 +161,7 @@ with XPUPatchForImport(False):
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
 
 
-instantiate_device_type_tests(TestDataLoaderDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True)
 original_path = sys.path.copy()
 sys.path.extend(test_package)
 

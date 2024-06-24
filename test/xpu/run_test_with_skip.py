@@ -1569,6 +1569,11 @@ res += launch_test("nn/test_dropout_xpu.py", skip_list)
 skip_list = (
     # Skip for XPU didn't support
     "test_nested_tensor_multiprocessing",
+    # pinned memory issue
+    "test_custom_batch_pin",
+    "test_sequential_pin_memory",
+    "test_shuffle_pin_memory",
+    "TestDictDataLoader and test_pin_memory",
 )
 res += launch_test("test_dataloader_xpu.py", skip_list)
 

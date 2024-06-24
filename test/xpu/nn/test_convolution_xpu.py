@@ -1220,7 +1220,7 @@ with XPUPatchForImport(False):
     TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = grouped_conv_mkldnn_nhwc_support
     TestConvolutionNN.test_thnn_conv_strided_padded_dilated = thnn_conv_strided_padded_dilated
 
-instantiate_device_type_tests(TestConvolutionNNDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestConvolutionNN)
 
 
