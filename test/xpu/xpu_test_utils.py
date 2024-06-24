@@ -29,6 +29,7 @@ _xpu_computation_op_list = [
     "bitwise_not",
     "bitwise_or",
     "bitwise_xor",
+    "addcmul",
     "clamp",
     "clamp_max",
     "clamp_min",
@@ -110,6 +111,7 @@ _xpu_computation_op_list = [
     "acosh",
     "addr",
     "cdist",
+    "bincount",
 ]
 
 

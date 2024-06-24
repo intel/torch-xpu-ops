@@ -73,7 +73,7 @@ static std::tuple<Tensor, int64_t, int64_t, int64_t> computeLinearIndex(
   for (const auto i : c10::irange(src.dim())) {
     if (indices[i].defined()) {
       // Cast index to the longType matching src's device
-      // This allows us to support ie indexing a cuda tensor with a cpu tensor
+      // This allows us to support ie indexing a xpu tensor with a cpu tensor
       Tensor index =
           (wrapIndexOnce(indices[i], i, src.size(i), check_range) * strides[i])
               .to(device);

@@ -950,6 +950,9 @@ skip_list = (
     # add the arg to the OpInfo's `allow_cow_input_materialize_forward` list, 
     # or change the implementation to avoid materialization.
     "test_cow_input_cdist_xpu_float32",
+
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16, torch.bfloat16}.
+    "TestCommonXPU.test_dtypes_cdist_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -3007,7 +3010,6 @@ skip_list = (
     "test_nondeterministic_alert_ReplicationPad1d_xpu",
     "test_nondeterministic_alert_ReplicationPad2d_xpu",
     "test_nondeterministic_alert_ReplicationPad3d_xpu",
-    "test_nondeterministic_alert_bincount_xpu",
     "test_nondeterministic_alert_grid_sample_2d_xpu",
     "test_nondeterministic_alert_grid_sample_3d_xpu",
     "test_nondeterministic_alert_histc_xpu",

@@ -1,10 +1,10 @@
 #include <ATen/ATen.h>
 #include <ATen/ExpandUtils.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/utils/ParamUtils.h>
-#include <aten/sycl/DistanceKernels.h>
+#include <ATen/native/xpu/sycl/DistanceKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 Tensor cdist_impl(
