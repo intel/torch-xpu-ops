@@ -147,6 +147,7 @@ skip_list = (
     "test_out_nn_functional_conv_transpose3d_xpu_float32",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
+    "test_out_nn_functional_avg_pool2d_xpu_float32", # CUDA xfail.
     "test_out_to_sparse_xpu_float32",
     "test_out_warning__native_batch_norm_legit_xpu",
     "test_out_warning_jiterator_2inputs_2outputs_xpu",
@@ -411,6 +412,11 @@ skip_list = (
     "test_dtypes_view_as_complex_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
     "test_dtypes_view_as_real_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32", # Didn't align with CUDA, Unexpected success
+
+    "test_noncontiguous_samples_nn_functional_avg_pool2d_xpu_int64",# The implementation aligns with CUDA - "avg_pool2d_out_xpu" not implemented for 'Long'.
+    "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",# The implementation aligns with CUDA - "avg_pool2d_out_xpu" not implemented for 'Long'.
+    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",# The implementation aligns with CUDA - "avg_pool2d_out_xpu" not implemented for 'Long'.
+    "test_dtypes_nn_functional_avg_pool2d_xpu",# The implementation aligns with CUDA - "avg_pool2d_out_xpu" not implemented for 'Long'.
 
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
