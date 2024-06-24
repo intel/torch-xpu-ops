@@ -222,14 +222,7 @@ runs:
         done
         cd ${{ github.workspace }} && rm -rf inductor_log && cp -r ../pytorch/inductor_log .
 
-    - name: Upload Inductor XPU E2E Data
-      if: ${{ ! inputs.expected_pass_num }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
-        path: ${{ github.workspace }}/inductor_log
     - name: Upload Inductor XPU E2E Data (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      if: ${{ inputs.expected_pass_num }}
       uses: actions/upload-artifact@v4
       with:
         name: Inductor-XPU-E2E-Data-${{ inputs.suite }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ github.event.pull_request.number || github.sha }}
