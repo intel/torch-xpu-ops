@@ -384,3 +384,9 @@ supported:
   - asinh
   - asinh.out
   - asinh_
+  - atan
+  - atan.out
+  - atan_
+  - atan2
+  - atan2.out
+  - atan2_

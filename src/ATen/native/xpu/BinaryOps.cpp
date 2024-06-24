@@ -5,6 +5,7 @@
 #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
+#include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
@@ -452,6 +453,28 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::atan2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan2_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::binary_float_op(self, self, other);
+  native::xpu::atan2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return out;
 }
 
 } // namespace at
