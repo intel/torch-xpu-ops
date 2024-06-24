@@ -50,7 +50,7 @@ std::vector<Tensor> XPUNativeFunctions::_foreach_norm(
       return ord.to<double>();
     } else {
       TORCH_CHECK(
-          false, "foreach_tensor_norm_cuda expects ord to be integer or float");
+          false, "foreach_norm_xpu expects ord to be integer or float");
     }
   }();
   at::native::check_foreach_api_restrictions(tensors);
