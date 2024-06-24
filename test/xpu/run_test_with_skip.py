@@ -39,6 +39,7 @@ res = 0
 
 # test_ops
 
+
 skip_list = (
     # Skip list of base line
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
@@ -953,6 +954,7 @@ res += launch_test("test_ops_xpu.py", skip_list)
 
 # test_binary_ufuncs
 
+
 skip_list = (
     "jiterator",  # Jiterator is only supported by CUDA
     "cuda",  # Skip cuda hard-coded case
@@ -982,6 +984,7 @@ res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
 # test_scatter_gather_ops
 
+
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
@@ -999,6 +1002,7 @@ res += launch_test("test_scatter_gather_ops_xpu.py", skip_list)
 res += launch_test("test_autograd_fallback.py")
 
 # test_sort_and_select
+
 
 skip_list = (
     # The following isin case fails on CPU fallback, as it could be backend-specific.
@@ -1081,6 +1085,7 @@ res += launch_test("nn/test_embedding_xpu.py", nn_test_embedding_skip_list)
 
 # test_transformers
 
+
 skip_list = (
     # AssertionError: False is not true
     # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
@@ -1140,6 +1145,7 @@ res += launch_test("test_transformers_xpu.py", skip_list)
 
 # test_complex
 
+
 skip_list = (
     # Skip CPU case
     "test_eq_xpu_complex128",
@@ -1150,6 +1156,7 @@ skip_list = (
 res += launch_test("test_complex_xpu.py", skip_list)
 
 # test_modules
+
 
 skip_list = (
     # XPU tensor compatible issue
@@ -1456,16 +1463,40 @@ res += launch_test("test_modules_xpu.py", skip_list)
 
 # test_nn
 
+
 skip_list = (
-    # CUDA bias cases
-    # AssertionError: Torch not compiled with CUDA enabled
-    "test_CTCLoss_cudnn_xpu",
-    "test_ctc_loss_cudnn_xpu",
-    "test_ctc_loss_cudnn_tensor_xpu",
-    "test_layernorm_half_precision_xpu",
-    "test_layernorm_weight_bias_xpu",
-    "test_masked_softmax_devices_parity_xpu",
-    # AssertionError: 'CUDA error: device-side assert triggered' not found in 'PYTORCH_API_USAGE torch.python.import\nPYTORCH_API_USAGE c10d.python.import\nPYTORCH_API_USAGE aten.init.xpu\nPYTORCH_API_USAGE tensor.create\n/home/...
+    # AssertionError: Tensor-likes are not close!
+    "test_Conv2d_dilated_with_long_tensor_cuda",
+    "test_Conv2d_groups_thnn_with_long_tensor_cuda",
+    "test_Conv2d_groups_with_long_tensor_cuda",
+    "test_Conv2d_no_bias_with_long_tensor_cuda",
+    "test_Conv2d_padding_with_long_tensor_cuda",
+    "test_Conv2d_strided_with_long_tensor_cuda",
+    "test_Conv2d_with_long_tensor_cuda",
+    "test_Conv3d_1x1x1_no_bias_with_long_tensor_cuda",
+    "test_Conv3d_groups_with_long_tensor_cuda",
+    "test_Conv3d_no_bias_with_long_tensor_cuda",
+    "test_Conv3d_stride_padding_with_long_tensor_cuda",
+    "test_Conv3d_stride_with_long_tensor_cuda",
+    "test_Conv3d_with_long_tensor_cuda",
+    "test_ConvTranspose2d_dilated_with_long_tensor_cuda",
+    "test_ConvTranspose2d_groups_with_long_tensor_cuda",
+    "test_ConvTranspose2d_no_bias_with_long_tensor_cuda",
+    "test_ConvTranspose2d_with_long_tensor_cuda",
+    "test_RReLU_cuda",
+    "test_RReLU_no_batch_dim_cuda",
+    "test_RReLU_with_up_down_cuda",
+    # AssertionError: Scalars are not close!
+    "test_RReLU_with_up_down_scalar_cuda",
+    # lstm: AssertionError: Scalars are not equal!
+    "test_cudnn_weight_format",
+    # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
+    "test_EmbeddingBag_sparse_cuda",
+    "test_Embedding_sparse_cuda",
+    # col2im: AssertionError: The values for attribute 'shape' do not match: torch.Size([16, 4]) != torch.Size([1, 16, 4]).
+    "test_Fold_no_batch_dim_input_cuda",  # col2im
+    "test_Fold_no_batch_dim_int_input_cuda",
+    # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
     # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
@@ -1487,8 +1518,6 @@ skip_list = (
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
     # CPU fallback fails
-    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-    "test_GroupNorm_empty_xpu",
     # AssertionError: Tensor-likes are not close!
     "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
@@ -1550,6 +1579,7 @@ res += launch_test("test_nn_xpu.py", skip_list)
 
 # test_indexing
 
+
 skip_list = (
     # CPU bias cases
     # It is kernel assert on XPU implementation not exception on host.
@@ -1566,6 +1596,7 @@ skip_list = (
 res += launch_test("test_indexing_xpu.py", skip_list)
 
 # test_pooling
+
 
 skip_list = (
     # CUDA bias case
@@ -1584,6 +1615,7 @@ res += launch_test("nn/test_pooling_xpu.py", skip_list)
 
 # nn/test_dropout
 
+
 skip_list = (
     # Cannot freeze rng state. Need enhance test infrastructure to make XPU
     # compatible in freeze_rng_state.
@@ -1594,6 +1626,7 @@ skip_list = (
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
 # test_tensor_creation_ops
+
 
 skip_list = (
     # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
@@ -1611,6 +1644,7 @@ res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
 # test_autocast
 
+
 skip_list = (
     # Frontend API support
     # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
@@ -1620,6 +1654,7 @@ skip_list = (
 res += launch_test("test_autocast_xpu.py", skip_list)
 
 # test_autograd
+
 
 skip_list = (
     # Segment fault
@@ -1661,6 +1696,7 @@ skip_list = (
 res += launch_test("test_autograd_xpu.py", skip_list)
 
 # test_reductions
+
 
 skip_list = (
     # CPU/CUDA bias code in aten::mode_out
@@ -3109,11 +3145,11 @@ skip_list = (
     "test_autodiff__foreach_clamp_min_outplace_xpu_complex128",
     "test_autodiff__foreach_maximum_inplace_xpu_complex128",
     "test_autodiff__foreach_maximum_outplace_xpu_complex128",
-    # RuntimeError: "erf_vml_cpu" not implemented for 'ComplexDouble'
-    "test_autodiff__foreach_erf_inplace_xpu_complex128",
+    # RuntimeError: "erf_xpu" not implemented for 'ComplexDouble'
+    "test_autodiff__foreach_erf_inplace_xpu_complex128",  # erf
     "test_autodiff__foreach_erf_outplace_xpu_complex128",
-    # RuntimeError: "erfc_vml_cpu" not implemented for 'ComplexDouble'
-    "test_autodiff__foreach_erfc_inplace_xpu_complex128",
+    # RuntimeError: "erfc_xpu" not implemented for 'ComplexDouble'
+    "test_autodiff__foreach_erfc_inplace_xpu_complex128",  # erfc
     "test_autodiff__foreach_erfc_outplace_xpu_complex128",
     # RuntimeError: "frac_cpu" not implemented for 'ComplexDouble'
     "test_autodiff__foreach_frac_inplace_xpu_complex128",
