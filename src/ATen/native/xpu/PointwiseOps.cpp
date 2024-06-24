@@ -12,13 +12,8 @@ TensorIterator addcmul_meta(
     const Tensor& tensor2,
     const Scalar& value,
     Tensor& out) {
-  auto iter = at::TensorIteratorConfig()
-                  .set_check_mem_overlap(true)
-                  .add_output(out)
-                  .add_input(self)
-                  .add_input(tensor1)
-                  .add_input(tensor2)
-                  .build();
+  TensorIterator iter;
+  iter.build_ternary_op(out, self, tensor1, tensor2);
   return iter;
 }
 

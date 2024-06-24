@@ -10,13 +10,13 @@ struct AddcmulKernelFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return static_cast<opmath_t>(a) +
-        alpha * static_cast<opmath_t>(b) * static_cast<opmath_t>(c);
+        alpha_ * static_cast<opmath_t>(b) * static_cast<opmath_t>(c);
   }
 
-  AddcmulKernelFunctor(opmath_t alpha) : alpha(alpha) {}
+  AddcmulKernelFunctor(opmath_t alpha) : alpha_(alpha) {}
 
  private:
-  opmath_t alpha;
+  opmath_t alpha_;
 };
 
 void addcmul_kernel(TensorIterator& iter, Scalar value) {
