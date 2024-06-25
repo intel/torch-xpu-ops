@@ -1465,6 +1465,8 @@ res += launch_test("test_modules_xpu.py", skip_list)
 
 
 skip_list = (
+    # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
+    "test_type",
     # AssertionError: Tensor-likes are not close!
     "test_Conv2d_dilated_with_long_tensor_cuda",
     "test_Conv2d_groups_thnn_with_long_tensor_cuda",
@@ -1505,6 +1507,8 @@ skip_list = (
     "test_transformerencoderlayer_xpu_float32",
     # oneDNN issues
     # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+    "test_affine_grid",
+    "test_affine_grid_3d",
     "test_RNN_cpu_vs_cudnn_no_dropout",
     "test_RNN_cpu_vs_cudnn_with_dropout",
     "test_GRU_grad_and_gradgrad_xpu_float64",
@@ -1542,6 +1546,7 @@ skip_list = (
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
+    "test_grid_sample_error_checking",
     # Failed: Unexpected success
     "test_upsamplingNearest2d_launch_fail_xpu",
     # CPU fallback could not cover

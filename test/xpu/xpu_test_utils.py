@@ -6,8 +6,9 @@ import os
 import sys
 
 import torch
-from torch import bfloat16
+from torch import bfloat16, cuda
 from torch.testing._internal import (
+    common_cuda,
     common_device_type,
     common_methods_invocations,
     common_utils,
@@ -390,6 +391,9 @@ class XPUPatchForImport:
         self.python_ref_db = common_methods_invocations.python_ref_db
         self.ops_and_refs = common_methods_invocations.ops_and_refs
         self.largeTensorTest = common_device_type.largeTensorTest
+        self.TEST_CUDA = common_cuda.TEST_CUDA
+        self.TEST_CUDNN = common_cuda.TEST_CUDNN
+        self.cuda_is_available = cuda.is_available
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -433,6 +437,9 @@ class XPUPatchForImport:
         common_methods_invocations.ops_and_refs = (
             common_methods_invocations.op_db + common_methods_invocations.python_ref_db
         )
+        common_cuda.TEST_CUDA = True
+        common_cuda.TEST_CUDNN = True
+        cuda.is_available = lambda: True
 
         sys.path.extend(self.test_package)
         return self
@@ -452,6 +459,9 @@ class XPUPatchForImport:
         common_methods_invocations.python_ref_db = self.python_ref_db
         common_methods_invocations.ops_and_refs = self.ops_and_refs
         common_device_type.largeTensorTest = self.largeTensorTest
+        common_cuda.TEST_CUDA = self.TEST_CUDA
+        common_cuda.TEST_CUDNN = self.TEST_CUDNN
+        cuda.is_available = self.cuda_is_available
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
