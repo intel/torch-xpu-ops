@@ -36,6 +36,11 @@ on:
         type: string
         default: 'accuracy'
         description: accuracy,performance. Delimiter is comma
+      model:
+        required: false
+        type: string
+        default: ''
+        description: If set, will only launch this one
       test_ut:
         required: true
         type: string
