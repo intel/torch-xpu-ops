@@ -375,6 +375,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
   - acos
   - acos_
   - acos.out
