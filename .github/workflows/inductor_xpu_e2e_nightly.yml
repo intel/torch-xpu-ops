@@ -52,6 +52,8 @@ concurrency:
 jobs:
   Inductor-XPU-E2E-Nightly-Tests:
     runs-on: pvc_e2e
+    # Don't run on forked repos
+    if: github.repository_owner == 'intel'
     timeout-minutes: 900
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
@@ -129,7 +131,9 @@ jobs:
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
-        run: echo "$GITHUB_ENV"
+        run: |
+          echo "$GITHUB_ENV"
+          rm -rf ../pytorch/inductor_log
       - name: Nightly Huggingface FP32 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -224,6 +228,16 @@ jobs:
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Summarize archieve files
+        run: |
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+      - name: Upload Inductor XPU E2E Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
 
   Tests-Failure-And-Report:
     if: always()
@@ -235,6 +249,7 @@ jobs:
     needs: Inductor-XPU-E2E-Nightly-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
+        if: github.repository_owner == 'intel'
         run: |
           set -xe
           # Test status
