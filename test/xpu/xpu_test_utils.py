@@ -107,9 +107,12 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
+    "grid_sampler_2d",
+    # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "acos",
     "acosh",
     "addr",
+    "bincount",
 ]
 
 
