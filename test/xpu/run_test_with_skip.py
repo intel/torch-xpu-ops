@@ -945,6 +945,12 @@ skip_list = (
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
+
+    # Not implemented operator aten::replication_pad2d
+    "test_dtypes_nn_functional_pad_replicate_negative_xpu"
+
+    # Not implemented operator aten::replication_pad2d
+    "test_dtypes_nn_functional_pad_replicate_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 

@@ -304,11 +304,7 @@ void reflection_pad2d_kernel(
   Tensor input = input_.contiguous();
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      kHalf,
-      kBFloat16,
-      input.scalar_type(),
-      "reflection_pad2d_xpu",
-      [&] {
+      kHalf, kBFloat16, input.scalar_type(), "reflection_pad2d_xpu", [&] {
         reflection_pad2d_template<scalar_t>(
             input.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
