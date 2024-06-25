@@ -170,7 +170,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_amp_update_scale_",
     "angle",
     "argmin.out",
-    "asin.out",
     "avg_pool2d_backward.grad_input",
     "avg_pool2d.out",
     "avg_pool3d_backward.grad_input",
