@@ -366,6 +366,8 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - native_group_norm
+  - native_group_norm_backward
   - elu
   - elu.out
   - elu_
