@@ -29,38 +29,52 @@ refer_data= pd.read_csv(refer_file)
 refer_names = [row["name"] for index, row in refer_data.iterrows()]
 
 # summary
-new_pass_models = []
+model_names = set(refer_names + test_names)
+passed_models = []
 failed_models = []
-missed_models = []
-for index, row in refer_data.iterrows():
-    test_accuracy = next((line["accuracy"] for i, line in test_data.iterrows() if line["name"] == row["name"]), "None")
-    if test_accuracy == "None":
-        missed_models.append([row["name"], "N/A"])
-    elif test_accuracy != row[args.dtype] and "pass" not in test_accuracy and "pass" not in row[args.dtype]:
-        failed_models.append([row["name"], test_accuracy])
-        # update failed info for reference data
-        refer_data.at[index, args.dtype] = test_accuracy
-    elif test_accuracy != row[args.dtype] and "pass" not in test_accuracy:
-        failed_models.append([row["name"], test_accuracy])
-    elif test_accuracy != row[args.dtype]:
-        new_pass_models.append([row["name"], test_accuracy])
-        # update new pass for reference data
-        refer_data.at[index, args.dtype] = test_accuracy
+new_models = []
+new_pass_models = []
+lost_models = []
+for model_name in model_names:
+# for index, row in refer_data.iterrows():
+    test_row = next(([i, line] for i, line in test_data.iterrows() if line["name"] == model_name), "N/A")
+    refer_row = next(([i, line] for i, line in refer_data.iterrows() if line["name"] == model_name), "N/A")
+    test_accuracy = test_row[1]["accuracy"] if test_row != "N/A" else "N/A"
+    refer_accuracy = refer_row[1][args.dtype] if refer_row != "N/A" else "N/A"
+    if test_accuracy == "N/A":
+        lost_models.append([model_name, test_accuracy])
+    elif 'pass' in test_accuracy:
+        passed_models.append([model_name, test_accuracy])
+        if refer_accuracy == "N/A":
+            new_models.append([model_name, test_accuracy])
+            refer_data.loc[refer_data.tail(1).index.tolist()[0] + 1,:] = "N/A"
+            refer_data.at[refer_data.tail(1).index, "name"] = model_name
+            refer_data.at[refer_data.tail(1).index, args.dtype] = test_accuracy
+        elif 'pass' not in refer_accuracy:
+            new_pass_models.append([model_name, test_accuracy])
+            refer_data.at[refer_row[0], args.dtype] = test_accuracy
+    else:
+        failed_models.append([model_name, test_accuracy])
+        if refer_accuracy == "N/A":
+            new_models.append([model_name, test_accuracy])
+            refer_data.loc[refer_data.tail(1).index.tolist()[0] + 1,:] = "N/A"
+            refer_data.at[refer_data.tail(1).index, "name"] = model_name
+            refer_data.at[refer_data.tail(1).index, args.dtype] = test_accuracy
+        elif "pass" not in refer_accuracy and test_accuracy != refer_accuracy:
+                refer_data.at[refer_row[0], args.dtype] = test_accuracy
 
 # pass rate
-total = len(refer_names)
-failed = len(failed_models)
-missed = len(missed_models)
-pass_rate = 1 - (failed / total)
 print("============ Summary for {} {} {} accuracy ============".format(args.suite, args.dtype, args.mode))
-print("Total:", total)
-print("Failed:", failed, failed_models)
-print("Missed:", missed, missed_models)
-print("Passed", total - failed - missed)
-print("Pass rate: {:.2f}%".format(pass_rate * 100))
+print("Total models:", len(model_names))
+print("Passed models:", len(passed_models))
+print("Failed: models", len(failed_models), failed_models)
+print("New models:", len(new_models), new_models)
+print("Failed to passed models:", len(new_pass_models), new_pass_models)
+print("Not run/in models:", len(lost_models), lost_models)
+print("Pass rate: {:.2f}%".format(len(passed_models) / len(model_names) * 100))
 
-if len(new_pass_models) > 0:
-    print("NOTE: New passed models, please update the reference", new_pass_models)
+if len(new_pass_models + new_models) > 0:
+    print("NOTE: New models result, please update the reference", new_pass_models)
     if args.update:
         refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)
         print("Updated. Now, confirm the changes to .csvs and `git add` them if satisfied.")
