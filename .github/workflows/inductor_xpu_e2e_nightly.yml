@@ -288,30 +288,30 @@ jobs:
               test_scope+=" model=${{ inputs.model }};"
             fi
             gh --repo $repo issue comment 426 --body "$cc_comment
-                  $(date +'%F') On-demand Test Status: **${test_status}**
-                  See: $build_url
-                  Torch-xpu-ops | PyTorch
-                  --- | ---
-                  $test_xpu | $test_torch
+$(date +'%F') On-demand Test Status: **${test_status}**
+See: $build_url
+Torch-xpu-ops | PyTorch
+--- | ---
+$test_xpu | $test_torch
 
-                  Device | OS | GCC | Python | Driver | Bundle
-                  --- | --- | --- | --- | --- | ---
-                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
+Device | OS | GCC | Python | Driver | Bundle
+--- | --- | --- | --- | --- | ---
+$RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
 
-                  Inputs | $test_scope
-                  --- | ---
-                  "
+Inputs | $test_scope
+--- | ---
+"
           # Nightly
           else
             gh --repo $repo issue comment 432 --body "$cc_comment
-                  $(date +'%F') Nightly Test Status: **${test_status}**
-                  See: $build_url
-                  Torch-xpu-ops | PyTorch
-                  --- | ---
-                  $test_xpu | $test_torch
+$(date +'%F') Nightly Test Status: **${test_status}**
+See: $build_url
+Torch-xpu-ops | PyTorch
+--- | ---
+$test_xpu | $test_torch
 
-                  Device | OS | GCC | Python | Driver | Bundle
-                  --- | --- | --- | --- | --- | ---
-                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
-                  "
+Device | OS | GCC | Python | Driver | Bundle
+--- | --- | --- | --- | --- | ---
+$RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
+"
           fi
