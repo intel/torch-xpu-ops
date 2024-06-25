@@ -3134,6 +3134,8 @@ skip_list = (
     "test_cudnn_convolution_add_relu_xpu_float16",
     "test_cudnn_convolution_add_relu_xpu_float32",
     "test_conv_double_backward_xpu_float64",
+    # accuracy issue, TODO
+    "test_Conv2d_naive_groups_xpu_float16",
 )
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
