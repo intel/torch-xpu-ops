@@ -1,5 +1,4 @@
 # SYCL compiler and runtime setup
-
 if(NOT SYCLTOOLKIT_FOUND)
   # Avoid package conflict introduced in PyTorch cmake
   # find_package(SYCLToolkit REQUIRED)
@@ -27,6 +26,22 @@ if(NOT SYCL_VERSION)
 endif()
 
 find_library(SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
+# On Windows, currently there's no sycl.lib. Only sycl7.lib with version suffix,
+# where the current version of the SYCL runtime is 7.
+# Until oneAPI adds support to sycl.lib without the version suffix,
+# sycl_runtime_version needs to be hardcoded and uplifted when SYCL runtime version uplifts.
+# TODO: remove this when sycl.lib is supported on Windows
+if(WIN32)
+  set(sycl_runtime_version 7)
+  find_library(
+    SYCL_LIBRARIES
+    NAMES "sycl${sycl_runtime_version}"
+    HINTS ${SYCL_LIBRARY_DIR}
+  )
+  if(SYCL_LIBRARIES STREQUAL "SYCL_LIBRARIES-NOTFOUND")
+    message(FATAL_ERROR "Cannot find a SYCL library on Windows")
+  endif()
+endif()
 
 set(SYCL_COMPILER_VERSION)
 file(READ ${SYCL_VERSION} version_contents)
