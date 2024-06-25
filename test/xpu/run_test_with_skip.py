@@ -3138,7 +3138,7 @@ skip_list = (
     "test_cudnn_convolution_add_relu_xpu_float32",
     "test_conv_double_backward_xpu_float64",
 )
-res += launch_test("test_convolution_xpu.py", skip_list)
+res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
 res += launch_test("test_dynamic_shapes_xpu.py")
