@@ -399,19 +399,19 @@ Tensor XPUNativeFunctions::hardswish_backward(
 
 Tensor XPUNativeFunctions::hardsigmoid(const Tensor& self) {
   Tensor out;
-  auto iter = TensorIterator::unary_float_op(out, self);
+  auto iter = TensorIterator::unary_op(out, self);
   native::xpu::hardsigmoid_kernel(iter);
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::hardsigmoid_(Tensor& self) {
-  auto iter = TensorIterator::unary_float_op(self, self);
+  auto iter = TensorIterator::unary_op(self, self);
   native::xpu::hardsigmoid_kernel(iter);
   return self;
 }
 
 Tensor& XPUNativeFunctions::hardsigmoid_out(const Tensor& self, Tensor& out) {
-  auto iter = TensorIterator::unary_float_op(out, self);
+  auto iter = TensorIterator::unary_op(out, self);
   native::xpu::hardsigmoid_kernel(iter);
   return out;
 }
