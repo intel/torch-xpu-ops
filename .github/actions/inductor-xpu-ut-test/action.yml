@@ -6,7 +6,10 @@ inputs:
     type: string
     default: 'op_example'
     description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
-    
+  expected_fail_num:
+    required: false
+    type: number
+    description: for UT result check
 
 runs:
   using: composite
@@ -38,14 +41,14 @@ runs:
             unset PYTORCH_ENABLE_XPU_FALLBACK
             cd ${{ github.workspace }}
             cd examples
-            timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_Examples_UT_Test.log
+            timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_${ut_suite}_Test.log
           fi
           if [[ ${ut_suite} == 'op_finegrain' ]]; then
             export PYTORCH_TEST_WITH_SLOW=1
             unset PYTORCH_ENABLE_XPU_FALLBACK
             cd ${{ github.workspace }}
             cd ../pytorch/third_party/torch-xpu-ops/test/xpu/fin_grain
-            timeout 10000 python run_fine_grain.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_Finegrain_UT_Test.log
+            timeout 10000 python run_fine_grain.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_${ut_suite}_Test.log
           fi
           if [[ ${ut_suite} == 'op_ut' ]]; then
             export PYTORCH_TEST_WITH_SLOW=1
@@ -72,7 +75,7 @@ runs:
               if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
                 case_name=$(basename "$xpu_case")
                 echo "Testing ${case_name} ..."
-                "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml
+                "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml 2>&1 | tee ${{ github.workspace }}/ut_log/binary_UT_${ut_suite}_${case_name}_Test.log
               fi
             done
             # Run Pytorch XPU python UT
@@ -87,5 +90,79 @@ runs:
       with:
         name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}
         path: ${{ github.workspace }}/ut_log
+
+    - name: UT Test Results Check (${{ inputs.ut_suite }})
+      if: ${{ inputs.expected_fail_num }}
+      shell: bash
+      run: |
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        set -xe
+        for ut_suite in $(echo ${{ inputs.ut_suite }} |sed 's/,/ /g')
+        do
+          contains "op_example,op_finegrain,op_ut,torch_xpu" $ut_suite
+          $contains_status
+          cd ${{ github.workspace }}/ut_log
+          if [[ ${ut_suite} == 'op_example' || ${ut_suite} == 'op_finegrain' ]]; then
+            grep "^FAILED" XPU_OP_${ut_suite}_Test.log | awk '{print $1}' > ./${ut_suite}_failed.log
+            grep "PASSED" XPU_OP_${ut_suite}_Test.log | awk '{print $1}' > ./${ut_suite}_passed.log
+            num_failed=$(cat ./${ut_suite}_failed.log | wc -l)
+            num_passed=$(cat ./${ut_suite}_passed.log | wc -l)
+            if [[ $num_failed -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed -lt 0 ]]; then
+              echo -e "[ERROR] Inductor UT test for ${{ inputs.ut_suite }} passed_num > ${{ inputs.expected_fail_num }}"
+              exit 1
+            fi
+          fi
+
+          if [[ ${ut_suite} == 'op_ut' ]]; then
+            grep "^FAILED" XPU_OP_with_skip_UT_Test.log | awk '{print $1}' > ./${ut_suite}_with_skip_failed.log
+            grep "^FAILED" XPU_OP_with_only_UT_Test.log | awk '{print $1}' > ./${ut_suite}_with_only_failed.log
+            num_failed_with_skip=$(cat ./${ut_suite}_with_skip_failed.log | wc -l)
+            num_failed_with_only=$(cat ./${ut_suite}_with_only_failed.log | wc -l)
+            let num_failed=num_failed_with_skip+num_failed_with_only
+            grep "PASSED" XPU_OP_with_skip_UT_Test.log | awk '{print $1}' > ./${ut_suite}_with_skip_passedlog
+            grep "PASSED" XPU_OP_with_only_UT_Test.log | awk '{print $1}' > ./${ut_suite}_with_only_passedlog
+            num_passed_with_skip=$(cat ./${ut_suite}_with_skip_passed.log | wc -l)
+            num_passed_with_only=$(cat ./${ut_suite}_with_only_passed.log | wc -l)
+            let num_passed=num_passed_with_skip+num_passed_with_only
+            if [[ $num_failed -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed -lt 0 ]]; then
+              echo -e "[ERROR] Inductor UT test for ${{ inputs.ut_suite }} passed_num > ${{ inputs.expected_fail_num }}"
+              exit 1
+            fi
+          fi
+
+          if [[ ${ut_suite} == 'torch_xpu' ]]; then
+            echo "Pytorch XPU binary UT checking"
+            cd ${{ github.workspace }}
+            cd ../pytorch
+            TEST_REPORTS_DIR=$(pwd)/test/test-reports
+            for xpu_case in build/bin/*{xpu,sycl}*; do
+              if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
+                case_name=$(basename "$xpu_case")
+                echo "Checking ${case_name} ..."
+                cd ${{ github.workspace }}/ut_log
+                grep -E "FAILED" binary_UT_${ut_suite}_${case_name}_Test.log | awk '{print $2}' > ./binary_UT_${ut_suite}_${case_name}_failed.log
+                echo $(cat ./binary_UT_${ut_suite}_${case_name}_failed.log | wc -l) | tee -a ./binary_UT_${ut_suite}_failed_summary.log
+                grep -E "PASSED|Pass" binary_UT_${ut_suite}_${case_name}_Test.log | awk '{print $2}' > ./binary_UT_${ut_suite}_${case_name}_passed.log
+                echo $(cat ./binary_UT_${ut_suite}_${case_name}_passed.log | wc -l) | tee -a ./binary_UT_${ut_suite}_passed_summary.log
+              fi
+            done
+            num_failed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_failed_summary.log)
+            num_passed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_passed_summary.log)
+            let num_failed=num_failed_binary_UT
+            if if [[ $num_failed -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_binary_UT -lt 0 ]]; then
+              echo -e "[ERROR] Inductor UT test for ${{ inputs.ut_suite }} passed_num > ${{ inputs.expected_fail_num }}"
+              exit 1
+            fi
+          fi
+        done
 
 
