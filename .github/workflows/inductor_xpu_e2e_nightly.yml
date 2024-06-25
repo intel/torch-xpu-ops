@@ -268,6 +268,7 @@ jobs:
             test_status=None
             exit 0
           fi
+          # Test env
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           test_xpu="${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}"
@@ -276,10 +277,21 @@ jobs:
           test_bundle="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.BUNDLE_VERSION }}"
           test_os="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.OS_PRETTY_NAME }}"
           test_gcc="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
-
-          # On-demand
+          # Test Type
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
+            test_type="On-demand"
+            test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
+          else
+            test_type="Nightly"
+            test_issue_id=432
+          fi
+          # Test report
+          echo -e "$cc_comment\n**${test_status}** $test_type Test on $(date +'%F')" > ${{ github.workspace }}/report.txt
+          echo -e "See: $build_url\n" >> ${{ github.workspace }}/report.txt
+          echo -e "Torch-xpu-ops | PyTorch\n--- | ---\n$test_xpu | $test_torch\n" >> ${{ github.workspace }}/report.txt
+          echo -e "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n$RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle \n" >> ${{ github.workspace }}/report.txt
+          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="Inputs|suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }};"
             if [ "${{ inputs.triton }}" != "" ];then
               test_scope+=" triton=${{ inputs.triton }};"
@@ -287,31 +299,8 @@ jobs:
             if [ "${{ inputs.model }}" != "" ];then
               test_scope+=" model=${{ inputs.model }};"
             fi
-            gh --repo $repo issue comment 426 --body "$cc_comment
-$(date +'%F') On-demand Test Status: **${test_status}**
-See: $build_url
-Torch-xpu-ops | PyTorch
---- | ---
-$test_xpu | $test_torch
-
-Device | OS | GCC | Python | Driver | Bundle
---- | --- | --- | --- | --- | ---
-$RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
-
-Inputs | $test_scope
---- | ---
-"
-          # Nightly
-          else
-            gh --repo $repo issue comment 432 --body "$cc_comment
-$(date +'%F') Nightly Test Status: **${test_status}**
-See: $build_url
-Torch-xpu-ops | PyTorch
---- | ---
-$test_xpu | $test_torch
-
-Device | OS | GCC | Python | Driver | Bundle
---- | --- | --- | --- | --- | ---
-$RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
-"
+            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
+          # Report
+          report_txt=$(cat ${{ github.workspace }}/report.txt)
+          gh --repo $repo issue comment $test_issue_id --body "$report_txt"
