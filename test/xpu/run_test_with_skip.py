@@ -40,7 +40,6 @@ skip_list = (
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
     "test_dtypes_sparse_sampled_addmm_xpu",
-    "test_dtypes_square_xpu",
     "test_dtypes_grid_sampler_2d_xpu",
     "test_compare_cpu_nn_functional_conv1d_xpu_float32",
     "test_compare_cpu_nn_functional_conv2d_xpu_float32",
