@@ -1,10 +1,18 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
+
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
+
+#include <ATen/native/xpu/sycl/AbsKernel.h>
+#include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>

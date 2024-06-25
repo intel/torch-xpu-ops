@@ -10,7 +10,6 @@
 #include <ATen/ops/empty_like_native.h>
 
 namespace at::native::xpu {
-
 template <typename T, template <class> class Op>
 std::vector<Tensor> foreach_tensor_list_op(
     TensorList tensors1,

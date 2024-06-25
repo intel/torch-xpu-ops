@@ -2,7 +2,6 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <comm/xpu_aten.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/IndexingKernel.h>
 #include <comm/TensorInfo.h>

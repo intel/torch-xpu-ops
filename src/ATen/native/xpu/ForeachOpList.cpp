@@ -1,13 +1,9 @@
 #include <ATen/native/ForeachUtils.h>
-
-#ifndef AT_PER_OPERATOR_HEADERS
-
-#else
-#include <ATen/ops/_foreach_add_native.h>
-#include <ATen/ops/_foreach_addcdiv_native.h>
-#endif
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+
+#include <ATen/ops/empty_like.h>
 
 namespace at {
 namespace native {
@@ -145,6 +141,53 @@ void foreach_tensor_addcdiv_scalarlist_slow_(
 
 FOREACH_POINTWISE_OP_TENSOR(addcmul)
 FOREACH_POINTWISE_OP_TENSOR(addcdiv)
-} // namespace native
 
+::std::vector<at::Tensor> foreach_tensor_ternary_lerp_slow(
+    at::TensorList self,
+    at::TensorList tensors1,
+    at::TensorList weights);
+
+std::vector<at::Tensor> foreach_tensor_lerp_ternary_xpu(
+    TensorList tensors1,
+    TensorList tensors2,
+    TensorList tensors3) {
+  check_foreach_api_restrictions(tensors1, tensors2, tensors3);
+  if (!can_use_fast_route({tensors1, tensors2, tensors3}, {}, true)) {
+    return foreach_tensor_ternary_lerp_slow(tensors1, tensors2, tensors3);
+  }
+
+  std::vector<at::Tensor> vec_res;
+  vec_res.reserve(tensors1.size());
+  for (const auto& t : tensors1) {
+    vec_res.emplace_back(at::empty_like(t));
+  }
+
+  xpu::foreach_lerp_list_kernel(tensors1, tensors2, tensors3, vec_res);
+  return vec_res;
+}
+
+void foreach_tensor_ternary_lerp_slow_(
+    at::TensorList self,
+    at::TensorList tensors1,
+    at::TensorList weights);
+
+void foreach_tensor_lerp_ternary_xpu_(
+    TensorList tensors1,
+    TensorList tensors2,
+    TensorList tensors3) {
+  check_foreach_api_restrictions(tensors1, tensors2, tensors3);
+  if (!can_use_fast_route({tensors1, tensors2, tensors3}, {}, true)) {
+    return foreach_tensor_ternary_lerp_slow_(tensors1, tensors2, tensors3);
+  }
+
+  xpu::foreach_lerp_list_kernel_(tensors1, tensors2, tensors3);
+
+  // TODO: Handle version bump in codegen.
+  // increment_version
+  for (const auto& t : tensors1) {
+    t.unsafeGetTensorImpl()->bump_version();
+  }
+}
+
+} // namespace native
 } // namespace at

@@ -131,7 +131,7 @@ void min_kernel_impl(
     bool keepdim) {
   auto iter = meta::make_reduction(
       self, result, indice, dim, keepdim, self.scalar_type(), kLong);
-  native::xpu::min_launch_kernel(iter);
+  native::xpu::min_kernel(iter);
 }
 
 void max_kernel_impl(
@@ -142,7 +142,7 @@ void max_kernel_impl(
     bool keepdim) {
   auto iter = meta::make_reduction(
       self, result, indice, dim, keepdim, self.scalar_type(), kLong);
-  native::xpu::max_launch_kernel(iter);
+  native::xpu::max_kernel(iter);
 }
 
 template <class Stub>

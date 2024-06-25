@@ -1,9 +1,10 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
+
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
-#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

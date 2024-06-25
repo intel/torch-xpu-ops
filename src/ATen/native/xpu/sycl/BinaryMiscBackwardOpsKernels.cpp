@@ -2,8 +2,8 @@
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
+
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 

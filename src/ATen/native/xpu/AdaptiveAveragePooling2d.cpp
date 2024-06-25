@@ -1,4 +1,3 @@
-
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernel.h>
 #include <comm/xpu_aten.h>

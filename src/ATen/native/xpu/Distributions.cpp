@@ -9,7 +9,6 @@
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 
 namespace at {

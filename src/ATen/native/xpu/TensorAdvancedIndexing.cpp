@@ -109,7 +109,12 @@ void index_func_meta_impl(
   // set_output_raw_strided
   auto options = self.options();
   auto sizes = self.sizes();
-  at::xpu::resize_out(result, sizes, {}, options);
+  if (is_defined) {
+    at::xpu::resize_out(result, sizes, {}, options);
+  } else {
+    result = at::xpu::create_out(sizes, {}, options);
+  }
+
   if (is_defined) {
     at::assert_no_internal_overlap(result);
     at::assert_no_overlap(result, index);

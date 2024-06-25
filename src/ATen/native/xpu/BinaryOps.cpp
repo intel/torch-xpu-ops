@@ -2,7 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
+
 #include <ATen/native/DispatchStub.h>
 
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>

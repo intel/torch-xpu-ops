@@ -1,10 +1,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 
 namespace at::native::xpu {
-
 template <typename scalar_t>
 struct AndFunctor {
   inline bool operator()(scalar_t a, scalar_t b) const {

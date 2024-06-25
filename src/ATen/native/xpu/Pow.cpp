@@ -3,7 +3,6 @@
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/PowKernels.h>
 
 namespace at {

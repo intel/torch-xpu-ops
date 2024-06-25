@@ -4,9 +4,8 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/RangeFactories.h>
 #include <ATen/native/TensorIterator.h>
-#include <comm/xpu_aten.h>
-// #include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 namespace at {

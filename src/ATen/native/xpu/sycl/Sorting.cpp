@@ -2,7 +2,6 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
-#include <comm/xpu_aten.h>
 
 #include <ATen/ops/empty_strided.h>
 

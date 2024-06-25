@@ -14,7 +14,6 @@
 #include <ATen/native/xpu/sycl/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
-#include <comm/xpu_aten.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -318,11 +317,10 @@ void index_add_kernel(
   }
 
   auto numel = index.numel();
-
   if (result.dim() > 1) {
-      if (numel == 0 || self.numel() == 0) {
-          return;
-      }
+    if (numel == 0 || self.numel() == 0) {
+      return;
+    }
   }
 
   // Scalars are treated as 1-d tensor

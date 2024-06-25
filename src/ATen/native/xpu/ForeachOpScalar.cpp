@@ -2,6 +2,7 @@
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 
 namespace at {
 
@@ -57,23 +58,23 @@ FOREACH_BINARY_OP_SCALAR(div, /*div_op*/ true);
     at::TensorList self,
     at::TensorList tensor1,
     at::TensorList tensor2,
-    const at::Scalar& value = 1);
+    const at::Scalar& value);
 void foreach_tensor_addcmul_scalar_slow_(
     at::TensorList self,
     at::TensorList tensor1,
     at::TensorList tensor2,
-    const at::Scalar& value = 1);
+    const at::Scalar& value);
 
 ::std::vector<at::Tensor> foreach_tensor_addcdiv_scalar_slow(
     at::TensorList self,
     at::TensorList tensor1,
     at::TensorList tensor2,
-    const at::Scalar& value = 1);
+    const at::Scalar& value);
 void foreach_tensor_addcdiv_scalar_slow_(
     at::TensorList self,
     at::TensorList tensor1,
     at::TensorList tensor2,
-    const at::Scalar& value = 1);
+    const at::Scalar& value);
 
 #define FOREACH_POINTWISE_OP_SCALAR(NAME)                                   \
   std::vector<Tensor> foreach_tensor_##NAME##_scalar_xpu(                   \
@@ -110,6 +111,48 @@ void foreach_tensor_addcdiv_scalar_slow_(
 
 FOREACH_POINTWISE_OP_SCALAR(addcmul)
 FOREACH_POINTWISE_OP_SCALAR(addcdiv)
+
+::std::vector<at::Tensor> foreach_tensor_lerp_list_kernel_slow(
+    at::TensorList self,
+    at::TensorList tensors1,
+    const at::Scalar& weight);
+void foreach_tensor_lerp_list_kernel_slow_(
+    at::TensorList self,
+    at::TensorList tensors1,
+    const at::Scalar& weight);
+
+std::vector<at::Tensor> foreach_tensor_lerp_list_xpu(
+    TensorList tensors1,
+    TensorList tensors2,
+    const Scalar& weight) {
+  check_foreach_api_restrictions(tensors1, tensors2);
+  if (!can_use_fast_route({tensors1, tensors2}, {}, true)) {
+    return foreach_tensor_lerp_list_kernel_slow(tensors1, tensors2, weight);
+  }
+
+  std::vector<at::Tensor> vec_res;
+  vec_res.reserve(tensors1.size());
+  for (const auto& t : tensors1) {
+    vec_res.emplace_back(at::empty_like(t));
+  }
+
+  xpu::foreach_lerp_scalar_kernel(tensors1, tensors2, weight, vec_res);
+
+  return vec_res;
+}
+
+void foreach_tensor_lerp_list_xpu_(
+    TensorList tensors1,
+    TensorList tensors2,
+    const Scalar& weight) {
+  check_foreach_api_restrictions(tensors1, tensors2);
+  if (!can_use_fast_route({tensors1, tensors2}, {}, true)) {
+    return foreach_tensor_lerp_list_kernel_slow_(tensors1, tensors2, weight);
+  }
+
+  xpu::foreach_lerp_scalar_kernel_(tensors1, tensors2, weight);
+}
+
 } // namespace native
 
 } // namespace at

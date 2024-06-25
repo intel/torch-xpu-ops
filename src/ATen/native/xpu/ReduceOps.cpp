@@ -2,6 +2,7 @@
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/Fill.h>
 #include <ATen/native/ReduceOps.h>
@@ -10,8 +11,9 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
-#include <ATen/native/xpu/sycl/ReduceOps.h>
-#include <ATen/native/xpu/sycl/ScanKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
@@ -19,14 +21,6 @@
 namespace at {
 
 using namespace at::xpu;
-
-namespace native {
-REGISTER_XPU_DISPATCH(sum_stub, xpu::sum_kernel);
-REGISTER_XPU_DISPATCH(mean_stub, xpu::mean_kernel);
-REGISTER_XPU_DISPATCH(argmax_stub, xpu::argmax_kernel);
-// REGISTER_XPU_DISPATCH(argmin_stub, xpu::argmin_kernel);
-REGISTER_XPU_DISPATCH(cumsum_stub, xpu::cumsum_kernel);
-} // namespace native
 
 template <class Stub>
 void impl_func_cum_ops(
@@ -144,58 +138,17 @@ Tensor& allany_meta(
   return result;
 }
 
-template <class Stub>
-void argmax_argmin_impl(
-    const Tensor& self,
-    c10::optional<int64_t> dim,
-    bool keepdim,
-    const Tensor& result,
-    Stub& stub) {
-  c10::MaybeOwned<Tensor> in;
-  DimVector dims;
-  int64_t _dim = 0;
-
-  if (dim.has_value()) {
-    _dim = maybe_wrap_dim(dim.value(), self.dim());
-    auto sizes = self.sizes();
-
-    if (sizes[_dim] == 1) {
-      result.fill_(0);
-      return;
-    }
-
-    dims = IntArrayRef(_dim);
-    in = c10::MaybeOwned<Tensor>::borrowed(self);
-  } else {
-    in = c10::MaybeOwned<Tensor>::owned(self.reshape({-1}));
-    keepdim = false;
-  }
-
-  auto iter =
-      meta::make_reduction(*in, result, dims, keepdim, self.scalar_type());
-
-  if (iter.numel() != 0) {
-    stub(iter);
-  }
-}
-
-static void check_argmax_argmin(
-    const char* name,
-    const Tensor& self,
-    const c10::optional<int64_t>& dim) {
-  if (dim.has_value()) {
-    auto dim_ = maybe_wrap_dim(dim.value(), self.dim());
-    native::zero_numel_check_dims(self, dim_, name);
-  } else {
-    TORCH_CHECK_INDEX(
-        self.numel() != 0,
-        name,
-        ": Expected reduction dim to be specified for input.numel() == 0.");
-  }
-}
-
 static IntArrayRef optional_to_arrayref(const c10::optional<int64_t>& opt) {
   return opt.has_value() ? opt.value() : IntArrayRef{};
 }
+
+namespace native {
+REGISTER_XPU_DISPATCH(sum_stub, xpu::sum_kernel);
+REGISTER_XPU_DISPATCH(mean_stub, xpu::mean_kernel);
+REGISTER_XPU_DISPATCH(argmax_stub, xpu::argmax_kernel);
+// REGISTER_XPU_DISPATCH(argmin_stub, xpu::argmin_kernel);
+// REGISTER_XPU_DISPATCH(cumsum_stub, xpu::cumsum_kernel);
+
+} // namespace native
 
 } // namespace at
