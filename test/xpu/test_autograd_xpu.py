@@ -429,10 +429,10 @@ with XPUPatchForImport(False):
     TestAutogradMultipleDispatch.test_backward_single_threaded = backward_single_threaded
     TestAutogradMultipleDispatch.test_backward_tls_stash = backward_tls_stash
 
-instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu")
+instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(
-    TestAutogradMultipleDispatch, globals(), only_for="xpu"
+    TestAutogradMultipleDispatch, globals(), only_for="xpu", allow_xpu=True
 )
 
 instantiate_parametrized_tests(TestAutograd)
