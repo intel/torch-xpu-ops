@@ -1,11 +1,5 @@
 #include <ATen/ATen.h>
-#include <ATen/Dispatch.h>
-#include <ATen/core/Tensor.h>
-#include <ATen/native/TensorIterator.h>
-#include <c10/core/ScalarType.h>
-#include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
-#include <comm/SYCLHelpers.h>
 
 namespace at::native::xpu {
 

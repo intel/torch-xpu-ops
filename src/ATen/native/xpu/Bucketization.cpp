@@ -1,10 +1,7 @@
-#include <ATen/ScalarOps.h>
-#include <ATen/XPUNativeFunctions.h>
-#include <ATen/core/Tensor.h>
 #include <ATen/native/BucketizationUtils.h>
 #include <ATen/native/Resize.h>
-#include <ATen/native/TensorIterator.h>
-#include <aten/sycl/BucketizationKernels.h>
+#include <ATen/native/xpu/sycl/BucketizationKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 
