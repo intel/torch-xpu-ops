@@ -515,4 +515,30 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+TensorIterator ceil_meta(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(!self.is_complex(), "ceil is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::ceil(const Tensor& self) {
+  Tensor out;
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::ceil_(Tensor& self) {
+  auto iter = ceil_meta(self, self);
+  native::xpu::ceil_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
+  return out;
+}
+
 } // namespace at

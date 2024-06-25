@@ -386,3 +386,6 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - ceil.out
+  - ceil
+  - ceil_
