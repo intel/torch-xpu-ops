@@ -7,6 +7,7 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
@@ -427,42 +428,46 @@ void index_put_kernel(
     IntArrayRef non_index_stride,
     bool accumulate) {
   if (accumulate) {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        iter.dtype(),
-        "index_put_xpu",
-        [&] {
-          IndexPutAccumulateFunctor<scalar_t> f;
-          _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
-        });
+    AT_DISPATCH_V2(
+      iter.dtype(),
+      "index_put_xpu",
+      AT_WRAP([&] {
+        IndexPutAccumulateFunctor<scalar_t> f;
+        _index_kernel(
+            iter,
+            index_size,
+            index_stride,
+            non_index_size,
+            non_index_stride,
+            f);
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
   } else {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        iter.dtype(),
-        "index_put_xpu",
-        [&] {
-          using dtype = OpaqueType<sizeof(scalar_t)>;
-          IndexPutFunctor<dtype> f;
-          _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
-        });
+    AT_DISPATCH_V2(
+      iter.dtype(),
+      "index_put_xpu",
+      AT_WRAP([&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        IndexPutFunctor<dtype> f;
+        _index_kernel(
+            iter,
+            index_size,
+            index_stride,
+            non_index_size,
+            non_index_stride,
+            f);
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
   }
 }
 
@@ -536,25 +541,28 @@ void index_put_deterministic_kernel(
         linearIndex.numel() * sliceSize * nElemBefore,
         " vs ",
         expandedValue.numel());
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        expandedValue.scalar_type(),
-        "index_put_deterministic_kernel",
-        [&] {
-          launch_index_put_deterministic_kernel<scalar_t>(
-              sorted_indices.data_ptr<int64_t>(),
-              orig_indices.data_ptr<int64_t>(),
-              expandedValue.data_ptr<scalar_t>(),
-              src_.data_ptr<scalar_t>(),
-              num_indices,
-              sliceSize,
-              strideBefore,
-              nElemBefore,
-              accumulate);
-        });
+        AT_DISPATCH_V2(
+          expandedValue.scalar_type(),
+          "index_put_deterministic_xpu",
+          AT_WRAP([&] {
+            launch_index_put_deterministic_kernel<scalar_t>(
+                sorted_indices.data_ptr<int64_t>(),
+                orig_indices.data_ptr<int64_t>(),
+                expandedValue.data_ptr<scalar_t>(),
+                src_.data_ptr<scalar_t>(),
+                num_indices,
+                sliceSize,
+                strideBefore,
+                nElemBefore,
+                accumulate);
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          AT_EXPAND(AT_FLOAT8_TYPES),
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16);
+
     if (permuted)
       self.copy_(src_.permute(inversePerm));
   }
