@@ -950,11 +950,9 @@ res += launch_test("test_ops_xpu.py", skip_list)
 
 # test_binary_ufuncs
 skip_list = (
-    "jiterator", # Jiterator is only supported by CUDA
-    "cuda", # Skip cuda hard-coded case
+    "test_cuda_tensor_pow_scalar_tensor_xpu",
     "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16", # Calculation error. XPU implementation uses opmath type.
-    "test_cpu_tensor_pow_cuda_scalar_tensor_xpu", # CUDA hard-coded
     "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
     "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
     "test_type_promotion_bitwise_xor_xpu", # align CUDA dtype
