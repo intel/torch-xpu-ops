@@ -195,6 +195,7 @@ supported:
   - set_.source_Tensor
   - set_
   - unfold
+  - unfold_backward
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
   # - _copy_from  # hand-written registration
@@ -375,6 +376,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
   - acos
   - acos_
   - acos.out

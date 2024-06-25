@@ -37,9 +37,14 @@ set(SYCL_host_compiler_flags "-fsycl-host-compiler-options=")
 set(SYCL_include_args)
 
 foreach(dir ${SYCL_include_dirs})
-  # Extra quotes are added around each flag to help SYCL parse out flags with spaces.
-  list(APPEND SYCL_include_args "-I${dir}")
-  string(APPEND SYCL_host_compiler_flags "-I${dir} ")
+  # Args with spaces need quotes around them to get them to be parsed as a single argument.
+  if(dir MATCHES " ")
+    list(APPEND SYCL_include_args "-I\"${dir}\"")
+    string(APPEND SYCL_host_compiler_flags "-I\"${dir}\" ")
+  else()
+    list(APPEND SYCL_include_args -I${dir})
+    string(APPEND SYCL_host_compiler_flags "-I${dir} ")
+  endif()
 endforeach()
 
 # Clean up list of compile definitions, add -D flags, and append to SYCL_flags
@@ -108,10 +113,15 @@ SYCL_execute_process(
   )
 
 # Generate the code
+if(WIN32)
+  set(SYCL_dependency_file_args /clang:-MD /clang:-MF /clang:${SYCL_generated_dependency_file})
+else()
+  set(SYCL_dependency_file_args -MD -MF "${SYCL_generated_dependency_file}")
+endif()
 SYCL_execute_process(
   "Generating ${generated_file}"
   COMMAND "${SYCL_executable}"
-  -MD -MF "${SYCL_generated_dependency_file}"
+  ${SYCL_dependency_file_args}
   -c
   "${source_file}"
   -o "${generated_file}"
