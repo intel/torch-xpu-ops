@@ -27,7 +27,7 @@ inline size_t get_local_linear_range(sycl::nd_item<DIM>& item) {
 }
 
 template <typename T, int SIMD, int DIM>
-inline T& SubgroupReduceSum(sycl::nd_item<DIM>& item, T& val) {
+inline T& SubgroupReduceSumWithoutBroadcast(sycl::nd_item<DIM>& item, T& val) {
   auto sg = item.get_sub_group();
   auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
@@ -41,12 +41,15 @@ inline T& SubgroupReduceSum(sycl::nd_item<DIM>& item, T& val) {
 }
 
 template <typename T, int SIMD, typename shared_t, int DIM>
-inline T& GroupReduceSum(sycl::nd_item<DIM>& item, T& val, shared_t shared) {
+inline T& GroupReduceSumWithoutBroadcast(
+    sycl::nd_item<DIM>& item,
+    T& val,
+    shared_t shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
-  val = SubgroupReduceSum<T, SIMD, DIM>(item, val);
+  val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
   item.barrier(sycl_local_fence); // prevent races when GroupReduceSum are
                                   // called in a row.
   if (n_sg == 1) {
@@ -65,7 +68,10 @@ inline T& GroupReduceSum(sycl::nd_item<DIM>& item, T& val, shared_t shared) {
 }
 
 template <typename T, class ReduceOp, int SIMD, int DIM>
-inline T& SubgroupReduce(sycl::nd_item<DIM>& item, T& val, const ReduceOp& op) {
+inline T& SubgroupReduceWithoutBroadcast(
+    sycl::nd_item<DIM>& item,
+    T& val,
+    const ReduceOp& op) {
   auto sg = item.get_sub_group();
   auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
@@ -79,7 +85,7 @@ inline T& SubgroupReduce(sycl::nd_item<DIM>& item, T& val, const ReduceOp& op) {
 }
 
 template <typename T, class ReduceOp, int SIMD, typename shared_t, int DIM>
-inline T& GroupReduce(
+inline T& GroupReduceWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
     const ReduceOp& op,
@@ -88,7 +94,7 @@ inline T& GroupReduce(
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
-  val = SubgroupReduce<T, ReduceOp, SIMD, DIM>(item, val, op);
+  val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
   item.barrier(sycl_local_fence); // prevent races when GroupReduce
                                   // are called in a row.
   if (n_sg == 1) {

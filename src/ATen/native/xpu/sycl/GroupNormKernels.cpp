@@ -58,7 +58,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
     }
 
-    val = GroupReduce<WelfordType, WelfordOp, SIMD>(
+    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
         item, val, welford_op, shared_);
 
     if (item.get_local_id(0) == 0) {
@@ -370,8 +370,8 @@ struct Compute1dBackwardFusedParamsFunctor
       sum1 += dY_[index] * X_[index] * gamma_v;
       sum2 += dY_[index] * gamma_v;
     }
-    sum1 = GroupReduceSum<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSum<T_ACC, SIMD>(item, sum2, db_shared_);
+    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
     if (item.get_local_id(1) == 0) {
       const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D);
       const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
@@ -555,8 +555,8 @@ struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];
     T_ACC sum2 = b_shared_[tid_x][tid_y];
-    sum1 = SubgroupReduceSum<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSum<T_ACC, SIMD>(item, sum2);
+    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
     if (tid_x == 0) {
       const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y;
       if (c < C_) {
@@ -572,8 +572,8 @@ struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Do subgroup reduce for the 2nd 16 cols in the tile.
     sum1 = g_shared_[tid_x][tid_y + item.get_local_range(0)];
     sum2 = b_shared_[tid_x][tid_y + item.get_local_range(0)];
-    sum1 = SubgroupReduceSum<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSum<T_ACC, SIMD>(item, sum2);
+    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
     if (tid_x == 0) {
       const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y +
           item.get_local_range(0);
@@ -775,8 +775,8 @@ struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       sum1 += static_cast<T_ACC>(dY_[index]) * static_cast<T_ACC>(X_[index]);
       sum2 += static_cast<T_ACC>(dY_[index]);
     }
-    sum1 = GroupReduceSum<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSum<T_ACC, SIMD>(item, sum2, db_shared_);
+    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
     if (item.get_local_id(0) == 0) {
       ds_[nc] = sum1;
       db_[nc] = sum2;
@@ -843,8 +843,8 @@ struct ComputeBackwardFusedParamsFunctor
       sum1 += ds_[index] * gamma_v;
       sum2 += db_[index] * gamma_v;
     }
-    sum1 = GroupReduceSum<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSum<T_ACC, SIMD>(item, sum2, db_shared_);
+    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
     if (item.get_local_id(1) == 0) {
       const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D * HxW_);
       const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
@@ -1012,8 +1012,8 @@ struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];
     T_ACC sum2 = b_shared_[tid_x][tid_y];
-    sum1 = SubgroupReduceSum<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSum<T_ACC, SIMD>(item, sum2);
+    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
     if (tid_x == 0) {
       const int64_t c = group_x * group_size_x + tid_y;
       if (c < C_) {
@@ -1029,8 +1029,8 @@ struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Do subgroup reduce for the 2st 16 cols in the tile.
     sum1 = g_shared_[tid_x][tid_y + group_size_y];
     sum2 = b_shared_[tid_x][tid_y + group_size_y];
-    sum1 = SubgroupReduceSum<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSum<T_ACC, SIMD>(item, sum2);
+    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
     if (tid_x == 0) {
       const int64_t c = group_x * group_size_x + tid_y + group_size_y;
       if (c < C_) {
