@@ -113,6 +113,7 @@ _xpu_computation_op_list = [
     "acosh",
     "addr",
     "bincount",
+    "renorm",
 ]
 
 
