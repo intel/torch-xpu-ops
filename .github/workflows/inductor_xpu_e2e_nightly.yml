@@ -41,22 +41,6 @@ on:
         type: string
         default: ''
         description: If set, will only launch this one
-      test_ut:
-        required: true
-        type: string
-        default: 'true'
-        description: True will run UT, false will not
-      ut_suite:
-        required: false
-        type: string
-        default: 'op_example'
-        description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
-      torch_xpu_ops_update:
-        required: false
-        type: string
-        default: 'true'
-        description: Define if update xpu-ops, true means update.
-
       
 
 
