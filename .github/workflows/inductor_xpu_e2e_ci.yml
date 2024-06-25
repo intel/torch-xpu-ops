@@ -83,6 +83,7 @@ jobs:
         run: |
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_*
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
