@@ -55,6 +55,7 @@ skip_list = (
     "test_dtypes_sgn_xpu", # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
     "test_dtypes_square_xpu",
+    "test_dtypes_grid_sampler_2d_xpu",
     "test_errors_cat_xpu",
     "test_errors_dot_xpu",
     "test_errors_gather_xpu",
@@ -1461,9 +1462,6 @@ skip_list = (
     # AssertionError: Torch not compiled with CUDA enabled
     "test_CTCLoss_cudnn_xpu",
     "test_ctc_loss_cudnn_xpu",
-    "test_grid_sample_bfloat16_precision_xpu",
-    "test_grid_sample_half_precision_xpu",
-    "test_grid_sample_large_xpu",
     "test_layernorm_half_precision_xpu",
     "test_layernorm_weight_bias_xpu",
     "test_masked_softmax_devices_parity_xpu",
