@@ -1,9 +1,9 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 
