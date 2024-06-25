@@ -158,11 +158,6 @@ runs:
           cat $var >> inductor_log/summary_accuracy.csv
         done
         cat ${{ github.workspace }}/summary_accuracy.log |tee -a inductor_log/summary_accuracy.log
-        failed_case=$(grep "Failed: [1-9]" ${{ github.workspace }}/summary_accuracy.log |wc -l || true)
-        if [ ${failed_case} -ne 0 ];then
-          grep -E "Failed: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
-          exit 1
-        fi
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: contains(inputs.scenario, 'performance')

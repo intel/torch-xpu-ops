@@ -229,9 +229,15 @@ jobs:
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
+        if: always()
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          failed_case=$(grep "Failed: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          if [ ${failed_case} -ne 0 ];then
+            grep -E "Failed: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+            exit 1
+          fi
       - name: Upload Inductor XPU E2E Data
         if: always()
         uses: actions/upload-artifact@v4
