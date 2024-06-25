@@ -41,6 +41,22 @@ on:
         type: string
         default: ''
         description: If set, will only launch this one
+      ut_suite:
+        required: true
+        type: string
+        default: 'op_example'
+        description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
+      torch_xpu_ops_update:
+        required: false
+        type: string
+        default: 'true'
+        description: True means update xpu_ops when building pytorch, otherwise means not
+      test_ut:
+        required: true
+        type: string
+        default: 'true'
+        description: True will running UT test for Ondemand test, false will not.
+
 
 permissions: read-all
 
