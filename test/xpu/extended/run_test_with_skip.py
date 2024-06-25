@@ -86,36 +86,9 @@ skip_list = (
     "test_compare_cpu_abs_xpu_bool",
 
     # Not implemented operators, aten::reflection_pad3d.out
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_bfloat16",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_complex128",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_complex64",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_float32",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_float64",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_int16",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_int32",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_int64",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_int8",
-    "test_compare_cpu_nn_functional_pad_reflect_xpu_uint8",
-    "test_backward_nn_functional_pad_reflect_xpu_float32",
-    "test_forward_ad_nn_functional_pad_reflect_xpu_float32",
-    "test_operator_nn_functional_pad_reflect_xpu_float32",
-    "test_view_replay_nn_functional_pad_reflect_xpu_float32",
-
-    # Not implemented operators, aten::replication_pad3d.out
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_bfloat16",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_complex128",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_complex64",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_float32",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_float64",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_int16",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_int32",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_int64",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_int8",
-    "test_compare_cpu_nn_functional_pad_replicate_xpu_uint8",
-    "test_backward_nn_functional_pad_replicate_xpu_float32",
-    "test_forward_ad_nn_functional_pad_replicate_xpu_float32",
-    "test_operator_nn_functional_pad_replicate_xpu_float32",
-    "test_view_replay_nn_functional_pad_replicate_xpu_float32",
+    # Will retrieve it once aten::reflection_pad3d.out is implemented.
+    # https://github.com/intel/torch-xpu-ops/issues/455
+    "nn_functional_pad",
 )
 
 
