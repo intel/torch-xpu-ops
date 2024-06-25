@@ -4,7 +4,7 @@
 #include <ATen/native/xpu/sycl//UpSampleNearest2dKernels.h>
 
 namespace at {
-// using namespace at::native;
+
 Tensor& upsample_nearest2d_meta(
     const Tensor& input,
     Tensor& output,
