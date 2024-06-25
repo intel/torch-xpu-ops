@@ -1438,6 +1438,7 @@ skip_list = (
     # AssertionError: Torch not compiled with CUDA enabled
     "test_CTCLoss_cudnn_xpu",
     "test_ctc_loss_cudnn_xpu",
+    "test_ctc_loss_cudnn_tensor_xpu",
     "test_layernorm_half_precision_xpu",
     "test_layernorm_weight_bias_xpu",
     "test_masked_softmax_devices_parity_xpu",
@@ -1508,6 +1509,11 @@ skip_list = (
 
     # CUDA bias case
     "test_index_put_accumulate_with_optional_tensors_xpu",
+
+    # XPU implementation doesn't claimn FP8 now
+    # https://github.com/intel/torch-xpu-ops/issues/461
+    "test_index_put_src_datatype_xpu_float8_e5m2",
+    "test_index_put_src_datatype_xpu_float8_e4m3fn",
 )
 res += launch_test("test_indexing_xpu.py",skip_list)
 
@@ -2868,6 +2874,15 @@ skip_list = (
     ### Error #8 in TestBwdGradientsXPU , totally 2 , RuntimeError: DispatchStub: unsupported device typexpu
     "test_inplace_grad_conj_physical_xpu_complex128",
     "test_inplace_gradgrad_conj_physical_xpu_complex128",
+
+    # New uts added in PyTorch fail due to XPU implementation bug
+    # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
+
+    # https://github.com/intel/torch-xpu-ops/issues/464
+    "test_fn_grad__unsafe_masked_index_xpu_complex128",
+    "test_fn_grad__unsafe_masked_index_xpu_float64",
+    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_complex128",
+    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_float64",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
