@@ -115,7 +115,10 @@ struct AmpUpdateScaleKernelFunctor {
       // so growth_tracker is incremented before comparing to growth_interval.
       auto successful = (*growth_tracker_) + 1;
       if (successful == growth_interval_) {
-        *current_scale_ *= growth_factor_;
+        auto new_scale = static_cast<float>((*current_scale) * growth_factor);
+        if (!std::isinf(new_scale)) {
+          *current_scale = new_scale;
+        }
         *growth_tracker_ = 0;
       } else {
         *growth_tracker_ = successful;
