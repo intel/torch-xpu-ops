@@ -195,6 +195,7 @@ supported:
   - set_.source_Tensor
   - set_
   - unfold
+  - unfold_backward
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
   # - _copy_from  # hand-written registration
@@ -331,6 +332,7 @@ supported:
   - _foreach_lerp_.List
   - _foreach_lerp.Scalar
   - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -371,6 +373,7 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
   - sgn
@@ -389,6 +392,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
   - acos
   - acos_
   - acos.out
@@ -397,3 +402,6 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - addcmul.out
+  - addcmul
+  - addcmul_
