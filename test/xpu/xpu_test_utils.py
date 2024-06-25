@@ -112,6 +112,7 @@ _xpu_computation_op_list = [
     "acos",
     "acosh",
     "addr",
+    "nn.functional.group_norm",
     "bincount",
 ]
 
