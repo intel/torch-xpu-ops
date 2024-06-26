@@ -5,7 +5,7 @@ inputs:
     required: true
     type: string
     default: 'op_example'
-    description: op_example,op_finegrain,op_ut,torch_xpu. Delimiter is comma
+    description: op_example,op_extended,op_ut,torch_xpu. Delimiter is comma
   expected_fail_num:
     required: false
     type: number
@@ -35,7 +35,7 @@ runs:
         set -xe
         for ut_suite in $(echo ${{ inputs.ut_suite }} |sed 's/,/ /g')
         do
-          contains "op_example,op_finegrain,op_ut,torch_xpu" $ut_suite
+          contains "op_example,op_extended,op_ut,torch_xpu" $ut_suite
           $contains_status
           if [[ ${ut_suite} == 'op_example' ]]; then
             unset PYTORCH_TEST_WITH_SLOW
@@ -44,12 +44,12 @@ runs:
             cd examples
             timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_${ut_suite}_Test.log
           fi
-          if [[ ${ut_suite} == 'op_finegrain' ]]; then
+          if [[ ${ut_suite} == 'op_extended' ]]; then
             export PYTORCH_TEST_WITH_SLOW=1
             unset PYTORCH_ENABLE_XPU_FALLBACK
             cd ${{ github.workspace }}
-            cd ../pytorch/third_party/torch-xpu-ops/test/xpu/fin_grain
-            timeout 10000 python run_fine_grain.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_${ut_suite}_Test.log
+            cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
+            timeout 10000 python run_test_with_skip.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_${ut_suite}_Test.log
           fi
           if [[ ${ut_suite} == 'op_ut' ]]; then
             export PYTORCH_TEST_WITH_SLOW=1
@@ -109,10 +109,10 @@ runs:
         set -xe
         for ut_suite in $(echo ${{ inputs.ut_suite }} |sed 's/,/ /g')
         do
-          contains "op_example,op_finegrain,op_ut,torch_xpu" $ut_suite
+          contains "op_example,op_extended,op_ut,torch_xpu" $ut_suite
           $contains_status
           cd ${{ github.workspace }}/ut_log
-          if [[ ${ut_suite} == 'op_example' || ${ut_suite} == 'op_finegrain' ]]; then
+          if [[ ${ut_suite} == 'op_example' || ${ut_suite} == 'op_extended' ]]; then
             grep "^FAILED" XPU_OP_${ut_suite}_Test.log | awk '{print $1}' > ./${ut_suite}_failed.log
             grep "PASSED" XPU_OP_${ut_suite}_Test.log | awk '{print $1}' > ./${ut_suite}_passed.log
             num_failed=$(cat ./${ut_suite}_failed.log | wc -l)
