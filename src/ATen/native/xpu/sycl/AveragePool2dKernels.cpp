@@ -672,7 +672,7 @@ void avg_pool2d_kernel(
       use_divisor ? divisor_override.value() : 0;
   if (count != 0) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_out_xpu", [&] {
+        kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_xpu", [&] {
           using accscalar_t = acc_type<scalar_t, true>;
 
           switch (memory_format) {
