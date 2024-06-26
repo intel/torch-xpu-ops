@@ -1108,11 +1108,6 @@ skip_list = (
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
-    # AssertionError: Torch not compiled with CUDA enabled
-    "test_mha_native_args_nb_heads_8_bias_True_xpu",
-    "test_mha_native_args_nb_heads_8_bias_False_xpu",
-    "test_mha_native_args_nb_heads_1_bias_True_xpu",
-    "test_mha_native_args_nb_heads_1_bias_False_xpu",
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
