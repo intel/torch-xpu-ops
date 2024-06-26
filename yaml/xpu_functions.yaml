@@ -265,6 +265,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
@@ -366,6 +367,8 @@ supported:
   - _pin_memory
   - is_pinned
   - upsample_bicubic2d.out
+  - native_group_norm
+  - native_group_norm_backward
   - elu
   - elu.out
   - elu_
