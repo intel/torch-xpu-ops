@@ -15,6 +15,11 @@ try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+def get_device_capability(device=None):
+    return (9,0)
+torch.cuda.get_device_capability=get_device_capability
+
 with XPUPatchForImport(False):
     from test_foreach import TestForeach
 
