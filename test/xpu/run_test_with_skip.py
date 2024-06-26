@@ -922,14 +922,10 @@ skip_list = (
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
 
-    # AssertionError: False is not true : Argument 0 during forward call unexpectedly materializes. 
-    # Either set `supports_cow_input_no_materialize_forward=False` in this operation's OpInfo, 
-    # add the arg to the OpInfo's `allow_cow_input_materialize_forward` list, 
-    # or change the implementation to avoid materialization.
-    "test_cow_input_cdist_xpu_float32",
-
-    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16, torch.bfloat16}.
-    "test_dtypes_cdist_xpu",
+    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
+    # https://github.com/intel/torch-xpu-ops/issues/468
+    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
