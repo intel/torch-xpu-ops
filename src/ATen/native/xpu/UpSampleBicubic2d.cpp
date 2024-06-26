@@ -1,7 +1,7 @@
 #include <ATen/Context.h>
-#include <ATen/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
-#include <aten/sycl/UpSampleBicubic2dKernels.h>
+#include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 Tensor& XPUNativeFunctions::upsample_bicubic2d_out(

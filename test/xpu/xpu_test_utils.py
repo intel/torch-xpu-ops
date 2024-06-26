@@ -114,6 +114,7 @@ _xpu_computation_op_list = [
     "addr",
     "nn.functional.group_norm",
     "bincount",
+    'nn.functional.interpolate',
 ]
 
 

@@ -88,6 +88,12 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+
+    # Not implemented operators
+    "nn_functional_interpolate_nearest",
+    "nn_functional_interpolate_linear",
+    "nn_functional_interpolate_bilinear",
+    "nn_functional_interpolate_trilinear",
 )
 
 

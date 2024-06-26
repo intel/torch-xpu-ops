@@ -2,6 +2,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
+#include <ATen/ceil_div.h>
 #include <comm/SYCLContext.h>
 #include "UpSample.h"
 
@@ -126,18 +127,12 @@ static void upsample_bicubic2d_out_frame(
     const accscalar_t height_scale,
     const accscalar_t width_scale) {
   auto queue = getCurrentSYCLQueue();
-  int64_t local_range = static_cast<int64_t>(1);
-  int64_t global_range = static_cast<int64_t>(1);
-  if (onum != 0) {
-    int64_t wg_size = syclMaxWorkGroupSize();
-    local_range = onum < wg_size ? onum : wg_size;
-    global_range = ((onum + local_range - 1) / local_range) * local_range;
-  }
+  int64_t wg_size = syclMaxWorkGroupSize();
+  int64_t wg_num = at::ceil_div(onum, wg_size);
 
   UpsampleBicubic2dOutFrameKernelFunctor<scalar_t, accscalar_t> kfn(
       odata, idata, onum, align_corners, height_scale, width_scale);
-  sycl_kernel_submit(
-      sycl::range<1>(global_range), sycl::range<1>(local_range), queue, kfn);
+  sycl_kernel_submit(wg_num * wg_size, wg_size, queue, kfn);
 }
 
 void upsample_bicubic2d_out_kernel(
