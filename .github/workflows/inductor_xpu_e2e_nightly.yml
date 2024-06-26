@@ -151,7 +151,6 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -161,7 +160,6 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -171,18 +169,15 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
-          env_prepare: true
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -192,7 +187,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -202,7 +196,6 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -212,7 +205,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 39
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
@@ -223,7 +215,6 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 22
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})

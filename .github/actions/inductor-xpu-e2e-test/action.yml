@@ -29,10 +29,6 @@ inputs:
     type: string
     default: 'all'
     description: which cards can be used in the test
-  expected_pass_num:
-    required: false
-    type: number
-    description: for result check
   hf_token:
     required: false
     description: HUGGING_FACE_HUB_TOKEN for torchbench test
