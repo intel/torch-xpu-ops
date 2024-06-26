@@ -922,10 +922,9 @@ skip_list = (
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
 
-    # AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
+    # # CPU fallback error：AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
     # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float16}.
     # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
-    # Not implemented operator aten::replication_pad2d
     "test_dtypes_nn_functional_pad_replicate_negative_xpu",
     "test_dtypes_nn_functional_pad_replicate_xpu",
 )
