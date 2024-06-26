@@ -171,20 +171,24 @@ void index_select_kernel(
               getTensorInfo<scalar_t, int64_t>(src.contiguous()));
           int new_indexing_dim = src_info.collapseDims(dim);
 
+          using SrcInfo = TensorInfo<scalar_t, int64_t>;
+          using DstInfo = TensorInfo<scalar_t, int64_t>;
+          using IdxInfo = TensorInfo<index_t, int64_t>;
+
           // Improve efficiency of generated native instructions for contiguous.
           // See comm/TensorInfo.h
           if (dst.is_contiguous() && indices.is_contiguous())
             _index_select_kernel<
-                decltype(src_info),
-                decltype(dst_info),
-                decltype(index_info),
+                SrcInfo,
+                DstInfo,
+                IdxInfo,
                 /* TrivialOffCal */ true>(
                 src_info, dst_info, index_info, new_indexing_dim);
           else
             _index_select_kernel<
-                decltype(src_info),
-                decltype(dst_info),
-                decltype(index_info),
+                SrcInfo,
+                DstInfo,
+                IdxInfo,
                 /* TrivialOffCal */ false>(
                 src_info, dst_info, index_info, new_indexing_dim);
         }),

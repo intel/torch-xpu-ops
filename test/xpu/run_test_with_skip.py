@@ -107,7 +107,6 @@ skip_list = (
     "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_complex64",
     "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_float32",
     "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_int64",
-    "test_noncontiguous_samples_nn_functional_group_norm_xpu_float32",
     "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
     "test_noncontiguous_samples_reciprocal_xpu_int64",
     "test_numpy_ref_jiterator_2inputs_2outputs_xpu_complex128",
@@ -120,7 +119,6 @@ skip_list = (
     "test_numpy_ref_linalg_tensorsolve_xpu_float64",
     "test_numpy_ref_nn_functional_conv_transpose1d_xpu_complex128",
     "test_numpy_ref_nn_functional_conv_transpose1d_xpu_float64",
-    "test_numpy_ref_nn_functional_group_norm_xpu_float64",
     "test_numpy_ref_nn_functional_pdist_xpu_float64",
     "test_out_jiterator_2inputs_2outputs_xpu_float32",
     "test_out_jiterator_4inputs_with_extra_args_xpu_float32",
@@ -191,10 +189,6 @@ skip_list = (
     "test_python_ref__refs_native_layer_norm_xpu_bfloat16",
     "test_python_ref__refs_native_layer_norm_xpu_float16",
     "test_python_ref__refs_native_layer_norm_xpu_float32",
-    "test_python_ref__refs_nn_functional_group_norm_xpu_bfloat16",
-    "test_python_ref__refs_nn_functional_group_norm_xpu_float16",
-    "test_python_ref__refs_nn_functional_group_norm_xpu_float32",
-    "test_python_ref__refs_nn_functional_group_norm_xpu_float64",
     "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
     "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_float16", "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_bfloat16",
     "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_float16",
@@ -250,10 +244,6 @@ skip_list = (
     "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float32",
     "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float64",
-    "test_python_ref_executor__refs_nn_functional_group_norm_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_nn_functional_group_norm_executor_aten_xpu_float16",
-    "test_python_ref_executor__refs_nn_functional_group_norm_executor_aten_xpu_float32",
-    "test_python_ref_executor__refs_nn_functional_group_norm_executor_aten_xpu_float64",
     "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_bfloat16",
     "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_bfloat16",
@@ -271,10 +261,6 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
-    "test_python_ref_meta__refs_nn_functional_group_norm_xpu_bfloat16",
-    "test_python_ref_meta__refs_nn_functional_group_norm_xpu_float16",
-    "test_python_ref_meta__refs_nn_functional_group_norm_xpu_float32",
-    "test_python_ref_meta__refs_nn_functional_group_norm_xpu_float64",
     "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_bfloat16",
     "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float16",
     "test_python_ref_torch_fallback__refs_floor_divide_xpu_float16",
@@ -300,10 +286,6 @@ skip_list = (
     "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_bfloat16",
     "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float16",
     "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float32",
-    "test_python_ref_torch_fallback__refs_nn_functional_group_norm_xpu_bfloat16",
-    "test_python_ref_torch_fallback__refs_nn_functional_group_norm_xpu_float16",
-    "test_python_ref_torch_fallback__refs_nn_functional_group_norm_xpu_float32",
-    "test_python_ref_torch_fallback__refs_nn_functional_group_norm_xpu_float64",
     "test_python_ref_torch_fallback__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
     "test_python_ref_torch_fallback__refs_nn_functional_hinge_embedding_loss_xpu_float16",
     "test_python_ref_torch_fallback__refs_nn_functional_margin_ranking_loss_xpu_bfloat16",
@@ -344,7 +326,6 @@ skip_list = (
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_float32",
-    "test_variant_consistency_eager_nn_functional_group_norm_xpu_float32",
     "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
     "test_variant_consistency_eager_to_sparse_xpu_complex64",
     "test_variant_consistency_eager_to_sparse_xpu_float32",
@@ -708,11 +689,6 @@ skip_list = (
     # CPU fallback error: AssertionError: Tensor-likes are not close!
     "test_neg_view_nn_functional_rrelu_xpu_float64",
 
-    # CPU fallback fails
-    # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-    "test_neg_view__refs_nn_functional_group_norm_xpu_float64",
-    "test_neg_view_nn_functional_group_norm_xpu_float64",
-
     # CUDA skip,reproduce the UT in CUDA,CUDA fail
     "test_neg_view_nn_functional_dropout_xpu_float64",
 
@@ -936,6 +912,12 @@ skip_list = (
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
+
+    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
+    # https://github.com/intel/torch-xpu-ops/issues/468
+    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -1453,6 +1435,7 @@ skip_list = (
     # AssertionError: Torch not compiled with CUDA enabled
     "test_CTCLoss_cudnn_xpu",
     "test_ctc_loss_cudnn_xpu",
+    "test_ctc_loss_cudnn_tensor_xpu",
     "test_layernorm_half_precision_xpu",
     "test_layernorm_weight_bias_xpu",
     "test_masked_softmax_devices_parity_xpu",
@@ -1523,6 +1506,11 @@ skip_list = (
 
     # CUDA bias case
     "test_index_put_accumulate_with_optional_tensors_xpu",
+
+    # XPU implementation doesn't claimn FP8 now
+    # https://github.com/intel/torch-xpu-ops/issues/461
+    "test_index_put_src_datatype_xpu_float8_e5m2",
+    "test_index_put_src_datatype_xpu_float8_e4m3fn",
 )
 res += launch_test("test_indexing_xpu.py",skip_list)
 
@@ -2883,6 +2871,15 @@ skip_list = (
     ### Error #8 in TestBwdGradientsXPU , totally 2 , RuntimeError: DispatchStub: unsupported device typexpu
     "test_inplace_grad_conj_physical_xpu_complex128",
     "test_inplace_gradgrad_conj_physical_xpu_complex128",
+
+    # New uts added in PyTorch fail due to XPU implementation bug
+    # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
+
+    # https://github.com/intel/torch-xpu-ops/issues/464
+    "test_fn_grad__unsafe_masked_index_xpu_complex128",
+    "test_fn_grad__unsafe_masked_index_xpu_float64",
+    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_complex128",
+    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_float64",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
