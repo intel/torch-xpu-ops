@@ -2088,9 +2088,10 @@ def _test_grid_sample_large(self, device):
         expected_grad = torch.ones_like(image)
         expected_grad[0, 0, 1, 1, 1] = 0
         self.assertEqual(image.grad, expected_grad, atol=0.005, rtol=0)
-    issue_24823_1(torch.half)
-    issue_24823_1(torch.float)
-    issue_24823_1(torch.double)
+    # grid_sampler_3d is not supported in xpu
+    # issue_24823_1(torch.half)
+    # issue_24823_1(torch.float)
+    # issue_24823_1(torch.double)
 
     def issue_24823_2():
         param = torch.tensor([[[-1.0e+20, 0.0, 0.0], [0.0, -1.0e+20, 0.0]]], dtype=torch.float, device=device)
@@ -2118,9 +2119,9 @@ def _test_grid_sample_half_precision(self):
             self.assertEqual(out_half, out_double.half(), msg=f"grid_sample with mode = {mode} doesn't match")
 
     helper((32, 64, 16, 16), (32, 8, 8, 2), True)
-    helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), True)
+    # helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), True) # grid_sampler_3d is not supported in xpu
     helper((32, 64, 16, 16), (32, 8, 8, 2), False)
-    helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), False)
+    # helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), False) # grid_sampler_3d is not supported in xpu
 TestNNDeviceType.test_grid_sample_half_precision=_test_grid_sample_half_precision
 
 def _test_grid_sample_bfloat16_precision(self):
@@ -2138,9 +2139,9 @@ def _test_grid_sample_bfloat16_precision(self):
             self.assertEqual(out_half, out_double.bfloat16(), msg=f"grid_sample with mode = {mode} doesn't match")
 
     helper((32, 64, 16, 16), (32, 8, 8, 2), True)
-    helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), True)
+    # helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), True) # grid_sampler_3d is not supported in xpu
     helper((32, 64, 16, 16), (32, 8, 8, 2), False)
-    helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), False)
+    # helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), False) # grid_sampler_3d is not supported in xpu
 TestNNDeviceType.test_grid_sample_bfloat16_precision=_test_grid_sample_bfloat16_precision
 
 instantiate_device_type_tests(

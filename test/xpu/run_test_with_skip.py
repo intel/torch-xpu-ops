@@ -1551,11 +1551,6 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
-    # RuntimeError: grid_sampler_2d_cpu not implemented for BFloat16
-    "test_grid_sample_bfloat16_precision_xpu",
-    "test_grid_sample_half_precision_xpu",
-    # RuntimeError: "grid_sampler3d_cpu" not implemented for 'Half'
-    "test_grid_sample_large_xpu",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
