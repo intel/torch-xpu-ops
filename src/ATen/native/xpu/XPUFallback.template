@@ -1,0 +1,444 @@
+#include <ATen/core/Tensor.h>
+#include <ATen/native/CPUFallback.h>
+
+namespace at {
+
+static bool DEBUG_XPU_FALLBACK = false;
+
+static void xpu_fallback_impl(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  if (!DEBUG_XPU_FALLBACK) {
+    TORCH_WARN_ONCE(
+        "Aten Op fallback from XPU to CPU happends.",
+        " This may have performance implications.",
+        " If need debug the fallback ops please set environment variable `PYTORCH_DEBUG_XPU_FALLBACK=1` ");
+  } else {
+    TORCH_WARN(
+        "The operator '",
+        op.schema().operator_name(),
+        " on the XPU backend is falling back to run on the CPU.");
+  }
+  native::cpu_fallback(op, stack, true);
+}
+
+namespace native::xpu {
+Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
+}
+
+// Register op's implementation lazily since sometimes the op is not defined,
+// when registering implementation in PyTorch.
+
+// Change both maps table and register_func when adding a new operator
+// with lazy registration. So far, support torchvision namespace only.
+// <operator_name: string, is_cpu_fallback: bool>
+static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
+  {"torchvision::nms", false},
+  {"torchvision::roi_align", true},
+  {"torchvision::_roi_align_backward", true},
+};
+
+// Return:
+// true  - Redispatch to implementation lazily registered.
+// false - Not redispatch.
+static bool lazy_registration_and_redispatch(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  auto register_func =
+      [](torch::Library& m) -> void {
+        // Register all operators of torchvision namespace, not to register op
+        // by op when the op is called. When a torchvision::op is called,
+        // suppose ops of torchvision are all defined (`import torchvision`).
+        m.impl(TORCH_SELECTIVE_NAME("torchvision::nms"), TORCH_FN(at::native::xpu::nms));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::roi_align"),
+            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_roi_align_backward"),
+            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+      };
+
+  static const torch::detail::TorchLibraryInit
+      torchvision_ops_impl_lazy_registration(
+          torch::Library::IMPL,
+          register_func,
+          "torchvision",
+          c10::make_optional(c10::DispatchKey::XPU),
+          __FILE__,
+          __LINE__);
+
+  bool need_redispatch_after_lazy_registration =
+      torchvision_ops_dispatching_table_.end() != torchvision_ops_dispatching_table_.find(op.schema().operator_name().name);
+  bool is_cpu_fallback = need_redispatch_after_lazy_registration ?
+      torchvision_ops_dispatching_table_[op.schema().operator_name().name] : true;
+
+  if (need_redispatch_after_lazy_registration) {
+    if (!is_cpu_fallback) {
+      op.redispatchBoxed(c10::DispatchKeySet(c10::DispatchKey::XPU), stack);
+    } else {
+      xpu_fallback_impl(op, stack);
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static void xpu_fallback(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  if (lazy_registration_and_redispatch(op, stack)) {
+    return;
+  }
+
+  // TODO: do Profiling if profiler.isCPUFallbackProfilingEnabled()
+  xpu_fallback_impl(op, stack);
+}
+
+static void xpu_lazy_registration_or_error_fallback(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  if (!lazy_registration_and_redispatch(op, stack)) {
+    TORCH_CHECK_NOT_IMPLEMENTED(
+        false,
+        "The operator '",
+        op.schema().operator_name(),
+        "' is not currently implemented for the XPU device. Please open a feature on https://github.com/intel/torch-xpu-ops/issues. ",
+        "You can set the environment variable `PYTORCH_ENABLE_XPU_FALLBACK=1` to use the CPU implementation as a fallback for XPU unimplemented operators. "
+        "WARNING: this will bring unexpected performance compared with running natively on XPU.");
+  }
+}
+
+static void xpu_force_fallback(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {}
+
+TORCH_LIBRARY_IMPL(_, XPU, m) {
+  static const char* enable_xpu_fallback =
+      getenv("PYTORCH_ENABLE_XPU_FALLBACK");
+  if (!enable_xpu_fallback || std::stoi(enable_xpu_fallback) == 0) {
+    m.fallback(
+        torch::CppFunction::makeFromBoxedFunction<&xpu_lazy_registration_or_error_fallback>());
+  } else {
+    m.fallback(torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+  }
+
+  static const char* debug_xpu_fallback = getenv("PYTORCH_DEBUG_XPU_FALLBACK");
+  if (!debug_xpu_fallback || std::stoi(debug_xpu_fallback) == 0) {
+    DEBUG_XPU_FALLBACK = false;
+  } else {
+    DEBUG_XPU_FALLBACK = true;
+  }
+}
+
+/*
+ * Register fallback to CPU for ops specified in env variable
+ * "PYTORCH_XPU_FALLBACK_OP" , For example: export
+ * PYTORCH_XPU_FALLBACK_OP=abs.out,div.Scalar,div.Tensor,div_.Scalar,div_.Tensor
+ */
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  static const char* fallback_op_str = getenv("PYTORCH_XPU_FALLBACK_OP");
+  if (!fallback_op_str) {
+    return;
+  }
+  std::istringstream iss(fallback_op_str);
+  std::string op_name;
+  while (std::getline(iss, op_name, ',')) {
+    TORCH_WARN(
+        "The operator '", op_name, "' registered to be forced to fallback to CPU.");
+    m.impl(
+        op_name.c_str(),
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback>());
+  }
+}
+
+/*
+ * These ops are not supported via XPU backend currently, and we fallback to run on CPU.
+ */
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  std::vector<std::string> fallback_list = {
+    "_adaptive_avg_pool2d",
+    "_adaptive_avg_pool3d",
+    "_adaptive_avg_pool3d_backward",
+    "adaptive_max_pool2d_backward.grad_input",
+    "adaptive_max_pool2d.out",
+    "adaptive_max_pool3d_backward.grad_input",
+    "adaptive_max_pool3d.out",
+    "addcdiv.out",
+    "aminmax.out",
+    "_amp_foreach_non_finite_check_and_unscale_",
+    "_amp_update_scale_",
+    "angle",
+    "argmin.out",
+    "asinh.out",
+    "asin.out",
+    "atan2.out",
+    "atanh.out",
+    "atan.out",
+    "avg_pool2d_backward.grad_input",
+    "avg_pool2d.out",
+    "avg_pool3d_backward.grad_input",
+    "avg_pool3d.out",
+    "binary_cross_entropy",
+    "binary_cross_entropy_backward",
+    "bitwise_left_shift.Tensor_out",
+    "bitwise_right_shift.Tensor_out",
+    "bucketize.Tensor",
+    "cauchy_",
+    "_cdist_backward",
+    "_cdist_forward",
+    "ceil.out",
+    "channel_shuffle",
+    "cholesky",
+    "cholesky_inverse",
+    "_cholesky_solve_helper",
+    "complex.out",
+    "conj_physical.out",
+    "copysign.out",
+    "cosh.out",
+    "count_nonzero.dim_IntList",
+    "_ctc_loss",
+    "_ctc_loss_backward",
+    "_cummax_helper",
+    "_cummin_helper",
+    "cumprod.out",
+    "digamma.out",
+    "dot",
+    "_efficient_attention_forward",
+    "_efficientzerotensor",
+    "_embedding_bag_dense_backward",
+    "_embedding_bag_per_sample_weights_backward",
+    "equal",
+    "erfinv.out",
+    "exp2.out",
+    "expm1.out",
+    "exponential_",
+    "eye.m_out",
+    "_fft_c2c",
+    "_fft_c2r",
+    "_fft_r2c",
+    "_flash_attention_forward",
+    "floor_divide",
+    "floor.out",
+    "fmax.out",
+    "fmin.out",
+    "frac.out",
+    "fractional_max_pool2d_backward.grad_input",
+    "fractional_max_pool2d.output",
+    "fractional_max_pool3d_backward",
+    "fractional_max_pool3d.output",
+    "frexp.Tensor_out",
+    "_fused_moving_avg_obs_fq_helper",
+    "geometric_",
+    "geqrf",
+    "glu_backward",
+    "glu.out",
+    "hardshrink_backward.grad_input",
+    "hardshrink.out",
+    "hardsigmoid_backward.grad_input",
+    "hardsigmoid.out",
+    "heaviside.out",
+    "histc",
+    "huber_loss",
+    "huber_loss_backward.out",
+    "hypot.out",
+    "i0.out",
+    "igammac.out",
+    "igamma.out",
+    "index_copy.out",
+    "index_fill_.int_Scalar",
+    "index_fill_.int_Tensor",
+    "index_reduce.out",
+    "isin.Tensor_Tensor_out",
+    "isneginf.out",
+    "isposinf.out",
+    "kthvalue.values",
+    "lcm.out",
+    "lerp.Scalar_out",
+    "lerp.Tensor_out",
+    "lgamma.out",
+    "linalg_cholesky_ex.L",
+    "linalg_cross.out",
+    "_linalg_det.result",
+    "linalg_eig",
+    "_linalg_eigh.eigenvalues",
+    "linalg_householder_product",
+    "linalg_inv_ex.inverse",
+    "linalg_ldl_factor_ex.out",
+    "linalg_ldl_solve.out",
+    "linalg_lstsq.out",
+    "linalg_lu_factor_ex.out",
+    "linalg_lu.out",
+    "linalg_lu_solve.out",
+    "linalg_matrix_exp",
+    "linalg_qr.out",
+    "_linalg_slogdet.sign",
+    "_linalg_solve_ex.result",
+    "linalg_solve_triangular",
+    "_linalg_svd.U",
+    "linalg_vector_norm.out",
+    "linspace.out",
+    "log10.out",
+    "log1p.out",
+    "log2.out",
+    "logaddexp2.out",
+    "logaddexp.out",
+    "_logcumsumexp",
+    "logical_and.out",
+    "logical_or.out",
+    "logical_xor.out",
+    "logit",
+    "logit_backward.grad_input",
+    "log_normal_",
+    "log_sigmoid_backward",
+    "log_sigmoid_forward",
+    "logspace.out",
+    "lu_unpack.out",
+    "masked_scatter_",
+    "masked_select",
+    "max_pool2d_with_indices.out",
+    "max_pool3d_with_indices",
+    "max_pool3d_with_indices_backward",
+    "max_unpool2d",
+    "max_unpool3d",
+    "median",
+    "mish.out",
+    "mode",
+    "mse_loss_backward",
+    "mse_loss.out",
+    "multilabel_margin_loss_backward",
+    "multilabel_margin_loss_forward",
+    "multi_margin_loss",
+    "multi_margin_loss_backward",
+    "multinomial",
+    "nanmedian",
+    "nanmedian.dim_values",
+    "nansum",
+    "nan_to_num.out",
+    "native_batch_norm",
+    "native_batch_norm_backward",
+    "nextafter.out",
+    "norm.out",
+    "ormqr",
+    "_pdist_backward",
+    "_pdist_forward",
+    "polar.out",
+    "polygamma.out",
+    "_prelu_kernel",
+    "_prelu_kernel_backward",
+    "prod",
+    "prod.int_out",
+    "put_",
+    "randperm.generator_out",
+    "reflection_pad1d_backward.grad_input",
+    "reflection_pad1d.out",
+    "reflection_pad2d",
+    "reflection_pad2d_backward",
+    "renorm.out",
+    "repeat_interleave.Tensor",
+    "replication_pad1d_backward.grad_input",
+    "replication_pad1d.out",
+    "replication_pad2d_backward",
+    "replication_pad2d.out",
+    "roll",
+    "round.decimals_out",
+    "round.out",
+    "rrelu_with_noise",
+    "__rshift__.Scalar",
+    "_scaled_dot_product_efficient_attention",
+    "_scaled_mm",
+    "searchsorted.Tensor",
+    "segment_reduce",
+    "_segment_reduce_backward",
+    "signbit.out",
+    "sign.out",
+    "sinc.out",
+    "sinh.out",
+    "smooth_l1_loss_backward.grad_input",
+    "smooth_l1_loss.out",
+    "softplus_backward.grad_input",
+    "softplus.out",
+    "softshrink_backward.grad_input",
+    "softshrink.out",
+    "special_airy_ai.out",
+    "special_bessel_j0.out",
+    "special_bessel_j1.out",
+    "special_bessel_y0.out",
+    "special_bessel_y1.out",
+    "special_chebyshev_polynomial_t.out",
+    "special_chebyshev_polynomial_u.out",
+    "special_chebyshev_polynomial_v.out",
+    "special_chebyshev_polynomial_w.out",
+    "special_entr.out",
+    "special_erfcx.out",
+    "special_hermite_polynomial_he.out",
+    "special_hermite_polynomial_h.out",
+    "special_i0e.out",
+    "special_i1e.out",
+    "special_i1.out",
+    "special_laguerre_polynomial_l.out",
+    "special_legendre_polynomial_p.out",
+    "special_log_ndtr.out",
+    "special_modified_bessel_i0.out",
+    "special_modified_bessel_i1.out",
+    "special_modified_bessel_k0.out",
+    "special_modified_bessel_k1.out",
+    "special_ndtri.out",
+    "special_scaled_modified_bessel_k0.out",
+    "special_scaled_modified_bessel_k1.out",
+    "special_shifted_chebyshev_polynomial_t.out",
+    "special_shifted_chebyshev_polynomial_u.out",
+    "special_shifted_chebyshev_polynomial_v.out",
+    "special_shifted_chebyshev_polynomial_w.out",
+    "special_spherical_bessel_j0.out",
+    "special_xlog1py.out",
+    "special_zeta.out",
+    "std.correction",
+    "std_mean.correction",
+    "take",
+    "tan.out",
+    "_thnn_fused_gru_cell",
+    "topk.values",
+    "_to_sparse",
+    "_to_sparse_csr",
+    "trace",
+    "triangular_solve.X",
+    "tril_indices",
+    "triu_indices",
+    "trunc.out",
+    "_unique2",
+    "unique_consecutive",
+    "upsample_bicubic2d_backward.grad_input",
+    "upsample_bicubic2d.out",
+    "_upsample_bilinear2d_aa.out",
+    "upsample_bilinear2d_backward.grad_input",
+    "upsample_bilinear2d.out",
+    "upsample_linear1d_backward.grad_input",
+    "upsample_linear1d.out",
+    "upsample_nearest1d_backward.grad_input",
+    "upsample_nearest1d.out",
+    "upsample_nearest2d_backward.grad_input",
+    "upsample_nearest2d.out",
+    "upsample_nearest3d.out",
+    "_upsample_nearest_exact1d_backward.grad_input",
+    "_upsample_nearest_exact1d.out",
+    "upsample_trilinear3d_backward.grad_input",
+    "upsample_trilinear3d.out",
+    "_validate_compressed_sparse_indices",
+    "var.correction",
+    "var_mean.correction",
+    "vdot",
+    "xlogy.OutTensor",
+  };
+  for (auto& op_name : fallback_list) {
+    m.impl(
+        op_name.c_str(),
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+  }
+}
+TORCH_LIBRARY_IMPL(_inductor_test, XPU, m) {
+    m.impl(
+        "realize",
+        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+}
+} // namespace at
