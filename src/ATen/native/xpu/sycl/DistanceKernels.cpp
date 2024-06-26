@@ -321,11 +321,9 @@ void cdist_kernel(
   const int64_t r2 = x2_expanded.size(-2);
   const int64_t m = x1_expanded.size(-1);
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_FLOATING_TYPES(
       x1_expanded.scalar_type(),
-      "cdist_forward_xpu",
+      "cdist_xpu",
       [&] {
         if (p == 0.0) {
           launch_cdist_forward_kernel<scalar_t, DistsZero<scalar_t>, 0>(
