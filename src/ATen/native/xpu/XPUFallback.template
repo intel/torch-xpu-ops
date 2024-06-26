@@ -430,7 +430,9 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "vdot",
     "xlogy.OutTensor",
     "reflection_pad3d.out",
+    "reflection_pad3d_backward.grad_input",
     "replication_pad3d.out",
+    "replication_pad3d_backward",
   };
   for (auto& op_name : fallback_list) {
     m.impl(
