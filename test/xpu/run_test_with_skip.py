@@ -927,6 +927,12 @@ skip_list = (
     # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
     "test_dtypes_nn_functional_pad_replicate_negative_xpu",
     "test_dtypes_nn_functional_pad_replicate_xpu",
+
+    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
+    # https://github.com/intel/torch-xpu-ops/issues/468
+    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
