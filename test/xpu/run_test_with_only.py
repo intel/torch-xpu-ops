@@ -41,6 +41,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 res = 0
 
 # test_foreach
+# full skip_list is in Issue #469
 execute_list = (
     "_foreach_add_ and not slowpath",
     "_foreach_mul_ and not slowpath",
@@ -59,6 +60,7 @@ execute_list = (
 res += launch_test("test_foreach_xpu.py", exe_list=execute_list)
 
 # test_decomp
+# full skip_list is in Issue #470
 execute_list = (
     "test_comprehensive_nn_functional_cross_entropy_xpu",
     "test_comprehensive_nn_functional_nll_loss_xpu_bfloat16",
