@@ -265,6 +265,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
@@ -369,6 +370,8 @@ supported:
   - reflection_pad2d.out
   - reflection_pad2d_backward
   - reflection_pad2d_backward.grad_input
+  - native_group_norm
+  - native_group_norm_backward
   - elu
   - elu.out
   - elu_
