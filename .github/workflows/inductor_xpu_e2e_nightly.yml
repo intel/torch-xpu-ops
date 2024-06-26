@@ -309,7 +309,7 @@ jobs:
         with:
           ut_suite: op_example
           expected_fail_num: 0
-      - name: Nightly XPU OP Extended UT
+      - name: Nightly XPU OP Extended UT Test
         if: ${{ !inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
