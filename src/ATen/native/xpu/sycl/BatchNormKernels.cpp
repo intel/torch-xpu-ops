@@ -134,6 +134,8 @@ struct Var {
 };
 
 int get_max_group_size(int simd = SIMD32) {
+  // The max work group size required by batch_norm needs to ensure that the two
+  // subgroup reduces can obtain correct results.
   int max_size = syclMaxWorkGroupSize();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
@@ -324,37 +326,6 @@ scalar_t plane_reduce(
   return shared[0];
 }
 
-template <typename scalar_t>
-int inline get_nhwc_suggest_vec_size(
-    const Tensor input,
-    int reduction_size,
-    int channels) {
-  if (!batch_norm_use_channels_last_kernels(input))
-    return 1;
-  // no need to vectorize if channels < 16
-  if (channels < 16)
-    return 1;
-  // if small reduction size, make no vectorization for higher occupancy
-  if (reduction_size < 8 * syclMaxWorkGroupSize())
-    return 1;
-
-  // just to load/store data
-  auto func = [](scalar_t a) { return a + static_cast<scalar_t>(1.0f); };
-  at::detail::Array<char*, 1> data;
-  data[0] = (char*)input.data_ptr();
-
-  int vec_size = memory::can_vectorize_up_to<decltype(func)>(data);
-
-  // for resnet50 shape, bf16 type, vec 4 have better performance
-  if (vec_size == 8 && reduction_size == 256 * 56 * 56 &&
-      (channels == 128 || channels == 256))
-    return 4;
-
-  if (channels % vec_size != 0)
-    return 1;
-  return vec_size;
-}
-
 inline int div_up(int a, int b) {
   return (a + b - 1) / b;
 }
@@ -363,7 +334,7 @@ constexpr int ELEMENTS_PER_ITER =
     4; // enables concurrency within each thread to hide latency
 constexpr int ELEMENTS_PER_WORK_ITEM = 16;
 
-std::tuple<sycl::range<2>, sycl::range<2>> flexible_launch_configs(
+std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
     const int reduction,
     const int stride,
     const bool coop_flag = false,
@@ -1048,7 +1019,7 @@ void batch_norm_stats_channels_last_template(
   TORCH_INTERNAL_ASSERT(
       out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
 
-  auto config = flexible_launch_configs(
+  auto config = get_adaptive_launch_config(
       reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -1404,7 +1375,7 @@ void batch_norm_elemt_channels_last_template(
     const bool fuse_relu = false) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
-  auto config = flexible_launch_configs(
+  auto config = get_adaptive_launch_config(
       reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -2068,7 +2039,7 @@ batch_norm_backward_reduce_channels_last_template(
     grad_bias = at::empty({0}, mean.options());
   }
 
-  auto config = flexible_launch_configs(
+  auto config = get_adaptive_launch_config(
       reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -2695,7 +2666,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
   // Input is guarunteed to be channels-last compatible
   at::Tensor grad_input = at::empty_like(input);
 
-  auto config = flexible_launch_configs(
+  auto config = get_adaptive_launch_config(
       reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -2766,7 +2737,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
   // Input is guarunteed to be channels-last compatible
   at::Tensor grad_input = at::empty_like(input);
 
-  auto config = flexible_launch_configs(
+  auto config = get_adaptive_launch_config(
       reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
@@ -3266,7 +3237,7 @@ void batch_norm_elementwise(
   }
 }
 
-std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_out_kernel(
+std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
     const Tensor& self,
     const c10::optional<Tensor>& weight_opt,
     const c10::optional<Tensor>& bias_opt,

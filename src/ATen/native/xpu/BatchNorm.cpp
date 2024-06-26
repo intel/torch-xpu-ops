@@ -7,7 +7,7 @@
 
 namespace at {
 
-::std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_stats(
+std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_stats(
     const Tensor& input,
     double eps) {
   return native::xpu::batch_norm_stats_kernel(input, eps);
@@ -15,8 +15,8 @@ namespace at {
 
 Tensor XPUNativeFunctions::batch_norm_elemt(
     const Tensor& input,
-    const ::std::optional<Tensor>& weight,
-    const ::std::optional<Tensor>& bias,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
     const Tensor& mean,
     const Tensor& invstd,
     double eps) {
@@ -28,8 +28,8 @@ Tensor XPUNativeFunctions::batch_norm_elemt(
 
 Tensor& XPUNativeFunctions::batch_norm_elemt_out(
     const Tensor& input,
-    const ::std::optional<Tensor>& weight,
-    const ::std::optional<Tensor>& bias,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
     const Tensor& mean,
     const Tensor& invstd,
     double eps,
@@ -38,13 +38,13 @@ Tensor& XPUNativeFunctions::batch_norm_elemt_out(
   return out;
 }
 
-::std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
+std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
     batch_norm_backward_reduce(
         const Tensor& grad_out,
         const Tensor& input,
         const Tensor& mean,
         const Tensor& invstd,
-        const ::std::optional<Tensor>& weight,
+        const std::optional<Tensor>& weight,
         bool input_g,
         bool weight_g,
         bool bias_g) {
@@ -57,7 +57,7 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
-    const ::std::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     const Tensor& sum_dy,
     const Tensor& sum_dy_xmu,
     const Tensor& count) {
@@ -65,21 +65,21 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count);
 }
 
-::std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_update_stats(
+std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_update_stats(
     const Tensor& input,
-    const ::std::optional<Tensor>& running_mean,
-    const ::std::optional<Tensor>& running_var,
+    const std::optional<Tensor>& running_mean,
+    const std::optional<Tensor>& running_var,
     double momentum) {
   return native::xpu::batch_norm_update_stats_kernel(
       input, running_mean, running_var, momentum);
 }
 
-::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_batch_norm(
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_batch_norm(
     const Tensor& input,
-    const ::std::optional<Tensor>& weight,
-    const ::std::optional<Tensor>& bias,
-    const ::std::optional<Tensor>& running_mean,
-    const ::std::optional<Tensor>& running_var,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
+    const std::optional<Tensor>& running_mean,
+    const std::optional<Tensor>& running_var,
     bool training,
     double momentum,
     double eps) {
@@ -90,7 +90,7 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
   auto save_mean = at::empty({n_input}, options);
   auto save_invstd = at::empty({n_input}, options);
 
-  native::xpu::batch_norm_out_kernel(
+  native::xpu::batch_norm_kernel(
       input,
       weight,
       bias,
@@ -106,20 +106,19 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
   return std::make_tuple(output, save_mean, save_invstd);
 }
 
-::std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
-    native_batch_norm_out(
-        const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
-        const ::std::optional<Tensor>& running_mean,
-        const ::std::optional<Tensor>& running_var,
-        bool training,
-        double momentum,
-        double eps,
-        Tensor& out,
-        Tensor& save_mean,
-        Tensor& save_invstd) {
-  return native::xpu::batch_norm_out_kernel(
+std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::native_batch_norm_out(
+    const Tensor& input,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
+    const std::optional<Tensor>& running_mean,
+    const std::optional<Tensor>& running_var,
+    bool training,
+    double momentum,
+    double eps,
+    Tensor& out,
+    Tensor& save_mean,
+    Tensor& save_invstd) {
+  return native::xpu::batch_norm_kernel(
       input,
       weight,
       bias,
@@ -133,18 +132,18 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       save_invstd);
 }
 
-::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
     native_batch_norm_backward(
         const Tensor& grad_out,
         const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& running_mean,
-        const ::std::optional<Tensor>& running_var,
-        const ::std::optional<Tensor>& save_mean,
-        const ::std::optional<Tensor>& save_invstd,
+        const std::optional<Tensor>& weight,
+        const std::optional<Tensor>& running_mean,
+        const std::optional<Tensor>& running_var,
+        const std::optional<Tensor>& save_mean,
+        const std::optional<Tensor>& save_invstd,
         bool train,
         double eps,
-        ::std::array<bool, 3> output_mask) {
+        std::array<bool, 3> output_mask) {
   return native::xpu::batch_norm_backward_kernel(
       grad_out,
       input,
@@ -158,25 +157,24 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       output_mask);
 }
 
-::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
-    _native_batch_norm_legit(
-        const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
-        Tensor& running_mean,
-        Tensor& running_var,
-        bool training,
-        double momentum,
-        double eps) {
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::_native_batch_norm_legit(
+    const Tensor& input,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
+    Tensor& running_mean,
+    Tensor& running_var,
+    bool training,
+    double momentum,
+    double eps) {
   return XPUNativeFunctions::native_batch_norm(
       input, weight, bias, running_mean, running_var, training, momentum, eps);
 }
 
-::std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
+std::tuple<Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
     _native_batch_norm_legit_out(
         const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
+        const std::optional<Tensor>& weight,
+        const std::optional<Tensor>& bias,
         Tensor& running_mean,
         Tensor& running_var,
         bool training,
@@ -199,23 +197,22 @@ Tensor XPUNativeFunctions::batch_norm_backward_elemt(
       save_invstd);
 }
 
-::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::
-    _native_batch_norm_legit(
-        const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
-        bool training,
-        double momentum,
-        double eps) {
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::_native_batch_norm_legit(
+    const Tensor& input,
+    const std::optional<Tensor>& weight,
+    const std::optional<Tensor>& bias,
+    bool training,
+    double momentum,
+    double eps) {
   return XPUNativeFunctions::native_batch_norm(
       input, weight, bias, Tensor(), Tensor(), training, momentum, eps);
 }
 
-::std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> XPUNativeFunctions::
+std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> XPUNativeFunctions::
     _native_batch_norm_legit_out(
         const at::Tensor& input,
-        const ::std::optional<at::Tensor>& weight,
-        const ::std::optional<at::Tensor>& bias,
+        const std::optional<at::Tensor>& weight,
+        const std::optional<at::Tensor>& bias,
         bool training,
         double momentum,
         double eps,
@@ -259,7 +256,7 @@ inline std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_with_update(
   auto save_mean = at::empty({n_input}, options);
   auto save_invstd = at::empty({n_input}, options);
 
-  native::xpu::batch_norm_out_kernel(
+  native::xpu::batch_norm_kernel(
       input,
       weight,
       bias,
@@ -293,7 +290,7 @@ inline std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> batch_norm_with_update_out
   const Tensor& weight = *weight_maybe_owned;
   const Tensor& bias = c10::value_or_else(bias_opt, [] { return Tensor(); });
 
-  std::tie(out, save_mean, save_var) = native::xpu::batch_norm_out_kernel(
+  std::tie(out, save_mean, save_var) = native::xpu::batch_norm_kernel(
       input,
       weight,
       bias,
@@ -310,11 +307,11 @@ inline std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> batch_norm_with_update_out
       out, save_mean, save_var, reserve);
 }
 
-::std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
+std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
     _batch_norm_with_update(
         const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
+        const std::optional<Tensor>& weight,
+        const std::optional<Tensor>& bias,
         Tensor& running_mean,
         Tensor& running_var,
         double momentum,
@@ -323,11 +320,11 @@ inline std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> batch_norm_with_update_out
       input, weight, bias, running_mean, running_var, momentum, eps);
 }
 
-::std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
+std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
     _batch_norm_with_update_out(
         const Tensor& input,
-        const ::std::optional<Tensor>& weight,
-        const ::std::optional<Tensor>& bias,
+        const std::optional<Tensor>& weight,
+        const std::optional<Tensor>& bias,
         Tensor& running_mean,
         Tensor& running_var,
         double momentum,

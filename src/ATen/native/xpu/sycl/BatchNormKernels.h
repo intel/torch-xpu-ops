@@ -44,7 +44,7 @@ std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
     const c10::optional<Tensor>& running_var_opt,
     double momentum);
 
-std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_out_kernel(
+std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
     const Tensor& self,
     const c10::optional<Tensor>& weight_opt,
     const c10::optional<Tensor>& bias_opt,

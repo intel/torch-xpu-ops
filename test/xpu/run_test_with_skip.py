@@ -42,7 +42,6 @@ skip_list = (
     "test_dtypes_jiterator_binary_return_by_ref_xpu",
     "test_dtypes_jiterator_binary_xpu",
     "test_dtypes_jiterator_unary_xpu",
-    "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",
     "test_dtypes_nn_functional_conv1d_xpu",
     "test_dtypes_nn_functional_conv2d_xpu",
     "test_dtypes_nn_functional_conv3d_xpu",
