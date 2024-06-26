@@ -10,18 +10,20 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct LeakyReluFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t a) const {
     opmath_t aop = static_cast<opmath_t>(a);
     return aop > opmath_t(0) ? aop : aop * negval_;
   }
   LeakyReluFunctor(opmath_t negval) : negval_(negval) {}
 
-  private:
-    scalar_t negval_;
+ private:
+  scalar_t negval_;
 };
 
 template <typename scalar_t>
 struct LeakyReluBackwardFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t a, scalar_t b) const {
     opmath_t aop = static_cast<opmath_t>(a);
     opmath_t bop = static_cast<opmath_t>(b);
@@ -29,8 +31,8 @@ struct LeakyReluBackwardFunctor {
   }
   LeakyReluBackwardFunctor(opmath_t negval) : negval_(negval) {}
 
-  private:
-    scalar_t negval_;
+ private:
+  scalar_t negval_;
 };
 
 void leaky_relu_kernel(TensorIteratorBase& iter, const Scalar& negval_) {
@@ -57,8 +59,7 @@ void leaky_relu_backward_kernel(
       [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
         auto negval = negval_.to<opmath_t>();
-        gpu_kernel(
-            iter, LeakyReluBackwardFunctor<scalar_t>(negval));
+        gpu_kernel(iter, LeakyReluBackwardFunctor<scalar_t>(negval));
       });
 }
 
