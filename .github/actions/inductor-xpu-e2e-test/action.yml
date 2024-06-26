@@ -148,7 +148,7 @@ runs:
       run: |
         cd ../pytorch
         rm -f inductor_log/summary_accuracy.csv
-        for var in $(find inductor_log/ -name "inductor_*.csv")
+        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do
           sed -i "s/$/,$(basename $var)/" $var
           cat $var >> inductor_log/summary_accuracy.csv
