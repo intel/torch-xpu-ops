@@ -1112,11 +1112,6 @@ skip_list = (
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
     "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
-    # AssertionError: Torch not compiled with CUDA enabled
-    "test_mha_native_args_nb_heads_8_bias_True_xpu",
-    "test_mha_native_args_nb_heads_8_bias_False_xpu",
-    "test_mha_native_args_nb_heads_1_bias_True_xpu",
-    "test_mha_native_args_nb_heads_1_bias_False_xpu",
 )
 res += launch_test("test_transformers_xpu.py", skip_list)
 
@@ -1646,6 +1641,7 @@ skip_list = (
     # AttributeError: module 'torch.xpu' has no attribute
     "test_graph_save_on_cpu_cuda",
     "test_checkpointing_without_reentrant_memory_savings",
+    "test_flops_and_mem",
     # CUDA hard-code
     "test_profiler_emit_nvtx_xpu",
     # Double and complex datatype matmul is not supported in oneDNN
@@ -1655,10 +1651,6 @@ skip_list = (
     "test_dataparallel_saved_tensors_hooks",
     # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
     "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
-    # PyTorch was compiled without CUDA support
-    "test_checkpointing_non_reentrant_autocast_gpu",
-    # Skip if without LAPACK
-    "test_lobpcg",
     # Skip device count < 2
     "test_backward_device_xpu",
     "test_inputbuffer_add_multidevice_xpu",
