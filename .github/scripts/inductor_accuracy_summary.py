@@ -6,7 +6,6 @@ from styleframe import StyleFrame, Styler, utils
 parser = argparse.ArgumentParser(description="Generate report")
 parser.add_argument('-s', '--suite', default='huggingface', choices=["torchbench", "huggingface", "timm_models"], type=str, help='model suite name')
 parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs='*', type=str, help='precision')
-#parser.add_argument('-t', '--target', type=str, help='target log files')
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 args = parser.parse_args()
@@ -34,36 +33,19 @@ def caculate_passrate(df, key_word):
     perc = int(percentage(passing, total, decimals=0))
     return f"{perc}%, {passing}/{total}"
 
-# def validate_csv_files(csv_file):
-#     df = pd.read_csv(csv_file,header=None)
-#     expected_header = ['dev', 'name', 'batch_size', 'accuracy', 'calls_captured','unique_graphs','graph_breaks','unique_graph_breaks']
-#     if df.iloc[0].tolist() == expected_header:
-#         print(f"{csv_file} Expected csv file")
-#         return True
-#     else:
-#         print(f"{csv_file} file no right header!!!")
-#         return False
-
 def get_acc_csv(precision, mode):
     target_path = 'inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_accuracy.csv'
-    #target_data = pd.DataFrame()
-    #if validate_csv_files(target_path):
     target_ori_data = pd.read_csv(target_path)
     target_data = target_ori_data.copy()
     target_data.sort_values(by=['name'])
-    # else:
-    #    print("file skip")
     
     if args.reference is not None:
         reference_file_path = args.reference + '/inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_accuracy.csv'
-        # if validate_csv_files(reference_file_path):
         reference_ori_data = pd.read_csv(reference_file_path)
         reference_data = reference_ori_data.copy()
         reference_data.sort_values(by=['name'])
         data = pd.merge(target_data,reference_data,on=['name'],how= 'outer')
         return data
-        # else:
-        #     print("file skip")
     else:
         return target_data
 
