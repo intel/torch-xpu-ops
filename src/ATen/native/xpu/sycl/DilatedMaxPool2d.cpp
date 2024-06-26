@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/ATen.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 
@@ -13,9 +14,7 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 static inline int p_start(
     int size,
@@ -32,6 +31,122 @@ static inline int p_end(int size, int pad, int pooled_size, int stride) {
   return std::min((size + pad) / stride + 1, pooled_size);
 }
 
+template <typename scalar_t, bool is_channels_last>
+struct MaxPool2dKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto desc = cfg_.get_item_desc(item);
+
+    do {
+      if (desc.glb_problem < cfg_.problem_) {
+        int outputIndex = desc.glb_problem;
+        int batch = outputIndex / stride_;
+        int plane, outputH, outputW;
+        int64_t load_offset, store_offset;
+        if constexpr (is_channels_last) {
+          plane = outputIndex % numPlane_;
+          outputH = outputIndex / numPlane_ / outputSizeW_ % outputSizeH_;
+          outputW = outputIndex / numPlane_ % outputSizeW_;
+          store_offset = batch * outputSizeH_ * outputSizeW_ * numPlane_ +
+              plane + outputH * outputSizeW_ * numPlane_ + outputW * numPlane_;
+        } else {
+          plane = (outputIndex / outputSizeH_ / outputSizeW_) % numPlane_;
+          outputH = outputIndex / outputSizeW_ % outputSizeH_;
+          outputW = outputIndex % outputSizeW_;
+          store_offset = batch * numPlane_ * outputSizeH_ * outputSizeW_ +
+              plane * outputSizeH_ * outputSizeW_ + outputH * outputSizeW_ +
+              outputW;
+        }
+        scalar_t maxVal = std::numeric_limits<scalar_t>::lowest();
+        int maxIndex = -1;
+        int StartH = outputH * dH_ - padH_;
+        int StartW = outputW * dW_ - padW_;
+        int EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
+        int EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
+        while (StartH < 0)
+          StartH += dilationH_;
+        while (StartW < 0)
+          StartW += dilationW_;
+#pragma unroll
+        for (int h = StartH; h < EndH; h += dilationH_) {
+#pragma unroll
+          for (int w = StartW; w < EndW; w += dilationW_) {
+            if constexpr (is_channels_last) {
+              load_offset = batch * inputSizeH_ * inputSizeW_ * numPlane_ +
+                  plane + h * inputSizeW_ * numPlane_ + w * numPlane_;
+            } else {
+              load_offset = batch * numPlane_ * inputSizeH_ * inputSizeW_ +
+                  plane * inputSizeH_ * inputSizeW_ + h * inputSizeW_ + w;
+            }
+            scalar_t val = input_[load_offset];
+            if (val > maxVal) {
+              maxIndex = h * inputSizeW_ + w;
+              maxVal = val;
+            }
+          }
+        }
+        indices_[store_offset] = maxIndex;
+        output_[store_offset] = maxVal;
+      }
+    } while (cfg_.next(item, desc));
+  }
+  MaxPool2dKernelFunctor(
+      scalar_t* output,
+      int64_t* indices,
+      scalar_t* input,
+      int numPlane,
+      int inputSizeH,
+      int inputSizeW,
+      int outputSizeH,
+      int outputSizeW,
+      int kH,
+      int kW,
+      int dH,
+      int dW,
+      int padH,
+      int padW,
+      int dilationH,
+      int dilationW,
+      int stride,
+      BatchKernelConfig cfg)
+      : output_(output),
+        indices_(indices),
+        input_(input),
+        numPlane_(numPlane),
+        inputSizeH_(inputSizeH),
+        inputSizeW_(inputSizeW),
+        outputSizeH_(outputSizeH),
+        outputSizeW_(outputSizeW),
+        kH_(kH),
+        kW_(kW),
+        dH_(dH),
+        dW_(dW),
+        padH_(padH),
+        padW_(padW),
+        dilationH_(dilationH),
+        dilationW_(dilationW),
+        stride_(stride),
+        cfg_(cfg) {}
+
+ private:
+  scalar_t* output_;
+  int64_t* indices_;
+  scalar_t* input_;
+  int numPlane_;
+  int inputSizeH_;
+  int inputSizeW_;
+  int outputSizeH_;
+  int outputSizeW_;
+  int kH_;
+  int kW_;
+  int dH_;
+  int dW_;
+  int padH_;
+  int padW_;
+  int dilationH_;
+  int dilationW_;
+  int stride_;
+  BatchKernelConfig cfg_;
+};
 template <typename scalar_t, bool is_channels_last>
 struct MaxPool2dBackwardOutKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
@@ -231,6 +346,52 @@ struct MaxPool2dBackwardOutDeterministicKernelFunctor {
 };
 
 template <typename scalar_t, bool is_channels_last>
+void max_pool2d_out_frame(
+    scalar_t* output,
+    int64_t* indices,
+    scalar_t* input,
+    int numBatch,
+    int numPlane,
+    int inputSizeH,
+    int inputSizeW,
+    int outputSizeH,
+    int outputSizeW,
+    int kH,
+    int kW,
+    int dH,
+    int dW,
+    int padH,
+    int padW,
+    int dilationH,
+    int dilationW) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
+  int stride = numPlane * outputSizeH * outputSizeW;
+  BatchKernelConfig cfg = {
+      1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+  auto caller = MaxPool2dKernelFunctor<scalar_t, is_channels_last>(
+      output,
+      indices,
+      input,
+      numPlane,
+      inputSizeH,
+      inputSizeW,
+      outputSizeH,
+      outputSizeW,
+      kH,
+      kW,
+      dH,
+      dW,
+      padH,
+      padW,
+      dilationH,
+      dilationW,
+      stride,
+      cfg);
+  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, caller);
+}
+
+template <typename scalar_t, bool is_channels_last>
 void max_pool2d_backward_out_frame(
     scalar_t* gradInput,
     scalar_t* gradOutput,
@@ -309,8 +470,115 @@ void max_pool2d_backward_out_frame(
     sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, caller);
   }
 }
+void max_pool2d_with_indices_kernel(
+    const Tensor& input_,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    IntArrayRef dilation,
+    bool ceil_mode,
+    Tensor& output,
+    Tensor& indices) {
+  NoNamesGuard guard;
 
-Tensor& max_pool2d_with_indices_backward_out_kernel(
+  TensorArg output_arg{output, "output", 1};
+  TensorArg indices_arg{indices, "indices", 2};
+  TensorArg input_arg{input_, "input_", 3};
+
+  checkAllSameGPU(__func__, {output_arg, indices_arg, input_arg});
+  if (output.numel() == 0) {
+    return;
+  }
+  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
+  const int kW = kernel_size.size() == 1
+      ? kH
+      : safe_downcast<int, int64_t>(kernel_size[1]);
+
+  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
+  const int dW = stride.empty() ? kW
+      : stride.size() == 1      ? dH
+                                : safe_downcast<int, int64_t>(stride[1]);
+
+  const int padH = safe_downcast<int, int64_t>(padding[0]);
+  const int padW =
+      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
+
+  const int dilationH = safe_downcast<int, int64_t>(dilation[0]);
+  const int dilationW = dilation.size() == 1
+      ? dilationH
+      : safe_downcast<int, int64_t>(dilation[1]);
+
+  const auto memory_format = input_.suggest_memory_format();
+
+  const int64_t nbatch = input_.ndimension() == 4 ? input_.size(-4) : 1;
+  const int64_t nInputPlane = input_.size(-3);
+  const int64_t inputHeight = input_.size(-2);
+  const int64_t inputWidth = input_.size(-1);
+
+  const int64_t outputHeight = output.size(-2);
+  const int64_t outputWidth = output.size(-1);
+
+  Tensor input = input_.contiguous(memory_format);
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
+        using accscalar_t = acc_type<scalar_t, true>;
+
+        scalar_t* output_data = output.mutable_data_ptr<scalar_t>();
+        const scalar_t* input_data = input.const_data_ptr<scalar_t>();
+        int64_t* indices_data = indices.mutable_data_ptr<int64_t>();
+
+        switch (memory_format) {
+          case MemoryFormat::ChannelsLast: {
+            max_pool2d_out_frame<scalar_t, true>(
+                output.data_ptr<scalar_t>(),
+                indices.data_ptr<int64_t>(),
+                input_.data_ptr<scalar_t>(),
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth,
+                kH,
+                kW,
+                dH,
+                dW,
+                padH,
+                padW,
+                dilationH,
+                dilationW);
+            break;
+          }
+          case MemoryFormat::Contiguous: {
+            max_pool2d_out_frame<scalar_t, false>(
+                output.data_ptr<scalar_t>(),
+                indices.data_ptr<int64_t>(),
+                input_.data_ptr<scalar_t>(),
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth,
+                kH,
+                kW,
+                dH,
+                dW,
+                padH,
+                padW,
+                dilationH,
+                dilationW);
+            break;
+          }
+          default:
+            TORCH_CHECK(
+                false,
+                "Unsupported memory format. Supports only ChannelsLast, Contiguous");
+        }
+      });
+}
+
+Tensor& max_pool2d_with_indices_backward_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
@@ -356,24 +624,6 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
 
   auto memory_format = input.suggest_memory_format();
-  max_pool2d_backward_shape_check(
-      input,
-      gradOutput,
-      indices,
-      kH,
-      kW,
-      dH,
-      dW,
-      padH,
-      padW,
-      dilationH,
-      dilationW,
-      nInputPlane,
-      inputHeight,
-      inputWidth,
-      outputHeight,
-      outputWidth,
-      memory_format);
 
   auto gradOutput_ = gradOutput.contiguous(memory_format);
   gradInput.zero_();
@@ -381,7 +631,7 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       gradOutput.scalar_type(),
-      "max_pool2d_backward_out_frame",
+      "max_pool2d_backward_xpu",
       [&] {
         switch (input.suggest_memory_format()) {
           case at::MemoryFormat::ChannelsLast:
@@ -433,9 +683,7 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
   return gradInput;
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
 
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop

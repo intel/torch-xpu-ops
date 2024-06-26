@@ -100,6 +100,7 @@ _xpu_computation_op_list = [
     "softmax",
     "scatter",
     "gather",
+    "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
     "nn.functional.embedding",
     "nn.functional.unfold",
