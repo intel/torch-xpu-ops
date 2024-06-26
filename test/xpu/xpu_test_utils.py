@@ -397,6 +397,7 @@ class XPUPatchForImport:
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_available = cuda.is_available
+        self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -443,6 +444,7 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         cuda.is_available = lambda: True
+        cuda.is_bf16_supported = lambda: True
 
         sys.path.extend(self.test_package)
         return self
@@ -465,6 +467,7 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
         cuda.is_available = self.cuda_is_available
+        cuda.is_bf16_supported = self.cuda_is_bf16_supported
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
