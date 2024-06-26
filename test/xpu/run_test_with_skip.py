@@ -1468,12 +1468,6 @@ skip_list = (
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: AssertionError not raised
-    "test_batchnorm_simple_average_mixed_xpu_bfloat16",
-    "test_batchnorm_simple_average_mixed_xpu_float16",
-    "test_batchnorm_simple_average_xpu_float32",
-    "test_batchnorm_update_stats_xpu",
-    "test_batchnorm_simple_average_xpu_bfloat16",
     # AssertionError: False is not true
     "test_device_mask_xpu",
     "test_overwrite_module_params_on_conversion_cpu_device_xpu",

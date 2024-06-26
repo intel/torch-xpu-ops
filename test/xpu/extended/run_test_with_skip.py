@@ -88,6 +88,7 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+    "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
 )
 
 
