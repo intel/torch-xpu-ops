@@ -373,6 +373,22 @@ supported:
   - _native_batch_norm_legit.no_stats_out
   - _batch_norm_with_update
   - _batch_norm_with_update.out
+  - _upsample_nearest_exact1d
+  - _upsample_nearest_exact1d.out
+  - upsample_nearest1d
+  - upsample_nearest1d.out
+  - _upsample_nearest_exact1d_backward
+  - _upsample_nearest_exact1d_backward.grad_input
+  - upsample_nearest1d_backward
+  - upsample_nearest1d_backward.grad_input
+  - upsample_nearest2d
+  - upsample_nearest2d.out
+  - upsample_nearest2d_backward
+  - upsample_nearest2d_backward.grad_input
+  - _upsample_nearest_exact2d
+  - _upsample_nearest_exact2d.out
+  - _upsample_nearest_exact2d_backward
+  - _upsample_nearest_exact2d_backward.grad_input
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -407,3 +423,5 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - _amp_foreach_non_finite_check_and_unscale_
+  - _amp_update_scale_
