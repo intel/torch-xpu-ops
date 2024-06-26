@@ -56,6 +56,10 @@ on:
         type: string
         default: 'true'
         description: True will running UT test for Ondemand test, false will not.
+      expected_fail_num:
+        required: false
+        type: number
+        description: for UT result check
 
 
 permissions: read-all

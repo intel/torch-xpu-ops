@@ -87,6 +87,7 @@ runs:
         done
 
     - name: UT Test Results Check (${{ inputs.ut_suite }})
+      if: ${{ inputs.expected_fail_num }}
       shell: bash
       run: |
         # check param
