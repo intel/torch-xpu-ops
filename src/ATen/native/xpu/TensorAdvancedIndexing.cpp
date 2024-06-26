@@ -40,6 +40,11 @@ TORCH_IMPL_FUNC(index_add_xpu_out)
   //   index_func_meta_impl(result, self, dim, index, source, "index_add");
   native::xpu::index_add_kernel(self, dim, index, source, alpha, result);
 }
+
+// REGISTER_XPU_DISPATCH(index_put_stub, xpu::index_put_kernel);
+// REGISTER_XPU_DISPATCH(
+//     index_put_with_sort_stub,
+//     xpu::index_put_deterministic_kernel);
 } // namespace native
 
 void index_func_meta_impl(

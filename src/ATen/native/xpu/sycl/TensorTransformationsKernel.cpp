@@ -123,7 +123,10 @@ void flip_kernel_impl(TensorIterator& iter) {
   launch_kernel(iter.numel(), loop);
 }
 
-void flip_kernel(TensorIterator& iter) {
+void flip_kernel(TensorIterator& iter, bool quantized) {
+  if (quantized) {
+    TORCH_CHECK(false, "XPU current does not flip for quantized tensor");
+  }
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       at::ScalarType::Half,
       at::ScalarType::Bool,

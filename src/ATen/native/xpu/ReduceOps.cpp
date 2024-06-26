@@ -146,8 +146,8 @@ namespace native {
 REGISTER_XPU_DISPATCH(sum_stub, xpu::sum_kernel);
 REGISTER_XPU_DISPATCH(mean_stub, xpu::mean_kernel);
 REGISTER_XPU_DISPATCH(argmax_stub, xpu::argmax_kernel);
-// REGISTER_XPU_DISPATCH(argmin_stub, xpu::argmin_kernel);
-// REGISTER_XPU_DISPATCH(cumsum_stub, xpu::cumsum_kernel);
+REGISTER_XPU_DISPATCH(and_stub, xpu::and_kernel);
+REGISTER_XPU_DISPATCH(or_stub, xpu::or_kernel);
 
 } // namespace native
 

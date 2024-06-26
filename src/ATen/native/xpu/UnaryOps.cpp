@@ -26,21 +26,22 @@
 namespace at {
 
 namespace native {
-REGISTER_XPU_DISPATCH(abs_stub, native::xpu::abs_kernel);
-REGISTER_XPU_DISPATCH(sin_stub, native::xpu::sin_kernel);
-REGISTER_XPU_DISPATCH(cos_stub, native::xpu::cos_kernel);
-REGISTER_XPU_DISPATCH(log_stub, native::xpu::log_kernel);
-REGISTER_XPU_DISPATCH(sqrt_stub, native::xpu::sqrt_kernel);
-REGISTER_XPU_DISPATCH(rsqrt_stub, native::xpu::rsqrt_kernel);
-REGISTER_XPU_DISPATCH(tanh_stub, native::xpu::tanh_kernel);
-REGISTER_XPU_DISPATCH(neg_stub, native::xpu::neg_kernel);
-REGISTER_XPU_DISPATCH(reciprocal_stub, native::xpu::reciprocal_kernel);
-REGISTER_XPU_DISPATCH(bitwise_not_stub, native::xpu::bitwise_not_kernel);
-REGISTER_XPU_DISPATCH(exp_stub, native::xpu::exp_kernel);
-REGISTER_XPU_DISPATCH(sigmoid_stub, native::xpu::sigmoid_kernel);
-REGISTER_XPU_DISPATCH(
-    sgn_stub,
-    native::xpu::sgn_kernel); // how to handle comple
+REGISTER_XPU_DISPATCH(abs_stub, xpu::abs_kernel);
+REGISTER_XPU_DISPATCH(sin_stub, xpu::sin_kernel);
+REGISTER_XPU_DISPATCH(cos_stub, xpu::cos_kernel);
+REGISTER_XPU_DISPATCH(log_stub, xpu::log_kernel);
+REGISTER_XPU_DISPATCH(sqrt_stub, xpu::sqrt_kernel);
+REGISTER_XPU_DISPATCH(rsqrt_stub, xpu::rsqrt_kernel);
+REGISTER_XPU_DISPATCH(tanh_stub, xpu::tanh_kernel);
+REGISTER_XPU_DISPATCH(neg_stub, xpu::neg_kernel);
+REGISTER_XPU_DISPATCH(reciprocal_stub, xpu::reciprocal_kernel);
+REGISTER_XPU_DISPATCH(bitwise_not_stub, xpu::bitwise_not_kernel);
+REGISTER_XPU_DISPATCH(exp_stub, xpu::exp_kernel);
+REGISTER_XPU_DISPATCH(sigmoid_stub, xpu::sigmoid_kernel);
+REGISTER_XPU_DISPATCH(sgn_stub, xpu::sgn_kernel);
+REGISTER_XPU_DISPATCH(sign_stub, xpu::sign_kernel);
+REGISTER_XPU_DISPATCH(acos_stub, xpu::acos_kernel);
+REGISTER_XPU_DISPATCH(acosh_stub, xpu::acosh_kernel);
 } // namespace native
 
 template <typename Stub>

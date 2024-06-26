@@ -11,15 +11,13 @@
 namespace at {
 
 namespace native {
-// REGISTER_XPU_DISPATCH(arange_stub, xpu::arange_kernel);
+Tensor& arange_out(
+    const Scalar& start,
+    const Scalar& end,
+    const Scalar& step,
+    Tensor& out) {
+  return xpu::arange_kernel(start, end, step, out);
 }
-
-// Tensor& XPUNativeFunctions::arange_out(
-//     const Scalar& start,
-//     const Scalar& end,
-//     const Scalar& step,
-//     Tensor& out) {
-//   return at::native::xpu::arange_kernel(start, end, step, out);
-// }
+} // namespace native
 
 } // namespace at

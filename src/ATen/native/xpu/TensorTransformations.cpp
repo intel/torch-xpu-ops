@@ -9,6 +9,6 @@
 
 namespace at::native {
 
-// REGISTER_XPU_DISPATCH(flip_stub, xpu::flip_kernel);
+REGISTER_XPU_DISPATCH(flip_stub, xpu::flip_kernel);
 
 } // namespace at::native
