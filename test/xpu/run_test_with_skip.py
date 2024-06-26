@@ -929,7 +929,7 @@ skip_list = (
     "test_cow_input_cdist_xpu_float32",
 
     # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16, torch.bfloat16}.
-    "TestCommonXPU.test_dtypes_cdist_xpu",
+    "test_dtypes_cdist_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
