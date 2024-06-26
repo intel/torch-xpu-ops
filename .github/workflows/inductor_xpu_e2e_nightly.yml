@@ -306,12 +306,12 @@ jobs:
           printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
           echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ inputs.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_scope="suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }};"
+            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.triton }}" != "" ];then
-              test_scope+=" triton=${{ inputs.triton }};"
+              test_scope+="; triton=${{ inputs.triton }}"
             fi
             if [ "${{ inputs.model }}" != "" ];then
-              test_scope+=" model=${{ inputs.model }};"
+              test_scope+="; model=${{ inputs.model }}"
             fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
