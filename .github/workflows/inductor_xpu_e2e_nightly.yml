@@ -326,7 +326,7 @@ jobs:
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: torch_xpu
-          expected_fail_num: 2000
+          expected_fail_num: 0
       - name: OnDemand UT Test (${{ inputs.ut_suite }})
         if: ${{ inputs.ut_suite }}
         uses: ./.github/actions/inductor-xpu-ut-test
