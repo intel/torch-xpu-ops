@@ -1,7 +1,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl//LaunchUtils.h>
-#include <ATen/native/xpu/sycl//UpSampleNearest2dKernels.h>
+#include <ATen/native/xpu/sycl/LaunchUtils.h>
+#include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>

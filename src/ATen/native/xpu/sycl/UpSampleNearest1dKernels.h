@@ -1,5 +1,5 @@
 #include <ATen/ATen.h>
-#include <ATen/native/xpu/sycl//UpSample.h>
+#include <ATen/native/xpu/sycl/UpSample.h>
 namespace at::native {
 namespace xpu {
 

@@ -945,6 +945,12 @@ skip_list = (
     "test_conj_view_to_sparse_xpu_complex64",
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
+
+    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
+    # https://github.com/intel/torch-xpu-ops/issues/468
+    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
