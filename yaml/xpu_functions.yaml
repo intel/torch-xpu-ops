@@ -388,3 +388,4 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - randperm.generator_out
