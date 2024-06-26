@@ -1,6 +1,125 @@
 #pragma once
+#include <ATen/core/TensorAccessor.h>
+#include <ATen/native/xpu/sycl/Atomics.h>
+
+#include <c10/util/ArrayRef.h>
+#include <c10/util/Optional.h>
+#include <c10/util/OptionalArrayRef.h>
+#include <c10/util/SmallVector.h>
+
+#include <math.h>
 
 namespace at::native::xpu {
+
+inline size_t idx_cl(
+    const size_t n,
+    const size_t h,
+    const size_t w,
+    const size_t c,
+    const size_t height,
+    const size_t width,
+    const size_t channel) {
+  return ((n * height + h) * width + w) * channel + c;
+}
+
+template <typename scalar_t>
+inline scalar_t min(scalar_t a, scalar_t b) {
+  return a < b ? a : b;
+}
+
+template <typename scalar_t>
+inline scalar_t max(scalar_t a, scalar_t b) {
+  return a > b ? a : b;
+}
+
+template <typename accscalar_t>
+static inline accscalar_t compute_scales_value(
+    const c10::optional<double> scale,
+    int64_t src_size,
+    int64_t dst_size) {
+  return (scale.has_value() && scale.value() > 0.)
+      ? (accscalar_t)(1.0 / scale.value())
+      : (accscalar_t)src_size / dst_size;
+}
+
+template <typename accscalar_t>
+static inline accscalar_t compute_scales_value_backwards(
+    const c10::optional<double> scale,
+    int64_t src_size,
+    int64_t dst_size) {
+  return (scale.has_value() && scale.value() > 0.)
+      ? (accscalar_t)scale.value()
+      : (accscalar_t)src_size / dst_size;
+}
+
+template <typename accscalar_t>
+static inline accscalar_t area_pixel_compute_scale(
+    int input_size,
+    int output_size,
+    bool align_corners,
+    const c10::optional<double> scale) {
+  if (align_corners) {
+    if (output_size > 1) {
+      return (accscalar_t)(input_size - 1) / (output_size - 1);
+    } else {
+      return static_cast<accscalar_t>(0);
+    }
+  } else {
+    return compute_scales_value<accscalar_t>(scale, input_size, output_size);
+  }
+}
+
+template <typename accscalar_t>
+static inline accscalar_t area_pixel_compute_source_index(
+    accscalar_t scale,
+    int dst_index,
+    bool align_corners,
+    bool cubic) {
+  if (align_corners) {
+    return scale * dst_index;
+  } else {
+    accscalar_t src_idx = scale * (dst_index + static_cast<accscalar_t>(0.5)) -
+        static_cast<accscalar_t>(0.5);
+
+    return (!cubic && src_idx < static_cast<accscalar_t>(0))
+        ? static_cast<accscalar_t>(0)
+        : src_idx;
+  }
+}
+
+struct NearestIndexOp {
+  int operator()(const float scale, int dst_index, int input_size) const {
+    const int src_index =
+        min(static_cast<int>(floorf((dst_index)*scale)), input_size - 1);
+    return src_index;
+  }
+};
+
+struct NearestExactIndexOp {
+  int operator()(const float scale, int dst_index, int input_size) const {
+    const int src_index = min(
+        static_cast<int>(floorf((dst_index + static_cast<float>(0.5)) * scale)),
+        input_size - 1);
+    return src_index;
+  }
+};
+
+struct NearestBwIndexOp {
+  int operator()(const float scale, int dst_index, int output_size) const {
+    const int src_index =
+        min(static_cast<int>(ceilf(dst_index * scale)), output_size);
+    return src_index;
+  }
+};
+
+struct NearestExactBwIndexOp {
+  int operator()(const float scale, int dst_index, int output_size) const {
+    const int src_index = min(
+        static_cast<int>(ceilf(dst_index * scale - static_cast<float>(0.5))),
+        output_size);
+    return src_index;
+  }
+};
 
 template <typename scalar_t>
 static inline scalar_t cubic_convolution1(scalar_t x, scalar_t A) {
