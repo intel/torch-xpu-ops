@@ -8,7 +8,7 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
-with XPUPatchForImport(False):     
+with XPUPatchForImport(False):
     from test_view_ops import TestViewOps, TestOldViewOps
     def is_view_of(self, base, other):
         if (
@@ -18,7 +18,7 @@ with XPUPatchForImport(False):
             or base.device != other.device
         ):
             return False
-    
+
         # Note: only validates storage on native device types
         # because some accelerators, like XLA, do not expose storage
         if base.device.type == "cpu" or base.device.type == "xpu":
@@ -29,8 +29,8 @@ with XPUPatchForImport(False):
     TestViewOps.is_view_of = is_view_of
 
 
-instantiate_device_type_tests(TestViewOps, globals(), include_lazy=True, only_for="xpu")
-instantiate_device_type_tests(TestOldViewOps, globals(), only_for="xpu")
+instantiate_device_type_tests(TestViewOps, globals(), include_lazy=True, only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestOldViewOps, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

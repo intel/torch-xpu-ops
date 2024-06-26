@@ -16,9 +16,6 @@ supported:
   - sub.Tensor
   - sub_.Tensor
   - sub.out
-  - sub.Scalar
-  - sub_.Scalar
-  - sub.Scalar_out
   - mul.Tensor
   - mul_.Tensor
   - mul.out
@@ -35,23 +32,13 @@ supported:
   - div_.Tensor_mode
   - div.out_mode
   - rsub.Tensor
-  - rsub.Tensor_out
-  - rsub.Scalar
-  - rsub.Scalar_out
   - remainder.Tensor
   - remainder_.Tensor
   - remainder.Tensor_out
-  - remainder.Scalar
-  - remainder_.Scalar
-  - remainder.Scalar_out
   - remainder.Scalar_Tensor
-  - remainder.Scalar_Tensor_out
   - fmod.Tensor
   - fmod_.Tensor
   - fmod.Tensor_out
-  - fmod.Scalar
-  - fmod_.Scalar
-  - fmod.Scalar_out
   - tanh_backward
   - tanh_backward.grad_input
   - eq.Scalar
@@ -120,6 +107,20 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
+  - hardtanh
+  - hardtanh.out
+  - hardtanh_
+  - hardtanh_backward.grad_input
+  - hardtanh_backward
+  - hardswish
+  - hardswish.out
+  - hardswish_
+  - hardswish_backward
   - arange.start_out
   - abs
   - abs_
@@ -133,6 +134,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -194,6 +198,7 @@ supported:
   - set_.source_Tensor
   - set_
   - unfold
+  - unfold_backward
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
   # - _copy_from  # hand-written registration
@@ -231,7 +236,6 @@ supported:
   - min
   - min.unary_out
   - min.dim_min
-  - sum.out
   - sum.dim_IntList
   - sum.IntList_out
   - mean.out
@@ -248,6 +252,11 @@ supported:
   - any.dims_out
   - any
   - any.all_out
+  - amax
+  - amax.out
+  - amin
+  - amin.out
+  - argmax
   - argmax.out
   - _local_scalar_dense
   - max_pool2d_with_indices_backward
@@ -259,6 +268,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
@@ -320,6 +330,13 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
@@ -344,6 +361,23 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _upsample_nearest_exact1d
+  - _upsample_nearest_exact1d.out
+  - upsample_nearest1d
+  - upsample_nearest1d.out
+  - _upsample_nearest_exact1d_backward
+  - _upsample_nearest_exact1d_backward.grad_input
+  - upsample_nearest1d_backward
+  - upsample_nearest1d_backward.grad_input
+  - upsample_nearest2d
+  - upsample_nearest2d.out
+  - upsample_nearest2d_backward
+  - upsample_nearest2d_backward.grad_input
+  - _upsample_nearest_exact2d
+  - _upsample_nearest_exact2d.out
+  - _upsample_nearest_exact2d_backward
+  - _upsample_nearest_exact2d_backward.grad_input
+  - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
   - sgn
@@ -351,3 +385,31 @@ supported:
   - sgn_
   - _pin_memory
   - is_pinned
+  - native_group_norm
+  - native_group_norm_backward
+  - elu
+  - elu.out
+  - elu_
+  - elu_backward
+  - elu_backward.grad_input
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
+  - addcmul.out
+  - addcmul
+  - addcmul_
+  - _amp_foreach_non_finite_check_and_unscale_
+  - _amp_update_scale_
