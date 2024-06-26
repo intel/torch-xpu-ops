@@ -1535,6 +1535,7 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float32",
     # AssertionError: False is not true
     "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
+    "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
     # NotImplementedError: Could not run 'aten::batch_norm_stats' with arguments from the 'CPU' backend.
     "test_sync_batchnorm_accuracy_cuda",
     # NotImplementedError: Could not run 'aten::batch_norm_backward_elemt' with arguments from the 'CPU' backend.
