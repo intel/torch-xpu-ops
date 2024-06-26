@@ -90,7 +90,7 @@ Tensor cdist_impl(
     result = dist.view_symint(output_shape);
   } else {
     result = at::empty_symint(output_shape, x1.options());
-    native::xpu::cdist_kernel_impl(result, x1_expanded, x2_expanded, p);
+    native::xpu::cdist_kernel(result, x1_expanded, x2_expanded, p);
   }
   return result;
 }

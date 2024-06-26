@@ -1,9 +1,3 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <comm/SYCLContext.h>
@@ -119,7 +113,9 @@ struct DistsInf {
 };
 
 template <int SG_SIZE, typename scalar_t, typename F, typename nd_item>
-scalar_t subgroup_reduce_agg_impl(nd_item item, scalar_t value) {
+scalar_t subgroup_reduce_agg_without_broadcast_impl(
+    nd_item item,
+    scalar_t value) {
   const auto sg = item.get_sub_group();
 
 #pragma unroll
@@ -130,20 +126,30 @@ scalar_t subgroup_reduce_agg_impl(nd_item item, scalar_t value) {
 }
 
 template <typename scalar_t, typename F, typename nd_item>
-scalar_t subgroup_reduce_agg(nd_item item, scalar_t value, const int sg_size) {
+scalar_t subgroup_reduce_agg_without_broadcast(
+    nd_item item,
+    scalar_t value,
+    const int sg_size) {
   scalar_t ret;
   switch (sg_size) {
     case 8:
-      ret = subgroup_reduce_agg_impl<8, scalar_t, F, nd_item>(item, value);
+      ret = subgroup_reduce_agg_without_broadcast_impl<8, scalar_t, F, nd_item>(
+          item, value);
       break;
     case 16:
-      ret = subgroup_reduce_agg_impl<16, scalar_t, F, nd_item>(item, value);
+      ret =
+          subgroup_reduce_agg_without_broadcast_impl<16, scalar_t, F, nd_item>(
+              item, value);
       break;
     case 32:
-      ret = subgroup_reduce_agg_impl<32, scalar_t, F, nd_item>(item, value);
+      ret =
+          subgroup_reduce_agg_without_broadcast_impl<32, scalar_t, F, nd_item>(
+              item, value);
       break;
     case 64:
-      ret = subgroup_reduce_agg_impl<64, scalar_t, F, nd_item>(item, value);
+      ret =
+          subgroup_reduce_agg_without_broadcast_impl<64, scalar_t, F, nd_item>(
+              item, value);
       break;
     default:
       SYCL_KERNEL_ASSERT(false);
@@ -156,28 +162,38 @@ template <
     typename F,
     typename nd_item,
     typename local_shared>
-static inline scalar_t reduce_agg(
+static inline scalar_t group_reduce_agg_without_broadcast(
     scalar_t agg,
     nd_item item,
     const local_shared& local_shared_mem) {
   const auto sg = item.get_sub_group();
-  const int sg_size = sg.get_local_range()[0];
+  const int sg_size = sg.get_local_linear_range();
+  const int lane_id = sg.get_local_linear_id();
+  const int sg_id = sg.get_group_linear_id();
+  const int local_id = item.get_local_linear_id();
+  int num_active_sg = sg.get_group_linear_range();
 
-  const int group_size = item.get_local_range(0);
-  const int sg_num = group_size / sg_size;
+  // num of active sgs >= sg_size
+  do {
+    agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
+        item, agg, sg_size);
+    item.barrier(sycl_local_fence);
+    if (0 == lane_id) {
+      local_shared_mem[sg_id] = agg;
+    }
+    item.barrier(sycl_local_fence);
+    agg =
+        local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
+    num_active_sg = (num_active_sg + sg_size - 1) / sg_size;
+  } while (num_active_sg > sg_size);
 
-  const int local_id = item.get_local_id(0);
-  const int lane_id = local_id % sg_size;
-  const int sg_id = local_id / sg_size;
-  agg = subgroup_reduce_agg<scalar_t, F, nd_item>(item, agg, sg_size);
+  // num of active sgs < sg_size
   item.barrier(sycl_local_fence);
-  if (0 == lane_id) {
-    local_shared_mem[sg_id] = agg;
-  }
-  item.barrier(sycl_local_fence);
-  agg = (local_id < sg_num) ? local_shared_mem[lane_id] : (scalar_t)0.0f;
   if (0 == sg_id) {
-    agg = subgroup_reduce_agg<scalar_t, F, nd_item>(item, agg, sg_size);
+    agg =
+        local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
+    agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
+        item, agg, sg_size);
   }
 
   return agg;
@@ -210,7 +226,8 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
-    agg = reduce_agg<scalar_t, F>(agg, item_id, shared_);
+    agg =
+        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
     if (local_id == 0) {
       out_ptr[group_id] = F::finish(agg, p_val_);
     }
@@ -295,7 +312,7 @@ static void launch_cdist_forward_kernel(
   sycl_kernel_submit(ngroups * wgroup_size, wgroup_size, queue, kfn);
 }
 
-void cdist_kernel_impl(
+void cdist_kernel(
     Tensor& result,
     const Tensor& x1_expanded,
     const Tensor& x2_expanded,
@@ -375,6 +392,3 @@ void cdist_kernel_impl(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
