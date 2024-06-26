@@ -429,6 +429,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "var_mean.correction",
     "vdot",
     "xlogy.OutTensor",
+    "reflection_pad3d.out",
+    "replication_pad3d.out",
   };
   for (auto& op_name : fallback_list) {
     m.impl(

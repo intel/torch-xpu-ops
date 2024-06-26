@@ -85,11 +85,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
 
-    # Not implemented operators, aten::reflection_pad3d.out
-    # Will retrieve it once aten::reflection_pad3d.out is implemented.
-    # https://github.com/intel/torch-xpu-ops/issues/455
-    "nn_functional_pad",
-    
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
