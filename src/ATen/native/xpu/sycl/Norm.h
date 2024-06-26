@@ -774,11 +774,11 @@ struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           last_workgroup,
           [](accscalar_t a, accscalar_t b) { return a + b; });
       if (last_workgroup[0] && local_id == 0) {
-        norm.template reduce_project(item_id, sum1, sum2, cfg);
+        norm.reduce_project(item_id, sum1, sum2, cfg);
       }
     } else {
       if (local_id == 0) {
-        norm.template reduce_project(item_id, sum1, sum2, cfg);
+        norm.reduce_project(item_id, sum1, sum2, cfg);
       }
     }
   }
@@ -1050,7 +1050,7 @@ void launch_norm_eltwise_update_kernel(Norm<scalar_t, mean_t, weight_t>& norm) {
   using vec_t = aligned_vector<scalar_t, vec_size>;
   int total_threads = syclMaxWorkItemsPerTile();
   auto workgroup_size = syclMaxWorkGroupSize();
-  index_t loops_end = (norm.numel + vec_size - 1) / vec_size;
+  index_t loops_end = (norm.numel() + vec_size - 1) / vec_size;
 
   auto kfn = NormEltwiseUpdateKernelFunctor<
       scalar_t,
