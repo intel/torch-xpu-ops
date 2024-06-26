@@ -166,8 +166,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "adaptive_max_pool3d.out",
     "addcdiv.out",
     "aminmax.out",
-    "_amp_foreach_non_finite_check_and_unscale_",
-    "_amp_update_scale_",
     "angle",
     "argmin.out",
     "asinh.out",
