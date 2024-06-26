@@ -109,9 +109,12 @@ _xpu_computation_op_list = [
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
+    "grid_sampler_2d",
+    # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "acos",
     "acosh",
     "addr",
+    "nn.functional.group_norm",
     "bincount",
 ]
 

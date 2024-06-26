@@ -195,6 +195,7 @@ supported:
   - set_.source_Tensor
   - set_
   - unfold
+  - unfold_backward
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
   # - _copy_from  # hand-written registration
@@ -264,6 +265,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
@@ -371,6 +373,8 @@ supported:
   - searchsorted.Tensor_out
   - searchsorted.Scalar
   - searchsorted.Scalar_out
+  - native_group_norm
+  - native_group_norm_backward
   - elu
   - elu.out
   - elu_
@@ -382,6 +386,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
   - acos
   - acos_
   - acos.out
