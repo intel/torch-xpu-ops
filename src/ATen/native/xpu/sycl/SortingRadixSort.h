@@ -317,7 +317,7 @@ template <
     int KEYS_PER_THREAD_,
     bool IS_DESCENDING_ = false,
     typename ValueT = NullType,
-    typename DigitT = u_char,
+    typename DigitT = unsigned char,
     typename CounterT = uint32_t, // Packed scan datatype
     // We are going to bundle multiple counters with 'DigitT' type to perform
     // packed prefix sum.
