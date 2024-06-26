@@ -434,7 +434,7 @@ TensorIterator leaky_relu_backward_meta(
       "please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do "
       "require supporting in-place leakRelu backward calculation with negative slope");
 
-  return TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  return TensorIterator::borrowing_binary_op(grad_input, self, grad_output);
 }
 
 Tensor XPUNativeFunctions::leaky_relu_backward(
