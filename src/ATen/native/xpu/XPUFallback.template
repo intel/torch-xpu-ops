@@ -190,7 +190,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky_inverse",
     "_cholesky_solve_helper",
     "complex.out",
-    "conj_physical.out",
     "copysign.out",
     "cosh.out",
     "count_nonzero.dim_IntList",
