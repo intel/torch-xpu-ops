@@ -363,7 +363,7 @@ template <typename scalar_t, typename F>
 struct ParallelReflectionPad3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_id = item.get_global_id(0);
-    if (output_id > output_plane_size_) {
+    if (output_id >= output_plane_size_) {
       return;
     }
 
