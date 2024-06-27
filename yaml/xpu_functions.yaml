@@ -415,3 +415,11 @@ supported:
   - addcmul_
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - copysign.Scalar
+  - copysign_.Scalar
+  - copysign.Scalar_out
+  - count_nonzero.dim_IntList
+  - count_nonzero
