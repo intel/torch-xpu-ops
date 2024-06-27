@@ -5,6 +5,24 @@
 
 namespace at {
 
+Tensor& XPUNativeFunctions::reflection_pad1d_out(
+    const Tensor& input,
+    IntArrayRef padding,
+    Tensor& output) {
+  native::xpu::reflection_pad1d_kernel(output, input, padding);
+  return output;
+}
+
+Tensor& XPUNativeFunctions::reflection_pad1d_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    IntArrayRef padding,
+    Tensor& grad_input) {
+  native::xpu::reflection_pad1d_backward_kernel(
+      grad_input, grad_output, input, padding);
+  return grad_input;
+}
+
 Tensor& XPUNativeFunctions::reflection_pad2d_out(
     const Tensor& input,
     IntArrayRef padding,
@@ -45,6 +63,24 @@ Tensor XPUNativeFunctions::reflection_pad2d_backward(
   globalContext().alertNotDeterministic("reflection_pad2d_backward_xpu");
   auto grad_input = at::zeros_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   native::xpu::reflection_pad2d_backward_kernel(
+      grad_input, grad_output, input, padding);
+  return grad_input;
+}
+
+Tensor& XPUNativeFunctions::reflection_pad3d_out(
+    const Tensor& input,
+    IntArrayRef padding,
+    Tensor& output) {
+  native::xpu::reflection_pad3d_kernel(output, input, padding);
+  return output;
+}
+
+Tensor& XPUNativeFunctions::reflection_pad3d_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    IntArrayRef padding,
+    Tensor& grad_input) {
+  native::xpu::reflection_pad3d_backward_kernel(
       grad_input, grad_output, input, padding);
   return grad_input;
 }
