@@ -3156,8 +3156,8 @@ res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
 res += launch_test("nn/test_parametrization_xpu.py")
-print("Final res: " res)
-print("Final exit_code: " os.WEXITSTATUS(res))
+print("Final res: ", res)
+print("Final exit_code: ", os.WEXITSTATUS(res))
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
