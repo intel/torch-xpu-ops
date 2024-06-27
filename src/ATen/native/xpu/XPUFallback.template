@@ -258,7 +258,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "lerp.Tensor_out",
     "lgamma.out",
     "linalg_cholesky_ex.L",
-    "linalg_cross.out",
     "_linalg_det.result",
     "linalg_eig",
     "_linalg_eigh.eigenvalues",
