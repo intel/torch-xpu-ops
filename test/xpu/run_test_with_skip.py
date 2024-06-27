@@ -23,6 +23,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         # return os.system(test_command)
 
         res = os.system(test_command)
+        print(test_case, "res:", res, ", exit_code:", os.WEXITSTATUS(res))
         if res != 0:
           exit_code = os.WEXITSTATUS(res)
           sys.exit(exit_code)
@@ -33,6 +34,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         # return os.system(test_command)
 
         res = os.system(test_command)
+        print(test_case, "res:", res, ", exit_code:", os.WEXITSTATUS(res))
         if res != 0:
           exit_code = os.WEXITSTATUS(res)
           sys.exit(exit_code)
@@ -3154,6 +3156,8 @@ res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
 res += launch_test("nn/test_parametrization_xpu.py")
+print("Final res: " res)
+print("Final exit_code: " os.WEXITSTATUS(res))
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
