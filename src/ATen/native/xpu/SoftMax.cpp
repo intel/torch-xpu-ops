@@ -38,7 +38,7 @@ TORCH_IMPL_FUNC(softmax_backward_xpu_out)
   c10::impl::check_and_update_common_device(
       common_device, output, "xpu::_softmax_backward_data_out_out", "output");
 
-  native::xpu::_softmax_backward_kernel(grad, output, dim, false, grad);
+  native::xpu::_softmax_backward_kernel(grad, output, dim, false, grad_input);
 }
 
 TORCH_IMPL_FUNC(log_softmax_backward_xpu_out)

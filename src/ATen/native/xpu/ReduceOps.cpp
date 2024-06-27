@@ -148,6 +148,8 @@ REGISTER_XPU_DISPATCH(mean_stub, xpu::mean_kernel);
 REGISTER_XPU_DISPATCH(argmax_stub, xpu::argmax_kernel);
 REGISTER_XPU_DISPATCH(and_stub, xpu::and_kernel);
 REGISTER_XPU_DISPATCH(or_stub, xpu::or_kernel);
+REGISTER_XPU_DISPATCH(max_values_stub, xpu::max_values_kernel);
+REGISTER_XPU_DISPATCH(min_values_stub, xpu::min_values_kernel);
 
 } // namespace native
 

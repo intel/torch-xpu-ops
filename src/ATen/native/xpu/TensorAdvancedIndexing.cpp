@@ -10,6 +10,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
@@ -20,7 +21,20 @@
 namespace at {
 
 namespace native {
-// REGISTER_XPU_DISPATCH(masked_fill_stub, xpu::masked_fill_kernel);
+REGISTER_XPU_DISPATCH(masked_fill_stub, xpu::masked_fill_kernel);
+REGISTER_XPU_DISPATCH(index_put_stub, xpu::index_put_kernel);
+REGISTER_XPU_DISPATCH(
+    index_put_with_sort_stub,
+    xpu::index_put_deterministic_kernel);
+REGISTER_XPU_DISPATCH(index_stub, xpu::index_kernel);
+REGISTER_XPU_DISPATCH(scatter_stub, xpu::scatter_kernel);
+REGISTER_XPU_DISPATCH(scatter_fill_stub, xpu::scatter_fill_kernel);
+REGISTER_XPU_DISPATCH(scatter_add_stub, xpu::scatter_add_kernel);
+REGISTER_XPU_DISPATCH(scatter_reduce_stub, xpu::scatter_reduce_kernel);
+REGISTER_XPU_DISPATCH(scatter_reduce_two_stub, xpu::scatter_reduce_two_kernel);
+REGISTER_XPU_DISPATCH(
+    scatter_scalar_reduce_stub,
+    xpu::scatter_scalar_reduce_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
@@ -41,101 +55,5 @@ TORCH_IMPL_FUNC(index_add_xpu_out)
   native::xpu::index_add_kernel(self, dim, index, source, alpha, result);
 }
 
-// REGISTER_XPU_DISPATCH(index_put_stub, xpu::index_put_kernel);
-// REGISTER_XPU_DISPATCH(
-//     index_put_with_sort_stub,
-//     xpu::index_put_deterministic_kernel);
 } // namespace native
-
-void index_func_meta_impl(
-    Tensor& result,
-    const Tensor& self,
-    int64_t dim,
-    const Tensor& index,
-    const Tensor& source,
-    c10::string_view func) {
-  auto numel = index.numel();
-
-  TORCH_CHECK_INDEX(
-      index.dim() <= 1,
-      func,
-      "_(): Index is supposed to be a vector, but got dim: ",
-      index.dim(),
-      " with type: ",
-      index.scalar_type(),
-      " and size: ",
-      index.sizes());
-  TORCH_CHECK(
-      index.scalar_type() == ScalarType::Long ||
-          index.scalar_type() == ScalarType::Int,
-      func,
-      "_(): Expected dtype int32/int64 for index but got: ",
-      index.scalar_type());
-  TORCH_CHECK(
-      self.scalar_type() == source.scalar_type(),
-      func,
-      "_(): self (",
-      self.scalar_type(),
-      ") and source (",
-      source.scalar_type(),
-      ") must have the same scalar type");
-  TORCH_CHECK(
-      dim == 0 || dim < source.dim(),
-      func,
-      "_(): Indexing dim ",
-      dim,
-      " is out of bounds of the source tensor with dim ",
-      source.dim());
-  TORCH_CHECK(
-      numel == (source.dim() == 0 ? 1 : source.size(dim)),
-      func,
-      "_(): Number of indices (",
-      numel,
-      ") should be equal to source.size(dim): (",
-      source.size(dim),
-      "), for dim: ",
-      dim);
-
-  auto self_sizes = self.sizes().vec();
-  auto source_sizes = source.sizes().vec();
-  if (source.dim() != 0 && self.dim() != 0) {
-    self_sizes.erase(self_sizes.begin() + dim);
-    source_sizes.erase(source_sizes.begin() + dim);
-  }
-  TORCH_CHECK(
-      self_sizes == source_sizes,
-      "source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = ",
-      self.sizes(),
-      " source.shape = ",
-      source.sizes());
-
-  bool is_defined = result.defined();
-
-  // set_output_raw_strided
-  auto options = self.options();
-  auto sizes = self.sizes();
-  if (is_defined) {
-    at::xpu::resize_out(result, sizes, {}, options);
-  } else {
-    result = at::xpu::create_out(sizes, {}, options);
-  }
-
-  if (is_defined) {
-    at::assert_no_internal_overlap(result);
-    at::assert_no_overlap(result, index);
-    at::assert_no_overlap(result, source);
-  }
-
-  // A hack to run TensorIterator checks in the meta function.
-  // See comment:
-  // https://github.com/pytorch/pytorch/pull/65993#discussion_r760307417
-  // TODO: (@krshrimali) Try inheriting from TensorIteratorBase instead.
-  if (result.device() == kMeta && result.dim() > 0) {
-    auto selfSlice = result.select(dim, 0);
-    auto sourceSlice = source.select(dim, 0);
-    auto iter =
-        TensorIterator::borrowing_binary_op(selfSlice, selfSlice, sourceSlice);
-  }
-}
-
 } // namespace at

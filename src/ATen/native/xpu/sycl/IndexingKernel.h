@@ -4,11 +4,9 @@
 namespace at::native::xpu {
 
 void index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     at::IntArrayRef index_size,
-    at::IntArrayRef index_stride,
-    at::IntArrayRef non_index_size,
-    at::IntArrayRef non_index_stride);
+    at::IntArrayRef index_stride);
 
 void index_select_kernel(
     const Tensor& self,
@@ -30,8 +28,6 @@ void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride,
     bool accumulate);
 
 void index_put_deterministic_kernel(
