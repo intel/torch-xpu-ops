@@ -2,7 +2,7 @@
 
 #include <ATen/ATen.h>
 
-namespace at ::native ::xpu {
+namespace at::native::xpu {
 
 void max_pool2d_with_indices_kernel(
     const Tensor& input,
