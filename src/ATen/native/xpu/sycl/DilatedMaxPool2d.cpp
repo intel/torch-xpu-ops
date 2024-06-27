@@ -11,6 +11,7 @@
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
@@ -56,7 +57,7 @@ struct MaxPool2dKernelFunctor {
               plane * outputSizeH_ * outputSizeW_ + outputH * outputSizeW_ +
               outputW;
         }
-        scalar_t maxVal = std::numeric_limits<scalar_t>::lowest();
+        scalar_t maxVal = at::numeric_limits<scalar_t>::lower_bound();
         int maxIndex = -1;
         int StartH = outputH * dH_ - padH_;
         int StartW = outputW * dW_ - padW_;
@@ -78,14 +79,14 @@ struct MaxPool2dKernelFunctor {
                   plane * inputSizeH_ * inputSizeW_ + h * inputSizeW_ + w;
             }
             scalar_t val = input_[load_offset];
-            if (val > maxVal) {
+            if ((static_cast<scalar_t>(val) > maxVal) || at::_isnan(val)) {
               maxIndex = h * inputSizeW_ + w;
-              maxVal = val;
+              maxVal = static_cast<scalar_t>(val);
             }
           }
         }
         indices_[store_offset] = maxIndex;
-        output_[store_offset] = maxVal;
+        output_[store_offset] = static_cast<scalar_t>(maxVal);
       }
     } while (cfg_.next(item, desc));
   }
