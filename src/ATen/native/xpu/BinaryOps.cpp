@@ -8,6 +8,7 @@
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
+#include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
@@ -452,6 +453,62 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor& XPUNativeFunctions::copysign_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  Tensor other_maybe_scalar = other;
+  if (other.device().type() == at::kCPU && other.numel() == 1) {
+    other_maybe_scalar = other.to("xpu");
+  }
+
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other_maybe_scalar);
+  native::xpu::copysign_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Tensor& other) {
+  return XPUNativeFunctions::copysign_out(self, other, self);
+}
+
+Tensor XPUNativeFunctions::copysign(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  Tensor other_maybe_scalar = other;
+  if (other.device().type() == at::kCPU && other.numel() == 1) {
+    other_maybe_scalar = other.to("xpu");
+  }
+
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other_maybe_scalar);
+  native::xpu::copysign_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::copysign_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& out) {
+  auto wrapper = native::wrapped_scalar_tensor(other, self.device());
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, wrapper);
+  native::xpu::copysign_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::copysign(const Tensor& self, const Scalar& other) {
+  Tensor out;
+  auto wrapper = native::wrapped_scalar_tensor(other, self.device());
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, wrapper);
+  native::xpu::copysign_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Scalar& other) {
+  return XPUNativeFunctions::copysign_out(self, other, self);
 }
 
 } // namespace at
