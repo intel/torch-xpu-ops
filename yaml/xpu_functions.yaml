@@ -413,7 +413,7 @@ supported:
   - acosh_
   - acosh.out
   - addr
-  - glu
+  - addr.out
   - addcmul.out
   - addcmul
   - addcmul_
