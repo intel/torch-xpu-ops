@@ -1,11 +1,13 @@
 # Owner(s): ["module: intel"]
 
+from unittest import SkipTest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, instantiate_parametrized_tests
+from torch.testing._internal.common_utils import run_tests, instantiate_parametrized_tests, \
+    parametrize as parametrize_test
 from torch.testing._internal.common_cuda import tf32_on_and_off
 
 def grid_sample_bfloat16_precision(self):
@@ -90,6 +92,89 @@ def grid_sample_large(self, device=torch.device('xpu')):
         torch.xpu.synchronize()
     issue_24823_2()
 
+@parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
+@parametrize_test("mode", ["bilinear", "bicubic"])
+@parametrize_test("antialias", [True, False])
+@parametrize_test("align_corners", [True, False])
+@parametrize_test("num_channels", [3, 5])
+@parametrize_test("output_size", [32, 600])
+@parametrize_test("check_as_unsqueezed_3d_tensor", [True, False])
+@parametrize_test("non_contig", [False, "sliced", "restrided"])
+@parametrize_test("batch_size", [1, 5])
+def upsamplingBiMode2d_consistency(
+    self,
+    device,
+    memory_format,
+    mode,
+    antialias,
+    align_corners,
+    num_channels,
+    output_size,
+    check_as_unsqueezed_3d_tensor,
+    non_contig,
+    batch_size,
+):
+    # Check output value consistency between resized_input_uint8 and resized input_float
+    if torch.device(device).type == "xpu":
+        raise SkipTest("XPU implementation is not yet supporting uint8")
+
+    torch.manual_seed(0)
+
+    # - input range is set to [30, 220] for bicubic mode, because the bicubic kernel may create
+    #   [intermediate] values outside of the [0, 255] range, which need
+    #   to be clipped in uint8 path, but not in float path. This isn't
+    #   an issue with bilinear kernel.
+    input_range = (30, 220) if mode == "bicubic" else (0, 256)
+    input_ui8 = torch.randint(*input_range, size=(batch_size, num_channels, 400, 400), dtype=torch.uint8, device=device)
+    input_ui8 = input_ui8.contiguous(memory_format=memory_format)
+
+    if non_contig == "sliced":
+        input_ui8 = input_ui8[:, :, 10:-10, 10:-10]
+    elif non_contig == "restrided":
+        input_ui8 = input_ui8[:, :, ::2, ::2]
+
+    if batch_size == 1 and check_as_unsqueezed_3d_tensor:
+        input_ui8 = input_ui8[0, ...]
+        input_ui8 = input_ui8[None, ...]
+
+    input_f32 = input_ui8.float()
+
+    output_f32 = F.interpolate(
+        input_f32, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
+    ).round().clip(0, 255)
+    output_ui8 = F.interpolate(
+        input_ui8, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
+    )
+
+    if non_contig is False:
+        self.assertTrue(input_ui8.is_contiguous(memory_format=memory_format))
+
+    # FIXME if-clause shows the current behaviour which is definitely unexpected.
+    # Ideally we want to fix it such that both the ui8 and f32 outputs are also channels_last
+    # See for more details: https://github.com/pytorch/pytorch/pull/100373
+    if batch_size == 1 and check_as_unsqueezed_3d_tensor and memory_format == torch.channels_last:
+        self.assertTrue(output_ui8.is_contiguous())
+        self.assertTrue(output_f32.is_contiguous())
+    else:
+        self.assertTrue(output_ui8.is_contiguous(memory_format=memory_format))
+        self.assertTrue(output_f32.is_contiguous(memory_format=memory_format))
+
+    if mode == "bilinear":
+        torch.testing.assert_close(output_f32, output_ui8.float(), rtol=0, atol=1)
+    else:
+        diff = (output_f32 - output_ui8.float()).abs()
+        self.assertLess(diff.max(), 15)
+
+        threshold = 2
+        percent = 3
+        self.assertLess((diff > threshold).float().mean(), percent / 100)
+
+        threshold = 5
+        percent = 1
+        self.assertLess((diff > threshold).float().mean(), percent / 100)
+
+        self.assertLess(diff.mean(), 0.4)
+
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
@@ -101,6 +186,7 @@ with XPUPatchForImport(False):
     TestNNDeviceType.test_grid_sample_bfloat16_precision = grid_sample_bfloat16_precision
     TestNNDeviceType.test_grid_sample_half_precision = grid_sample_half_precision
     TestNNDeviceType.test_grid_sample_large = grid_sample_large
+    TestNNDeviceType.test_upsamplingBiMode2d_consistency = upsamplingBiMode2d_consistency
 
 
 instantiate_device_type_tests(TestNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
