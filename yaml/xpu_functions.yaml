@@ -380,6 +380,7 @@ supported:
   - sgn
   - sgn.out
   - sgn_
+  - _cdist_forward
   - _pin_memory
   - is_pinned
   - reflection_pad2d
