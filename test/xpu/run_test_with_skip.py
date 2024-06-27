@@ -20,10 +20,24 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         exe_options += "'"
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
         test_command += exe_options
-        return os.system(test_command)
+        # return os.system(test_command)
+
+        res = os.system(test_command)
+        if res != 0:
+          exit_code = os.WEXITSTATUS(res)
+          sys.exit(exit_code)
+        else:
+          return res
     else:
         test_command = "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v " + test_case
-        return os.system(test_command)
+        # return os.system(test_command)
+
+        res = os.system(test_command)
+        if res != 0:
+          exit_code = os.WEXITSTATUS(res)
+          sys.exit(exit_code)
+        else:
+          return res
 
 res = 0
 
