@@ -38,6 +38,7 @@ _xpu_computation_op_list = [
     "cos",
     "cumsum",
     "empty",
+    "eye",
     "eq",
     "fill",
     "fmod",
