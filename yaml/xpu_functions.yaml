@@ -380,9 +380,14 @@ supported:
   - sgn
   - sgn.out
   - sgn_
+  - _cdist_forward
   - _pin_memory
   - is_pinned
   - upsample_bicubic2d.out
+  - reflection_pad2d
+  - reflection_pad2d.out
+  - reflection_pad2d_backward
+  - reflection_pad2d_backward.grad_input
   - native_group_norm
   - native_group_norm_backward
   - elu
