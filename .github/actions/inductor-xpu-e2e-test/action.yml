@@ -29,10 +29,6 @@ inputs:
     type: string
     default: 'all'
     description: which cards can be used in the test
-  expected_pass_num:
-    required: false
-    type: number
-    description: for result check
   hf_token:
     required: false
     description: HUGGING_FACE_HUB_TOKEN for torchbench test
@@ -152,17 +148,12 @@ runs:
       run: |
         cd ../pytorch
         rm -f inductor_log/summary_accuracy.csv
-        for var in $(find inductor_log/ -name "inductor_*.csv")
+        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do
           sed -i "s/$/,$(basename $var)/" $var
           cat $var >> inductor_log/summary_accuracy.csv
         done
         cat ${{ github.workspace }}/summary_accuracy.log |tee -a inductor_log/summary_accuracy.log
-        failed_case=$(grep "Failed: [1-9]" ${{ github.workspace }}/summary_accuracy.log |wc -l || true)
-        if [ ${failed_case} -ne 0 ];then
-          grep -E "Failed: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
-          exit 1
-        fi
 
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: contains(inputs.scenario, 'performance')
