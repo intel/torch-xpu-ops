@@ -155,6 +155,32 @@ runs:
         done
         cat ${{ github.workspace }}/summary_accuracy.log |tee -a inductor_log/summary_accuracy.log
 
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        #Accuracy summary 
+        source activate e2e_ci
+        cd ${{ github.workspace }}
+        cp .github/scripts/inductor_accuracy_summary.py ../pytorch
+        cd ../pytorch
+        pip install styleFrame scipy pandas
+        set -xe
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
+          python inductor_accuracy_summary.py -p ${dt} -s ${suite} -m ${mode}
+        done
+
     - name: Summary E2E Performance Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       if: contains(inputs.scenario, 'performance')
       shell: bash
