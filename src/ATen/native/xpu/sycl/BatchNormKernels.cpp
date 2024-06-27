@@ -155,33 +155,35 @@ int get_num_threads(int nelem, int restricted_simd = SIMD32) {
 int get_prefer_simd(int numPlane, int nHw) {
   // decide SIMD: SIMD32 or SIMD16
 
-  auto dev_id = at::xpu::getDeviceIndexOfCurrentQueue();
+  // auto dev_id = at::xpu::getDeviceIndexOfCurrentQueue();
 
-  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto sub_group_size = dev_prop->sub_group_sizes;
-  int simd = sub_group_size[1];
-  if (simd <= SIMD16)
-    return simd;
+  // auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  // auto sub_group_size = dev_prop->sub_group_sizes;
+  // int simd = sub_group_size[1];
+  // if (simd <= SIMD16)
+  //   return simd;
 
-  // if max supported simd >16
-  if (nHw <= SIMD16)
-    return SIMD16;
-  if (simd >= SIMD32 && nHw <= SIMD32)
-    return SIMD32;
+  // // if max supported simd >16
+  // if (nHw <= SIMD16)
+  //   return SIMD16;
+  // if (simd >= SIMD32 && nHw <= SIMD32)
+  //   return SIMD32;
 
-  int64_t target_tile_size = syclMaxWorkItemsPerTile(dev_id);
-  // for work group barrier perf
-  int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
-  if (simd == SIMD32) {
-    // when setting wg_size 256 can achieve high occupancy, use SIMD16
-    if (wg_size * numPlane >= target_tile_size)
-      return SIMD16;
-    // for latency case
-    if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
-      return SIMD16;
-    }
-  }
-  return simd;
+  // int64_t target_tile_size = syclMaxWorkItemsPerTile(dev_id);
+  // // for work group barrier perf
+  // int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
+  // if (simd == SIMD32) {
+  //   // when setting wg_size 256 can achieve high occupancy, use SIMD16
+  //   if (wg_size * numPlane >= target_tile_size)
+  //     return SIMD16;
+  //   // for latency case
+  //   if (nHw <= 1024 && numPlane > 128 && SIMD16 * SIMD16 >= wg_size) {
+  //     return SIMD16;
+  //   }
+  // }
+  // return simd;
+
+  return syclMaxSubGroupSize();
 }
 
 template <typename scalar_t, typename accscalar_t>
