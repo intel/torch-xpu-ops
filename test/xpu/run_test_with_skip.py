@@ -1554,6 +1554,18 @@ skip_list = (
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
+# test_dataloader
+skip_list = (
+    # Skip for XPU didn't support
+    "test_nested_tensor_multiprocessing",
+    # pinned memory issue
+    "test_custom_batch_pin",
+    "test_sequential_pin_memory",
+    "test_shuffle_pin_memory",
+    "test_pin_memory",
+)
+res += launch_test("test_dataloader_xpu.py", skip_list)
+
 # test_tensor_creation_ops
 skip_list = (
     # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
@@ -1583,8 +1595,6 @@ res += launch_test("test_autocast_xpu.py", skip_list)
 
 # test_autograd
 skip_list = (
-    # Segment fault
-    "test_resize_version_bump_xpu",
     # c10::NotImplementedError
     "test_autograd_composite_implicit_and_dispatch_registration_xpu",
     "test_autograd_multiple_dispatch_registrations_xpu",
@@ -3116,6 +3126,31 @@ res += launch_test("test_comparison_utils_xpu.py")
 
 # test_pruning
 res += launch_test("nn/test_pruning_xpu.py")
+
+# test_convolution
+skip_list = (
+    # XPU unsupport ops, skip.
+    "test_cudnn_convolution_relu_xpu_float16",
+    "test_cudnn_convolution_relu_xpu_float32",
+    "test_cudnn_convolution_add_relu_xpu_float16",
+    "test_cudnn_convolution_add_relu_xpu_float32",
+    "test_conv_double_backward_xpu_float64",
+    # accuracy issue, TODO
+    "test_Conv2d_naive_groups_xpu_float16",
+)
+res += launch_test("nn/test_convolution_xpu.py", skip_list)
+
+# test_dynamic_shapes
+res += launch_test("test_dynamic_shapes_xpu.py")
+
+# test_load_state_dict
+res += launch_test("nn/test_load_state_dict_xpu.py")
+
+# test_module_hooks
+res += launch_test("nn/test_module_hooks_xpu.py")
+
+# test_parametrization
+res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
