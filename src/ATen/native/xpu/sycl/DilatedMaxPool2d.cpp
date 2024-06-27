@@ -521,18 +521,12 @@ void max_pool2d_with_indices_kernel(
   Tensor input = input_.contiguous(memory_format);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
-
-        scalar_t* output_data = output.mutable_data_ptr<scalar_t>();
-        const scalar_t* input_data = input.const_data_ptr<scalar_t>();
-        int64_t* indices_data = indices.mutable_data_ptr<int64_t>();
-
         switch (memory_format) {
           case MemoryFormat::ChannelsLast: {
             max_pool2d_out_frame<scalar_t, true>(
                 output.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
-                input_.data_ptr<scalar_t>(),
+                input.data_ptr<scalar_t>(),
                 nbatch,
                 nInputPlane,
                 inputHeight,
@@ -553,7 +547,7 @@ void max_pool2d_with_indices_kernel(
             max_pool2d_out_frame<scalar_t, false>(
                 output.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
-                input_.data_ptr<scalar_t>(),
+                input.data_ptr<scalar_t>(),
                 nbatch,
                 nInputPlane,
                 inputHeight,
