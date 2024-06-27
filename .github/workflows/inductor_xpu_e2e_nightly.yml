@@ -336,6 +336,7 @@ jobs:
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: ${{ inputs.ut_suite }}
+          expected_fail_num: ${{ inputs.expected_fail_num }}
     
   Tests-Failure-And-Report:
     if: always()
