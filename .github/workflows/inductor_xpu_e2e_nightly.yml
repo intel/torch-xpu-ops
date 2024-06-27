@@ -56,11 +56,6 @@ on:
         type: string
         default: 'true'
         description: True will running UT test for Ondemand test, false will not.
-      expected_fail_num:
-        required: false
-        type: number
-        default: ''
-        description: for UT result check
 
 
 permissions: read-all
@@ -337,7 +332,7 @@ jobs:
         uses: ./.github/actions/inductor-xpu-ut-test
         with:
           ut_suite: ${{ inputs.ut_suite }}
-          expected_fail_num: ${{ inputs.expected_fail_num }}
+          expected_fail_num: 0
     
   Tests-Failure-And-Report:
     if: always()
