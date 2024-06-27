@@ -321,72 +321,69 @@ void cdist_kernel(
   const int64_t r2 = x2_expanded.size(-2);
   const int64_t m = x1_expanded.size(-1);
 
-  AT_DISPATCH_FLOATING_TYPES(
-      x1_expanded.scalar_type(),
-      "cdist_xpu",
-      [&] {
-        if (p == 0.0) {
-          launch_cdist_forward_kernel<scalar_t, DistsZero<scalar_t>, 0>(
-              result,
-              x1_expanded,
-              x2_expanded,
-              p,
-              r1,
-              r2,
-              m,
-              r1 * r2,
-              r1 * m,
-              r2 * m);
-        } else if (p == 1.0) {
-          launch_cdist_forward_kernel<scalar_t, DistsOne<scalar_t>, 1>(
-              result,
-              x1_expanded,
-              x2_expanded,
-              p,
-              r1,
-              r2,
-              m,
-              r1 * r2,
-              r1 * m,
-              r2 * m);
-        } else if (p == 2.0) {
-          launch_cdist_forward_kernel<scalar_t, DistsTwo<scalar_t>, 2>(
-              result,
-              x1_expanded,
-              x2_expanded,
-              p,
-              r1,
-              r2,
-              m,
-              r1 * r2,
-              r1 * m,
-              r2 * m);
-        } else if (std::isinf(p)) {
-          launch_cdist_forward_kernel<scalar_t, DistsInf<scalar_t>, 3>(
-              result,
-              x1_expanded,
-              x2_expanded,
-              p,
-              r1,
-              r2,
-              m,
-              r1 * r2,
-              r1 * m,
-              r2 * m);
-        } else {
-          launch_cdist_forward_kernel<scalar_t, DistsP<scalar_t>, 4>(
-              result,
-              x1_expanded,
-              x2_expanded,
-              p,
-              r1,
-              r2,
-              m,
-              r1 * r2,
-              r1 * m,
-              r2 * m);
-        }
-      });
+  AT_DISPATCH_FLOATING_TYPES(x1_expanded.scalar_type(), "cdist_xpu", [&] {
+    if (p == 0.0) {
+      launch_cdist_forward_kernel<scalar_t, DistsZero<scalar_t>, 0>(
+          result,
+          x1_expanded,
+          x2_expanded,
+          p,
+          r1,
+          r2,
+          m,
+          r1 * r2,
+          r1 * m,
+          r2 * m);
+    } else if (p == 1.0) {
+      launch_cdist_forward_kernel<scalar_t, DistsOne<scalar_t>, 1>(
+          result,
+          x1_expanded,
+          x2_expanded,
+          p,
+          r1,
+          r2,
+          m,
+          r1 * r2,
+          r1 * m,
+          r2 * m);
+    } else if (p == 2.0) {
+      launch_cdist_forward_kernel<scalar_t, DistsTwo<scalar_t>, 2>(
+          result,
+          x1_expanded,
+          x2_expanded,
+          p,
+          r1,
+          r2,
+          m,
+          r1 * r2,
+          r1 * m,
+          r2 * m);
+    } else if (std::isinf(p)) {
+      launch_cdist_forward_kernel<scalar_t, DistsInf<scalar_t>, 3>(
+          result,
+          x1_expanded,
+          x2_expanded,
+          p,
+          r1,
+          r2,
+          m,
+          r1 * r2,
+          r1 * m,
+          r2 * m);
+    } else {
+      launch_cdist_forward_kernel<scalar_t, DistsP<scalar_t>, 4>(
+          result,
+          x1_expanded,
+          x2_expanded,
+          p,
+          r1,
+          r2,
+          m,
+          r1 * r2,
+          r1 * m,
+          r2 * m);
+    }
+  });
 }
 
 } // namespace at::native::xpu
