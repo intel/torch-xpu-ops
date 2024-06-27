@@ -922,6 +922,12 @@ skip_list = (
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
 
+    # # CPU fallback error：AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
+    # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float16}.
+    # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
+    "test_dtypes_nn_functional_pad_replicate_negative_xpu",
+    "test_dtypes_nn_functional_pad_replicate_xpu",
+
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
@@ -1435,6 +1441,10 @@ skip_list = (
     "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float32",
     "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float32",
     "test_multiple_device_transfer_nn_Transformer_xpu_float32",
+
+    # Reflection_pad2d doesn't support channel last, CUDA skipped too.
+    "test_memory_format_nn_ReflectionPad2d_xpu_float32",
+    "test_memory_format_nn_ReflectionPad2d_xpu_float64",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 

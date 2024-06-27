@@ -86,7 +86,7 @@ skip_list = (
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
-    
+
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
