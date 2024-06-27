@@ -11,7 +11,7 @@ Tensor& XPUNativeFunctions::upsample_bicubic2d_out(
     std::optional<double> scales_h,
     std::optional<double> scales_w,
     Tensor& output) {
-  native::xpu::upsample_bicubic2d_out_kernel(
+  native::xpu::upsample_bicubic2d_kernel(
       output, self, output_size, align_corners, scales_h, scales_w);
   return output;
 }

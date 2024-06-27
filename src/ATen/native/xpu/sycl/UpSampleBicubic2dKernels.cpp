@@ -9,7 +9,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleBicubic2dOutFrameKernelFunctor {
+struct UpsampleBicubic2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto idata = in_data_;
     auto odata = out_data_;
@@ -95,7 +95,7 @@ struct UpsampleBicubic2dOutFrameKernelFunctor {
       }
     }
   }
-  UpsampleBicubic2dOutFrameKernelFunctor(
+  UpsampleBicubic2dKernelFunctor(
       PackedTensorAccessor64<scalar_t, 4> out_data,
       const PackedTensorAccessor64<const scalar_t, 4> in_data,
       int64_t onum,
@@ -130,12 +130,12 @@ static void upsample_bicubic2d_out_frame(
   int64_t wg_size = syclMaxWorkGroupSize();
   int64_t wg_num = at::ceil_div(onum, wg_size);
 
-  UpsampleBicubic2dOutFrameKernelFunctor<scalar_t, accscalar_t> kfn(
+  UpsampleBicubic2dKernelFunctor<scalar_t, accscalar_t> kfn(
       odata, idata, onum, align_corners, height_scale, width_scale);
   sycl_kernel_submit(wg_num * wg_size, wg_size, queue, kfn);
 }
 
-void upsample_bicubic2d_out_kernel(
+void upsample_bicubic2d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,
@@ -159,7 +159,7 @@ void upsample_bicubic2d_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_bicubic2d_out_kernel",
+      "upsample_bicubic2d_kernel",
       [&] {
         auto idata = input.packed_accessor64<const scalar_t, 4>();
         auto odata = output.packed_accessor64<scalar_t, 4>();

@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void upsample_bicubic2d_out_kernel(
+void upsample_bicubic2d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,
