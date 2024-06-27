@@ -59,6 +59,7 @@ on:
       expected_fail_num:
         required: false
         type: number
+        default: ''
         description: for UT result check
 
 
