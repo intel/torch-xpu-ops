@@ -42,10 +42,10 @@ void check_group_norm_inputs(
       input.sizes());
 }
 
-::std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_group_norm(
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_group_norm(
     const Tensor& X,
-    const ::std::optional<Tensor>& gamma_opt,
-    const ::std::optional<Tensor>& beta_opt,
+    const std::optional<Tensor>& gamma_opt,
+    const std::optional<Tensor>& beta_opt,
     int64_t N,
     int64_t C,
     int64_t HxW,

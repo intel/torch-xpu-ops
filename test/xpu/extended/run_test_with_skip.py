@@ -58,6 +58,8 @@ skip_list = (
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
+    "nn_functional_interpolate_bicubic",
+    "nn_functional_interpolate_bilinear",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -78,13 +80,16 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
-
+    
+    #Double and complex datatype matmul is not supported in oneDNN
+    "test_compare_cpu_cdist_xpu_float64",
+    
     # CPU reference fail. `abs_cpu` does not support bool.
     # The case should be skipped by PyTorch test infrastructure, but not be
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
-    
+
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
