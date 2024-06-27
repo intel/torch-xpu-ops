@@ -109,6 +109,7 @@ supported:
   - silu.out
   - silu_backward
   - silu_backward.grad_input
+  - glu
   - glu.out
   - glu_backward.grad_input
   - glu_backward
@@ -412,7 +413,6 @@ supported:
   - acosh_
   - acosh.out
   - addr
-  - addr.out
   - glu
   - addcmul.out
   - addcmul
