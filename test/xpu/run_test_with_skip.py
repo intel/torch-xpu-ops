@@ -2410,8 +2410,28 @@ skip_list = (
 res += launch_test("test_ops_fwd_gradients_xpu.py", skip_list)
 
 skip_list = (
-    # eye fallbacks to CPU and does not support Float8_e4m3fn
-    "test_cache_disabled",
+    # AssertionError: "Bias is not supported when out_dtype is set to Float32" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    "test_float32_output_errors_with_bias_xpu",
+    # RuntimeError: "eye" not implemented for 'Float8_e4m3fn'
+    "test_float8_basics_xpu",
+    # AssertionError: "For row-wise scaling, scale_a must be size 1024 but got 1 and scale_b must be size 2048 but got 2" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    "test_float8_error_messages_xpu",
+    # NotImplementedError: Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    "test_float8_bias_relu_edgecase_xpu",
+    "test_float8_bias_xpu",
+    "test_float8_rowwise_scaling_sanity_use_fast_accum_False_xpu",
+    "test_float8_rowwise_scaling_sanity_use_fast_accum_True_xpu",
+    "test_float8_scale_fast_accum_xpu",
+    "test_float8_scale_xpu",
+    "test_non_divisible_leading_dim_bias_False_xpu",
+    "test_non_divisible_leading_dim_bias_True_xpu",
+    "test_scaled_mm_change_stride_bfloat16_xpu",
+    "test_scaled_mm_change_stride_float16_xpu",
+    "test_scaled_mm_change_stride_float32_xpu",
+    "test_scaled_mm_vs_emulated_bfloat16_xpu",
+    "test_scaled_mm_vs_emulated_float16_xpu",
+    "test_scaled_mm_vs_emulated_float32_xpu",
+    "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
 )
 res += launch_test("test_matmul_cuda_xpu.py", skip_list=skip_list)
 
