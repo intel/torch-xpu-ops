@@ -15,6 +15,25 @@
 
 namespace at {
 
+Tensor& XPUNativeFunctions::eye_out(int64_t n, Tensor& result) {
+  return XPUNativeFunctions::eye_out(n, n, result);
+}
+
+Tensor& XPUNativeFunctions::eye_out(int64_t n, int64_t m, Tensor& result) {
+  TORCH_CHECK(n >= 0, "n must be greater or equal to 0, got ", n);
+  TORCH_CHECK(m >= 0, "m must be greater or equal to 0, got ", m);
+
+  result.resize_({n, m});
+  result.zero_();
+
+  int64_t sz = std::min<int64_t>(n, m);
+  int64_t stride = result.stride(0) + result.stride(1);
+
+  Tensor diag = result.as_strided({sz}, {stride});
+  diag.fill_(1);
+  return result;
+}
+
 Tensor XPUNativeFunctions::empty(
     IntArrayRef size,
     c10::optional<ScalarType> dtype_opt,
