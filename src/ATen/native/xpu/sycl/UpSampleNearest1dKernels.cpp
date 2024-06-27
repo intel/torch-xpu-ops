@@ -275,8 +275,6 @@ void upsample_nearest1d_kernel(
       input.scalar_type(),
       "upsample_nearest1d_xpu",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
-
         auto idata = input.data_ptr<scalar_t>();
         auto odata = output_c.data_ptr<scalar_t>();
 

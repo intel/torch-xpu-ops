@@ -64,6 +64,7 @@ _xpu_computation_op_list = [
     "neg",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
+    "nn.functional.pad",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nonzero",
@@ -115,6 +116,7 @@ _xpu_computation_op_list = [
     "acos",
     "acosh",
     "addr",
+    "cdist",
     "nn.functional.group_norm",
     "bincount",
 ]
