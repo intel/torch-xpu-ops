@@ -42,19 +42,7 @@ res = 0
 
 skip_list = (
     # Skip list of base line
-    "test_compare_cpu_nn_functional_conv1d_xpu_float32",
-    "test_compare_cpu_nn_functional_conv2d_xpu_float32",
-    "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
-    "test_compare_cpu_to_sparse_xpu_float32",
-    "test_dtypes___rdiv___xpu",
     "test_dtypes___rmod___xpu",
-    "test_dtypes_abs_xpu",
-    "test_dtypes_jiterator_2inputs_2outputs_xpu",
-    "test_dtypes_jiterator_4inputs_with_extra_args_xpu",
-    "test_dtypes_jiterator_binary_return_by_ref_xpu",
-    "test_dtypes_jiterator_binary_xpu",
-    "test_dtypes_jiterator_unary_xpu",
-    "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",
     "test_dtypes_nn_functional_conv1d_xpu",
     "test_dtypes_nn_functional_conv2d_xpu",
     "test_dtypes_nn_functional_conv3d_xpu",
@@ -63,11 +51,12 @@ skip_list = (
     "test_dtypes_nn_functional_conv_transpose3d_xpu",
     "test_dtypes_nn_functional_max_pool1d_xpu",
     "test_dtypes_nn_functional_softsign_xpu",
-    "test_dtypes_reciprocal_xpu",
-    "test_dtypes_sgn_xpu",  # Skip this case due to mis-alignment on test case: "The following dtypes did not work in forward but are listed by the OpInfo: {Complex32}""
     "test_dtypes_sparse_sampled_addmm_xpu",
-    "test_dtypes_square_xpu",
     "test_dtypes_grid_sampler_2d_xpu",
+    "test_compare_cpu_nn_functional_conv1d_xpu_float32",
+    "test_compare_cpu_nn_functional_conv2d_xpu_float32",
+    "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
+    "test_compare_cpu_to_sparse_xpu_float32",
     "test_errors_cat_xpu",
     "test_errors_dot_xpu",
     "test_errors_gather_xpu",
@@ -388,36 +377,40 @@ skip_list = (
     "test_neg_conj_view_conj_physical_xpu_complex128",
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
-    "test_noncontiguous_samples_native_dropout_backward_xpu_int64",  # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Long'.
-    "test_non_standard_bool_values_native_dropout_backward_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
-    "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32",  # CUDA xfail.
-    "test_dtypes_native_dropout_backward_xpu",  # Test architecture issue. Cannot get correct claimed supported data type for "masked_scale".
-    "test_non_standard_bool_values_scatter_reduce_amax_xpu_bool",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_non_standard_bool_values_scatter_reduce_amin_xpu_bool",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_non_standard_bool_values_scatter_reduce_prod_xpu_bool",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_dtypes_scatter_reduce_amax_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_dtypes_scatter_reduce_amin_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_dtypes_scatter_reduce_prod_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-    "test_non_standard_bool_values_argsort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
-    "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
-    "test_non_standard_bool_values_sort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
-    "test_python_ref_errors__refs_where_xpu",  # align with CUDA, AssertionError: "Expected all tensors to be on the same device" does not match "Tensor on device xpu:0 is not on the expected device cpu!"
-    "test_dtypes_view_as_complex_xpu",  # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
-    "test_dtypes_view_as_real_xpu",  # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
-    "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
+    "test_dtypes_scatter_reduce_amax_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_amin_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_scatter_reduce_prod_xpu", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_dtypes_sigmoid_xpu", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_dtypes_view_as_complex_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
+    "test_dtypes_view_as_real_xpu", # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
+    "test_noncontiguous_samples_native_dropout_backward_xpu_int64", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Long'.
+    "test_non_standard_bool_values_native_dropout_backward_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Bool'.
+    "test_compare_cpu_nn_functional_alpha_dropout_xpu_float32", # CUDA xfail.
+    "test_non_standard_bool_values_scatter_reduce_amax_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_amin_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_scatter_reduce_prod_xpu_bool", # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
+    "test_non_standard_bool_values_argsort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "argsort" not implemented for 'Bool'.
+    "test_non_standard_bool_values_msort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
+    "test_non_standard_bool_values_sort_xpu_bool", # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
+    "test_complex_half_reference_testing_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_python_ref__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex32", # Didn't align with CUDA, RuntimeError: "sigmoid_xpu" not implemented for 'ComplexHalf'
+    "test_python_ref_errors__refs_where_xpu", # align with CUDA, AssertionError: "Expected all tensors to be on the same device" does not match "Tensor on device xpu:0 is not on the expected device cpu!"
+    "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32", # Didn't align with CUDA, Unexpected success
+
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
-    "test_dtypes_nn_functional_linear_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-    "test_dtypes_nn_functional_multi_head_attention_forward_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-    "test_dtypes_pca_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-    "test_dtypes_svd_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-    "test_noncontiguous_samples_nn_functional_linear_xpu_int64",  # https://github.com/intel/torch-xpu-ops/issues/157
-    "test_dtypes__refs_nn_functional_pdist_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes_nn_functional_linear_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes_nn_functional_multi_head_attention_forward_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes_pca_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_dtypes_svd_lowrank_xpu", # https://github.com/intel/torch-xpu-ops/issues/157
+    "test_noncontiguous_samples_nn_functional_linear_xpu_int64", # https://github.com/intel/torch-xpu-ops/issues/157
+
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Failures:
     "test_compare_cpu_addmm_xpu_float32",
     "test_compare_cpu_addmv_xpu_float32",
-    "test_dtypes__refs_linalg_svd_xpu",
     "test_dtypes_addbmm_xpu",
     "test_dtypes_addmm_decomposed_xpu",
     "test_dtypes_addmm_xpu",
@@ -927,11 +920,16 @@ skip_list = (
     "test_neg_conj_view_to_sparse_xpu_complex128",
     "test_neg_view_to_sparse_xpu_float64",
 
+    # # CPU fallback error：AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
+    # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float16}.
+    # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
+    "test_dtypes_nn_functional_pad_replicate_negative_xpu",
+    "test_dtypes_nn_functional_pad_replicate_xpu",
+
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
     "test_dtypes_nn_functional_interpolate_bicubic_xpu",
-
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -939,29 +937,27 @@ res += launch_test("test_ops_xpu.py", skip_list)
 
 
 skip_list = (
-    "jiterator",  # Jiterator is only supported by CUDA
-    "cuda",  # Skip cuda hard-coded case
-    "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
-    "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
-    "test_cpu_tensor_pow_cuda_scalar_tensor_xpu",  # CUDA hard-coded
-    "test_type_promotion_bitwise_and_xpu",  # align CUDA dtype
-    "test_type_promotion_bitwise_or_xpu",  # align CUDA dtype
-    "test_type_promotion_bitwise_xor_xpu",  # align CUDA dtype
-    "test_type_promotion_max_binary_xpu",  # align CUDA dtype
-    "test_type_promotion_maximum_xpu",  # align CUDA dtype
-    "test_type_promotion_min_binary_xpu",  # align CUDA dtype
-    "test_type_promotion_minimum_xpu",  # align CUDA dtype
-    "test_pow_xpu_int16",  # align CUDA dtype
-    "test_pow_xpu_int32",  # align CUDA dtype
-    "test_pow_xpu_int64",  # align CUDA dtype
-    "test_pow_xpu_int8",  # align CUDA dtype
-    "test_pow_xpu_uint8",  # align CUDA dtype
-    "test_logaddexp_xpu_complex128",  # CPU fail
-    "test_logaddexp_xpu_complex64",  # CPU fail
-    "test_type_promotion_clamp_max_xpu",  # align CUDA dtype, CUDA XFAIL
-    "test_type_promotion_clamp_min_xpu",  # align CUDA dtype, CUDA XFAIL
-    "test_div_rounding_nonfinite_xpu_bfloat16",  # CPU result is not golden reference
-    "test_div_rounding_nonfinite_xpu_float16",  # CPU result is not golden reference
+    "test_cuda_tensor_pow_scalar_tensor_xpu", # numpy calculation is different with torch: AssertionError: The values for attribute 'dtype' do not match: torch.float32 != torch.float64
+    "test_fmod_remainder_by_zero_integral_xpu_int64", # zero division is an undefined behavior: different handles on different backends
+    "test_div_rounding_numpy_xpu_float16", # Calculation error. XPU implementation uses opmath type.
+    "test_type_promotion_bitwise_and_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_or_xpu", # align CUDA dtype
+    "test_type_promotion_bitwise_xor_xpu", # align CUDA dtype
+    "test_type_promotion_max_binary_xpu", # align CUDA dtype
+    "test_type_promotion_maximum_xpu", # align CUDA dtype
+    "test_type_promotion_min_binary_xpu", # align CUDA dtype
+    "test_type_promotion_minimum_xpu", # align CUDA dtype
+    "test_pow_xpu_int16", # align CUDA dtype
+    "test_pow_xpu_int32", # align CUDA dtype
+    "test_pow_xpu_int64", # align CUDA dtype
+    "test_pow_xpu_int8", # align CUDA dtype
+    "test_pow_xpu_uint8", # align CUDA dtype
+    "test_logaddexp_xpu_complex128", # CPU fail
+    "test_logaddexp_xpu_complex64", # CPU fail
+    "test_type_promotion_clamp_max_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_type_promotion_clamp_min_xpu", # align CUDA dtype, CUDA XFAIL
+    "test_div_rounding_nonfinite_xpu_bfloat16", # CPU result is not golden reference
+    "test_div_rounding_nonfinite_xpu_float16", # CPU result is not golden reference
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
@@ -1436,6 +1432,10 @@ skip_list = (
     "test_multiple_device_transfer_nn_TransformerEncoder_eval_mode_xpu_float32",
     "test_multiple_device_transfer_nn_TransformerEncoder_train_mode_xpu_float32",
     "test_multiple_device_transfer_nn_Transformer_xpu_float32",
+
+    # Reflection_pad2d doesn't support channel last, CUDA skipped too.
+    "test_memory_format_nn_ReflectionPad2d_xpu_float32",
+    "test_memory_format_nn_ReflectionPad2d_xpu_float64",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 
@@ -1601,6 +1601,18 @@ skip_list = (
 )
 res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
+# test_dataloader
+skip_list = (
+    # Skip for XPU didn't support
+    "test_nested_tensor_multiprocessing",
+    # pinned memory issue
+    "test_custom_batch_pin",
+    "test_sequential_pin_memory",
+    "test_shuffle_pin_memory",
+    "test_pin_memory",
+)
+res += launch_test("test_dataloader_xpu.py", skip_list)
+
 # test_tensor_creation_ops
 
 
@@ -1633,8 +1645,6 @@ res += launch_test("test_autocast_xpu.py", skip_list)
 
 
 skip_list = (
-    # Segment fault
-    "test_resize_version_bump_xpu",
     # c10::NotImplementedError
     "test_autograd_composite_implicit_and_dispatch_registration_xpu",
     "test_autograd_multiple_dispatch_registrations_xpu",
@@ -3154,6 +3164,31 @@ skip_list = (
     "test_unary_op_tensors_on_different_devices__foreach_neg_xpu_bool",
 )
 res += launch_test("test_foreach_xpu.py",skip_list)
+
+# test_convolution
+skip_list = (
+    # XPU unsupport ops, skip.
+    "test_cudnn_convolution_relu_xpu_float16",
+    "test_cudnn_convolution_relu_xpu_float32",
+    "test_cudnn_convolution_add_relu_xpu_float16",
+    "test_cudnn_convolution_add_relu_xpu_float32",
+    "test_conv_double_backward_xpu_float64",
+    # accuracy issue, TODO
+    "test_Conv2d_naive_groups_xpu_float16",
+)
+res += launch_test("nn/test_convolution_xpu.py", skip_list)
+
+# test_dynamic_shapes
+res += launch_test("test_dynamic_shapes_xpu.py")
+
+# test_load_state_dict
+res += launch_test("nn/test_load_state_dict_xpu.py")
+
+# test_module_hooks
+res += launch_test("nn/test_module_hooks_xpu.py")
+
+# test_parametrization
+res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
