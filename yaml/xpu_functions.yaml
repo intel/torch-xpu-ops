@@ -410,6 +410,9 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - addcdiv.out
+  - addcdiv
+  - addcdiv_
   - addcmul.out
   - addcmul
   - addcmul_

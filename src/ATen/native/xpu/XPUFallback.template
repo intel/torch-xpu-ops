@@ -164,7 +164,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "adaptive_max_pool2d.out",
     "adaptive_max_pool3d_backward.grad_input",
     "adaptive_max_pool3d.out",
-    "addcdiv.out",
     "aminmax.out",
     "angle",
     "argmin.out",
