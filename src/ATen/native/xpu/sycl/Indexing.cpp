@@ -563,6 +563,9 @@ void index_put_deterministic_kernel(
         });
     if (permuted)
       self.copy_(src_.permute(inversePerm));
+    else if (!self_contiguous) {
+      self.copy_(self_);
+    } 
   }
 }
 
