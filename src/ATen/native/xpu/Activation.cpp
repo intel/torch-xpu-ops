@@ -5,7 +5,7 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
-#include <ATen/native/xpu/sycl/ActivationGluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationGluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
@@ -397,15 +397,18 @@ Tensor XPUNativeFunctions::hardswish_backward(
   return iter.output();
 }
 
-static void check_even_dimension(const Tensor& input, int64_t dim) {
-  auto wrap_dim = maybe_wrap_dim(dim, input.dim());
-  const int64_t nln = input.size(wrap_dim);
+void check_even_dimension(const Tensor& self, int64_t dim) {
+  // this can't pass anyway because a 0-dimensional tensor has "size" 1, which
+  // can't be evenly halved, but give a nicer error message here.
+  TORCH_CHECK(self.dim() > 0, "glu does not support 0-dimensional tensors");
+  auto wrap_dim = maybe_wrap_dim(dim, self.dim());
+  const int64_t nIn = self.size(wrap_dim);
   TORCH_CHECK(
-      nln % 2 == 0,
-      "Halving dimension must be even, but dimension",
+      nIn % 2 == 0,
+      "Halving dimension must be even, but dimension ",
       wrap_dim,
       " is size ",
-      nln);
+      nIn);
 }
 
 Tensor& XPUNativeFunctions::glu_out(
@@ -427,7 +430,6 @@ Tensor& XPUNativeFunctions::glu_backward_out(
     const Tensor& self,
     int64_t dim,
     Tensor& grad_input) {
-  TORCH_CHECK(self.dim() > 0, "glu does not support 0-dimensional tensors");
   check_even_dimension(self, dim);
   native::xpu::glu_backward_kernel(grad_output, self, dim, grad_input);
   return grad_input;
