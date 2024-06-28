@@ -104,6 +104,11 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - leaky_relu
+  - leaky_relu_
+  - leaky_relu.out
+  - leaky_relu_backward
+  - leaky_relu_backward.grad_input
   - silu
   - silu_
   - silu.out
