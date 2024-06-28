@@ -1,6 +1,5 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/ops/imag.h>
 #include <c10/core/ScalarType.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
