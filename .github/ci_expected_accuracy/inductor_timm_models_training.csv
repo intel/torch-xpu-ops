@@ -36,7 +36,7 @@ mobilenetv3_large_100,pass,pass,fail_accuracy,pass,pass
 mobilevit_s,pass,pass,fail_accuracy,pass,pass
 nfnet_l0,pass,pass,pass,pass,pass
 pit_b_224,pass,pass,pass,pass,pass
-pnasnet5large,pass,pass,timeout,pass,fail_accuracy
+pnasnet5large,pass,pass,pass,pass,fail_accuracy
 poolformer_m36,pass,pass,pass,pass,pass
 regnety_002,pass,pass,fail_accuracy,pass,pass
 repvgg_a2,pass,pass,fail_accuracy,pass,pass
