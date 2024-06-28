@@ -6,9 +6,9 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/Resize.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/native/xpu/sycl/ResizeKernel.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>

@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
-#include <ATen/core/Tensor.h>
+#pragma once
 
-namespace at {
-namespace native::xpu {
+#include <ATen/native/TensorIterator.h>
+
+namespace at::native::xpu {
 
 TensorImpl* resize_impl_xpu_(
     TensorImpl* self,
@@ -11,4 +11,3 @@ TensorImpl* resize_impl_xpu_(
     bool device_guard = true);
 
 }
-} // namespace at
