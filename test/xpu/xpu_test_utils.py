@@ -118,6 +118,8 @@ _xpu_computation_op_list = [
     "cdist",
     "nn.functional.group_norm",
     "bincount",
+    "linalg_cross.out",
+    "linalg_cross",
 ]
 
 
