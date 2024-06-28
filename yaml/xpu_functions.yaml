@@ -400,6 +400,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - linalg_vector_norm
+  - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
   - acos
