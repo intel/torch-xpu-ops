@@ -561,7 +561,7 @@ void reflection_pad1d_backward_kernel(
     const Tensor& grad_output_,
     const Tensor& input,
     IntArrayRef padding) {
-  globalContext().alertNotDeterministic("reflection_pad1d_backward_out_cuda");
+  globalContext().alertNotDeterministic("reflection_pad1d_backward_out_xpu");
   grad_input.zero_();
 
   if (grad_input.numel() == 0) {
@@ -579,6 +579,12 @@ void reflection_pad1d_backward_kernel(
   int64_t dim_plane = 0;
   int64_t dim_w = 1;
   int64_t nbatch = 1;
+
+  if (input.ndimension() == 3) {
+    nbatch = input.size(0);
+    dim_plane++;
+    dim_w++;
+  }
 
   int64_t pad_l = padding[0];
   int64_t pad_r = padding[1];
@@ -801,7 +807,7 @@ void reflection_pad3d_kernel(
   bool batch_mode = (input.dim() == 5);
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "reflection_pad3d_out_xpu", [&] {
+      kHalf, kBFloat16, input.scalar_type(), "reflection_pad3d_xpu", [&] {
         auto input_inner = input;
         auto output_inner = output;
         if (!batch_mode) {
@@ -822,7 +828,7 @@ void reflection_pad3d_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
-  globalContext().alertNotDeterministic("reflection_pad3d_backward_out_cuda");
+  globalContext().alertNotDeterministic("reflection_pad3d_backward_out_xpu");
   TORCH_CHECK(
       canUse32BitIndexMath(input),
       "input tensor must fit into 32-bit index math");
@@ -843,7 +849,7 @@ void reflection_pad3d_backward_kernel(
       kHalf,
       kBFloat16,
       input.scalar_type(),
-      "reflection_pad3d_backward_out_dpcpp",
+      "reflection_pad3d_backward_xpu",
       [&] {
         auto grad_input_ = grad_input;
         auto grad_output_ = grad_output;
