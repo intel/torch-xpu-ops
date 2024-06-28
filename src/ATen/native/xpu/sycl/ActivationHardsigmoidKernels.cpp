@@ -7,13 +7,13 @@
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
-struct HardsigmoidOutFunctor {
+struct HardsigmoidFunctor {
   scalar_t operator()(scalar_t self_val) const {
     accscalar_t x = static_cast<accscalar_t>(self_val);
     return std::min(std::max(x + three_, zero_), six_) * one_sixth_;
   }
 
-  HardsigmoidOutFunctor(
+  HardsigmoidFunctor(
       const accscalar_t zero,
       const accscalar_t one_sixth,
       const accscalar_t three,
@@ -32,21 +32,21 @@ void hardsigmoid_kernel(TensorIteratorBase& iter) {
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.dtype(),
-      "hardsigmoid_out_xpu",
+      "hardsigmoid_xpu",
       [&]() {
         using accscalar_t = at::opmath_type<scalar_t>;
         const accscalar_t zero(0.0f);
         const accscalar_t one_sixth(1.0f / 6.0f);
         const accscalar_t three(3.0f);
         const accscalar_t six(6.0f);
-        HardsigmoidOutFunctor<scalar_t, accscalar_t> f(
+        HardsigmoidFunctor<scalar_t, accscalar_t> f(
             zero, one_sixth, three, six);
         gpu_kernel(iter, f);
       });
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct HardsigmoidBackwardOutFunctor {
+struct HardsigmoidBackwardFunctor {
   scalar_t operator()(scalar_t grad_val_, scalar_t self_val_) const {
     accscalar_t grad_val = static_cast<accscalar_t>(grad_val_);
     accscalar_t self_val = static_cast<accscalar_t>(self_val_);
@@ -54,7 +54,7 @@ struct HardsigmoidBackwardOutFunctor {
                                                         : zero_;
   }
 
-  HardsigmoidBackwardOutFunctor(
+  HardsigmoidBackwardFunctor(
       const accscalar_t zero,
       const accscalar_t three,
       const accscalar_t neg_three,
@@ -76,14 +76,14 @@ void hardsigmoid_backward_kernel(TensorIteratorBase& iter) {
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.dtype(),
-      "hardsigmoid_backward_out_xpu",
+      "hardsigmoid_backward_xpu",
       [&]() {
         using accscalar_t = at::opmath_type<scalar_t>;
         const accscalar_t zero(0.0f);
         const accscalar_t three(3.0f);
         const accscalar_t neg_three(-3.0f);
         const accscalar_t one_sixth(1.0f / 6.0f);
-        HardsigmoidBackwardOutFunctor<scalar_t, accscalar_t> f(
+        HardsigmoidBackwardFunctor<scalar_t, accscalar_t> f(
             zero, three, neg_three, one_sixth);
         gpu_kernel(iter, f);
       });

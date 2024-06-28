@@ -420,14 +420,8 @@ TensorIterator hardsigmoid_backward_meta(
     const Tensor& grad_output,
     const Tensor& self,
     Tensor& grad_input) {
-  TORCH_CHECK(self.numel() == grad_output.numel(), "different elements ...");
-  TensorIterator iter;
-  iter = TensorIteratorConfig()
-             .set_check_mem_overlap(true)
-             .add_output(grad_input)
-             .add_input(grad_output)
-             .add_input(self)
-             .build();
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   return iter;
 }
 
