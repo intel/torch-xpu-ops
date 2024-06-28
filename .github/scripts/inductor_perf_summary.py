@@ -47,52 +47,19 @@ def caculate_passrate(df, compiler):
     perc = int(percentage(passing, total, decimals=0))
     return f"{perc}%, {passing}/{total}"
 
-#def init_passrate_geom_dict(precison,mode):
-#    global geomean_values, passrate_values
-#    for option in ["target","reference"]:
-#        passrate_values[option+'_'+precison+'_'+mode]="X"
-#        geomean_values[option+'_'+precison+'_'+mode]="X"
-#    print(passrate_values)
-
-
-#def validate_csv_files(csv_file):
-#    df = pd.read_csv(csv_file,header=None)
-    #expected_header = ['dev', 'name', 'batch_size', 'speedup', 'abs_latency', 'compilation_latency', 'compression_ratio', 'eager_peak_mem', 'dynamo_peak_mem', 'calls_captured', 'unique_graphs', 'graph_breaks', 'unique_graph_breaks']
-    #if df.iloc[0].tolist() == expected_header:
-    #    print(f"{csv_file} Expected csv file")
-    #    return True
-    #else:
-    #    print(f"{csv_file} file no right header!!!")
-    #    return False
-
 def get_perf_csv(precision, mode):
     target_path = 'inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_performance.csv'
-    #target_data = pd.DataFrame()
-    #if validate_csv_files(target_path):
-    #    target_ori_data = pd.read_csv(target_path)
-        #print('target_ori_data', target_ori_data[:1])
-    # target_ori_data = pd.read_csv(target_path, header=0, encoding='utf-8', names=['dev', 'name', 'batch_size', 'speedup', 'abs_latency', 'compilation_latency', 'compression_ratio'])
-    # when titles are different, names cannot read the right order
     target_ori_data = pd.read_csv(target_path, header=0, encoding='utf-8')
-    #print("dev:", target_ori_data)
     target_data = target_ori_data.copy()
     target_data.sort_values(by=['name'])
-        #target_data.sort_values(by=['name'], key=lambda col: col.str.lower(), inplace=True)
-    #else:
-    #    print("file skip")
     
     if args.reference is not None:
         reference_file_path = args.reference + '/inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_performance.csv'
         reference_ori_data = pd.read_csv(reference_file_path, header=0, encoding='utf-8')
-        #if validate_csv_files(reference_file_path):
-            #reference_ori_data = pd.read_csv(reference_file_path)
         reference_data = reference_ori_data.copy()
         reference_data.sort_values(by=['name'])
-            #reference_data.sort_values(by=['name'], key=lambda col: col.str.lower(),inplace=True)    
         data = pd.merge(target_data,reference_data,on=['name'],how= 'outer')
         return data
-        #else:
-        #    print("file skip")
     else:
         return target_data
 
@@ -475,13 +442,8 @@ def update_summary(excel):
 
 
 def generate_report(excel, precision_list, mode_list):
-    #print(type(precision_list))
     for p in precision_list:
-        #print(p)
         for m in mode_list:
-        #for m in ['inference', 'training']:
-            #init_passrate_geom_dict(p,m)
-            #print(m)
             update_details(p, m, excel)
     update_summary(excel)
 
@@ -530,7 +492,7 @@ def html_generate(html_off):
 
 
 if __name__ == '__main__':
-    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
+    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Perf_Report.xlsx')
     generate_report(excel, args.precision, args.mode)
     excel_postprocess(excel, args.precision, args.mode)
     html_generate(args.html_off)
