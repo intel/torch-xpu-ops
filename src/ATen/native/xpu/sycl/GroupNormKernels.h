@@ -15,8 +15,7 @@ void group_norm_kernel(
     double eps,
     Tensor& Y,
     Tensor& mean,
-    Tensor& rstd,
-    ScalarType dtype);
+    Tensor& rstd);
 
 void group_norm_backward_kernel(
     const Tensor& dY,

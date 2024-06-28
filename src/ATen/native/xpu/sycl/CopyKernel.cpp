@@ -1,4 +1,4 @@
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>

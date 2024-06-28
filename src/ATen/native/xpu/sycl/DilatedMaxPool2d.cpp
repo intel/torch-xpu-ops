@@ -4,9 +4,9 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -310,8 +310,8 @@ void max_pool2d_backward_out_frame(
   }
 }
 
-Tensor& max_pool2d_with_indices_backward_out_kernel(
-    Tensor& gradInput,
+void max_pool2d_with_indices_backward_out_kernel(
+    const Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
     const Tensor& indices,
@@ -430,7 +430,6 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
-  return gradInput;
 }
 
 } // namespace xpu

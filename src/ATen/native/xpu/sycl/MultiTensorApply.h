@@ -1,6 +1,6 @@
 #pragma once
-#include <ATen/ATen.h>
 #include <c10/core/ScalarType.h>
+#include <comm/xpu_aten.h>
 #include <vector>
 
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>

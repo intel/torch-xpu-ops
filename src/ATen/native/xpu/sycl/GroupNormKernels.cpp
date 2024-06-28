@@ -326,8 +326,7 @@ void group_norm_kernel(
     double eps,
     Tensor& Y,
     Tensor& mean,
-    Tensor& rstd,
-    ScalarType dtype) {
+    Tensor& rstd) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

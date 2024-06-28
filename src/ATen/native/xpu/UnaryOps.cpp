@@ -1,8 +1,10 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
+
+#include <ATen/native/DispatchStub.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <ATen/native/UnaryOps.h>
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
@@ -11,12 +13,36 @@
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
+
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
 #include <ATen/native/xpu/sycl/UnarySignKernels.h>
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
 
+#include <ATen/ops/empty.h>
+#include <ATen/ops/empty_like.h>
+#include <ATen/ops/real.h>
+
 namespace at {
+
+namespace native {
+REGISTER_XPU_DISPATCH(abs_stub, xpu::abs_kernel);
+REGISTER_XPU_DISPATCH(sin_stub, xpu::sin_kernel);
+REGISTER_XPU_DISPATCH(cos_stub, xpu::cos_kernel);
+REGISTER_XPU_DISPATCH(log_stub, xpu::log_kernel);
+REGISTER_XPU_DISPATCH(sqrt_stub, xpu::sqrt_kernel);
+REGISTER_XPU_DISPATCH(rsqrt_stub, xpu::rsqrt_kernel);
+REGISTER_XPU_DISPATCH(tanh_stub, xpu::tanh_kernel);
+REGISTER_XPU_DISPATCH(neg_stub, xpu::neg_kernel);
+REGISTER_XPU_DISPATCH(reciprocal_stub, xpu::reciprocal_kernel);
+REGISTER_XPU_DISPATCH(bitwise_not_stub, xpu::bitwise_not_kernel);
+REGISTER_XPU_DISPATCH(exp_stub, xpu::exp_kernel);
+REGISTER_XPU_DISPATCH(sigmoid_stub, xpu::sigmoid_kernel);
+REGISTER_XPU_DISPATCH(sgn_stub, xpu::sgn_kernel);
+REGISTER_XPU_DISPATCH(sign_stub, xpu::sign_kernel);
+REGISTER_XPU_DISPATCH(acos_stub, xpu::acos_kernel);
+REGISTER_XPU_DISPATCH(acosh_stub, xpu::acosh_kernel);
+} // namespace native
 
 template <typename Stub>
 static inline Tensor& unary_op_impl_out(
@@ -105,414 +131,4 @@ template <typename OutImpl>
 static inline Tensor& unary_op_impl_(Tensor& self, OutImpl& out_impl) {
   return out_impl(self, self);
 }
-
-Tensor XPUNativeFunctions::abs(const Tensor& self) {
-  return unary_op_impl_with_complex_to_float(self, at::abs_out);
-}
-
-Tensor& XPUNativeFunctions::abs_(Tensor& self) {
-  TORCH_CHECK(
-      !self.is_complex(), "In-place abs is not supported for complex tensors.");
-  return unary_op_impl_(self, at::abs_out);
-}
-
-Tensor& XPUNativeFunctions::abs_out(const Tensor& self, Tensor& out) {
-  return unary_op_impl_with_complex_to_float_out(
-      out,
-      self,
-      native::xpu::abs_kernel,
-      /*promotes_integer_to_float=*/false);
-}
-
-Tensor XPUNativeFunctions::sin(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sin_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::sin_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::sin_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::sin_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sin_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::cos(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::cos_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::cos_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::cos_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::cos_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::cos_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::log(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::log_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::log_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::log_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::log_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::log_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::sqrt(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sqrt_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::sqrt_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::sqrt_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::sqrt_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sqrt_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::rsqrt(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::rsqrt_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::rsqrt_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::rsqrt_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::rsqrt_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::rsqrt_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::tanh(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::tanh_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::tanh_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::tanh_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::tanh_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::tanh_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::neg(const Tensor& self) {
-  TORCH_CHECK(
-      self.scalar_type() != kBool,
-      "Negation, the `-` operator, on a bool tensor is not supported. "
-      "If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.");
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  native::xpu::neg_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::neg_(Tensor& self) {
-  TORCH_CHECK(
-      self.scalar_type() != kBool,
-      "Negation, the `-` operator, on a bool tensor is not supported. "
-      "If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.");
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(self, self);
-  native::xpu::neg_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::neg_out(const Tensor& self, Tensor& out) {
-  TORCH_CHECK(
-      self.scalar_type() != kBool,
-      "Negation, the `-` operator, on a bool tensor is not supported. "
-      "If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.");
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  native::xpu::neg_kernel(iter);
-  return out;
-}
-
-TensorIterator logical_not_meta(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build(TensorIteratorConfig()
-                 .check_all_same_dtype(false)
-                 .add_output(out)
-                 .add_const_input(self));
-  return iter;
-}
-
-Tensor XPUNativeFunctions::logical_not(const Tensor& self) {
-  Tensor out = at::empty({0}, self.options().dtype(kBool));
-  return at::logical_not_out(out, self);
-}
-
-Tensor& XPUNativeFunctions::logical_not_(Tensor& self) {
-  return at::logical_not_out(self, self);
-}
-
-Tensor& XPUNativeFunctions::logical_not_out(const Tensor& self, Tensor& out) {
-  auto iter = logical_not_meta(self, out);
-  native::xpu::logical_not_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::reciprocal(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::reciprocal_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::reciprocal_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::reciprocal_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::reciprocal_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::reciprocal_kernel(iter);
-  return out;
-}
-
-Tensor& XPUNativeFunctions::bitwise_not_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  native::xpu::bitwise_not_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::exp(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::exp_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::exp_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::exp_kernel(iter);
-  return out;
-}
-
-Tensor& XPUNativeFunctions::exp_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::exp_kernel(iter);
-  return self;
-}
-
-Tensor XPUNativeFunctions::sigmoid(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sigmoid_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::sigmoid_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::sigmoid_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::sigmoid_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::sgn(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::sgn_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(self, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return self;
-}
-
-Tensor& XPUNativeFunctions::sgn_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_op(out, self);
-  if (self.is_complex()) {
-    native::xpu::sgn_kernel(iter);
-  } else {
-    native::xpu::sign_kernel(iter);
-  }
-  return out;
-}
-
-Tensor XPUNativeFunctions::acos(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::acos_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::acos_(Tensor& self) {
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::acos_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::acos_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::acos_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::acosh(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::acosh_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::acosh_(Tensor& self) {
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::acosh_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::acosh_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::acosh_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::erf(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::erf_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::erf_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::erf_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::erf_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::erf_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::erfc(const Tensor& self) {
-  Tensor out;
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::erfc_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::erfc_(Tensor& self) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
-  native::xpu::erfc_kernel(iter);
-  return self;
-}
-
-Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
-  TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
-  native::xpu::erfc_kernel(iter);
-  return out;
-}
-
 } // namespace at

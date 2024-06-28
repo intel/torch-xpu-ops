@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/WrapDimUtils.h>
@@ -7,6 +6,10 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/narrow.h>
+#include <ATen/ops/size_native.h>
 
 namespace at::native::xpu {
 

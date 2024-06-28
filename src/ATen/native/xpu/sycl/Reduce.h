@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
@@ -13,6 +12,7 @@
 #include <c10/macros/Macros.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
 #include <type_traits>
@@ -338,7 +338,8 @@ struct ReduceConfig {
   }
 
   int slm_sz() const {
-    // if (!should_group_y_reduce() && (!should_group_x_reduce() || group_width
+    // if (!should_group_y_reduce() && (!should_group_x_reduce() ||
+    // group_width
     // <= 32)) { return 0; }
     return element_size_bytes * num_items * output_vec_size;
   }
@@ -1445,8 +1446,8 @@ inline void gpu_reduce_kernel(
   }
 
   // XXX: Avoid all WIs in a work group contributes on one output. If so,
-  // It is inefficient to store output, each work group stores only one output.
-  // It is not friendly to collapse memory request in an EU.
+  // It is inefficient to store output, each work group stores only one
+  // output. It is not friendly to collapse memory request in an EU.
   if (config.values_per_item() >= group_height * 16 ||
       config.values_per_item() >= 512) {
     // Divide the input across SGs in a work group, if that leaves at least

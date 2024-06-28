@@ -1,11 +1,12 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernel.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/zeros_like.h>
 
 namespace at {
-
-Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
+namespace native {
+Tensor adaptive_avg_pool2d_backward_xpu(
     const Tensor& grad_output_,
     const Tensor& input_) {
   Tensor grad_input;
@@ -21,12 +22,12 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
       grad_output = grad_output_.contiguous(smf);
       grad_input = at::empty_like(input_, smf);
     }
-    native::xpu::adaptive_avg_pool2d_backward_out_kernel(
+    xpu::adaptive_avg_pool2d_backward_out_kernel(
         grad_input, grad_output, input);
   } else {
     grad_input = at::zeros_like(input_, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
   return grad_input;
 }
-
+} // namespace native
 } // namespace at

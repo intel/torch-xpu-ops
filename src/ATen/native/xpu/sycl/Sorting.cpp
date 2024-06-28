@@ -1,8 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
+
+#include <ATen/ops/empty_strided.h>
 
 namespace at {
 namespace native {

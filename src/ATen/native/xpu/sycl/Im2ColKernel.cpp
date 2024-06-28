@@ -1,5 +1,5 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>

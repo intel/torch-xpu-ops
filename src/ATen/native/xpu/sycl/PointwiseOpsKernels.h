@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void addcmul_kernel(TensorIterator& iter, Scalar value);
+void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value);
 
 } // namespace at::native::xpu

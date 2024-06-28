@@ -1,8 +1,8 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
+#include <comm/xpu_aten.h>
 #include <stdlib.h>
 
 namespace at {

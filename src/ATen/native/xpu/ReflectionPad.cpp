@@ -1,11 +1,16 @@
 #include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
+#include <ATen/ops/empty.h>
+#include <ATen/ops/zeros_like.h>
+#include <ATen/xpu/ops/reflection_pad2d_backward_native.h>
+#include <ATen/xpu/ops/reflection_pad2d_native.h>
 namespace at {
 
-Tensor& XPUNativeFunctions::reflection_pad2d_out(
+namespace native {
+
+Tensor& reflection_pad2d_out_xpu(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& output) {
@@ -13,15 +18,13 @@ Tensor& XPUNativeFunctions::reflection_pad2d_out(
   return output;
 }
 
-Tensor XPUNativeFunctions::reflection_pad2d(
-    const Tensor& input,
-    IntArrayRef padding) {
+Tensor reflection_pad2d_xpu(const Tensor& input, IntArrayRef padding) {
   auto output = at::empty({0}, input.options());
   native::xpu::reflection_pad2d_kernel(output, input, padding);
   return output;
 }
 
-Tensor& XPUNativeFunctions::reflection_pad2d_backward_out(
+Tensor& reflection_pad2d_backward_out_xpu(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding,
@@ -36,7 +39,7 @@ Tensor& XPUNativeFunctions::reflection_pad2d_backward_out(
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::reflection_pad2d_backward(
+Tensor reflection_pad2d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
@@ -48,5 +51,5 @@ Tensor XPUNativeFunctions::reflection_pad2d_backward(
       grad_input, grad_output, input, padding);
   return grad_input;
 }
-
+} // namespace native
 } // namespace at

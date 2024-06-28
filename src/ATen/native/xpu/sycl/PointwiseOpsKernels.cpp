@@ -19,7 +19,7 @@ struct AddcmulKernelFunctor {
   opmath_t alpha_;
 };
 
-void addcmul_kernel(TensorIterator& iter, Scalar value) {
+void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
