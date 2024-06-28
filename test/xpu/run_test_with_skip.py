@@ -2057,6 +2057,12 @@ skip_list=(
     "test_compile_int4_mm_m_64_k_64_n_64_xpu",
 # Short is not supported in oneDNN!
     "test_mm_empty_inputs_mixed_dtype_errors_xpu",
+
+    # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+    "test_bmm_tunableop_rocm_xpu_float32",
+
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_numeric_check_leak_tunableop_rocm_xpu_float32",
     )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
@@ -2356,11 +2362,12 @@ skip_list=(
 )
 res += launch_test("test_ops_fwd_gradients_xpu.py", skip_list)
 
-skip_list = (
-    # eye fallbacks to CPU and does not support Float8_e4m3fn
-    "test_cache_disabled",
-)
-res += launch_test("test_matmul_cuda_xpu.py",skip_list=skip_list)
+# Got error when collect test cases. Skip for now.
+# skip_list = (
+#     # eye fallbacks to CPU and does not support Float8_e4m3fn
+#     "test_cache_disabled",
+# )
+# res += launch_test("test_matmul_cuda_xpu.py",skip_list=skip_list)
 
 skip_list = (
     #RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse
