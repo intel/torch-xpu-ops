@@ -4,12 +4,9 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
-#include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 
