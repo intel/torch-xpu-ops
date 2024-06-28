@@ -29,11 +29,6 @@ project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
-  message("torch-xpu-ops only supports Linux system so far. We will support more systems in future.")
-  return()
-endif()
-
 set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
 list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 

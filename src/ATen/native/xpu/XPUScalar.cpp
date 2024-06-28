@@ -2,13 +2,8 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
-#include <comm/SYCLContext.h>
-
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/xpu/ops/_local_scalar_dense_native.h>
-#endif
+#include <comm/SYCLContext.h>
 
 namespace at::native {
 

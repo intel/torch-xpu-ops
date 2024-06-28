@@ -1,15 +1,24 @@
 # Setup building flags for SYCL device and host codes.
 
-# Support GCC only at the moment.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+# Support GCC on Linux and MSVC on Windows at the moment.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # # -- Host flags (SYCL_CXX_FLAGS)
-  list(APPEND SYCL_HOST_FLAGS -fPIC)
-  list(APPEND SYCL_HOST_FLAGS -std=c++17)
-  # SYCL headers warnings
-  list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
-  list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
-  list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
-  list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    list(APPEND SYCL_HOST_FLAGS /std:c++17)
+    list(APPEND SYCL_HOST_FLAGS /MD)
+    list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
+    # SYCL headers warnings
+    list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
+    list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND SYCL_HOST_FLAGS -fPIC)
+    list(APPEND SYCL_HOST_FLAGS -std=c++17)
+    # SYCL headers warnings
+    list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
+    list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
+    list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
+    list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+  endif()
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     list(APPEND SYCL_HOST_FLAGS -g)
@@ -46,12 +55,16 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-nans)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-infinities)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-nans)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-infinities)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
+  endif()
   # TODO: Align with PyTorch and switch to ABI=0 eventually, after
   # resolving incompatible implementation in SYCL runtime.
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=1)
@@ -70,8 +83,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
 
-  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-intel-enable-auto-large-GRF-mode\"")
-  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS ${SYCL_OFFLINE_COMPILER_CG_OPTIONS} "-options \"-cl-fp32-correctly-rounded-divide-sqrt\"")
+  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-intel-enable-auto-large-GRF-mode")
+  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-fp32-correctly-rounded-divide-sqrt")
+  set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
     set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
   else()
@@ -79,6 +93,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   endif()
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 else()
-  message("Not compiling with XPU. Only support GCC compiler as CXX compiler.")
+  message("Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
   return()
 endif()

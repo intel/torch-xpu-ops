@@ -8,6 +8,18 @@ file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
+
+if(WIN32)
+  set(FILE_DISPLAY_CMD type)
+  # replace forward slash with back slash for compatibility with 'type' command on Windows
+  string(REPLACE "/" "\\" RegisterXPU_PATH_BACKSLASH "${RegisterXPU_PATH}")
+  string(REPLACE "/" "\\" XPUFallback_PATH_BACKSLASH "${XPUFallback_PATH}")
+  set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH_BACKSLASH} ">>" ${RegisterXPU_PATH_BACKSLASH})
+else()
+  set(FILE_DISPLAY_CMD cat)
+  set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH} ">>" ${RegisterXPU_PATH})
+endif()
+
 function(GEN_BACKEND file_yaml)
   set(generated_files "")
   foreach(f ${ARGN})
@@ -21,7 +33,7 @@ function(GEN_BACKEND file_yaml)
     --output_dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --source_yaml ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml}
     COMMAND
-    cat ${XPUFallback_PATH} >> ${RegisterXPU_PATH}
+    ${REGISTER_FALLBACK_CMD}
     ${SIMPLE_TRACE}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS

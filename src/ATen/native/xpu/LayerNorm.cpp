@@ -54,7 +54,7 @@ namespace native {
       c10::nullopt /* device */,
       c10::nullopt /* pin_memory */,
       LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  auto acc_type = at::toAccumulateType(input.scalar_type(), /*is_cuda=*/true);
+  auto acc_type = at::toAccumulateType(input.scalar_type(), true);
 
   Tensor mean = at::empty({M}, X->options().dtype(acc_type));
   Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
