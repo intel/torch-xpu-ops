@@ -825,7 +825,7 @@ skip_list = (
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
 )
-res += launch_test("test_binary_ufuncs_xpu.py", exe_list=skip_list)
+res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
 # test_scatter_gather_ops
 
@@ -1937,22 +1937,11 @@ skip_list = (
     "test_triangular_solve_xpu_complex64",
     "test_triangular_solve_xpu_float64",
     # https://github.com/intel/torch-xpu-ops/issues/317
-    # addmm.out, addmv.out, addr, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU
+    # addmm.out, addmv.out, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU
     "test_addmm_sizes_xpu_complex128",
     "test_addmm_sizes_xpu_complex64",
     "test_blas_alpha_beta_empty_xpu_complex128",
     "test_blas_alpha_beta_empty_xpu_complex64",
-    "test_addr_float_and_complex_xpu_bfloat16",
-    "test_addr_float_and_complex_xpu_complex128",
-    "test_addr_float_and_complex_xpu_complex64",
-    "test_addr_float_and_complex_xpu_float16",
-    "test_addr_float_and_complex_xpu_float32",
-    "test_addr_float_and_complex_xpu_float64",
-    "test_addr_integral_xpu_int16",
-    "test_addr_integral_xpu_int32",
-    "test_addr_integral_xpu_int64",
-    "test_addr_integral_xpu_int8",
-    "test_addr_integral_xpu_uint8",
     "test_linalg_lstsq_input_checks_xpu_complex128",
     "test_linalg_lstsq_input_checks_xpu_complex64",
     "test_linalg_lstsq_input_checks_xpu_float32",
@@ -1976,6 +1965,9 @@ skip_list = (
     "test_compile_int4_mm_m_64_k_64_n_64_xpu",
     # Short is not supported in oneDNN!
     "test_mm_empty_inputs_mixed_dtype_errors_xpu",
+    # XPU does not support tunable.
+    "test_bmm_tunableop_rocm_xpu_float32",
+    "test_numeric_check_leak_tunableop_rocm_xpu_float32",
 )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
