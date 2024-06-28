@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
@@ -181,7 +181,7 @@ Tensor& avg_pool2d_backward_meta(
 }
 
 Tensor XPUNativeFunctions::avg_pool2d(
-    const at::Tensor& input,
+    const Tensor& input,
     at::IntArrayRef kernel_size,
     at::IntArrayRef stride,
     at::IntArrayRef padding,
@@ -212,7 +212,7 @@ Tensor XPUNativeFunctions::avg_pool2d(
 }
 
 Tensor& XPUNativeFunctions::avg_pool2d_out(
-    const at::Tensor& input,
+    const Tensor& input,
     at::IntArrayRef kernel_size,
     at::IntArrayRef stride,
     at::IntArrayRef padding,
@@ -243,8 +243,8 @@ Tensor& XPUNativeFunctions::avg_pool2d_out(
 }
 
 Tensor XPUNativeFunctions::avg_pool2d_backward(
-    const at::Tensor& grad_output,
-    const at::Tensor& input,
+    const Tensor& grad_output,
+    const Tensor& input,
     at::IntArrayRef kernel_size,
     at::IntArrayRef stride,
     at::IntArrayRef padding,
@@ -276,8 +276,8 @@ Tensor XPUNativeFunctions::avg_pool2d_backward(
 }
 
 Tensor& XPUNativeFunctions::avg_pool2d_backward_out(
-    const at::Tensor& grad_output,
-    const at::Tensor& input,
+    const Tensor& grad_output,
+    const Tensor& input,
     at::IntArrayRef kernel_size,
     at::IntArrayRef stride,
     at::IntArrayRef padding,
