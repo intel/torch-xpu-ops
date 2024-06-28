@@ -3077,10 +3077,6 @@ skip_list = (
     ### Error #42 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_storage_error - AttributeError: 'to...
     "test_tensor_storage_type_xpu_uint8",
 
-    # issue 302, 12
-    "test_index_add",
-    "test_index_add_all_dtypes",
-
     # issue 302 , 8
     "test_print",
     "test_storage_error",
