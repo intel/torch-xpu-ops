@@ -300,8 +300,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "median",
     "mish.out",
     "mode",
-    "mse_loss_backward",
-    "mse_loss.out",
     "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
     "multi_margin_loss",
