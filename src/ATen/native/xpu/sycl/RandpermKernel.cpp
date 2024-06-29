@@ -10,7 +10,7 @@
 namespace at::native::xpu {
 
 template <typename T, typename scalar_t>
-struct HandleDuplicateKeysFunctor {
+struct HandleDuplicateKeysKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto tid = item.get_global_id(0);
     // find the beginning of islands
@@ -44,7 +44,7 @@ struct HandleDuplicateKeysFunctor {
       }
     }
   }
-  HandleDuplicateKeysFunctor(
+  HandleDuplicateKeysKernelFunctor(
       T* keys,
       scalar_t* data,
       T mask,
@@ -87,11 +87,13 @@ void randperm_handle_duplicate_keys(
       std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_));
 
   T mask = static_cast<T>((1UL << bits) - 1);
-  HandleDuplicateKeysFunctor kfn(keys, data, mask, n, rng_engine_inputs);
+  HandleDuplicateKeysKernelFunctor kfn(keys, data, mask, n, rng_engine_inputs);
   auto local_range = syclMaxWorkGroupSize() / 2;
-  auto global_range = (n + local_range - 1) / local_range;
+  auto num_wg = (n + local_range - 1) / local_range;
+  auto global_range = num_wg * local_range;
+
   sycl_kernel_submit(
-      global_range * local_range,
+      global_range,
       local_range,
       at::xpu::getCurrentSYCLQueue(),
       kfn);
@@ -136,7 +138,7 @@ Tensor randperm_kernel(
     auto keys_tmp = at::empty_like(keys);
     auto keys_out = keys_tmp.mutable_data_ptr<key_type>();
     AT_DISPATCH_ALL_TYPES_AND(
-        kHalf, result.scalar_type(), "randperm_out_xpu", [&] {
+        kHalf, result.scalar_type(), "randperm_xpu", [&] {
           using dtype = OpaqueType<sizeof(scalar_t)>;
           auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
           auto* range_data =
@@ -162,7 +164,7 @@ Tensor randperm_kernel(
     auto keys_tmp = at::empty_like(keys);
     auto keys_out = keys_tmp.mutable_data_ptr<key_type>();
     AT_DISPATCH_ALL_TYPES_AND(
-        kHalf, result.scalar_type(), "randperm_out_xpu", [&] {
+        kHalf, result.scalar_type(), "randperm_xpu", [&] {
           using dtype = OpaqueType<sizeof(scalar_t)>;
           auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
           auto* range_data = reinterpret_cast<const dtype*>(range.data_ptr());
