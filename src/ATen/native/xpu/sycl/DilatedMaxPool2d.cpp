@@ -148,8 +148,9 @@ struct MaxPool2dKernelFunctor {
   int stride_;
   BatchKernelConfig cfg_;
 };
+
 template <typename scalar_t, bool is_channels_last>
-struct MaxPool2dBackwardOutKernelFunctor {
+struct MaxPool2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto desc = cfg_.get_item_desc(item);
 
@@ -176,7 +177,7 @@ struct MaxPool2dBackwardOutKernelFunctor {
       }
     } while (cfg_.next(item, desc));
   }
-  MaxPool2dBackwardOutKernelFunctor(
+  MaxPool2dBackwardKernelFunctor(
       scalar_t* gradInput,
       scalar_t* gradOutput,
       int64_t* indices,
@@ -224,7 +225,7 @@ struct MaxPool2dBackwardOutKernelFunctor {
 };
 
 template <typename scalar_t, bool is_channels_last>
-struct MaxPool2dBackwardOutDeterministicKernelFunctor {
+struct MaxPool2dBackwardDeterministicKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto desc = cfg_.get_item_desc(item);
     do {
@@ -275,7 +276,7 @@ struct MaxPool2dBackwardOutDeterministicKernelFunctor {
       }
     } while (cfg_.next(item, desc));
   }
-  MaxPool2dBackwardOutDeterministicKernelFunctor(
+  MaxPool2dBackwardDeterministicKernelFunctor(
       scalar_t* gradInput,
       scalar_t* gradOutput,
       int64_t* indices,
@@ -347,7 +348,7 @@ struct MaxPool2dBackwardOutDeterministicKernelFunctor {
 };
 
 template <typename scalar_t, bool is_channels_last>
-void max_pool2d_out_frame(
+void launch_max_pool2d_kernel(
     scalar_t* output,
     int64_t* indices,
     scalar_t* input,
@@ -370,7 +371,7 @@ void max_pool2d_out_frame(
   int stride = numPlane * outputSizeH * outputSizeW;
   BatchKernelConfig cfg = {
       1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-  auto caller = MaxPool2dKernelFunctor<scalar_t, is_channels_last>(
+  auto kfn = MaxPool2dKernelFunctor<scalar_t, is_channels_last>(
       output,
       indices,
       input,
@@ -389,11 +390,11 @@ void max_pool2d_out_frame(
       dilationW,
       stride,
       cfg);
-  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, caller);
+  sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
 
 template <typename scalar_t, bool is_channels_last>
-void max_pool2d_backward_out_frame(
+void launch_max_pool2d_backward_kernel(
     scalar_t* gradInput,
     scalar_t* gradOutput,
     int64_t* indices,
@@ -424,36 +425,35 @@ void max_pool2d_backward_out_frame(
       std::is_same_v<scalar_t, at::BFloat16>) {
     BatchKernelConfig cfg = {
         1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-    auto caller = MaxPool2dBackwardOutDeterministicKernelFunctor<
-        scalar_t,
-        is_channels_last>(
-        gradInput,
-        gradOutput,
-        indices,
-        numPlane,
-        gradInputSizeH,
-        gradInputSizeW,
-        gradOutputSizeH,
-        gradOutputSizeW,
-        gradInputSize,
-        out_cf_c_stride,
-        in_cf_c_stride,
-        out_n_stride,
-        in_n_stride,
-        kernel_h,
-        kernel_w,
-        stride_h,
-        stride_w,
-        pad_h,
-        pad_w,
-        dilation_h,
-        dilation_w,
-        cfg);
-    sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, caller);
+    auto kfn =
+        MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>(
+            gradInput,
+            gradOutput,
+            indices,
+            numPlane,
+            gradInputSizeH,
+            gradInputSizeW,
+            gradOutputSizeH,
+            gradOutputSizeW,
+            gradInputSize,
+            out_cf_c_stride,
+            in_cf_c_stride,
+            out_n_stride,
+            in_n_stride,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w,
+            dilation_h,
+            dilation_w,
+            cfg);
+    sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
   } else {
     BatchKernelConfig cfg = {
         1, gradOutputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-    auto caller = MaxPool2dBackwardOutKernelFunctor<scalar_t, is_channels_last>(
+    auto kfn = MaxPool2dBackwardKernelFunctor<scalar_t, is_channels_last>(
         gradInput,
         gradOutput,
         indices,
@@ -468,9 +468,10 @@ void max_pool2d_backward_out_frame(
         out_n_stride,
         in_n_stride,
         cfg);
-    sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, caller);
+    sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
   }
 }
+
 void max_pool2d_with_indices_kernel(
     const Tensor& input_,
     IntArrayRef kernel_size,
@@ -478,18 +479,32 @@ void max_pool2d_with_indices_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode,
-    Tensor& output,
-    Tensor& indices) {
+    Tensor& output_,
+    Tensor& indices_) {
   NoNamesGuard guard;
 
-  TensorArg output_arg{output, "output", 1};
-  TensorArg indices_arg{indices, "indices", 2};
+  TensorArg output_arg{output_, "output", 1};
+  TensorArg indices_arg{indices_, "indices", 2};
   TensorArg input_arg{input_, "input_", 3};
 
   checkAllSameGPU(__func__, {output_arg, indices_arg, input_arg});
-  if (output.numel() == 0) {
+  if (output_.numel() == 0) {
     return;
   }
+
+  auto smf = input_.suggest_memory_format();
+  bool is_3d = input_.ndimension() == 3;
+  Tensor input, indices, output;
+  if (is_3d) {
+    input = input_.contiguous();
+    indices = indices_.contiguous();
+    output = output_.contiguous();
+  } else {
+    input = input_.contiguous(smf);
+    indices = indices_.contiguous(smf);
+    output = output_.contiguous(smf);
+  }
+
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
       ? kH
@@ -509,8 +524,6 @@ void max_pool2d_with_indices_kernel(
       ? dilationH
       : safe_downcast<int, int64_t>(dilation[1]);
 
-  const auto memory_format = input_.suggest_memory_format();
-
   const int64_t nbatch = input_.ndimension() == 4 ? input_.size(-4) : 1;
   const int64_t nInputPlane = input_.size(-3);
   const int64_t inputHeight = input_.size(-2);
@@ -519,12 +532,11 @@ void max_pool2d_with_indices_kernel(
   const int64_t outputHeight = output.size(-2);
   const int64_t outputWidth = output.size(-1);
 
-  Tensor input = input_.contiguous(memory_format);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
-        switch (memory_format) {
+        switch (smf) {
           case MemoryFormat::ChannelsLast: {
-            max_pool2d_out_frame<scalar_t, true>(
+            launch_max_pool2d_kernel<scalar_t, true>(
                 output.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
                 input.data_ptr<scalar_t>(),
@@ -545,7 +557,7 @@ void max_pool2d_with_indices_kernel(
             break;
           }
           case MemoryFormat::Contiguous: {
-            max_pool2d_out_frame<scalar_t, false>(
+            launch_max_pool2d_kernel<scalar_t, false>(
                 output.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
                 input.data_ptr<scalar_t>(),
@@ -571,25 +583,51 @@ void max_pool2d_with_indices_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
+
+  if ((is_3d && !indices_.is_contiguous()) ||
+      (!is_3d && !indices_.is_contiguous(smf))) {
+    indices_.copy_(indices);
+  }
+
+  if ((is_3d && !output_.is_contiguous()) ||
+      (!is_3d && !output_.is_contiguous(smf))) {
+    output_.copy_(output);
+  }
 }
 
 Tensor& max_pool2d_with_indices_backward_kernel(
-    Tensor& gradInput,
-    const Tensor& gradOutput,
-    const Tensor& input,
-    const Tensor& indices,
+    Tensor& gradInput_,
+    const Tensor& gradOutput_,
+    const Tensor& input_,
+    const Tensor& indices_,
     IntArrayRef kernel_size,
     IntArrayRef stride,
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode) {
   NoNamesGuard guard;
-  TensorArg gradInput_arg{gradInput, "gradInput", 1};
-  TensorArg gradOutput_arg{gradOutput, "gradOutput", 2};
-  TensorArg input_arg{input, "input", 3};
-  TensorArg indices_arg{indices, "indices", 4};
+  TensorArg gradInput_arg{gradInput_, "gradInput", 1};
+  TensorArg gradOutput_arg{gradOutput_, "gradOutput", 2};
+  TensorArg input_arg{input_, "input", 3};
+  TensorArg indices_arg{indices_, "indices", 4};
   checkAllSameGPU(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
+
+  auto smf = input_.suggest_memory_format();
+  bool is_3d = input_.ndimension() == 3;
+  Tensor input, gradOutput, indices, gradInput;
+  if (is_3d) {
+    input = input_.contiguous();
+    gradOutput = gradOutput_.contiguous();
+    indices = indices_.contiguous();
+    gradInput = gradInput_.contiguous();
+  } else {
+    input = input_.contiguous(smf);
+    gradOutput = gradOutput_.contiguous(smf);
+    indices = indices_.contiguous(smf);
+    gradInput = gradInput_.contiguous(smf);
+  }
+  gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
@@ -618,21 +656,17 @@ Tensor& max_pool2d_with_indices_backward_kernel(
   int64_t outputWidth = pooling_output_shape<int64_t>(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
 
-  auto memory_format = input.suggest_memory_format();
-
-  auto gradOutput_ = gradOutput.contiguous(memory_format);
-  gradInput.zero_();
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       gradOutput.scalar_type(),
       "max_pool2d_backward_xpu",
       [&] {
-        switch (input.suggest_memory_format()) {
+        switch (smf) {
           case at::MemoryFormat::ChannelsLast:
-            max_pool2d_backward_out_frame<scalar_t, true>(
+            launch_max_pool2d_backward_kernel<scalar_t, true>(
                 gradInput.data_ptr<scalar_t>(),
-                gradOutput_.data_ptr<scalar_t>(),
+                gradOutput.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
                 nbatch,
                 nInputPlane,
@@ -650,9 +684,9 @@ Tensor& max_pool2d_with_indices_backward_kernel(
                 dilationW);
             break;
           case at::MemoryFormat::Contiguous:
-            max_pool2d_backward_out_frame<scalar_t, false>(
+            launch_max_pool2d_backward_kernel<scalar_t, false>(
                 gradInput.data_ptr<scalar_t>(),
-                gradOutput_.data_ptr<scalar_t>(),
+                gradOutput.data_ptr<scalar_t>(),
                 indices.data_ptr<int64_t>(),
                 nbatch,
                 nInputPlane,
@@ -675,7 +709,13 @@ Tensor& max_pool2d_with_indices_backward_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
-  return gradInput;
+
+  if ((is_3d && !gradInput_.is_contiguous()) ||
+      (!is_3d && !gradInput_.is_contiguous(smf))) {
+    gradInput_.copy_(gradInput);
+  }
+
+  return gradInput_;
 }
 
 } // namespace at::native::xpu

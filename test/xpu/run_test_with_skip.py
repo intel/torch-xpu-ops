@@ -1518,10 +1518,6 @@ res += launch_test("test_indexing_xpu.py",skip_list)
 
 # test_pooling
 skip_list = (
-    # CUDA bias case
-    "test_max_pool2d_indices_xpu", # AssertionError: Torch not compiled with CUDA enabled
-    "test_max_pool2d_xpu", # AssertionError: Torch not compiled with CUDA enabled
-
     # CPU fallback fails
     "test_pooling_bfloat16_xpu", # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
     "test_AdaptiveMaxPool3d_indices_xpu_float16", # "adaptive_max_pool3d_cpu" not implemented for 'Half'

@@ -259,72 +259,6 @@ Tensor& max_pool2d_with_indices_backward_meta(
   return gradInput;
 }
 
-std::tuple<Tensor&, Tensor&> max_pool2d_with_indices_out_impl(
-    const Tensor& input,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode,
-    Tensor& output,
-    Tensor& indices) {
-  at::native::xpu::max_pool2d_with_indices_kernel(
-      input,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      output,
-      indices);
-  return std::tuple<Tensor&, Tensor&>(output, indices);
-}
-
-Tensor& max_pool2d_with_indices_backward_out_impl(
-    const Tensor& grad_output_,
-    const Tensor& self_,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode,
-    const Tensor& indices_,
-    Tensor& grad_input) {
-  /* PyTorch support two cases of MaxPool2d:
-       1. 3D: Input (C, H, W),  Output (C, H0, W0), Kernel (kH, kW)
-       This case does not support channel last format. For a 3-dim tensor,
-       the PyTorch suggest_memory_format can only be Contiguous or
-       ChannelsLast1D (nwc), the ChannelsLast1D (nwc) does not match the
-       sementics of Input (C, H, W) case. Then the suggest_memory_format can
-       only be Contiguous.
-       2. 4D: Input (N, C, H, W),  Output (N, C, H0, W0), Kernel (kH, kW)
-       This case supports Contiguous and ChannelsLast2D memory_format. */
-  Tensor self, grad_output, indices;
-  if (self_.ndimension() == 3) {
-    self = self_.contiguous();
-    grad_output = grad_output_.contiguous();
-    indices = indices_.contiguous();
-    grad_input.zero_();
-  } else {
-    auto smf = self_.suggest_memory_format();
-    self = self_.contiguous(smf);
-    grad_output = grad_output_.contiguous(smf);
-    indices = indices_.contiguous(smf);
-    grad_input.zero_();
-  }
-  at::native::xpu::max_pool2d_with_indices_backward_kernel(
-      grad_input,
-      grad_output,
-      self,
-      indices,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode);
-  return grad_input;
-}
-
 std::tuple<Tensor, Tensor> XPUNativeFunctions::max_pool2d_with_indices(
     const Tensor& input,
     IntArrayRef kernel_size,
@@ -343,7 +277,8 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::max_pool2d_with_indices(
       ceil_mode,
       output,
       indices);
-  max_pool2d_with_indices_out_impl(
+
+  at::native::xpu::max_pool2d_with_indices_kernel(
       input,
       kernel_size,
       stride,
@@ -352,6 +287,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::max_pool2d_with_indices(
       ceil_mode,
       output,
       indices);
+
   return std::tuple<Tensor&, Tensor&>(output, indices);
 }
 
@@ -373,7 +309,8 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_pool2d_with_indices_out(
       ceil_mode,
       output,
       indices);
-  max_pool2d_with_indices_out_impl(
+
+  at::native::xpu::max_pool2d_with_indices_kernel(
       input,
       kernel_size,
       stride,
@@ -382,40 +319,8 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_pool2d_with_indices_out(
       ceil_mode,
       output,
       indices);
-  return std::tuple<Tensor&, Tensor&>(output, indices);
-}
 
-Tensor XPUNativeFunctions::max_pool2d_with_indices_backward(
-    const Tensor& grad_output,
-    const Tensor& self,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode,
-    const Tensor& indices) {
-  Tensor grad_input;
-  grad_input = max_pool2d_with_indices_backward_meta(
-      grad_output,
-      self,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      indices,
-      grad_input);
-  grad_input = max_pool2d_with_indices_backward_out_impl(
-      grad_output,
-      self,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      indices,
-      grad_input);
-  return grad_input;
+  return std::tuple<Tensor&, Tensor&>(output, indices);
 }
 
 Tensor& XPUNativeFunctions::max_pool2d_with_indices_backward_out(
@@ -438,7 +343,32 @@ Tensor& XPUNativeFunctions::max_pool2d_with_indices_backward_out(
       ceil_mode,
       indices,
       grad_input);
-  grad_input = max_pool2d_with_indices_backward_out_impl(
+
+  at::native::xpu::max_pool2d_with_indices_backward_kernel(
+      grad_input,
+      grad_output,
+      self,
+      indices,
+      kernel_size,
+      stride,
+      padding,
+      dilation,
+      ceil_mode);
+
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::max_pool2d_with_indices_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    IntArrayRef dilation,
+    bool ceil_mode,
+    const Tensor& indices) {
+  Tensor grad_input;
+  max_pool2d_with_indices_backward_out(
       grad_output,
       self,
       kernel_size,
@@ -448,6 +378,7 @@ Tensor& XPUNativeFunctions::max_pool2d_with_indices_backward_out(
       ceil_mode,
       indices,
       grad_input);
+
   return grad_input;
 }
 
