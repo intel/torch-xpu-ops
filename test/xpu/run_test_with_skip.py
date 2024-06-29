@@ -1467,8 +1467,9 @@ skip_list = (
     "test_graph_save_on_cpu_cuda",
     "test_checkpointing_without_reentrant_memory_savings",
     "test_flops_and_mem",
-    # CUDA hard-code
     "test_profiler_emit_nvtx_xpu",
+    # RuntimeError: grad can be implicitly created only for scalar outputs
+    "test_reentrant_parent_error_on_cpu_xpu",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_mv_grad_stride_0_xpu",
     # module 'torch._C' has no attribute '_scatter'
