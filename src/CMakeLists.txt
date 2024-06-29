@@ -2,6 +2,7 @@
 include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
 set(ATen_XPU_CPP_SRCS)
+set(ATen_XPU_MKL_SRCS)
 set(ATen_XPU_SYCL_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
@@ -15,6 +16,7 @@ if(BUILD_SEPARATE_OPS)
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_GEN_SRCS})
 
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
@@ -35,7 +37,7 @@ else()
     torch_xpu_ops
     STATIC
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS}
-    CXX_SOURCES ${ATen_XPU_CPP_SRCS} ${ATen_XPU_GEN_SRCS})
+    CXX_SOURCES ${ATen_XPU_CPP_SRCS} ${ATen_XPU_MKL_SRCS} ${ATen_XPU_GEN_SRCS})
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
@@ -60,3 +62,10 @@ if(CLANG_FORMAT)
   add_custom_target(CL_FORMAT_CSRCS COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_CSRCS})
   add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
 endif()
+
+find_package(oneMKL)
+if(NOT ONEMKL_FOUND)
+  message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
+endif()
+
+target_link_libraries(torch_xpu_ops INTERFACE ${ONEMKL_LIBRARIES})

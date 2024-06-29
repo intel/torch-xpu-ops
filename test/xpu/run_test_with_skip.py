@@ -3020,5 +3020,58 @@ res += launch_test("nn/test_module_hooks_xpu.py")
 # test_parametrization
 res += launch_test("nn/test_parametrization_xpu.py")
 
+# test_spectral_ops
+skip_list = (
+  "test_cufft_plan_cache_xpu_float64",
+  # Deselect for sycl-preview breaking changes
+  "test_complex_istft_real_equiv_xpu_complex128",
+  "test_complex_stft_definition_xpu_complex128",
+  "test_complex_stft_real_equiv_xpu_complex128",
+  "test_complex_stft_roundtrip_xpu_complex128",
+  "test_cufft_context_xpu_complex128",
+  "test_cufft_context_xpu_complex64",
+  "test_cufft_plan_cache_xpu_float64",
+  "test_fft2_fftn_equivalence_xpu_complex64",
+  "test_fft2_fftn_equivalence_xpu_float32",
+  "test_fft2_numpy_xpu_complex128",
+  "test_fft2_numpy_xpu_float64",
+  "test_fft_ifft_rfft_irfft_xpu_float64",
+  "test_fft_input_modification_xpu",
+  "test_fft_plan_repeatable_xpu",
+  "test_fft_round_trip_xpu_complex128",
+  "test_fft_round_trip_xpu_complex64",
+  "test_fft_round_trip_xpu_float32",
+  "test_fft_round_trip_xpu_float64",
+  "test_fft_type_promotion_xpu_complex128",
+  "test_fft_type_promotion_xpu_complex64",
+  "test_fftn_round_trip_xpu_complex128",
+  "test_fftn_round_trip_xpu_complex64",
+  "test_fftn_round_trip_xpu_float32",
+  "test_fftn_round_trip_xpu_float64",
+  "test_hfftn_xpu_float32",
+  "test_hfftn_xpu_float64",
+  "test_ihfftn_xpu_float32",
+  "test_ihfftn_xpu_float64",
+  "test_reference_1d__refs_fft_fft_xpu_complex64",
+  "test_reference_1d__refs_fft_ifft_xpu_complex64",
+  "test_reference_1d_fft_fft_xpu_complex64",
+  "test_reference_1d_fft_ifft_xpu_complex64",
+  "test_reference_nd__refs_fft_fftn_xpu_complex128",
+  "test_reference_nd__refs_fft_fftn_xpu_complex64",
+  "test_reference_nd__refs_fft_hfftn_xpu_complex128",
+  "test_reference_nd__refs_fft_hfftn_xpu_complex64",
+  "test_reference_nd__refs_fft_ifftn_xpu_complex128",
+  "test_reference_nd__refs_fft_ifftn_xpu_complex64",
+  "test_reference_nd_fft_fftn_xpu_complex128",
+  "test_reference_nd_fft_fftn_xpu_complex64",
+  "test_reference_nd_fft_hfftn_xpu_complex128",
+  "test_reference_nd_fft_hfftn_xpu_complex64",
+  "test_reference_nd_fft_ifftn_xpu_complex128",
+  "test_reference_nd_fft_ifftn_xpu_complex64",
+  "test_stft_roundtrip_complex_window_xpu_complex128",
+  "test_stft_roundtrip_complex_window_xpu_float64",
+)
+res += launch_test("test_spectral_ops_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)

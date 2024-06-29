@@ -541,3 +541,5 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - _fft_c2c
+  - _fft_c2c.out
