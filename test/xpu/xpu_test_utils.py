@@ -18,10 +18,12 @@ from torch.testing._internal.common_utils import set_default_dtype
 
 
 _xpu_computation_op_list = [
+    "empty",
     "fill",
     "zeros",
     "zeros_like",
     "clone",
+    "randperm",
     "view_as_real",
     "view_as_complex",
     "view",
@@ -47,7 +49,6 @@ _xpu_computation_op_list = [
     "copy",
     "cos",
     "cumsum",
-    "empty",
     "eq",
     "fill",
     "fmod",
@@ -74,6 +75,8 @@ _xpu_computation_op_list = [
     "neg",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
+    "nn.functional.glu",
+    "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.threshold",
     "nn.functional.silu",

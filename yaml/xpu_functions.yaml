@@ -114,6 +114,10 @@ supported:
   - silu.out
   - silu_backward
   - silu_backward.grad_input
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
   - hardtanh
   - hardtanh.out
   - hardtanh_
@@ -429,5 +433,6 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
