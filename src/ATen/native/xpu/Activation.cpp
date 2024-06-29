@@ -5,6 +5,7 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
@@ -395,6 +396,52 @@ Tensor XPUNativeFunctions::hardswish_backward(
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::hardswish_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::hardsigmoid(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return out;
+}
+
+TensorIterator hardsigmoid_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::hardsigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
+  Tensor grad_input;
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
+  return grad_input;
 }
 
 Tensor XPUNativeFunctions::leaky_relu(

@@ -232,8 +232,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "glu.out",
     "hardshrink_backward.grad_input",
     "hardshrink.out",
-    "hardsigmoid_backward.grad_input",
-    "hardsigmoid.out",
     "heaviside.out",
     "histc",
     "huber_loss",
