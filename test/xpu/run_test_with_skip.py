@@ -1567,10 +1567,6 @@ skip_list = (
     # Dispatch issue. It is a composite operator. But it is implemented by
     # DispatchStub. XPU doesn't support DispatchStub.
     "test_kaiser_window_xpu",
-
-    # CUDA bias case
-    # with torch.random.fork_rng is CUDA bias
-    "test_randperm_xpu",
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
