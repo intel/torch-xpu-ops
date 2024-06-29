@@ -4,12 +4,11 @@
 
 namespace at::native::xpu {
 
-void glu_kernel(const Tensor& self, int64_t dim, Tensor& out);
+void glu_kernel(TensorIteratorBase& iter);
 
 void glu_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& self,
-    int64_t dim,
-    Tensor& grad_input);
+    const TensorIteratorBase& iter,
+    int64_t gI_stride,
+    int64_t I_stride);
 
 } // namespace at::native::xpu
