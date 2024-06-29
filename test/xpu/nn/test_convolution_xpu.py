@@ -1197,6 +1197,78 @@ with XPUPatchForImport(False):
             self.assertEqual(maxdiff2, 0)
             self.assertEqual(maxdiff3, 0)
 
+    def Conv2d_groups_nobias(self):
+        dev_dtypes = [("xpu", torch.float), ("xpu", torch.half)]
+        for device, dtype in dev_dtypes:
+            m = nn.Conv2d(4, 4, kernel_size=3, groups=2, bias=False).to(device, dtype)
+            i = torch.randn(2, 4, 6, 6, device=device, dtype=dtype, requires_grad=True)
+            output = m(i)
+            grad_output = torch.randn(2, 4, 4, 4, device=device, dtype=dtype)
+            output.backward(grad_output)
+
+            m1 = nn.Conv2d(2, 2, kernel_size=3, bias=False).to(device, dtype)
+            m1.weight.data.copy_(m.weight.data[:2])
+            i1 = i.data[:, :2].contiguous().requires_grad_(True)
+            output1 = m1(i1)
+            output1.backward(grad_output[:, :2].contiguous())
+
+            m2 = nn.Conv2d(2, 2, kernel_size=3, bias=False).to(device, dtype)
+            m2.weight.data.copy_(m.weight.data[2:])
+            i2 = i.data[:, 2:].contiguous().requires_grad_(True)
+            output2 = m2(i2)
+            output2.backward(grad_output[:, 2:].contiguous())
+
+            self.assertEqual(output, torch.cat([output1, output2], 1))
+            self.assertEqual(
+                i.grad.data,
+                torch.cat([i1.grad.data, i2.grad.data], 1),
+                atol=dtype2prec_DONTUSE[dtype],
+                rtol=0,
+            )
+            self.assertEqual(
+                m.weight.grad.data,
+                torch.cat([m1.weight.grad.data, m2.weight.grad.data], 0),
+                atol=1e-1 if dtype == torch.half else dtype2prec_DONTUSE[dtype],
+                rtol=0,
+            )
+
+    def Conv2d_groups_nobias_v2(self):
+        torch.manual_seed(123)
+        dev_dtypes = [("xpu", torch.float), ("xpu", torch.half)]
+        for device, dtype in dev_dtypes:
+            m = nn.Conv2d(4, 16, kernel_size=3, groups=2, bias=False).to(device, dtype)
+            i = torch.randn(2, 4, 6, 6, device=device, dtype=dtype, requires_grad=True)
+            output = m(i)
+            grad_output = torch.randn(2, 16, 4, 4, device=device, dtype=dtype)
+            output.backward(grad_output)
+
+            m1 = nn.Conv2d(2, 8, kernel_size=3, bias=False).to(device, dtype)
+            m1.weight.data.copy_(m.weight.data[:8])
+            i1 = i.data[:, :2].contiguous().requires_grad_(True)
+            output1 = m1(i1)
+            output1.backward(grad_output[:, :8].contiguous())
+
+            m2 = nn.Conv2d(2, 8, kernel_size=3, bias=False).to(device, dtype)
+            m2.weight.data.copy_(m.weight.data[8:])
+            i2 = i.data[:, 2:].contiguous().requires_grad_(True)
+            output2 = m2(i2)
+            output2.backward(grad_output[:, 8:].contiguous())
+
+            self.assertEqual(output, torch.cat([output1, output2], 1))
+            self.assertEqual(
+                i.grad.data,
+                torch.cat([i1.grad.data, i2.grad.data], 1),
+                atol=dtype2prec_DONTUSE[dtype],
+                rtol=0,
+            )
+            self.assertEqual(
+                m.weight.grad.data,
+                torch.cat([m1.weight.grad.data, m2.weight.grad.data], 0),
+                atol=1e-1 if dtype == torch.half else dtype2prec_DONTUSE[dtype],
+                rtol=0,
+            )
+
+
     TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = conv2d_depthwise_naive_groups
     TestConvolutionNNDeviceType.test_Conv3d_depthwise_naive_groups = conv3d_depthwise_naive_groups
     TestConvolutionNNDeviceType.test_ConvTranspose2d_large_output_padding = convTranspose2d_large_output_padding
@@ -1219,7 +1291,8 @@ with XPUPatchForImport(False):
     TestConvolutionNN.test_cudnn_noncontiguous_weight = mkldnn_noncontiguous_weight
     TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = grouped_conv_mkldnn_nhwc_support
     TestConvolutionNN.test_thnn_conv_strided_padded_dilated = thnn_conv_strided_padded_dilated
-
+    TestConvolutionNN.test_Conv2d_groups_nobias=Conv2d_groups_nobias
+    TestConvolutionNN.test_Conv2d_groups_nobias_v2=Conv2d_groups_nobias_v2
 instantiate_device_type_tests(TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestConvolutionNN)
 

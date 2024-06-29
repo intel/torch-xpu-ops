@@ -25,6 +25,9 @@ test_package = (
 
 
 with XPUPatchForImport(False):
+    def _set_allocator_settings(device=None):
+        pass
+    torch.cuda.memory._set_allocator_settings=_set_allocator_settings
     from test_dataloader import *
 
     def _test_multiprocessing_iterdatapipe(self, with_dill):
