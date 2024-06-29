@@ -1569,6 +1569,7 @@ skip_list = (
     "test_kaiser_window_xpu",
 
     # CUDA bias case
+    # with torch.random.fork_rng is CUDA bias
     "test_randperm_xpu",
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)

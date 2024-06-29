@@ -93,10 +93,7 @@ void randperm_handle_duplicate_keys(
   auto global_range = num_wg * local_range;
 
   sycl_kernel_submit(
-      global_range,
-      local_range,
-      at::xpu::getCurrentSYCLQueue(),
-      kfn);
+      global_range, local_range, at::xpu::getCurrentSYCLQueue(), kfn);
 }
 
 Tensor randperm_kernel(
@@ -137,23 +134,21 @@ Tensor randperm_kernel(
                         generator);
     auto keys_tmp = at::empty_like(keys);
     auto keys_out = keys_tmp.mutable_data_ptr<key_type>();
-    AT_DISPATCH_ALL_TYPES_AND(
-        kHalf, result.scalar_type(), "randperm_xpu", [&] {
-          using dtype = OpaqueType<sizeof(scalar_t)>;
-          auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
-          auto* range_data =
-              reinterpret_cast<const dtype*>(range.const_data_ptr());
-          sort_pairs<key_type, dtype>(
-              keys.const_data_ptr<key_type>(),
-              keys_out,
-              range_data,
-              shuffled_data_,
-              n,
-              false);
+    AT_DISPATCH_ALL_TYPES_AND(kHalf, result.scalar_type(), "randperm_xpu", [&] {
+      using dtype = OpaqueType<sizeof(scalar_t)>;
+      auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
+      auto* range_data = reinterpret_cast<const dtype*>(range.const_data_ptr());
+      sort_pairs<key_type, dtype>(
+          keys.const_data_ptr<key_type>(),
+          keys_out,
+          range_data,
+          shuffled_data_,
+          n,
+          false);
 
-          randperm_handle_duplicate_keys(
-              keys_out, shuffled_data_, bits, n, generator);
-        });
+      randperm_handle_duplicate_keys(
+          keys_out, shuffled_data_, bits, n, generator);
+    });
   } else {
     using key_type = int64_t;
     auto keys = at::empty(result.sizes(), opt.dtype(kLong))
@@ -163,23 +158,22 @@ Tensor randperm_kernel(
                         generator);
     auto keys_tmp = at::empty_like(keys);
     auto keys_out = keys_tmp.mutable_data_ptr<key_type>();
-    AT_DISPATCH_ALL_TYPES_AND(
-        kHalf, result.scalar_type(), "randperm_xpu", [&] {
-          using dtype = OpaqueType<sizeof(scalar_t)>;
-          auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
-          auto* range_data = reinterpret_cast<const dtype*>(range.data_ptr());
+    AT_DISPATCH_ALL_TYPES_AND(kHalf, result.scalar_type(), "randperm_xpu", [&] {
+      using dtype = OpaqueType<sizeof(scalar_t)>;
+      auto shuffled_data_ = reinterpret_cast<dtype*>(shuffled_data);
+      auto* range_data = reinterpret_cast<const dtype*>(range.data_ptr());
 
-          sort_pairs<key_type, dtype>(
-              keys.const_data_ptr<key_type>(),
-              keys_out,
-              range_data,
-              shuffled_data_,
-              n,
-              false);
+      sort_pairs<key_type, dtype>(
+          keys.const_data_ptr<key_type>(),
+          keys_out,
+          range_data,
+          shuffled_data_,
+          n,
+          false);
 
-          randperm_handle_duplicate_keys(
-              keys_out, shuffled_data_, bits, n, generator);
-        });
+      randperm_handle_duplicate_keys(
+          keys_out, shuffled_data_, bits, n, generator);
+    });
   }
 
   if (!result.is_contiguous()) {
