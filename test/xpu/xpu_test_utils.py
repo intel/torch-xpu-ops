@@ -8,10 +8,12 @@ from torch.testing._internal import common_device_type, common_methods_invocatio
 
 
 _xpu_computation_op_list = [
+    "empty",
     "fill",
     "zeros",
     "zeros_like",
     "clone",
+    "randperm",
     "view_as_real",
     "view_as_complex",
     "view",
@@ -37,7 +39,6 @@ _xpu_computation_op_list = [
     "copy",
     "cos",
     "cumsum",
-    "empty",
     "eq",
     "fill",
     "fmod",

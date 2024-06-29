@@ -11,6 +11,7 @@
 #include <ATen/ops/empty_strided_native.h>
 #endif
 
+#include <ATen/native/xpu/sycl/RandpermKernel.h>
 #include <ATen/xpu/EmptyTensor.h>
 
 namespace at {
@@ -60,6 +61,23 @@ Tensor XPUNativeFunctions::clone(
     const Tensor& self,
     c10::optional<MemoryFormat> memory_format) {
   return at::native::clone(self, memory_format);
+}
+
+Tensor& XPUNativeFunctions::randperm_out(
+    int64_t n,
+    c10::optional<Generator> generator,
+    Tensor& result) {
+  TORCH_CHECK(n >= 0, "n must be non-negative, got", n);
+  at::native::check_supported_max_int_with_precision(n, result);
+  result.resize_({n});
+
+  if (n == 0) {
+    return result;
+  }
+
+  native::xpu::randperm_kernel(result, n, generator);
+
+  return result;
 }
 
 } // namespace at
