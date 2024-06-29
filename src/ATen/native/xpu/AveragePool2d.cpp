@@ -69,6 +69,7 @@ Tensor& avg_pool2d_meta(
       outputHeight,
       outputWidth,
       memory_format);
+
   /* resize output */
   if (input.ndimension() == 3) {
     if (output.defined()) {

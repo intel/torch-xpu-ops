@@ -2,6 +2,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
@@ -19,7 +20,7 @@ inline int max(int a, int b) {
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct AvgPool2dFrameKernelFunctor {
+struct AvgPool2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto index = item.get_global_linear_id();
 
@@ -66,7 +67,7 @@ struct AvgPool2dFrameKernelFunctor {
       top_data_[index] = static_cast<scalar_t>(aveval / divide_factor);
     }
   }
-  AvgPool2dFrameKernelFunctor(
+  AvgPool2dKernelFunctor(
       scalar_t* top_data,
       const scalar_t* bottom_data,
       int64_t total_elements,
@@ -123,7 +124,7 @@ struct AvgPool2dFrameKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-struct AvgPool2dChannelsLastFrameKernelFunctor {
+struct AvgPool2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto index = item.get_global_linear_id();
 
@@ -168,7 +169,7 @@ struct AvgPool2dChannelsLastFrameKernelFunctor {
       top_data_[index] = static_cast<scalar_t>(aveval / divide_factor);
     }
   }
-  AvgPool2dChannelsLastFrameKernelFunctor(
+  AvgPool2dChannelsLastKernelFunctor(
       scalar_t* top_data,
       const scalar_t* bottom_data,
       int64_t total_elements,
@@ -225,7 +226,7 @@ struct AvgPool2dChannelsLastFrameKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-void avg_pool2d_channels_last_frame(
+void launch_avg_pool2d_channels_last_kernel(
     const int total_elements,
     const Tensor& input,
     const int64_t channels,
@@ -251,7 +252,7 @@ void avg_pool2d_channels_last_frame(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto caller = AvgPool2dChannelsLastFrameKernelFunctor<scalar_t, accscalar_t>(
+  auto kfn = AvgPool2dChannelsLastKernelFunctor<scalar_t, accscalar_t>(
       top_data,
       bottom_data,
       total_elements,
@@ -269,10 +270,11 @@ void avg_pool2d_channels_last_frame(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, caller);
+  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
+
 template <typename scalar_t, typename accscalar_t>
-void avg_pool2d_frame(
+void launch_avg_pool2d_kernel(
     const int total_elements,
     const Tensor& input,
     const int64_t channels,
@@ -298,7 +300,7 @@ void avg_pool2d_frame(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto caller = AvgPool2dFrameKernelFunctor<scalar_t, accscalar_t>(
+  auto kfn = AvgPool2dKernelFunctor<scalar_t, accscalar_t>(
       top_data,
       bottom_data,
       total_elements,
@@ -316,7 +318,7 @@ void avg_pool2d_frame(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, caller);
+  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
@@ -529,7 +531,7 @@ struct AvgPool2dBackwarKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool2d_backward_channels_last_frame(
+void launch_avg_pool2d_backward_channels_last_kernel(
     const index_t total_elements,
     const Tensor& grad_output,
     const int64_t channels,
@@ -555,7 +557,7 @@ void avg_pool2d_backward_channels_last_frame(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto caller = AvgPool2dChannelsLastBackwardKernelFunctor<
+  auto kfn = AvgPool2dChannelsLastBackwardKernelFunctor<
       scalar_t,
       accscalar_t,
       index_t>(
@@ -576,11 +578,11 @@ void avg_pool2d_backward_channels_last_frame(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, caller);
+  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool2d_backward_frame(
+void launch_avg_pool2d_backward_kernel(
     const index_t total_elements,
     const Tensor& grad_output,
     const int64_t channels,
@@ -606,7 +608,7 @@ void avg_pool2d_backward_frame(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto caller = AvgPool2dBackwarKernelFunctor<scalar_t, accscalar_t, index_t>(
+  auto kfn = AvgPool2dBackwarKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
       bottom_data,
       total_elements,
@@ -624,7 +626,7 @@ void avg_pool2d_backward_frame(
       divisor_override,
       count_include_pad,
       use_divisor);
-  sycl_kernel_submit(global_range, group_size, queue, caller);
+  sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
 void avg_pool2d_kernel(
@@ -675,7 +677,7 @@ void avg_pool2d_kernel(
             case MemoryFormat::ChannelsLast: {
               output.unsafeGetTensorImpl()->empty_tensor_restride(
                   MemoryFormat::ChannelsLast);
-              avg_pool2d_channels_last_frame<scalar_t, accscalar_t>(
+              launch_avg_pool2d_channels_last_kernel<scalar_t, accscalar_t>(
                   count,
                   input,
                   nInputPlane,
@@ -696,7 +698,7 @@ void avg_pool2d_kernel(
               break;
             }
             case MemoryFormat::Contiguous: {
-              avg_pool2d_frame<scalar_t, accscalar_t>(
+              launch_avg_pool2d_kernel<scalar_t, accscalar_t>(
                   count,
                   input,
                   nInputPlane,
@@ -777,13 +779,13 @@ void avg_pool2d_backward_kernel(
         AT_DISPATCH_INDEX_TYPES(
             at::native::canUse32BitIndexMath(input, INT_MAX) ? ScalarType::Int
                                                              : ScalarType::Long,
-            "avg_pool2d_backward_xpu_launcher",
+            "avg_pool2d_backward_xpu",
             [&] {
               switch (memory_format) {
                 case MemoryFormat::ChannelsLast: {
                   gradInput.unsafeGetTensorImpl()->empty_tensor_restride(
                       MemoryFormat::ChannelsLast);
-                  avg_pool2d_backward_channels_last_frame<
+                  launch_avg_pool2d_backward_channels_last_kernel<
                       scalar_t,
                       accscalar_t,
                       index_t>(
@@ -807,7 +809,7 @@ void avg_pool2d_backward_kernel(
                   break;
                 }
                 case MemoryFormat::Contiguous: {
-                  avg_pool2d_backward_frame<scalar_t, accscalar_t, index_t>(
+                  launch_avg_pool2d_backward_kernel<scalar_t, accscalar_t, index_t>(
                       count,
                       gradOutput,
                       nInputPlane,
