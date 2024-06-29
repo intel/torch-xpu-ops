@@ -1,7 +1,5 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <ATen/Config.h>
-#include <ATen/NativeFunctions.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/Pool.h>
@@ -12,7 +10,7 @@ namespace at::native::xpu {
 
 using namespace at::xpu;
 
-template <typename scalar_t, typename accscalar_t, bool is_channels_last>
+template <typename scalar_t, typename opmath_t, bool is_channels_last>
 struct AdaptiveAvgPool2dBwdKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t gi = item.get_global_linear_id();
@@ -38,14 +36,14 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
       int64_t _ob = _ib;
       int64_t _oc = _ic;
 
-      accscalar_t gx = 0;
-      accscalar_t _ikh, _ikw;
+      opmath_t gx = 0;
+      opmath_t _ikh, _ikw;
       for (int _oh = _oh0; _oh < _oh1; _oh++) {
-        _ikh = accscalar_t(1.0) /
-            (accscalar_t)(native::end_index(_oh, oh_, ih_) - native::start_index(_oh, oh_, ih_));
+        _ikh = opmath_t(1.0) /
+            (opmath_t)(native::end_index(_oh, oh_, ih_) - native::start_index(_oh, oh_, ih_));
         for (int _ow = _ow0; _ow < _ow1; _ow++) {
-          _ikw = accscalar_t(1.0) /
-              (accscalar_t)(native::end_index(_ow, ow_, iw_) - native::start_index(_ow, ow_, iw_));
+          _ikw = opmath_t(1.0) /
+              (opmath_t)(native::end_index(_ow, ow_, iw_) - native::start_index(_ow, ow_, iw_));
           gx += gyacc_[_ob][_oc][_oh][_ow] * _ikh * _ikw;
         }
       }
@@ -101,7 +99,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   PackedTensorAccessor64<scalar_t, 4> gxacc_;
 };
 
-template <typename scalar_t, typename accscalar_t, bool is_channels_last>
+template <typename scalar_t, typename opmath_t, bool is_channels_last>
 struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
@@ -119,14 +117,14 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
       _ow1_cached_[_iw] = (int)native::end_index(_iw, iw_, ow_);
     }
     for (int _oh = li; _oh < oh_; _oh += local_range_) {
-      _ikh_cached_[_oh] = accscalar_t(1.0) /
-          (accscalar_t)(native::end_index(_oh, oh_, ih_) -
-                        native::start_index(_oh, oh_, ih_));
+      _ikh_cached_[_oh] = opmath_t(1.0) /
+          (opmath_t)(native::end_index(_oh, oh_, ih_) -
+                     native::start_index(_oh, oh_, ih_));
     }
     for (int _ow = li; _ow < ow_; _ow += local_range_) {
-      _ikw_cached_[_ow] = accscalar_t(1.0) /
-          (accscalar_t)(native::end_index(_ow, ow_, iw_) -
-                        native::start_index(_ow, ow_, iw_));
+      _ikw_cached_[_ow] = opmath_t(1.0) /
+          (opmath_t)(native::end_index(_ow, ow_, iw_) -
+                     native::start_index(_ow, ow_, iw_));
     }
 
     item.barrier(sycl_local_fence);
@@ -153,8 +151,8 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
       int64_t _ob = _ib;
       int64_t _oc = _ic;
 
-      accscalar_t gx = 0;
-      accscalar_t _ikh, _ikw;
+      opmath_t gx = 0;
+      opmath_t _ikh, _ikw;
       for (int _oh = _oh0; _oh < _oh1; _oh++) {
         _ikh = _ikh_cached_[_oh];
         for (int _ow = _ow0; _ow < _ow1; _ow++) {
@@ -178,8 +176,8 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     _oh1_cached_ = sycl_local_acc_t<int>(ih_, cgh);
     _ow0_cached_ = sycl_local_acc_t<int>(iw_, cgh);
     _ow1_cached_ = sycl_local_acc_t<int>(iw_, cgh);
-    _ikh_cached_ = sycl_local_acc_t<accscalar_t>(oh_, cgh);
-    _ikw_cached_ = sycl_local_acc_t<accscalar_t>(ow_, cgh);
+    _ikh_cached_ = sycl_local_acc_t<opmath_t>(oh_, cgh);
+    _ikw_cached_ = sycl_local_acc_t<opmath_t>(ow_, cgh);
   }
 
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
@@ -226,26 +224,28 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   sycl_local_acc_t<int> _oh1_cached_;
   sycl_local_acc_t<int> _ow0_cached_;
   sycl_local_acc_t<int> _ow1_cached_;
-  sycl_local_acc_t<accscalar_t> _ikh_cached_;
-  sycl_local_acc_t<accscalar_t> _ikw_cached_;
+  sycl_local_acc_t<opmath_t> _ikh_cached_;
+  sycl_local_acc_t<opmath_t> _ikw_cached_;
 };
 
-void adaptive_avg_pool2d_backward_out_kernel(
-    Tensor& gradInput,
-    const Tensor& gradOutput,
-    const Tensor& input) {
-  TensorArg grad_input_arg{gradInput, "gradInput", 1},
-      grad_output_arg{gradOutput, "gradOutput", 2},
-      input_arg{input, "input", 3};
-  adaptive_pool_empty_output_check(gradOutput, "adaptive_avg_pool2d_backward");
-  checkAllSameGPU(__func__, {grad_input_arg, grad_output_arg, input_arg});
+void adaptive_avg_pool2d_backward_kernel(
+    Tensor& grad_input,
+    const Tensor& grad_output_,
+    const Tensor& input_) {
+  Tensor input, grad_output;
+  if (input_.ndimension() == 3) {
+    input = input_.contiguous();
+    grad_output = grad_output_.contiguous();
+    grad_input = at::empty_like(input);
+  } else {
+    auto smf = input_.suggest_memory_format();
+    input = input_.contiguous(smf);
+    grad_output = grad_output_.contiguous(smf);
+    grad_input = at::empty_like(input_, smf);
+  }
 
-  TORCH_CHECK(
-      (input.ndimension() == 3 || input.ndimension() == 4),
-      "non-empty 3D or 4D (batch mode) tensor expected for input");
-
-  auto outputHeight = gradOutput.size(-2);
-  auto outputWidth = gradOutput.size(-1);
+  auto outputHeight = grad_output.size(-2);
+  auto outputWidth = grad_output.size(-1);
 
   const auto nInputPlane = input.size(-3);
   const auto inputHeight = input.size(-2);
@@ -267,47 +267,47 @@ void adaptive_avg_pool2d_backward_out_kernel(
   int padW = (dW * (outputWidth - 1) + kW - inputWidth) / 2;
   std::vector<int64_t> padding_vec = {padH, padW};
 
-  bool is_3d = gradOutput.ndimension() == 3;
+  bool is_3d = grad_output.ndimension() == 3;
   if (is_3d) {
-    gradOutput.resize_({1, nInputPlane, outputHeight, outputWidth});
-    gradInput.resize_({1, nInputPlane, inputHeight, inputWidth});
+    grad_output.resize_({1, nInputPlane, outputHeight, outputWidth});
+    grad_input.resize_({1, nInputPlane, inputHeight, inputWidth});
   }
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
-      gradOutput.scalar_type(),
+      grad_output.scalar_type(),
       "adaptive_avg_pool2d_backward_xpu",
       [&]() {
-        using accscalar_t = acc_type<scalar_t, false>;
-        auto gyacc = gradOutput.packed_accessor64<scalar_t, 4>();
-        auto gxacc = gradInput.packed_accessor64<scalar_t, 4>();
+        using opmath_t = at::opmath_type<scalar_t>;
+        auto gyacc = grad_output.packed_accessor64<scalar_t, 4>();
+        auto gxacc = grad_input.packed_accessor64<scalar_t, 4>();
 
         int64_t ohw01_shared_size =
             ((inputHeight + inputWidth) * 2) * sizeof(int);
         int64_t ikhw_shared_size =
-            (outputHeight + outputWidth) * sizeof(accscalar_t);
+            (outputHeight + outputWidth) * sizeof(opmath_t);
         bool using_shared =
             syclLocalMemSize() >= ohw01_shared_size + ikhw_shared_size;
 
         auto& q = getCurrentSYCLQueue();
-        if (is_smf_channels_last(gradOutput)) {
+        if (is_smf_channels_last(grad_output)) {
           if (using_shared) {
-            AdaptiveAvgPool2dBwdSLMKernelFunctor<scalar_t, accscalar_t, true>
-                kfn(gyacc, gxacc);
+            AdaptiveAvgPool2dBwdSLMKernelFunctor<scalar_t, opmath_t, true> kfn(
+                gyacc, gxacc);
             sycl_kernel_submit(kfn.glb_range(), kfn.loc_range(), q, kfn);
           } else {
-            AdaptiveAvgPool2dBwdKernelFunctor<scalar_t, accscalar_t, true> kfn(
+            AdaptiveAvgPool2dBwdKernelFunctor<scalar_t, opmath_t, true> kfn(
                 gyacc, gxacc);
             sycl_kernel_submit(kfn.glb_range(), kfn.loc_range(), q, kfn);
           }
         } else {
           if (using_shared) {
-            AdaptiveAvgPool2dBwdSLMKernelFunctor<scalar_t, accscalar_t, false>
-                kfn(gyacc, gxacc);
+            AdaptiveAvgPool2dBwdSLMKernelFunctor<scalar_t, opmath_t, false> kfn(
+                gyacc, gxacc);
             sycl_kernel_submit(kfn.glb_range(), kfn.loc_range(), q, kfn);
           } else {
-            AdaptiveAvgPool2dBwdKernelFunctor<scalar_t, accscalar_t, false> kfn(
+            AdaptiveAvgPool2dBwdKernelFunctor<scalar_t, opmath_t, false> kfn(
                 gyacc, gxacc);
             sycl_kernel_submit(kfn.glb_range(), kfn.loc_range(), q, kfn);
           }
@@ -315,12 +315,12 @@ void adaptive_avg_pool2d_backward_out_kernel(
       });
 
   if (is_3d) {
-    gradOutput.resize_({nInputPlane, outputHeight, outputWidth});
-    gradInput.resize_({nInputPlane, inputHeight, inputWidth});
+    grad_output.resize_({nInputPlane, outputHeight, outputWidth});
+    grad_input.resize_({nInputPlane, inputHeight, inputWidth});
   }
 }
 
-template <typename scalar_t, typename accscalar_t, bool is_channels_last>
+template <typename scalar_t, typename opmath_t, bool is_channels_last>
 struct AdaptiveAvgPool2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t gi = item.get_global_linear_id();
@@ -347,13 +347,13 @@ struct AdaptiveAvgPool2dKernelFunctor {
       int64_t _ib = _ob;
       int64_t _ic = _oc;
 
-      accscalar_t sum = static_cast<accscalar_t>(0);
+      opmath_t sum = static_cast<opmath_t>(0);
       for (int _ih = _ih0; _ih < _ih1; _ih++) {
         for (int _iw = _iw0; _iw < _iw1; _iw++) {
-          sum += accscalar_t(input_[_ib][_ic][_ih][_iw]);
+          sum += opmath_t(input_[_ib][_ic][_ih][_iw]);
         }
       }
-      accscalar_t avg = sum / kh / kw;
+      opmath_t avg = sum / kh / kw;
 
       const auto store = [](PackedTensorAccessor64<scalar_t, 4> oacc,
                             int64_t _ob,
@@ -399,8 +399,8 @@ struct AdaptiveAvgPool2dKernelFunctor {
   PackedTensorAccessor64<scalar_t, 4> output_;
 };
 
-template <typename scalar_t, typename accscalar_t, bool is_channels_last>
-void adaptive_avg_pool2d_kernel(
+template <typename scalar_t, typename opmath_t, bool is_channels_last>
+void launch_adaptive_avg_pool2d_kernel(
     PackedTensorAccessor64<scalar_t, 4> input,
     PackedTensorAccessor64<scalar_t, 4> output) {
   int ih = input.size(2);
@@ -415,9 +415,9 @@ void adaptive_avg_pool2d_kernel(
   int local_range = syclMaxWorkItemsPerEU();
   int global_range = total_item < local_range
       ? local_range
-      : (total_item / local_range) * local_range;
+      : ((total_item + local_range - 1) / local_range) * local_range;
   auto caller =
-      AdaptiveAvgPool2dKernelFunctor<scalar_t, accscalar_t, is_channels_last>(
+      AdaptiveAvgPool2dKernelFunctor<scalar_t, opmath_t, is_channels_last>(
           ih, iw, ob, oc, oh, ow, numel, global_range, input, output);
   sycl_kernel_submit(
       sycl::range<1>(global_range),
@@ -426,7 +426,7 @@ void adaptive_avg_pool2d_kernel(
       caller);
 }
 
-void adaptive_avg_pool2d_out_template(
+void adaptive_avg_pool2d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef output_size) {
@@ -476,9 +476,6 @@ void adaptive_avg_pool2d_out_template(
       (inputWidth / outputWidth);
   std::vector<int64_t> kernel_size_vec = {kH, kW};
 
-  // per oneDNN definition, no dilation means dilation ratio is 0
-  std::vector<int64_t> dilation_vec = {0, 0};
-
   int padH = (dH * (outputHeight - 1) + kH - inputHeight) / 2;
   int padW = (dW * (outputWidth - 1) + kW - inputWidth) / 2;
   std::vector<int64_t> padding_vec = {padH, padW};
@@ -495,13 +492,15 @@ void adaptive_avg_pool2d_out_template(
       input_.scalar_type(),
       "adaptive_avg_pool2d_xpu",
       [&]() {
-        using accscalar_t = at::opmath_type<scalar_t>;
+        using opmath_t = at::opmath_type<scalar_t>;
         auto iacc = input_.packed_accessor64<scalar_t, 4>();
         auto oacc = output.packed_accessor64<scalar_t, 4>();
         if (is_smf_channels_last(output)) {
-          adaptive_avg_pool2d_kernel<scalar_t, accscalar_t, true>(iacc, oacc);
+          launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, true>(
+              iacc, oacc);
         } else {
-          adaptive_avg_pool2d_kernel<scalar_t, accscalar_t, false>(iacc, oacc);
+          launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, false>(
+              iacc, oacc);
         }
       });
 
@@ -509,35 +508,6 @@ void adaptive_avg_pool2d_out_template(
     input_.resize_({nInputPlane, inputHeight, inputWidth});
     output.resize_({nInputPlane, outputHeight, outputWidth});
   }
-}
-
-void adaptive_avg_pool2d_out_kernel(
-    Tensor& output,
-    const Tensor& input,
-    IntArrayRef output_size) {
-  TensorArg input_arg{input, "input", 1}, output_arg{output, "output", 2};
-  checkAllSameGPU(__func__, {input_arg, output_arg});
-
-  TORCH_CHECK(
-      output_size.size() == 2, "adaptive_avg_pool2d: output_size must be 2");
-  int64_t ndim = input.dim();
-  TORCH_CHECK(
-      (ndim == 3 || ndim == 4),
-      "adaptive_avg_pool2d(): Expected 3D or 4D tensor, but got ",
-      input.sizes());
-  for (const auto i : {-2, -1}) {
-    TORCH_CHECK(
-        input.size(i) > 0,
-        "adaptive_avg_pool2d(): Expected input to have non-zero size for non-batch dimensions, "
-        "but input has sizes ",
-        input.sizes(),
-        " with dimension ",
-        i + ndim,
-        " being "
-        "empty");
-  }
-
-  adaptive_avg_pool2d_out_template(output, input, output_size);
 }
 
 } // namespace at::native::xpu
