@@ -118,7 +118,6 @@ _xpu_computation_op_list = [
     "cdist",
     "nn.functional.group_norm",
     "bincount",
-    'nn.functional.interpolate',
 ]
 
 

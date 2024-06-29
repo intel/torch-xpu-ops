@@ -92,12 +92,13 @@ skip_list = (
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
 
-    # Not implemented operators
+    # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
+    # aten::upsample_trilinear3d
     "nn_functional_interpolate_linear",
     "nn_functional_interpolate_bilinear",
     "nn_functional_interpolate_trilinear",
 
-    # XPU kernel uses accumulate datatype with high accuracy
+    # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float16",

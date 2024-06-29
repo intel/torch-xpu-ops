@@ -36,7 +36,6 @@ struct UpsampleBicubic2dKernelFunctor {
       // Interpolation kernel
       accscalar_t real_x = area_pixel_compute_source_index(
           width_scale_, output_x, align_corners_, /*cubic=*/true);
-      // TODO: floor should support at dispatch to half type
       int in_x = floorf(real_x);
       accscalar_t t_x = real_x - in_x;
 
@@ -119,7 +118,7 @@ struct UpsampleBicubic2dKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-static void upsample_bicubic2d_out_frame(
+static void upsample_bicubic2d_out_template(
     PackedTensorAccessor64<scalar_t, 4> odata,
     const PackedTensorAccessor64<const scalar_t, 4> idata,
     int64_t onum,
@@ -159,7 +158,7 @@ void upsample_bicubic2d_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_bicubic2d_kernel",
+      "upsample_bicubic2d_xpu",
       [&] {
         auto idata = input.packed_accessor64<const scalar_t, 4>();
         auto odata = output.packed_accessor64<scalar_t, 4>();
@@ -171,7 +170,7 @@ void upsample_bicubic2d_kernel(
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales_w);
 
-        upsample_bicubic2d_out_frame<scalar_t, accscalar_t>(
+        upsample_bicubic2d_out_template<scalar_t, accscalar_t>(
             odata, idata, num_output_elements, align_corners, rheight, rwidth);
       });
 }

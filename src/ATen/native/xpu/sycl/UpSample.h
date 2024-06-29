@@ -7,12 +7,49 @@
 #include <c10/util/OptionalArrayRef.h>
 #include <c10/util/SmallVector.h>
 
-#include <math.h>
-
 #include <ATen/TensorUtils.h>
 #include <math.h>
 
-namespace at::native::xpu {
+namespace at::native {
+
+inline std::array<int64_t, 4> upsample_2d_common_check(
+    IntArrayRef input_size,
+    IntArrayRef output_size) {
+  TORCH_CHECK(
+      output_size.size() == 2,
+      "It is expected output_size equals to 2, but got size ",
+      output_size.size());
+
+  TORCH_CHECK(
+      input_size.size() == 4,
+      "It is expected input_size equals to 4, but got size ",
+      input_size.size());
+
+  int64_t output_height = output_size[0];
+  int64_t output_width = output_size[1];
+
+  int64_t nbatch = input_size[0];
+  int64_t channels = input_size[1];
+  int64_t input_height = input_size[2];
+  int64_t input_width = input_size[3];
+
+  TORCH_CHECK(
+      input_height > 0 && input_width > 0 && output_height > 0 &&
+          output_width > 0,
+      "Input and output sizes should be greater than 0,"
+      " but got input (H: ",
+      input_height,
+      ", W: ",
+      input_width,
+      ") output (H: ",
+      output_height,
+      ", W: ",
+      output_width,
+      ")");
+
+  return {nbatch, channels, output_height, output_width};
+}
+namespace xpu {
 
 inline size_t idx_cl(
     const size_t n,
@@ -192,4 +229,6 @@ static scalar_t upsample_get_value_bounded(
   return data[batch][channel][access_y][access_x];
 }
 
-} // namespace at::native::xpu
+} // namespace xpu
+
+} // namespace at::native
