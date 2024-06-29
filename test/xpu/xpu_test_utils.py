@@ -67,6 +67,7 @@ _xpu_computation_op_list = [
     "nn.functional.leaky_relu",
     "nn.functional.threshold",
     "nn.functional.silu",
+    "nn.functional.hardsigmoid",
     "nonzero",
     "normal",
     "pow",

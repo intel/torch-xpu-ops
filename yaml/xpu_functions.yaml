@@ -351,6 +351,11 @@ supported:
   - sigmoid_
   - sigmoid_backward.grad_input
   - sigmoid_backward
+  - hardsigmoid.out
+  - hardsigmoid
+  - hardsigmoid_
+  - hardsigmoid_backward.grad_input
+  - hardsigmoid_backward
   - tril.out
   - tril
   - tril_
