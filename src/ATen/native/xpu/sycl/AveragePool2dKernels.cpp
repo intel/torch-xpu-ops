@@ -2,6 +2,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/Pool.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/Runtime.h>
@@ -809,7 +810,10 @@ void avg_pool2d_backward_kernel(
                   break;
                 }
                 case MemoryFormat::Contiguous: {
-                  launch_avg_pool2d_backward_kernel<scalar_t, accscalar_t, index_t>(
+                  launch_avg_pool2d_backward_kernel<
+                      scalar_t,
+                      accscalar_t,
+                      index_t>(
                       count,
                       gradOutput,
                       nInputPlane,

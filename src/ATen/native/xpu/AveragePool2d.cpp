@@ -1,7 +1,9 @@
 #include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
+#include <ATen/native/Pool.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+
+#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
