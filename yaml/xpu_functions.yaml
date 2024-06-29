@@ -114,6 +114,10 @@ supported:
   - silu.out
   - silu_backward
   - silu_backward.grad_input
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
   - hardtanh
   - hardtanh.out
   - hardtanh_

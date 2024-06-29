@@ -64,6 +64,8 @@ _xpu_computation_op_list = [
     "neg",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
+    "nn.functional.glu",
+    "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.threshold",
     "nn.functional.silu",

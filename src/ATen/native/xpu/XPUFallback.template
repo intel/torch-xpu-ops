@@ -228,8 +228,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_fused_moving_avg_obs_fq_helper",
     "geometric_",
     "geqrf",
-    "glu_backward",
-    "glu.out",
     "hardshrink_backward.grad_input",
     "hardshrink.out",
     "heaviside.out",
