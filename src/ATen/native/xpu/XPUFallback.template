@@ -317,7 +317,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "randperm.generator_out",
     "reflection_pad1d_backward.grad_input",
     "reflection_pad1d.out",
     "renorm.out",
