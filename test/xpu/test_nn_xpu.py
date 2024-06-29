@@ -2215,10 +2215,6 @@ def upsamplingBiMode2d_consistency(
         self.assertLess(diff.mean(), 0.4)
 TestNNDeviceType.test_upsamplingBiMode2d_consistency = upsamplingBiMode2d_consistency
 
-try:
-    from xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
 def _test_grid_sample_half_precision(self):
     def helper(shape_in, shape_out, align_corners):
         for mode in ('bilinear', 'nearest', 'bicubic'):
