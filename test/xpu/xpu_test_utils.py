@@ -8,10 +8,12 @@ from torch.testing._internal import common_device_type, common_methods_invocatio
 
 
 _xpu_computation_op_list = [
+    "empty",
     "fill",
     "zeros",
     "zeros_like",
     "clone",
+    "randperm",
     "view_as_real",
     "view_as_complex",
     "view",
@@ -37,7 +39,6 @@ _xpu_computation_op_list = [
     "copy",
     "cos",
     "cumsum",
-    "empty",
     "eq",
     "fill",
     "fmod",
@@ -64,9 +65,12 @@ _xpu_computation_op_list = [
     "neg",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
+    "nn.functional.glu",
     "nn.functional.pad",
+    "nn.functional.leaky_relu",
     "nn.functional.threshold",
     "nn.functional.silu",
+    "nn.functional.hardsigmoid",
     "nonzero",
     "normal",
     "pow",
@@ -105,9 +109,11 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.embedding",
     "nn.functional.unfold",
+    "nn.functional.pad",
     "nn.functional.interpolate",
     "nn.functional.upsample_nearest",
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "nn.functional.mse_loss",
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
@@ -119,6 +125,7 @@ _xpu_computation_op_list = [
     "cdist",
     "nn.functional.group_norm",
     "bincount",
+    "renorm",
 ]
 
 

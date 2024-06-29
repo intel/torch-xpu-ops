@@ -1567,9 +1567,6 @@ skip_list = (
     # Dispatch issue. It is a composite operator. But it is implemented by
     # DispatchStub. XPU doesn't support DispatchStub.
     "test_kaiser_window_xpu",
-
-    # CUDA bias case
-    "test_randperm_xpu",
 )
 res += launch_test("test_tensor_creation_ops_xpu.py", skip_list)
 
@@ -2057,6 +2054,12 @@ skip_list=(
     "test_compile_int4_mm_m_64_k_64_n_64_xpu",
 # Short is not supported in oneDNN!
     "test_mm_empty_inputs_mixed_dtype_errors_xpu",
+
+    # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+    "test_bmm_tunableop_rocm_xpu_float32",
+
+    # AssertionError: Torch not compiled with CUDA enabled
+    "test_numeric_check_leak_tunableop_rocm_xpu_float32",
     )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
@@ -3076,10 +3079,6 @@ skip_list = (
 
     ### Error #42 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_storage_error - AttributeError: 'to...
     "test_tensor_storage_type_xpu_uint8",
-
-    # issue 302, 12
-    "test_index_add",
-    "test_index_add_all_dtypes",
 
     # issue 302 , 8
     "test_print",
