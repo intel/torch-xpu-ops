@@ -104,6 +104,11 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - leaky_relu
+  - leaky_relu_
+  - leaky_relu.out
+  - leaky_relu_backward
+  - leaky_relu_backward.grad_input
   - silu
   - silu_
   - silu.out
@@ -344,6 +349,11 @@ supported:
   - sigmoid_
   - sigmoid_backward.grad_input
   - sigmoid_backward
+  - hardsigmoid.out
+  - hardsigmoid
+  - hardsigmoid_
+  - hardsigmoid_backward.grad_input
+  - hardsigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -354,6 +364,10 @@ supported:
   - im2col.out
   - col2im
   - col2im.out
+  - mse_loss
+  - mse_loss.out
+  - mse_loss_backward
+  - mse_loss_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
@@ -400,6 +414,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - linalg_vector_norm
+  - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
   - acos

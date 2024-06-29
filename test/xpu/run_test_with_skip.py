@@ -1412,6 +1412,7 @@ res += launch_test("nn/test_dropout_xpu.py", skip_list)
 
 # test_dataloader
 
+
 skip_list = (
     # Skip for XPU didn't support
     "test_nested_tensor_multiprocessing",
@@ -2892,9 +2893,6 @@ skip_list = (
     "test_tensor_storage_type_xpu_uint8",
     ### Error #42 in TestTorchDeviceTypeXPU , totally 1 , FAILED test_torch_xpu.py::TestTorch::test_storage_error - AttributeError: 'to...
     "test_tensor_storage_type_xpu_uint8",
-    # issue 302, 12
-    "test_index_add",
-    "test_index_add_all_dtypes",
     # issue 302 , 8
     "test_print",
     "test_storage_error",
@@ -2989,6 +2987,7 @@ res += launch_test("test_foreach_xpu.py", skip_list)
 
 # test_convolution
 
+
 skip_list = (
     # XPU unsupport ops, skip.
     "test_cudnn_convolution_relu_xpu_float16",
@@ -3003,17 +3002,21 @@ res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
 
+
 res += launch_test("test_dynamic_shapes_xpu.py")
 
 # test_load_state_dict
+
 
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
 
+
 res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
+
 
 res += launch_test("nn/test_parametrization_xpu.py")
 
