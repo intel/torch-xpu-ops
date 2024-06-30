@@ -8,7 +8,7 @@
 namespace at {
 
 void upsample_bicubic2d_meta(
-    const Tensor& output,
+    Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
@@ -24,11 +24,17 @@ void upsample_bicubic2d_meta(
               input.sizes().begin() + 1, input.sizes().end()),
       "Non-empty 4D data tensor expected but got a tensor with sizes ",
       input.sizes());
-  xpu::resize_out(
-      output,
-      full_output_size,
-      {},
-      input.options().memory_format(input.suggest_memory_format()));
+  auto memory_format = input.suggest_memory_format();
+  if (output.defined()) {
+    xpu::resize_out(
+        output,
+        full_output_size,
+        {},
+        input.options().memory_format(memory_format));
+  } else {
+    output = at::xpu::create_out(
+        full_output_size, {}, input.options().memory_format(memory_format));
+  }
 }
 
 Tensor& XPUNativeFunctions::upsample_bicubic2d_out(
@@ -44,4 +50,18 @@ Tensor& XPUNativeFunctions::upsample_bicubic2d_out(
       output, self, output_size, align_corners, scales_h, scales_w);
   return output;
 }
+
+Tensor XPUNativeFunctions::upsample_bicubic2d(
+    const Tensor& self,
+    IntArrayRef output_size,
+    bool align_corners,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
+  Tensor output;
+  upsample_bicubic2d_out(
+      self, output_size, align_corners, scales_h, scales_w, output);
+
+  return output;
+}
+
 } // namespace at

@@ -127,11 +127,11 @@ static void upsample_bicubic2d_out_template(
     const accscalar_t width_scale) {
   auto queue = getCurrentSYCLQueue();
   int64_t wg_size = syclMaxWorkGroupSize();
-  int64_t wg_num = at::ceil_div(onum, wg_size);
+  int64_t num_wg = at::ceil_div(onum, wg_size);
 
   UpsampleBicubic2dKernelFunctor<scalar_t, accscalar_t> kfn(
       odata, idata, onum, align_corners, height_scale, width_scale);
-  sycl_kernel_submit(wg_num * wg_size, wg_size, queue, kfn);
+  sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
 }
 
 void upsample_bicubic2d_kernel(

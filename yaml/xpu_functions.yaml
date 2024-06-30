@@ -394,6 +394,7 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
   - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
@@ -404,7 +405,6 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
-  - upsample_bicubic2d.out
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
