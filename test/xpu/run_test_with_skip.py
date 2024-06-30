@@ -800,6 +800,13 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
     "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
+    # Op impl aligns with CUDA on the supported dtypes.
+    # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
+    # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
+    # in XPU supported operators. Then the case will work.
+    "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
+    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64"
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
