@@ -2,7 +2,7 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/ReduceOpsUtils.h>
-#include <aten/EmptyTensor.h>
+#include <ATen/xpu/EmptyTensor.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
