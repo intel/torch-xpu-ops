@@ -87,6 +87,7 @@ skip_list = (
     "test_out_nanmean_xpu_float32",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
+    "test_out_nn_functional_avg_pool2d_xpu_float32", # CUDA xfail.
     "test_out_warning__native_batch_norm_legit_xpu",
     "test_out_warning_nanmean_xpu",
     "test_out_warning_native_batch_norm_xpu",
@@ -249,6 +250,7 @@ skip_list = (
     "test_neg_conj_view_conj_physical_xpu_complex128",
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
+
     "test_dtypes_scatter_reduce_amax_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
     "test_dtypes_scatter_reduce_amin_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
     "test_dtypes_scatter_reduce_prod_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
@@ -269,6 +271,7 @@ skip_list = (
     "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
+
     # https://github.com/intel/torch-xpu-ops/issues/157
     # Segfault:
     "test_dtypes_nn_functional_linear_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
@@ -797,6 +800,13 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
     "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
+    # Op impl aligns with CUDA on the supported dtypes.
+    # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
+    # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
+    # in XPU supported operators. Then the case will work.
+    "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
+    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64"
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
