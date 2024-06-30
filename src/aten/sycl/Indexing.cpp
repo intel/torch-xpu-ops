@@ -320,9 +320,9 @@ void index_add_kernel(
   auto numel = index.numel();
 
   if (result.dim() > 1) {
-      if (numel == 0 || self.numel() == 0) {
-          return;
-      }
+    if (numel == 0 || self.numel() == 0) {
+      return;
+    }
   }
 
   // Scalars are treated as 1-d tensor
@@ -399,6 +399,99 @@ void index_add_kernel(
                 new_indexing_dim,
                 true,
                 IndexAddScalarFunctor<scalar_t>());
+        launch_index_kernel(cfg);
+      });
+}
+
+template <typename ValType>
+struct IndexFillScalarFunctor {
+  void operator()(
+      ValType* dst,
+      ValType* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      ValType alpha) const {
+    dst[dst_off] = alpha;
+  }
+};
+template <>
+struct IndexFillScalarFunctor<bool> {
+  void operator()(
+      bool* dst,
+      bool* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      bool alpha) const {
+    dst[dst_off] = alpha;
+  }
+};
+
+void index_fill_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source,
+    const Tensor& result) {
+  if (!result.is_same(self)) {
+    result.copy_(self);
+  }
+
+  auto numel = index.numel();
+
+  if (result.dim() > 1) {
+    if (numel == 0 || self.numel() == 0) {
+      return;
+    }
+  }
+
+  // Scalars are treated as 1-d tensor
+  const Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
+
+  TORCH_CHECK(
+      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Bool,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::ComplexHalf,
+      self_.scalar_type(),
+      "index_fill_kernel",
+      [&] {
+        TensorInfo<int64_t, int64_t> index_info =
+            getTensorInfo<int64_t, int64_t>(index);
+        index_info.collapseDims();
+
+        TensorInfo<scalar_t, int64_t> src_info =
+            getTensorInfo<scalar_t, int64_t>(self_);
+
+        TensorInfo<scalar_t, int64_t> dst_info =
+            getTensorInfo<scalar_t, int64_t>(self_);
+        int new_indexing_dim = dst_info.collapseDims(dim);
+
+        auto cfg = IndexKernelConfig<
+            decltype(src_info),
+            decltype(dst_info),
+            decltype(index_info),
+            IndexFillScalarFunctor<scalar_t>>::
+            make_config(
+                src_info,
+                dst_info,
+                index_info,
+                source.to<scalar_t>(),
+                new_indexing_dim,
+                true,
+                IndexFillScalarFunctor<scalar_t>());
         launch_index_kernel(cfg);
       });
 }
