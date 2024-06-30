@@ -2,11 +2,19 @@
 
 #include <ATen/ATen.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
-Tensor& max_pool2d_with_indices_backward_out_kernel(
+void max_pool2d_with_indices_kernel(
+    const Tensor& input,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    IntArrayRef dilation,
+    bool ceil_mode,
+    Tensor& output,
+    Tensor& indices);
+
+Tensor& max_pool2d_with_indices_backward_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
@@ -17,6 +25,4 @@ Tensor& max_pool2d_with_indices_backward_out_kernel(
     IntArrayRef dilation,
     bool ceil_mode);
 
-}
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
