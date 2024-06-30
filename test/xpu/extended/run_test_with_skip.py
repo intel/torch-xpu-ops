@@ -69,6 +69,9 @@ skip_list = (
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
 
+    # Align with CUDA dtypes - RuntimeError: "avg_pool2d_out_xpu" not implemented for 'Long'
+    "test_compare_cpu_nn_functional_avg_pool2d_xpu_int64",
+
     # Special handle (different calculation order) in CPU reference impl.
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",

@@ -433,6 +433,10 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - avg_pool2d
+  - avg_pool2d.out
+  - avg_pool2d_backward
+  - avg_pool2d_backward.grad_input
   - addcmul.out
   - addcmul
   - addcmul_
