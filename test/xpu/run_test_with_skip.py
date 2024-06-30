@@ -1384,8 +1384,6 @@ skip_list = (
 res += launch_test("test_indexing_xpu.py", skip_list)
 
 # test_pooling
-
-
 skip_list = (
     # CPU fallback fails
     "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
