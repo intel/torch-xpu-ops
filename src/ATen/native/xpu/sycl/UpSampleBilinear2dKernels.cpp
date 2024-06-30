@@ -10,14 +10,14 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
 
+#include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/UpSample.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleBilinear2dOutFrameKernelFunctor {
+struct UpsampleBilinear2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int index = item.get_global_linear_id();
 
@@ -52,7 +52,7 @@ struct UpsampleBilinear2dOutFrameKernelFunctor {
       }
     }
   }
-  UpsampleBilinear2dOutFrameKernelFunctor(
+  UpsampleBilinear2dKernelFunctor(
       const int n,
       const accscalar_t rheight,
       const accscalar_t rwidth,
@@ -94,7 +94,7 @@ struct UpsampleBilinear2dOutFrameKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-void upsample_bilinear2d_out_frame(
+void launch_upsample_bilinear2d_kernel(
     const int n,
     const accscalar_t rheight,
     const accscalar_t rwidth,
@@ -108,10 +108,10 @@ void upsample_bilinear2d_out_frame(
     int64_t nbatch,
     int64_t channels) {
   auto queue = getCurrentSYCLQueue();
-  int64_t wg_size = std::min(syclMaxWorkGroupSize(), (int64_t)1024);
+  int64_t wg_size = syclMaxWorkGroupSize();
   int num_group = at::ceil_div(n, (int)wg_size);
 
-  UpsampleBilinear2dOutFrameKernelFunctor<scalar_t, accscalar_t> kfn(
+  UpsampleBilinear2dKernelFunctor<scalar_t, accscalar_t> kfn(
       n,
       rheight,
       rwidth,
@@ -139,7 +139,7 @@ size_t idx(
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct UpsampleBilinear2dBackwardOutFrameKernelFunctor {
+struct UpsampleBilinear2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     for (size_t index =
              item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
@@ -188,7 +188,7 @@ struct UpsampleBilinear2dBackwardOutFrameKernelFunctor {
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
-  UpsampleBilinear2dBackwardOutFrameKernelFunctor(
+  UpsampleBilinear2dBackwardKernelFunctor(
       const size_t nc,
       int64_t input_height,
       int64_t input_width,
@@ -236,7 +236,7 @@ struct UpsampleBilinear2dBackwardOutFrameKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-void upsample_bilinear2d_backward_out_frame(
+void launch_upsample_bilinear2d_backward_kernel(
     const size_t nc,
     int64_t input_height,
     int64_t input_width,
@@ -250,7 +250,7 @@ void upsample_bilinear2d_backward_out_frame(
     scalar_t* idata,
     const scalar_t* odata) {
   auto queue = getCurrentSYCLQueue();
-  int64_t wg_size = std::min(syclMaxWorkGroupSize(), (int64_t)1024);
+  int64_t wg_size = syclMaxWorkGroupSize();
 
   const size_t o_numel = nc * output_width * output_height;
   const size_t i_numel = nc * input_width * input_height;
@@ -258,7 +258,7 @@ void upsample_bilinear2d_backward_out_frame(
   const size_t num_kernels = nc * output_width * output_height;
   int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
 
-  UpsampleBilinear2dBackwardOutFrameKernelFunctor<scalar_t, accscalar_t> kfn(
+  UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
       nc,
       input_height,
       input_width,
@@ -299,13 +299,14 @@ void upsample_bilinear2d_out_kernel(
     output.copy_(input);
     return;
   }
+
   const int num_kernels = output_height * output_width;
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_bilinear2d_out_kernel",
+      "upsample_bilinear2d_xpu",
       [&] {
         using accscalar_t = acc_type<scalar_t, true>;
         auto idata_acc = input.packed_accessor64<scalar_t, 4>();
@@ -315,8 +316,9 @@ void upsample_bilinear2d_out_kernel(
             input_height, output_height, align_corners, scales_h);
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales_w);
+
         // TODO:a faster kernel for channel last
-        upsample_bilinear2d_out_frame<scalar_t, accscalar_t>(
+        launch_upsample_bilinear2d_kernel<scalar_t, accscalar_t>(
             num_kernels,
             rheight,
             rwidth,
@@ -367,10 +369,11 @@ void upsample_bilinear2d_backward_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       grad_output_.scalar_type(),
-      "upsample_bilinear2d_backward_out_kernel",
+      "upsample_bilinear2d_backward_xpu",
       [&] {
         using accscalar_t = acc_type<scalar_t, true>;
 
+        // TODO: using PackedTensorAccessor instead of copy
         Tensor grad_input_c = grad_input.is_contiguous()
             ? grad_input
             : at::zeros(grad_input.sizes(), grad_input.options());
@@ -383,8 +386,9 @@ void upsample_bilinear2d_backward_out_kernel(
             input_height, output_height, align_corners, scales_h);
         const accscalar_t rwidth = area_pixel_compute_scale<scalar_t>(
             input_width, output_width, align_corners, scales_w);
+
         // TODO: a faster kernel for channel last
-        upsample_bilinear2d_backward_out_frame<scalar_t, accscalar_t>(
+        launch_upsample_bilinear2d_backward_kernel<scalar_t, accscalar_t>(
             nbatch * channels,
             input_height,
             input_width,
@@ -397,6 +401,7 @@ void upsample_bilinear2d_backward_out_kernel(
             align_corners,
             idata,
             odata);
+
         if (!grad_input.is_contiguous()) {
           grad_input.copy_(grad_input_c);
         }
