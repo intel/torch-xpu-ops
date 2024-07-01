@@ -59,6 +59,7 @@ _xpu_computation_op_list = [
     "hardtanh",
     "hardswish",
     "index_add",
+    "index_fill",
     "index_put",
     "index_select",
     "isnan",
