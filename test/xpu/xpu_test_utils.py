@@ -137,6 +137,9 @@ _xpu_computation_op_list = [
     "cdist",
     "nn.functional.group_norm",
     "nn.functional.batch_norm",
+    "native_batch_norm",
+    "_native_batch_norm_legit",
+    "_batch_norm_with_update",
     "bincount",
     "renorm",
 ]
