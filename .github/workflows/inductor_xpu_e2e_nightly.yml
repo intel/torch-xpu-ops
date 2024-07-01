@@ -258,6 +258,10 @@ jobs:
     if: inputs.test_ut == 'true'
     name: Nightly Inductor XPU UT Test
     uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      ut_suite: ${{ inputs.ut_suite }}
+      pytorch_branch: ${{ inputs.pytorch_branch }}
+      runner: ${{ inputs.runner }}
       
   Tests-Failure-And-Report:
     if: always()
