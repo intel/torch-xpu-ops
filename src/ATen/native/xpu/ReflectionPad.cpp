@@ -105,7 +105,7 @@ void reflection_pad1d_backward_meta(
   if (grad_input.defined()) {
     xpu::resize_out(grad_input, input.sizes(), {}, input.options());
   } else {
-    xpu::create_out(input.sizes(), {}, input.options());
+    grad_input = xpu::create_out(input.sizes(), {}, input.options());
   }
 }
 
@@ -205,12 +205,12 @@ void reflection_pad3d_meta(
     }
   } else {
     if (batch_mode) {
-      xpu::create_out(
+      output = xpu::create_out(
           {input.size(0), nplane, output_d, output_h, output_w},
           {},
           input.options());
     } else {
-      xpu::create_out(
+      output = xpu::create_out(
           {nplane, output_d, output_h, output_w}, {}, input.options());
     }
   }
@@ -274,7 +274,7 @@ void reflection_pad3d_backward_meta(
   if (grad_input.defined()) {
     xpu::resize_out(grad_input, input.sizes(), {}, input.options());
   } else {
-    xpu::create_out(input.sizes(), {}, input.options());
+    grad_input = xpu::create_out(input.sizes(), {}, input.options());
   }
 }
 
