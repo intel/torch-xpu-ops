@@ -412,6 +412,7 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
