@@ -401,6 +401,8 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
