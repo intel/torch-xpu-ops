@@ -2751,13 +2751,6 @@ skip_list = (
     ### Error #8 in TestBwdGradientsXPU , totally 2 , RuntimeError: DispatchStub: unsupported device typexpu
     "test_inplace_grad_conj_physical_xpu_complex128",
     "test_inplace_gradgrad_conj_physical_xpu_complex128",
-    # New uts added in PyTorch fail due to XPU implementation bug
-    # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
-    # https://github.com/intel/torch-xpu-ops/issues/464
-    "test_fn_grad__unsafe_masked_index_xpu_complex128",
-    "test_fn_grad__unsafe_masked_index_xpu_float64",
-    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_complex128",
-    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_float64",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
