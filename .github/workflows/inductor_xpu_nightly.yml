@@ -41,6 +41,16 @@ on:
         type: string
         default: ''
         description: If set, will only launch this one
+      torch_xpu_ops_update:
+        required: false
+        type: string
+        default: 'true'
+        description: True means update xpu_ops when building pytorch, otherwise means not
+      test_ut:
+        required: true
+        type: string
+        default: 'true'
+        description: True will running UT test for Ondemand test, false will not.
 
 
 permissions: read-all
@@ -244,6 +254,13 @@ jobs:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
+  Inductor-XPU-UT-Nightly-Tests:
+    if: inputs.test_ut == 'true'
+    name: Nightly Inductor XPU UT Test
+    uses: ./.github/workflows/inductor_xpu_ut_nightly.yml
+    with:
+      expected_fail_num: 0
+      
   Tests-Failure-And-Report:
     if: always()
     runs-on: pvc_e2e
