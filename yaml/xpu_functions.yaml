@@ -107,11 +107,20 @@ supported:
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - leaky_relu
+  - leaky_relu_
+  - leaky_relu.out
+  - leaky_relu_backward
+  - leaky_relu_backward.grad_input
   - silu
   - silu_
   - silu.out
   - silu_backward
   - silu_backward.grad_input
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
   - hardtanh
   - hardtanh.out
   - hardtanh_
@@ -240,6 +249,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims
@@ -259,6 +274,8 @@ supported:
   - argmax
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices
+  - max_pool2d_with_indices.out
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
@@ -342,11 +359,17 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - roll
   - sigmoid
   - sigmoid.out
   - sigmoid_
   - sigmoid_backward.grad_input
   - sigmoid_backward
+  - hardsigmoid.out
+  - hardsigmoid
+  - hardsigmoid_
+  - hardsigmoid_backward.grad_input
+  - hardsigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -357,6 +380,10 @@ supported:
   - im2col.out
   - col2im
   - col2im.out
+  - mse_loss
+  - mse_loss.out
+  - mse_loss_backward
+  - mse_loss_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
@@ -377,6 +404,8 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -403,6 +432,8 @@ supported:
   - erf
   - erf_
   - erf.out
+  - linalg_vector_norm
+  - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
   - acos
@@ -413,8 +444,13 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - avg_pool2d
+  - avg_pool2d.out
+  - avg_pool2d_backward
+  - avg_pool2d_backward.grad_input
   - addcmul.out
   - addcmul
   - addcmul_
+  - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
