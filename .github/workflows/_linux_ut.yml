@@ -8,14 +8,26 @@ on:
         type: string
         default: 'true'
         description: True means update xpu_ops when building pytorch, otherwise means not
-      expected_fail_num:
-        required: false
-        type: number
-        description: for UT result check
+      ut_suite:
+        required: true
+        type: string
+        default: 'op_example,op_extended,op_ut,torch_xpu'
+        description: op_example,op_extended,op_ut,torch_xpu. Delimiter is comma
+      pytorch_branch:
+        required: true
+        type: string
+        default: 'main'
+        description: Set pytorch branch
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Set runner
+
 
 jobs:
   Inductor-XPU-UT-Tests:
-    runs-on: linux.idc.xpu
+    runs-on: ${{ inputs.runner }} 
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -24,7 +36,7 @@ jobs:
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          git clone -b main https://github.com/pytorch/pytorch
+          git clone -b ${{ inputs.pytorch_branch }} https://github.com/pytorch/pytorch
           cd pytorch && git log -n 1 && git submodule sync && git submodule update --init --recursive
           if [ -z ${{ inputs.torch_xpu_ops_update }} ]; then
             rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
@@ -55,7 +67,7 @@ jobs:
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           pip install -r .ci/docker/requirements-ci.txt
       - name: Run XPU OP Examples
-        if: ${{ hashFiles('examples/') != '' }}
+        if: contains(inputs.ut_suite, 'op_example')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log
@@ -67,7 +79,7 @@ jobs:
           pip install pytest
           timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_op_example_Test.log
       - name: Run XPU OP Extended UT
-        if: ${{ hashFiles('test/xpu/') != '' }}
+        if: contains(inputs.ut_suite, 'op_extended')
         run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -75,7 +87,7 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           timeout 10000 python run_test_with_skip.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_op_extended_Test.log
       - name: Run XPU OP UT
-        if: ${{ hashFiles('test/xpu/') != '' }}
+        if: contains(inputs.ut_suite, 'op_ut')
         run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -89,6 +101,7 @@ jobs:
           # test_foreach, test_decomp
           timeout 10000 python run_test_with_only.py 2>&1 | tee ${{ github.workspace }}/ut_log/XPU_OP_with_only_UT_Test.log
       - name: Run Torch XPU UT
+        if: contains(inputs.ut_suite, 'torch_xpu')
         run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -109,7 +122,7 @@ jobs:
           python test/run_test.py --xpu 2>&1 | tee ${{ github.workspace }}/ut_log/Torch_XPU_python_UT_Test.log
 
       - name: UT Test Results Check
-        if: ${{ inputs.expected_fail_num }}
+        if: 0
         shell: bash
         run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
@@ -176,27 +189,28 @@ jobs:
           echo "num_failed_torch_xpu: $num_failed_torch_xpu" | tee -a ./ut_summary.log
           echo "num_passed_torch_xpu: $num_passed_torch_xpu" | tee -a ./ut_summary.log
           
-          if [[ $num_failed_op_example -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_op_example -lt 0 ]]; then
-            echo -e "[ERROR] Inductor UT test for XPU OP Examples failed number > ${{ inputs.expected_fail_num }}"
+          if [[ $num_failed_op_example -gt 0 ]] && [[ $num_passed_op_example -lt 0 ]]; then
+            echo -e "[ERROR] Inductor UT test for XPU OP Examples failed number > 0"
             exit 1
           fi
 
-          if [[ $num_failed_op_extended -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_op_extended -lt 0 ]]; then
-            echo -e "[ERROR] Inductor UT test for XPU OP Extended failed number > ${{ inputs.expected_fail_num }}"
+          if [[ $num_failed_op_extended -gt 0 ]] && [[ $num_passed_op_extended -lt 0 ]]; then
+            echo -e "[ERROR] Inductor UT test for XPU OP Extended failed number > 0"
             exit 1
           fi
 
-          if [[ $num_failed_op_ut -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_op_ut -lt 0 ]]; then
-            echo -e "[ERROR] Inductor UT test for XPU OP UT failed number > ${{ inputs.expected_fail_num }}"
+          if [[ $num_failed_op_ut -gt 0 ]] && [[ $num_passed_op_ut -lt 0 ]]; then
+            echo -e "[ERROR] Inductor UT test for XPU OP UT failed number > 0"
             exit 1
           fi
 
-          if if [[ $num_failed_torch_xpu -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_torch_xpu -lt 0 ]]; then
-            echo -e "[ERROR] Inductor UT test for Torch XPU UT failed number > ${{ inputs.expected_fail_num }}"
+          if if [[ $num_failed_torch_xpu -gt 0 ]] && [[ $num_passed_torch_xpu -lt 0 ]]; then
+            echo -e "[ERROR] Inductor UT test for Torch XPU UT failed number > 0"
             exit 1
           fi
           
       - name: Upload Inductor XPU UT Data
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}

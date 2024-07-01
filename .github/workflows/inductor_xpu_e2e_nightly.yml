@@ -257,9 +257,7 @@ jobs:
   Inductor-XPU-UT-Nightly-Tests:
     if: inputs.test_ut == 'true'
     name: Nightly Inductor XPU UT Test
-    uses: ./.github/workflows/inductor_xpu_ut_nightly.yml
-    with:
-      expected_fail_num: 0
+    uses: ./.github/workflows/_linux_ut.yml
       
   Tests-Failure-And-Report:
     if: always()
