@@ -116,6 +116,10 @@ supported:
   - silu.out
   - silu_backward
   - silu_backward.grad_input
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
   - hardtanh
   - hardtanh.out
   - hardtanh_
@@ -244,6 +248,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims
@@ -263,6 +273,8 @@ supported:
   - argmax
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices
+  - max_pool2d_with_indices.out
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
@@ -346,6 +358,7 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - roll
   - sigmoid
   - sigmoid.out
   - sigmoid_
@@ -390,6 +403,8 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -428,8 +443,13 @@ supported:
   - acosh.out
   - addr
   - addr.out
+  - avg_pool2d
+  - avg_pool2d.out
+  - avg_pool2d_backward
+  - avg_pool2d_backward.grad_input
   - addcmul.out
   - addcmul
   - addcmul_
+  - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_

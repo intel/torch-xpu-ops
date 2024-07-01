@@ -39,8 +39,7 @@ void hardsigmoid_kernel(TensorIteratorBase& iter) {
         const opmath_t one_sixth(1.0f / 6.0f);
         const opmath_t three(3.0f);
         const opmath_t six(6.0f);
-        HardsigmoidFunctor<scalar_t, opmath_t> f(
-            zero, one_sixth, three, six);
+        HardsigmoidFunctor<scalar_t, opmath_t> f(zero, one_sixth, three, six);
         gpu_kernel(iter, f);
       });
 }

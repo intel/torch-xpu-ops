@@ -378,7 +378,7 @@ void index_add_kernel(
       source_.scalar_type(),
       "index_add_xpu",
       [&] {
-        AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&] () {
+        AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
           TensorInfo<index_t, int64_t> index_info =
               getTensorInfo<index_t, int64_t>(index);
           index_info.collapseDims();
