@@ -1,5 +1,5 @@
 #pragma once
-
+#include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ExpandBase.h>

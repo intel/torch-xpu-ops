@@ -11,8 +11,10 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
+#include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
@@ -28,6 +30,10 @@ REGISTER_XPU_DISPATCH(silu_backward_stub, xpu::silu_backward_kernel);
 REGISTER_XPU_DISPATCH(hardswish_stub, xpu::hardswish_kernel);
 REGISTER_XPU_DISPATCH(hardswish_backward_stub, xpu::hardswish_backward_kernel);
 REGISTER_XPU_DISPATCH(hardtanh_backward_stub, xpu::hardtanh_backward_kernel);
+REGISTER_XPU_DISPATCH(hardsigmoid_stub, xpu::hardsigmoid_kernel);
+REGISTER_XPU_DISPATCH(hardsigmoid_backward_stub, xpu::hardsigmoid_backward_kernel);
+REGISTER_XPU_DISPATCH(leaky_relu_stub, xpu::leaky_relu_kernel);
+REGISTER_XPU_DISPATCH(leaky_relu_backward_stub, xpu::leaky_relu_backward_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,

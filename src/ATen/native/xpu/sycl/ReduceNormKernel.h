@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void addr_kernel(TensorIterator& iter, const Scalar& beta, const Scalar& alpha);
+void norm_kernel(TensorIterator& iter, const Scalar& val);
 
 } // namespace at::native::xpu

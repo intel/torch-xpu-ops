@@ -69,6 +69,9 @@ skip_list = (
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
 
+    # Align with CUDA dtypes - RuntimeError: "avg_pool2d_out_xpu" not implemented for 'Long'
+    "test_compare_cpu_nn_functional_avg_pool2d_xpu_int64",
+
     # Special handle (different calculation order) in CPU reference impl.
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
@@ -80,10 +83,10 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
-    
+
     #Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
-    
+
     # CPU reference fail. `abs_cpu` does not support bool.
     # The case should be skipped by PyTorch test infrastructure, but not be
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
@@ -93,6 +96,11 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+
+    # Not all operators are implemented for XPU tested in the case.
+    # Retrieve it once the operator is implemented.
+    # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
+    "test_forward_ad_nn_functional_glu_xpu_float32",
 )
 
 

@@ -393,7 +393,14 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
   auto offset2bag = at::empty({indices.size(0)}, indices.options());
   auto output = at::empty({numBags, weight.size(1)}, weight.options());
 
-  Tensor max_indices = at::empty({numBags, weight.size(1)}, indices.options());
+  Tensor max_indices;
+
+  if (mode == MODE_MAX) {
+    max_indices = at::empty({numBags, weight.size(1)}, indices.options());
+  } else {
+    // No need to allocate if we aren't doing a backwards pass
+    max_indices = at::empty({0}, indices.options());
+  }
 
 #define EXTEND_EMBBAG_TEMPLATE(mode) \
   embedding_bag_##mode##_template(   \
