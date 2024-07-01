@@ -5,8 +5,10 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
+#include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
@@ -394,6 +396,116 @@ Tensor XPUNativeFunctions::hardswish_backward(
       TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
   native::xpu::hardswish_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::hardsigmoid(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::hardsigmoid_kernel(iter);
+  return out;
+}
+
+TensorIterator hardsigmoid_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter =
+      TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::hardsigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& self) {
+  Tensor grad_input;
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hardsigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    Tensor& grad_input) {
+  auto iter = hardsigmoid_backward_meta(grad_output, self, grad_input);
+  native::xpu::hardsigmoid_backward_kernel(iter);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::leaky_relu(
+    const Tensor& self,
+    const Scalar& negval) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::leaky_relu_kernel(iter, negval);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_(Tensor& self, const Scalar& negval) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::leaky_relu_kernel(iter, negval);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_out(
+    const Tensor& self,
+    const Scalar& negval,
+    Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::leaky_relu_kernel(iter, negval);
+  return out;
+}
+
+TensorIterator leaky_relu_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& negval,
+    bool is_result,
+    const Tensor& grad_input) {
+  TORCH_CHECK(
+      !is_result || negval.to<double>() >= 0.0,
+      "In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. "
+      "This is caused by calling in-place forward function with a negative slope, "
+      "please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do "
+      "require supporting in-place leakRelu backward calculation with negative slope");
+
+  return TensorIterator::borrowing_binary_op(grad_input, self, grad_output);
+}
+
+Tensor XPUNativeFunctions::leaky_relu_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& negval,
+    bool is_result) {
+  Tensor grad_input;
+  auto iter = leaky_relu_backward_meta(
+      grad_output, self, negval, is_result, grad_input);
+  native::xpu::leaky_relu_backward_kernel(iter, negval);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::leaky_relu_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& negval,
+    bool is_result,
+    Tensor& grad_input) {
+  auto iter = leaky_relu_backward_meta(
+      grad_output, self, negval, is_result, grad_input);
+  native::xpu::leaky_relu_backward_kernel(iter, negval);
+  return grad_input;
 }
 
 } // namespace at
