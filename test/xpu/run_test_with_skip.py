@@ -1254,6 +1254,12 @@ skip_list = (
     "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+
+    # align CUDA to skip, XPU implementation is not yet supporting uint8
+    "upsamplingBiMode2d_consistency",
+
+    # Needs pr to enable deterministic implementation for interpolate op
+    "test_deterministic_interpolate_bilinear_xpu",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 
