@@ -515,4 +515,42 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sinh(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::build_borrowing_unary_float_op(out, self);
+  native::xpu::sinh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sinh_(Tensor& self) {
+  auto iter = TensorIterator::build_borrowing_unary_float_op(self, self);
+  native::xpu::sinh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sinh_out(const Tensor& self, Tensor out) {
+  auto iter = TensorIterator::build_borrowing_unary_float_op(out, self);
+  native::xpu::sinh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::tan(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::build_borrowing_unary_float_op(out, self);
+  native::xpu::tan_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::tan_(Tensor& self) {
+  auto iter = TensorIterator::build_borrowing_unary_float_op(self, self);
+  native::xpu::tan_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::tan_out(const Tensor& self, Tensor out) {
+  auto iter = TensorIterator::build_borrowing_unary_float_op(out, self);
+  native::xpu::tan_kernel(iter);
+  return out;
+}
+
 } // namespace at
