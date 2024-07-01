@@ -61,6 +61,17 @@ Tensor& XPUNativeFunctions::adaptive_avg_pool2d_out(
         "empty");
   }
 
+  if (output_size[0] == 1 && output_size[1] == 1) {
+    output = input.mean({-1, -2}, /* keepdim = */ true);
+    if (input.suggest_memory_format() == at::MemoryFormat::ChannelsLast) {
+      // assert ndim == 4, since ndim = 3 doesn't give channels_last
+      const auto n = input.sym_size(0);
+      const auto c = input.sym_size(1);
+      output.as_strided__symint({n, c, 1, 1}, {c, 1, c, c});
+    }
+    return output;
+  }
+
   native::xpu::adaptive_avg_pool2d_kernel(output, input, output_size);
   return output;
 }
