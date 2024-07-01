@@ -350,6 +350,7 @@ supported:
   - minimum
   - minimum.out
   - flip
+  - roll
   - sigmoid
   - sigmoid.out
   - sigmoid_
