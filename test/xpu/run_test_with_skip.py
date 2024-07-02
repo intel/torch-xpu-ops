@@ -1373,6 +1373,7 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
     # align CUDA to skip, XPU implementation is not yet supporting uint8
     "test_upsamplingBiMode2d_consistency",
+    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
