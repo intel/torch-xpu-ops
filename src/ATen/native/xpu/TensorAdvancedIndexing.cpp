@@ -315,6 +315,71 @@ Tensor XPUNativeFunctions::index_add(
   return index_add_out(self, dim, index, source, alpha, out);
 }
 
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source) {
+  at::NoNamesGuard guard;
+
+  TORCH_CHECK_INDEX(
+      index.scalar_type() == ScalarType::Long,
+      "index_fill_(): Expected dtype int64 for index.");
+
+  at::assert_no_overlap(self, index);
+  if (at::has_internal_overlap(self) == at::MemOverlap::Yes) {
+    TORCH_WARN(
+        "Use of index_fill_ on expanded tensors is deprecated. "
+        "Please clone() the tensor before performing this operation. "
+        "This also applies to advanced indexing e.g. tensor[mask] = scalar");
+  }
+
+  if (!self.is_complex() && source.isComplex()) {
+    TORCH_CHECK(
+        false,
+        "index_fill_(): Converting complex Scalar to non-complex type is not supported");
+  }
+
+  // Handle the case when `self` is 0-dim
+  Tensor self_nonzero_dim = (self.dim() == 0) ? self.unsqueeze(-1) : self;
+
+  dim = maybe_wrap_dim(dim, self.dim());
+  TORCH_CHECK(index.dim() <= 1, "Index has to be a vector/scalar");
+  index_func_meta_impl(self, self, dim, index, self, "index_fill");
+  native::xpu::index_fill_kernel(self, dim, index, source, self);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source) {
+  TORCH_CHECK(
+      source.dim() == 0,
+      "index_fill_ only supports a 0-dimensional value tensor, but got tensor "
+      "with ",
+      source.dim(),
+      " dimension(s).");
+  return self.index_fill_(dim, index, source.item());
+}
+
+Tensor XPUNativeFunctions::index_fill(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source) {
+  return self.index_fill_(dim, index, source);
+}
+
+Tensor XPUNativeFunctions::index_fill(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source) {
+  return self.index_fill_(dim, index, source);
+}
+
 void check_indices_on_cpu_or_selfdevice(
     const Tensor& self,
     const c10::List<c10::optional<Tensor>>& indices) {
