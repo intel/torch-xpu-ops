@@ -88,9 +88,7 @@ skip_list = (
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
     "test_out_nn_functional_avg_pool2d_xpu_float32", # CUDA xfail.
-    "test_out_warning__native_batch_norm_legit_xpu",
     "test_out_warning_nanmean_xpu",
-    "test_out_warning_native_batch_norm_xpu",
     "test_out_warning_nn_functional_logsigmoid_xpu",
     "test_python_ref__refs_div_trunc_rounding_xpu_bfloat16",
     "test_python_ref__refs_floor_divide_xpu_float16",
@@ -217,12 +215,10 @@ skip_list = (
     "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
     "test_variant_consistency_eager_to_sparse_xpu_complex64",
     "test_variant_consistency_eager_to_sparse_xpu_float32",
-    "test_compare_cpu__native_batch_norm_legit_xpu_float32",
     "test_compare_cpu__refs_special_zeta_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_xpu_float32",
     "test_compare_cpu_linalg_lu_xpu_float32",
-    "test_compare_cpu_native_batch_norm_xpu_float32",
     "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
     "test_compare_cpu_special_zeta_xpu_float32",
     "test_out_cholesky_inverse_xpu_float32",
@@ -269,6 +265,10 @@ skip_list = (
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
     "test_compare_cpu_nn_functional_grid_sample_xpu_float32",  # AssertionError: Tensor-likes are not close!
     "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
+    "test_out_native_batch_norm_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_out__native_batch_norm_legit_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_dtypes__batch_norm_with_update_xpu", # We are same as CUDA implementation. And CUDA skips these cases.
+
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
 
@@ -1324,12 +1324,6 @@ skip_list = (
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: AssertionError not raised
-    "test_batchnorm_simple_average_mixed_xpu_bfloat16",
-    "test_batchnorm_simple_average_mixed_xpu_float16",
-    "test_batchnorm_simple_average_xpu_float32",
-    "test_batchnorm_update_stats_xpu",
-    "test_batchnorm_simple_average_xpu_bfloat16",
     # AssertionError: False is not true
     "test_device_mask_xpu",
     "test_overwrite_module_params_on_conversion_cpu_device_xpu",
