@@ -244,8 +244,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "isposinf.out",
     "kthvalue.values",
     "lcm.out",
-    "leaky_relu_backward.grad_input",
-    "leaky_relu.out",
     "lgamma.out",
     "linalg_cholesky_ex.L",
     "linalg_cross.out",
