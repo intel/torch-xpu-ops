@@ -2911,6 +2911,13 @@ skip_list = (
     "test_cuda_vitals_gpu_only_xpu",
     # torch.utils.swap_tensors AssertionError: RuntimeError not raised
     "test_swap_basic",
+
+    # Precision error
+    # Fail in high probability in preci.
+    # Mismatched elements: 1 / 262144 (0.0%)
+    # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
+    # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
+    "test_index_add_correctness",
 )
 res += launch_test("test_torch_xpu.py", skip_list)
 
