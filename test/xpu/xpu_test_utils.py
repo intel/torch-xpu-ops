@@ -102,6 +102,7 @@ _xpu_computation_op_list = [
     "var",
     "var_mean",
     "tanh",
+    "hypot",
     "unfold",
     "uniform",
     "view",
