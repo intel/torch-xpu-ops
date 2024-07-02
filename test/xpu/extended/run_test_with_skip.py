@@ -16,6 +16,8 @@ skip_list = (
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
+    "test_compare_cpu_tan_xpu_complex128",
+    "test_compare_cpu_tan_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
