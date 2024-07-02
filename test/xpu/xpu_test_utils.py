@@ -81,6 +81,8 @@ _xpu_computation_op_list = [
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
+    "nn.functional.softplus",
+    "nn.functional.softshrink",
     "nonzero",
     "normal",
     "pow",
