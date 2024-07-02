@@ -440,6 +440,9 @@ supported:
   - erf
   - erf_
   - erf.out
+  - erfinv
+  - erfinv_
+  - erfinv.out
   - linalg_vector_norm
   - linalg_vector_norm.out
   - grid_sampler_2d
