@@ -471,6 +471,9 @@ supported:
   - atanh
   - atanh.out
   - atanh_
+  - cosh
+  - cosh.out
+  - cosh_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_

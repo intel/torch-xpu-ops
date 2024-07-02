@@ -13,6 +13,7 @@
 #include <ATen/native/xpu/sycl/UnaryGeometricAtanKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAtanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricCoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
@@ -604,6 +605,28 @@ Tensor& XPUNativeFunctions::atanh_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::atanh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::cosh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::cosh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::cosh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::cosh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
   return out;
 }
 

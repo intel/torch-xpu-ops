@@ -185,7 +185,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "complex.out",
     "conj_physical.out",
     "copysign.out",
-    "cosh.out",
     "count_nonzero.dim_IntList",
     "_ctc_loss",
     "_ctc_loss_backward",
