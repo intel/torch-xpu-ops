@@ -41,4 +41,23 @@ void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
     result.copy_(*result_);
   }
 }
+
+void cumprod_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
+  auto result_ = contiguous_out_arg(result);
+
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      self.scalar_type(),
+      "cumprod_xpu",
+      [&]() {
+        scalar_t init = 1;
+        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
+            *result_, self, dim, init, std::multiplies<scalar_t>());
+      });
+
+  if (!result.is_same(*result_)) {
+    result.copy_(*result_);
+  }
+}
 } // namespace at::native::xpu

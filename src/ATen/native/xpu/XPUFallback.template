@@ -196,7 +196,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_ctc_loss_backward",
     "_cummax_helper",
     "_cummin_helper",
-    "cumprod.out",
     "digamma.out",
     "dot",
     "_efficient_attention_forward",
