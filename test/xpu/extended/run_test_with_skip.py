@@ -58,8 +58,6 @@ skip_list = (
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
-    "nn_functional_interpolate_bicubic",
-    "nn_functional_interpolate_bilinear",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -97,6 +95,16 @@ skip_list = (
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
 
+    # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
+    # aten::upsample_trilinear3d
+    "nn_functional_interpolate_linear",
+    "nn_functional_interpolate_bilinear",
+    "nn_functional_interpolate_trilinear",
+
+    # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float16",
     # Not all operators are implemented for XPU tested in the case.
     # Retrieve it once the operator is implemented.
     # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
