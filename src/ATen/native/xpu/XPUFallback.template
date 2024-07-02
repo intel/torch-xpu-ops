@@ -209,7 +209,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "expm1.out",
     "exponential_",
     "eye.m_out",
-    "_fft_c2c",
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",

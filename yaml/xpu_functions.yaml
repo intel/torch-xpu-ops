@@ -478,3 +478,5 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - _fft_c2c
+  - _fft_c2c.out

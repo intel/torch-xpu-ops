@@ -60,3 +60,7 @@ if(CLANG_FORMAT)
   add_custom_target(CL_FORMAT_CSRCS COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_CSRCS})
   add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
 endif()
+
+find_package(oneMKL)
+
+target_link_libraries(torch_xpu_ops INTERFACE ${ONEMKL_LIBRARIES})
