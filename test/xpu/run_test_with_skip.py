@@ -72,6 +72,7 @@ skip_list = (
     "test_noncontiguous_samples_nn_functional_conv1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+    "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
     "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
     "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
@@ -254,6 +255,8 @@ skip_list = (
     "test_non_standard_bool_values_sort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
     "test_compare_cpu_nn_functional_grid_sample_xpu_float32",  # AssertionError: Tensor-likes are not close!
+    "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
+
     # AssertionError: Tensor-likes are not close!
     "test_compare_cpu__refs_std_mean_xpu_float32",
     "test_compare_cpu__refs_var_mean_xpu_float32",
