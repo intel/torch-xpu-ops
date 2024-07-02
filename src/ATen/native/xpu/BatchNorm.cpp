@@ -347,4 +347,37 @@ std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> XPUNativeFunctions::
       reserve);
 }
 
+std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::batch_norm_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& weight,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& save_mean_opt,
+    const std::optional<Tensor>& save_var_opt,
+    bool update,
+    double eps,
+    std::array<bool, 3> grad_input_mask,
+    const Tensor& reserve) {
+  const Tensor& running_mean =
+      c10::value_or_else(running_mean_opt, [] { return Tensor(); });
+  const Tensor& running_var =
+      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& save_mean =
+      c10::value_or_else(save_mean_opt, [] { return Tensor(); });
+  const Tensor& save_var =
+      c10::value_or_else(save_var_opt, [] { return Tensor(); });
+  return native::xpu::batch_norm_backward_kernel(
+      grad_output,
+      input,
+      weight,
+      running_mean,
+      running_var,
+      save_mean,
+      save_var,
+      update,
+      eps,
+      grad_input_mask);
+}
+
 } // namespace at

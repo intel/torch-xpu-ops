@@ -408,6 +408,7 @@ supported:
   - _native_batch_norm_legit.no_stats_out
   - _batch_norm_with_update
   - _batch_norm_with_update.out
+  - batch_norm_backward
   - _upsample_nearest_exact1d
   - _upsample_nearest_exact1d.out
   - upsample_nearest1d
