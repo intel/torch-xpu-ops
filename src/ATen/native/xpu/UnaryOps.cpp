@@ -535,15 +535,13 @@ Tensor XPUNativeFunctions::_conj_physical(const Tensor& self) {
 Tensor XPUNativeFunctions::conj_physical(const Tensor& self) {
   if (!self.is_complex())
     return self;
-  return _conj_physical(self);
+  return XPUNativeFunctions::_conj_physical(self);
 }
 
 Tensor& XPUNativeFunctions::conj_physical_(Tensor& self) {
   if (!self.is_complex())
     return self;
-  auto iter = TensorIterator::unary_op(self, self);
-  native::xpu::conj_physical_kernel(iter);
-  return self;
+  return XPUNativeFunctions::conj_physical_out(self, self);
 }
 
 } // namespace at
