@@ -2,7 +2,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
-#include <c10/core/SymIntArrayRef.h>
 
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.h>
 
@@ -62,6 +61,17 @@ Tensor& XPUNativeFunctions::adaptive_avg_pool2d_out(
         "empty");
   }
 
+  if (output_size[0] == 1 && output_size[1] == 1) {
+    output = input.mean({-1, -2}, /* keepdim = */ true);
+    if (input.suggest_memory_format() == at::MemoryFormat::ChannelsLast) {
+      // assert ndim == 4, since ndim = 3 doesn't give channels_last
+      const auto n = input.sym_size(0);
+      const auto c = input.sym_size(1);
+      output.as_strided__symint({n, c, 1, 1}, {c, 1, c, c});
+    }
+    return output;
+  }
+
   native::xpu::adaptive_avg_pool2d_kernel(output, input, output_size);
   return output;
 }
@@ -72,35 +82,6 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d(
   auto output = at::empty({0}, input.options());
   adaptive_avg_pool2d_out(input, output_size, output);
   return output;
-}
-
-Tensor XPUNativeFunctions::adaptive_avg_pool2d(
-    at::Tensor const& input,
-    IntArrayRef output_size) {
-  TORCH_CHECK(
-      output_size.size() == 2, "adaptive_avg_pool2d: output_size must be 2");
-  TORCH_CHECK(
-      (output_size[0] >= 0 && output_size[1] >= 0),
-      "adaptive_avg_pool2d: elements of output_size must be greater than or equal to 0 ",
-      "but received {",
-      output_size[0],
-      ", ",
-      output_size[1],
-      "}");
-
-  if (output_size[0] == 1 && output_size[1] == 1) {
-    Tensor out = input.mean({-1, -2}, /* keepdim = */ true);
-    if (input.suggest_memory_format() == at::MemoryFormat::ChannelsLast) {
-      // assert ndim == 4, since ndim = 3 doesn't give channels_last
-      const auto n = input.sym_size(0);
-      const auto c = input.sym_size(1);
-      out.as_strided__symint({n, c, 1, 1}, {c, 1, c, c});
-    }
-    return out;
-  } else {
-    return _adaptive_avg_pool2d_symint(
-        input, c10::fromIntArrayRefSlow(output_size));
-  }
 }
 
 } // namespace at

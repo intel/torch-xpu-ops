@@ -9,7 +9,6 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
-  - adaptive_avg_pool2d # To setup correct autograd graph for cases when output_size=1
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
