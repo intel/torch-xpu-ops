@@ -148,4 +148,53 @@ void erfinv_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, ErfinvFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct Exp2Functor {
+  scalar_t operator()(scalar_t a) const {
+    return std::exp2(a);
+  }
+};
+
+template <typename T>
+struct Exp2Functor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> x) const {
+    // There is no std::exp2 overload for complex, so instead
+    // use the identity 2^x = e^(ln(2) * x)
+    const auto ln_2 = static_cast<T>(0.693147180559945309417232121458176);
+    return std::exp(ln_2 * x);
+  }
+};
+
+void exp2_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      kComplexHalf,
+      iter.common_dtype(),
+      "exp2_xpu",
+      [&]() {
+        using opmath_t = at::opmath_type<scalar_t>;
+        gpu_kernel(iter, Exp2Functor<opmath_t>());
+      });
+}
+
+template <typename scalar_t>
+struct Expm1Functor {
+  scalar_t operator()(scalar_t a) const {
+    return std::expm1(a);
+  }
+};
+
+void expm1_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "expm1_xpu",
+      [&]() {
+        using opmath_t = at::opmath_type<scalar_t>;
+        gpu_kernel(iter, Expm1Functor<opmath_t>());
+      });
+}
+
 } // namespace at::native::xpu

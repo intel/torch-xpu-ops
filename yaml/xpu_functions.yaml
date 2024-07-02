@@ -465,3 +465,10 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - exp2
+  - exp2_
+  - exp2.out
+  - expm1
+  - expm1_
+  - expm1.out
+  - exponential_

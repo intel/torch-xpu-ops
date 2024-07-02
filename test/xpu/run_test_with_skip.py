@@ -2793,8 +2793,6 @@ skip_list = (
     "test_corrcoef_xpu_complex64",
     ### Error #10 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: True is not false
     "test_discontiguous_out_cumsum_xpu",
-    ### Error #11 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: tensor(False, device='xpu:0') is not true
-    "test_exponential_no_zero_xpu_float16",
     ### Error #12 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'amp'
     "test_grad_scaler_pass_itself_xpu",
     "test_pickle_gradscaler_xpu",
