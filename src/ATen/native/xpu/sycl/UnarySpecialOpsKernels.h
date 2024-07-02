@@ -10,4 +10,10 @@ void erf_kernel(TensorIteratorBase& iter);
 
 void erfc_kernel(TensorIteratorBase& iter);
 
+void erfinv_kernel(TensorIteratorBase& iter);
+
+void exp2_kernel(TensorIteratorBase& iter);
+
+void expm1_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

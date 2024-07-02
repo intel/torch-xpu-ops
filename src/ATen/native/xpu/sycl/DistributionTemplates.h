@@ -590,6 +590,51 @@ void bernoulli_kernel(TensorIteratorBase& iter, double p, RNG gen) {
       });
 }
 
+// ====================== Exponential ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct ExponentialFunctor {
+  auto operator()(accscalar_t val) const {
+    // BEFORE TOUCHING THIS CODE READ:
+    // https://github.com/pytorch/pytorch/issues/16706
+    // rand_uniform has (0,1] bounds. log(1) is 0 and exponential
+    // excludes 0. we need log to be not 0, and not underflow when
+    // converted to half
+    accscalar_t log;
+    if (val >= static_cast<accscalar_t>(1.f) -
+            std::numeric_limits<scalar_t>::epsilon() / 2.f) {
+      // Need an epsilon of appropriate precision.
+      // Unlike CUDA behavior, DPCPP dtype conversions do not support
+      // epsilon downgrading.
+      log = -std::numeric_limits<scalar_t>::epsilon() / 2.f;
+    } else {
+      log = std::log(val);
+    }
+    return static_cast<accscalar_t>(-1.f) / lambd_ * log;
+  }
+  ExponentialFunctor(accscalar_t lambd) : lambd_(lambd) {}
+
+ private:
+  accscalar_t lambd_;
+};
+
+template <typename RNG>
+void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
+  AT_DISPATCH_ALL_TYPES_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "exponential__xpu_",
+      [&] {
+        using accscalar_t = at::acc_type<scalar_t, true>;
+        auto lambd = static_cast<accscalar_t>(lambda);
+        ExponentialFunctor<scalar_t, accscalar_t> exponential_func(lambd);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, exponential_func);
+      });
+}
+
 } // namespace xpu
 } // namespace templates
 } // namespace native
