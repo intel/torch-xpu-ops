@@ -14,7 +14,7 @@ on:
         default: 'op_example,op_extended,op_ut,torch_xpu'
         description: op_example,op_extended,op_ut,torch_xpu. Delimiter is comma
       pytorch_branch:
-        required: true
+        required: false
         type: string
         default: 'main'
         description: Set pytorch branch
