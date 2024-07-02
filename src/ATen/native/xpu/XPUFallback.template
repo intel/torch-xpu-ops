@@ -244,8 +244,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "isposinf.out",
     "kthvalue.values",
     "lcm.out",
-    "lerp.Scalar_out",
-    "lerp.Tensor_out",
     "lgamma.out",
     "linalg_cholesky_ex.L",
     "linalg_cross.out",
