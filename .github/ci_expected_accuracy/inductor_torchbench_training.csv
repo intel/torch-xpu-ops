@@ -1,5 +1,5 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
-torchrec_dlrm,fail_to_run,eager_fail_to_run,eager_fail_to_run,fail_to_run,fail_to_run
+torchrec_dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,fail_to_run
 BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,pass_due_to_skip,eager_fail_to_run
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -53,7 +53,7 @@ hf_distil_whisper,model_fail_to_load,model_fail_to_load,model_fail_to_load,model
 lennard_jones,pass,pass,pass,pass,pass
 llama,pass,pass,pass,pass,pass
 llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-llava,eager_fail_to_run,eager_2nd_run_fail,eager_2nd_run_fail,eager_fail_to_run,eager_fail_to_run
+llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
@@ -61,7 +61,7 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,eager_fail_to_run
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
@@ -91,14 +91,14 @@ stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 stable_diffusion_unet,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 tacotron2,fail_to_run,fail_to_run,fail_to_run,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
-timm_efficientnet,pass,pass,pass,fail_accuracy,pass
+timm_efficientnet,pass,pass,pass,pass,pass
 timm_nfnet,pass,pass,pass,pass,pass
 timm_regnet,pass,pass,pass,pass,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
 timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 timm_vovnet,pass,pass,pass,pass,pass
-torch_multimodal_clip,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+torch_multimodal_clip,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
 tts_angular,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 vgg16,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
