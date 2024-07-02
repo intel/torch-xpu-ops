@@ -803,4 +803,45 @@ Tensor XPUNativeFunctions::amin(
   return out;
 }
 
+Tensor& XPUNativeFunctions::cumprod_out(
+    const Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype,
+    Tensor& result) {
+  // Checking whether 'dim' is valid.
+  maybe_wrap_dim(dim, self.dim());
+
+  ScalarType out_dtype;
+
+  if (!result.defined()) {
+    auto is_integral =
+        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype =
+        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result = at::empty_strided(
+        self.sizes(), self.strides(), self.options().dtype(out_dtype));
+  } else {
+    at::native::resize_output(result, self.sizes());
+    result.as_strided_(self.sizes(), self.strides());
+  }
+
+  impl_func_cum_ops(self, dim, result, at::native::xpu::cumprod_kernel);
+  return result;
+}
+
+Tensor XPUNativeFunctions::cumprod(
+    const Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype) {
+  Tensor result;
+  return XPUNativeFunctions::cumprod_out(self, dim, dtype, result);
+}
+
+Tensor& XPUNativeFunctions::cumprod_(
+    Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype) {
+  return XPUNativeFunctions::cumprod_out(self, dim, dtype, self);
+}
+
 } // namespace at

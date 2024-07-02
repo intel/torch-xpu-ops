@@ -13,6 +13,9 @@ supported:
   - cumsum
   - cumsum.out
   - cumsum_
+  - cumprod
+  - cumprod.out
+  - cumprod_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
