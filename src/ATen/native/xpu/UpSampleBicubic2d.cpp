@@ -1,6 +1,6 @@
 #include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl/UpSample.h>
+#include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
@@ -15,7 +15,7 @@ void upsample_bicubic2d_meta(
     std::optional<double> scales_h,
     std::optional<double> scales_w) {
   auto full_output_size =
-      native::upsample_2d_common_check(input.sizes(), output_size);
+      native::xpu::upsample_2d_common_check(input.sizes(), output_size);
 
   // Allow for empty batch size but not other dimensions
   TORCH_CHECK(

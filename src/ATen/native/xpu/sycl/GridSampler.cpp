@@ -11,8 +11,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
-#include "GridSampler.h"
-#include "UpSample.h"
+#include <ATen/native/xpu/UpSample.h>
+#include <ATen/native/xpu/sycl/GridSampler.h>
 
 namespace at::native::xpu {
 

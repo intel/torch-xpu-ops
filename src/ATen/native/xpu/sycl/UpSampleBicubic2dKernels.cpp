@@ -3,8 +3,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
+#include <ATen/native/xpu/UpSample.h>
 #include <comm/SYCLContext.h>
-#include "UpSample.h"
 
 namespace at::native::xpu {
 

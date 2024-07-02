@@ -1,7 +1,9 @@
+#pragma once
+
 #include <ATen/ATen.h>
-#include <ATen/native/xpu/sycl/UpSample.h>
-namespace at::native {
-namespace xpu {
+#include <ATen/native/xpu/UpSample.h>
+
+namespace at::native::xpu {
 
 void upsample_nearest1d_kernel(
     Tensor& output,
@@ -18,6 +20,4 @@ void upsample_nearest1d_backward_kernel(
     std::optional<double> scales,
     bool is_exact);
 
-} // namespace xpu
-
-} // namespace at::native
+} // namespace at::native::xpu
