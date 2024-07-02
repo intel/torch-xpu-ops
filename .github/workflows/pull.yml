@@ -23,8 +23,8 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-ut
-    runs-on: linux.idc.xpu
     uses: ./.github/workflows/_linux_ut.yml
     with: 
       ut_suite: op_example,op_extended,op_ut,torch_xpu
+      runner: linux.idc.xpu
       
