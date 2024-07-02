@@ -297,7 +297,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "multilabel_margin_loss_forward",
     "multi_margin_loss",
     "multi_margin_loss_backward",
-    "multinomial",
     "nanmedian",
     "nanmedian.dim_values",
     "nansum",

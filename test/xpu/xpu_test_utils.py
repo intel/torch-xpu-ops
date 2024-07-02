@@ -138,6 +138,7 @@ _xpu_computation_op_list = [
     "nn.functional.group_norm",
     "bincount",
     "renorm",
+    "multinomial",
 ]
 
 
