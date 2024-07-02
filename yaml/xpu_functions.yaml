@@ -97,6 +97,9 @@ supported:
   - gcd
   - gcd.out
   - gcd_
+  - hypot
+  - hypot.out
+  - hypot_
   - relu
   - relu_
   - relu.out
@@ -105,11 +108,42 @@ supported:
   - threshold.out
   - threshold_backward
   - threshold_backward.grad_input
+  - softplus
+  - softplus.out
+  - softplus_backward
+  - softplus_backward.grad_input
+  - softshrink
+  - softshrink.out
+  - softshrink_backward
+  - softshrink_backward.grad_input
   - gelu
   - gelu_
   - gelu.out
   - gelu_backward
   - gelu_backward.grad_input
+  - leaky_relu
+  - leaky_relu_
+  - leaky_relu.out
+  - leaky_relu_backward
+  - leaky_relu_backward.grad_input
+  - silu
+  - silu_
+  - silu.out
+  - silu_backward
+  - silu_backward.grad_input
+  - glu
+  - glu.out
+  - glu_backward.grad_input
+  - glu_backward
+  - hardtanh
+  - hardtanh.out
+  - hardtanh_
+  - hardtanh_backward.grad_input
+  - hardtanh_backward
+  - hardswish
+  - hardswish.out
+  - hardswish_
+  - hardswish_backward
   - arange.start_out
   - abs
   - abs_
@@ -123,6 +157,9 @@ supported:
   - log
   - log_
   - log.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
   - sqrt
   - sqrt_
   - sqrt.out
@@ -184,6 +221,7 @@ supported:
   - set_.source_Tensor
   - set_
   - unfold
+  - unfold_backward
   # - resize_as_  # hand-written registration
   # - _copy_from_and_resize  # hand-written registration
   # - _copy_from  # hand-written registration
@@ -225,6 +263,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims
@@ -237,8 +281,15 @@ supported:
   - any.dims_out
   - any
   - any.all_out
+  - amax
+  - amax.out
+  - amin
+  - amin.out
+  - argmax
   - argmax.out
   - _local_scalar_dense
+  - max_pool2d_with_indices
+  - max_pool2d_with_indices.out
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
@@ -248,6 +299,7 @@ supported:
   - _softmax_backward_data
   - _index_put_impl_
   - nonzero
+  - nonzero.out
   - _softmax
   - _softmax.out
   - _log_softmax
@@ -309,16 +361,29 @@ supported:
   - _foreach_addcdiv_.ScalarList
   - _foreach_addcdiv.Tensor
   - _foreach_addcdiv_.Tensor
+  - _foreach_sqrt
+  - _foreach_sqrt_
+  - _foreach_lerp.List
+  - _foreach_lerp_.List
+  - _foreach_lerp.Scalar
+  - _foreach_lerp_.Scalar
+  - _foreach_norm.Scalar
   - maximum
   - maximum.out
   - minimum
   - minimum.out
   - flip
+  - roll
   - sigmoid
   - sigmoid.out
   - sigmoid_
   - sigmoid_backward.grad_input
   - sigmoid_backward
+  - hardsigmoid.out
+  - hardsigmoid
+  - hardsigmoid_
+  - hardsigmoid_backward.grad_input
+  - hardsigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -329,14 +394,77 @@ supported:
   - im2col.out
   - col2im
   - col2im.out
+  - mse_loss
+  - mse_loss.out
+  - mse_loss_backward
+  - mse_loss_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - _upsample_nearest_exact1d
+  - _upsample_nearest_exact1d.out
+  - upsample_nearest1d
+  - upsample_nearest1d.out
+  - _upsample_nearest_exact1d_backward
+  - _upsample_nearest_exact1d_backward.grad_input
+  - upsample_nearest1d_backward
+  - upsample_nearest1d_backward.grad_input
+  - upsample_nearest2d
+  - upsample_nearest2d.out
+  - upsample_nearest2d_backward
+  - upsample_nearest2d_backward.grad_input
+  - _upsample_nearest_exact2d
+  - _upsample_nearest_exact2d.out
+  - _upsample_nearest_exact2d_backward
+  - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
+  - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
   - sgn
   - sgn.out
   - sgn_
+  - _cdist_forward
   - _pin_memory
   - is_pinned
+  - reflection_pad2d
+  - reflection_pad2d.out
+  - reflection_pad2d_backward
+  - reflection_pad2d_backward.grad_input
+  - native_group_norm
+  - native_group_norm_backward
+  - elu
+  - elu.out
+  - elu_
+  - elu_backward
+  - elu_backward.grad_input
+  - erfc
+  - erfc_
+  - erfc.out
+  - erf
+  - erf_
+  - erf.out
+  - linalg_vector_norm
+  - linalg_vector_norm.out
+  - grid_sampler_2d
+  - grid_sampler_2d_backward
+  - acos
+  - acos_
+  - acos.out
+  - acosh
+  - acosh_
+  - acosh.out
+  - addr
+  - addr.out
+  - avg_pool2d
+  - avg_pool2d.out
+  - avg_pool2d_backward
+  - avg_pool2d_backward.grad_input
+  - addcmul.out
+  - addcmul
+  - addcmul_
+  - randperm.generator_out
+  - _amp_foreach_non_finite_check_and_unscale_
+  - _amp_update_scale_
