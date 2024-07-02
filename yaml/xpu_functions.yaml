@@ -99,6 +99,14 @@ supported:
   - threshold.out
   - threshold_backward
   - threshold_backward.grad_input
+  - softplus
+  - softplus.out
+  - softplus_backward
+  - softplus_backward.grad_input
+  - softshrink
+  - softshrink.out
+  - softshrink_backward
+  - softshrink_backward.grad_input
   - gelu
   - gelu_
   - gelu.out
