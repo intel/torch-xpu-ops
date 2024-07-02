@@ -5,17 +5,17 @@
 
 namespace at::native::xpu {
 
-template <scalar_t>
+template <typename scalar_t>
 struct SinhComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
-  scalar_t operator()(scalar_t a) {
+  scalar_t operator()(scalar_t a) const {
     return std::sinh(static_cast<opmath_t>(a));
   }
 };
 
-template <scalar_t>
+template <typename scalar_t>
 struct SinhFunctor {
-  scalar_t operator()(scalar_t a) {
+  scalar_t operator()(scalar_t a) const {
     return std::sinh(a);
   }
 };
@@ -33,9 +33,7 @@ void sinh_kernel(TensorIteratorBase& iter) {
         ScalarType::BFloat16,
         common_dtype,
         "sinh_xpu",
-        [&]() {
-          gpu_kernel(iter, SinhFunctor<scalar_t>());
-        });
+        [&]() { gpu_kernel(iter, SinhFunctor<scalar_t>()); });
   }
 }
 

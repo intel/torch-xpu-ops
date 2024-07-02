@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void sinh_kernel(TensorIterator& iter);
+void sinh_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

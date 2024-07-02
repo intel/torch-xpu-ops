@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void tan_kernel(TensorIterator& iter);
+void tan_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

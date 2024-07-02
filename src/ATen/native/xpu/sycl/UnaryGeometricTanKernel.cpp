@@ -5,17 +5,17 @@
 
 namespace at::native::xpu {
 
-template <scalar_t>
+template <typename scalar_t>
 struct TanComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
-  scalar_t operator()(scalar_t a) {
+  scalar_t operator()(scalar_t a) const {
     return std::tan(static_cast<opmath_t>(a));
   }
 };
 
-template <scalar_t>
+template <typename scalar_t>
 struct TanFunctor {
-  scalar_t operator()(scalar_t a) {
+  scalar_t operator()(scalar_t a) const {
     return std::tan(a);
   }
 };
@@ -23,17 +23,12 @@ struct TanFunctor {
 void tan_kernel(TensorIteratorBase& iter) {
   auto common_dtype = iter.common_dtype();
   if (at::isComplexType(common_dtype)) {
-    AT_DISPATCH_COMPLEX_TYPES_AND(
-        kComplexHalf, common_dtype, "tan_xpu", [&]() {
-          gpu_kernel(iter, TanComplexFunctor<scalar_t>());
-        });
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, common_dtype, "tan_xpu", [&]() {
+      gpu_kernel(iter, TanComplexFunctor<scalar_t>());
+    });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
-        ScalarType::Half,
-        ScalarType::BFloat16,
-        common_dtype,
-        "tan_xpu",
-        [&]() {
+        ScalarType::Half, ScalarType::BFloat16, common_dtype, "tan_xpu", [&]() {
           gpu_kernel(iter, TanFunctor<scalar_t>());
         });
   }
