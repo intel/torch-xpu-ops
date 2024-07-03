@@ -515,4 +515,31 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+TensorIterator meta_floor(const Tensor& self, Tensor& out) {
+  // Note: this is consistent with NumPy
+  TORCH_CHECK(!self.is_complex(), "floor is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::floor(const Tensor& self) {
+  Tensor out;
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::floor_(Tensor& self) {
+  auto iter = meta_floor(self, self);
+  native::xpu::floor_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
+  return out;
+}
+
 } // namespace at

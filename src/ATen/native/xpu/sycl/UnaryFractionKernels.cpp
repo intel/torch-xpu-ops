@@ -55,4 +55,30 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, ReciprocalFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct FloorFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::floor(a);
+  }
+};
+
+template <typename T>
+struct FloorFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> v) const {
+    return c10::complex<T>(std::floor(v.real()), std::floor(v.imag()));
+  }
+};
+
+void floor_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "floor_xpu",
+      [&]() {
+        using opmath_t = at::opmath_type<scalar_t>;
+        gpu_kernel(iter, FloorFunctor<opmath_t>());
+      });
+}
+
 } // namespace at::native::xpu

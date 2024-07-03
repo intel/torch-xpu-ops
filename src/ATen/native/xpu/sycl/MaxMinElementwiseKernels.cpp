@@ -107,4 +107,50 @@ void minimum_kernel(TensorIteratorBase& iter) {
   }
 }
 
+template <typename scalar_t>
+struct FmaxFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return std::fmax(a, b);
+  }
+};
+
+void fmax_kernel(TensorIteratorBase& iter) {
+  if (isFloatingType(iter.common_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        iter.common_dtype(),
+        "fmax_xpu",
+        [&]() {
+          FmaxFunctor<scalar_t> f;
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, f);
+        });
+  } else {
+    maximum_kernel(iter);
+  }
+}
+
+template <typename scalar_t>
+struct FminFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return std::fmax(a, b);
+  }
+};
+
+void fmin_kernel(TensorIteratorBase& iter) {
+  if (isFloatingType(iter.common_dtype())) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        iter.common_dtype(),
+        "fmin_xpu",
+        [&]() {
+          FminFunctor<scalar_t> f;
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t>(iter, f);
+        });
+  } else {
+    minimum_kernel(iter);
+  }
+}
+
 } // namespace at::native::xpu

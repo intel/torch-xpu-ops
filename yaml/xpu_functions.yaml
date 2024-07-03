@@ -488,3 +488,15 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - floor_divide.Scalar
+  - floor_divide_.Scalar
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out

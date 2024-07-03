@@ -477,4 +477,87 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   return iter.output();
 }
 
+Tensor& XPUNativeFunctions::floor_divide_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = TensorIterator::binary_op(output, self, other);
+  native::xpu::div_floor_kernel(iter);
+  if (!output.defined()) {
+    output = iter.output();
+  }
+  return output;
+}
+
+Tensor XPUNativeFunctions::floor_divide(
+    const Tensor& self,
+    const Tensor& other) {
+  Tensor output;
+  auto iter = TensorIterator::binary_op(output, self, other);
+  native::xpu::div_floor_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::floor_divide_(Tensor& self, const Tensor& other) {
+  return XPUNativeFunctions::floor_divide_out(self, other, self);
+}
+
+Tensor XPUNativeFunctions::floor_divide(
+    const Tensor& self,
+    const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::floor_divide(self, wrapper);
+}
+
+Tensor& XPUNativeFunctions::floor_divide_(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  return XPUNativeFunctions::floor_divide_out(self, wrapper, self);
+}
+
+TensorIterator meta_fmin_fmax(
+    const char* const name,
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  TORCH_CHECK(
+      !self.is_complex() && !other.is_complex(),
+      name,
+      " not implemented for complex tensors.");
+  TensorIterator iter;
+  iter.build_binary_op(output, self, other);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::fmax_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  native::xpu::fmax_kernel(iter);
+  return output;
+}
+
+Tensor XPUNativeFunctions::fmax(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  native::xpu::fmax_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::fmin_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  native::xpu::fmin_kernel(iter);
+  return output;
+}
+
+Tensor XPUNativeFunctions::fmin(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_fmin_fmax("fmin", self, other, output);
+  native::xpu::fmin_kernel(iter);
+  return iter.output();
+}
+
 } // namespace at
