@@ -12,7 +12,7 @@
 #include <ATen/ops/empty_strided_native.h>
 #endif
 
-#include <aten/native/xpu/sycl/ComplexKernels.h>
+#include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
 #include <ATen/xpu/EmptyTensor.h>
 
