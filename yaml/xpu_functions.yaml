@@ -415,3 +415,7 @@ supported:
   - addcmul_
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - nll_loss2d_forward.output
+  - nll_loss2d_forward
+  - nll_loss2d_backward.grad_input
+  - nll_loss2d_backward

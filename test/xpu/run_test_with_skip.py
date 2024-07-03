@@ -923,6 +923,15 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
     "test_dtypes_nn_functional_interpolate_bicubic_xpu",
+
+    # RuntimeError: It appears that you're trying to get value out of a tracing tensor with aten._local_scalar_dense.default - erroring out! 
+    # It's likely that this is caused by data-dependent control flow or similar.  It may be possible to trace this with dynamic shapes; 
+    # try setting tracing_mode='symbolic' in your make_fx call.
+    #CUDA XFAIL
+    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_bfloat16",
+    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float16",
+    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float32",
+    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float64",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
