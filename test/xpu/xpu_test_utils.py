@@ -130,6 +130,7 @@ _xpu_computation_op_list = [
     "nn.functional.unfold",
     "nn.functional.pad",
     "nn.functional.interpolate",
+    "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
     "nn.functional.mse_loss",
@@ -150,6 +151,7 @@ _xpu_computation_op_list = [
     "bincount",
     "renorm",
     "multinomial",
+    "lerp",
 ]
 
 

@@ -91,6 +91,11 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
 
+    # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_float16",
+
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
