@@ -396,6 +396,22 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - batch_norm_stats
+  - batch_norm_elemt
+  - batch_norm_elemt.out
+  - batch_norm_backward_reduce
+  - batch_norm_backward_elemt
+  - batch_norm_update_stats
+  - native_batch_norm
+  - native_batch_norm.out
+  - native_batch_norm_backward
+  - _native_batch_norm_legit
+  - _native_batch_norm_legit.out
+  - _native_batch_norm_legit.no_stats
+  - _native_batch_norm_legit.no_stats_out
+  - _batch_norm_with_update
+  - _batch_norm_with_update.out
+  - batch_norm_backward
   - _upsample_nearest_exact1d
   - _upsample_nearest_exact1d.out
   - upsample_nearest1d
