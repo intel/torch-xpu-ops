@@ -2803,8 +2803,6 @@ skip_list = (
     ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
     "test_is_set_to_xpu",
     "test_pin_memory_from_constructor_xpu",
-    ### Error #18 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Torch not compiled with CUDA enabled
-    "test_memory_format_cpu_and_cuda_ops_xpu",
     "test_sync_warning_xpu",
     ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
     "test_module_share_memory_xpu",
