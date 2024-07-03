@@ -266,6 +266,7 @@ jobs:
     with: 
       ut_suite: ${{ inputs.ut_suite }}
       pytorch_branch: ${{ inputs.pytorch_branch }}
+      runner: linux.idc.xpu
       
   Tests-Failure-And-Report:
     if: always()

@@ -146,7 +146,7 @@ jobs:
                 echo -e "========================================================================="
                 echo -e "XPU OP Examples UT Results Check"
                 echo -e "========================================================================="
-                grep "^FAILED" XPU_OP_op_example_Test.log | awk '{print $1}' > ./op_example_failed.log
+                grep "FAILED" XPU_OP_op_example_Test.log | awk '{print $1}' > ./op_example_failed.log
                 grep "PASSED" XPU_OP_op_example_Test.log | awk '{print $1}' > ./op_example_passed.log
                 num_failed_op_example=$(cat ./op_example_failed.log | wc -l)
                 num_passed_op_example=$(cat ./op_example_passed.log | wc -l)
@@ -158,7 +158,7 @@ jobs:
                 echo -e "========================================================================="
                 echo -e "XPU OP Extended UT Results Check"
                 echo -e "========================================================================="
-                grep "^FAILED" XPU_OP_op_extended_Test.log | awk '{print $1}' > ./op_extended_failed.log
+                grep "FAILED" XPU_OP_op_extended_Test.log | awk '{print $1}' > ./op_extended_failed.log
                 grep "PASSED" XPU_OP_op_extended_Test.log | awk '{print $1}' > ./op_extended_passed.log
                 num_failed_op_extended=$(cat ./op_extended_failed.log | wc -l)
                 num_passed_op_extended=$(cat ./op_extended_passed.log | wc -l)
@@ -170,8 +170,8 @@ jobs:
                 echo -e "========================================================================="
                 echo -e "XPU OP UT Results Check"
                 echo -e "========================================================================="
-                grep "^FAILED" XPU_OP_with_skip_UT_Test.log | awk '{print $1}' > ./op_ut_with_skip_failed.log
-                grep "^FAILED" XPU_OP_with_only_UT_Test.log | awk '{print $1}' > ./op_ut_with_only_failed.log
+                grep "FAILED" XPU_OP_with_skip_UT_Test.log | awk '{print $1}' > ./op_ut_with_skip_failed.log
+                grep "FAILED" XPU_OP_with_only_UT_Test.log | awk '{print $1}' > ./op_ut_with_only_failed.log
                 num_failed_with_skip=$(cat ./op_ut_with_skip_failed.log | wc -l)
                 num_failed_with_only=$(cat ./op_ut_with_only_failed.log | wc -l)
                 let num_failed_op_ut=num_failed_with_skip+num_failed_with_only
