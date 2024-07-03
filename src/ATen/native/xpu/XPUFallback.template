@@ -271,8 +271,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "log10.out",
     "log1p.out",
     "log2.out",
-    "logaddexp2.out",
-    "logaddexp.out",
     "_logcumsumexp",
     "logical_and.out",
     "logical_or.out",

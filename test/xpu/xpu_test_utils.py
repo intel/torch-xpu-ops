@@ -64,6 +64,8 @@ _xpu_computation_op_list = [
     "isnan",
     "le",
     "log",
+    "logaddexp",
+    "logaddexp2",
     "lt",
     "logical_not",
     "masked_fill",
