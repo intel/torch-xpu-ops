@@ -799,7 +799,6 @@ skip_list = (
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
-    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
 
     # RuntimeError: It appears that you're trying to get value out of a tracing tensor with aten._local_scalar_dense.default - erroring out! 
     # It's likely that this is caused by data-dependent control flow or similar.  It may be possible to trace this with dynamic shapes; 
