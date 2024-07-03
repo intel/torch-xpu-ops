@@ -31,9 +31,13 @@ REGISTER_XPU_DISPATCH(hardswish_stub, xpu::hardswish_kernel);
 REGISTER_XPU_DISPATCH(hardswish_backward_stub, xpu::hardswish_backward_kernel);
 REGISTER_XPU_DISPATCH(hardtanh_backward_stub, xpu::hardtanh_backward_kernel);
 REGISTER_XPU_DISPATCH(hardsigmoid_stub, xpu::hardsigmoid_kernel);
-REGISTER_XPU_DISPATCH(hardsigmoid_backward_stub, xpu::hardsigmoid_backward_kernel);
+REGISTER_XPU_DISPATCH(
+    hardsigmoid_backward_stub,
+    xpu::hardsigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(leaky_relu_stub, xpu::leaky_relu_kernel);
-REGISTER_XPU_DISPATCH(leaky_relu_backward_stub, xpu::leaky_relu_backward_kernel);
+REGISTER_XPU_DISPATCH(
+    leaky_relu_backward_stub,
+    xpu::leaky_relu_backward_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,

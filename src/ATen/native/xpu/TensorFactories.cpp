@@ -58,16 +58,7 @@ Tensor empty_strided_xpu(
   return result;
 }
 
-<<<<<<< HEAD
-} // namespace native
-=======
-Tensor XPUNativeFunctions::clone(
-    const Tensor& self,
-    c10::optional<MemoryFormat> memory_format) {
-  return at::native::clone(self, memory_format);
-}
-
-Tensor& XPUNativeFunctions::randperm_out(
+Tensor& randperm_out_xpu(
     int64_t n,
     c10::optional<Generator> generator,
     Tensor& result) {
@@ -78,11 +69,9 @@ Tensor& XPUNativeFunctions::randperm_out(
   if (n == 0) {
     return result;
   }
-
   native::xpu::randperm_kernel(result, n, generator);
-
   return result;
 }
 
->>>>>>> main
+} // namespace native
 } // namespace at

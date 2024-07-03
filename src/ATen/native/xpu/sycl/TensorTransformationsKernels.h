@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void flip_kernel(TensorIterator& iter);
+void flip_kernel(TensorIterator& iter, bool quantized);
 
 void roll_kernel(
     const Tensor& input,

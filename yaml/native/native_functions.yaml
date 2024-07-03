@@ -1976,6 +1976,19 @@
   autogen: _embedding_bag.out
   tags: core
 
+# Return: (Tensor output, Tensor indices)
+- func: max_pool2d_with_indices.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False, *, Tensor(a!) out, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: max_pool2d_with_indices_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: max_pool2d_with_indices(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: max_pool2d_with_indices.out
+  tags: core
+
 - func: max_pool2d_with_indices_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, int[2] dilation, bool ceil_mode, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
   structured: True
@@ -2693,3 +2706,121 @@
   structured_delegate: leaky_relu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
+
+- func: linalg_vector_norm(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
+  python_module: linalg
+  variants: function
+  structured_delegate: linalg_vector_norm.out
+
+- func: linalg_vector_norm.out(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  structured: True
+  dispatch:
+    XPU: linalg_vector_norm_out
+
+- func: clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: clone
+  autogen: clone.out
+  tags: [core, pointwise]
+
+- func: randperm(SymInt n, *, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  tags: [core, nondeterministic_seeded]
+  dispatch:
+    CompositeExplicitAutograd: randperm
+
+- func: randperm.generator(SymInt n, *, Generator? generator, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  tags: nondeterministic_seeded
+  dispatch:
+    CompositeExplicitAutograd: randperm
+
+- func: randperm.out(SymInt n, *, Tensor(a!) out) -> Tensor(a!)
+  tags: nondeterministic_seeded
+  dispatch:
+    CompositeExplicitAutograd: randperm_out
+
+- func: randperm.generator_out(SymInt n, *, Generator? generator, Tensor(a!) out) -> Tensor(a!)
+  tags: nondeterministic_seeded
+  dispatch:
+    XPU: randperm_out_xpu
+
+- func: roll(Tensor self, SymInt[1] shifts, int[1] dims=[]) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: roll_xpu
+  autogen: roll.out
+
+- func: avg_pool2d.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  precomputed:
+  - kernel_size -> int kH, int kW
+  - stride -> int dH, int dW
+  - padding -> int padH, int padW
+  dispatch:
+    XPU: avg_pool2d_out_xpu
+
+- func: avg_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor
+  python_module: nn
+  structured_delegate: avg_pool2d.out
+  dispatch:
+    MkldnnCPU: mkldnn_avg_pool2d
+    QuantizedCPU: avg_pool2d_quantized_cpu
+  tags: core
+
+- func: avg_pool2d_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: avg_pool2d_backward_out_xpu
+
+- func: avg_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override) -> Tensor
+  python_module: nn
+  structured_delegate: avg_pool2d_backward.grad_input
+  tags: core
+
+- func: mse_loss.out(Tensor self, Tensor target, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: nn
+  dispatch:
+    XPU: mse_loss_out
+
+- func: mse_loss(Tensor self, Tensor target, int reduction=Mean) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: mse_loss.out
+  python_module: nn
+
+- func: mse_loss_backward.grad_input(Tensor grad_output, Tensor self, Tensor target, int reduction, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: mse_loss_backward_out
+
+- func: mse_loss_backward(Tensor grad_output, Tensor self, Tensor target, int reduction) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: mse_loss_backward
+
+- func: glu.out(Tensor self, int dim=-1, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: nn
+  dispatch:
+    CPU, CUDA: glu_out
+
+- func: glu(Tensor self, int dim=-1) -> Tensor
+  structured_delegate: glu.out
+  device_check: NoCheck   # TensorIterator
+  python_module: nn
+
+- func: glu_backward.grad_input(Tensor grad_output, Tensor self, int dim, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: glu_backward_xpu_out
+
+- func: glu_backward(Tensor grad_output, Tensor self, int dim) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: glu_backward_xpu

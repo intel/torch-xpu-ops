@@ -4,11 +4,7 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-<<<<<<< HEAD
-=======
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
->>>>>>> main
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 #include <comm/xpu_aten.h>
@@ -476,13 +472,6 @@ void launch_max_pool2d_backward_kernel(
   }
 }
 
-<<<<<<< HEAD
-void max_pool2d_with_indices_backward_out_kernel(
-    const Tensor& gradInput,
-    const Tensor& gradOutput,
-    const Tensor& input,
-    const Tensor& indices,
-=======
 void max_pool2d_with_indices_kernel(
     const Tensor& input_,
     IntArrayRef kernel_size,
@@ -490,8 +479,8 @@ void max_pool2d_with_indices_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode,
-    Tensor& output_,
-    Tensor& indices_) {
+    const Tensor& output_,
+    const Tensor& indices_) {
   NoNamesGuard guard;
 
   TensorArg output_arg{output_, "output", 1};
@@ -606,12 +595,11 @@ void max_pool2d_with_indices_kernel(
   }
 }
 
-Tensor& max_pool2d_with_indices_backward_kernel(
-    Tensor& gradInput_,
+void max_pool2d_with_indices_backward_kernel(
+    const Tensor& gradInput_,
     const Tensor& gradOutput_,
     const Tensor& input_,
     const Tensor& indices_,
->>>>>>> main
     IntArrayRef kernel_size,
     IntArrayRef stride,
     IntArrayRef padding,
@@ -721,16 +709,11 @@ Tensor& max_pool2d_with_indices_backward_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
-<<<<<<< HEAD
-=======
 
   if ((is_3d && !gradInput_.is_contiguous()) ||
       (!is_3d && !gradInput_.is_contiguous(smf))) {
     gradInput_.copy_(gradInput);
   }
-
-  return gradInput_;
->>>>>>> main
 }
 
 } // namespace at::native::xpu

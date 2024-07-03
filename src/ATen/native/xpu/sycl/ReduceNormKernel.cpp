@@ -2,6 +2,7 @@
 #include <ATen/native/SharedReduceOps.h>
 
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/ops/imag.h>
 
 namespace at::native::xpu {
 

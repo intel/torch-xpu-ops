@@ -1,49 +1,15 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/TensorIterator.h>
+#include <ATen/native/Activation.h>
+#include <ATen/native/DispatchStub.h>
 #include <ATen/native/Resize.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/sycl/ActivationGluKernels.h>
 
 namespace at {
+namespace native {
+REGISTER_XPU_DISPATCH(glu_stub, xpu::glu_kernel);
 
-TensorIterator glu_meta(const Tensor& self, int64_t dim, Tensor& out) {
-  // this can't pass anyway because a 0-dimensional tensor has "size" 1, which
-  // can't be evenly halved, but give a nicer error message here.
-  TORCH_CHECK(self.dim() > 0, "glu does not support 0-dimensional tensors");
-  auto wrap_dim = maybe_wrap_dim(dim, self.dim());
-  const int64_t nIn = self.size(wrap_dim);
-  TORCH_CHECK(
-      nIn % 2 == 0,
-      "Halving dimension must be even, but dimension ",
-      wrap_dim,
-      " is size ",
-      nIn);
-
-  // size output to half of input
-  const int64_t selfSize = nIn / 2;
-  Tensor firstHalf = self.narrow(wrap_dim, 0, selfSize);
-  Tensor secondHalf = self.narrow(wrap_dim, selfSize, selfSize);
-  return TensorIterator::borrowing_binary_op(out, firstHalf, secondHalf);
-}
-
-Tensor& XPUNativeFunctions::glu_out(
-    const Tensor& self,
-    int64_t dim,
-    Tensor& out) {
-  auto iter = glu_meta(self, dim, out);
-  native::xpu::glu_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::glu(const Tensor& self, int64_t dim) {
-  Tensor out;
-  auto iter = glu_meta(self, dim, out);
-  native::xpu::glu_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::glu_backward_out(
+Tensor& glu_backward_xpu_out(
     const Tensor& grad_output,
     const Tensor& input,
     int64_t dim,
@@ -91,12 +57,13 @@ Tensor& XPUNativeFunctions::glu_backward_out(
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::glu_backward(
+Tensor glu_backward_xpu(
     const Tensor& grad_output,
     const Tensor& input,
     int64_t dim) {
   auto grad_input = at::empty({0}, input.options());
-  return glu_backward_out(grad_output, input, dim, grad_input);
+  return glu_backward_xpu_out(grad_output, input, dim, grad_input);
 }
 
+} // namespace native
 } // namespace at
