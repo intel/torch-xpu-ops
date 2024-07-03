@@ -62,6 +62,13 @@ jobs:
       BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
       OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
+      TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
+      TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
+      TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
+      # TORCHTEXT_COMMIT_ID: ${{ steps.pinned.outputs.TORCHTEXT_COMMIT_ID }}
+      TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
+      TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
+      TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -93,19 +100,19 @@ jobs:
         run: |
           cd ../pytorch
           if [ -z ${{ inputs.triton }} ]; then
-            echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+            echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           else
-            echo "TRITON_COMMIT_ID=${{ inputs.triton }}" >> "${GITHUB_ENV}"
+            echo "TRITON_COMMIT_ID=${{ inputs.triton }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           fi
           echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
-          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
-          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
-          echo "MODEL_ONLY_NAME=${{ inputs.model }}" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          # echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -134,6 +141,7 @@ jobs:
         run: |
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_*
       - name: Nightly Huggingface FP32 Inference Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -143,7 +151,6 @@ jobs:
           dt: float32
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -153,7 +160,6 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP16 Inference Accuracy Test
         if: ${{ !inputs.suite }}
@@ -163,18 +169,15 @@ jobs:
           dt: float16
           mode: inference
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP32 Training Accuracy Test
         if: ${{ !inputs.suite }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
-          env_prepare: true
           dt: float32
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -184,7 +187,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Huggingface FP16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -194,7 +196,6 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: ${{ !inputs.suite }}
@@ -204,7 +205,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 39
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
@@ -215,7 +215,6 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 22
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
@@ -229,9 +228,15 @@ jobs:
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
+        if: always()
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          failed_case=$(grep "Real failed: models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          if [ ${failed_case} -ne 0 ];then
+            grep -E "Real failed: models: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+            exit 1
+          fi
       - name: Upload Inductor XPU E2E Data
         if: always()
         uses: actions/upload-artifact@v4
@@ -252,6 +257,22 @@ jobs:
         if: github.repository_owner == 'intel'
         run: |
           set -xe
+          # Test env
+          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ github.repository }}"
+          TORCH_BRANCH_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_BRANCH_ID }}"
+          TORCH_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_COMMIT_ID }}"
+          DRIVER_VERSION="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DRIVER_VERSION }}"
+          BUNDLE_VERSION="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.BUNDLE_VERSION }}"
+          OS_PRETTY_NAME="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.OS_PRETTY_NAME }}"
+          GCC_VERSION="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
+          TORCHBENCH_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
+          TORCHVISION_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCHVISION_COMMIT_ID }}"
+          TORCHAUDIO_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
+          # TORCHTEXT_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCHTEXT_COMMIT_ID }}"
+          TRANSFORMERS_VERSION="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TRANSFORMERS_VERSION }}"
+          TIMM_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TIMM_COMMIT_ID }}"
+          TRITON_COMMIT_ID="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TRITON_COMMIT_ID }}"
           # Test status
           if [ "${{ needs.Inductor-XPU-E2E-Nightly-Tests.result }}" == "success" ];then
             test_status=Success
@@ -262,50 +283,38 @@ jobs:
             test_status=None
             exit 0
           fi
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ github.repository }}"
-          test_xpu="${GITHUB_WORKFLOW_SHA} on ${GITHUB_REF_NAME}"
-          test_torch="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_COMMIT_ID }} on ${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.TORCH_BRANCH_ID }}"
-          test_driver="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.DRIVER_VERSION }}"
-          test_bundle="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.BUNDLE_VERSION }}"
-          test_os="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.OS_PRETTY_NAME }}"
-          test_gcc="${{ needs.Inductor-XPU-E2E-Nightly-Tests.outputs.GCC_VERSION }}"
-
-          # On-demand
+          # Test Type
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
+            test_type="On-demand"
+            test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-            test_scope="Inputs|suite=${{ inputs.suite }}; dt=${{ inputs.dt }}; mode=${{ inputs.mode }}; scenario=${{ inputs.scenario }};"
+          else
+            test_type="Nightly"
+            test_issue_id=432
+          fi
+          # Test report
+          echo -e "$cc_comment\n**${test_status}** $test_type Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
+          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
+          printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
+          echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
+          printf "Transformers | Timm | Torchbench | Torchvision | Torchaudio\n--- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
+          printf "[${TRANSFORMERS_VERSION:0:7}](https://github.com/huggingface/transformers/commit/${TRANSFORMERS_VERSION:0:7}) | " >> ${{ github.workspace }}/report.txt
+          printf "[${TIMM_COMMIT_ID:0:7}](https://github.com/huggingface/pytorch-image-models/commit/${TIMM_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
+          printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
+          printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
+          echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
+          printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ inputs.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
+            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.triton }}" != "" ];then
-              test_scope+=" triton=${{ inputs.triton }};"
+              test_scope+="; triton=${{ inputs.triton }}"
             fi
             if [ "${{ inputs.model }}" != "" ];then
-              test_scope+=" model=${{ inputs.model }};"
+              test_scope+="; model=${{ inputs.model }}"
             fi
-            gh --repo $repo issue comment 426 --body "$cc_comment
-                  $(date +'%F') On-demand Test Status: **${test_status}**
-                  See: $build_url
-                  Torch-xpu-ops | PyTorch
-                  --- | ---
-                  $test_xpu | $test_torch
-
-                  Device | OS | GCC | Python | Driver | Bundle
-                  --- | --- | --- | --- | --- | ---
-                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
-
-                  Inputs | $test_scope
-                  --- | ---
-                  "
-          # Nightly
-          else
-            gh --repo $repo issue comment 432 --body "$cc_comment
-                  $(date +'%F') Nightly Test Status: **${test_status}**
-                  See: $build_url
-                  Torch-xpu-ops | PyTorch
-                  --- | ---
-                  $test_xpu | $test_torch
-
-                  Device | OS | GCC | Python | Driver | Bundle
-                  --- | --- | --- | --- | --- | ---
-                  $RUNNER_NAME | $test_os | $test_gcc | ${{ inputs.python }} | $test_driver| $test_bundle
-                  "
+            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
+          # Report
+          report_txt=$(cat ${{ github.workspace }}/report.txt)
+          gh --repo $repo issue comment $test_issue_id --body "$report_txt"

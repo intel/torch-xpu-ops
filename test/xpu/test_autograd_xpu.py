@@ -8,6 +8,7 @@ from copy import deepcopy
 from functools import partial
 from torch import nn
 from torch.autograd import Function
+from torch.autograd.profiler import emit_nvtx
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyXPU,
@@ -18,9 +19,10 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     run_tests,
     slowTest,
-    TestCase,
 )
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint, create_selective_checkpoint_contexts, CheckpointPolicy
+import torch.utils.checkpoint
+from torch.utils.flop_counter import FlopCounterMode
 
 
 def autograd_multiple_dispatch_registrations(self, device):
@@ -194,6 +196,15 @@ def gradcheck_input_output_different_device(self, device):
     x = torch.ones((1,), dtype=torch.double, device="cpu", requires_grad=True)
     gradcheck(lambda x: x.to("xpu"), (x,))
 
+def profiler_emit_nvtx(self, device):
+    # This test is not intended to ensure correctness of nvtx ranges.
+    # That would require something a great deal more complex (you'd have to create a
+    # profile in a subprocess, open it, and parse the sql somehow).
+    # This test is merely intended to catch if emit_nvtx breaks on construction.
+    a = torch.tensor([1, 2, 3], dtype=torch.float32, device=device)
+    with torch.xpu.profiler.profile():
+        with emit_nvtx():
+            a.add(1.0)
 
 def dataparallel_saved_tensors_hooks(self):
     def pack(x):
@@ -374,6 +385,11 @@ def graph_save_on_cpu_cuda(self):
         memory_with_hooks = torch.xpu.memory_allocated()
         self.assertEqual(memory_with_hooks, memory_without_grad)
 
+def scalar_grad_mixed_device(self):
+    x = torch.tensor(1.0, requires_grad=True)
+    y = torch.randn(2, 2, device="xpu")
+    out = x * y
+    out.sum().backward()
 
 def custom_function_propagates_errors_from_device_thread(self):
     class MyFunc(Function):
@@ -392,11 +408,109 @@ def custom_function_propagates_errors_from_device_thread(self):
     with self.assertRaisesRegex(RuntimeError, "blah"):
         out.backward()
 
+def flops_and_mem(self):
+    # From https://github.com/pytorch/pytorch/pull/126320
+    def get_act_mem(f):
+        out = f()
+        out.backward()
+        # Why do one forward and backward?
+        start_mem = torch.xpu.memory_stats()["requested_bytes.all.current"]
+        out = f()
+        cur_mem = torch.xpu.memory_stats()["requested_bytes.all.current"]
+        act_mem = (cur_mem - start_mem) / (1024 * 1024)
+        out.backward()
+        return act_mem
+
+    def get_bw_flops(f):
+        # Normalized so that a 512 square matmul returns 1
+        f().backward()
+        out = f()
+        # NB: FlopCounterMode is pushed onto the mode stack before CachedMode, so
+        # it will be able to observe whether an op is cached or not.
+        with FlopCounterMode(display=False) as mode:
+            out.backward()
+        return mode.get_total_flops() / (512**3 * 2)
+
+    x = torch.randn(512, 512, requires_grad=True, device="xpu")
+    y = torch.randn(512, 512, requires_grad=True, device="xpu")
+
+    def fn(x, y):
+        return torch.mm(x.cos(), y).sin().sum()
+
+    def fn_ac(x, y):
+        return checkpoint(fn, x, y, use_reentrant=False)
+
+    def fn_sac(x, y):
+        context_fn = partial(
+            create_selective_checkpoint_contexts,
+            [
+                torch.ops.aten.mm.default,
+            ],
+        )
+        out = checkpoint(fn, x, y, use_reentrant=False, context_fn=context_fn)
+        return out
+
+    def policy_fn(ctx, op, *args, **kwargs):
+        if op == torch.ops.aten.mm.default:
+            return CheckpointPolicy.MUST_SAVE
+        else:
+            return CheckpointPolicy.PREFER_RECOMPUTE
+
+    def fn_sac2(x, y):
+        context_fn = partial(
+            create_selective_checkpoint_contexts,
+            policy_fn,
+        )
+        out = checkpoint(fn, x, y, use_reentrant=False, context_fn=context_fn)
+        return out
+
+    def policy_fn_bool(ctx, op, *args, **kwargs):
+        return op == torch.ops.aten.mm.default
+
+    def fn_sac3(x, y):
+        context_fn = partial(
+            create_selective_checkpoint_contexts,
+            policy_fn_bool,
+        )
+        out = checkpoint(fn, x, y, use_reentrant=False, context_fn=context_fn)
+        return out
+
+    act_mem_noac = get_act_mem(lambda: fn(x, y))
+    bw_flops_noac = get_bw_flops(lambda: fn(x, y))
+
+    self.assertEqual(act_mem_noac, 2.0)
+    self.assertEqual(bw_flops_noac, 2.0)
+
+    act_mem_ac = get_act_mem(lambda: fn_ac(x, y))
+    bw_flops_ac = get_bw_flops(lambda: fn_ac(x, y))
+
+    self.assertEqual(act_mem_ac, 0.0)
+    self.assertEqual(bw_flops_ac, 3.0)
+
+    act_mem_sac = get_act_mem(lambda: fn_sac(x, y))
+    bw_flops_sac = get_bw_flops(lambda: fn_sac(x, y))
+
+    self.assertEqual(act_mem_sac, 1.0)
+    self.assertEqual(bw_flops_sac, 2.0)
+
+    act_mem_sac2 = get_act_mem(lambda: fn_sac2(x, y))
+    bw_flops_sac2 = get_bw_flops(lambda: fn_sac2(x, y))
+
+    self.assertEqual(act_mem_sac2, 1.0)
+    self.assertEqual(bw_flops_sac2, 2.0)
+
+    act_mem_sac3 = get_act_mem(lambda: fn_sac3(x, y))
+    bw_flops_sac3 = get_bw_flops(lambda: fn_sac3(x, y))
+
+    self.assertEqual(act_mem_sac3, 1.0)
+    self.assertEqual(bw_flops_sac3, 2.0)
 
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 
 with XPUPatchForImport(False):
     from test_autograd import (
@@ -409,7 +523,30 @@ with XPUPatchForImport(False):
         TestAutogradMultipleDispatch,
         TestMultithreadAutograd,
         TestNestedCheckpoint,
+        TestSelectiveActivationCheckpoint,
     )
+    from autograd.test_complex import TestAutogradComplex  # noqa: F401
+    from autograd.test_functional import TestAutogradFunctional, base_and_logging_tensor  # noqa: F401
+    from autograd.test_logging import TestAutogradLogging  # noqa: F401
+
+    @base_and_logging_tensor
+    def construct_standard_basis_for_cuda(self, ctors):
+        test_cases = [
+            (ctors.randn(2), ctors.randn(3, device="xpu")),
+            (ctors.randn(3, device="xpu"), ctors.randn(2)),
+        ]
+
+        for inputs in test_cases:
+            self._test_construct_standard_basis_for(inputs)
+
+    @base_and_logging_tensor
+    def jacobian_vectorize_correctness_different_devices(self, ctors):
+        def f(x, y):
+            return x * y, (x * y).xpu()
+
+        x = ctors.randn(3)
+        y = ctors.randn(3)
+        self._check_jacobian_vectorize_correctness(f, (x, y))
 
     TestAutograd.test_checkpointing_without_reentrant_dataparallel = checkpointing_without_reentrant_dataparallel
     TestAutograd.test_callback_propagates_errors_from_device_thread = callback_propagates_errors_from_device_thread
@@ -418,9 +555,11 @@ with XPUPatchForImport(False):
     TestAutograd.test_checkpointing_without_reentrant_memory_savings = checkpointing_without_reentrant_memory_savings
     TestAutograd.test_gradcheck_default_device_placement_context = gradcheck_default_device_placement_context
     TestAutograd.test_graph_save_on_cpu_cuda = graph_save_on_cpu_cuda
+    TestAutograd.test_scalar_grad_mixed_device=scalar_grad_mixed_device
 
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
     TestAutogradDeviceType.test_pin_memory = pin_memory
+    TestAutogradDeviceType.test_profiler_emit_nvtx = profiler_emit_nvtx
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
     TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
@@ -428,7 +567,9 @@ with XPUPatchForImport(False):
     TestAutogradMultipleDispatch.test_view_copy = view_copy
     TestAutogradMultipleDispatch.test_backward_single_threaded = backward_single_threaded
     TestAutogradMultipleDispatch.test_backward_tls_stash = backward_tls_stash
-
+    TestSelectiveActivationCheckpoint.test_flops_and_mem = flops_and_mem
+    TestAutogradFunctional.test_construct_standard_basis_for_cuda = construct_standard_basis_for_cuda
+    TestAutogradFunctional.test_jacobian_vectorize_correctness_different_devices = jacobian_vectorize_correctness_different_devices
 instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(
@@ -437,7 +578,7 @@ instantiate_device_type_tests(
 
 instantiate_parametrized_tests(TestAutograd)
 instantiate_parametrized_tests(TestNestedCheckpoint)
-
+instantiate_parametrized_tests(TestAutogradFunctional)
 
 
 if __name__ == "__main__":

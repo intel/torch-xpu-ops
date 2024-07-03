@@ -1,9 +1,5 @@
-#include <ATen/core/Tensor.h>
-#include <ATen/core/op_registration/adaption.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
-#include <comm/Runtime.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
 
 namespace at {

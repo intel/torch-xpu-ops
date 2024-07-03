@@ -36,6 +36,7 @@ class GroupRadixSort {
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
     LOG_COUNTER_LANES = Log2<COUNTER_LANES>::VALUE,
     DIGIT_BITS = sizeof(DigitT) << 3,
+    IS_INT_TYPE = std::is_integral<ValueT>::value,
   };
 
   static_assert(sizeof(CounterT) >= sizeof(DigitT), "");
@@ -128,8 +129,12 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = group_offset + lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < num_elements) {
-        values_[ITEM] =
-            values_group_in == nullptr ? offset : values_group_in[offset];
+        if constexpr (IS_INT_TYPE) {
+          values_[ITEM] =
+              values_group_in == nullptr ? offset : values_group_in[offset];
+        } else {
+          values_[ITEM] = values_group_in[offset];
+        }
       }
     }
   }
@@ -317,7 +322,7 @@ template <
     int KEYS_PER_THREAD_,
     bool IS_DESCENDING_ = false,
     typename ValueT = NullType,
-    typename DigitT = u_char,
+    typename DigitT = unsigned char,
     typename CounterT = uint32_t, // Packed scan datatype
     // We are going to bundle multiple counters with 'DigitT' type to perform
     // packed prefix sum.
