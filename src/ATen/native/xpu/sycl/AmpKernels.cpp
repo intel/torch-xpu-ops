@@ -102,9 +102,9 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
 }
 
 struct AmpUpdateScaleKernelFunctor {
-  void operator()(sycl::item<1> item) const {
+  void operator()(sycl::nd_item<1> item) const {
     // There is only single item/task scheduled.
-    if (item.get_linear_id() != 0)
+    if (item.get_global_linear_id() != 0)
       return;
 
     if (*found_inf_) {

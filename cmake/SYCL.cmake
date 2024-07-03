@@ -25,7 +25,7 @@ if(NOT SYCL_VERSION)
   return()
 endif()
 
-find_library(SYCL_LIBRARIES sycl HINTS ${SYCL_LIBRARY_DIR})
+find_library(SYCL_LIBRARIES sycl-preview HINTS ${SYCL_LIBRARY_DIR})
 # On Windows, currently there's no sycl.lib. Only sycl7.lib with version suffix,
 # where the current version of the SYCL runtime is 7.
 # Until oneAPI adds support to sycl.lib without the version suffix,

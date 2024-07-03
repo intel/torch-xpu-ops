@@ -407,7 +407,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       OUTPUT ${output_file}
       DEPENDS ${object_files}
       COMMAND ${SYCL_EXECUTABLE}
-      -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs "\"${SYCL_OFFLINE_COMPILER_FLAGS}\""
