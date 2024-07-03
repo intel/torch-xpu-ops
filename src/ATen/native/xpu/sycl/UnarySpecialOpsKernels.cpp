@@ -185,10 +185,18 @@ struct Expm1Functor {
   }
 };
 
+template <typename T>
+struct Expm1Functor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> x) const {
+    return std::exp(x) - (T)1.f;
+  }
+};
+
 void expm1_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      kComplexHalf,
       iter.common_dtype(),
       "expm1_xpu",
       [&]() {
