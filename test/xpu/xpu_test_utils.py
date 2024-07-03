@@ -127,6 +127,7 @@ _xpu_computation_op_list = [
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
     "nn.functional.mse_loss",
     "sigmoid",
+    "logsigmoid",
     "sgn",
     "nn.functional.embedding_bag",
     "grid_sampler_2d",
