@@ -382,8 +382,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "unique_consecutive",
     "upsample_bicubic2d_backward.grad_input",
     "_upsample_bilinear2d_aa.out",
-    "upsample_bilinear2d_backward.grad_input",
-    "upsample_bilinear2d.out",
     "upsample_linear1d_backward.grad_input",
     "upsample_linear1d.out",
     "upsample_nearest3d.out",
