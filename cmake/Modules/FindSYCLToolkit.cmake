@@ -96,10 +96,23 @@ find_file(
 
 find_library(
   SYCL_LIBRARY
-  NAMES sycl
+  NAMES sycl-preview
   HINTS ${SYCL_LIBRARY_DIR}
   NO_DEFAULT_PATH
 )
+
+if(WIN32)
+  set(sycl_runtime_version 7)
+  find_library(
+    SYCL_LIBRARY
+    NAMES "sycl${sycl_runtime_version}"
+    HINTS ${SYCL_LIBRARY_DIR}
+    NO_DEFAULT_PATH
+  )
+  if(SYCL_LIBRARY STREQUAL "SYCL_LIBRARY-NOTFOUND")
+    message(FATAL_ERROR "Cannot find a SYCL library on Windows")
+  endif()
+endif()
 
 if((NOT SYCL_INCLUDE_DIR) OR (NOT SYCL_LIBRARY_DIR) OR (NOT SYCL_LIBRARY))
   set(SYCLTOOLKIT_FOUND False)
@@ -202,6 +215,10 @@ set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
 list(APPEND SYCL_FLAGS "-fsycl")
 list(APPEND SYCL_LINK_FLAGS "-fsycl")
+if(LINUX)
+  list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
+  list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
+endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 

@@ -72,7 +72,7 @@ else()
 endif()
 
 set(SYCL_LIBRARIES)
-find_library(SYCL_RUNTIME_LIBRARY sycl HINTS ${SYCL_LIBRARY_DIR})
+find_library(SYCL_RUNTIME_LIBRARY sycl-preview HINTS ${SYCL_LIBRARY_DIR})
 # On Windows, currently there's no sycl.lib. Only sycl7.lib with version suffix,
 # where the current version of the SYCL runtime is 7.
 # Until oneAPI adds support to sycl.lib without the version suffix,
@@ -427,7 +427,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       OUTPUT ${output_file}
       DEPENDS ${object_files}
       COMMAND ${SYCL_EXECUTABLE}
-      -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs "\"${SYCL_OFFLINE_COMPILER_FLAGS}\""
