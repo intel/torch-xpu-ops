@@ -3,6 +3,12 @@ name: E2E CI Tests
 on:
   workflow_dispatch:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - converted_to_draft
+      - ready_for_review
     branches:
       - main
       - release/*
@@ -16,6 +22,8 @@ concurrency:
 jobs:
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -72,7 +80,10 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Show GITHUB_ENV
-        run: echo "$GITHUB_ENV"
+        run: |
+          echo "$GITHUB_ENV"
+          rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_*
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -80,7 +91,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Huggingface FP16 Training Accuracy Test
@@ -90,7 +100,6 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          expected_pass_num: 46
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Timm_models BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -99,7 +108,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 15
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Torchbench BF16 Training Accuracy Test
@@ -109,6 +117,21 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          expected_pass_num: 15
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Summarize archieve files
+        if: always()
+        run: |
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          failed_case=$(grep "Real failed: models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          if [ ${failed_case} -ne 0 ];then
+            grep -E "Real failed: models: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+            exit 1
+          fi
+      - name: Upload Inductor XPU E2E Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
