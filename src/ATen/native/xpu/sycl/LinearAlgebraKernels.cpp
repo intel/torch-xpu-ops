@@ -95,4 +95,5 @@ void addr_kernel(
         }
       });
 }
+
 } // namespace at::native::xpu
