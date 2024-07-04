@@ -468,6 +468,45 @@ Tensor& XPUNativeFunctions::argmax_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::argmax(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim) {
+  Tensor out;
+  out = argmax_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
+  return out;
+}
+
+Tensor& argmin_meta(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    Tensor& out) {
+  check_argmax_argmin("argmin()", self, dim);
+  return resize_reduction(out, self, optional_to_arrayref(dim), keepdim, kLong);
+}
+
+Tensor& XPUNativeFunctions::argmin_out(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    Tensor& out) {
+  out = argmin_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmin_kernel);
+  return out;
+}
+
+Tensor XPUNativeFunctions::argmin(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim) {
+  Tensor out;
+  out = argmin_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmin_kernel);
+  return out;
+}
+
 static inline void warn_invalid_degrees_of_freedom(
     const char* fname,
     const TensorIterator& iter,
@@ -715,16 +754,6 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::std_mean(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
 
-Tensor XPUNativeFunctions::argmax(
-    const Tensor& self,
-    c10::optional<int64_t> dim,
-    bool keepdim) {
-  Tensor out;
-  out = argmax_meta(self, dim, keepdim, out);
-  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
-  return out;
-}
-
 static Tensor amax_amin_meta(
     Tensor& result,
     const char* name,
@@ -801,6 +830,78 @@ Tensor XPUNativeFunctions::amin(
   out = amax_amin_meta(out, "amin()", self, dim, keepdim);
   amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
+}
+
+TensorIterator meta_aminmax(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  if (!min.defined()) {
+    min = native::create_reduction_result(
+        self,
+        dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
+        keepdim,
+        self.scalar_type());
+  }
+  if (!max.defined()) {
+    max = native::create_reduction_result(
+        self,
+        dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
+        keepdim,
+        self.scalar_type());
+  }
+
+  if (dim_opt.has_value()) {
+    return at::native::make_reduction(
+        "aminmax_xpu",
+        min,
+        max,
+        self,
+        maybe_wrap_dim(dim_opt.value(), self.ndimension()),
+        keepdim,
+        self.scalar_type());
+  }
+
+  TensorIterator iter;
+  iter = at::native::make_reduction(
+      "aminmax_xpu",
+      min,
+      max,
+      self.contiguous(),
+      IntArrayRef{},
+      false,
+      self.scalar_type());
+  TORCH_CHECK(
+      iter.numel() > 0, "min_max on a tensor with no elements is not defined.");
+  return iter;
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::aminmax(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim) {
+  Tensor min;
+  Tensor max;
+  auto iter = meta_aminmax(self, dim_opt, keepdim, min, max);
+  if (iter.numel() != 0) {
+    native::xpu::aminmax_kernel(iter);
+  }
+  return std::tuple<Tensor, Tensor>(iter.output(0), iter.output(1));
+}
+
+std::tuple<Tensor&, Tensor&> XPUNativeFunctions::aminmax_out(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  auto iter = meta_aminmax(self, dim_opt, keepdim, min, max);
+  if (iter.numel() != 0) {
+    native::xpu::aminmax_kernel(iter);
+  }
+  return std::tuple<Tensor&, Tensor&>(min, max);
 }
 
 } // namespace at

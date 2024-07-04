@@ -568,4 +568,18 @@ static void check_unsupported_complex(const char* name, const Tensor& self) {
   return {values, indices};
 }
 
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_aminmax(const Tensor& self) {
+  TORCH_WARN_ONCE(
+      "_aminmax is deprecated as of PyTorch 1.11 and will be removed in a future release. Use aminmax instead."
+      " This warning will only appear once per process.");
+  return XPUNativeFunctions::aminmax(self, {}, false);
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_aminmax(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim) {
+  return XPUNativeFunctions::aminmax(self, dim, keepdim);
+}
+
 } // namespace at

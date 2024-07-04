@@ -55,4 +55,18 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, ReciprocalFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct FracFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return a - std::trunc(a);
+  }
+};
+
+void frac_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "frac_xpu", [&]() {
+        gpu_kernel(iter, FracFunctor<scalar_t>());
+      });
+}
+
 } // namespace at::native::xpu

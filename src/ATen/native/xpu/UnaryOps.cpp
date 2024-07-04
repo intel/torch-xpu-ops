@@ -515,4 +515,26 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::frac(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::frac_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::frac_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::frac_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::frac_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::frac_kernel(iter);
+  return out;
+}
+
 } // namespace at

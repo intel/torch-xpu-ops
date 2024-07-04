@@ -6,4 +6,6 @@ namespace at::native::xpu {
 
 void reciprocal_kernel(TensorIteratorBase& iter);
 
+void frac_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

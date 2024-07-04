@@ -488,3 +488,12 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
