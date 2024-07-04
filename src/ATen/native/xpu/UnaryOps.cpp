@@ -516,6 +516,7 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
 }
 
 TensorIterator ceil_meta(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(!self.is_complex(), "ceil is not supported for complex inputs");
   TensorIterator iter;
   iter.build_borrowing_unary_op(out, self);
   return iter;
