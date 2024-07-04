@@ -10,9 +10,9 @@
 #include <ATen/TensorUtils.h>
 #include <math.h>
 
-namespace at::native {
+namespace at::native::xpu {
 
-inline std::array<int64_t, 4> upsample_2d_common_check(
+inline C10_UNUSED std::array<int64_t, 4> upsample_2d_common_check(
     IntArrayRef input_size,
     IntArrayRef output_size) {
   TORCH_CHECK(
@@ -49,7 +49,6 @@ inline std::array<int64_t, 4> upsample_2d_common_check(
 
   return {nbatch, channels, output_height, output_width};
 }
-namespace xpu {
 
 inline size_t idx_cl(
     const size_t n,
@@ -229,6 +228,4 @@ static scalar_t upsample_get_value_bounded(
   return data[batch][channel][access_y][access_x];
 }
 
-} // namespace xpu
-
-} // namespace at::native
+} // namespace at::native::xpu
