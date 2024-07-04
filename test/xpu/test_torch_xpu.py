@@ -5664,9 +5664,9 @@ else:
 
         for mf, shape in formats_shapes:
             self._test_memory_format_transformations(
-                'cpu', get_generator(mf, shape), transformation_cuda_fn, mf, default_is_preserve=True)
+                'cpu', get_generator(mf, shape), transformation_xpu_fn, mf, default_is_preserve=True)
             self._test_memory_format_transformations(
-                'xpu', get_generator(mf, shape), transformation_xpu_fn, mf, default_is_preserve=True)
+                'xpu', get_generator(mf, shape), transformation_cpu_fn, mf, default_is_preserve=True)
 
     # FIXME: move to test_serialization
     @onlyNativeDeviceTypes
