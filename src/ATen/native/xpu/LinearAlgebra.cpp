@@ -1,11 +1,10 @@
 #include <ATen/ATen.h>
-#include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/native/LinearAlgebraUtils.h>
 #include <ATen/native/ReduceOpsUtils.h>
+#include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
 #include <ATen/native/xpu/sycl/ReduceNormKernel.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
-
 
 namespace at {
 namespace detail {
