@@ -190,6 +190,8 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - _efficientzerotensor
+  - complex.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -451,6 +453,7 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - trace
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
