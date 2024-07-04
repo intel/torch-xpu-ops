@@ -27,6 +27,7 @@ _xpu_computation_op_list = [
     "view_as_real",
     "view_as_complex",
     "view",
+    "trace",
     "resize_",
     "resize_as_",
     "add",
@@ -102,6 +103,7 @@ _xpu_computation_op_list = [
     "var",
     "var_mean",
     "tanh",
+    "hypot",
     "unfold",
     "uniform",
     "view",
@@ -129,6 +131,7 @@ _xpu_computation_op_list = [
     "nn.functional.unfold",
     "nn.functional.pad",
     "nn.functional.interpolate",
+    "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
     "nn.functional.mse_loss",
@@ -142,8 +145,13 @@ _xpu_computation_op_list = [
     "addr",
     "cdist",
     "nn.functional.group_norm",
+    "nn.functional.batch_norm",
+    "native_batch_norm",
+    "_native_batch_norm_legit",
+    "_batch_norm_with_update",
     "bincount",
     "renorm",
+    "lerp",
 ]
 
 

@@ -3,9 +3,10 @@
 import os
 import sys
 import torch
+import unittest
 from torch import multiprocessing as mp
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import parametrize, run_tests
 from torch.utils.data import (
     DataLoader,
     IterDataPipe,
@@ -28,7 +29,36 @@ with XPUPatchForImport(False):
     def _set_allocator_settings(device=None):
         pass
     torch.cuda.memory._set_allocator_settings=_set_allocator_settings
-    from test_dataloader import *
+    from test_dataloader import (
+        TestDatasetRandomSplit,
+        TestTensorDataset,
+        TestStackDataset,
+        TestConcatDataset,
+        TestProperExitDataset,
+        TestProperExitIterableDataset,
+        TestWorkerInfoDataset,
+        TestMultiEpochDataset,
+        TestDataLoader,
+        TestDataLoaderDeviceType,
+        TestStringDataLoader,
+        TestDictDataLoader,
+        TestDataLoaderPersistentWorkers,
+        TestNamedTupleDataLoader,
+        TestCustomPinFn,
+        TestWorkerQueueDataset,
+        TestIndividualWorkerQueue,
+        TestSetAffinity,
+        TestConvAfterFork,
+        TEST_CUDA_IPC,
+        collate_into_packed_sequence,
+        collate_into_packed_sequence_batch_first,
+        collate_wrapper,
+        filter_len,
+        row_processor,
+        self_module,
+        supported_multiprocessing_contexts,
+        _clone_collate,
+    )
 
     def _test_multiprocessing_iterdatapipe(self, with_dill):
         # Testing to make sure that function from global scope (e.g. imported from library) can be serialized
@@ -154,6 +184,53 @@ with XPUPatchForImport(False):
                 self.assertIsInstance(sample, elem_cls)
                 self.assertTrue(sample.is_pinned())
 
+    @parametrize(
+        "context",
+        [ctx for ctx in supported_multiprocessing_contexts if ctx is not None],
+    )
+    @unittest.skipIf(not TEST_CUDA_IPC, "CUDA IPC not available")
+    def nested_tensor_multiprocessing(self, device, context):
+        # The 'fork' multiprocessing context doesn't work for CUDA so skip it
+        if "xpu" in device and context == "fork":
+            # TODO: Skip this better in a better way when the test framework allows
+            return
+
+        dataset = [
+            torch.nested.nested_tensor([torch.randn(5)], device=device)
+            for _ in range(10)
+        ]
+
+        pin_memory_settings = [False]
+        if device == "cpu" and torch.xpu.is_available():
+            pin_memory_settings.append(True)
+
+        for pin_memory in pin_memory_settings:
+            loader = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=1,
+                num_workers=4,
+                collate_fn=_clone_collate,
+                pin_memory=pin_memory,
+                multiprocessing_context=context,
+            )
+
+            for i, batch in enumerate(loader):
+                self.assertEqual(batch[0], dataset[i])
+
+        # Error case: default collate_fn doesn't currently support batches of nested tensors.
+        # Following the current semantics, we'd need to stack them, which isn't possible atm.
+        with self.assertRaisesRegex(
+            RuntimeError, "not currently supported by the default collate_fn"
+        ):
+            loader = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=1,
+                num_workers=4,
+                multiprocessing_context=context,
+            )
+
+            next(iter(loader))
+
     TestDataLoader._test_multiprocessing_iterdatapipe = _test_multiprocessing_iterdatapipe
     TestDataLoader.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoader.test_shuffle_pin_memory = shuffle_pin_memory
@@ -162,6 +239,7 @@ with XPUPatchForImport(False):
     TestDictDataLoader.test_pin_memory_device = pin_memory_device
     TestDictDataLoader.test_pin_memory_with_only_device = pin_memory_with_only_device
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
+    TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = nested_tensor_multiprocessing
 
 
 instantiate_device_type_tests(TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True)

@@ -381,6 +381,28 @@ Tensor& XPUNativeFunctions::gcd_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::hypot(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hypot_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::hypot_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hypot_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
+  return out;
+}
+
 static inline TensorIterator meta_func_maximum(
     const Tensor& self,
     const Tensor& other,
