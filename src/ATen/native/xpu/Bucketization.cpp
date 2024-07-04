@@ -21,48 +21,15 @@ Tensor& XPUNativeFunctions::searchsorted_out(
       sorted_sequence, self, result, out_int32, right, side_opt, sorter);
   at::native::resize_output(result, self.sizes());
 
-  // we have two inputs to set right, pre_check checks that they aren't set to
-  // opposites
-  bool is_right = (side_opt && *side_opt == "right") || right;
   if (self.numel() == 0) {
     return result;
   }
 
-  // for non-contiguous result tensors, we write the output to a contiguous copy
-  // so we can later copy back, maintaining the original result tensor
-  Tensor out = result;
-  if (!result.is_contiguous()) {
-    out = result.contiguous();
-  }
-  if (sorted_sequence.is_contiguous() && self.is_contiguous() &&
-      sorted_sequence.dtype() == self.dtype() && sorter.is_contiguous()) {
-    at::native::xpu::searchsorted_kernel(
-        out, self, sorted_sequence, out_int32, is_right, sorter);
-  } else {
-    Tensor trimmed_input;
-    Tensor trimmed_boundaries;
-    Tensor trimmed_sorter;
-    at::native::searchsorted_maybe_trim_input_tensors(
-        trimmed_input,
-        trimmed_boundaries,
-        trimmed_sorter,
-        self,
-        sorted_sequence,
-        sorter);
-    const Tensor& final_input = trimmed_input.defined() ? trimmed_input : self;
-    const Tensor& final_boundaries =
-        trimmed_boundaries.defined() ? trimmed_boundaries : sorted_sequence;
-    const Tensor& final_sorter =
-        trimmed_sorter.defined() ? trimmed_sorter : sorter;
-    at::native::xpu::searchsorted_kernel(
-        out, final_input, final_boundaries, out_int32, is_right, final_sorter);
-  }
-
-  // if result is non-contiguous, we wrote the answer to a copied version, so we
-  // copy back to the original result tensor
-  if (!result.is_contiguous()) {
-    result.copy_(out);
-  }
+  // we have two inputs to set right, pre_check checks that they aren't set to
+  // opposites
+  bool is_right = (side_opt && *side_opt == "right") || right;
+  at::native::xpu::searchsorted_kernel(
+      result, self, sorted_sequence, out_int32, is_right, sorter);
   return result;
 }
 

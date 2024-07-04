@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/native/BucketizationUtils.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -60,7 +61,7 @@ int64_t cus_upper_bound(
 }
 
 template <typename input_t, typename output_t>
-struct SearchsortedFunctor {
+struct SearchsortedKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     for (int64_t i = item.get_global_id(0); i < numel_in_;
          i += item.get_global_range()[0]) {
@@ -82,7 +83,7 @@ struct SearchsortedFunctor {
     }
   }
 
-  SearchsortedFunctor(
+  SearchsortedKernelFunctor(
       const bool right,
       int64_t numel_in,
       int64_t idim_in,
@@ -154,7 +155,7 @@ void searchsorted_template(
   auto data_in_data = input.data_ptr<input_t>();
   auto data_bd_data = boundaries.data_ptr<input_t>();
   auto data_out_data = result.data_ptr<output_t>();
-  SearchsortedFunctor<input_t, output_t> kfn(
+  SearchsortedKernelFunctor<input_t, output_t> kfn(
       right,
       numel_in,
       idim_in,
@@ -169,7 +170,7 @@ void searchsorted_template(
   sycl_kernel_submit(grng, tile_size, getCurrentSYCLQueue(), kfn);
 }
 
-void searchsorted_kernel(
+void searchsorted_dispatch(
     Tensor& result,
     const Tensor& input,
     const Tensor& boundaries,
@@ -196,6 +197,50 @@ void searchsorted_kernel(
           searchsorted_template<scalar_t, int>(
               result, input, boundaries, right, sorter);
         });
+  }
+}
+
+void searchsorted_kernel(
+    Tensor& result,
+    const Tensor& input,
+    const Tensor& sorted_sequence,
+    bool out_int32,
+    bool right,
+    const Tensor& sorter) {
+  // for non-contiguous result tensors, we write the output to a contiguous copy
+  // so we can later copy back, maintaining the original result tensor
+  Tensor out = result;
+  if (!result.is_contiguous()) {
+    out = result.contiguous();
+  }
+  if (sorted_sequence.is_contiguous() && input.is_contiguous() &&
+      sorted_sequence.dtype() == input.dtype() && sorter.is_contiguous()) {
+    searchsorted_dispatch(
+        out, input, sorted_sequence, out_int32, right, sorter);
+  } else {
+    Tensor trimmed_input;
+    Tensor trimmed_boundaries;
+    Tensor trimmed_sorter;
+    at::native::searchsorted_maybe_trim_input_tensors(
+        trimmed_input,
+        trimmed_boundaries,
+        trimmed_sorter,
+        input,
+        sorted_sequence,
+        sorter);
+    const Tensor& final_input = trimmed_input.defined() ? trimmed_input : input;
+    const Tensor& final_boundaries =
+        trimmed_boundaries.defined() ? trimmed_boundaries : sorted_sequence;
+    const Tensor& final_sorter =
+        trimmed_sorter.defined() ? trimmed_sorter : sorter;
+    searchsorted_dispatch(
+        out, final_input, final_boundaries, out_int32, right, final_sorter);
+  }
+
+  // if result is non-contiguous, we wrote the answer to a copied version, so we
+  // copy back to the original result tensor
+  if (!result.is_contiguous()) {
+    result.copy_(out);
   }
 }
 } // namespace at::native::xpu

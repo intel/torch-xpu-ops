@@ -5,7 +5,7 @@ namespace at::native::xpu {
 void searchsorted_kernel(
     Tensor& result,
     const Tensor& input,
-    const Tensor& boundaries,
+    const Tensor& sorted_sequence,
     bool out_int32,
     bool right,
     const Tensor& sorter);
