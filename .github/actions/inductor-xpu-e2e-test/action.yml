@@ -110,7 +110,10 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |awk '$2 ~ /[0-9]/ {{print $2}}'))
+                  xpu_list=($(xpu-smi discovery |awk '$0 ~/DRM Device: \/dev/ {
+                          split($(NF-1), card, "card");
+                          printf("%d\n", card[2] - 1);
+                        }' |sort |uniq))
                   for xpu_id in ${xpu_list[*]}
                   do
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${#xpu_list[*]} ${xpu_id} &
