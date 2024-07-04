@@ -182,7 +182,7 @@ void searchsorted_dispatch(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
         input.scalar_type(),
-        "searchsorted_out_xpu",
+        "searchsorted_xpu",
         [&] {
           searchsorted_template<scalar_t, int64_t>(
               result, input, boundaries, right, sorter);
@@ -192,7 +192,7 @@ void searchsorted_dispatch(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
         input.scalar_type(),
-        "searchsorted_out_xpu",
+        "searchsorted_xpu",
         [&] {
           searchsorted_template<scalar_t, int>(
               result, input, boundaries, right, sorter);
