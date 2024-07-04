@@ -157,7 +157,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
  */
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
-    "_adaptive_avg_pool2d",
     "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
     "adaptive_max_pool2d_backward.grad_input",
@@ -187,7 +186,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
-    "complex.out",
     "conj_physical.out",
     "copysign.out",
     "cosh.out",
@@ -200,7 +198,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "digamma.out",
     "dot",
     "_efficient_attention_forward",
-    "_efficientzerotensor",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "equal",
@@ -372,7 +369,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "topk.values",
     "_to_sparse",
     "_to_sparse_csr",
-    "trace",
     "triangular_solve.X",
     "tril_indices",
     "triu_indices",

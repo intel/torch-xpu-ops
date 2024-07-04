@@ -27,6 +27,7 @@ _xpu_computation_op_list = [
     "view_as_real",
     "view_as_complex",
     "view",
+    "trace",
     "resize_",
     "resize_as_",
     "add",
