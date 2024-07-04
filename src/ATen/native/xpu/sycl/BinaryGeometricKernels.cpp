@@ -20,10 +20,7 @@ void atan2_kernel(TensorIteratorBase& iter) {
       at::ScalarType::Half,
       iter.common_dtype(),
       "atan2_xpu",
-      [&]() {
-        using opmath_t = opmath_type<scalar_t>;
-        gpu_kernel(iter, Atan2Functor<opmath_t>());
-      });
+      [&]() { gpu_kernel(iter, Atan2Functor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
