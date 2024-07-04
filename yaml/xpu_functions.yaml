@@ -190,6 +190,8 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - _efficientzerotensor
+  - complex.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
