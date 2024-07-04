@@ -548,7 +548,7 @@ Tensor& XPUNativeFunctions::fmin_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& output) {
-  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  auto iter = meta_fmin_fmax("fmin", self, other, output);
   native::xpu::fmin_kernel(iter);
   return output;
 }

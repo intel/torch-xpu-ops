@@ -133,7 +133,7 @@ void fmax_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FminFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::fmax(a, b);
+    return std::fmin(a, b);
   }
 };
 
