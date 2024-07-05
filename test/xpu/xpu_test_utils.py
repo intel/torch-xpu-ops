@@ -19,6 +19,7 @@ from torch.testing._internal.common_utils import set_default_dtype
 
 _xpu_computation_op_list = [
     "empty",
+    "eye",
     "fill",
     "zeros",
     "zeros_like",
