@@ -453,6 +453,13 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
   - trace
   - reflection_pad2d
   - reflection_pad2d.out
