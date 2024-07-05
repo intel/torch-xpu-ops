@@ -22,19 +22,20 @@ namespace at {
 
 namespace native {
 
-REGISTER_XPU_DISPATCH(index_put_stub, xpu::index_put_kernel);
+REGISTER_XPU_DISPATCH(index_put_stub, &xpu::index_put_kernel);
 REGISTER_XPU_DISPATCH(
     index_put_with_sort_stub,
-    xpu::index_put_deterministic_kernel);
-REGISTER_XPU_DISPATCH(index_stub, xpu::index_kernel);
-REGISTER_XPU_DISPATCH(scatter_stub, xpu::scatter_kernel);
-REGISTER_XPU_DISPATCH(scatter_fill_stub, xpu::scatter_fill_kernel);
-REGISTER_XPU_DISPATCH(scatter_add_stub, xpu::scatter_add_kernel);
-REGISTER_XPU_DISPATCH(scatter_reduce_stub, xpu::scatter_reduce_kernel);
-REGISTER_XPU_DISPATCH(scatter_reduce_two_stub, xpu::scatter_reduce_two_kernel);
+    &xpu::index_put_deterministic_kernel);
+REGISTER_XPU_DISPATCH(index_stub, &xpu::index_kernel);
+REGISTER_XPU_DISPATCH(scatter_stub, &xpu::scatter_kernel);
+REGISTER_XPU_DISPATCH(scatter_fill_stub, &xpu::scatter_fill_kernel);
+REGISTER_XPU_DISPATCH(scatter_add_stub, &xpu::scatter_add_kernel);
+REGISTER_XPU_DISPATCH(scatter_reduce_stub, &xpu::scatter_reduce_kernel);
+REGISTER_XPU_DISPATCH(scatter_reduce_two_stub, &xpu::scatter_reduce_two_kernel);
 REGISTER_XPU_DISPATCH(
     scatter_scalar_reduce_stub,
-    xpu::scatter_scalar_reduce_kernel);
+    &xpu::scatter_scalar_reduce_kernel);
+REGISTER_XPU_DISPATCH(gather_stub, &xpu::gather_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,

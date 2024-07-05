@@ -21,4 +21,10 @@ TORCH_IMPL_FUNC(triu_xpu)(const Tensor& self, int64_t k, const Tensor& result) {
     xpu::triu_kernel(result, self, k);
   }
 }
+
+Tensor trace_xpu(const Tensor& self) {
+  TORCH_CHECK(self.dim() == 2, "expected a matrix");
+  return self.diagonal().sum();
+}
+
 } // namespace at::native

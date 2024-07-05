@@ -9,10 +9,16 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
+<<<<<<< HEAD
   - add.Scalar #Composite
   - add_.Scalar #Composite
   - add.Scalar_out #Composite
   - _adaptive_avg_pool2d_backward #need add
+=======
+  - _adaptive_avg_pool2d_backward
+  - adaptive_avg_pool2d.out
+  - _adaptive_avg_pool2d
+>>>>>>> main
   - cumsum
   - cumsum.out
   - cumsum_
@@ -77,10 +83,23 @@ supported:
   - le_.Scalar #structured
   - le.Tensor
   - le.Tensor_out
+<<<<<<< HEAD
   - le_.Tensor #structured
   - gt.Scalar #structured
   - gt.Scalar_out #structured
   - gt_.Scalar #structured
+=======
+  - le_.Tensor
+  - lerp.Tensor
+  - lerp.Tensor_out
+  - lerp_.Tensor
+  - lerp.Scalar
+  - lerp.Scalar_out
+  - lerp_.Scalar
+  - gt.Scalar
+  - gt.Scalar_out
+  - gt_.Scalar
+>>>>>>> main
   - gt.Tensor
   - gt.Tensor_out
   - gt_.Tensor #structured
@@ -102,8 +121,16 @@ supported:
   - index_select
   - index_select.out
   - gcd
+<<<<<<< HEAD
   - gcd.out #structured
   - gcd_ #structured
+=======
+  - gcd.out
+  - gcd_
+  - hypot
+  - hypot.out
+  - hypot_
+>>>>>>> main
   - relu
   - relu_
   - relu.out
@@ -112,8 +139,21 @@ supported:
   - threshold.out
   - threshold_backward #structued
   - threshold_backward.grad_input
+<<<<<<< HEAD
   - gelu #structured
   - gelu_ #structured
+=======
+  - softplus
+  - softplus.out
+  - softplus_backward
+  - softplus_backward.grad_input
+  - softshrink
+  - softshrink.out
+  - softshrink_backward
+  - softshrink_backward.grad_input
+  - gelu
+  - gelu_
+>>>>>>> main
   - gelu.out
   - gelu_backward
 <<<<<<< HEAD
@@ -190,7 +230,13 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+<<<<<<< HEAD
   - clone # not sure
+=======
+  - _efficientzerotensor
+  - complex.out
+  - clone
+>>>>>>> main
   - fill_.Scalar
   - fill_.Tensor
   - zero_
@@ -266,6 +312,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims
@@ -399,6 +451,26 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - batch_norm_stats
+  - batch_norm_elemt
+  - batch_norm_elemt.out
+  - batch_norm_backward_reduce
+  - batch_norm_backward_elemt
+  - batch_norm_update_stats
+  - native_batch_norm
+  - native_batch_norm.out
+  - native_batch_norm_backward
+  - _native_batch_norm_legit
+  - _native_batch_norm_legit.out
+  - _native_batch_norm_legit.no_stats
+  - _native_batch_norm_legit.no_stats_out
+  - _batch_norm_with_update
+  - _batch_norm_with_update.out
+  - batch_norm_backward
+  - upsample_bilinear2d
+  - upsample_bilinear2d.out
+  - upsample_bilinear2d_backward
+  - upsample_bilinear2d_backward.grad_input
   - _upsample_nearest_exact1d
   - _upsample_nearest_exact1d.out
   - upsample_nearest1d
@@ -415,6 +487,8 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -424,6 +498,7 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - trace
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward

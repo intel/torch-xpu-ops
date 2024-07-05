@@ -458,6 +458,12 @@ void index_put_deterministic_kernel(
     const Tensor& value,
     bool accumulate,
     bool unsafe) {
+  TORCH_CHECK(
+      !indices.empty() || is_expandable_to(value.sizes(), self.sizes()),
+      "shape mismatch: value tensor of shape ",
+      value.sizes(),
+      " cannot be broadcast to indexing result of shape ",
+      self.sizes());
   if (indices.size() > (size_t)self.dim()) {
     TORCH_CHECK_INDEX(
         false,
@@ -543,6 +549,9 @@ void index_put_deterministic_kernel(
         });
     if (permuted)
       self.copy_(src_.permute(inversePerm));
+    else if (!self_contiguous) {
+      self.copy_(self_);
+    }
   }
 }
 

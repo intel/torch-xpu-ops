@@ -2824,3 +2824,337 @@
   python_module: nn
   dispatch:
     XPU: glu_backward_xpu
+
+- func: softplus.out(Tensor self, Scalar beta=1, Scalar threshold=20, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  python_module: nn
+  dispatch:
+    XPU: softplus_out
+
+- func: softplus(Tensor self, Scalar beta=1, Scalar threshold=20) -> Tensor
+  structured_delegate: softplus.out
+  device_check: NoCheck   # TensorIterator
+  python_module: nn
+
+- func: softplus_backward.grad_input(Tensor grad_output, Tensor self, Scalar beta, Scalar threshold, *, Tensor(a!) grad_input) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: nn
+  dispatch:
+    XPU: softplus_backward_out
+
+- func: softplus_backward(Tensor grad_output, Tensor self, Scalar beta, Scalar threshold) -> Tensor
+  structured_delegate: softplus_backward.grad_input
+  python_module: nn
+
+- func: softshrink.out(Tensor self, Scalar lambd=0.5, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  python_module: nn
+  dispatch:
+    XPU: softshrink_out
+
+- func: softshrink(Tensor self, Scalar lambd=0.5) -> Tensor
+  structured_delegate: softshrink.out
+  device_check: NoCheck   # TensorIterator
+  python_module: nn
+
+- func: softshrink_backward.grad_input(Tensor grad_output, Tensor self, Scalar lambd, *, Tensor(a!) grad_input) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: nn
+  dispatch:
+    XPU: softshrink_backward_out
+
+- func: softshrink_backward(Tensor grad_output, Tensor self, Scalar lambd) -> Tensor
+  structured_delegate: softshrink_backward.grad_input
+  python_module: nn
+
+- func: hypot.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: hypot_out
+  tags: pointwise
+
+- func: hypot(Tensor self, Tensor other) -> Tensor
+  structured_delegate: hypot.out
+  variants: method, function
+  tags: pointwise
+
+- func: hypot_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: hypot.out
+  variants: method
+  tags: pointwise
+
+- func: _efficientzerotensor(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: _efficientzerotensor_xpu
+  autogen: _efficientzerotensor.out
+
+- func: complex(Tensor real, Tensor imag) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: complex
+
+- func: complex.out(Tensor real, Tensor imag, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: complex_out
+
+- func: trace(Tensor self) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: trace_xpu
+  autogen: trace.out
+
+- func: _adaptive_avg_pool2d(Tensor self, SymInt[2] output_size) -> Tensor
+  dispatch:
+    XPU: adaptive_avg_pool2d_xpu
+  autogen: _adaptive_avg_pool2d.out
+  tags: core
+
+- func: adaptive_avg_pool2d(Tensor self, SymInt[2] output_size) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeImplicitAutograd: adaptive_avg_pool2d_symint
+
+- func: std_mean(Tensor self, bool unbiased=True) -> (Tensor, Tensor)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+  cpp_no_default_args: ["unbiased"]
+
+- func: std_mean.dim(Tensor self, int[1]? dim, bool unbiased=True, bool keepdim=False) -> (Tensor, Tensor)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+  cpp_no_default_args: ["unbiased"]
+
+- func: std_mean.correction(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False) -> (Tensor, Tensor)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+  dispatch:
+    XPU: std_mean
+  autogen: std_mean.correction_out
+
+- func: std_mean.names_dim(Tensor self, Dimname[1] dim, bool unbiased=True, bool keepdim=False) -> (Tensor, Tensor)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+  cpp_no_default_args: ["unbiased"]
+
+- func: std_mean.correction_names(Tensor self, Dimname[1] dim, *, Scalar? correction=None, bool keepdim=False) -> (Tensor, Tensor)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+
+- func: std(Tensor self, bool unbiased=True) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  cpp_no_default_args: ["unbiased"]
+
+- func: std.dim(Tensor self, int[1]? dim, bool unbiased=True, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  cpp_no_default_args: ["unbiased"]
+
+- func: std.correction(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CPU, CUDA: std
+
+- func: var(Tensor self, bool unbiased=True) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  cpp_no_default_args: ["unbiased"]
+
+- func: var.dim(Tensor self, int[1]? dim, bool unbiased=True, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: core
+  cpp_no_default_args: ["unbiased"]
+
+- func: var.correction(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: var
+  tags: core
+
+- func: var.out(Tensor self, int[1]? dim, bool unbiased=True, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  cpp_no_default_args: ["unbiased"]
+
+- func: var.correction_out(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: var_out
+
+- func: var.names_dim(Tensor self, Dimname[1] dim, bool unbiased=True, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  cpp_no_default_args: ["unbiased"]
+
+- func: var.names_out(Tensor self, Dimname[1] dim, bool unbiased=True, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  cpp_no_default_args: ["unbiased"]
+
+- func: var.correction_names(Tensor self, Dimname[1] dim, *, Scalar? correction=None, bool keepdim=False) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: var.correction_names_out(Tensor self, Dimname[1] dim, *, Scalar? correction=None, bool keepdim=False, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function
+
+- func: gather.out(Tensor self, int dim, Tensor index, *, bool sparse_grad=False, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: gather_out
+
+- func: gather(Tensor self, int dim, Tensor index, *, bool sparse_grad=False) -> Tensor
+  variants: method, function
+  structured_delegate: gather.out
+  tags: core
+
+- func: gather_backward(Tensor grad, Tensor self, int dim, Tensor index, bool sparse_grad) -> Tensor
+  variants: function
+  device_check: NoCheck
+  device_guard: False
+
+- func: gather.dimname_out(Tensor self, Dimname dim, Tensor index, *, bool sparse_grad=False, Tensor(a!) out) -> Tensor(a!)
+
+- func: gather.dimname(Tensor self, Dimname dim, Tensor index, *, bool sparse_grad=False) -> Tensor
+  variants: method, function
+
+- func: upsample_bicubic2d.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: upsample_bicubic2d_out_xpu
+
+- func: upsample_bicubic2d(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: upsample_bicubic2d.out
+
+- func: upsample_bilinear2d.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: upsample_bilinear2d_out_xpu
+
+- func: upsample_bilinear2d(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: upsample_bilinear2d.out
+
+- func: upsample_bilinear2d_backward.grad_input(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: upsample_bilinear2d_backward_out_xpu
+
+- func: upsample_bilinear2d_backward(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: upsample_bilinear2d_backward.grad_input
+
+- func: batch_norm_stats(Tensor input, float eps) -> (Tensor, Tensor)
+  dispatch:
+    CUDA: batch_norm_stats_xpu
+  autogen: batch_norm_stats.out
+
+- func: batch_norm_elemt(Tensor input, Tensor? weight, Tensor? bias, Tensor mean, Tensor invstd, float eps) -> Tensor
+  dispatch:
+    CUDA: batch_norm_elemt_xpu
+
+- func: batch_norm_elemt.out(Tensor input, Tensor? weight, Tensor? bias, Tensor mean, Tensor invstd, float eps, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: batch_norm_elemt_xpu_out
+
+- func: batch_norm_backward_reduce(Tensor grad_out, Tensor input, Tensor mean, Tensor invstd, Tensor? weight, bool input_g, bool weight_g, bool bias_g) -> (Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_backward_reduce_xpu
+  autogen: batch_norm_backward_reduce.out
+
+- func: batch_norm_backward_elemt(Tensor grad_out, Tensor input, Tensor mean, Tensor invstd, Tensor? weight, Tensor sum_dy, Tensor sum_dy_xmu, Tensor count) -> Tensor
+  dispatch:
+    CUDA: batch_norm_backward_elemt_xpu
+  autogen: batch_norm_backward_elemt.out
+
+- func: batch_norm_update_stats(Tensor input, Tensor? running_mean, Tensor? running_var, float momentum) -> (Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_update_stats_xpu
+  autogen: batch_norm_update_stats.out
+
+- func: native_batch_norm(Tensor input, Tensor? weight, Tensor? bias, Tensor? running_mean, Tensor? running_var, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_xpu
+
+- func: native_batch_norm.out(Tensor input, Tensor? weight, Tensor? bias, Tensor? running_mean, Tensor? running_var, bool training, float momentum, float eps, *, Tensor(a!) out, Tensor(b!) save_mean, Tensor(c!) save_invstd) -> (Tensor(a!), Tensor(b!), Tensor(c!))
+  dispatch:
+    XPU: batch_norm_xpu_out
+
+- func: native_batch_norm_backward(Tensor grad_out, Tensor input, Tensor? weight, Tensor? running_mean, Tensor? running_var, Tensor? save_mean, Tensor? save_invstd, bool train, float eps, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_backward_xpu
+  autogen: native_batch_norm_backward.out
+
+# TODO: In 2 weeks, we should make native_batch_norm composite implicit so that this correct schema percolates correctly through our dispatching
+- func: _native_batch_norm_legit(Tensor input, Tensor? weight, Tensor? bias, Tensor(a!) running_mean, Tensor(b!) running_var, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _batch_norm_legit_xpu
+  autogen: _native_batch_norm_legit_functional
+  tags: core
+
+- func: _native_batch_norm_legit.out(Tensor input, Tensor? weight, Tensor? bias, Tensor(a!) running_mean, Tensor(b!) running_var, bool training, float momentum, float eps, *, Tensor(d!) out, Tensor(e!) save_mean, Tensor(f!) save_invstd) -> (Tensor(d!), Tensor(e!), Tensor(f!))
+  dispatch:
+    XPU: _batch_norm_legit_xpu_out
+
+- func: _native_batch_norm_legit.no_stats(Tensor input, Tensor? weight, Tensor? bias, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _batch_norm_legit_no_stats_xpu
+  tags: core
+
+- func: _native_batch_norm_legit.no_stats_out(Tensor input, Tensor? weight, Tensor? bias, bool training, float momentum, float eps, *, Tensor(a!) out, Tensor(b!) save_mean, Tensor(c!) save_invstd) -> (Tensor(a!), Tensor(b!), Tensor(c!))
+  dispatch:
+    XPU: _batch_norm_legit_no_stats_xpu_out
+
+- func: _batch_norm_with_update(Tensor input, Tensor? weight, Tensor? bias, Tensor(a!) running_mean, Tensor(b!) running_var, float momentum, float eps) -> (Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _batch_norm_with_update_xpu
+  autogen: _batch_norm_with_update_functional
+
+- func: _batch_norm_with_update.out(Tensor input, Tensor? weight, Tensor? bias, Tensor(a!) running_mean, Tensor(b!) running_var, float momentum, float eps, *, Tensor(d!) out, Tensor(e!) save_mean, Tensor(f!) save_invstd, Tensor(g!) reserve) -> (Tensor(d!), Tensor(e!), Tensor(f!), Tensor(g!))
+  dispatch:
+    XPU: _batch_norm_with_update_xpu_out
+
+- func: batch_norm_backward(Tensor grad_out, Tensor input, Tensor weight, Tensor? running_mean, Tensor? running_var, Tensor? save_mean, Tensor? save_var, bool update, float eps, bool[3] output_mask, Tensor reserve) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _new_batch_norm_backward_xpu
+
+- func: lerp.Scalar_out(Tensor self, Tensor end, Scalar weight, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: lerp_Scalar
+  tags: pointwise
+
+- func: lerp.Scalar(Tensor self, Tensor end, Scalar weight) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: method, function
+  structured_delegate: lerp.Scalar_out
+  tags: pointwise
+
+- func: lerp.Tensor(Tensor self, Tensor end, Tensor weight) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: method, function
+  structured_delegate: lerp.Tensor_out
+  tags: pointwise
+
+- func: lerp.Tensor_out(Tensor self, Tensor end, Tensor weight, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: lerp_Tensor
+  tags: pointwise

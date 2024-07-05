@@ -17,27 +17,33 @@
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
+#include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
+#include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
 namespace at {
 
 namespace native {
-REGISTER_XPU_DISPATCH(threshold_stub, xpu::threshold_kernel);
-REGISTER_XPU_DISPATCH(elu_stub, xpu::elu_kernel);
-REGISTER_XPU_DISPATCH(elu_backward_stub, xpu::elu_backward_kernel);
-REGISTER_XPU_DISPATCH(silu_stub, xpu::silu_kernel);
-REGISTER_XPU_DISPATCH(silu_backward_stub, xpu::silu_backward_kernel);
-REGISTER_XPU_DISPATCH(hardswish_stub, xpu::hardswish_kernel);
-REGISTER_XPU_DISPATCH(hardswish_backward_stub, xpu::hardswish_backward_kernel);
-REGISTER_XPU_DISPATCH(hardtanh_backward_stub, xpu::hardtanh_backward_kernel);
-REGISTER_XPU_DISPATCH(hardsigmoid_stub, xpu::hardsigmoid_kernel);
+REGISTER_XPU_DISPATCH(threshold_stub, &xpu::threshold_kernel);
+REGISTER_XPU_DISPATCH(elu_stub, &xpu::elu_kernel);
+REGISTER_XPU_DISPATCH(elu_backward_stub, &xpu::elu_backward_kernel);
+REGISTER_XPU_DISPATCH(silu_stub, &xpu::silu_kernel);
+REGISTER_XPU_DISPATCH(silu_backward_stub, &xpu::silu_backward_kernel);
+REGISTER_XPU_DISPATCH(hardswish_stub, &xpu::hardswish_kernel);
+REGISTER_XPU_DISPATCH(hardswish_backward_stub, &xpu::hardswish_backward_kernel);
+REGISTER_XPU_DISPATCH(hardtanh_backward_stub, &xpu::hardtanh_backward_kernel);
+REGISTER_XPU_DISPATCH(hardsigmoid_stub, &xpu::hardsigmoid_kernel);
 REGISTER_XPU_DISPATCH(
     hardsigmoid_backward_stub,
-    xpu::hardsigmoid_backward_kernel);
-REGISTER_XPU_DISPATCH(leaky_relu_stub, xpu::leaky_relu_kernel);
+    &xpu::hardsigmoid_backward_kernel);
+REGISTER_XPU_DISPATCH(leaky_relu_stub, &xpu::leaky_relu_kernel);
 REGISTER_XPU_DISPATCH(
     leaky_relu_backward_stub,
-    xpu::leaky_relu_backward_kernel);
+    &xpu::leaky_relu_backward_kernel);
+REGISTER_XPU_DISPATCH(softplus_stub, &xpu::softplus_kernel);
+REGISTER_XPU_DISPATCH(softplus_backward_stub, &xpu::softplus_backward_kernel);
+REGISTER_XPU_DISPATCH(softshrink_stub, &xpu::softshrink_kernel);
+REGISTER_XPU_DISPATCH(shrink_backward_stub, &xpu::softshrink_backward_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,
