@@ -180,7 +180,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "bitwise_right_shift.Tensor_out",
     "cauchy_",
     "_cdist_backward",
-    "ceil.out",
     "channel_shuffle",
     "cholesky",
     "cholesky_inverse",
