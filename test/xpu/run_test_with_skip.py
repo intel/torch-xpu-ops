@@ -1545,6 +1545,7 @@ skip_list = (
     "test_reference_numerics_large_tanh_xpu_complex32",
     "test_reference_numerics_small__refs_atan_xpu_complex32",
     # For extreme value processing, Numpy and XPU results are inconsistent
+    # std operations get different behavior on std::complex operarands for extremal cases
     "test_reference_numerics_extremal__refs_log_xpu_complex64",
     "test_reference_numerics_extremal_log_xpu_complex64",
     "test_reference_numerics_extremal__refs_tanh_xpu_complex128",
@@ -1557,6 +1558,13 @@ skip_list = (
     "test_reference_numerics_extremal_acosh_xpu_complex64",
     "test_reference_numerics_large__refs_acosh_xpu_complex64",
     "test_reference_numerics_large_acosh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_tan_xpu_complex128",
+    "test_reference_numerics_extremal__refs_tan_xpu_complex64",
+    "test_reference_numerics_extremal_tan_xpu_complex128",
+    "test_reference_numerics_extremal_tan_xpu_complex64",
+    "test_reference_numerics_large__refs_tan_xpu_complex32",
+    "test_reference_numerics_large_tan_xpu_complex32",
+
     # CPU Fallback fails
     # New ATen operators fails on CPU Fallback.
     # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
