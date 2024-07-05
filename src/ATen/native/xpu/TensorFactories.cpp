@@ -2,6 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+#include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -11,6 +12,7 @@
 #include <ATen/ops/empty_strided_native.h>
 #endif
 
+#include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
 #include <ATen/xpu/EmptyTensor.h>
 
@@ -61,6 +63,73 @@ Tensor XPUNativeFunctions::clone(
     const Tensor& self,
     c10::optional<MemoryFormat> memory_format) {
   return at::native::clone(self, memory_format);
+}
+
+Tensor XPUNativeFunctions::_efficientzerotensor(
+    IntArrayRef size,
+    std::optional<ScalarType> dtype,
+    std::optional<Layout> layout,
+    std::optional<Device> device,
+    std::optional<bool> pin_memory) {
+  auto device_ = device_or_default(device);
+  if (!device_.has_index()) {
+    device_.set_index(c10::xpu::current_device());
+  }
+  auto allocator = at::native::ZeroTensorAllocator(device_);
+  auto dtype_ = dtype_or_default(dtype);
+  auto zero_ks = at::DispatchKeySet(c10::DispatchKey::XPU) |
+      at::DispatchKeySet(c10::DispatchKey::ZeroTensor);
+  auto out = at::detail::empty_generic(
+      size, &allocator, zero_ks, dtype_, c10::nullopt);
+  return out;
+}
+
+static void complex_check_floating(const Tensor& a, const Tensor& b) {
+  TORCH_CHECK(
+      (a.scalar_type() == kFloat || a.scalar_type() == kDouble ||
+       a.scalar_type() == kHalf) &&
+          (b.scalar_type() == kFloat || b.scalar_type() == kDouble ||
+           b.scalar_type() == kHalf),
+      "Expected both inputs to be Half, Float or Double tensors but got ",
+      a.scalar_type(),
+      " and ",
+      b.scalar_type());
+}
+
+static void complex_check_dtype(
+    const Tensor& result,
+    const Tensor& a,
+    const Tensor& b) {
+  complex_check_floating(a, b);
+  TORCH_CHECK(
+      a.scalar_type() == b.scalar_type(),
+      "Expected object of scalar type ",
+      a.scalar_type(),
+      " but got scalar type ",
+      b.scalar_type(),
+      " for second argument");
+  TORCH_CHECK(
+      result.scalar_type() == toComplexType(a.scalar_type()),
+      "Expected object of scalar type ",
+      toComplexType(a.scalar_type()),
+      " but got scalar type ",
+      result.scalar_type(),
+      " for argument 'out'");
+}
+
+Tensor& XPUNativeFunctions::complex_out(
+    const Tensor& real,
+    const Tensor& imag,
+    Tensor& result) {
+  complex_check_dtype(result, real, imag);
+  auto iter = TensorIteratorConfig()
+                  .add_output(result)
+                  .add_const_input(real)
+                  .add_const_input(imag)
+                  .check_all_same_dtype(false)
+                  .build();
+  native::xpu::complex_kernel(iter);
+  return result;
 }
 
 Tensor& XPUNativeFunctions::randperm_out(
