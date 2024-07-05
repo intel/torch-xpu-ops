@@ -15,6 +15,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/127277",
         # [Inductor][Intel GPU] Support reduction split.
         "https://github.com/pytorch/pytorch/pull/129120",
+        # Modify the tolerance level in TIMM benchmark
+        "https://github.com/pytorch/pytorch/pull/129735",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])

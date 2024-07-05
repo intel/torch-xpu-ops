@@ -1,8 +1,9 @@
 #pragma once
+
 #include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {
 
-void addr_kernel(TensorIterator& iter, const Scalar& beta, const Scalar& alpha);
+void hypot_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu
