@@ -14,10 +14,11 @@ struct ComplexFunctor {
 };
 
 void complex_kernel(TensorIterator& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND(kHalf, iter.input_dtype(0), "complex_xpu", [&]() {
-    ComplexFunctor<scalar_t> f;
-    gpu_kernel(iter, f);
-  });
+  AT_DISPATCH_FLOATING_TYPES_AND(
+      kHalf, iter.input_dtype(0), "complex_xpu", [&]() {
+        ComplexFunctor<scalar_t> f;
+        gpu_kernel(iter, f);
+      });
 }
 
 } // namespace at::native::xpu
