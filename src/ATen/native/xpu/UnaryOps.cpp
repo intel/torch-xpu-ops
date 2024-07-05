@@ -522,22 +522,6 @@ Tensor& XPUNativeFunctions::conj_physical_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
-Tensor XPUNativeFunctions::_conj_physical(const Tensor& self) {
-  if (self.is_conj()) {
-    return self.conj().clone();
-  }
-  Tensor out;
-  auto iter = TensorIterator::unary_op(out, self);
-  native::xpu::conj_physical_kernel(iter);
-  return iter.output();
-}
-
-Tensor XPUNativeFunctions::conj_physical(const Tensor& self) {
-  if (!self.is_complex())
-    return self;
-  return XPUNativeFunctions::_conj_physical(self);
-}
-
 Tensor& XPUNativeFunctions::conj_physical_(Tensor& self) {
   if (!self.is_complex())
     return self;

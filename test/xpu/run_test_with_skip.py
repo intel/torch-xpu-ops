@@ -2207,7 +2207,6 @@ skip_list = (
     # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
     "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
     "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
-    "test_forward_mode_AD_conj_physical_xpu_complex128",
 # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
     "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
     "test_forward_mode_AD_to_sparse_xpu_float64",
@@ -2744,9 +2743,6 @@ skip_list = (
     ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
     "test_fn_grad_to_sparse_xpu_float64",
     "test_fn_gradgrad_to_sparse_xpu_float64",
-    # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-    "test_fn_grad_conj_physical_xpu_complex128",
-    "test_inplace_gradgrad_conj_physical_xpu_complex128",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
