@@ -190,6 +190,8 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
   - _efficientzerotensor
   - complex.out
   - clone
@@ -502,3 +504,6 @@ supported:
   - _amp_update_scale_
   - conj_physical.out
   - conj_physical_
+  - ceil
+  - ceil_
+  - ceil.out
