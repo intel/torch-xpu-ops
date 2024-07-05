@@ -1,8 +1,8 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
-#include <c10/xpu/XPUFunctions.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+#include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
