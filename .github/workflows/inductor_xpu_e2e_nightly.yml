@@ -128,7 +128,7 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
@@ -148,7 +148,7 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           export USE_XPU=1
-          source /opt/intel/oneapi/compiler/latest/env/vars.sh
+          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
