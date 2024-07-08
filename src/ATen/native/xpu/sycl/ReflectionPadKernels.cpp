@@ -23,10 +23,10 @@ inline std::pair<int64_t, int64_t> get_index_mapping1d(
     int64_t pad_l,
     const sycl::nd_item<3> item) {
   auto input_offset =
-      (item.get_group(1) + item.get_group(2) * item.get_group_range(1)) *
+      (item.get_group(1) + item.get_group(0) * item.get_group_range(1)) *
       input_w;
   auto output_offset =
-      (item.get_group(1) + item.get_group(2) * item.get_group_range(1)) *
+      (item.get_group(1) + item.get_group(0) * item.get_group_range(1)) *
       output_w;
 
   auto i_start_x = std::max(int64_t(0), -pad_l);
@@ -51,10 +51,10 @@ inline std::pair<int64_t, int64_t> get_index_mapping2d(
     const sycl::nd_item<3> item) {
   // 3D grid of 1D blocks
   auto input_offset =
-      (item.get_group(1) + item.get_group(2) * item.get_group_range(1)) *
+      (item.get_group(1) + item.get_group(0) * item.get_group_range(1)) *
       input_dim_x * input_dim_y;
   auto output_offset =
-      (item.get_group(1) + item.get_group(2) * item.get_group_range(1)) *
+      (item.get_group(1) + item.get_group(0) * item.get_group_range(1)) *
       output_dim_x * output_dim_y;
 
   auto output_x = output_xy % output_dim_x;
@@ -81,7 +81,7 @@ inline std::pair<int64_t, int64_t> get_index_mapping2d(
 template <typename scalar_t>
 struct ReflectionPad1dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_x = item.get_global_id(0);
+    auto output_x = item.get_global_id(2);
 
     if (output_x < output_w_) {
       // input index and output index mapping
@@ -127,8 +127,8 @@ void reflection_pad1d_template(
   ReflectionPad1dKernelFunctor<scalar_t> kfn(
       input, output, input_w, pad_l, output_w);
   sycl_kernel_submit(
-      sycl::range<3>(work_group_size * work_group_num, nplane, nbatch),
-      sycl::range<3>(work_group_size, 1, 1),
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
       queue,
       kfn);
 }
@@ -136,7 +136,7 @@ void reflection_pad1d_template(
 template <typename scalar_t>
 struct ReflectionPad1dBackwardKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_x = item.get_global_id(0);
+    auto output_x = item.get_global_id(2);
 
     if (output_x < output_w_) {
       // grad input index and grad output index mapping
@@ -184,8 +184,8 @@ void reflection_pad1d_backward_template(
   ReflectionPad1dBackwardKernelFunctor<scalar_t> kfn(
       grad_input, grad_output, input_w, pad_l, output_w);
   sycl_kernel_submit(
-      sycl::range<3>(work_group_size * work_group_num, nplane, nbatch),
-      sycl::range<3>(work_group_size, 1, 1),
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
       queue,
       kfn);
 }
@@ -193,7 +193,7 @@ void reflection_pad1d_backward_template(
 template <typename scalar_t>
 struct ReflectionPad2dKernellFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_xy = item.get_global_id(0);
+    auto output_xy = item.get_global_id(2);
 
     if (output_xy < output_dim_x_ * output_dim_y_) {
       // input index and output index mapping
@@ -268,8 +268,8 @@ void reflection_pad2d_template(
       output_dim_x,
       output_dim_y);
   sycl_kernel_submit(
-      sycl::range<3>(work_group_size * work_group_num, nplane, nbatch),
-      sycl::range<3>(work_group_size, 1, 1),
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
       queue,
       kfn);
 }
@@ -277,7 +277,7 @@ void reflection_pad2d_template(
 template <typename scalar_t>
 struct ReflectionPad2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_xy = item.get_global_id(0);
+    auto output_xy = item.get_global_id(2);
 
     if (output_xy < output_dim_x_ * output_dim_y_) {
       // grad input index and grad output index mapping
@@ -353,8 +353,8 @@ void reflection_pad2d_backward_template(
       output_dim_x,
       output_dim_y);
   sycl_kernel_submit(
-      sycl::range<3>(work_group_size * work_group_num, nplane, nbatch),
-      sycl::range<3>(work_group_size, 1, 1),
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
       queue,
       kfn);
 }
@@ -362,7 +362,7 @@ void reflection_pad2d_backward_template(
 template <typename scalar_t, typename F>
 struct ParallelReflectionPad3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_id = item.get_global_id(0);
+    auto output_id = item.get_global_id(2);
     if (output_id >= output_plane_size_) {
       return;
     }
@@ -392,7 +392,7 @@ struct ParallelReflectionPad3dKernelFunctor {
     f_(input_,
        output_,
        item.get_group(1),
-       item.get_group(2),
+       item.get_group(0),
        output_z,
        output_y,
        output_x,
@@ -444,8 +444,8 @@ inline void parallel_reflection_pad3d(
   ParallelReflectionPad3dKernelFunctor<scalar_t, F> kfn(
       input, output, pad_left, pad_top, pad_front, f, output_plane_size);
   sycl_kernel_submit(
-      sycl::range<3>(work_group_size * work_group_num, nplane, nbatch),
-      sycl::range<3>(work_group_size, 1, 1),
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
       queue,
       kfn);
 }

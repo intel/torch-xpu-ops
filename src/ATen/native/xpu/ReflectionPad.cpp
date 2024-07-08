@@ -281,10 +281,6 @@ void reflection_pad3d_backward_meta(
 Tensor XPUNativeFunctions::reflection_pad1d(
     const Tensor& input,
     IntArrayRef padding) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad1d", "input");
-
   Tensor output;
   reflection_pad1d_meta(output, input, padding);
   native::xpu::reflection_pad1d_kernel(output, input, padding);
@@ -295,12 +291,6 @@ Tensor& XPUNativeFunctions::reflection_pad1d_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& output) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, output, "xpu::reflection_pad1d_out", "output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad1d_out", "input");
-
   reflection_pad1d_meta(output, input, padding);
   native::xpu::reflection_pad1d_kernel(output, input, padding);
   return output;
@@ -310,15 +300,6 @@ Tensor XPUNativeFunctions::reflection_pad1d_backward(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_output,
-      "xpu::reflection_pad1d_backward",
-      "grad_output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu:reflection_pad1d_backward", "input");
-
   Tensor grad_input;
   reflection_pad1d_backward_meta(grad_input, grad_output, input, padding);
   native::xpu::reflection_pad1d_backward_kernel(
@@ -331,20 +312,6 @@ Tensor& XPUNativeFunctions::reflection_pad1d_backward_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& grad_input) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_input,
-      "xpu::reflection_pad1d_backward_out",
-      "grad_input");
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_output,
-      "xpu::reflection_pad1d_backward_out",
-      "grad_output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad1d_backward_out", "input");
-
   native::xpu::reflection_pad1d_backward_kernel(
       grad_input, grad_output, input, padding);
   return grad_input;
@@ -397,10 +364,6 @@ Tensor XPUNativeFunctions::reflection_pad2d_backward(
 Tensor XPUNativeFunctions::reflection_pad3d(
     const Tensor& input,
     IntArrayRef padding) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad3d", "input");
-
   Tensor output;
   reflection_pad3d_meta(output, input, padding);
   native::xpu::reflection_pad3d_kernel(output, input, padding);
@@ -411,12 +374,6 @@ Tensor& XPUNativeFunctions::reflection_pad3d_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& output) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, output, "xpu::reflection_pad3d_out", "output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad3d_out", "input");
-
   reflection_pad3d_meta(output, input, padding);
   native::xpu::reflection_pad3d_kernel(output, input, padding);
   return output;
@@ -426,15 +383,6 @@ Tensor XPUNativeFunctions::reflection_pad3d_backward(
     const Tensor& grad_output,
     const Tensor& input,
     at::IntArrayRef padding) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_output,
-      "xpu::reflection_pad3d_backward",
-      "grad_output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad3d_backward", "input");
-
   Tensor grad_input;
   reflection_pad3d_backward_meta(grad_input, grad_output, input, padding);
   native::xpu::reflection_pad3d_backward_kernel(
@@ -447,20 +395,6 @@ Tensor& XPUNativeFunctions::reflection_pad3d_backward_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& grad_input) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_input,
-      "xpu::reflection_pad3d_backward_out",
-      "grad_input");
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_output,
-      "xpu::reflection_pad3d_backward_out",
-      "grad_output");
-  c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::reflection_pad3d_backward_out", "input");
-
   reflection_pad3d_backward_meta(grad_input, grad_output, input, padding);
   native::xpu::reflection_pad3d_backward_kernel(
       grad_input, grad_output, input, padding);
