@@ -455,6 +455,7 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
   - bucketize.Tensor
   - bucketize.Tensor_out
   - bucketize.Scalar
@@ -510,6 +511,8 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - conj_physical.out
+  - conj_physical_
   - ceil
   - ceil_
   - ceil.out
