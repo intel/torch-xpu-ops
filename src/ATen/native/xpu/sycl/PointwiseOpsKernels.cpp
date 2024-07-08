@@ -27,7 +27,7 @@ struct AddcmulComplexFunctor {
     return a + alpha_ * b * c;
   }
 
-  AddcmulComplexFunctor(accscalar_t alpha) : alpha_(alpha) {}
+  AddcmulComplexFunctor(scalar_t alpha) : alpha_(alpha) {}
 
  private:
   scalar_t alpha_;
@@ -47,7 +47,7 @@ void addcmul_kernel(TensorIterator& iter, Scalar value) {
         iter.dtype(),
         "addcmul_xpu",
         [&]() {
-          using accscalar_t = at::accscalar_type<scalar_t, true>;
+          using accscalar_t = at::acc_type<scalar_t, true>;
           auto alpha = value.to<accscalar_t>();
           gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
         });
@@ -102,6 +102,7 @@ void addcdiv_kernel(TensorIterator& iter, Scalar value) {
   }
 }
 
+template <typename scalar_t>
 struct MSEBackwardFunctor {
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return alpha_ * (a - b) * c;
