@@ -1,7 +1,4 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/TensorIterator.h>
-#include <c10/core/ScalarType.h>
-
 #include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
@@ -98,4 +95,5 @@ void addr_kernel(
         }
       });
 }
+
 } // namespace at::native::xpu
