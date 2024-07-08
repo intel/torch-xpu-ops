@@ -207,7 +207,6 @@ skip_list = (
     "test_python_ref_torch_fallback__refs_square_xpu_bool",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
-    "test_variant_consistency_eager_conj_physical_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
@@ -242,8 +241,6 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
-    "test_conj_view_conj_physical_xpu_complex64",
-    "test_neg_conj_view_conj_physical_xpu_complex128",
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
 
