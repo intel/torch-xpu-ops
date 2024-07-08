@@ -190,6 +190,8 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
   - _efficientzerotensor
   - complex.out
   - clone
@@ -518,3 +520,6 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - ceil
+  - ceil_
+  - ceil.out

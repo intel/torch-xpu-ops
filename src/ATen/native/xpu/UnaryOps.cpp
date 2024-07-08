@@ -630,4 +630,40 @@ Tensor& XPUNativeFunctions::cosh_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+TensorIterator ceil_meta(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(!self.is_complex(), "ceil is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::ceil(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::ceil_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  auto iter = ceil_meta(self, self);
+  native::xpu::ceil_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
+  return out;
+}
+
 } // namespace at
