@@ -1288,9 +1288,6 @@ skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # col2im: AssertionError: The values for attribute 'shape' do not match: torch.Size([16, 4]) != torch.Size([1, 16, 4]).
-    "test_Fold_no_batch_dim_input_cuda",  # col2im
-    "test_Fold_no_batch_dim_int_input_cuda",
     # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
