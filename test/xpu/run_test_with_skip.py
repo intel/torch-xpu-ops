@@ -88,9 +88,7 @@ skip_list = (
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
     "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
     "test_out_nn_functional_avg_pool2d_xpu_float32", # CUDA xfail.
-    "test_out_warning__native_batch_norm_legit_xpu",
     "test_out_warning_nanmean_xpu",
-    "test_out_warning_native_batch_norm_xpu",
     "test_out_warning_nn_functional_logsigmoid_xpu",
     "test_python_ref__refs_div_trunc_rounding_xpu_bfloat16",
     "test_python_ref__refs_floor_divide_xpu_float16",
@@ -209,7 +207,6 @@ skip_list = (
     "test_python_ref_torch_fallback__refs_square_xpu_bool",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
-    "test_variant_consistency_eager_conj_physical_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
@@ -217,12 +214,10 @@ skip_list = (
     "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
     "test_variant_consistency_eager_to_sparse_xpu_complex64",
     "test_variant_consistency_eager_to_sparse_xpu_float32",
-    "test_compare_cpu__native_batch_norm_legit_xpu_float32",
     "test_compare_cpu__refs_special_zeta_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
     "test_compare_cpu_linalg_lu_factor_xpu_float32",
     "test_compare_cpu_linalg_lu_xpu_float32",
-    "test_compare_cpu_native_batch_norm_xpu_float32",
     "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
     "test_compare_cpu_special_zeta_xpu_float32",
     "test_out_cholesky_inverse_xpu_float32",
@@ -246,8 +241,6 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
-    "test_conj_view_conj_physical_xpu_complex64",
-    "test_neg_conj_view_conj_physical_xpu_complex128",
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
 
@@ -269,6 +262,10 @@ skip_list = (
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
     "test_compare_cpu_nn_functional_grid_sample_xpu_float32",  # AssertionError: Tensor-likes are not close!
     "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
+    "test_out_native_batch_norm_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_out__native_batch_norm_legit_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
+    "test_dtypes__batch_norm_with_update_xpu", # We are same as CUDA implementation. And CUDA skips these cases.
+
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
 
@@ -799,7 +796,6 @@ skip_list = (
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
-    "test_dtypes_nn_functional_interpolate_bicubic_xpu",
 
     # Op impl aligns with CUDA on the supported dtypes.
     # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
@@ -1325,12 +1321,6 @@ skip_list = (
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: AssertionError not raised
-    "test_batchnorm_simple_average_mixed_xpu_bfloat16",
-    "test_batchnorm_simple_average_mixed_xpu_float16",
-    "test_batchnorm_simple_average_xpu_float32",
-    "test_batchnorm_update_stats_xpu",
-    "test_batchnorm_simple_average_xpu_bfloat16",
     # AssertionError: False is not true
     "test_device_mask_xpu",
     "test_overwrite_module_params_on_conversion_cpu_device_xpu",
@@ -1372,6 +1362,9 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
+    # align CUDA to skip, XPU implementation is not yet supporting uint8
+    "test_upsamplingBiMode2d_consistency",
+    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
@@ -2211,9 +2204,7 @@ skip_list = (
     # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
     "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
     "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
-    # RuntimeError: DispatchStub: unsupported device typexpu
-    "test_inplace_forward_mode_AD_conj_physical_xpu_complex128",
-    # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+# NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
     "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
     "test_forward_mode_AD_to_sparse_xpu_float64",
 )
@@ -2749,16 +2740,6 @@ skip_list = (
     ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
     "test_fn_grad_to_sparse_xpu_float64",
     "test_fn_gradgrad_to_sparse_xpu_float64",
-    ### Error #8 in TestBwdGradientsXPU , totally 2 , RuntimeError: DispatchStub: unsupported device typexpu
-    "test_inplace_grad_conj_physical_xpu_complex128",
-    "test_inplace_gradgrad_conj_physical_xpu_complex128",
-    # New uts added in PyTorch fail due to XPU implementation bug
-    # torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
-    # https://github.com/intel/torch-xpu-ops/issues/464
-    "test_fn_grad__unsafe_masked_index_xpu_complex128",
-    "test_fn_grad__unsafe_masked_index_xpu_float64",
-    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_complex128",
-    "test_fn_gradgrad__unsafe_masked_index_put_accumulate_xpu_float64",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
@@ -2912,6 +2893,15 @@ skip_list = (
     "test_cuda_vitals_gpu_only_xpu",
     # torch.utils.swap_tensors AssertionError: RuntimeError not raised
     "test_swap_basic",
+    # Needs pr to enable deterministic implementation for interpolate op
+    "test_deterministic_interpolate_bilinear_xpu",
+
+    # Precision error
+    # Fail in high probability in preci.
+    # Mismatched elements: 1 / 262144 (0.0%)
+    # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
+    # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
+    "test_index_add_correctness",
 )
 res += launch_test("test_torch_xpu.py", skip_list)
 
