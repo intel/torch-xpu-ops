@@ -17,4 +17,12 @@ Tensor& XPUNativeFunctions::arange_out(
   return at::native::xpu::arange_kernel(start, end, step, out);
 }
 
+Tensor& XPUNativeFunctions::range_out(
+    const Scalar& start,
+    const Scalar& end,
+    const Scalar& step,
+    Tensor& out) {
+  return at::native::xpu::range_kernel(start, end, step, out);
+}
+
 } // namespace at

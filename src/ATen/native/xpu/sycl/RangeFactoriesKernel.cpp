@@ -157,6 +157,66 @@ Tensor& arange_kernel(
   return result;
 }
 
+template <typename scalar_t, typename accscalar_t>
+struct RangeFunctor {
+  scalar_t operator()(int64_t ind) const {
+    accscalar_t inc = xstep_ * static_cast<accscalar_t>(ind);
+    accscalar_t val = xstart_ + inc;
+    return static_cast<scalar_t>(val);
+  }
+  RangeFunctor(accscalar_t xstart, accscalar_t xstep)
+      : xstart_(xstart), xstep_(xstep) {}
+
+ private:
+  accscalar_t xstart_;
+  accscalar_t xstep_;
+};
+
+Tensor& range_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    const Scalar& step,
+    Tensor& result) {
+  printf("in range kernel\n");
+  AT_DISPATCH_ALL_TYPES_AND(
+      at::ScalarType::Half, result.scalar_type(), "range_xpu", [&]() {
+        using accscalar_t = acc_type<scalar_t, true>;
+        auto xstart = start.to<accscalar_t>();
+        auto xend = end.to<accscalar_t>();
+        auto xstep = step.to<accscalar_t>();
+
+        TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
+        TORCH_CHECK(
+            std::isfinite(static_cast<double>(xstart)) &&
+                std::isfinite(static_cast<double>(xend)),
+            "unsupported range: ",
+            xstart,
+            " -> ",
+            xend);
+        TORCH_CHECK(
+            ((xstep > 0) && (xend >= xstart)) ||
+                ((xstep < 0) && (xend <= xstart)),
+            "upper bound and larger bound inconsistent with step sign");
+        int64_t size = static_cast<int64_t>(((xend - xstart) / xstep) + 1);
+        if (result.numel() != size) {
+          result.resize_({size});
+        }
+        bool is_contiguous = result.is_contiguous();
+        Tensor r = !is_contiguous
+            ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
+            : result;
+        auto f = RangeFunctor<scalar_t, accscalar_t>(xstart, xstep);
+
+        gpu_kernel_with_index(r, f);
+
+        if (!result.is_contiguous()) {
+          result.copy_(r);
+        }
+      });
+
+  return result;
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
