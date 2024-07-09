@@ -43,6 +43,7 @@ supported:
   - fmod.Tensor_out
   - tanh_backward
   - tanh_backward.grad_input
+  - equal
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar

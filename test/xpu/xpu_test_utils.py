@@ -52,6 +52,7 @@ _xpu_computation_op_list = [
     "copy",
     "cos",
     "cumsum",
+    "equal",
     "eq",
     "fill",
     "fmod",
