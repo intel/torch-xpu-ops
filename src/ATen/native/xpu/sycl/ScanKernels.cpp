@@ -13,6 +13,9 @@
 #include <ATen/ops/empty_like.h>
 #endif
 
+#include <ATen/native/xpu/sycl/CumprodKernel.h>
+#include <ATen/native/xpu/sycl/CumsumKernel.h>
+
 namespace at::native::xpu {
 
 static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
@@ -26,16 +29,7 @@ static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
 void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
   auto result_ = contiguous_out_arg(result);
 
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
-      self.scalar_type(),
-      "cumsum_xpu",
-      [&]() {
-        scalar_t init = 0;
-        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
-            *result_, self, dim, init, std::plus<scalar_t>());
-      });
+  cumsum_kernel_impl(*result_, self, dim);
 
   if (!result.is_same(*result_)) {
     result.copy_(*result_);
@@ -45,16 +39,7 @@ void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
 void cumprod_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
   auto result_ = contiguous_out_arg(result);
 
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
-      self.scalar_type(),
-      "cumprod_xpu",
-      [&]() {
-        scalar_t init = 1;
-        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
-            *result_, self, dim, init, std::multiplies<scalar_t>());
-      });
+  cumprod_kernel_impl(*result_, self, dim);
 
   if (!result.is_same(*result_)) {
     result.copy_(*result_);
