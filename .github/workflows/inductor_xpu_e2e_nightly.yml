@@ -41,6 +41,21 @@ on:
         type: string
         default: ''
         description: If set, will only launch this one
+      torch_xpu_ops_update:
+        required: false
+        type: string
+        default: 'true'
+        description: True means update xpu_ops when building pytorch, otherwise means not
+      ut_suite:
+        required: true
+        type: string
+        default: 'op_example,op_extended,op_ut,torch_xpu'
+        description: op_example,op_extended,op_ut,torch_xpu. Delimiter is comma
+      pytorch_branch:
+        required: false
+        type: string
+        default: 'main'
+        description: Set pytorch branch
 
 
 permissions: read-all
@@ -244,6 +259,15 @@ jobs:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
+  Inductor-XPU-UT-Nightly-Tests:
+    if: ${{ inputs.ut_suite }}
+    name: Nightly Inductor XPU UT Test
+    uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      ut_suite: ${{ inputs.ut_suite }}
+      pytorch_branch: ${{ inputs.pytorch_branch }}
+      runner: linux.idc.xpu
+      
   Tests-Failure-And-Report:
     if: always()
     runs-on: pvc_e2e
