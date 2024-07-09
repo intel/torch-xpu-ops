@@ -1,13 +1,11 @@
 #include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
 #include <comm/RegisterUtils.h>
 
-#include <ATen/xpu/ops/upsample_bilinear2d_backward_native.h>
-#include <ATen/xpu/ops/upsample_bilinear2d_native.h>
+#include <xpu/ATen/ops/upsample_bilinear2d_backward_native.h>
+#include <xpu/ATen/ops/upsample_bilinear2d_native.h>
 
 namespace at {
 namespace native {

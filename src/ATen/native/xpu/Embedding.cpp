@@ -2,7 +2,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
-#include <ATen/xpu/ops/embedding_dense_backward_native.h>
+#include <xpu/ATen/ops/embedding_dense_backward_native.h>
 
 namespace at {
 namespace native {

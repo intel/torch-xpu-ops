@@ -16,7 +16,7 @@
 #include <torch/library.h>
 
 #include <ATen/ops/index_add_meta.h>
-#include <ATen/xpu/ops/index_add_native.h>
+#include <xpu/ATen/ops/index_add_native.h>
 
 namespace at {
 

@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
@@ -9,6 +8,7 @@
 #include <ATen/native/ReduceOps.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/utils/ParamUtils.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
 #include <ATen/native/xpu/sycl/ReduceNormKernel.h>

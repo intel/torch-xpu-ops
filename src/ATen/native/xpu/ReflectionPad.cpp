@@ -4,8 +4,8 @@
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/zeros_like.h>
-#include <ATen/xpu/ops/reflection_pad2d_backward_native.h>
-#include <ATen/xpu/ops/reflection_pad2d_native.h>
+#include <xpu/ATen/ops/reflection_pad2d_backward_native.h>
+#include <xpu/ATen/ops/reflection_pad2d_native.h>
 namespace at {
 
 namespace native {

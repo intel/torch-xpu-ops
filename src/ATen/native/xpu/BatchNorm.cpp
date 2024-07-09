@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

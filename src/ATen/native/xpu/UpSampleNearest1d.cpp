@@ -1,11 +1,11 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest1dKernels.h>
+#include <comm/xpu_aten.h>
 
-#include <ATen/xpu/ops/_upsample_nearest_exact1d_backward_native.h>
-#include <ATen/xpu/ops/_upsample_nearest_exact1d_native.h>
-#include <ATen/xpu/ops/upsample_nearest1d_backward_native.h>
-#include <ATen/xpu/ops/upsample_nearest1d_native.h>
+#include <xpu/ATen/ops/_upsample_nearest_exact1d_backward_native.h>
+#include <xpu/ATen/ops/_upsample_nearest_exact1d_native.h>
+#include <xpu/ATen/ops/upsample_nearest1d_backward_native.h>
+#include <xpu/ATen/ops/upsample_nearest1d_native.h>
 
 namespace at {
 namespace native {

@@ -6,7 +6,7 @@
 #include <torch/library.h>
 
 #include <ATen/native/xpu/sycl/Im2ColKernel.h>
-#include <ATen/xpu/ops/im2col_native.h>
+#include <xpu/ATen/ops/im2col_native.h>
 namespace at::native {
 
 Tensor& im2col_out_xpu(

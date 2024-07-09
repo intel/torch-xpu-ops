@@ -4,8 +4,8 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <ATen/xpu/ops/gelu_backward_native.h>
-#include <ATen/xpu/ops/gelu_native.h>
+#include <xpu/ATen/ops/gelu_backward_native.h>
+#include <xpu/ATen/ops/gelu_native.h>
 
 #include <ATen/native/TensorIterator.h>
 

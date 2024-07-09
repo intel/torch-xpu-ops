@@ -5,9 +5,9 @@
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
-#include <ATen/xpu/ops/_log_softmax_backward_data_native.h>
-#include <ATen/xpu/ops/_softmax_backward_data_native.h>
-#include <ATen/xpu/ops/_softmax_native.h>
+#include <xpu/ATen/ops/_log_softmax_backward_data_native.h>
+#include <xpu/ATen/ops/_softmax_backward_data_native.h>
+#include <xpu/ATen/ops/_softmax_native.h>
 namespace at::native {
 
 TORCH_IMPL_FUNC(softmax_xpu_out)

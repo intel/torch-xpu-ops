@@ -4,7 +4,6 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/IndexingUtils.h>
@@ -12,6 +11,7 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 

@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/UnfoldBackward.h>
 #include <ATen/native/xpu/sycl/UnfoldBackwardKernels.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 

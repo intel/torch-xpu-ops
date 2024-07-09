@@ -1,8 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/GridSamplerKernels.h>
 #include <ATen/ops/empty_like.h>
+#include <ATen/ops/zeros_like.h>
 
 namespace at {
 namespace native {

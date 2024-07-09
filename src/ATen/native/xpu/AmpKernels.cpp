@@ -1,5 +1,5 @@
-#include <ATen/ATen.h>
 #include <ATen/native/ForeachUtils.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/AmpKernels.h>
 

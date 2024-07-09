@@ -3,8 +3,8 @@
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
 
-#include <ATen/xpu/ops/_foreach_add_native.h>
-#include <ATen/xpu/ops/_foreach_mul_native.h>
+#include <xpu/ATen/ops/_foreach_add_native.h>
+#include <xpu/ATen/ops/_foreach_mul_native.h>
 
 namespace at {
 

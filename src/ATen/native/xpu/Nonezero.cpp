@@ -1,6 +1,6 @@
 
 #include <ATen/ops/nonzero.h>
-#include <ATen/xpu/ops/nonzero_native.h>
+#include <xpu/ATen/ops/nonzero_native.h>
 
 namespace at::native {
 

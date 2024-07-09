@@ -3,8 +3,8 @@
 
 #include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
 
-#include <ATen/xpu/ops/_embedding_bag_forward_only_native.h>
-#include <ATen/xpu/ops/_embedding_bag_native.h>
+#include <xpu/ATen/ops/_embedding_bag_forward_only_native.h>
+#include <xpu/ATen/ops/_embedding_bag_native.h>
 
 namespace at {
 namespace native {

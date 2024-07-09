@@ -7,10 +7,10 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
-#include <ATen/xpu/ops/as_strided_copy_native.h>
-#include <ATen/xpu/ops/as_strided_native.h>
-#include <ATen/xpu/ops/cat_native.h>
 #include <comm/RegisterUtils.h>
+#include <xpu/ATen/ops/as_strided_copy_native.h>
+#include <xpu/ATen/ops/as_strided_native.h>
+#include <xpu/ATen/ops/cat_native.h>
 
 namespace at {
 

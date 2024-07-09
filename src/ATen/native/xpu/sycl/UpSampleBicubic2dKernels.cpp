@@ -1,10 +1,10 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/UpSample.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 

@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
@@ -9,6 +8,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/MemoryFormat.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 

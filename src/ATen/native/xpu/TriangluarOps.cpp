@@ -5,8 +5,8 @@
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
-#include <ATen/xpu/ops/tril_native.h>
-#include <ATen/xpu/ops/triu_native.h>
+#include <xpu/ATen/ops/tril_native.h>
+#include <xpu/ATen/ops/triu_native.h>
 
 namespace at::native {
 

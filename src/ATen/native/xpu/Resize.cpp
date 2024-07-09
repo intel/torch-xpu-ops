@@ -6,8 +6,8 @@
 #include <torch/library.h>
 
 #include <ATen/native/Resize.h>
-#include <ATen/xpu/ops/resize_native.h>
-#include <ATen/xpu/ops/set_native.h>
+#include <xpu/ATen/ops/resize_native.h>
+#include <xpu/ATen/ops/set_native.h>
 
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
 

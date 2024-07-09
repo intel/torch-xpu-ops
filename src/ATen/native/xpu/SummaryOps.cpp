@@ -1,7 +1,7 @@
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
 #include <comm/SYCLContext.h>
 
-#include <ATen/xpu/ops/bincount_native.h>
+#include <xpu/ATen/ops/bincount_native.h>
 namespace at {
 namespace native {
 Tensor _bincount_xpu(

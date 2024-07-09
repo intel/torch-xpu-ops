@@ -1,12 +1,12 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Pool.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/RegisterUtils.h>
 
-#include <ATen/xpu/ops/avg_pool2d_backward_native.h>
-#include <ATen/xpu/ops/avg_pool2d_native.h>
+#include <xpu/ATen/ops/avg_pool2d_backward_native.h>
+#include <xpu/ATen/ops/avg_pool2d_native.h>
 
 namespace at {
 namespace native {
