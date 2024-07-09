@@ -1,3 +1,9 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -83,8 +89,9 @@ inline void renormRows(Tensor& t) {
   TORCH_CHECK(t.dim() == 2);
   int64_t rows = t.size(0);
   int64_t cols = t.size(1);
-
-  int group_size = syclMaxWorkItemsPerEU();
+  int subgroup_size = syclMaxSubGroupSize();
+  int group_size =
+      std::min(int(syclMaxWorkItemsPerEU()), subgroup_size* subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
@@ -232,7 +239,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
   scalar_t* normDist_ptr;
 };
 template <typename scalar_t, typename accscalar_t>
-struct sampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     accscalar_t* smem = reinterpret_cast<accscalar_t*>(
         smem_.template get_multi_ptr<sycl::access::decorated::no>().get());
@@ -328,13 +335,15 @@ struct sampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         if (inBucket) {
           // We're done; we have the sample
           // Torch indices are 1-based
-          atomicMax(
-              sycl_local_ptr<int>(
-                  foundPos_
-                      .template get_multi_ptr<sycl::access::decorated::no>()
-                      .get()),
-              cat);
-          // foundPos_[0] = 1;
+
+          sycl::atomic_ref<
+              int,
+              sycl_mem_odr_rlx,
+              sycl_mem_scp_wg,
+              sycl_local_space>
+              target(foundPos_[0]);
+          target.fetch_max(cat, sycl_mem_odr_acq_rel, sycl_mem_scp_wg);
+
           found_[0] = true;
         }
 
@@ -375,7 +384,7 @@ struct sampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     foundPos_ = sycl_local_acc_t<int>(1, cgh);
   }
 
-  sampleMultinomialOnceFunctor(
+  SampleMultinomialOnceFunctor(
       int64_t* dest,
       int64_t distributions,
       int categories,
@@ -407,7 +416,7 @@ struct sampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<int> foundPos_;
 };
 
-void multinomial_with_replacement_kernel(
+void multinomial_kernel(
     Tensor& result,
     const Tensor& self,
     const int64_t n_sample,
@@ -446,7 +455,7 @@ void multinomial_with_replacement_kernel(
           at::native::uniform_(sampled, 0.0, 1.0, generator);
           int group_size = requiredThreads;
           int group_range = numDist;
-          auto kfn = sampleMultinomialOnceFunctor<scalar_t, accscalar_t>(
+          auto kfn = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>(
               result.mutable_data_ptr<int64_t>(),
               numDist,
               numCategories,
@@ -531,3 +540,5 @@ void multinomial_with_replacement_kernel(
 }
 
 } // namespace at::native::xpu
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

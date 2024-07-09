@@ -277,8 +277,7 @@ Tensor& XPUNativeFunctions::multinomial_out(
     return result;
   }
 
-  at::native::xpu::multinomial_with_replacement_kernel(
-      result, self, n_sample, gen);
+  at::native::xpu::multinomial_kernel(result, self, n_sample, gen);
   return result;
 }
 
