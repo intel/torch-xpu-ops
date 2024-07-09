@@ -146,6 +146,8 @@ supported:
   - logit
   - logit_
   - logit.out
+  - logit_backward.grad_input
+  - logit_backward
   - sqrt
   - sqrt_
   - sqrt.out

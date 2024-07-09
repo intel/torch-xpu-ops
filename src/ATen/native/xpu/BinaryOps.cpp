@@ -434,6 +434,28 @@ Tensor& XPUNativeFunctions::minimum_out(
   return output;
 }
 
+Tensor& XPUNativeFunctions::logit_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::logit_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return iter.output();
+}
+
 Tensor& XPUNativeFunctions::sigmoid_backward_out(
     const Tensor& grad_output,
     const Tensor& output,
