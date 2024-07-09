@@ -482,13 +482,8 @@ Tensor& XPUNativeFunctions::copysign_out(
     const Tensor& self,
     const Tensor& other,
     Tensor& out) {
-  Tensor other_maybe_scalar = other;
-  if (other.device().type() == at::kCPU && other.numel() == 1) {
-    other_maybe_scalar = other.to("xpu");
-  }
-
   TensorIterator iter;
-  iter.build_borrowing_binary_float_op(out, self, other_maybe_scalar);
+  iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::copysign_kernel(iter);
   return out;
 }
@@ -499,39 +494,10 @@ Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Tensor& other) {
 
 Tensor XPUNativeFunctions::copysign(const Tensor& self, const Tensor& other) {
   Tensor out;
-  Tensor other_maybe_scalar = other;
-  if (other.device().type() == at::kCPU && other.numel() == 1) {
-    other_maybe_scalar = other.to("xpu");
-  }
-
   TensorIterator iter;
-  iter.build_borrowing_binary_float_op(out, self, other_maybe_scalar);
+  iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::copysign_kernel(iter);
   return iter.output();
-}
-
-Tensor& XPUNativeFunctions::copysign_out(
-    const Tensor& self,
-    const Scalar& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other, self.device());
-  TensorIterator iter;
-  iter.build_borrowing_binary_float_op(out, self, wrapper);
-  native::xpu::copysign_kernel(iter);
-  return out;
-}
-
-Tensor XPUNativeFunctions::copysign(const Tensor& self, const Scalar& other) {
-  Tensor out;
-  auto wrapper = native::wrapped_scalar_tensor(other, self.device());
-  TensorIterator iter;
-  iter.build_borrowing_binary_float_op(out, self, wrapper);
-  native::xpu::copysign_kernel(iter);
-  return iter.output();
-}
-
-Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Scalar& other) {
-  return XPUNativeFunctions::copysign_out(self, other, self);
 }
 
 } // namespace at

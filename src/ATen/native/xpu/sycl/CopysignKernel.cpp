@@ -18,10 +18,7 @@ void copysign_kernel(TensorIteratorBase& iter) {
       at::ScalarType::BFloat16,
       iter.common_dtype(),
       "copysign_xpu",
-      [&]() {
-        using opmath_t = at::opmath_type<scalar_t>;
-        gpu_kernel_with_scalars(iter, CopysignFunctor<opmath_t>());
-      });
+      [&]() { gpu_kernel_with_scalars(iter, CopysignFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu

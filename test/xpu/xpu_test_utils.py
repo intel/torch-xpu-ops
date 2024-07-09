@@ -157,6 +157,8 @@ _xpu_computation_op_list = [
     "renorm",
     "lerp",
     "conj_physical",
+    "copysign",
+    "count_nonzero"
 ]
 
 

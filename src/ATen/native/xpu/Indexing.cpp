@@ -44,17 +44,4 @@ Tensor XPUNativeFunctions::index_select(
   return index_select_out(self, dim, index, out);
 }
 
-Tensor XPUNativeFunctions::count_nonzero(const Tensor& self, IntArrayRef dims) {
-  return (self != 0).sum(dims);
-}
-
-Tensor XPUNativeFunctions::count_nonzero(
-    const Tensor& self,
-    std::optional<int64_t> dim) {
-  if (dim) {
-    return XPUNativeFunctions::count_nonzero(self, IntArrayRef{*dim});
-  }
-  return XPUNativeFunctions::count_nonzero(self, IntArrayRef{});
-}
-
 } // namespace at
