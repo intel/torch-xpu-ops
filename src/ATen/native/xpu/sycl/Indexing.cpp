@@ -376,33 +376,35 @@ void index_add_kernel(
       at::ScalarType::BFloat16,
       at::ScalarType::ComplexHalf,
       source_.scalar_type(),
-      "index_add_kernel",
+      "index_add_xpu",
       [&] {
-        TensorInfo<int64_t, int64_t> index_info =
-            getTensorInfo<int64_t, int64_t>(index);
-        index_info.collapseDims();
+        AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
+          TensorInfo<index_t, int64_t> index_info =
+              getTensorInfo<index_t, int64_t>(index);
+          index_info.collapseDims();
 
-        TensorInfo<scalar_t, int64_t> src_info =
-            getTensorInfo<scalar_t, int64_t>(source_);
+          TensorInfo<scalar_t, int64_t> src_info =
+              getTensorInfo<scalar_t, int64_t>(source_);
 
-        TensorInfo<scalar_t, int64_t> dst_info =
-            getTensorInfo<scalar_t, int64_t>(self_);
-        int new_indexing_dim = dst_info.collapseDims(dim);
+          TensorInfo<scalar_t, int64_t> dst_info =
+              getTensorInfo<scalar_t, int64_t>(self_);
+          int new_indexing_dim = dst_info.collapseDims(dim);
 
-        auto cfg = IndexKernelConfig<
-            decltype(src_info),
-            decltype(dst_info),
-            decltype(index_info),
-            IndexAddScalarFunctor<scalar_t>>::
-            make_config(
-                src_info,
-                dst_info,
-                index_info,
-                alpha.to<scalar_t>(),
-                new_indexing_dim,
-                true,
-                IndexAddScalarFunctor<scalar_t>());
-        launch_index_kernel(cfg);
+          auto cfg = IndexKernelConfig<
+              decltype(src_info),
+              decltype(dst_info),
+              decltype(index_info),
+              IndexAddScalarFunctor<scalar_t>>::
+              make_config(
+                  src_info,
+                  dst_info,
+                  index_info,
+                  alpha.to<scalar_t>(),
+                  new_indexing_dim,
+                  true,
+                  IndexAddScalarFunctor<scalar_t>());
+          launch_index_kernel(cfg);
+        });
       });
 }
 
@@ -476,6 +478,12 @@ void index_put_deterministic_kernel(
     const Tensor& value,
     bool accumulate,
     bool unsafe) {
+  TORCH_CHECK(
+      !indices.empty() || is_expandable_to(value.sizes(), self.sizes()),
+      "shape mismatch: value tensor of shape ",
+      value.sizes(),
+      " cannot be broadcast to indexing result of shape ",
+      self.sizes());
   if (indices.size() > (size_t)self.dim()) {
     TORCH_CHECK_INDEX(
         false,
@@ -561,6 +569,9 @@ void index_put_deterministic_kernel(
         });
     if (permuted)
       self.copy_(src_.permute(inversePerm));
+    else if (!self_contiguous) {
+      self.copy_(self_);
+    }
   }
 }
 
