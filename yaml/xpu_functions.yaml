@@ -361,8 +361,6 @@ supported:
   - hardsigmoid_
   - hardsigmoid_backward.grad_input
   - hardsigmoid_backward
-  - log_sigmoid.out
-  - log_sigmoid
   - log_sigmoid_forward.output
   - log_sigmoid_forward
   - log_sigmoid_backward.grad_input
