@@ -114,6 +114,7 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    # "topk", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
     "roll",
     "tril",

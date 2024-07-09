@@ -36,6 +36,7 @@ class GroupRadixSort {
     COUNTER_LANES = RADIX_BUCKETS / PACKING_RATIO,
     LOG_COUNTER_LANES = Log2<COUNTER_LANES>::VALUE,
     DIGIT_BITS = sizeof(DigitT) << 3,
+    DIGIT_MASK = (1 << DIGIT_BITS) - 1,
     IS_INT_TYPE = std::is_integral<ValueT>::value,
   };
 
@@ -157,6 +158,16 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
+  inline void store_keys(KeyT* out, int offset_select, int num_selected) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      if (ranks_[ITEM] < offset_select) {
+        auto key = KeyTraits<KeyT>::deconvert(ukeys_[ITEM]);
+        out[num_selected + ranks_[ITEM]] = key;
+      }
+    }
+  }
+
   inline void store_values(ValueT* values_group_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
@@ -172,6 +183,15 @@ class GroupRadixSort {
       }
     }
     item_.barrier(sycl_local_fence);
+  }
+
+  inline void store_values(ValueT* out, int offset_select, int num_selected) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      if (ranks_[ITEM] < offset_select) {
+        out[num_selected + ranks_[ITEM]] = values_[ITEM];
+      }
+    }
   }
 
   inline void exchange_and_store_keys(KeyT* keys_out, int num_elements) {
@@ -226,6 +246,31 @@ class GroupRadixSort {
     item_.barrier(sycl_local_fence);
   }
 
+  inline void exchange_keys(
+      int lower_offset,
+      int upper_offset,
+      uint32_t* mask) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      if (ranks_[ITEM] >= lower_offset && ranks_[ITEM] < upper_offset) {
+        local_storage_.exchange_ukeys[ranks_[ITEM] - lower_offset] =
+            ukeys_[ITEM];
+      }
+    }
+    item_.barrier(sycl_local_fence);
+    *mask = 0u;
+    int new_length = upper_offset - lower_offset;
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      int offset = lid_ * KEYS_PER_THREAD + ITEM;
+      if (offset < new_length) {
+        *mask |= (1u << ITEM);
+        ukeys_[ITEM] = local_storage_.exchange_ukeys[offset];
+      }
+    }
+    item_.barrier(sycl_local_fence);
+  }
+
   inline void exchange_values() {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
@@ -236,6 +281,26 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       values_[ITEM] = local_storage_.exchange_values[offset];
+    }
+    item_.barrier(sycl_local_fence);
+  }
+
+  inline void exchange_values(int lower_offset, int upper_offset) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      if (ranks_[ITEM] >= lower_offset && ranks_[ITEM] < upper_offset) {
+        local_storage_.exchange_values[ranks_[ITEM] - lower_offset] =
+            values_[ITEM];
+      }
+    }
+    item_.barrier(sycl_local_fence);
+    int new_length = upper_offset - lower_offset;
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      int offset = lid_ * KEYS_PER_THREAD + ITEM;
+      if (offset < new_length) {
+        values_[ITEM] = local_storage_.exchange_values[offset];
+      }
     }
     item_.barrier(sycl_local_fence);
   }
@@ -311,6 +376,196 @@ class GroupRadixSort {
         local_storage_.relative_bin_offsets[lid_] = bin_offset_ - digit_offset;
       }
       item_.barrier(sycl_local_fence);
+    }
+  }
+
+  inline void find_select_offset(
+      int carry,
+      int num_to_select,
+      int* out_offset_select,
+      int* out_offset_active) {
+    *out_offset_select = 0;
+    *out_offset_active = 0;
+#pragma unroll
+    for (int DIGIT = 1; DIGIT < RADIX_BUCKETS; ++DIGIT) {
+      auto sub_counter = DIGIT >> LOG_COUNTER_LANES;
+      auto counter_lane = DIGIT & (COUNTER_LANES - 1);
+      auto count = (int)(local_storage_.rank_storage
+                             .buckets[counter_lane][0][sub_counter]);
+      if (count > num_to_select) {
+        *out_offset_active = count;
+        break;
+      }
+      *out_offset_select = count;
+    }
+    if (*out_offset_active == 0)
+      *out_offset_active = carry;
+  }
+
+  inline void rank_keys(
+      int begin_bit,
+      int pass_bits,
+      uint32_t active_mask,
+      int num_to_select,
+      int* out_offset_select,
+      int* out_offset_active) {
+    begin_bit_ = begin_bit;
+    pass_bits_ = pass_bits;
+    DigitT* digit_counters[KEYS_PER_THREAD];
+
+    // reset buckets
+#pragma unroll
+    for (int ITEM = 0; ITEM < COUNTER_LANES; ++ITEM) {
+      local_storage_.rank_storage.counters[ITEM][lid_] = 0;
+    }
+    item_.barrier(sycl_local_fence);
+
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      ranks_[ITEM] = PROCESSING_LENGTH;
+      if (active_mask >> ITEM & 1) {
+        auto digit = extract_digit(ukeys_[ITEM]);
+        auto sub_counter = digit >> LOG_COUNTER_LANES;
+        auto counter_lane = digit & (COUNTER_LANES - 1);
+        if (IS_DESCENDING) {
+          sub_counter = PACKING_RATIO - 1 - sub_counter;
+          counter_lane = COUNTER_LANES - 1 - counter_lane;
+        }
+        digit_counters[ITEM] = &local_storage_.rank_storage
+                                    .buckets[counter_lane][lid_][sub_counter];
+        ranks_[ITEM] = *digit_counters[ITEM];
+        *digit_counters[ITEM] = ranks_[ITEM] + 1;
+      }
+    }
+    item_.barrier(sycl_local_fence);
+
+    CounterT exclusive = group_exclusive_cumsum<
+        CounterT,
+        COUNTER_LANES,
+        GROUP_THREADS,
+        SUBGROUP_SIZE>(local_storage_.rank_storage.counters_flat, item_);
+
+    int carry = 0;
+#pragma unroll
+    for (int STEP = 0; STEP < PACKING_RATIO; ++STEP) {
+      DigitT cc = (exclusive >> (STEP * DIGIT_BITS)) & DIGIT_MASK;
+      carry += cc;
+    }
+
+    CounterT c = 0;
+#pragma unroll
+    for (int STEP = 1; STEP < PACKING_RATIO; ++STEP) {
+      exclusive = exclusive << DIGIT_BITS;
+      c += exclusive;
+    }
+
+#pragma unroll
+    for (int INDEX = 0; INDEX < COUNTER_LANES; ++INDEX) {
+      local_storage_.rank_storage.counters[INDEX][lid_] += c;
+    }
+    item_.barrier(sycl_local_fence);
+
+    // inc rank
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      ranks_[ITEM] += *digit_counters[ITEM];
+    }
+    item_.barrier(sycl_local_fence);
+
+    find_select_offset(
+        carry, num_to_select, out_offset_select, out_offset_active);
+
+    item_.barrier(sycl_local_fence);
+  }
+
+  inline void topk(
+      int begin_bit,
+      int end_bit,
+      int k,
+      KeyT* out_keys,
+      ValueT* out_values) {
+    uint32_t active_mask = 0xffffffff;
+    int num_selected = 0;
+    while (true) {
+      int pass_bits = begin_bit - end_bit;
+      pass_bits = pass_bits < RADIX_BITS ? pass_bits : RADIX_BITS;
+      begin_bit -= pass_bits;
+      int offset_select, offset_active;
+      rank_keys(
+          begin_bit,
+          pass_bits,
+          active_mask,
+          k - num_selected,
+          &offset_select,
+          &offset_active);
+      if (begin_bit == end_bit)
+        offset_select = k - num_selected;
+      if (offset_select > 0) {
+        store_keys(out_keys, offset_select, num_selected);
+        if (!KEYS_ONLY)
+          store_values(out_values, offset_select, num_selected);
+      }
+      num_selected += offset_select;
+      if (num_selected == k)
+        break;
+      exchange_keys(offset_select, offset_active, &active_mask);
+      if (!KEYS_ONLY)
+        exchange_values(offset_select, offset_active);
+    }
+  }
+
+  inline void topk_append_keys(
+      const KeyT* keys_in,
+      const KeyT* keys_temp,
+      int num_elements,
+      int num_start,
+      int k) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      int offset = lid_ * KEYS_PER_THREAD + ITEM;
+      if (offset < k) {
+        ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_temp[offset]);
+      } else {
+        offset += num_start - k;
+        if (offset < num_elements) {
+          ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_in[offset]);
+        } else {
+          KeyTraitsT padding_key;
+          if (IS_DESCENDING) {
+            padding_key = 0;
+          } else {
+            constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
+                << ((sizeof(KeyTraitsT) << 3) - 1);
+            padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
+            padding_key = padding_key ^ (padding_key - 1);
+          }
+          ukeys_[ITEM] = padding_key;
+        }
+      }
+    }
+  }
+
+  inline void topk_append_values(
+      const ValueT* values_in,
+      const ValueT* values_temp,
+      int num_elements,
+      int num_start,
+      int k) {
+#pragma unroll
+    for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
+      int offset = lid_ * KEYS_PER_THREAD + ITEM;
+      if (offset < k) {
+        values_[ITEM] = values_temp[offset];
+      } else {
+        offset += num_start - k;
+        if (offset < num_elements) {
+          if constexpr (IS_INT_TYPE) {
+            values_[ITEM] = values_in == nullptr ? offset : values_in[offset];
+          } else {
+            values_[ITEM] = values_in[offset];
+          }
+        }
+      }
     }
   }
 };
