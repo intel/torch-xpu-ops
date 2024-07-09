@@ -277,7 +277,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "logical_and.out",
     "logical_or.out",
     "logical_xor.out",
-    "logit",
     "logit_backward.grad_input",
     "log_normal_",
     "log_sigmoid_backward",

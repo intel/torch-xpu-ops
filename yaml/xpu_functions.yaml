@@ -143,6 +143,9 @@ supported:
   - logical_not
   - logical_not_
   - logical_not.out
+  - logit
+  - logit_
+  - logit.out
   - sqrt
   - sqrt_
   - sqrt.out

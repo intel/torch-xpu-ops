@@ -64,6 +64,7 @@ _xpu_computation_op_list = [
     "isnan",
     "le",
     "log",
+    "logit",
     "lt",
     "logical_not",
     "masked_fill",

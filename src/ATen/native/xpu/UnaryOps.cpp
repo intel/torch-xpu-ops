@@ -387,6 +387,28 @@ Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor& XPUNativeFunctions::logit_out(
+    const Tensor& self,
+    std::optional<double> eps,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::logit_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return out;
+}
+Tensor XPUNativeFunctions::logit(
+    const Tensor& self,
+    std::optional<double> eps) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::logit_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return iter.output();
+}
+Tensor& XPUNativeFunctions::logit_(Tensor& self, std::optional<double> eps) {
+  return at::logit_out(self, self, eps);
+}
+
 Tensor XPUNativeFunctions::sgn(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
