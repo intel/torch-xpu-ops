@@ -2995,23 +2995,21 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # Regression after PyTorch uplift
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # AssertionError: 3 != 3.0
+    "test_symnode_hashing",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
-
-
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-
 res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
-
-
 res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
