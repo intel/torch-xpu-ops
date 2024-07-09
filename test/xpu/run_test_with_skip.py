@@ -256,26 +256,6 @@ skip_list = (
     "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
     "test_compare_cpu_nn_functional_grid_sample_xpu_float32",  # AssertionError: Tensor-likes are not close!
     "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
-
-    # AssertionError: Tensor-likes are not close!
-    "test_compare_cpu__refs_std_mean_xpu_float32",
-    "test_compare_cpu__refs_var_mean_xpu_float32",
-    "test_compare_cpu_std_mean_xpu_float32",
-    "test_compare_cpu_var_mean_xpu_float32",
-    "test_noncontiguous_samples_std_mean_xpu_float32",
-    "test_noncontiguous_samples_std_xpu_float32",
-    "test_noncontiguous_samples_var_mean_xpu_float32",
-    "test_noncontiguous_samples_var_xpu_float32",
-    "test_out__refs_std_xpu_float32",
-    "test_out__refs_var_xpu_float32",
-    "test_out_std_xpu_float32",
-    "test_out_var_xpu_float32",
-    "test_out_warning__refs_std_xpu",
-    "test_out_warning__refs_var_xpu",
-    "test_out_warning_std_xpu",
-    "test_out_warning_var_xpu",
-    "test_variant_consistency_eager_std_xpu_float32",
-    "test_variant_consistency_eager_var_xpu_float32",
     # Unexpected success
     "test_errors_histogramdd_xpu",
     "test_noncontiguous_samples__batch_norm_with_update_xpu_float32",
@@ -283,22 +263,6 @@ skip_list = (
     "test_out_warning_logcumsumexp_xpu",
     "test_python_ref__refs_mul_xpu_complex32",
     "test_python_ref_torch_fallback__refs_mul_xpu_complex32",
-    # AssertionError: tensor(False, device='xpu:0') is not true : Reference result was farther from the precise computation than the torch result
-    "test_python_ref__refs_std_mean_xpu_float32",
-    "test_python_ref__refs_std_xpu_bfloat16",
-    "test_python_ref__refs_std_xpu_float16",
-    "test_python_ref_executor__refs_std_mean_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_std_mean_executor_aten_xpu_float16",
-    "test_python_ref__refs_var_mean_xpu_float32",
-    "test_python_ref_torch_fallback__refs_std_mean_xpu_bfloat16",
-    "test_python_ref_torch_fallback__refs_std_mean_xpu_float16",
-    "test_python_ref__refs_var_xpu_float32",
-    "test_python_ref_executor__refs_std_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_std_executor_aten_xpu_float16",
-    "test_python_ref_executor__refs_std_mean_executor_aten_xpu_float32",
-    "test_python_ref_torch_fallback__refs_var_mean_xpu_bfloat16",
-    "test_python_ref_torch_fallback__refs_var_mean_xpu_float16",
-    "test_python_ref_torch_fallback__refs_var_mean_xpu_float32",
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # https://github.com/intel/torch-xpu-ops/issues/157
