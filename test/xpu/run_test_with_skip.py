@@ -207,7 +207,6 @@ skip_list = (
     "test_python_ref_torch_fallback__refs_square_xpu_bool",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
     "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
-    "test_variant_consistency_eager_conj_physical_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
@@ -242,8 +241,6 @@ skip_list = (
     "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex128",
     "test_python_ref_torch_fallback__refs_square_xpu_complex64",
-    "test_conj_view_conj_physical_xpu_complex64",
-    "test_neg_conj_view_conj_physical_xpu_complex128",
     # Skip list of new added when porting XPU operators.
     # See: https://github.com/intel/torch-xpu-ops/issues/128
 
@@ -2215,9 +2212,7 @@ skip_list = (
     # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
     "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
     "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
-    # RuntimeError: DispatchStub: unsupported device typexpu
-    "test_inplace_forward_mode_AD_conj_physical_xpu_complex128",
-    # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+# NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
     "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
     "test_forward_mode_AD_to_sparse_xpu_float64",
 )
@@ -2753,9 +2748,6 @@ skip_list = (
     ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
     "test_fn_grad_to_sparse_xpu_float64",
     "test_fn_gradgrad_to_sparse_xpu_float64",
-    ### Error #8 in TestBwdGradientsXPU , totally 2 , RuntimeError: DispatchStub: unsupported device typexpu
-    "test_inplace_grad_conj_physical_xpu_complex128",
-    "test_inplace_gradgrad_conj_physical_xpu_complex128",
 )
 res += launch_test("test_ops_gradients_xpu.py", skip_list)
 
