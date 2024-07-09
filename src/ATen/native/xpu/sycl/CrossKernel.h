@@ -1,9 +1,9 @@
 #pragma once
 #include <ATen/ATen.h>
 namespace at::native::xpu {
-Tensor& linalg_cross_kernel(
-    const Tensor& self,
-    const Tensor& other,
-    int64_t dim,
-    Tensor& out);
+void linalg_cross_kernel(
+    const Tensor& result,
+    const Tensor& x1,
+    const Tensor& x2,
+    int64_t dim);
 } // namespace at::native::xpu

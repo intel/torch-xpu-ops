@@ -6,7 +6,7 @@
 
 namespace at::native::xpu {
 template <typename scalar_t>
-struct LaunchCrossKernelFunctor {
+struct CrossKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t linear_index = item.get_global_id(0);
     for (int64_t i = linear_index; i < N_;
@@ -34,7 +34,7 @@ struct LaunchCrossKernelFunctor {
     }
   }
 
-  LaunchCrossKernelFunctor(
+  CrossKernelFunctor(
       int64_t ostride,
       int64_t xstride,
       int64_t ystride,
@@ -79,19 +79,19 @@ void launch_cross_kernel(
       N > 0 && N <= std::numeric_limits<int32_t>::max());
 
   auto offset_calculator = make_element_offset_calculator<3>(iter);
-  int64_t work_group_size = syclMaxWorkGroupSize();
-  int64_t work_group_num = (N + work_group_size - 1) / work_group_size;
-
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
       iter.common_dtype(),
       "cross_xpu",
       [&]() {
+        using KernelClass = CrossKernelFunctor<scalar_t>;
+        int64_t work_group_size = syclMaxWorkGroupSize<KernelClass>();
+        int64_t work_group_num = (N + work_group_size - 1) / work_group_size;
         auto out = static_cast<scalar_t*>(iter.data_ptr(0));
         auto x1 = static_cast<const scalar_t*>(iter.data_ptr(1));
         auto x2 = static_cast<const scalar_t*>(iter.data_ptr(2));
-        LaunchCrossKernelFunctor<scalar_t> kfn(
+        CrossKernelFunctor<scalar_t> kfn(
             ostride,
             x1_stride,
             x2_stride,
@@ -111,7 +111,7 @@ void launch_cross_kernel(
       });
 }
 
-void linalg_cross_kernel_impl(
+void linalg_cross_kernel(
     const Tensor& result,
     const Tensor& x1,
     const Tensor& x2,
@@ -140,16 +140,4 @@ void linalg_cross_kernel_impl(
   }
 }
 
-Tensor& linalg_cross_kernel(
-    const Tensor& input,
-    const Tensor& other,
-    int64_t dim,
-    Tensor& out) {
-  dim = maybe_wrap_dim(dim, input.dim());
-  auto out_size = out.sizes();
-  Tensor input_broadcasted = input.expand(out_size);
-  Tensor other_broadcasted = other.expand(out_size);
-  linalg_cross_kernel_impl(out, input_broadcasted, other_broadcasted, dim);
-  return out;
-}
 } // namespace at::native::xpu

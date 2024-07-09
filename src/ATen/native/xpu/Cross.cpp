@@ -44,7 +44,14 @@ Tensor& XPUNativeFunctions::linalg_cross_out(
     int64_t dim,
     Tensor& out) {
   linalg_cross_meta(self, other, dim, out);
-  return native::xpu::linalg_cross_kernel(self, other, dim, out);
+
+  dim = maybe_wrap_dim(dim, self.dim());
+  auto out_size = out.sizes();
+  Tensor input_broadcasted = self.expand(out_size);
+  Tensor other_broadcasted = other.expand(out_size);
+  native::xpu::linalg_cross_kernel(
+      out, input_broadcasted, other_broadcasted, dim);
+  return out;
 }
 
 Tensor XPUNativeFunctions::linalg_cross(
