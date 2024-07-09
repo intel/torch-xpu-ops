@@ -55,4 +55,25 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, ReciprocalFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct CeilFunctor {
+  scalar_t operator()(const scalar_t a) const {
+    return std::ceil(a);
+  }
+};
+
+template <typename T>
+struct CeilFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(const c10::complex<T> a) const {
+    return c10::complex<T>(std::ceil(a.real()), std::ceil(a.imag()));
+  }
+};
+
+void ceil_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "ceil_xpu", [&]() {
+        gpu_kernel(iter, CeilFunctor<scalar_t>());
+      });
+}
+
 } // namespace at::native::xpu

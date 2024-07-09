@@ -2131,90 +2131,6 @@ def _test_grid_sample_large(self, device):
     issue_24823_2()
 TestNNDeviceType.test_grid_sample_large=_test_grid_sample_large
 
-@parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
-@parametrize_test("mode", ["bilinear", "bicubic"])
-@parametrize_test("antialias", [True, False])
-@parametrize_test("align_corners", [True, False])
-@parametrize_test("num_channels", [3, 5])
-@parametrize_test("output_size", [32, 600])
-@parametrize_test("check_as_unsqueezed_3d_tensor", [True, False])
-@parametrize_test("non_contig", [False, "sliced", "restrided"])
-@parametrize_test("batch_size", [1, 5])
-def upsamplingBiMode2d_consistency(
-    self,
-    device,
-    memory_format,
-    mode,
-    antialias,
-    align_corners,
-    num_channels,
-    output_size,
-    check_as_unsqueezed_3d_tensor,
-    non_contig,
-    batch_size,
-):
-    # Check output value consistency between resized_input_uint8 and resized input_float
-    if torch.device(device).type == "xpu":
-        raise SkipTest("XPU implementation is not yet supporting uint8")
-
-    torch.manual_seed(0)
-
-    # - input range is set to [30, 220] for bicubic mode, because the bicubic kernel may create
-    #   [intermediate] values outside of the [0, 255] range, which need
-    #   to be clipped in uint8 path, but not in float path. This isn't
-    #   an issue with bilinear kernel.
-    input_range = (30, 220) if mode == "bicubic" else (0, 256)
-    input_ui8 = torch.randint(*input_range, size=(batch_size, num_channels, 400, 400), dtype=torch.uint8, device=device)
-    input_ui8 = input_ui8.contiguous(memory_format=memory_format)
-
-    if non_contig == "sliced":
-        input_ui8 = input_ui8[:, :, 10:-10, 10:-10]
-    elif non_contig == "restrided":
-        input_ui8 = input_ui8[:, :, ::2, ::2]
-
-    if batch_size == 1 and check_as_unsqueezed_3d_tensor:
-        input_ui8 = input_ui8[0, ...]
-        input_ui8 = input_ui8[None, ...]
-
-    input_f32 = input_ui8.float()
-
-    output_f32 = F.interpolate(
-        input_f32, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
-    ).round().clip(0, 255)
-    output_ui8 = F.interpolate(
-        input_ui8, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
-    )
-
-    if non_contig is False:
-        self.assertTrue(input_ui8.is_contiguous(memory_format=memory_format))
-
-    # FIXME if-clause shows the current behaviour which is definitely unexpected.
-    # Ideally we want to fix it such that both the ui8 and f32 outputs are also channels_last
-    # See for more details: https://github.com/pytorch/pytorch/pull/100373
-    if batch_size == 1 and check_as_unsqueezed_3d_tensor and memory_format == torch.channels_last:
-        self.assertTrue(output_ui8.is_contiguous())
-        self.assertTrue(output_f32.is_contiguous())
-    else:
-        self.assertTrue(output_ui8.is_contiguous(memory_format=memory_format))
-        self.assertTrue(output_f32.is_contiguous(memory_format=memory_format))
-
-    if mode == "bilinear":
-        torch.testing.assert_close(output_f32, output_ui8.float(), rtol=0, atol=1)
-    else:
-        diff = (output_f32 - output_ui8.float()).abs()
-        self.assertLess(diff.max(), 15)
-
-        threshold = 2
-        percent = 3
-        self.assertLess((diff > threshold).float().mean(), percent / 100)
-
-        threshold = 5
-        percent = 1
-        self.assertLess((diff > threshold).float().mean(), percent / 100)
-
-        self.assertLess(diff.mean(), 0.4)
-TestNNDeviceType.test_upsamplingBiMode2d_consistency = upsamplingBiMode2d_consistency
-
 def _test_grid_sample_half_precision(self):
     def helper(shape_in, shape_out, align_corners):
         for mode in ('bilinear', 'nearest', 'bicubic'):
@@ -2254,6 +2170,75 @@ def _test_grid_sample_bfloat16_precision(self):
     helper((32, 64, 16, 16), (32, 8, 8, 2), False)
     # helper((32, 64, 16, 16, 16), (32, 8, 8, 8, 3), False) # grid_sampler_3d is not supported in xpu
 TestNNDeviceType.test_grid_sample_bfloat16_precision=_test_grid_sample_bfloat16_precision
+
+@parametrize_test("antialias", [True, False])
+@parametrize_test("align_corners", [True, False])
+@parametrize_test("mode", ["bilinear", "bicubic"])
+@parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
+def upsamplingBiMode2d(self, device, antialias, align_corners, mode, memory_format):
+    # Forward AD does not support XLA because XLA tensors don't have storage
+    check_forward_ad = torch.device(device).type != 'xla'
+
+    kwargs = dict(mode=mode, align_corners=align_corners, antialias=antialias)
+    # test float scale factor up & downsampling
+    for scale_factor in [0.5, 1.5, 2]:
+        in_t = torch.ones(
+            2, 3, 8, 8, device=device,
+            dtype=torch.double).contiguous(memory_format=memory_format).requires_grad_()
+        out_size = int(math.floor(in_t.shape[-1] * scale_factor))
+        with warnings.catch_warnings(record=True) as w:
+            out_t = F.interpolate(in_t, scale_factor=scale_factor, **kwargs)
+        expected_out = torch.ones(2, 3, out_size, out_size, device=device, dtype=torch.double)
+        self.assertEqual(expected_out, out_t)
+        # Assert that memory format is carried through to the output
+        self.assertTrue(out_t.is_contiguous(memory_format=memory_format))
+        out_t.backward(torch.randn_like(out_t))
+        self.assertTrue(in_t.grad.is_contiguous(memory_format=memory_format))
+
+        if torch.device(device).type == 'xpu':
+            # Bilinear backward is nondeterministic because of atomicAdd usage
+            nondet_tol = 1e-5
+        else:
+            nondet_tol = 0.0
+
+        input = torch.randn(
+            2, 3, 8, 8, device=device,
+            dtype=torch.double).contiguous(memory_format=memory_format).requires_grad_()
+        gradcheck(
+            lambda x: F.interpolate(x, out_size, **kwargs),
+            [input],
+            check_forward_ad=check_forward_ad, nondet_tol=nondet_tol
+        )
+        gradgradcheck(
+            lambda x: F.interpolate(x, out_size, **kwargs),
+            [input],
+            check_fwd_over_rev=check_forward_ad, nondet_tol=nondet_tol
+        )
+
+        # Assert that cpu and cuda give same results
+        if torch.device(device).type == 'xpu':
+            for shapes in [
+                (2, 2, 3, 4), (2, 3, 4, 5), (3, 1, 2, 2), (1, 5, 3, 2)
+            ]:
+                a_xpu = torch.randn(
+                    *shapes, device=device, dtype=torch.double
+                ).contiguous(memory_format=memory_format).requires_grad_()
+                a_cpu = a_xpu.detach().cpu().requires_grad_()
+
+                with warnings.catch_warnings(record=True):
+                    out_xpu = F.interpolate(a_xpu, scale_factor=scale_factor, **kwargs)
+                    out_cpu = F.interpolate(a_cpu, scale_factor=scale_factor, **kwargs)
+
+                self.assertEqual(out_cpu, out_xpu.cpu())
+
+                g_cuda = torch.randn_like(out_xpu)
+                g_cpu = g_cuda.cpu()
+
+                out_xpu.backward(g_cuda)
+                out_cpu.backward(g_cpu)
+
+                self.assertEqual(a_xpu.grad, a_cpu.grad)
+TestNNDeviceType.test_upsamplingBiMode2d = upsamplingBiMode2d
 
 instantiate_device_type_tests(
     TestNNDeviceType, globals(), only_for="xpu", allow_xpu=True
