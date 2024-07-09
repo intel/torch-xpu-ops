@@ -190,6 +190,8 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
   - _efficientzerotensor
   - complex.out
   - clone
@@ -453,6 +455,14 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
   - trace
   - reflection_pad2d
   - reflection_pad2d.out
@@ -489,9 +499,17 @@ supported:
   - avg_pool2d.out
   - avg_pool2d_backward
   - avg_pool2d_backward.grad_input
+  - addcdiv.out
+  - addcdiv
+  - addcdiv_
   - addcmul.out
   - addcmul
   - addcmul_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - conj_physical.out
+  - conj_physical_
+  - ceil
+  - ceil_
+  - ceil.out
