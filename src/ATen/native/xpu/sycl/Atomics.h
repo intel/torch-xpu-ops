@@ -115,7 +115,6 @@ struct AtomicIntegerImpl<T, 8> {
         address, val, [](DTYPE a, DTYPE b) { return OP; }); \
   }
 
-
 template <typename T>
 struct AtomicFPImpl;
 
@@ -274,7 +273,6 @@ SYCL_ATOMIC_INTEGER(Max, safe_max<int8_t>(a, b), int8_t)
 SYCL_ATOMIC_INTEGER(Max, safe_max<int16_t>(a, b), int16_t)
 SYCL_ATOMIC_INTEGER(Max, safe_max<int32_t>(a, b), int32_t)
 SYCL_ATOMIC_INTEGER(Max, safe_max<int64_t>(a, b), int64_t)
-
 
 SYCL_ATOMIC_FP(Max, safe_max<float>(a, b), float)
 SYCL_ATOMIC_FP(Max, safe_max<double>(a, b), double)
