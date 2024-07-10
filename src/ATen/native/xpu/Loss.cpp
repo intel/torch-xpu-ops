@@ -1,10 +1,10 @@
 #include <ATen/ATen.h>
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
+#include <ATen/native/xpu/sycl/LossKernels.h>
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
@@ -67,6 +67,46 @@ Tensor& XPUNativeFunctions::mse_loss_backward_out(
                   .build();
   native::xpu::mse_backward_kernel(iter, norm);
   return grad_input;
+}
+
+Tensor XPUNativeFunctions::binary_cross_entropy(
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight,
+    int64_t reduction) {
+  return native::xpu::binary_cross_entropy_kernel(
+      self, target, weight, reduction);
+}
+
+Tensor& XPUNativeFunctions::binary_cross_entropy_out(
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight,
+    int64_t reduction,
+    Tensor& out) {
+  return native::xpu::binary_cross_entropy_out_kernel(
+      self, target, weight, reduction, out);
+}
+
+Tensor XPUNativeFunctions::binary_cross_entropy_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight,
+    int64_t reduction) {
+  return native::xpu::binary_cross_entropy_backward_kernel(
+      grad_output, self, target, weight, reduction);
+}
+
+Tensor& XPUNativeFunctions::binary_cross_entropy_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight,
+    int64_t reduction,
+    Tensor& grad_input) {
+  return native::xpu::binary_cross_entropy_backward_out_kernel(
+      grad_output, self, target, weight, reduction, grad_input);
 }
 
 } // namespace at
