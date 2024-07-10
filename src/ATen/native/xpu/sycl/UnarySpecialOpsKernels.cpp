@@ -166,16 +166,12 @@ struct Exp2Functor<c10::complex<T>> {
 };
 
 void exp2_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      kComplexHalf,
       iter.common_dtype(),
       "exp2_xpu",
-      [&]() {
-        using opmath_t = at::opmath_type<scalar_t>;
-        gpu_kernel(iter, Exp2Functor<opmath_t>());
-      });
+      [&]() { gpu_kernel(iter, Exp2Functor<scalar_t>()); });
 }
 
 template <typename scalar_t>
@@ -188,21 +184,20 @@ struct Expm1Functor {
 template <typename T>
 struct Expm1Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
-    return std::exp(x) - (T)1.f;
+    auto a = std::sin(.5 * x.imag());
+    auto r = std::expm1(x.real()) * std::cos(x.imag()) - 2 * a * a;
+    auto i = std::exp(x.real()) * std::sin(x.imag());
+    return c10::complex<T>(r, i);
   }
 };
 
 void expm1_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      kComplexHalf,
       iter.common_dtype(),
       "expm1_xpu",
-      [&]() {
-        using opmath_t = at::opmath_type<scalar_t>;
-        gpu_kernel(iter, Expm1Functor<opmath_t>());
-      });
+      [&]() { gpu_kernel(iter, Expm1Functor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu

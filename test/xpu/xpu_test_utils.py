@@ -157,6 +157,9 @@ _xpu_computation_op_list = [
     "renorm",
     "lerp",
     "conj_physical",
+    "erfinv",
+    "expm1",
+    "exp2"
 ]
 
 

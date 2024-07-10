@@ -620,10 +620,13 @@ struct ExponentialFunctor {
 
 template <typename RNG>
 void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
-  AT_DISPATCH_ALL_TYPES_AND3(
+  TORCH_CHECK(
+      isFloatingType(iter.dtype()),
+      "Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ",
+      iter.dtype());
+  AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      at::ScalarType::Bool,
       iter.dtype(),
       "exponential__xpu_",
       [&] {
