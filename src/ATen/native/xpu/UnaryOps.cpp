@@ -6,6 +6,7 @@
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
+#include <ATen/native/xpu/sycl/UnaryGammaKernels.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
@@ -165,6 +166,74 @@ Tensor& XPUNativeFunctions::cos_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::cos_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::digamma(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::digamma_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::digamma_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::digamma_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::digamma_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::digamma_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::polygamma(int64_t n, const Tensor& self) {
+  TORCH_CHECK(n >= 0, "polygamma(n, x) does not support negative n.");
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::polygamma_kernel(iter, n);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::polygamma_out(
+    int64_t n,
+    const Tensor& self,
+    Tensor& out) {
+  TORCH_CHECK(n >= 0, "polygamma(n, x) does not support negative n.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::polygamma_kernel(iter, n);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::polygamma_(Tensor& self, int64_t n) {
+  return polygamma_out(n, self, self);
+}
+
+Tensor XPUNativeFunctions::lgamma(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::lgamma_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::lgamma_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::lgamma_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::lgamma_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::lgamma_kernel(iter);
   return out;
 }
 

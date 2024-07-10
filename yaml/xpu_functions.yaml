@@ -143,6 +143,15 @@ supported:
   - logical_not
   - logical_not_
   - logical_not.out
+  - digamma
+  - digamma_
+  - digamma.out
+  - polygamma
+  - polygamma_
+  - polygamma.out
+  - lgamma
+  - lgamma_
+  - lgamma.out
   - sqrt
   - sqrt_
   - sqrt.out
