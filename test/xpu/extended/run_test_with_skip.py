@@ -128,6 +128,18 @@ skip_list = (
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
+
+    # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # Example fail log
+    # FAILED test_ops_xpu.py::TestCommonXPU::test_compare_cpu_nn_functional_batch_norm_xpu_float16 - AssertionError: Tensor-likes are not close!
+    # Mismatched elements: 3 / 72 (4.2%)
+    # Greatest absolute difference: 0.0029296875 at index (0, 1, 1, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
+    "test_compare_cpu_std_mean_xpu_bfloat16",
+    "test_compare_cpu_sub_xpu_float16",
+    "test_compare_cpu_var_mean_xpu_bfloat16",
 )
 
 

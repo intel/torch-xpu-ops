@@ -1288,9 +1288,6 @@ skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # col2im: AssertionError: The values for attribute 'shape' do not match: torch.Size([16, 4]) != torch.Size([1, 16, 4]).
-    "test_Fold_no_batch_dim_input_cuda",  # col2im
-    "test_Fold_no_batch_dim_int_input_cuda",
     # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
@@ -2998,23 +2995,21 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # Regression after PyTorch uplift
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # AssertionError: 3 != 3.0
+    "test_symnode_hashing",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
-
-
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-
 res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
-
-
 res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
