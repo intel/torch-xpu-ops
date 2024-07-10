@@ -96,7 +96,7 @@ find_file(
 
 find_library(
   SYCL_LIBRARY
-  NAMES sycl
+  NAMES sycl-preview
   HINTS ${SYCL_LIBRARY_DIR}
   NO_DEFAULT_PATH
 )
@@ -202,6 +202,11 @@ set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
 list(APPEND SYCL_FLAGS "-fsycl")
 list(APPEND SYCL_LINK_FLAGS "-fsycl")
+# Workaround about XPU ABI neutral build
+if(LINUX)
+  list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
+  list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
+endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 
