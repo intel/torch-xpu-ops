@@ -502,18 +502,6 @@ Tensor& XPUNativeFunctions::floor_divide_(Tensor& self, const Tensor& other) {
   return XPUNativeFunctions::floor_divide_out(self, other, self);
 }
 
-Tensor XPUNativeFunctions::floor_divide(
-    const Tensor& self,
-    const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::floor_divide(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::floor_divide_(Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::floor_divide_out(self, wrapper, self);
-}
-
 TensorIterator meta_fmin_fmax(
     const char* const name,
     const Tensor& self,

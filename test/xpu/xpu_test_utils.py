@@ -157,6 +157,10 @@ _xpu_computation_op_list = [
     "renorm",
     "lerp",
     "conj_physical",
+    "fmax",
+    "fmin",
+    "floor",
+    "floor_divide"
 ]
 
 

@@ -91,14 +91,9 @@ struct FloorFunctor<c10::complex<T>> {
 };
 
 void floor_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
-      iter.common_dtype(),
-      "floor_xpu",
-      [&]() {
-        using opmath_t = at::opmath_type<scalar_t>;
-        gpu_kernel(iter, FloorFunctor<opmath_t>());
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "floor_xpu", [&]() {
+        gpu_kernel(iter, FloorFunctor<scalar_t>());
       });
 }
 
