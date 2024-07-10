@@ -177,7 +177,6 @@ Tensor& range_kernel(
     const Scalar& end,
     const Scalar& step,
     Tensor& result) {
-  printf("in range kernel\n");
   AT_DISPATCH_ALL_TYPES_AND(
       at::ScalarType::Half, result.scalar_type(), "range_xpu", [&]() {
         using accscalar_t = acc_type<scalar_t, true>;
