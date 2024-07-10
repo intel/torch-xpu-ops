@@ -44,6 +44,7 @@ _xpu_computation_op_list = [
     "bitwise_or",
     "bitwise_xor",
     "addcmul",
+    "addcdiv",
     "clamp",
     "clamp_max",
     "clamp_min",
@@ -155,6 +156,7 @@ _xpu_computation_op_list = [
     "bincount",
     "renorm",
     "lerp",
+    "conj_physical",
 ]
 
 

@@ -5,6 +5,7 @@
 #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
+#include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
@@ -513,6 +514,18 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::erfc_kernel(iter);
   return out;
+}
+
+Tensor& XPUNativeFunctions::conj_physical_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::conj_physical_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::conj_physical_(Tensor& self) {
+  if (!self.is_complex())
+    return self;
+  return XPUNativeFunctions::conj_physical_out(self, self);
 }
 
 TensorIterator ceil_meta(const Tensor& self, Tensor& out) {

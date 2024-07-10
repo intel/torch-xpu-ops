@@ -109,10 +109,6 @@ static void xpu_lazy_registration_or_error_fallback(
   }
 }
 
-static void xpu_force_fallback(
-    const c10::OperatorHandle& op,
-    torch::jit::Stack* stack) {}
-
 TORCH_LIBRARY_IMPL(_, XPU, m) {
   static const char* enable_xpu_fallback =
       getenv("PYTORCH_ENABLE_XPU_FALLBACK");
@@ -163,7 +159,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "adaptive_max_pool2d.out",
     "adaptive_max_pool3d_backward.grad_input",
     "adaptive_max_pool3d.out",
-    "addcdiv.out",
     "aminmax.out",
     "angle",
     "argmin.out",
@@ -184,7 +179,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
-    "conj_physical.out",
     "copysign.out",
     "cosh.out",
     "count_nonzero.dim_IntList",
