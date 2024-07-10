@@ -420,18 +420,6 @@ struct IndexFillScalarFunctor {
     dst[dst_off] = alpha;
   }
 };
-template <>
-struct IndexFillScalarFunctor<bool> {
-  void operator()(
-      bool* dst,
-      bool* src,
-      int64_t dst_off,
-      int64_t src_off,
-      int64_t idx,
-      bool alpha) const {
-    dst[dst_off] = alpha;
-  }
-};
 
 void index_fill_kernel(
     const Tensor& self,

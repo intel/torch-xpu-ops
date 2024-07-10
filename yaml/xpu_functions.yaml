@@ -87,9 +87,7 @@ supported:
   - index_add_
   - index_add
   - index_fill_.int_Tensor
-  - index_fill_.int_Scalar
   - index_fill.int_Tensor
-  - index_fill.int_Scalar
   - index_select
   - index_select.out
   - gcd
