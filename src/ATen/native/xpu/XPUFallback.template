@@ -304,7 +304,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nan_to_num.out",
     "native_batch_norm",
     "native_batch_norm_backward",
-    "nextafter.out",
     "norm.out",
     "ormqr",
     "_pdist_backward",

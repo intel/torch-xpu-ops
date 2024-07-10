@@ -91,6 +91,9 @@ supported:
   - gcd
   - gcd.out
   - gcd_
+  - nextafter
+  - nextafter.out
+  - nextafter_
   - relu
   - relu_
   - relu.out
