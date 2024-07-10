@@ -292,7 +292,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nansum",
     "nan_to_num.out",
     "nextafter.out",
-    "norm.out",
     "ormqr",
     "_pdist_backward",
     "_pdist_forward",

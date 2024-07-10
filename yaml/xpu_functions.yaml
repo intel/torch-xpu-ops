@@ -511,3 +511,7 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - norm.ScalarOpt_dim_dtype
+  - norm.dtype_out
+  - norm.ScalarOpt_dim
+  - norm.out

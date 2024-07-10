@@ -725,7 +725,7 @@ Tensor XPUNativeFunctions::argmax(
   return out;
 }
 
-static Tensor amax_amin_meta(
+static Tensor& amax_amin_meta(
     Tensor& result,
     const char* name,
     const Tensor& self,
@@ -801,6 +801,125 @@ Tensor XPUNativeFunctions::amin(
   out = amax_amin_meta(out, "amin()", self, dim, keepdim);
   amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
+}
+
+static ScalarType get_result_or_self_value_dtype(
+    const Tensor& self,
+    const Tensor& result,
+    const std::optional<ScalarType>& dtype) {
+  if (result.defined()) {
+    return result.scalar_type();
+  } else {
+    return dtype.value_or(toRealValueType(self.scalar_type()));
+  }
+}
+
+Tensor& norm_scalaropt_dim_dtype_meta(
+    const Tensor& self,
+    const OptionalScalarRef p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype,
+    Tensor& result) {
+  TORCH_CHECK(
+      at::isFloatingType(dtype) || at::isComplexType(dtype),
+      "norm(): the desired output dtype should be either floating point or complex. "
+      "Got ",
+      dtype,
+      " instead.");
+  auto out_dtype = get_result_or_self_value_dtype(self, result, dtype);
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
+}
+
+static void impl_func_norm(
+    const Tensor& self,
+    const OptionalScalarRef& opt_p,
+    IntArrayRef dim,
+    bool keepdim,
+    optional<ScalarType> opt_dtype,
+    const Tensor& result) {
+  // Left this implementation without deprecating it as it is called in a number
+  // of places in the codebase. We should swap those by linalg_vector_norm
+  auto p = opt_p.has_value() ? opt_p.get() : Scalar(2.0).to<double>();
+  at::linalg_vector_norm_out(
+      const_cast<Tensor&>(result), self, p, dim, keepdim, opt_dtype);
+}
+
+// wrapper_CUDA_norm_ScalarOpt_dim_dtype
+Tensor XPUNativeFunctions::norm(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype) {
+  Tensor result;
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_dtype_meta(self, p_, dim, keepdim, dtype, result);
+  impl_func_norm(self, p_, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::norm_out(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype,
+    Tensor& result) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_dtype_meta(self, p_, dim, keepdim, dtype, result);
+  impl_func_norm(self, p_, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor& norm_scalaropt_dim_meta(
+    const Tensor& self,
+    const OptionalScalarRef p,
+    IntArrayRef dim,
+    bool keepdim,
+    Tensor& result) {
+  TORCH_CHECK(
+      at::isFloatingType(self.scalar_type()) ||
+          at::isComplexType(self.scalar_type()),
+      "norm(): input dtype should be either floating point or complex. "
+      "Got ",
+      self.scalar_type(),
+      " instead.");
+
+  auto out_dtype = get_result_or_self_value_dtype(self, result, c10::nullopt);
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
+}
+
+Tensor XPUNativeFunctions::norm(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  Tensor result;
+  result = norm_scalaropt_dim_meta(self, p_, dim, keepdim, result);
+  impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::norm_out(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    Tensor& result) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_meta(self, p_, dim, keepdim, result);
+  impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
+  return result;
 }
 
 } // namespace at
