@@ -109,10 +109,6 @@ static void xpu_lazy_registration_or_error_fallback(
   }
 }
 
-static void xpu_force_fallback(
-    const c10::OperatorHandle& op,
-    torch::jit::Stack* stack) {}
-
 TORCH_LIBRARY_IMPL(_, XPU, m) {
   static const char* enable_xpu_fallback =
       getenv("PYTORCH_ENABLE_XPU_FALLBACK");
