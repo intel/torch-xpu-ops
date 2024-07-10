@@ -151,6 +151,9 @@ _xpu_computation_op_list = [
     "bincount",
     "renorm",
     "lerp",
+    "frac",
+    "aminmax",
+    "argmin"
 ]
 
 
