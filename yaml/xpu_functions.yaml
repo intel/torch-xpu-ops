@@ -511,3 +511,6 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - renorm
+  - renorm.out
+  - renorm_

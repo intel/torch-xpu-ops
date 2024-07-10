@@ -305,7 +305,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "put_",
     "reflection_pad1d_backward.grad_input",
     "reflection_pad1d.out",
-    "renorm.out",
     "repeat_interleave.Tensor",
     "replication_pad1d_backward.grad_input",
     "replication_pad1d.out",
