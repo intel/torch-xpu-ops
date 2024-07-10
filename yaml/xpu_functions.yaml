@@ -10,6 +10,8 @@ supported:
   - add_.Scalar
   - add.Scalar_out
   - _adaptive_avg_pool2d_backward
+  - adaptive_avg_pool2d.out
+  - _adaptive_avg_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
@@ -188,6 +190,10 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
+  - _efficientzerotensor
+  - complex.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -449,6 +455,15 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
+  - trace
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
@@ -482,6 +497,9 @@ supported:
   - avg_pool2d.out
   - avg_pool2d_backward
   - avg_pool2d_backward.grad_input
+  - addcdiv.out
+  - addcdiv
+  - addcdiv_
   - addcmul.out
   - addcmul
   - addcmul_
@@ -497,3 +515,8 @@ supported:
   - frac
   - frac_
   - frac.out
+  - conj_physical.out
+  - conj_physical_
+  - ceil
+  - ceil_
+  - ceil.out

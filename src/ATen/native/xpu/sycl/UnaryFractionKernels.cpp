@@ -65,7 +65,26 @@ struct FracFunctor {
 void frac_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "frac_xpu", [&]() {
-        gpu_kernel(iter, FracFunctor<scalar_t>());
+        gpu_kernel(iter, FracFunctor<scalar_t>());      });
+}
+
+struct CeilFunctor {
+  scalar_t operator()(const scalar_t a) const {
+    return std::ceil(a);
+  }
+};
+
+template <typename T>
+struct CeilFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(const c10::complex<T> a) const {
+    return c10::complex<T>(std::ceil(a.real()), std::ceil(a.imag()));
+  }
+};
+
+void ceil_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "ceil_xpu", [&]() {
+        gpu_kernel(iter, CeilFunctor<scalar_t>());
       });
 }
 
