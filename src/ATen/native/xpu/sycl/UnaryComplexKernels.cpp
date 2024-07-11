@@ -31,6 +31,32 @@ void conj_kernel(TensorIterator& iter) {
 }
 
 template <typename scalar_t>
+struct ConjPhysicalFunctor {
+  scalar_t operator()(scalar_t z) const {
+    return std::conj(z);
+  }
+};
+
+template <typename TYPE>
+struct ConjPhysicalFunctor<c10::complex<TYPE>> {
+  c10::complex<TYPE> operator()(c10::complex<TYPE> z) const {
+    return c10::complex<TYPE>(z.real(), -z.imag());
+  }
+};
+
+void conj_physical_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_SWITCH(
+      iter.common_dtype(),
+      "conj_xpu",
+      AT_DISPATCH_CASE_ALL_TYPES_AND3(kBool, kBFloat16, kHalf, [&] {
+        // Conj is a no-op for non-complex types
+        copy_kernel(iter);
+      }) AT_DISPATCH_CASE_COMPLEX_TYPES_AND(kComplexHalf, [&] {
+        gpu_kernel(iter, ConjPhysicalFunctor<scalar_t>());
+      }));
+}
+
+template <typename scalar_t>
 struct NegConjScalarFunc {
   scalar_t operator()(scalar_t src_val) const {
     return std::conj(-src_val);

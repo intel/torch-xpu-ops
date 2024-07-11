@@ -12,11 +12,12 @@
 
 #include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
 #include <ATen/native/xpu/sycl/ReduceNormKernel.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {
-REGISTER_XPU_DISPATCH(addr_stub, xpu::addr_kernel);
-REGISTER_XPU_DISPATCH(norm_stub, xpu::norm_kernel);
+REGISTER_XPU_DISPATCH(addr_stub, &xpu::addr_kernel);
+REGISTER_XPU_DISPATCH(norm_stub, &xpu::norm_kernel);
 } // namespace native
 } // namespace at

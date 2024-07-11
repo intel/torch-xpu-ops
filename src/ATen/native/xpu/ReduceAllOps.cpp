@@ -25,8 +25,8 @@ void max_all_kernel_impl(Tensor& result, const Tensor& input) {
 }
 
 namespace native {
-REGISTER_XPU_DISPATCH(min_all_stub, min_all_kernel_impl);
-REGISTER_XPU_DISPATCH(max_all_stub, max_all_kernel_impl);
+REGISTER_XPU_DISPATCH(min_all_stub, &min_all_kernel_impl);
+REGISTER_XPU_DISPATCH(max_all_stub, &max_all_kernel_impl);
 } // namespace native
 
 } // namespace at

@@ -3158,3 +3158,178 @@
   dispatch:
     XPU: lerp_Tensor
   tags: pointwise
+
+- func: addcdiv.out(Tensor self, Tensor tensor1, Tensor tensor2, *, Scalar value=1, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: addcdiv_out
+  tags: pointwise
+
+- func: addcdiv(Tensor self, Tensor tensor1, Tensor tensor2, *, Scalar value=1) -> Tensor
+  structured_delegate: addcdiv.out
+  device_check: NoCheck   # TensorIterator
+  variants: method, function
+  tags: pointwise
+
+- func: addcdiv_(Tensor(a!) self, Tensor tensor1, Tensor tensor2, *, Scalar value=1) -> Tensor(a!)
+  structured_delegate: addcdiv.out
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  tags: pointwise
+
+- func: eye(SymInt n, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: eye
+
+- func: eye.m(SymInt n, SymInt m, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: eye
+
+- func: eye.out(SymInt n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: eye_out_xpu
+
+- func: eye.m_out(SymInt n, SymInt m, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: eye_out_xpu
+
+- func: logical_not(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: logical_not
+    NestedTensorCPU, NestedTensorCUDA: NestedTensor_logical_not
+  tags: [core, pointwise]
+
+- func: logical_not_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: logical_not_
+    NestedTensorCPU, NestedTensorCUDA: NestedTensor_logical_not_
+  tags: pointwise
+
+- func: logical_not.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: logical_not_out
+  tags: pointwise
+
+- func: erf(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: erf.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: erf_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: erf.out
+  variants: function, method
+  tags: pointwise
+
+- func: erf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: erf_out
+  tags: pointwise
+
+- func: erfc(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: erfc.out
+  variants: function, method
+  tags: pointwise
+
+- func: erfc_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: erfc.out
+  variants: function, method
+  tags: pointwise
+
+- func: erfc.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: erfc_out
+  tags: pointwise
+
+- func: _conj_physical(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: _conj_physical
+  autogen: _conj_physical.out
+
+- func: conj_physical(Tensor self) -> Tensor
+  variants: function, method
+  tags: pointwise
+
+- func: conj_physical.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: conj_physical_out
+  tags: pointwise
+
+- func: conj_physical_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: conj_physical_
+  tags: pointwise
+
+- func: ceil(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: ceil.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: ceil_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: ceil.out
+  variants: function, method
+  tags: pointwise
+
+- func: ceil.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: ceil_out
+  tags: pointwise
+
+- func: searchsorted.Tensor(Tensor sorted_sequence, Tensor self, *, bool out_int32=False, bool right=False, str? side=None, Tensor? sorter=None) -> Tensor
+  dispatch:
+    XPU: searchsorted_xpu
+
+- func: searchsorted.Tensor_out(Tensor sorted_sequence, Tensor self, *, bool out_int32=False, bool right=False, str? side=None, Tensor? sorter=None, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: searchsorted_out_xpu
+
+- func: searchsorted.Scalar(Tensor sorted_sequence, Scalar self, *, bool out_int32=False, bool right=False, str? side=None, Tensor? sorter=None) -> Tensor
+  dispatch:
+    XPU: searchsorted_xpu
+
+- func: searchsorted.Scalar_out(Tensor sorted_sequence, Scalar self, *, bool out_int32=False, bool right=False, str? side=None, Tensor? sorter=None, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: searchsorted_out_xpu
+
+- func: bucketize.Tensor(Tensor self, Tensor boundaries, *, bool out_int32=False, bool right=False) -> Tensor
+  dispatch:
+    XPU: bucketize_xpu
+
+- func: bucketize.Tensor_out(Tensor self, Tensor boundaries, *, bool out_int32=False, bool right=False, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: bucketize_out_xpu
+
+- func: bucketize.Scalar(Scalar self, Tensor boundaries, *, bool out_int32=False, bool right=False) -> Tensor
+  dispatch:
+    XPU: bucketize_xpu
+  autogen: bucketize.Scalar_out
+
+- func: is_set_to(Tensor self, Tensor tensor) -> bool
+  variants: method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    XPU: is_set_to

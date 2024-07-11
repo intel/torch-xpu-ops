@@ -5,6 +5,6 @@
 namespace at {
 
 namespace native {
-REGISTER_XPU_DISPATCH(cdist_stub, xpu::cdist_kernel);
+REGISTER_XPU_DISPATCH(cdist_stub, &xpu::cdist_kernel);
 }
 } // namespace at

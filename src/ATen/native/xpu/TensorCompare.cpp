@@ -56,14 +56,13 @@ void minmax_out_impl(
 }
 
 namespace native {
-// REGISTER_XPU_DISPATCH(where_fn, xpu::where_kernel);
-REGISTER_XPU_DISPATCH(where_kernel, xpu::where_kernel);
-REGISTER_XPU_DISPATCH(clamp_min_scalar_stub, xpu::clamp_min_scalar_kernel);
-REGISTER_XPU_DISPATCH(clamp_max_scalar_stub, xpu::clamp_max_scalar_kernel);
-REGISTER_XPU_DISPATCH(clamp_scalar_stub, xpu::clamp_scalar_kernel);
-REGISTER_XPU_DISPATCH(clamp_stub, xpu::clamp_kernel);
-REGISTER_XPU_DISPATCH(max_stub, max_kernel_impl);
-REGISTER_XPU_DISPATCH(min_stub, min_kernel_impl)
+REGISTER_XPU_DISPATCH(where_kernel, &xpu::where_kernel);
+REGISTER_XPU_DISPATCH(clamp_min_scalar_stub, &xpu::clamp_min_scalar_kernel);
+REGISTER_XPU_DISPATCH(clamp_max_scalar_stub, &xpu::clamp_max_scalar_kernel);
+REGISTER_XPU_DISPATCH(clamp_scalar_stub, &xpu::clamp_scalar_kernel);
+REGISTER_XPU_DISPATCH(clamp_stub, &xpu::clamp_kernel);
+REGISTER_XPU_DISPATCH(max_stub, &max_kernel_impl);
+REGISTER_XPU_DISPATCH(min_stub, &min_kernel_impl)
 } // namespace native
 
 } // namespace at

@@ -7,7 +7,7 @@
 
 namespace at {
 namespace native {
-REGISTER_XPU_DISPATCH(glu_stub, xpu::glu_kernel);
+REGISTER_XPU_DISPATCH(glu_stub, &xpu::glu_kernel);
 
 Tensor& glu_backward_xpu_out(
     const Tensor& grad_output,

@@ -187,7 +187,7 @@ void im2col_kernel(
 
   if (input.dim() == 3) {
     batched_input = false;
-    input.resize_({1, input.size(0), input.size(1), input.size(2)});
+    input = input.view({1, input.size(0), input.size(1), input.size(2)});
   }
 
   auto batch_size = input.size(0);

@@ -7,7 +7,9 @@
 
 namespace at {
 namespace native {
-REGISTER_XPU_DISPATCH(GroupNormKernel, xpu::group_norm_kernel);
-REGISTER_XPU_DISPATCH(GroupNormBackwardKernel, xpu::group_norm_backward_kernel);
+REGISTER_XPU_DISPATCH(GroupNormKernel, &xpu::group_norm_kernel);
+REGISTER_XPU_DISPATCH(
+    GroupNormBackwardKernel,
+    &xpu::group_norm_backward_kernel);
 } // namespace native
 } // namespace at

@@ -6,6 +6,8 @@ namespace at::native::xpu {
 
 void conj_kernel(TensorIterator& iter);
 
+void conj_physical_kernel(TensorIteratorBase& iter);
+
 void neg_conj_kernel(TensorIterator& iter);
 
 void neg_kernel(TensorIterator& iter);

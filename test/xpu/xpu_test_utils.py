@@ -19,6 +19,7 @@ from torch.testing._internal.common_utils import set_default_dtype
 
 _xpu_computation_op_list = [
     "empty",
+    "eye",
     "fill",
     "zeros",
     "zeros_like",
@@ -43,6 +44,7 @@ _xpu_computation_op_list = [
     "bitwise_or",
     "bitwise_xor",
     "addcmul",
+    "addcdiv",
     "clamp",
     "clamp_max",
     "clamp_min",
@@ -138,6 +140,8 @@ _xpu_computation_op_list = [
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
+    "bucketize",
+    "searchsorted",
     "grid_sampler_2d",
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "acos",
@@ -152,6 +156,7 @@ _xpu_computation_op_list = [
     "bincount",
     "renorm",
     "lerp",
+    "conj_physical",
 ]
 
 

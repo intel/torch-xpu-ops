@@ -7,6 +7,6 @@
 namespace at {
 
 namespace native {
-REGISTER_XPU_DISPATCH(unfold_backward_stub, xpu::unfold_backward_kernel);
+REGISTER_XPU_DISPATCH(unfold_backward_stub, &xpu::unfold_backward_kernel);
 }
 } // namespace at

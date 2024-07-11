@@ -10,7 +10,7 @@
 namespace at {
 namespace native {
 
-REGISTER_XPU_DISPATCH(flip_stub, xpu::flip_kernel);
+REGISTER_XPU_DISPATCH(flip_stub, &xpu::flip_kernel);
 
 Tensor roll_xpu(const Tensor& self, IntArrayRef shifts, IntArrayRef dims) {
   if (dims.size() != 1 || shifts.size() != 1) {
