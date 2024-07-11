@@ -12,7 +12,7 @@ void histogramdd_check_inputs(
     const Tensor& input,
     const Tensor& bins,
     const std::optional<Tensor>& weight) {
-  if (weight.has_value) {
+  if (weight.has_value()) {
     TORCH_CHECK(
         weight->device() == input.device(),
         "weight and input need to be on the same device.")
@@ -55,9 +55,6 @@ void histogramdd_check_inputs(
         weight.value().dtype(),
         ")");
 
-    /* If a weight tensor is provided, we expect its shape to match that of
-     * the input tensor excluding its innermost dimension N.
-     */
     auto input_sizes = input.sizes().vec();
 
     auto weight_sizes = weight.value().sizes().vec();

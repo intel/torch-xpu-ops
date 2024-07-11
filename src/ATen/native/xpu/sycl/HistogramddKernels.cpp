@@ -27,6 +27,7 @@ struct HistogramddKernelFunctor {
       int64_t ele_idx = wi_id / bin_size_;
       int64_t bin_idx = wi_id % bin_size_;
 
+      // [left, right)
       if (input_[ele_idx] >= bin_edges_[bin_idx] &&
           input_[ele_idx] < bin_edges_[bin_idx + 1]) {
         scalar_t value = weight_ ? weight_[ele_idx] : (scalar_t)1;
@@ -34,6 +35,7 @@ struct HistogramddKernelFunctor {
         return;
       }
 
+      // For last bin, [left, right]
       if (bin_idx == 0 && input_[ele_idx] == bin_edges_[bin_size_]) {
         scalar_t value = weight_ ? weight_[ele_idx] : (scalar_t)1;
         atomicAdd((sycl_global_ptr<scalar_t>)(hist_ + bin_size_ - 1), value);
@@ -64,6 +66,7 @@ struct HistogramddKernelFunctor {
   int64_t bin_size_;
 };
 
+// For one dimension case
 template <typename scalar_t>
 void histogramdd_template(
     const scalar_t* input,
@@ -124,6 +127,7 @@ struct HistogramddLinearKernelFunctor {
   double rightmost_edge_;
 };
 
+// For one dimension case
 template <typename scalar_t>
 void histogramdd_linear_template(
     const scalar_t* input,
@@ -146,10 +150,9 @@ void histogramdd_kernel(
     const std::optional<Tensor>& weight,
     bool density,
     Tensor& hist,
-    const Tensor& bin_edges) {
+    const Tensor& bin_edges_) {
   hist.fill_(0);
-  // TODO: contiguous ?
-
+  Tensor bin_edges = bin_edges_.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kBFloat16, kHalf, self.scalar_type(), "histogram_xpu", [&]() {
         histogramdd_template<scalar_t>(
