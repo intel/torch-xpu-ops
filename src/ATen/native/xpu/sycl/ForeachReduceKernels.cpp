@@ -157,16 +157,18 @@ void launch_lpnorm_chunk_reduce_kernel(
                   AT_PRIVATE_CASE_TYPE_USING_HINT(          \
                       at::ScalarType::BFloat16, out_t, __VA_ARGS__))
 
-std::vector<Tensor> foreach_norm_kernel(
+template <class KernelClass>
+void foreach_norn_kernel_config(
     TensorList tensors,
-    const Scalar& ord,
-    double p,
-    c10::optional<ScalarType> dtype) {
+    TensorOptions output_per_tensor_option,
+    int64_t& wg_size,
+    int& max_chunks_per_tensor,
+    Tensor& output_per_tensor) {
   const int ntensors = tensors.size();
-  int max_chunks_per_tensor = -1;
 
-  int64_t wg_size = multi_tensor_apply_kernel_get_wg_size();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
+  max_chunks_per_tensor = -1;
+  wg_size = multi_tensor_apply_kernel_get_wg_size<KernelClass>();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
 
   for (int t = 0; t < ntensors; t++) {
     int max_chunks_this_tensor =
@@ -176,18 +178,29 @@ std::vector<Tensor> foreach_norm_kernel(
     }
   }
 
-  const auto options = tensors[0].options();
+  output_per_tensor = at::zeros(
+      {static_cast<int64_t>(ntensors) * max_chunks_per_tensor},
+      output_per_tensor_option);
+}
+
+std::vector<Tensor> foreach_norm_kernel(
+    TensorList tensors,
+    const Scalar& ord,
+    double p,
+    c10::optional<ScalarType> dtype) {
+  const int ntensors = tensors.size();
+
   const ScalarType output_dtype = // tensors[0].scalar_type();
       dtype.has_value() ? dtype.value() : tensors[0].scalar_type();
-  const ScalarType output_per_tensor_dtype = toOpMathType(output_dtype);
-  auto output_per_tensor = at::zeros(
-      {static_cast<int64_t>(ntensors) * max_chunks_per_tensor},
-      options.dtype(output_per_tensor_dtype));
-
-  const auto res_option = options.dtype(output_dtype);
+  const auto options = tensors[0].options();
+  auto output_per_tensor_option = options.dtype(toOpMathType(output_dtype));
+  auto res_option = options.dtype(output_dtype);
   auto ret_per_tensor = at::empty({ntensors}, res_option);
-
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
+
+  int64_t wg_size;
+  int max_chunks_per_tensor;
+  Tensor output_per_tensor;
   if (p == static_cast<double>(1)) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf,
@@ -198,12 +211,24 @@ std::vector<Tensor> foreach_norm_kernel(
           AT_DISPATCH_OUT_DTYPES(
               output_dtype, "foreach_norm_out_dtype_xpu", [&]() {
                 using out_opmath_t = typename at::opmath_type<out_t>;
+                using KernelClass = lpnormChunkReduceKernelFunctor<
+                    out_t,
+                    NormType::L1,
+                    out_opmath_t>;
+                foreach_norn_kernel_config<KernelClass>(
+                    tensors,
+                    output_per_tensor_option,
+                    wg_size,
+                    max_chunks_per_tensor,
+                    output_per_tensor);
+
                 // sum temp val for each chunk
                 multi_tensor_apply<1>(
                     tensor_lists,
                     LpNormFunctor<scalar_t, NormType::L1, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
+
                 // sum final val for all chunks
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
@@ -226,11 +251,23 @@ std::vector<Tensor> foreach_norm_kernel(
           AT_DISPATCH_OUT_DTYPES(
               output_dtype, "foreach_norm_out_dtype_xpu", [&]() {
                 using out_opmath_t = typename at::opmath_type<out_t>;
+                using KernelClass = lpnormChunkReduceKernelFunctor<
+                    out_t,
+                    NormType::L2,
+                    out_opmath_t>;
+                foreach_norn_kernel_config<KernelClass>(
+                    tensors,
+                    output_per_tensor_option,
+                    wg_size,
+                    max_chunks_per_tensor,
+                    output_per_tensor);
+
                 multi_tensor_apply<1>(
                     tensor_lists,
                     LpNormFunctor<scalar_t, NormType::L2, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
+
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
