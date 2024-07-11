@@ -165,7 +165,6 @@ void adaptive_max_pool2d_backward_meta(
   }
 }
 
-#if 0
 Tensor XPUNativeFunctions::adaptive_max_pool2d_backward(
     const Tensor& grad_output,
     const Tensor& input,
@@ -211,6 +210,5 @@ Tensor& XPUNativeFunctions::adaptive_max_pool2d_backward_out(
       grad_output, input, indices, grad_input);
   return grad_input;
 }
-#endif
 
 } // namespace at

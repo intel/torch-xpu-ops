@@ -1,6 +1,13 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/ATen.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/AdaptivePooling.h>
+#include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
@@ -8,7 +15,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t>
-struct AdaptiveAvgPool2dKernelFunctor {
+struct AdaptiveMaxPool2dKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto desc = cfg_.get_item_desc(item);
 
@@ -18,7 +25,6 @@ struct AdaptiveAvgPool2dKernelFunctor {
 
       int64_t o_lid = desc.glb_problem;
       int64_t ob = o_lid / ostrideB_;
-
       int64_t op = (o_lid / ostrideP_) % sizeP_;
       int64_t oh = (o_lid / ostrideH_) % osizeH_;
       int64_t ow = o_lid % osizeW_;
@@ -47,7 +53,7 @@ struct AdaptiveAvgPool2dKernelFunctor {
     } while (cfg_.next(item, desc));
   }
 
-  AdaptiveAvgPool2dKernelFunctor(
+  AdaptiveMaxPool2dKernelFunctor(
       const scalar_t* input,
       scalar_t* output,
       index_t* indices,
@@ -114,7 +120,7 @@ void launch_adaptive_max_pool2d_kernel(
     int64_t istrideP,
     int64_t istrideH,
     int64_t istrideW) {
-  using KernelClass = AdaptiveAvgPool2dKernelFunctor<scalar_t, index_t>;
+  using KernelClass = AdaptiveMaxPool2dKernelFunctor<scalar_t, index_t>;
 
   int64_t output_size = batch * plane * osizeH * osizeW;
   BatchKernelConfig cfg = {
@@ -228,10 +234,155 @@ void adaptive_max_pool2d_kernel(
   }
 }
 
+template <typename scalar_t, typename index_t>
+struct AdaptiveMaxPool2dBackwardKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto desc = cfg_.get_item_desc(item);
+
+    do {
+      if (desc.glb_problem >= cfg_.problem_)
+        break;
+
+      int64_t o_lid = desc.glb_problem;
+      int64_t ob = o_lid / ostrideB_;
+      int64_t op = (o_lid / ostrideP_) % sizeP_;
+      int64_t o_off = o_lid;
+      int64_t i_off = ob * istrideB_ + op * istrideP_;
+
+      index_t idx = indices_[o_off];
+      auto target = sycl_global_ptr<scalar_t>(grad_input_ + i_off + idx);
+      atomicAdd(target, grad_output_[o_off]);
+    } while (cfg_.next(item, desc));
+  }
+
+  AdaptiveMaxPool2dBackwardKernelFunctor(
+      const scalar_t* grad_output,
+      const index_t* indices,
+      scalar_t* grad_input,
+      int64_t istrideB,
+      int64_t istrideP,
+      int64_t ostrideB,
+      int64_t ostrideP,
+      int64_t sizeP,
+      BatchKernelConfig cfg)
+      : grad_output_(grad_output),
+        indices_(indices),
+        grad_input_(grad_input),
+        istrideB_(istrideB),
+        istrideP_(istrideP),
+        ostrideB_(ostrideB),
+        ostrideP_(ostrideP),
+        sizeP_(sizeP),
+        cfg_(cfg) {}
+
+ private:
+  const scalar_t* grad_output_;
+  const index_t* indices_;
+  scalar_t* grad_input_;
+  int64_t istrideB_;
+  int64_t istrideP_;
+  int64_t ostrideB_;
+  int64_t ostrideP_;
+  int64_t sizeP_;
+  BatchKernelConfig cfg_;
+};
+
+template <typename scalar_t, typename index_t>
+void launch_adaptive_max_pool2d_backward_kernel(
+    const scalar_t* grad_output,
+    const index_t* indices,
+    scalar_t* grad_input,
+    int64_t osize,
+    int64_t istrideB,
+    int64_t istrideP,
+    int64_t ostrideB,
+    int64_t ostrideP,
+    int64_t sizeP) {
+  using KernelClass = AdaptiveMaxPool2dBackwardKernelFunctor<scalar_t, index_t>;
+
+  BatchKernelConfig cfg = {
+      1, osize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+
+  cfg.build<KernelClass>();
+
+  auto kfn = KernelClass(
+      grad_output,
+      indices,
+      grad_input,
+      istrideB,
+      istrideP,
+      ostrideB,
+      ostrideP,
+      sizeP,
+      cfg);
+
+  sycl_kernel_submit(
+      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+}
+
 void adaptive_max_pool2d_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     const Tensor& indices,
-    Tensor& grad_input) {}
+    Tensor& grad_input) {
+  globalContext().alertNotDeterministic("adaptive_max_pool2d_backward_xpu");
+
+  const at::Tensor grad_output_ = grad_output.contiguous();
+  const at::Tensor indices_ = indices.contiguous();
+  const at::Tensor grad_input_c = grad_input.is_contiguous()
+      ? grad_input
+      : at::empty(grad_input.sizes(), grad_input.options());
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      input.scalar_type(),
+      "adaptive_max_pool2d_backward_xpu",
+      [&] {
+        scalar_t* grad_input_data = grad_input_c.mutable_data_ptr<scalar_t>();
+        const scalar_t* grad_output_data =
+            grad_output_.const_data_ptr<scalar_t>();
+        const int64_t* indices_data = indices_.const_data_ptr<int64_t>();
+
+        grad_input_c.zero_();
+
+        int64_t istrideB;
+        int64_t istrideP;
+        int64_t ostrideB;
+        int64_t ostrideP;
+        int64_t sizeP;
+        if (input.ndimension() == 3) {
+          istrideP = input.size(1) * input.size(2);
+          istrideB = istrideP * input.size(0);
+          ostrideP = grad_output_.size(1) * grad_output_.size(2);
+          ostrideB = ostrideP * grad_output_.size(0);
+          sizeP = grad_output_.size(0);
+        } else {
+          istrideP = input.size(2) * input.size(3);
+          istrideB = istrideP * input.size(1);
+          ostrideP = grad_output_.size(2) * grad_output_.size(3);
+          ostrideB = ostrideP * grad_output_.size(1);
+          sizeP = grad_output_.size(1);
+        }
+
+        launch_adaptive_max_pool2d_backward_kernel(
+            grad_output_data,
+            indices_data,
+            grad_input_data,
+            grad_output.numel(),
+            istrideB,
+            istrideP,
+            ostrideB,
+            ostrideP,
+            sizeP);
+      });
+
+  if (!grad_input.is_contiguous()) {
+    grad_input.copy_(grad_input_c);
+  }
+}
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
