@@ -564,4 +564,28 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor& XPUNativeFunctions::nan_to_num_out(
+    const Tensor& self,
+    std::optional<double> nan,
+    std::optional<double> pos_inf,
+    std::optional<double> neg_inf,
+    Tensor& result) {
+  TORCH_CHECK(
+      self.scalar_type() == result.scalar_type(),
+      "nan_to_num: dtype of out: ",
+      result.scalar_type(),
+      " should be same as input: ",
+      self.scalar_type());
+
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/true)) {
+    at::native::resize_output(result, self.sizes());
+    result.copy_(self);
+    return result;
+  }
+
+  auto iter = TensorIterator::unary_op(result, self);
+  native::xpu::nan_to_num_kernel(iter, nan, pos_inf, neg_inf);
+  return result;
+}
+
 } // namespace at

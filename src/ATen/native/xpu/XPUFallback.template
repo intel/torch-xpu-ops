@@ -286,7 +286,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nanmedian",
     "nanmedian.dim_values",
     "nansum",
-    "nan_to_num.out",
     "nextafter.out",
     "norm.out",
     "ormqr",
