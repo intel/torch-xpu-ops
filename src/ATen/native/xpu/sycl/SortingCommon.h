@@ -85,6 +85,50 @@ struct KeyTraits<uint8_t> {
   }
 };
 
+// template <>
+// struct KeyTraits<uint16_t> {
+//   using Type = uint16_t;
+//   using SrcType = uint16_t;
+//   static inline Type convert(SrcType v) {
+//     return v;
+//   }
+//   static inline SrcType deconvert(Type v) {
+//     return v;
+//   }
+//   static inline int endbit() {
+//     return sizeof(Type) << 3;
+//   }
+// };
+
+// template <>
+// struct KeyTraits<uint32_t> {
+//   using Type = uint32_t;
+//   using SrcType = uint32_t;
+//   static inline Type convert(SrcType v) {
+//     return v;
+//   }
+//   static inline SrcType deconvert(Type v) {
+//     return v;
+//   }
+//   static inline int endbit() {
+//     return sizeof(Type) << 3;
+//   }
+// };
+
+// template <>
+// struct KeyTraits<uint64_t> {
+//   using Type = uint64_t;
+//   using SrcType = uint64_t;
+//   static inline Type convert(SrcType v) {
+//     return v;
+//   }
+//   static inline SrcType deconvert(Type v) {
+//     return v;
+//   }
+//   static inline int endbit() {
+//     return sizeof(Type) << 3;
+//   }
+// };
 template <>
 struct KeyTraits<int8_t> {
   using Type = uint8_t;

@@ -805,7 +805,12 @@ skip_list = (
     # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
-    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64"
+    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
+
+    #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
+    #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
+    #XPU supports bfloat16, CUDA doesn't support it.
+    "test_dtypes_unique_consecutive_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 

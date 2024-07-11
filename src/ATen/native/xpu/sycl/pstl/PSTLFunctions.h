@@ -1422,4 +1422,26 @@ void sort(
       in_key, out_key, nullptr, out_val, sort_sz, descending);
 }
 
+template <class T, class ForwardIt>
+struct IotaKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    first[item_id] = value + static_cast<T>(item_id);
+  }
+  IotaKernelFunctor(ForwardIt first_, T value_)
+      : first(first_), value(value_) {}
+
+ private:
+  ForwardIt first;
+  T value;
+};
+
+template <class T, class ForwardIt>
+static inline void iota(ForwardIt first, ForwardIt last, T value) {
+  RECORD_FUNCTION("iota_xpu", {});
+  const auto N = std::distance(first, last);
+
+  IotaKernelFunctor<T, ForwardIt> kfn(first, value);
+  sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
+}
+
 } // namespace at::native::xpu::pstl

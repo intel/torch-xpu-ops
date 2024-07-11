@@ -149,6 +149,7 @@ _xpu_computation_op_list = [
     "_batch_norm_with_update",
     "bincount",
     "renorm",
+    "unique_consecutive",
 ]
 
 

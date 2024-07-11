@@ -478,3 +478,8 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - unique_dim
+  - unique_dim_consecutive
+  - unique_consecutive
+  - _unique
+  - _unique2
