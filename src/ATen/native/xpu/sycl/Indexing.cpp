@@ -493,19 +493,21 @@ void index_fill_kernel(
             getTensorInfo<scalar_t, int64_t>(self_);
         int new_indexing_dim = dst_info.collapseDims(dim);
 
-        auto cfg = IndexKernelConfig<
+        using IdxConfig = IndexKernelConfig<
             decltype(src_info),
             decltype(dst_info),
             decltype(index_info),
-            IndexFillScalarFunctor<scalar_t>>::
-            make_config(
-                src_info,
-                dst_info,
-                index_info,
-                source.to<scalar_t>(),
-                new_indexing_dim,
-                true,
-                IndexFillScalarFunctor<scalar_t>());
+            IndexFillScalarFunctor<scalar_t>>;
+        using KernelClass = IndexKernel<IdxConfig, false, false>;
+
+        auto cfg = IdxConfig::template make_config<KernelClass>(
+            src_info,
+            dst_info,
+            index_info,
+            source.to<scalar_t>(),
+            new_indexing_dim,
+            true,
+            IndexFillScalarFunctor<scalar_t>());
         launch_index_kernel(cfg);
       });
 }

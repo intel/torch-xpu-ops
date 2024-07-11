@@ -360,22 +360,6 @@ Tensor& XPUNativeFunctions::index_fill_(
   return self.index_fill_(dim, index, source.item());
 }
 
-Tensor XPUNativeFunctions::index_fill(
-    const Tensor& self,
-    int64_t dim,
-    const Tensor& index,
-    const Scalar& source) {
-  return self.index_fill_(dim, index, source);
-}
-
-Tensor XPUNativeFunctions::index_fill(
-    const Tensor& self,
-    int64_t dim,
-    const Tensor& index,
-    const Tensor& source) {
-  return self.index_fill_(dim, index, source);
-}
-
 void check_indices_on_cpu_or_selfdevice(
     const Tensor& self,
     const c10::List<c10::optional<Tensor>>& indices) {
