@@ -252,10 +252,6 @@ void grid_sampler_2d_forward_template(
     const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode,
     bool align_corners) {
-  auto& queue = getCurrentSYCLQueue();
-  const auto wgroup_size = syclMaxWorkGroupSize();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
-
   index_t C = input.sizes[1];
   index_t inp_H = input.sizes[2];
   index_t inp_W = input.sizes[3];
@@ -299,6 +295,11 @@ void grid_sampler_2d_forward_template(
       out_sC,
       out_sH,
       out_sW);
+
+  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
+  auto& queue = getCurrentSYCLQueue();
+
   sycl_kernel_submit(
       sycl::range<1>(ngroups * wgroup_size),
       sycl::range<1>(wgroup_size),
@@ -700,10 +701,6 @@ void grid_sampler_2d_backward_template(
     const GridSamplerPadding padding_mode,
     bool align_corners,
     const bool input_requires_grad) {
-  auto& queue = getCurrentSYCLQueue();
-  const auto wgroup_size = syclMaxWorkGroupSize();
-  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
-
   index_t C = input.sizes[1];
   index_t inp_H = input.sizes[2];
   index_t inp_W = input.sizes[3];
@@ -768,6 +765,11 @@ void grid_sampler_2d_backward_template(
       gInp_sH,
       gInp_sW,
       gGrid_sW);
+
+  const auto wgroup_size = syclMaxWorkGroupSize(kfn);
+  const auto ngroups = (nthreads + wgroup_size - 1) / wgroup_size;
+  auto& queue = getCurrentSYCLQueue();
+
   sycl_kernel_submit(
       sycl::range<1>(ngroups * wgroup_size),
       sycl::range<1>(wgroup_size),

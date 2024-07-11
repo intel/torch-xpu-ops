@@ -1380,6 +1380,11 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/461
     "test_index_put_src_datatype_xpu_float8_e5m2",
     "test_index_put_src_datatype_xpu_float8_e4m3fn",
+
+    # Regression after PyTorch update
+    # http://github.com/intel/torch-xpu-ops/issues/549
+    # IndexError: tensors used as indices must be long, byte or bool tensors.
+    "test_index_ind_dtype_xpu",
 )
 res += launch_test("test_indexing_xpu.py", skip_list)
 
@@ -2995,23 +3000,21 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # Regression after PyTorch uplift
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # AssertionError: 3 != 3.0
+    "test_symnode_hashing",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
-
-
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-
 res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
-
-
 res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)

@@ -257,9 +257,9 @@ void group_norm_kernel_impl(
 
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
-  const int64_t wg_size = D * HxW < get_group_reduce_group_size()
+  const int64_t wg_size = D * HxW < get_group_reduce_group_size(simd)
       ? simd
-      : get_group_reduce_group_size();
+      : get_group_reduce_group_size(simd);
   int64_t nwg = N * G;
   auto global_range = sycl::range<1>(nwg * wg_size);
   auto local_range = sycl::range<1>(wg_size);
@@ -384,8 +384,10 @@ struct Compute1dBackwardFusedParamsFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    ds_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+    db_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
   }
 
   Compute1dBackwardFusedParamsFunctor(
@@ -664,9 +666,9 @@ void group_norm_1d_backward(
     T_ACC* c2_data = c2.mutable_data_ptr<T_ACC>();
     T_ACC* c3_data = c3.mutable_data_ptr<T_ACC>();
 
-    const int64_t wg_size = (C / G) < get_group_reduce_group_size()
+    const int64_t wg_size = (C / G) < get_group_reduce_group_size(simd)
         ? simd
-        : get_group_reduce_group_size();
+        : get_group_reduce_group_size(simd);
     auto global_range = sycl::range<2>(G, N * wg_size);
     auto local_range = sycl::range<2>(1, wg_size);
     group_norm_kernel_simd_choice_and_launch<
@@ -717,7 +719,7 @@ void group_norm_1d_backward(
     T* dgamma_data = dgamma.defined() ? dgamma.mutable_data_ptr<T>() : nullptr;
     T* dbeta_data = dbeta.defined() ? dbeta.mutable_data_ptr<T>() : nullptr;
     if (N <= 128) {
-      const int64_t wg_size = get_group_reduce_group_size();
+      const int64_t wg_size = get_group_reduce_group_size(simd);
       const int64_t B = (C + wg_size - 1) / wg_size;
       auto caller = GammaBeta1dBackwardSmallKernel<T>(
           N,
@@ -784,8 +786,10 @@ struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    ds_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+    db_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
   }
 
   ComputeInternalGradientsFunctor(
@@ -857,8 +861,10 @@ struct ComputeBackwardFusedParamsFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
-    db_shared_ = sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(), cgh);
+    ds_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+    db_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
   }
 
   ComputeBackwardFusedParamsFunctor(
@@ -1144,9 +1150,9 @@ void group_norm_backward_kernel_impl(
   auto& queue = getCurrentSYCLQueue();
 
   int64_t simd = syclMaxSubGroupSize();
-  int64_t wg_size = HxW < get_group_reduce_group_size()
+  int64_t wg_size = HxW < get_group_reduce_group_size(simd)
       ? simd
-      : get_group_reduce_group_size();
+      : get_group_reduce_group_size(simd);
   group_norm_kernel_simd_choice_and_launch<
       ComputeInternalGradientsFunctor<T, SIMD16>,
       ComputeInternalGradientsFunctor<T, SIMD32>>(
@@ -1177,9 +1183,9 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
     }
 
-    wg_size = (C / G) < get_group_reduce_group_size()
+    wg_size = (C / G) < get_group_reduce_group_size(simd)
         ? simd
-        : get_group_reduce_group_size();
+        : get_group_reduce_group_size(simd);
     group_norm_kernel_simd_choice_and_launch<
         ComputeBackwardFusedParamsFunctor<T, SIMD16>,
         ComputeBackwardFusedParamsFunctor<T, SIMD32>>(
