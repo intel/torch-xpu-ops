@@ -143,7 +143,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
   auto index_options = self.options().dtype(kLong);
   auto self_c = *(self.expect_contiguous());
   Tensor output = self_c.clone().reshape(-1);
-
+  int64_t num_output = output.numel();
   Tensor sorted_indices = at::empty({num_inp}, index_options);
   Tensor inverse_indices = at::empty({num_inp}, index_options);
   Tensor counts = at::empty({num_inp}, index_options);
@@ -176,7 +176,6 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
   std::tie(counts, num_out) = compute_unique<scalar_t, int64_t>(
       output_data, num_inp, return_counts, index_options, equal_cmp_functor);
   output.resize_(num_out);
-
   if (return_inverse) {
     inverse_indices.resize_(self.sizes());
   }
@@ -189,46 +188,54 @@ std::tuple<Tensor, Tensor, Tensor> unique_consecutive_kernel(
     const bool return_inverse,
     const bool return_counts,
     c10::optional<int64_t> dim) {
-  return AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  return AT_DISPATCH_V2(
       self.scalar_type(),
       "unique_consecutive",
-      [&] {
+      AT_WRAP([&] {
         return unique_template<scalar_t>(
             self, true, return_inverse, return_counts);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kHalf,
+      kBFloat16,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
-std::tuple<Tensor, Tensor, Tensor> _unique_kernel(
+std::tuple<Tensor, Tensor> _unique_kernel(
     const Tensor& self,
     const bool return_inverse) {
-  return AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  return AT_DISPATCH_V2(
       self.scalar_type(),
       "_unique",
-      [&] {
-        return unique_template<scalar_t>(self, false, return_inverse, false);
-      });
+      AT_WRAP([&] {
+        auto [output, inverse, _] =
+            unique_template<scalar_t>(self, false, return_inverse, false);
+        return std::make_tuple(output, inverse);
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kHalf,
+      kBFloat16,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 std::tuple<Tensor, Tensor, Tensor> _unique2_kernel(
     const Tensor& self,
     const bool return_inverse,
     const bool return_counts) {
-  return AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  return AT_DISPATCH_V2(
       self.scalar_type(),
       "_unique2",
-      [&] {
+      AT_WRAP([&] {
         return unique_template<scalar_t>(
             self, false, return_inverse, return_counts);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kHalf,
+      kBFloat16,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 template <typename scalar_t>
@@ -372,16 +379,17 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_consecutive_kernel(
     const int64_t dim,
     const bool return_inverse,
     const bool return_counts) {
-  return AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  return AT_DISPATCH_V2(
       self.scalar_type(),
       "unique_dim_consecutive",
-      [&] {
+      AT_WRAP([&] {
         return unique_dim_template<scalar_t>(
             self, dim, true, return_inverse, return_counts);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kHalf,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 std::tuple<Tensor, Tensor, Tensor> unique_dim_kernel(
@@ -389,16 +397,18 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_kernel(
     const int64_t dim,
     const bool return_inverse,
     const bool return_counts) {
-  return AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  return AT_DISPATCH_V2(
       self.scalar_type(),
       "unique_dim",
-      [&] {
+      AT_WRAP([&] {
         return unique_dim_template<scalar_t>(
             self, dim, false, return_inverse, return_counts);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBool,
+      kHalf,
+      kBFloat16,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 } // namespace at::native::xpu
