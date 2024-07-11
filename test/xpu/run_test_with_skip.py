@@ -1380,6 +1380,11 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/461
     "test_index_put_src_datatype_xpu_float8_e5m2",
     "test_index_put_src_datatype_xpu_float8_e4m3fn",
+
+    # Regression after PyTorch update
+    # http://github.com/intel/torch-xpu-ops/issues/549
+    # IndexError: tensors used as indices must be long, byte or bool tensors.
+    "test_index_ind_dtype_xpu",
 )
 res += launch_test("test_indexing_xpu.py", skip_list)
 
