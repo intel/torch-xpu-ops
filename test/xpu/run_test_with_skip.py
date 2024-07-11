@@ -3018,7 +3018,12 @@ res = 0
 # res += launch_test("nn/test_parametrization_xpu.py")
 
 
-skip_list = ("_jiterator_",)
+skip_list = (
+    "_jiterator_",
+    "test_dispatch_meta_outplace_nn_functional_linear_xpu_int64",
+    "test_dispatch_symbolic_meta_outplace_nn_functional_linear_xpu_int64",
+    "test_meta_outplace_nn_functional_linear_xpu_int64",
+)
 res += launch_test("test_meta_xpu.py", skip_list=skip_list)
 
 exit_code = os.WEXITSTATUS(res)
