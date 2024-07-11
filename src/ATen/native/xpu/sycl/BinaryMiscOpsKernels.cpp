@@ -26,7 +26,7 @@ void mse_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct HuberFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    auto z = ::abs(a - b);
+    auto z = std::abs(a - b);
     return z < delta_val_ ? scalar_t(0.5) * z * z
                           : delta_val_ * (z - scalar_t(0.5) * delta_val_);
   }
