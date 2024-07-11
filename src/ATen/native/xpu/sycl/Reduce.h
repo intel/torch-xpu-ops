@@ -237,9 +237,9 @@ struct ReduceConfig {
   int input_vec_size = 1;
   int output_vec_size = 1;
 
-  template <typename T>
+  template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize();
+    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
     auto max_sg_sz = syclMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
@@ -1429,7 +1429,22 @@ inline void gpu_reduce_kernel(
   }
 
   // Adjust group_width and group_height
-  config.set_group_dimension<scalar_t>(dim0, dim1);
+  // Mapping to launch_reduce_kernel
+  using R = ReduceOp<scalar_t, ops_t, uint32_t, out_scalar_t, vt0>;
+  switch (config.output_vec_size) {
+    case 4: {
+      config.set_group_dimension<scalar_t, ReduceKernel<4, R>>(dim0, dim1);
+      break;
+    }
+    case 2: {
+      config.set_group_dimension<scalar_t, ReduceKernel<2, R>>(dim0, dim1);
+      break;
+    }
+    default: {
+      config.set_group_dimension<scalar_t, ReduceKernel<1, R>>(dim0, dim1);
+      break;
+    }
+  }
 
   int group_width = config.group_width;
   int group_height = config.group_height;
@@ -1511,20 +1526,20 @@ inline void gpu_reduce_kernel(
   AT_ASSERT(can_use_32bit_indexing);
   auto output_calc = make_output_calculator<uint32_t>(iter);
   auto input_calc = make_input_calculator<uint32_t>(iter);
-  auto reduce = ReduceOp<scalar_t, ops_t, uint32_t, out_scalar_t, vt0>(
-      ops,
-      config,
-      input_calc,
-      output_calc,
-      in_data,
-      out_data,
-      out_data_extra,
-      acc_data,
-      buffer.defined() ? (void*)buffer.data_ptr() : nullptr,
-      buffer.defined() ? (int*)semaphores.data_ptr() : nullptr,
-      ident,
-      noutputs,
-      base_idx);
+  auto reduce =
+      R(ops,
+        config,
+        input_calc,
+        output_calc,
+        in_data,
+        out_data,
+        out_data_extra,
+        acc_data,
+        buffer.defined() ? (void*)buffer.data_ptr() : nullptr,
+        buffer.defined() ? (int*)semaphores.data_ptr() : nullptr,
+        ident,
+        noutputs,
+        base_idx);
   reduce.accumulate = iter.should_accumulate();
   reduce.final_output = iter.is_final_output();
 

@@ -228,15 +228,6 @@ void compute_grad_weight_bags(
     const Tensor& segment_offsets,
     int64_t num_of_segments,
     const Tensor& grad_weight_per_segment) {
-  constexpr int SYCL_MAX_SUB_GROUP_SIZE = 32;
-  int64_t work_group_size = syclMaxWorkGroupSize();
-
-  int64_t stride_warped =
-      CeilDiv(stride, SYCL_MAX_SUB_GROUP_SIZE) * SYCL_MAX_SUB_GROUP_SIZE;
-  int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
-  auto total_items = num_groups * group_size;
-
   bool per_sample_weight_defined = per_sample_weights.defined();
   bool count_defined = count.defined();
   int64_t per_sample_weights_stride =
@@ -258,10 +249,11 @@ void compute_grad_weight_bags(
                          // buffer.
   auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
 
-  auto global_range = sycl::range<1>((size_t)total_items);
-  auto local_range = sycl::range<1>((size_t)group_size);
+  int64_t max_sub_group_size = syclMaxSubGroupSize();
+  int64_t stride_warped =
+      CeilDiv(stride, max_sub_group_size) * max_sub_group_size;
 
-  auto caller = ComputeGradWeightBagsKernelFunctor<scalar_t, index_t>(
+  auto kfn = ComputeGradWeightBagsKernelFunctor<scalar_t, index_t>(
       numel,
       stride,
       mode_mean,
@@ -278,7 +270,15 @@ void compute_grad_weight_bags(
       bag_size_data,
       per_sample_weights_data,
       segment_offsets_data);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+
+  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t group_size = std::min(stride_warped, work_group_size);
+  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto total_items = num_groups * group_size;
+  auto global_range = sycl::range<1>((size_t)total_items);
+  auto local_range = sycl::range<1>((size_t)group_size);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 template <typename scalar_t, typename index_t>
@@ -358,14 +358,6 @@ void compute_grad_weight(
     const Tensor& segment_offsets,
     int64_t num_of_segments,
     const Tensor& grad_weight_per_segment) {
-  constexpr int SYCL_MAX_SUB_GROUP_SIZE = 32;
-  int64_t work_group_size = syclMaxWorkGroupSize();
-  int64_t stride_warped =
-      CeilDiv(stride, SYCL_MAX_SUB_GROUP_SIZE) * SYCL_MAX_SUB_GROUP_SIZE;
-  int64_t group_size = std::min(stride_warped, work_group_size);
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
-  auto total_items = num_groups * group_size;
-
   bool count_defined = count.defined();
 
   auto grad_weight_per_segment_data =
@@ -377,10 +369,11 @@ void compute_grad_weight(
       : indices_data; // use the indices_data handler as the dummy buffer.
   auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
 
-  auto global_range = sycl::range<1>((size_t)total_items);
-  auto local_range = sycl::range<1>((size_t)group_size);
+  int64_t max_sub_group_size = syclMaxSubGroupSize();
+  int64_t stride_warped =
+      CeilDiv(stride, max_sub_group_size) * max_sub_group_size;
 
-  auto caller = ComputeGradWeightKernelFunctor<scalar_t, index_t>(
+  auto kfn = ComputeGradWeightKernelFunctor<scalar_t, index_t>(
       numel,
       stride,
       num_of_segments,
@@ -391,7 +384,15 @@ void compute_grad_weight(
       grad_output_data,
       count_data,
       segment_offsets_data);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+
+  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t group_size = std::min(stride_warped, work_group_size);
+  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto total_items = num_groups * group_size;
+  auto global_range = sycl::range<1>((size_t)total_items);
+  auto local_range = sycl::range<1>((size_t)group_size);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 template <typename scalar_t, typename index_t>
@@ -449,6 +450,10 @@ struct SumAndScatterKernelFunctor {
         grad_weight_per_segment_data_(grad_weight_per_segment_data),
         segment_sizes_offsets_data_(segment_sizes_offsets_data) {}
 
+  void set_stride_warped(int64_t stride_warped) {
+    stride_warped_ = stride_warped;
+  }
+
  private:
   int64_t stride_;
   int64_t num_of_segments_;
@@ -473,12 +478,6 @@ void sum_and_scatter(
     const Tensor& segment_sizes_offsets,
     int64_t num_of_partial_segments,
     const int64_t padding_idx) {
-  int64_t work_group_size = syclMaxWorkGroupSize();
-  int64_t stride_warped = CeilDiv(stride, work_group_size) * work_group_size;
-  int64_t group_size = std::min(stride_warped, syclMaxWorkGroupSize());
-  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
-  auto total_items = num_groups * group_size;
-
   auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
   auto input_data = input.data_ptr<index_t>();
   auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
@@ -486,20 +485,29 @@ void sum_and_scatter(
       grad_weight_per_segment.data_ptr<acc_type<scalar_t, true>>();
   auto segment_sizes_offsets_data = segment_sizes_offsets.data_ptr<index_t>();
 
-  auto global_range = sycl::range<1>((size_t)total_items);
-  auto local_range = sycl::range<1>((size_t)group_size);
-  auto caller = SumAndScatterKernelFunctor<scalar_t, index_t>(
+  auto kfn = SumAndScatterKernelFunctor<scalar_t, index_t>(
       stride,
       num_of_segments,
       num_of_partial_segments,
       padding_idx,
-      stride_warped,
+      /* stride_warped */ 0,
       grad_weight_data,
       input_data,
       segment_offsets_data,
       grad_weight_per_segment_data,
       segment_sizes_offsets_data);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+
+  int64_t work_group_size = syclMaxWorkGroupSize(kfn);
+  int64_t stride_warped = CeilDiv(stride, work_group_size) * work_group_size;
+  kfn.set_stride_warped(stride_warped);
+
+  int64_t group_size = std::min(stride_warped, work_group_size);
+  auto num_groups = CeilDiv(num_of_segments * stride_warped, group_size);
+  auto total_items = num_groups * group_size;
+  auto global_range = sycl::range<1>((size_t)total_items);
+  auto local_range = sycl::range<1>((size_t)group_size);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 struct EmbeddingBackwardDeterministicKernelCopyIfFunctor {
