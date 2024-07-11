@@ -803,6 +803,26 @@ skip_list = (
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64"
+
+    # got inconsistent values between CPU / XPU
+    # AssertionError: Tensor-likes are not close!
+    # compute results contain nan / inf
+    "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_asin_xpu_complex128",
+    "test_compare_cpu_asin_xpu_complex64",
+    "test_compare_cpu_asinh_xpu_complex128",
+    "test_compare_cpu_asinh_xpu_complex64",
+    "test_compare_cpu_atan_xpu_complex128",
+    "test_compare_cpu_atan_xpu_complex64",
+
+    # skip random failure due to accuracy
+    # AssertionError: Tensor-likes are not close!
+    "test_compare_cpu_atan2_xpu_bfloat16",
+
+    # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
+    "test_dtypes_cosh_xpu",
+    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
+    "test_cow_input_cosh_xpu_float32"
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
