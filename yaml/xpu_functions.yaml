@@ -10,6 +10,8 @@ supported:
   - add_.Scalar
   - add.Scalar_out
   - _adaptive_avg_pool2d_backward
+  - adaptive_avg_pool2d.out
+  - _adaptive_avg_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
@@ -65,6 +67,12 @@ supported:
   - le.Tensor
   - le.Tensor_out
   - le_.Tensor
+  - lerp.Tensor
+  - lerp.Tensor_out
+  - lerp_.Tensor
+  - lerp.Scalar
+  - lerp.Scalar_out
+  - lerp_.Scalar
   - gt.Scalar
   - gt.Scalar_out
   - gt_.Scalar
@@ -182,6 +190,10 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
+  - _efficientzerotensor
+  - complex.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -414,6 +426,10 @@ supported:
   - _batch_norm_with_update
   - _batch_norm_with_update.out
   - batch_norm_backward
+  - upsample_bilinear2d
+  - upsample_bilinear2d.out
+  - upsample_bilinear2d_backward
+  - upsample_bilinear2d_backward.grad_input
   - _upsample_nearest_exact1d
   - _upsample_nearest_exact1d.out
   - upsample_nearest1d
@@ -441,6 +457,15 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
+  - trace
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
@@ -474,9 +499,17 @@ supported:
   - avg_pool2d.out
   - avg_pool2d_backward
   - avg_pool2d_backward.grad_input
+  - addcdiv.out
+  - addcdiv
+  - addcdiv_
   - addcmul.out
   - addcmul
   - addcmul_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - conj_physical.out
+  - conj_physical_
+  - ceil
+  - ceil_
+  - ceil.out

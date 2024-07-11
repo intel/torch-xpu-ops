@@ -15,6 +15,9 @@ namespace xpu {
 using namespace at::native::memory;
 using namespace at::xpu;
 
+// syclDeviceMaxWorkGroup is allowed for launching Norm kernels, only if SIMD
+// is 32. Related kernels include FusedNormKernelFunctor and
+// RowwiseMomentsKernelFunctor. Don't change SIMD, unless refactor the kernels.
 constexpr int SIMD = 32;
 
 template <
@@ -277,9 +280,8 @@ class NormConfig {
   // get resource size for Reduce problem [batch_size, problem_size]
   // the reduce is performed on problem_size dimension
   void get_workgroup_size() {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int max_workgroup_size = syclMaxWorkGroupSize(dev_id);
-    int total_resource = syclMaxWorkItemsPerTile(dev_id);
+    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
+    int total_resource = syclMaxWorkItemsPerTile();
     workgroup_num = total_resource / max_workgroup_size;
     int max_workgroup_num_foreach = 1;
     workgroup_size = max_workgroup_size;
@@ -311,9 +313,8 @@ class NormConfig {
 
   void get_workgroup_size_row() {
     // enlarge the occupancy, compute the least workgroup_num
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int max_workgroup_size = syclMaxWorkGroupSize(dev_id);
-    int total_resource = syclMaxWorkItemsPerTile(dev_id);
+    int max_workgroup_size = syclDeviceMaxWorkGroupSize();
+    int total_resource = syclMaxWorkItemsPerTile();
     workgroup_num = total_resource / max_workgroup_size;
 
     int max_block_row = max_workgroup_size / SIMD;
@@ -1048,18 +1049,21 @@ template <
     bool one_moment = false>
 void launch_norm_eltwise_update_kernel(Norm<scalar_t, mean_t, weight_t>& norm) {
   using vec_t = aligned_vector<scalar_t, vec_size>;
-  int total_threads = syclMaxWorkItemsPerTile();
-  auto workgroup_size = syclMaxWorkGroupSize();
-  index_t loops_end = (norm.numel() + vec_size - 1) / vec_size;
-
-  auto kfn = NormEltwiseUpdateKernelFunctor<
+  using KernelClass = NormEltwiseUpdateKernelFunctor<
       scalar_t,
       mean_t,
       weight_t,
       index_t,
       vec_size,
       Norm,
-      vec_t>(norm, loops_end, total_threads);
+      vec_t>;
+
+  int total_threads = syclMaxWorkItemsPerTile();
+  auto workgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  index_t loops_end = (norm.numel() + vec_size - 1) / vec_size;
+
+  auto kfn = KernelClass(norm, loops_end, total_threads);
+
   sycl_kernel_submit(total_threads, workgroup_size, getCurrentSYCLQueue(), kfn);
 }
 
