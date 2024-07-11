@@ -441,7 +441,8 @@ void multinomial_kernel(
       "multinomial_kernel_xpu",
       [&] {
         using accscalar_t = acc_type<scalar_t, true>;
-        int maxThreads = syclMaxWorkGroupSize();
+        using KernelClass = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>;
+        int maxThreads = syclMaxWorkGroupSize<KernelClass>();
         int maxShared = syclLocalMemSize();
 
         int SubGroupSize = syclMinSubGroupSize();
@@ -455,7 +456,7 @@ void multinomial_kernel(
           at::native::uniform_(sampled, 0.0, 1.0, generator);
           int group_size = requiredThreads;
           int group_range = numDist;
-          auto kfn = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>(
+          auto kfn = KernelClass(
               result.mutable_data_ptr<int64_t>(),
               numDist,
               numCategories,
