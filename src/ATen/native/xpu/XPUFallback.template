@@ -299,8 +299,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "reflection_pad1d_backward.grad_input",
-    "reflection_pad1d.out",
     "renorm.out",
     "repeat_interleave.Tensor",
     "replication_pad1d_backward.grad_input",
@@ -380,8 +378,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "vdot",
     "xlogy.OutTensor",
     "_upsample_bicubic2d_aa.out",
-    "reflection_pad3d.out",
-    "reflection_pad3d_backward.grad_input",
     "replication_pad3d.out",
     "replication_pad3d_backward",
   };
