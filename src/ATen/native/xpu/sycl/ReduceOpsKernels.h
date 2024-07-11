@@ -14,6 +14,8 @@ void mean_kernel(TensorIterator& iter);
 
 void sum_kernel(TensorIterator& iter);
 
+void nansum_kernel(TensorIterator& iter);
+
 void std_var_kernel(TensorIterator& iter, double correction, bool take_sqrt);
 
 } // namespace at::native::xpu

@@ -267,6 +267,8 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - nansum
+  - nansum.out
   - mean.out
   - mean.dim
   - std.correction

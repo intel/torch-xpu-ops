@@ -98,6 +98,7 @@ _xpu_computation_op_list = [
     "sin",
     "sqrt",
     "sum",
+    "nansum",
     "amin",
     "amax",
     "std",
