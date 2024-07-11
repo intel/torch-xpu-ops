@@ -91,7 +91,7 @@ void launch_cross_kernel(
         auto out = static_cast<scalar_t*>(iter.data_ptr(0));
         auto x1 = static_cast<const scalar_t*>(iter.data_ptr(1));
         auto x2 = static_cast<const scalar_t*>(iter.data_ptr(2));
-        CrossKernelFunctor<scalar_t> kfn(
+        KernelClass kfn(
             ostride,
             x1_stride,
             x2_stride,
