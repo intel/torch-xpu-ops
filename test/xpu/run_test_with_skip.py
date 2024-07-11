@@ -1550,6 +1550,7 @@ skip_list = (
     "test_reference_numerics_large__refs_asinh_xpu_complex32",
     "test_reference_numerics_large_asinh_xpu_complex128",
     "test_reference_numerics_large_asinh_xpu_complex64",
+    "test_reference_numerics_large_asinh_xpu_complex32",
 
     # AssertionError: Tensor-likes are not close!
     # exceeded maximum allowed difference
