@@ -39,6 +39,7 @@ class BatchKernelConfig {
         problem_batch_(problem_batch),
         problem_along_x_(problem_along_x),
         policy_(policy_combine(policies)),
+        prefer_wg_size_(prefer_wg_size),
         problem_wg_range_(0),
         problem_glb_range_(0),
         problem_range_(0),
@@ -47,12 +48,15 @@ class BatchKernelConfig {
         glb_range_x_(0),
         glb_range_y_(0),
         wg_range_x_(0),
-        wg_range_y_(0) {
-    size_t wg_size = syclMaxWorkGroupSize();
+        wg_range_y_(0) {}
+
+  template <class KernelClass>
+  void build() {
+    size_t wg_size = syclMaxWorkGroupSize<KernelClass>();
     size_t sg_size = syclMaxSubGroupSize();
-    if (prefer_wg_size != 0 && prefer_wg_size % sg_size == 0 &&
-        prefer_wg_size < wg_size) {
-      wg_size = prefer_wg_size;
+    if (prefer_wg_size_ != 0 && prefer_wg_size_ % sg_size == 0 &&
+        prefer_wg_size_ < wg_size) {
+      wg_size = prefer_wg_size_;
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
@@ -263,6 +267,7 @@ class BatchKernelConfig {
   /* logical active batch */ int64_t problem_batch_;
   bool problem_along_x_;
   Policy policy_;
+  size_t prefer_wg_size_;
   int64_t problem_wg_range_;
   int64_t problem_glb_range_;
   size_t problem_range_;

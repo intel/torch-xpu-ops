@@ -106,6 +106,7 @@ class IndexKernelConfig : public BatchKernelConfig {
     return;
   }
 
+  template <class KernelClass>
   static IndexKernelConfig<SrcInfo, DstInfo, IdxInfo, FuncType> make_config(
       SrcInfo& src_info,
       DstInfo& dst_info,
@@ -154,7 +155,7 @@ class IndexKernelConfig : public BatchKernelConfig {
           problem_inner);
     }
 
-    return {
+    IndexKernelConfig<SrcInfo, DstInfo, IdxInfo, FuncType> cfg = {
         src_info,
         dst_info,
         index_info,
@@ -169,6 +170,9 @@ class IndexKernelConfig : public BatchKernelConfig {
         stride,
         problem_batch,
         problem_along_x};
+
+    cfg.template build<KernelClass>();
+    return cfg;
   }
 
  public:
@@ -512,11 +516,13 @@ void small_index_kernel(
     IntArrayRef non_index_size,
     IntArrayRef non_index_stride,
     const func_t f) {
+  using index_buf_type = char*;
+  using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
+
   auto numel = iter.numel();
   auto indices_size = iter.tensor(2).size(-1);
   auto& queue = getCurrentSYCLQueue();
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_group_num = syclMaxDSSNum(dev_id) * OVER_SUBSCRIBE_DSS_FACTOR;
+  int64_t max_group_num = syclMaxDSSNum() * OVER_SUBSCRIBE_DSS_FACTOR;
 
   auto total_index_iter = numel / indices_size;
   max_group_num = std::min(int64_t(total_index_iter / 2), max_group_num);
@@ -529,7 +535,7 @@ void small_index_kernel(
   auto group_numel = group_index_iter * indices_size;
   auto group_numel_tail = (group_index_iter - 1) * indices_size;
 
-  auto wgroup_size = syclMaxWorkGroupSize(dev_id);
+  auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
   wgroup_size = std::min(decltype(wgroup_size)(group_numel), wgroup_size);
   auto global_size = max_group_num * wgroup_size;
 
@@ -555,13 +561,12 @@ void small_index_kernel(
 
   auto out_data = (char*)iter.data_ptr(0);
   auto in_data = (char*)iter.data_ptr(1);
-  using index_buf_type = decltype((char*)iter.data_ptr(0));
   at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs;
   for (size_t i = 0; i < num_indices; i++) {
     index_ptrs[i] = (char*)iter.data_ptr(i + 2);
   }
 
-  SmallIndexKernelFunctor<func_t, index_buf_type> kfn(
+  KernelClass kfn(
       f,
       indices_size,
       group_num_tail,
@@ -741,16 +746,18 @@ void _index_kernel(
     }
   }
   if (small_index) {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int64_t max_group_num = syclMaxDSSNum(dev_id);
-    auto wgroup_size = syclMaxWorkGroupSize(dev_id);
+    using index_buf_type = char*;
+    using KernelClass = SmallIndexKernelFunctor<func_t, index_buf_type>;
+
+    int64_t max_group_num = syclMaxDSSNum();
+    auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
     auto indices_size = iter.tensor(2).size(-1);
     auto total_index_iter = numel / indices_size;
     auto local_index = numel / max_group_num;
 
     // the max_local_mem_size = 65536B (64KB)
     // TODO: Is this right?
-    auto max_local_mem_size = syclLocalMemSize(dev_id);
+    auto max_local_mem_size = syclLocalMemSize();
     auto indice_table_size = indices_size * sizeof(int64_t);
 
     // check whether the current case satisfying conditions 2,3,4
@@ -870,7 +877,11 @@ void launch_index_put_deterministic_kernel(
 
   // align with precision of CPU backend.
   using accscalar_t = scalar_t; /* acc_type<scalar_t>; */
-  IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t> kfn(
+  using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
+
+  cfg.template build<KernelClass>();
+
+  KernelClass kfn(
       sorted_indices,
       indices,
       value,
