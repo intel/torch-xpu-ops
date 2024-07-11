@@ -61,6 +61,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.mish",
     "index_add",
     "index_put",
     "index_select",
