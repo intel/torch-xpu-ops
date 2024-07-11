@@ -342,10 +342,6 @@ Tensor& XPUNativeFunctions::index_fill_(
 
   // Handle the case when `self` is 0-dim
   Tensor self_nonzero_dim = (self.dim() == 0) ? self.unsqueeze(-1) : self;
-
-  dim = maybe_wrap_dim(dim, self.dim());
-  TORCH_CHECK(index.dim() <= 1, "Index has to be a vector/scalar");
-  index_func_meta_impl(self, self, dim, index, self, "index_fill");
   native::xpu::index_fill_kernel(self, dim, index, source, self);
   return self;
 }
