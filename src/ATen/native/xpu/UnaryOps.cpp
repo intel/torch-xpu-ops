@@ -573,6 +573,9 @@ TensorIterator meta_floor(const Tensor& self, Tensor& out) {
 }
 
 Tensor XPUNativeFunctions::floor(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
   Tensor out;
   auto iter = meta_floor(self, out);
   native::xpu::floor_kernel(iter);
@@ -580,12 +583,19 @@ Tensor XPUNativeFunctions::floor(const Tensor& self) {
 }
 
 Tensor& XPUNativeFunctions::floor_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
   auto iter = meta_floor(self, self);
   native::xpu::floor_kernel(iter);
   return self;
 }
 
 Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
   auto iter = meta_floor(self, out);
   native::xpu::floor_kernel(iter);
   return out;
