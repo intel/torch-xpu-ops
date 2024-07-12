@@ -1396,4 +1396,8 @@ Tensor& XPUNativeFunctions::gather_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::count_nonzero(const Tensor& self, IntArrayRef dims) {
+  return (self != 0).sum(dims);
+}
+
 } // namespace at
