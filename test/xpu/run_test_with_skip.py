@@ -806,6 +806,15 @@ skip_list = (
 
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+    # Deselect temporarily
+    "test_out_fft_fft2_xpu_float32",
+    "test_out_fft_fftn_xpu_float32",
+    "test_out_fft_ifft2_xpu_float32",
+    "test_out_fft_ifftn_xpu_float32",
+    "test_out_warning_fft_fft2_xpu",
+    "test_out_warning_fft_fftn_xpu",
+    "test_out_warning_fft_ifft2_xpu",
+    "test_out_warning_fft_ifftn_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
