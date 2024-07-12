@@ -41,7 +41,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
+        source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
           cd audio && git checkout $TORCHAUDIO_COMMIT_ID
@@ -80,7 +80,7 @@ runs:
         source activate e2e_ci
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
+        source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
         rm -f ${{ github.workspace }}/summary_accuracy.log
         # check param
         function contains() {
@@ -198,7 +198,7 @@ runs:
         source activate e2e_ci
         cp .github/scripts/inductor_perf_summary.py ../pytorch
         cd ../pytorch
-        source /opt/intel/oneapi/compiler/latest/env/vars.sh
+        source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
         pip install styleFrame scipy pandas
         set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')

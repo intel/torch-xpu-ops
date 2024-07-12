@@ -478,6 +478,31 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   return iter.output();
 }
 
+Tensor XPUNativeFunctions::atan2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan2_(Tensor& self, const Tensor& other) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(self, self, other);
+  native::xpu::atan2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return out;
+}
+
 Tensor& XPUNativeFunctions::copysign_out(
     const Tensor& self,
     const Tensor& other,

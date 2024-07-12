@@ -3,11 +3,34 @@
 #include <ATen/xpu/XPUContext.h>
 
 #include <comm/Runtime.h>
+#include <iostream>
 
 namespace xpu {
 namespace sycl {
 
-static inline int64_t syclMaxWorkGroupSize(
+template <class KernelClass>
+static int64_t syclMaxWorkGroupSize(
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  auto q = c10::xpu::getCurrentXPUStream(dev_id).queue();
+  auto ctx = q.get_context();
+  auto dev = q.get_device();
+
+  auto kid = ::sycl::get_kernel_id<KernelClass>();
+  auto kbundle =
+      ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(ctx, {kid});
+
+  ::sycl::kernel k = kbundle.get_kernel(kid);
+  return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);
+}
+
+template <class KernelClass>
+static int64_t syclMaxWorkGroupSize(
+    KernelClass /*kfn*/,
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  return syclMaxWorkGroupSize<KernelClass>(dev_id);
+}
+
+static inline int64_t syclDeviceMaxWorkGroupSize(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->max_work_group_size;
