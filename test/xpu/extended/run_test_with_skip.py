@@ -158,6 +158,10 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    # https://github.com/intel/torch-xpu-ops/issues/572
+    "test_backward_index_fill_xpu_float32",
 )
 
 
