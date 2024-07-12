@@ -3,8 +3,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
+#include <ATen/native/xpu/UpSample.h>
 #include <comm/SYCLContext.h>
-#include "UpSample.h"
 
 namespace at::native::xpu {
 
@@ -125,12 +125,13 @@ static void upsample_bicubic2d_out_template(
     bool align_corners,
     const accscalar_t height_scale,
     const accscalar_t width_scale) {
-  auto queue = getCurrentSYCLQueue();
-  int64_t wg_size = syclMaxWorkGroupSize();
-  int64_t num_wg = at::ceil_div(onum, wg_size);
-
   UpsampleBicubic2dKernelFunctor<scalar_t, accscalar_t> kfn(
       odata, idata, onum, align_corners, height_scale, width_scale);
+
+  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t num_wg = at::ceil_div(onum, wg_size);
+  auto queue = getCurrentSYCLQueue();
+
   sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
 }
 
