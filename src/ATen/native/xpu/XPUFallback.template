@@ -174,8 +174,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
-    "copysign.out",
-    "count_nonzero.dim_IntList",
     "_ctc_loss",
     "_ctc_loss_backward",
     "_cummax_helper",

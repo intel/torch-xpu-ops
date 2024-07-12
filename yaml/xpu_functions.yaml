@@ -534,6 +534,10 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - count_nonzero.dim_IntList
   - conj_physical.out
   - conj_physical_
   - ceil
