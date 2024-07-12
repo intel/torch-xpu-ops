@@ -265,6 +265,7 @@ skip_list = (
     "test_out_native_batch_norm_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
     "test_out__native_batch_norm_legit_xpu_float32", # CUDA XFAIL, The generated sample data does not meet the requirements.
     "test_dtypes__batch_norm_with_update_xpu", # We are same as CUDA implementation. And CUDA skips these cases.
+    "test_dtypes_nanmean_xpu", # We are same as CUDA implementation. {torch.complex64, torch.complex128} not listed by the OpInfo.
 
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
