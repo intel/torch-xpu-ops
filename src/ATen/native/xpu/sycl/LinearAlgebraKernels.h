@@ -1,6 +1,5 @@
 #pragma once
 #include <ATen/native/TensorIterator.h>
-#include <c10/core/ScalarType.h>
 
 namespace at::native::xpu {
 

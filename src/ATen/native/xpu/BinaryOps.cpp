@@ -5,9 +5,11 @@
 #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
+#include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
+#include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
@@ -380,6 +382,28 @@ Tensor& XPUNativeFunctions::gcd_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::hypot(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::hypot_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::hypot_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::hypot_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::hypot_kernel(iter);
+  return out;
+}
+
 static inline TensorIterator meta_func_maximum(
     const Tensor& self,
     const Tensor& other,
@@ -451,6 +475,53 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   TensorIterator iter;
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::atan2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan2_(Tensor& self, const Tensor& other) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(self, self, other);
+  native::xpu::atan2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::copysign_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::copysign_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Tensor& other) {
+  return XPUNativeFunctions::copysign_out(self, other, self);
+}
+
+Tensor XPUNativeFunctions::copysign(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::copysign_kernel(iter);
   return iter.output();
 }
 

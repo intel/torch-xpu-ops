@@ -5,10 +5,16 @@
 #include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/AbsKernel.h>
+#include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinhKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricCoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
@@ -512,6 +518,164 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::erfc_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::asinh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asinh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::asinh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::asinh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::asinh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asinh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::asin(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asin_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::asin_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::asin_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::asin_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asin_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::atan(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atan_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::atan_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atan_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::atanh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atanh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atanh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::atanh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atanh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atanh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::cosh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::cosh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::cosh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::cosh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::conj_physical_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::conj_physical_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::conj_physical_(Tensor& self) {
+  if (!self.is_complex())
+    return self;
+  return XPUNativeFunctions::conj_physical_out(self, self);
+}
+
+TensorIterator ceil_meta(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(!self.is_complex(), "ceil is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::ceil(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::ceil_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  auto iter = ceil_meta(self, self);
+  native::xpu::ceil_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  auto iter = ceil_meta(self, out);
+  native::xpu::ceil_kernel(iter);
   return out;
 }
 

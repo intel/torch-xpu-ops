@@ -366,12 +366,15 @@ void launch_max_pool2d_kernel(
     int padW,
     int dilationH,
     int dilationW) {
+  using KernelClass = MaxPool2dKernelFunctor<scalar_t, is_channels_last>;
+
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
   int stride = numPlane * outputSizeH * outputSizeW;
   BatchKernelConfig cfg = {
       1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-  auto kfn = MaxPool2dKernelFunctor<scalar_t, is_channels_last>(
+  cfg.template build<KernelClass>();
+  auto kfn = KernelClass(
       output,
       indices,
       input,
@@ -423,37 +426,42 @@ void launch_max_pool2d_backward_kernel(
   if (globalContext().deterministicAlgorithms() ||
       std::is_same_v<scalar_t, at::Half> ||
       std::is_same_v<scalar_t, at::BFloat16>) {
+    using KernelClass =
+        MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>;
     BatchKernelConfig cfg = {
         1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-    auto kfn =
-        MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>(
-            gradInput,
-            gradOutput,
-            indices,
-            numPlane,
-            gradInputSizeH,
-            gradInputSizeW,
-            gradOutputSizeH,
-            gradOutputSizeW,
-            gradInputSize,
-            out_cf_c_stride,
-            in_cf_c_stride,
-            out_n_stride,
-            in_n_stride,
-            kernel_h,
-            kernel_w,
-            stride_h,
-            stride_w,
-            pad_h,
-            pad_w,
-            dilation_h,
-            dilation_w,
-            cfg);
+    cfg.template build<KernelClass>();
+    auto kfn = KernelClass(
+        gradInput,
+        gradOutput,
+        indices,
+        numPlane,
+        gradInputSizeH,
+        gradInputSizeW,
+        gradOutputSizeH,
+        gradOutputSizeW,
+        gradInputSize,
+        out_cf_c_stride,
+        in_cf_c_stride,
+        out_n_stride,
+        in_n_stride,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        dilation_h,
+        dilation_w,
+        cfg);
     sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
   } else {
+    using KernelClass =
+        MaxPool2dBackwardKernelFunctor<scalar_t, is_channels_last>;
     BatchKernelConfig cfg = {
         1, gradOutputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-    auto kfn = MaxPool2dBackwardKernelFunctor<scalar_t, is_channels_last>(
+    cfg.template build<KernelClass>();
+    auto kfn = KernelClass(
         gradInput,
         gradOutput,
         indices,

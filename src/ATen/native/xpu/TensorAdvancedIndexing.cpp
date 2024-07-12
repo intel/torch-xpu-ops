@@ -503,16 +503,7 @@ Tensor& XPUNativeFunctions::_index_put_impl_(
     }
   }
 
-  // Performance consideration:
-  // Avoid atomic operations when accumulating bf16 and hf16. No efficient
-  // atomic operation hardware support. We have to do CAS, whose performance
-  // is worse than deterministic implementation.
-  bool need_use_deterministic = (accumulate &&
-                                 (self.scalar_type() == at::kBFloat16 ||
-                                  self.scalar_type() == at::kHalf)) ||
-      globalContext().deterministicAlgorithms();
-
-  if (need_use_deterministic) {
+  if (accumulate || globalContext().deterministicAlgorithms()) {
     TORCH_CHECK(
         value_.device() == self.device(),
         "expected device ",
@@ -1403,6 +1394,10 @@ Tensor& XPUNativeFunctions::gather_out(
   // TODO: enable gather_expanded_index_kernel
   gather_kernel(out, self, dim, index);
   return out;
+}
+
+Tensor XPUNativeFunctions::count_nonzero(const Tensor& self, IntArrayRef dims) {
+  return (self != 0).sum(dims);
 }
 
 } // namespace at
