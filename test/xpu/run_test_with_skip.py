@@ -2912,6 +2912,7 @@ res += launch_test("test_comparison_utils_xpu.py")
 res += launch_test("nn/test_pruning_xpu.py")
 
 skip_list = (
+    # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
     # Unexpected success
     "test_parity__foreach_ceil_fastpath_inplace_xpu_complex128",
     "test_parity__foreach_ceil_fastpath_inplace_xpu_complex64",
