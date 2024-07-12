@@ -50,7 +50,6 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cos",
     "cumsum",
     "eq",
     "fill",
@@ -98,7 +97,17 @@ _xpu_computation_op_list = [
     "remainder",
     "reshape",
     "rsqrt",
+    "cos",
+    "cosh",
+    "acos",
+    "acosh",
     "sin",
+    "asin",
+    "asinh",
+    "tanh",
+    "atan",
+    "atan2",
+    "atanh",
     "sqrt",
     "sum",
     "amin",
@@ -107,7 +116,6 @@ _xpu_computation_op_list = [
     "std_mean",
     "var",
     "var_mean",
-    "tanh",
     "hypot",
     "unfold",
     "uniform",
@@ -140,6 +148,7 @@ _xpu_computation_op_list = [
     "nn.functional.upsample_nearest",
     # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
     "nn.functional.mse_loss",
+    "nn.functional.huber_loss",
     "sigmoid",
     "sgn",
     "nn.functional.embedding_bag",
@@ -147,8 +156,6 @@ _xpu_computation_op_list = [
     "searchsorted",
     "grid_sampler_2d",
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
-    "acos",
-    "acosh",
     "addr",
     "cdist",
     "nn.functional.group_norm",
@@ -160,6 +167,8 @@ _xpu_computation_op_list = [
     "renorm",
     "lerp",
     "conj_physical",
+    "copysign",
+    "count_nonzero"
 ]
 
 
