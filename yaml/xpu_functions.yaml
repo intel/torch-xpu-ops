@@ -408,6 +408,9 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
   - batch_norm_stats
   - batch_norm_elemt
   - batch_norm_elemt.out
@@ -511,11 +514,33 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - asinh
+  - asinh.out
+  - asinh_
+  - asin
+  - asin.out
+  - asin_
+  - atan
+  - atan.out
+  - atan_
+  - atan2
+  - atan2.out
+  - atan2_
+  - atanh
+  - atanh.out
+  - atanh_
+  - cosh
+  - cosh.out
+  - cosh_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
   - linalg_cross
   - linalg_cross.out
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - count_nonzero.dim_IntList
   - conj_physical.out
   - conj_physical_
   - ceil
