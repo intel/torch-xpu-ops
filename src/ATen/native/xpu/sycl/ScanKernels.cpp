@@ -29,7 +29,7 @@ static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
 void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
   auto result_ = contiguous_out_arg(result);
 
-  cumsum_kernel_impl(*result_, self, dim);
+  launch_cumsum_kernel(*result_, self, dim);
 
   if (!result.is_same(*result_)) {
     result.copy_(*result_);
@@ -39,10 +39,11 @@ void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
 void cumprod_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
   auto result_ = contiguous_out_arg(result);
 
-  cumprod_kernel_impl(*result_, self, dim);
+  launch_cumprod_kernel(*result_, self, dim);
 
   if (!result.is_same(*result_)) {
     result.copy_(*result_);
   }
 }
+
 } // namespace at::native::xpu

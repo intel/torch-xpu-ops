@@ -37,27 +37,42 @@ void impl_func_cum_ops(
   }
 }
 
-Tensor& XPUNativeFunctions::cumsum_out(
+static void cum_ops_meta(
+    const char* name,
     const Tensor& self,
     int64_t dim,
-    c10::optional<ScalarType> dtype,
+    std::optional<ScalarType> dtype,
     Tensor& result) {
   // Checking whether 'dim' is valid.
   maybe_wrap_dim(dim, self.dim());
 
   ScalarType out_dtype;
 
-  if (!result.defined()) {
-    auto is_integral =
-        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-    out_dtype =
-        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::empty_strided(
-        self.sizes(), self.strides(), self.options().dtype(out_dtype));
+  if (result.defined()) {
+    out_dtype = dtype.value_or(result.scalar_type());
+    at::xpu::resize_out(
+        result,
+        self.sizes(),
+        {},
+        self.options().dtype(out_dtype));
   } else {
-    at::native::resize_output(result, self.sizes());
-    result.as_strided_(self.sizes(), self.strides());
+    auto is_integral = at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype = dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result = at::xpu::create_out(
+        self.sizes(),
+        {},
+        self.options().dtype(out_dtype));
   }
+
+  namedinference::propagate_names(result, self);
+}
+
+Tensor& XPUNativeFunctions::cumsum_out(
+    const Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype,
+    Tensor& result) {
+  cum_ops_meta("cumsum", self, dim, dtype, result);
 
   impl_func_cum_ops(self, dim, result, at::native::xpu::cumsum_kernel);
   return result;
@@ -68,14 +83,40 @@ Tensor XPUNativeFunctions::cumsum(
     int64_t dim,
     c10::optional<ScalarType> dtype) {
   Tensor result;
-  return cumsum_out(self, dim, dtype, result);
+  return XPUNativeFunctions::cumsum_out(self, dim, dtype, result);
 }
 
 Tensor& XPUNativeFunctions::cumsum_(
     Tensor& self,
     int64_t dim,
     c10::optional<ScalarType> dtype) {
-  return cumsum_out(self, dim, dtype, self);
+  return XPUNativeFunctions::cumsum_out(self, dim, dtype, self);
+}
+
+Tensor& XPUNativeFunctions::cumprod_out(
+    const Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype,
+    Tensor& result) {
+  cum_ops_meta("cumprod", self, dim, dtype, result);
+
+  impl_func_cum_ops(self, dim, result, at::native::xpu::cumprod_kernel);
+  return result;
+}
+
+Tensor XPUNativeFunctions::cumprod(
+    const Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype) {
+  Tensor result;
+  return XPUNativeFunctions::cumprod_out(self, dim, dtype, result);
+}
+
+Tensor& XPUNativeFunctions::cumprod_(
+    Tensor& self,
+    int64_t dim,
+    c10::optional<ScalarType> dtype) {
+  return XPUNativeFunctions::cumprod_out(self, dim, dtype, self);
 }
 
 static ScalarType infer_dtype_from_optional(
@@ -801,47 +842,6 @@ Tensor XPUNativeFunctions::amin(
   out = amax_amin_meta(out, "amin()", self, dim, keepdim);
   amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
-}
-
-Tensor& XPUNativeFunctions::cumprod_out(
-    const Tensor& self,
-    int64_t dim,
-    c10::optional<ScalarType> dtype,
-    Tensor& result) {
-  // Checking whether 'dim' is valid.
-  maybe_wrap_dim(dim, self.dim());
-
-  ScalarType out_dtype;
-
-  if (!result.defined()) {
-    auto is_integral =
-        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-    out_dtype =
-        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::empty_strided(
-        self.sizes(), self.strides(), self.options().dtype(out_dtype));
-  } else {
-    at::native::resize_output(result, self.sizes());
-    result.as_strided_(self.sizes(), self.strides());
-  }
-
-  impl_func_cum_ops(self, dim, result, at::native::xpu::cumprod_kernel);
-  return result;
-}
-
-Tensor XPUNativeFunctions::cumprod(
-    const Tensor& self,
-    int64_t dim,
-    c10::optional<ScalarType> dtype) {
-  Tensor result;
-  return XPUNativeFunctions::cumprod_out(self, dim, dtype, result);
-}
-
-Tensor& XPUNativeFunctions::cumprod_(
-    Tensor& self,
-    int64_t dim,
-    c10::optional<ScalarType> dtype) {
-  return XPUNativeFunctions::cumprod_out(self, dim, dtype, self);
 }
 
 } // namespace at
