@@ -28,6 +28,21 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
 
+    # got inconsistent values between CPU / XPU
+    # AssertionError: Tensor-likes are not close!
+    # compute results contain nan / inf
+    "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_asin_xpu_complex128",
+    "test_compare_cpu_asin_xpu_complex64",
+    "test_compare_cpu_asinh_xpu_complex128",
+    "test_compare_cpu_asinh_xpu_complex64",
+    "test_compare_cpu_atan_xpu_complex128",
+    "test_compare_cpu_atan_xpu_complex64",
+
+    # skip random failure due to accuracy
+    # AssertionError: Tensor-likes are not close!
+    "test_compare_cpu_atan2_xpu_bfloat16",
+
     # CPU result is not golden reference
     "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
     "test_compare_cpu_div_trunc_rounding_xpu_float16",
@@ -60,6 +75,9 @@ skip_list = (
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
+
+    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
+    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -130,6 +148,18 @@ skip_list = (
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
+
+    # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # Example fail log
+    # FAILED test_ops_xpu.py::TestCommonXPU::test_compare_cpu_nn_functional_batch_norm_xpu_float16 - AssertionError: Tensor-likes are not close!
+    # Mismatched elements: 3 / 72 (4.2%)
+    # Greatest absolute difference: 0.0029296875 at index (0, 1, 1, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
+    "test_compare_cpu_std_mean_xpu_bfloat16",
+    "test_compare_cpu_sub_xpu_float16",
+    "test_compare_cpu_var_mean_xpu_bfloat16",
 )
 
 

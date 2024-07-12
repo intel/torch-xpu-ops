@@ -9,7 +9,12 @@
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinhKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricCoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanKernel.h>
@@ -540,6 +545,50 @@ Tensor& XPUNativeFunctions::sinh_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::asinh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asinh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::asinh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::asinh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::asinh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asinh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::asin(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asin_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::asin_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::asin_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::asin_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::asin_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::tan(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -559,6 +608,72 @@ Tensor& XPUNativeFunctions::tan_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::tan_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::atan(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atan_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::atan_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atan_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::atanh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atanh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atanh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::atanh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atanh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::atanh_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::cosh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::cosh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::cosh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::cosh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
   return out;
 }
 

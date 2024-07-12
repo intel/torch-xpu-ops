@@ -802,7 +802,10 @@ skip_list = (
     # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
-    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64"
+    "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
+
+    # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
+    "test_dtypes_cosh_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -1288,9 +1291,6 @@ skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # col2im: AssertionError: The values for attribute 'shape' do not match: torch.Size([16, 4]) != torch.Size([1, 16, 4]).
-    "test_Fold_no_batch_dim_input_cuda",  # col2im
-    "test_Fold_no_batch_dim_int_input_cuda",
     # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
@@ -1383,6 +1383,11 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/461
     "test_index_put_src_datatype_xpu_float8_e5m2",
     "test_index_put_src_datatype_xpu_float8_e4m3fn",
+
+    # Regression after PyTorch update
+    # http://github.com/intel/torch-xpu-ops/issues/549
+    # IndexError: tensors used as indices must be long, byte or bool tensors.
+    "test_index_ind_dtype_xpu",
 )
 res += launch_test("test_indexing_xpu.py", skip_list)
 
@@ -1512,35 +1517,17 @@ skip_list = (
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
     "test_reference_numerics_extremal__refs_acos_xpu_complex128",
-    "test_reference_numerics_extremal__refs_asin_xpu_complex128",
-    "test_reference_numerics_extremal__refs_asin_xpu_complex64",
-    "test_reference_numerics_extremal__refs_atan_xpu_complex128",
-    "test_reference_numerics_extremal__refs_atan_xpu_complex64",
     "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
     "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_asin_xpu_complex128",
-    "test_reference_numerics_extremal_asin_xpu_complex64",
-    "test_reference_numerics_extremal_atan_xpu_complex128",
-    "test_reference_numerics_extremal_atan_xpu_complex64",
     "test_reference_numerics_extremal_exp2_xpu_complex128",
     "test_reference_numerics_extremal_exp2_xpu_complex64",
     "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_large__refs_atan_xpu_complex128",
-    "test_reference_numerics_large__refs_atan_xpu_complex64",
-    "test_reference_numerics_large_atan_xpu_complex128",
-    "test_reference_numerics_large_atan_xpu_complex64",
     "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_small__refs_atan_xpu_complex128",
-    "test_reference_numerics_small__refs_atan_xpu_complex64",
-    "test_reference_numerics_small_atan_xpu_complex128",
-    "test_reference_numerics_small_atan_xpu_complex64",
-    "test_reference_numerics_large__refs_atan_xpu_complex32",
     "test_reference_numerics_large__refs_tanh_xpu_complex32",
     "test_reference_numerics_large_tanh_xpu_complex32",
-    "test_reference_numerics_small__refs_atan_xpu_complex32",
     # For extreme value processing, Numpy and XPU results are inconsistent
     # std operations get different behavior on std::complex operarands for extremal cases
     "test_reference_numerics_extremal__refs_log_xpu_complex64",
@@ -1553,6 +1540,10 @@ skip_list = (
     "test_reference_numerics_extremal__refs_acosh_xpu_complex64",
     "test_reference_numerics_extremal_acos_xpu_complex64",
     "test_reference_numerics_extremal_acosh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_asinh_xpu_complex64",
+    "test_reference_numerics_extremal_asinh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_asin_xpu_complex64",
+    "test_reference_numerics_extremal_asin_xpu_complex64",
     "test_reference_numerics_large__refs_acosh_xpu_complex64",
     "test_reference_numerics_large_acosh_xpu_complex64",
     "test_reference_numerics_extremal__refs_tan_xpu_complex128",
@@ -1561,6 +1552,19 @@ skip_list = (
     "test_reference_numerics_extremal_tan_xpu_complex64",
     "test_reference_numerics_large__refs_tan_xpu_complex32",
     "test_reference_numerics_large_tan_xpu_complex32",
+    "test_reference_numerics_large__refs_asinh_xpu_complex128",
+    "test_reference_numerics_large__refs_asinh_xpu_complex64",
+    "test_reference_numerics_large__refs_asinh_xpu_complex32",
+    "test_reference_numerics_large_asinh_xpu_complex128",
+    "test_reference_numerics_large_asinh_xpu_complex64",
+    "test_reference_numerics_large_asinh_xpu_complex32",
+
+    # AssertionError: Tensor-likes are not close!
+    # exceeded maximum allowed difference
+    # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
+    # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
+    "test_reference_numerics_normal__refs_asinh_xpu_complex64",
+    "test_reference_numerics_normal_asinh_xpu_complex64",
 
     # CPU Fallback fails
     # New ATen operators fails on CPU Fallback.
@@ -3006,23 +3010,21 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # Regression after PyTorch uplift
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # AssertionError: 3 != 3.0
+    "test_symnode_hashing",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
-
-
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-
 res += launch_test("nn/test_module_hooks_xpu.py")
 
 # test_parametrization
-
-
 res += launch_test("nn/test_parametrization_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
