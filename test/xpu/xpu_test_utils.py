@@ -50,7 +50,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cos",
+    "cumprod"
     "cumsum",
     "eq",
     "fill",
@@ -95,7 +95,17 @@ _xpu_computation_op_list = [
     "remainder",
     "reshape",
     "rsqrt",
+    "cos",
+    "cosh",
+    "acos",
+    "acosh",
     "sin",
+    "asin",
+    "asinh",
+    "tanh",
+    "atan",
+    "atan2",
+    "atanh",
     "sqrt",
     "sum",
     "amin",
@@ -104,7 +114,6 @@ _xpu_computation_op_list = [
     "std_mean",
     "var",
     "var_mean",
-    "tanh",
     "hypot",
     "unfold",
     "uniform",
@@ -144,8 +153,6 @@ _xpu_computation_op_list = [
     "searchsorted",
     "grid_sampler_2d",
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
-    "acos",
-    "acosh",
     "addr",
     "cdist",
     "nn.functional.group_norm",
@@ -157,7 +164,8 @@ _xpu_computation_op_list = [
     "renorm",
     "lerp",
     "conj_physical",
-    "cumprod"
+    "copysign",
+    "count_nonzero"
 ]
 
 
