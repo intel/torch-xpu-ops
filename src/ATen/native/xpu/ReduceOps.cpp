@@ -754,7 +754,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::std_mean(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
 
-static Tensor amax_amin_meta(
+static Tensor& amax_amin_meta(
     Tensor& result,
     const char* name,
     const Tensor& self,
@@ -838,43 +838,53 @@ TensorIterator meta_aminmax(
     bool keepdim,
     Tensor& min,
     Tensor& max) {
+  auto dtype = self.scalar_type();
   if (!min.defined()) {
     min = native::create_reduction_result(
         self,
         dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
         keepdim,
-        self.scalar_type());
+        dtype);
   }
   if (!max.defined()) {
     max = native::create_reduction_result(
         self,
         dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
         keepdim,
-        self.scalar_type());
+        dtype);
   }
 
+  TORCH_CHECK(
+      self.dtype() == min.dtype(),
+      "Expected out tensor to have dtype ",
+      self.dtype(),
+      ", but got ",
+      min.dtype(),
+      " instead");
+
+  TORCH_CHECK(
+      self.dtype() == max.dtype(),
+      "Expected out tensor to have dtype ",
+      self.dtype(),
+      ", but got ",
+      max.dtype(),
+      " instead");
+
   if (dim_opt.has_value()) {
+    auto dim_ = maybe_wrap_dim(dim_opt.value(), self.dim());
+    native::zero_numel_check_dims(self, dim_, "aminmax_xpu()");
+
     return at::native::make_reduction(
-        "aminmax_xpu",
-        min,
-        max,
-        self,
-        maybe_wrap_dim(dim_opt.value(), self.ndimension()),
-        keepdim,
-        self.scalar_type());
+        "aminmax_xpu", min, max, self, dim_, keepdim, dtype);
   }
+
+  TORCH_CHECK(
+      self.numel() > 0,
+      "aminmax(): cannot compute aminmax over an empty dimension as the operation has no identity");
 
   TensorIterator iter;
   iter = at::native::make_reduction(
-      "aminmax_xpu",
-      min,
-      max,
-      self.contiguous(),
-      IntArrayRef{},
-      false,
-      self.scalar_type());
-  TORCH_CHECK(
-      iter.numel() > 0, "min_max on a tensor with no elements is not defined.");
+      "aminmax_xpu", min, max, self.contiguous(), IntArrayRef{}, false, dtype);
   return iter;
 }
 
@@ -884,11 +894,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::aminmax(
     bool keepdim) {
   Tensor min;
   Tensor max;
-  auto iter = meta_aminmax(self, dim_opt, keepdim, min, max);
-  if (iter.numel() != 0) {
-    native::xpu::aminmax_kernel(iter);
-  }
-  return std::tuple<Tensor, Tensor>(iter.output(0), iter.output(1));
+  return XPUNativeFunctions::aminmax_out(self, dim_opt, keepdim, min, max);
 }
 
 std::tuple<Tensor&, Tensor&> XPUNativeFunctions::aminmax_out(
@@ -898,9 +904,7 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::aminmax_out(
     Tensor& min,
     Tensor& max) {
   auto iter = meta_aminmax(self, dim_opt, keepdim, min, max);
-  if (iter.numel() != 0) {
-    native::xpu::aminmax_kernel(iter);
-  }
+  native::xpu::aminmax_kernel(iter);
   return std::tuple<Tensor&, Tensor&>(min, max);
 }
 
