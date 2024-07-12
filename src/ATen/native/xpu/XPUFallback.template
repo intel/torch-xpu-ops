@@ -210,8 +210,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "hardshrink.out",
     "heaviside.out",
     "histc",
-    "huber_loss",
-    "huber_loss_backward.out",
     "i0.out",
     "igammac.out",
     "igamma.out",
