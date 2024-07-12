@@ -336,13 +336,12 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           // We're done; we have the sample
           // Torch indices are 1-based
 
-          sycl::atomic_ref<
-              int,
-              sycl_mem_odr_rlx,
-              sycl_mem_scp_wg,
-              sycl_local_space>
-              target(foundPos_[0]);
-          target.fetch_max(cat, sycl_mem_odr_acq_rel, sycl_mem_scp_wg);
+          atomicMax(
+              sycl_local_ptr<int>(
+                  foundPos_
+                      .template get_multi_ptr<sycl::access::decorated::no>()
+                      .get()),
+              cat);
 
           found_[0] = true;
         }
