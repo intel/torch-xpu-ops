@@ -29,14 +29,6 @@ __MATH_FUNCTIONS_DECL__ double rsqrt(double x) {
   return sycl::rsqrt(x);
 }
 
-__MATH_FUNCTIONS_DECL__ float log1p(float x) {
-  return ::log1pf(x);
-}
-
-__MATH_FUNCTIONS_DECL__ double log1p(double x) {
-  return ::log1p(x);
-}
-
 // To walk around SYCL compiler optimization on data type promotion.
 // c10::Half gets data type promotion in +-*/ operations. See
 // c10/util/Half-inl.h. XPU implementation gets worse precision on half div,
