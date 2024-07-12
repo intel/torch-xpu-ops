@@ -593,3 +593,5 @@ supported:
   - ceil_
   - ceil.out
   - nan_to_num.out
+  - _fft_c2c
+  - _fft_c2c.out
