@@ -555,4 +555,21 @@ Tensor& XPUNativeFunctions::logical_or_(Tensor& self, const Tensor& other) {
   return comparison_op_(self, other, static_cast<OutFunc>(at::logical_or_out));
 }
 
+Tensor& XPUNativeFunctions::logical_xor_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_xor_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_xor(const Tensor& self, const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_xor_out));
+}
+
+Tensor& XPUNativeFunctions::logical_xor_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_xor_out));
+}
+
 } // namespace at
