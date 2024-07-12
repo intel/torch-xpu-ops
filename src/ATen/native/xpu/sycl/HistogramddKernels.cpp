@@ -214,7 +214,7 @@ void histogramdd_linear_kernel(
   if (density) {
     const auto hist_sum = hist.sum();
     hist.div_(hist_sum);
-    Tensor bin_lengths = bin_edges.diff();
+    Tensor bin_lengths = out_bin_edges.diff();
     hist.div_(bin_lengths);
   }
 }
