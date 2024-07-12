@@ -671,3 +671,5 @@ supported:
   - renorm_
   - nan_to_num.out
   - range.out
+  - _fft_c2c
+  - _fft_c2c.out
