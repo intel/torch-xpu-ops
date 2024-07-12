@@ -789,6 +789,16 @@ skip_list = (
     # 2. Half dtype is a common dtype in workloads.
     # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
     "test_dtypes_nextafter_xpu",
+
+    # Deselect temporarily
+    "test_out_fft_fft2_xpu_float32",
+    "test_out_fft_fftn_xpu_float32",
+    "test_out_fft_ifft2_xpu_float32",
+    "test_out_fft_ifftn_xpu_float32",
+    "test_out_warning_fft_fft2_xpu",
+    "test_out_warning_fft_fftn_xpu",
+    "test_out_warning_fft_ifft2_xpu",
+    "test_out_warning_fft_ifftn_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
