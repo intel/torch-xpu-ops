@@ -150,6 +150,7 @@ _xpu_computation_op_list = [
     "bincount",
     "renorm",
     "unique_consecutive",
+    "unique",
 ]
 
 

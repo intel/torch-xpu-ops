@@ -143,7 +143,6 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
   auto index_options = self.options().dtype(kLong);
   auto self_c = *(self.expect_contiguous());
   Tensor output = self_c.clone().reshape(-1);
-  int64_t num_output = output.numel();
   Tensor sorted_indices = at::empty({num_inp}, index_options);
   Tensor inverse_indices = at::empty({num_inp}, index_options);
   Tensor counts = at::empty({num_inp}, index_options);

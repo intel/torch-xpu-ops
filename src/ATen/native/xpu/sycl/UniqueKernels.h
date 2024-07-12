@@ -29,4 +29,5 @@ std::tuple<Tensor, Tensor, Tensor> _unique2_kernel(
     const Tensor& self,
     const bool return_inverse,
     const bool return_counts);
+
 } // namespace at::native::xpu
