@@ -88,7 +88,8 @@ void randperm_handle_duplicate_keys(
 
   T mask = static_cast<T>((1UL << bits) - 1);
   HandleDuplicateKeysKernelFunctor kfn(keys, data, mask, n, rng_engine_inputs);
-  auto local_range = syclMaxWorkGroupSize() / 2;
+
+  auto local_range = syclMaxWorkGroupSize(kfn) / 2;
   auto num_wg = (n + local_range - 1) / local_range;
   auto global_range = num_wg * local_range;
 
