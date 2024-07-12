@@ -52,11 +52,9 @@ Tensor& XPUNativeFunctions::cumsum_out(
         at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
     out_dtype =
         dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::empty_strided(
-        self.sizes(), self.strides(), self.options().dtype(out_dtype));
+    result = xpu::create_out(self.sizes(), {}, self.options().dtype(out_dtype));
   } else {
-    at::native::resize_output(result, self.sizes());
-    result.as_strided_(self.sizes(), self.strides());
+    xpu::resize_out(result, self.sizes(), {}, self.options().dtype(out_dtype));
   }
 
   impl_func_cum_ops(self, dim, result, at::native::xpu::cumsum_kernel);
