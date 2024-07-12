@@ -408,6 +408,9 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
   - batch_norm_stats
   - batch_norm_elemt
   - batch_norm_elemt.out
