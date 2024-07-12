@@ -167,6 +167,8 @@ void histogramdd_kernel(
   if (density) {
     const auto hist_sum = hist.sum();
     hist.div_(hist_sum);
+    Tensor bin_lengths = bin_edges.diff();
+    hist.div_(bin_lengths);
   }
 }
 
@@ -180,14 +182,20 @@ void histogramdd_linear_kernel(
     Tensor& out_bin_edges) {
   hist.fill_(0);
 
-  double leftmost_edge, rightmost_edge;
-  if (!range.has_value()) {
+  // default range for empty input
+  double leftmost_edge = 0., rightmost_edge = 1.;
+  if (range.has_value()) {
+    leftmost_edge = range.value()[0];
+    rightmost_edge = range.value()[1];
+  } else if (self.numel() > 0) {
     auto extrema = at::aminmax(self);
     leftmost_edge = std::get<0>(extrema).item<double>();
     rightmost_edge = std::get<1>(extrema).item<double>();
-  } else {
-    leftmost_edge = range.value()[0];
-    rightmost_edge = range.value()[1];
+  }
+
+  if (leftmost_edge == rightmost_edge) {
+    leftmost_edge -= 0.5;
+    rightmost_edge += 0.5;
   }
 
   at::linspace_out(out_bin_edges, leftmost_edge, rightmost_edge, bin_ct + 1);
@@ -206,6 +214,8 @@ void histogramdd_linear_kernel(
   if (density) {
     const auto hist_sum = hist.sum();
     hist.div_(hist_sum);
+    Tensor bin_lengths = bin_edges.diff();
+    hist.div_(bin_lengths);
   }
 }
 
