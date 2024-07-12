@@ -1,6 +1,7 @@
 set(ONEMKL_FOUND FALSE)
 
-set(ONEMKL_LIBRARIES)
+set(ONEMKL_DYNAMIC_LIBRARIES)
+set(ONEMKL_STATIC_LIBRARIES)
 
 set(ONEMKL_DEFAULT_DIR "/opt/intel/oneapi/mkl/latest")
 if(DEFINED ENV{MKLROOT})
@@ -38,9 +39,9 @@ set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH}
 set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH}
     "${ONEMKL_LIB_DIR}")
 
-set(MKL_LIB_NAMES "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core" "mkl_sycl_dft")
+set(MKL_DYNAMIC_LIB_NAMES "mkl_sycl_dft")
 
-foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
+foreach(LIB_NAME IN LISTS MKL_DYNAMIC_LIB_NAMES)
   find_library(
     ${LIB_NAME}_library
     NAMES ${LIB_NAME}
@@ -48,7 +49,23 @@ foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
     NO_CMAKE_PATH
     NO_CMAKE_ENVIRONMENT_PATH
   )
-  list(APPEND ONEMKL_LIBRARIES ${${LIB_NAME}_library})
+  list(APPEND ONEMKL_DYNAMIC_LIBRARIES ${${LIB_NAME}_library})
 endforeach()
+
+set(MKL_STATIC_LIB_NAMES "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core")
+
+foreach(LIB_NAME IN LISTS MKL_STATIC_LIB_NAMES)
+  find_library(
+    ${LIB_NAME}_library
+    NAMES lib${LIB_NAME}.a
+    HINTS ${ONEMKL_LIB_DIR}
+    NO_CMAKE_PATH
+    NO_CMAKE_ENVIRONMENT_PATH
+  )
+  list(APPEND ONEMKL_STATIC_LIBRARIES ${${LIB_NAME}_library})
+endforeach()
+
+list(INSERT ONEMKL_STATIC_LIBRARIES 0 "-Wl,--start-group")
+list(APPEND ONEMKL_STATIC_LIBRARIES "-Wl,--end-group")
 
 set(ONEMKL_FOUND TRUE)
