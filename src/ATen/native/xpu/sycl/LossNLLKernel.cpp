@@ -226,6 +226,9 @@ void nll_loss_forward_template(
   int64_t batch_size = input.size(0);
 
   if (reduction == at::Reduction::None && n_dims == 2) {
+    using NllLossForwardNoReduceKernel =
+        NllLossForwardNoReduceKernelFunctor<scalar_t, index_t>;
+
     output.resize_({batch_size});
     total_weight.zero_();
     int64_t target_stride = target.stride(0);
@@ -233,7 +236,7 @@ void nll_loss_forward_template(
     auto weight_cont = weight.defined() ? weight.contiguous() : weight;
 
     auto& queue = getCurrentSYCLQueue();
-    int64_t local_size = syclMaxWorkGroupSize();
+    int64_t local_size = syclMaxWorkGroupSize<NllLossForwardNoReduceKernel>();
     bool has_weight = weight.defined()
         ? true
         : false; // sycl kernel can not accept host pointer
@@ -248,7 +251,7 @@ void nll_loss_forward_template(
         ? weight_cont.data_ptr<scalar_t>()
         : input_data; // use the input as the dummy data.
     auto output_data = output.data_ptr<scalar_t>();
-    NllLossForwardNoReduceKernelFunctor<scalar_t, index_t> kfn(
+    NllLossForwardNoReduceKernel kfn(
         input_data,
         target_data,
         weight_data,
@@ -304,9 +307,12 @@ void nll_loss_forward_template(
 
     sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
   } else if (input_cont.dim() == 2) {
+    using NllLossForwardReduce2DKernel =
+        NllLossForwardReduce2DKernelFunctor<scalar_t, index_t>;
+
     int64_t batch_size = input.size(0);
     int n_target = input.size(1);
-    int64_t local_size = syclMaxWorkGroupSize();
+    int64_t local_size = syclMaxWorkGroupSize<NllLossForwardReduce2DKernel>();
     auto input_data = _input_data;
     auto weight_data = has_weight
         ? _weight_data
@@ -527,12 +533,15 @@ static inline void nll_loss_backward_template(
   int64_t batch_size = input.size(0);
 
   if (reduction == at::Reduction::None && n_dims == 2) {
+    using NllLossBackwardNoReduceKernel =
+        NllLossBackwardNoReduceKernelFunctor<scalar_t, index_t>;
+
     int64_t target_stride = target.stride(0);
     check_dim_size(gradOutput, 1, 0, batch_size);
     auto weight_cont = weight.defined() ? weight.contiguous() : weight;
 
     auto& queue = getCurrentSYCLQueue();
-    int64_t local_size = syclMaxWorkGroupSize();
+    int64_t local_size = syclMaxWorkGroupSize<NllLossBackwardNoReduceKernel>();
     int64_t global_size =
         ((batch_size + local_size - 1) / local_size) * local_size;
     bool has_weight = weight.defined() ? true : false;
@@ -547,7 +556,7 @@ static inline void nll_loss_backward_template(
         ? weight_cont.data_ptr<scalar_t>()
         : gradOutput_data; // Use gradOutput handler as dummy weight
     auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    NllLossBackwardNoReduceKernelFunctor<scalar_t, index_t> kfn(
+    NllLossBackwardNoReduceKernel kfn(
         target_data,
         gradOutput_data,
         weight_data,

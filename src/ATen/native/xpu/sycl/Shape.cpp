@@ -141,12 +141,19 @@ void CatArrayBatchedCopy(
     const int concatDim,
     IndexType dimStride,
     int batchCounter) {
-  auto& q = getCurrentSYCLQueue();
+  CatArrayBatchedCopyKernelFunctor<
+      Tout,
+      underlying_out_t,
+      Tin,
+      underlying_in_t,
+      IndexType,
+      Dims>
+      kfn(output, inputs, os, concatDim, dimStride);
 
   // Get grid where x dim fills half gpu and y dim is number of tensors.
   // This will have cating two tensors fill the entire grid, but prevent
   // many threads from needlessly load meta data if their sizes is small.
-  int64_t numWI = syclMaxWorkGroupSize();
+  int64_t numWI = syclMaxWorkGroupSize(kfn);
 
   // We set limited numWG to prevent over schedule.
   // numWG = 512 EUs * 8 threads * SIMD lanes 32 / max_compute_units
@@ -162,15 +169,7 @@ void CatArrayBatchedCopy(
     numWG = 128;
   sycl::range<2> global_range(batchCounter, numWG * numWI);
   sycl::range<2> local_range(1, numWI);
-
-  CatArrayBatchedCopyKernelFunctor<
-      Tout,
-      underlying_out_t,
-      Tin,
-      underlying_in_t,
-      IndexType,
-      Dims>
-      kfn(output, inputs, os, concatDim, dimStride);
+  auto& q = getCurrentSYCLQueue();
 
   sycl_kernel_submit(global_range, local_range, q, kfn);
 }
