@@ -5,7 +5,10 @@
 
 namespace at::native::xpu {
 
-void cumsum_kernel_impl(const Tensor& result, const Tensor& self, int64_t dim) {
+void launch_cumsum_kernel(
+    const Tensor& result,
+    const Tensor& self,
+    int64_t dim) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,

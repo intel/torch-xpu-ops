@@ -5,7 +5,7 @@
 
 namespace at::native::xpu {
 
-void cumprod_kernel_impl(
+void launch_cumprod_kernel(
     const Tensor& result,
     const Tensor& self,
     int64_t dim) {
