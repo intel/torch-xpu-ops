@@ -39,7 +39,8 @@ struct LogSigmoidBackwardFunctor {
     opmath_t max_deriv = in_negative ? opmath_t(1) : opmath_t(0);
     opmath_t sign = in_negative ? opmath_t(1) : -opmath_t(1);
     const opmath_t z = std::exp(-std::abs(in));
-    return grad_out * (max_deriv - sign * (z / (opmath_t(1) + z)));
+    opmath_t res = grad_out * (max_deriv - sign * (z / (opmath_t(1.0) + z)));
+    return (bool)res;
   }
 };
 
