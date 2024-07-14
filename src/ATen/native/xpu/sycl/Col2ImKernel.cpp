@@ -200,7 +200,7 @@ void col2im_kernel(
   bool batched_input = true;
   if (input.dim() == 2) {
     batched_input = false;
-    input.resize_({1, input.size(0), input.size(1)});
+    input = input.view({1, input.size(0), input.size(1)});
   }
 
   auto batch_size = input.size(0);
