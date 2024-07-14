@@ -541,6 +541,8 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - linalg_cross
+  - linalg_cross.out
   - copysign.out
   - copysign.Tensor
   - copysign_.Tensor

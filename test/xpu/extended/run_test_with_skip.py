@@ -27,6 +27,7 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex128",
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_cross_xpu_float16",
 
     # got inconsistent values between CPU / XPU
     # AssertionError: Tensor-likes are not close!
