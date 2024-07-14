@@ -16,6 +16,8 @@
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricSinhKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricTanKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
@@ -521,6 +523,28 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sinh(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sinh_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sinh_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::sinh_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sinh_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sinh_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::asinh(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -562,6 +586,28 @@ Tensor& XPUNativeFunctions::asin_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::asin_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::tan(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::tan_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::tan_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::tan_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::tan_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::tan_kernel(iter);
   return out;
 }
 

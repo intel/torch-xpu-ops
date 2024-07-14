@@ -153,6 +153,9 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
@@ -168,6 +171,9 @@ supported:
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
