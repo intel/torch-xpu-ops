@@ -153,6 +153,9 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
@@ -177,6 +180,9 @@ supported:
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
@@ -544,6 +550,8 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - linalg_cross
+  - linalg_cross.out
   - copysign.out
   - copysign.Tensor
   - copysign_.Tensor
@@ -553,3 +561,4 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - nan_to_num.out
