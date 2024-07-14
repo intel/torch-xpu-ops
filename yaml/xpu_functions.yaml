@@ -118,6 +118,10 @@ supported:
   - softshrink.out
   - softshrink_backward
   - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
   - gelu.out
@@ -153,6 +157,9 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
@@ -168,6 +175,9 @@ supported:
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
@@ -408,6 +418,9 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
   - batch_norm_stats
   - batch_norm_elemt
   - batch_norm_elemt.out
@@ -464,10 +477,18 @@ supported:
   - searchsorted.Scalar
   - searchsorted.Scalar_out
   - trace
+  - reflection_pad1d
+  - reflection_pad1d.out
+  - reflection_pad1d_backward
+  - reflection_pad1d_backward.grad_input
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
   - reflection_pad2d_backward.grad_input
+  - reflection_pad3d
+  - reflection_pad3d.out
+  - reflection_pad3d_backward
+  - reflection_pad3d_backward.grad_input
   - native_group_norm
   - native_group_norm_backward
   - elu
@@ -503,9 +524,33 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - asinh
+  - asinh.out
+  - asinh_
+  - asin
+  - asin.out
+  - asin_
+  - atan
+  - atan.out
+  - atan_
+  - atan2
+  - atan2.out
+  - atan2_
+  - atanh
+  - atanh.out
+  - atanh_
+  - cosh
+  - cosh.out
+  - cosh_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - linalg_cross
+  - linalg_cross.out
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - count_nonzero.dim_IntList
   - conj_physical.out
   - conj_physical_
   - ceil
@@ -515,3 +560,4 @@ supported:
   - norm.dtype_out
   - norm.ScalarOpt_dim
   - norm.out
+  - nan_to_num.out
