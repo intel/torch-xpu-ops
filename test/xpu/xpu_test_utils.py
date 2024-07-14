@@ -176,6 +176,7 @@ _xpu_computation_op_list = [
     "conj_physical",
     "copysign",
     "count_nonzero"
+    "nan_to_num",
 ]
 
 

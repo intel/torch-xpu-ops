@@ -550,3 +550,4 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - nan_to_num.out
