@@ -109,10 +109,6 @@ static void xpu_lazy_registration_or_error_fallback(
   }
 }
 
-static void xpu_force_fallback(
-    const c10::OperatorHandle& op,
-    torch::jit::Stack* stack) {}
-
 TORCH_LIBRARY_IMPL(_, XPU, m) {
   static const char* enable_xpu_fallback =
       getenv("PYTORCH_ENABLE_XPU_FALLBACK");
@@ -166,11 +162,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "aminmax.out",
     "angle",
     "argmin.out",
-    "asinh.out",
-    "asin.out",
-    "atan2.out",
-    "atanh.out",
-    "atan.out",
     "avg_pool3d_backward.grad_input",
     "avg_pool3d.out",
     "binary_cross_entropy",
@@ -183,9 +174,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
-    "copysign.out",
-    "cosh.out",
-    "count_nonzero.dim_IntList",
     "_ctc_loss",
     "_ctc_loss_backward",
     "_cummax_helper",
@@ -222,8 +210,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "hardshrink.out",
     "heaviside.out",
     "histc",
-    "huber_loss",
-    "huber_loss_backward.out",
     "i0.out",
     "igammac.out",
     "igamma.out",
@@ -238,7 +224,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "lcm.out",
     "lgamma.out",
     "linalg_cholesky_ex.L",
-    "linalg_cross.out",
     "_linalg_det.result",
     "linalg_eig",
     "_linalg_eigh.eigenvalues",
@@ -290,7 +275,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "nanmedian",
     "nanmedian.dim_values",
     "nansum",
-    "nan_to_num.out",
     "nextafter.out",
     "norm.out",
     "ormqr",
@@ -303,8 +287,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "reflection_pad1d_backward.grad_input",
-    "reflection_pad1d.out",
     "renorm.out",
     "repeat_interleave.Tensor",
     "replication_pad1d_backward.grad_input",
@@ -322,7 +304,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "signbit.out",
     "sign.out",
     "sinc.out",
-    "sinh.out",
     "smooth_l1_loss_backward.grad_input",
     "smooth_l1_loss.out",
     "special_airy_ai.out",
@@ -359,7 +340,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "special_xlog1py.out",
     "special_zeta.out",
     "take",
-    "tan.out",
     "_thnn_fused_gru_cell",
     "topk.values",
     "_to_sparse",
@@ -384,8 +364,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "vdot",
     "xlogy.OutTensor",
     "_upsample_bicubic2d_aa.out",
-    "reflection_pad3d.out",
-    "reflection_pad3d_backward.grad_input",
     "replication_pad3d.out",
     "replication_pad3d_backward",
   };
