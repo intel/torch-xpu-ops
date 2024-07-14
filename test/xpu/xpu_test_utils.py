@@ -174,6 +174,7 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "multinomial",
     "lerp",
     "conj_physical",
     "copysign",

@@ -499,6 +499,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out
