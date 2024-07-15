@@ -66,7 +66,8 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           export USE_XPU=1
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          # source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          source /opt/intel/oneapi/compiler/latest/env/vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           WERROR=1 python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
