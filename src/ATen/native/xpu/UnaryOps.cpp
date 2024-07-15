@@ -649,6 +649,7 @@ Tensor& XPUNativeFunctions::cosh_(Tensor& self) {
 Tensor& XPUNativeFunctions::cosh_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::cosh_kernel(iter);
   return out;
 }
 

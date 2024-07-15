@@ -20,4 +20,6 @@ void std_var_kernel(TensorIterator& iter, double correction, bool take_sqrt);
 
 void aminmax_kernel(TensorIterator& iter);
 
+void aminmax_allreduce_kernel(TensorIterator& iter);
+
 } // namespace at::native::xpu

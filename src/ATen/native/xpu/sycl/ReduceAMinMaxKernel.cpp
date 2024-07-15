@@ -8,7 +8,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-void aminmax_kernel_impl(TensorIterator& iter) {
+void _min_max_values_kernel_xpu_impl(TensorIterator& iter) {
   gpu_reduce_kernel<scalar_t, scalar_t>(
       iter,
       MinMaxOps<scalar_t, scalar_t, int32_t>{},
@@ -19,19 +19,26 @@ void aminmax_kernel_impl(TensorIterator& iter) {
 
 // Special handling for non-standard bool values
 template <>
-void aminmax_kernel_impl<bool>(TensorIterator& iter) {
-  gpu_reduce_kernel<uint8_t, uint8_t>(
-      iter,
-      MinMaxOps<uint8_t, uint8_t, int32_t>{},
-      std::pair<uint8_t, uint8_t>(
-          at::numeric_limits<uint8_t>::upper_bound(),
-          at::numeric_limits<uint8_t>::lower_bound()));
+void _min_max_values_kernel_xpu_impl<bool>(TensorIterator& iter) {
+  _min_max_values_kernel_xpu_impl<uint8_t>(iter);
+}
+
+template <typename scalar_t>
+void aminmax_kernel_impl(TensorIterator& iter) {
+  _min_max_values_kernel_xpu_impl<scalar_t>(iter);
+}
+
+void aminmax_allreduce_kernel(TensorIterator& iter) {
+  AT_DISPATCH_ALL_TYPES_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.input_dtype(),
+      "aminmax_all_xpu",
+      [&]() { _min_max_values_kernel_xpu_impl<scalar_t>(iter); });
 }
 
 void aminmax_kernel(TensorIterator& iter) {
-  if (iter.numel() == 0) {
-    return;
-  }
   AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
