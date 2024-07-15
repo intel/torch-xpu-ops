@@ -66,6 +66,8 @@
   ufunc_inner_loop:
     Generic: add (AllAndComplex, BFloat16, Half, ComplexHalf)
     ScalarOnly: add (Bool)
+  dispatch:
+    XPU: add_out_xpu
   tags: pointwise
 
 # - func: cumsum(Tensor self, int dim, *, ScalarType? dtype=None) -> Tensor
@@ -2315,24 +2317,25 @@
     XPU: acosh_out
   tags: pointwise
 
-- func: index.Tensor(Tensor self, Tensor?[] indices) -> Tensor
-  device_check: NoCheck   # TensorIterator
-  structured_delegate: index.Tensor_out
-  variants: function, method
-  tags: [core, dynamic_output_shape]
-  # NB: This function is special-cased in tools/autograd/gen_variable_type.py
-  # NB: The following functions are declared in aten/src/ATen/templates/TensorBody.h and defined in aten/src/ATen/TensorIndexing.cpp:
-  # - Tensor Tensor::index(ArrayRef<TensorIndex> indices)
-  # - Tensor Tensor::index(std::initializer_list<TensorIndex> indices)
+# - func: index.Tensor(Tensor self, Tensor?[] indices) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   structured_delegate: index.Tensor_out
+#   variants: function, method
+#   tags: [core, dynamic_output_shape]
+#   # NB: This function is special-cased in tools/autograd/gen_variable_type.py
+#   # NB: The following functions are declared in aten/src/ATen/templates/TensorBody.h and defined in aten/src/ATen/TensorIndexing.cpp:
+#   # - Tensor Tensor::index(ArrayRef<TensorIndex> indices)
+#   # - Tensor Tensor::index(std::initializer_list<TensorIndex> indices)
 
-- func: index.Tensor_out(Tensor self, Tensor?[] indices, *, Tensor(a!) out) -> Tensor(a!)
-  device_check: NoCheck
-  structured: True
-  structured_inherits: TensorIteratorBase
-  precomputed:
-  - indices -> DimVector sizes, DimVector strides
-  dispatch:
-    XPU: index_out
+# - func: index.Tensor_out(Tensor self, Tensor?[] indices, *, Tensor(a!) out) -> Tensor(a!)
+#   device_check: NoCheck
+#   structured: True
+#   structured_inherits: TensorIteratorBase
+#   precomputed:
+#   - indices -> DimVector sizes, DimVector strides
+#   dispatch:
+#     # XPU: index_out
+#     XPU: index_out_xpu
 
 - func: scatter.src(Tensor self, int dim, Tensor index, Tensor src) -> Tensor
   structured_delegate: scatter.src_out
