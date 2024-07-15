@@ -16,6 +16,8 @@ skip_list = (
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
+    "test_compare_cpu_tan_xpu_complex128",
+    "test_compare_cpu_tan_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
@@ -25,6 +27,22 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex128",
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_cross_xpu_float16",
+
+    # got inconsistent values between CPU / XPU
+    # AssertionError: Tensor-likes are not close!
+    # compute results contain nan / inf
+    "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_asin_xpu_complex128",
+    "test_compare_cpu_asin_xpu_complex64",
+    "test_compare_cpu_asinh_xpu_complex128",
+    "test_compare_cpu_asinh_xpu_complex64",
+    "test_compare_cpu_atan_xpu_complex128",
+    "test_compare_cpu_atan_xpu_complex64",
+
+    # skip random failure due to accuracy
+    # AssertionError: Tensor-likes are not close!
+    "test_compare_cpu_atan2_xpu_bfloat16",
 
     # CPU result is not golden reference
     "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
@@ -59,6 +77,9 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
 
+    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
+    "test_cow_input_cosh_xpu_float32",
+
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
     # std::exp{-inf, inf}, the result is (±0,±0) (signs are unspecified)
@@ -82,6 +103,11 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
 
+    # Not implemented operators, aten::_embedding_bag_backward.
+    # To retrieve cases when the operators are supported.
+    # https://github.com/intel/torch-xpu-ops/issues/536
+    "test_backward_nn_functional_embedding_bag_xpu_float32",
+
     #Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
 
@@ -91,6 +117,11 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
 
+    # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_float16",
+
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
@@ -99,6 +130,7 @@ skip_list = (
     "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
+    "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
     # aten::upsample_trilinear3d
@@ -120,6 +152,18 @@ skip_list = (
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
+
+    # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # Example fail log
+    # FAILED test_ops_xpu.py::TestCommonXPU::test_compare_cpu_nn_functional_batch_norm_xpu_float16 - AssertionError: Tensor-likes are not close!
+    # Mismatched elements: 3 / 72 (4.2%)
+    # Greatest absolute difference: 0.0029296875 at index (0, 1, 1, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
+    "test_compare_cpu_std_mean_xpu_bfloat16",
+    "test_compare_cpu_sub_xpu_float16",
+    "test_compare_cpu_var_mean_xpu_bfloat16",
 )
 
 
