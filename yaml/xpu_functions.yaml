@@ -118,6 +118,10 @@ supported:
   - softshrink.out
   - softshrink_backward
   - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
   - gelu.out
@@ -153,6 +157,9 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
@@ -168,6 +175,9 @@ supported:
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
@@ -489,6 +499,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out
@@ -540,6 +552,8 @@ supported:
   - unique_consecutive
   - _unique
   - _unique2
+  - linalg_cross
+  - linalg_cross.out
   - copysign.out
   - copysign.Tensor
   - copysign_.Tensor
@@ -549,3 +563,4 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - nan_to_num.out
