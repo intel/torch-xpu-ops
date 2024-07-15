@@ -490,7 +490,7 @@ void index_fill_kernel(
             getTensorInfo<scalar_t, int64_t>(self_);
 
         TensorInfo<scalar_t, int64_t> dst_info =
-            getTensorInfo<scalar_t, int64_t>(self_);
+            getTensorInfo<scalar_t, int64_t>(result);
         int new_indexing_dim = dst_info.collapseDims(dim);
 
         using IdxConfig = IndexKernelConfig<
