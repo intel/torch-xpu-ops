@@ -314,7 +314,7 @@ def update_summary(excel):
                 sf.set_column_width(i, 22)
             for j in range(1, 22):
                 sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name='Summary', excel_writer=excel)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
         if 'timm_models' in args.suite:
             if 'amp_bf16' in args.precision:
@@ -401,7 +401,7 @@ def update_summary(excel):
                 sf.set_column_width(i, 22)
             for j in range(1, 22):
                 sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name='Summary', excel_writer=excel)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
         
         if 'torchbench' in args.suite:
         if 'amp_bf16' in args.precision:
@@ -487,7 +487,7 @@ def update_summary(excel):
             sf.set_column_width(i, 22)
         for j in range(1, 22):
             sf.set_row_height(j, 30)
-        sf.to_excel(sheet_name='Summary', excel_writer=excel)
+        sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
     else:
         data = {
@@ -570,7 +570,7 @@ def update_summary(excel):
                 sf.set_column_width(i, 22)
             for j in range(1, 12):
                 sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name='Summary', excel_writer=excel)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
         if 'timm_models' in args.suite:
             if 'amp_bf16' in args.precision:
@@ -638,7 +638,7 @@ def update_summary(excel):
                 sf.set_column_width(i, 22)
             for j in range(1, 12):
                 sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name='Summary', excel_writer=excel)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
         if 'torchbench' in args.suite:
             if 'amp_bf16' in args.precision:
@@ -707,7 +707,7 @@ def update_summary(excel):
                 sf.set_column_width(i, 22)
             for j in range(1, 12):
                 sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name='Summary', excel_writer=excel)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
 
 def generate_report(excel, precision_list, mode_list):
