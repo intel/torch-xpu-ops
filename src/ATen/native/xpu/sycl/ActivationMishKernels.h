@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void mse_kernel(TensorIteratorBase& iter);
+void mish_kernel(TensorIteratorBase& iter);
 
-void huber_kernel(TensorIterator& iter, double delta);
+void mish_backward_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu
