@@ -50,10 +50,11 @@ struct ElementwiseKernelFunctor {
 
 template <typename func_t>
 void elementwise_kernel(int total_n_elems, func_t f) {
+  using KernelClass = ElementwiseKernelFunctor<func_t>;
+
   auto& queue = getCurrentSYCLQueue();
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize(dev_id);
-  const auto target_global_size = syclMaxWorkItemsPerTile(dev_id);
+  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
+  const auto target_global_size = syclMaxWorkItemsPerTile();
   int work_group_size =
       total_n_elems > max_wg_size ? max_wg_size : total_n_elems;
   const int max_work_group_num = target_global_size / work_group_size;
@@ -66,8 +67,7 @@ void elementwise_kernel(int total_n_elems, func_t f) {
 
   int total_work_items = work_group_size * work_group_num;
 
-  ElementwiseKernelFunctor<func_t> kfn(
-      loops, total_n_elems, f, total_work_items);
+  KernelClass kfn(loops, total_n_elems, f, total_work_items);
 
   sycl_kernel_submit(
       sycl::range<1>(total_work_items),
@@ -205,12 +205,14 @@ void roll_template(
     int64_t size,
     int64_t stride,
     int64_t total_dims) {
+  using KernelClass = RollKernelFunctor<scalar_t>;
+
   auto shift = size - start;
   auto offset = shift * stride;
   auto start_offset = start * stride;
   auto total_offset = size * stride;
 
-  auto local_range = syclMaxWorkGroupSize();
+  auto local_range = syclMaxWorkGroupSize<KernelClass>();
   const auto target_global_range =
       syclMaxWorkItemsPerTile() / local_range * local_range;
   int global_range = (N + local_range - 1) / local_range * local_range;
@@ -221,7 +223,7 @@ void roll_template(
 
   auto in_data = in_tensor.data_ptr<scalar_t>();
   auto out_data = out_tensor.data_ptr<scalar_t>();
-  RollKernelFunctor<scalar_t> kfn(
+  KernelClass kfn(
       in_data,
       out_data,
       val_of_work_item,
