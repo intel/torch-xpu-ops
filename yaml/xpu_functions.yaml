@@ -15,6 +15,9 @@ supported:
   - cumsum
   - cumsum.out
   - cumsum_
+  - cumprod
+  - cumprod.out
+  - cumprod_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -124,6 +127,10 @@ supported:
   - softshrink.out
   - softshrink_backward
   - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
   - gelu.out
@@ -159,6 +166,9 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
@@ -174,6 +184,9 @@ supported:
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
@@ -414,6 +427,9 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
   - batch_norm_stats
   - batch_norm_elemt
   - batch_norm_elemt.out
@@ -492,6 +508,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out
@@ -538,6 +556,8 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - linalg_cross
+  - linalg_cross.out
   - copysign.out
   - copysign.Tensor
   - copysign_.Tensor
@@ -547,3 +567,4 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - nan_to_num.out
