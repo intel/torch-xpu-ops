@@ -42,6 +42,8 @@ for model_name in model_names:
     refer_row = next(([i, line] for i, line in refer_data.iterrows() if line["name"] == model_name), "N/A")
     test_accuracy = test_row[1]["accuracy"] if test_row != "N/A" else "N/A"
     refer_accuracy = refer_row[1][args.dtype] if refer_row != "N/A" else "N/A"
+    test_accuracy = str(test_accuracy)
+    refer_accuracy = str(refer_accuracy)
     if test_accuracy == "N/A":
         lost_models.append([model_name, test_accuracy])
     elif 'pass' in test_accuracy:
