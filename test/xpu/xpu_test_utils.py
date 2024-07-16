@@ -58,7 +58,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cumprod"
+    "cumprod",
     "cumsum",
     "eq",
     "fill",
@@ -179,7 +179,7 @@ _xpu_computation_op_list = [
     "lerp",
     "conj_physical",
     "copysign",
-    "count_nonzero"
+    "count_nonzero",
     "nan_to_num",
 ]
 
