@@ -450,8 +450,11 @@ void multinomial_kernel(
             std::min(maxThreads, requiredSubGroups * SubGroupSize);
         int requiredShared = requiredThreads * sizeof(accscalar_t);
         if (n_sample == 1 && maxShared >= requiredShared) {
-          Tensor sampled =
-              at::detail::empty_xpu({numDist, n_sample}, self_v.options());
+          // Break per source build. Build every kernel source file into a so.
+          // libtorch_xpu.so which is the so of operator level depends the so
+          // of kernels. Do not depends on libtorch_xpu.so inversively. Using
+          // at::empty instead of at::detail::empty_xpu.
+          Tensor sampled = at::empty({numDist, n_sample}, self_v.options());
           at::native::uniform_(sampled, 0.0, 1.0, generator);
           int group_size = requiredThreads;
           int group_range = numDist;
