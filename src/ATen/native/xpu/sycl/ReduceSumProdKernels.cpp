@@ -105,16 +105,10 @@ struct nansum_functor {
 
 void nansum_kernel(TensorIterator& iter) {
   auto general_dispatcher = [](TensorIterator& iter) {
-    auto dtype = iter.dtype();
-    if (at::isComplexType(dtype)) {
-      AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "nansum_xpu", [&]() {
-        nansum_functor<scalar_t>{}(iter);
-      });
-    } else {
-      AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "nansum_xpu", [&]() {
-        nansum_functor<scalar_t>{}(iter);
-      });
-    }
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
+        kComplexHalf, iter.dtype(), "nansum_xpu", [&]() {
+          nansum_functor<scalar_t>{}(iter);
+        });
   };
   reduce_dispatch<nansum_functor>(iter, general_dispatcher);
 }

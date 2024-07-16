@@ -263,6 +263,7 @@ skip_list = (
     "test_out_warning_logcumsumexp_xpu",
     "test_python_ref__refs_mul_xpu_complex32",
     "test_python_ref_torch_fallback__refs_mul_xpu_complex32",
+    "test_dtypes_nanmean_xpu", # We are same as CUDA implementation. {torch.complex64, torch.complex128} not listed by the OpInfo.
     # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # https://github.com/intel/torch-xpu-ops/issues/157
