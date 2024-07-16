@@ -10,7 +10,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct LogSigmoidForwardFunctor {
-  bool operator()(scalar_t in_) const {
+  scalar_t operator()(scalar_t in_) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t in = in_;
     const auto min = std::min(opmath_t(0), in);
@@ -30,17 +30,16 @@ void log_sigmoid_forward_kernel(TensorIteratorBase& iter) {
 
 template <typename scalar_t>
 struct LogSigmoidBackwardFunctor {
-  bool operator()(scalar_t in_, scalar_t grad_out_) const {
+  scalar_t operator()(scalar_t in_, scalar_t grad_out_) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const opmath_t in = in_;
     const opmath_t grad_out = grad_out_;
 
-    bool in_negative = in < opmath_t(0);
-    opmath_t max_deriv = in_negative ? opmath_t(1) : opmath_t(0);
-    opmath_t sign = in_negative ? opmath_t(1) : -opmath_t(1);
-    const opmath_t z = std::exp(-std::abs(in));
-    opmath_t res = grad_out * (max_deriv - sign * (z / (opmath_t(1.0) + z)));
-    return (bool)res;
+    auto in_negative = in < opmath_t(0);
+    auto max_deriv = in_negative ? opmath_t(1) : opmath_t(0);
+    auto sign = in_negative ? opmath_t(1) : -opmath_t(1);
+    const auto z = std::exp(-std::abs(in));
+    return grad_out * (max_deriv - sign * (z / (opmath_t(1) + z)));
   }
 };
 
