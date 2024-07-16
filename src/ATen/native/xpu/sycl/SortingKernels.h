@@ -666,24 +666,23 @@ void segmented_group_select_pairs_(
         num_elements,                \
         k);                          \
   }
-
-  int max_group_size = syclMaxWorkGroupSize();
+  constexpr int max_group_size = 1024; // simd32-specific
   if (num_elements <= max_group_size * 4) {
     switch (radix_select_last_power2(num_elements)) {
       case 4096:
-        RUN_RADIX_SELECT(4096);
+        RUN_RADIX_SELECT(4096); // gsz 1024
         break;
       case 2048:
-        RUN_RADIX_SELECT(2048);
+        RUN_RADIX_SELECT(2048); // gsz 512
         break;
       case 1024:
-        RUN_RADIX_SELECT(1024);
+        RUN_RADIX_SELECT(1024); // gsz 256
         break;
       case 512:
-        RUN_RADIX_SELECT(512);
+        RUN_RADIX_SELECT(512); // gsz 128
         break;
       default:
-        RUN_RADIX_SELECT(256);
+        RUN_RADIX_SELECT(256); // gsz 64
         break;
     }
   } else {
