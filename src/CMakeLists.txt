@@ -3,8 +3,6 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
 set(ATen_XPU_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
-set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
-set(ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
 
@@ -35,6 +33,9 @@ if(BUILD_SEPARATE_OPS)
   endforeach()
 else()
   # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
+  set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
+  set(ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS)
+
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
     string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
