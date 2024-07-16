@@ -58,6 +58,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
+    "cumprod"
     "cumsum",
     "eq",
     "fill",
