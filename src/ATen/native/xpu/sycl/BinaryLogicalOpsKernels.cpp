@@ -17,11 +17,18 @@ struct LogicalAndFunctor {
 
 void logical_and_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBool, ScalarType::BFloat16, dtype, "logical_and_xpu", [&]() {
-        opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
-            iter, LogicalAndFunctor<scalar_t>());
-      });
+  if (at::isComplexType(dtype)) {
+    AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_and_xpu", [&]() {
+      opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
+          iter, LogicalAndFunctor<scalar_t>());
+    });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kHalf, kBool, ScalarType::BFloat16, dtype, "logical_and_xpu", [&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
+              iter, LogicalAndFunctor<scalar_t>());
+        });
+  }
 }
 
 template <typename scalar_t>
@@ -33,11 +40,17 @@ struct LogicalOrFunctor {
 
 void logical_or_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBool, ScalarType::BFloat16, dtype, "logical_or_xpu", [&]() {
-        opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
-            iter, LogicalOrFunctor<scalar_t>());
-      });
+  if (at::isComplexType(dtype)) {
+    AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_or_xpu", [&]() {
+      gpu_kernel_with_scalars(iter, LogicalOrFunctor<scalar_t>());
+    });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kHalf, kBool, ScalarType::BFloat16, dtype, "logical_or_xpu", [&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
+              iter, LogicalOrFunctor<scalar_t>());
+        });
+  }
 }
 
 template <typename scalar_t>
@@ -49,11 +62,17 @@ struct LogicalXorFunctor {
 
 void logical_xor_kernel(TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBool, ScalarType::BFloat16, dtype, "logical_xor_xpu", [&]() {
-        opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
-            iter, LogicalXorFunctor<scalar_t>());
-      });
+  if (at::isComplexType(dtype)) {
+    AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_xor_xpu", [&]() {
+      gpu_kernel_with_scalars(iter, LogicalXorFunctor<scalar_t>());
+    });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kHalf, kBool, ScalarType::BFloat16, dtype, "logical_xor_xpu", [&]() {
+          opmath_symmetric_gpu_kernel_with_scalars<scalar_t, bool>(
+              iter, LogicalXorFunctor<scalar_t>());
+        });
+  }
 }
 
 } // namespace at::native::xpu
