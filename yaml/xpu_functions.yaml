@@ -559,3 +559,5 @@ supported:
   - ceil_
   - ceil.out
   - nan_to_num.out
+  - _weight_norm_interface
+  - _weight_norm_interface_backward
