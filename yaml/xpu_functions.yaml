@@ -15,6 +15,9 @@ supported:
   - cumsum
   - cumsum.out
   - cumsum_
+  - cumprod
+  - cumprod.out
+  - cumprod_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -118,6 +121,10 @@ supported:
   - softshrink.out
   - softshrink_backward
   - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
   - gelu.out
@@ -504,6 +511,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out

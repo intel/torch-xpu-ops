@@ -58,6 +58,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
+    "cumprod"
     "cumsum",
     "eq",
     "fill",
@@ -68,6 +69,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.mish",
     "index_add",
     "index_put",
     "index_select",
@@ -176,6 +178,7 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "multinomial",
     "lerp",
     "conj_physical",
     "copysign",
