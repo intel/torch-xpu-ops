@@ -3336,3 +3336,307 @@
   device_guard: False
   dispatch:
     XPU: is_set_to
+
+- func: mish(Tensor self) -> Tensor
+  structured_delegate: mish.out
+  python_module: nn
+
+- func: mish_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: mish.out
+  python_module: nn
+
+- func: mish.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: nn
+  dispatch:
+    XPU: mish_out
+
+- func: mish_backward(Tensor grad_output, Tensor self) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: mish_backward
+
+- func: atan2.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: atan2_out
+  tags: [core, pointwise]
+
+- func: atan2_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: atan2.out
+  variants: method
+  tags: pointwise
+
+- func: atan2(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: atan2.out
+  variants: method, function
+  tags: [core, pointwise]
+# arctan2, alias of atan2
+
+- func: copysign.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: copysign_out
+  tags: pointwise
+
+- func: copysign.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: copysign.out
+  tags: pointwise
+
+- func: copysign_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: copysign.out
+
+- func: copysign.Scalar(Tensor self, Scalar other) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: copysign
+  tags: pointwise
+
+- func: copysign_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: copysign_
+
+- func: copysign.Scalar_out(Tensor self, Scalar other, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: copysign_out
+  tags: pointwise
+
+# TODO: remove dispatch section when porting TH CUDA to ATen
+- func: multinomial.out(Tensor self, int num_samples, bool replacement=False, *, Generator? generator=None, Tensor(a!) out) -> Tensor(a!)
+  tags: nondeterministic_seeded
+  dispatch:
+    XPU: multinomial_out
+
+- func: multinomial(Tensor self, int num_samples, bool replacement=False, *, Generator? generator=None) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: multinomial
+  tags: nondeterministic_seeded
+
+- func: huber_loss.out(Tensor self, Tensor target, int reduction=Mean, float delta=1.0, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: huber_loss_out
+
+- func: huber_loss(Tensor self, Tensor target, int reduction=Mean, float delta=1.0) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: huber_loss
+
+- func: huber_loss_backward.out(Tensor grad_output, Tensor self, Tensor target, int reduction, float delta, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: huber_loss_backward_out
+
+- func: huber_loss_backward(Tensor grad_output, Tensor self, Tensor target, int reduction, float delta) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: huber_loss_backward
+
+- func: reflection_pad3d.out(Tensor self, SymInt[6] padding, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: reflection_pad3d_out_xpu
+
+- func: reflection_pad3d(Tensor self, SymInt[6] padding) -> Tensor
+  python_module: nn
+  structured_delegate: reflection_pad3d.out
+  tags: core
+
+- func: reflection_pad3d_backward.grad_input(Tensor grad_output, Tensor self, SymInt[6] padding, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: reflection_pad3d_backward_out_xpu
+
+- func: reflection_pad3d_backward(Tensor grad_output, Tensor self, SymInt[6] padding) -> Tensor
+  python_module: nn
+  structured_delegate: reflection_pad3d_backward.grad_input
+
+- func: count_nonzero.dim_IntList(Tensor self, int[] dim) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: count_nonzero_xpu
+  autogen: count_nonzero.dim_IntList_out
+
+- func: count_nonzero(Tensor self, int? dim=None) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: count_nonzero
+  autogen: count_nonzero.out
+
+- func: sinh(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sinh.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: sinh_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: sinh.out
+  variants: function, method
+  tags: pointwise
+
+- func: sinh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sinh_out
+# Returns a copy of this `Variable` that is detached from its autograd graph.
+# This method is OK to call if the `Variable` is a view.
+#
+# NOTE: Previously, if we change the tensor metadata (e.g. sizes / strides /
+# storage / storage_offset) of a tensor created from `detach()`, those metadata
+# in the original tensor will also be updated. However, the new behavior is that
+# those metadata changes to the detached tensor will not update the original tensor
+# anymore, and in the `detach()` function we need to set `allow_tensor_metadata_change_`
+# to false to make such changes explicitly illegal, in order to prevent users from
+# changing metadata of the detached tensor and expecting the original tensor to also
+# be updated.
+  tags: pointwise
+
+- func: asinh(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: asinh.out
+  tags: [core, pointwise]
+
+- func: asinh_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  structured_delegate: asinh.out
+  tags: pointwise
+
+- func: asinh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: asinh_out
+  tags: pointwise
+
+- func: tan(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: tan.out
+  variants: function, method
+  dispatch:
+    SparseCPU, SparseCUDA: tan_sparse
+    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr
+  tags: [core, pointwise]
+
+- func: tan_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: tan.out
+  variants: function, method
+  dispatch:
+    SparseCPU, SparseCUDA: tan_sparse_
+    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr_
+  tags: pointwise
+
+- func: tan.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: tan_out
+  tags: pointwise
+
+- func: atan(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: atan.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: atan_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: atan.out
+  variants: function, method
+  tags: pointwise
+
+- func: atan.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: atan_out
+  tags: pointwise
+
+- func: atanh(Tensor self) -> Tensor
+  structured_delegate: atanh.out
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: atanh_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: atanh.out
+  variants: function, method
+  tags: pointwise
+
+- func: atanh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: atanh_out
+  tags: pointwise
+# arctanh, alias for atanh
+
+- func: cosh(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: cosh.out
+  tags: [core, pointwise]
+
+- func: cosh_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: cosh.out
+  tags: pointwise
+
+- func: cosh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: cosh_out
+  tags: pointwise
+
+- func: nan_to_num(Tensor self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: nan_to_num
+  tags: pointwise
+
+- func: nan_to_num_(Tensor(a!) self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: nan_to_num_
+  tags: pointwise
+
+- func: nan_to_num.out(Tensor self, float? nan=None, float? posinf=None, float? neginf=None, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: nan_to_num_out
+  tags: pointwise
+
+- func: linalg_cross(Tensor self, Tensor other, *, int dim=-1) -> Tensor
+  python_module: linalg
+  variants: function
+  structured_delegate: linalg_cross.out
+  dispatch:
+    ZeroTensor: linalg_cross_zerotensor
+
+- func: linalg_cross.out(Tensor self, Tensor other, *, int dim=-1, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  structured: True
+  dispatch:
+    CPU, CUDA, MPS: linalg_cross_out
+

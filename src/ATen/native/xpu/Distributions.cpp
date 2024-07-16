@@ -10,6 +10,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
+#include <ATen/native/xpu/sycl/MultinomialKernel.h>
+#include <ATen/ops/div.h>
 
 namespace at {
 
@@ -23,5 +25,8 @@ REGISTER_XPU_DISPATCH(random_from_to_stub, &xpu::random_from_to_kernel);
 REGISTER_XPU_DISPATCH(
     random_full_64_bits_range_stub,
     &xpu::random_full_64_bits_range_kernel);
+REGISTER_XPU_DISPATCH(
+    multinomial_with_replacement_stub,
+    &xpu::multinomial_kernel);
 } // namespace native
 } // namespace at

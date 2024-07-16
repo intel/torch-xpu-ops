@@ -1,7 +1,6 @@
 #include <ATen/native/BucketizationUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BucketizationKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 namespace native {

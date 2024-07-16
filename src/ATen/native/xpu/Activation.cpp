@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
+#include <ATen/native/xpu/sycl/ActivationMishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
 #include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
@@ -44,6 +45,8 @@ REGISTER_XPU_DISPATCH(softplus_stub, &xpu::softplus_kernel);
 REGISTER_XPU_DISPATCH(softplus_backward_stub, &xpu::softplus_backward_kernel);
 REGISTER_XPU_DISPATCH(softshrink_stub, &xpu::softshrink_kernel);
 REGISTER_XPU_DISPATCH(shrink_backward_stub, &xpu::softshrink_backward_kernel);
+REGISTER_XPU_DISPATCH(mish_stub, &xpu::mish_kernel);
+REGISTER_XPU_DISPATCH(mish_backward_stub, &xpu::mish_backward_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,

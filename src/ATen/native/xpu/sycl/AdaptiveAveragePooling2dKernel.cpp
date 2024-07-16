@@ -195,7 +195,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
     numel = ib * ic * ih * iw;
     int total_item = std::min(numel, syclMaxWorkItemsPerTile());
 
-    local_range = syclMaxWorkGroupSize();
+    local_range = syclMaxWorkGroupSize(*this);
     global_range = total_item < local_range
         ? local_range
         : (total_item / local_range) * local_range;

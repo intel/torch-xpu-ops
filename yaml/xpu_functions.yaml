@@ -151,6 +151,10 @@ supported:
   - softshrink.out
   - softshrink_backward
   - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
 >>>>>>> main
@@ -188,11 +192,22 @@ supported:
   - abs #structured
   - abs_ #structured
   - abs.out
+<<<<<<< HEAD
   - sin #structured
   - sin_ #structured
   - sin.out 
   - cos #structured
   - cos_ #structured
+=======
+  - sin
+  - sin_
+  - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
+  - cos
+  - cos_
+>>>>>>> main
   - cos.out
   - log #structured
   - log_ #structured
@@ -208,8 +223,16 @@ supported:
   - rsqrt  #structured
   - rsqrt_ #structured
   - rsqrt.out
+<<<<<<< HEAD
   - tanh #structured
   - tanh_ #structured
+=======
+  - tan
+  - tan_
+  - tan.out
+  - tanh
+  - tanh_
+>>>>>>> main
   - tanh.out
   - neg #structured
   - neg_ #structured
@@ -456,6 +479,9 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
   - batch_norm_stats
   - batch_norm_elemt
   - batch_norm_elemt.out
@@ -512,10 +538,18 @@ supported:
   - searchsorted.Scalar
   - searchsorted.Scalar_out
   - trace
+  - reflection_pad1d
+  - reflection_pad1d.out
+  - reflection_pad1d_backward
+  - reflection_pad1d_backward.grad_input
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
   - reflection_pad2d_backward.grad_input
+  - reflection_pad3d
+  - reflection_pad3d.out
+  - reflection_pad3d_backward
+  - reflection_pad3d_backward.grad_input
   - native_group_norm
   - native_group_norm_backward
   - elu
@@ -526,6 +560,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out
@@ -551,11 +587,36 @@ supported:
   - addcmul.out
   - addcmul
   - addcmul_
+  - asinh
+  - asinh.out
+  - asinh_
+  - asin
+  - asin.out
+  - asin_
+  - atan
+  - atan.out
+  - atan_
+  - atan2
+  - atan2.out
+  - atan2_
+  - atanh
+  - atanh.out
+  - atanh_
+  - cosh
+  - cosh.out
+  - cosh_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - linalg_cross
+  - linalg_cross.out
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - count_nonzero.dim_IntList
   - conj_physical.out
   - conj_physical_
   - ceil
   - ceil_
   - ceil.out
+  - nan_to_num.out

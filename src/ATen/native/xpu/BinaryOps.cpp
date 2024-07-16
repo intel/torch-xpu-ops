@@ -12,6 +12,7 @@
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
+#include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
@@ -35,6 +36,8 @@ REGISTER_XPU_DISPATCH(maximum_stub, &xpu::maximum_kernel);
 REGISTER_XPU_DISPATCH(minimum_stub, &xpu::minimum_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(hypot_stub, &xpu::hypot_kernel);
+REGISTER_XPU_DISPATCH(atan2_stub, &xpu::atan2_kernel);
+REGISTER_XPU_DISPATCH(copysign_stub, &xpu::copysign_kernel);
 
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,
@@ -44,5 +47,6 @@ TORCH_IMPL_FUNC(add_out_xpu)
   auto iter = TensorIterator::borrowing_binary_op(output, self, other);
   xpu::add_kernel(iter, alpha);
 }
+
 } // namespace native
 } // namespace at

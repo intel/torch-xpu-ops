@@ -107,10 +107,6 @@ void launch_upsample_bilinear2d_kernel(
     int64_t output_width,
     int64_t nbatch,
     int64_t channels) {
-  auto queue = getCurrentSYCLQueue();
-  int64_t wg_size = syclMaxWorkGroupSize();
-  int num_group = at::ceil_div(n, (int)wg_size);
-
   UpsampleBilinear2dKernelFunctor<scalar_t, accscalar_t> kfn(
       n,
       rheight,
@@ -124,6 +120,10 @@ void launch_upsample_bilinear2d_kernel(
       output_width,
       nbatch,
       channels);
+
+  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int num_group = at::ceil_div(n, (int)wg_size);
+  auto queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit(
       sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
@@ -249,14 +249,10 @@ void launch_upsample_bilinear2d_backward_kernel(
     const bool align_corners,
     scalar_t* idata,
     const scalar_t* odata) {
-  auto queue = getCurrentSYCLQueue();
-  int64_t wg_size = syclMaxWorkGroupSize();
-
   const size_t o_numel = nc * output_width * output_height;
   const size_t i_numel = nc * input_width * input_height;
 
   const size_t num_kernels = nc * output_width * output_height;
-  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
 
   UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
       nc,
@@ -273,6 +269,11 @@ void launch_upsample_bilinear2d_backward_kernel(
       odata,
       o_numel,
       i_numel);
+
+  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
+  auto queue = getCurrentSYCLQueue();
+
   sycl_kernel_submit(
       sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
 }

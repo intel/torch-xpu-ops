@@ -120,7 +120,7 @@ static inline void softmax_group_reduce_spatial(
   }
 }
 
-template <int SIMD, int vec_size, int NUM>
+template <int SIMD, int vec_size, int NUM, class KernelClass>
 static inline void get_wgroup_size(
     uint64_t dim_size,
     int outer_size,
@@ -129,8 +129,7 @@ static inline void get_wgroup_size(
     int& global_size_row,
     int& local_size_row,
     int& local_size_col) {
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int maxWGSize = syclMaxWorkGroupSize(dev_id);
+  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
 
   int local_size = (dim_size + NUM * vec_size - 1) / (NUM * vec_size);
   local_size = std::min(local_size, maxWGSize);
@@ -165,16 +164,15 @@ static inline void get_wgroup_size(
 }
 
 // this method help to divide the computation resource for spatial_softmax
-template <int vec_size>
+template <int vec_size, class KernelClass>
 static inline void get_wgroup_size_spatial(
     int bs,
     int dim_size,
     int inner_size,
     int& GroupSize,
     int& GroupRow) {
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int maxWGSize = syclMaxWorkGroupSize(dev_id);
-  int total_resource = syclMaxWorkItemsPerTile(dev_id);
+  int maxWGSize = syclMaxWorkGroupSize<KernelClass>();
+  int total_resource = syclMaxWorkItemsPerTile();
 
   // set the GroupSize smaller to ensure larger group number
   // smaller GroupSize is friendly to the tail case
@@ -391,22 +389,11 @@ void dispatch_softmax_forward_kernel(
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
 
-  int sub_group_num, global_size_row, local_size_row, range, local_size;
-  get_wgroup_size<SIMD, vec_size, outer_loop>(
-      dim_size,
-      outer_size,
-      sub_group_num,
-      range,
-      global_size_row,
-      local_size_row,
-      local_size);
-  int64_t local_range{local_size_row * local_size};
-  int64_t global_range{global_size_row * local_size_row * local_size};
   scalar_t neginf = -std::numeric_limits<scalar_t>::infinity();
   scalar_t nan = std::numeric_limits<accscalar_t>::quiet_NaN();
 
   if constexpr (is_masked) {
-    auto caller = DispatchSoftmaxForwardKernelFunctor<
+    using KernelClass = DispatchSoftmaxForwardKernelFunctor<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -417,7 +404,21 @@ void dispatch_softmax_forward_kernel(
         outer_loop,
         is_masked,
         calc_t,
-        vec_t>(
+        vec_t>;
+
+    int sub_group_num, global_size_row, local_size_row, range, local_size;
+    get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    auto kfn = KernelClass(
         in_data,
         out_data,
         dim_size,
@@ -431,10 +432,10 @@ void dispatch_softmax_forward_kernel(
         local_size,
         neginf,
         nan);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
     DummyFunctor dummy;
-    auto caller = DispatchSoftmaxForwardKernelFunctor<
+    using KernelClass = DispatchSoftmaxForwardKernelFunctor<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -445,7 +446,21 @@ void dispatch_softmax_forward_kernel(
         outer_loop,
         is_masked,
         DummyFunctor,
-        vec_t>(
+        vec_t>;
+
+    int sub_group_num, global_size_row, local_size_row, range, local_size;
+    get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    auto kfn = KernelClass(
         in_data,
         out_data,
         dim_size,
@@ -459,7 +474,7 @@ void dispatch_softmax_forward_kernel(
         local_size,
         neginf,
         nan);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 }
 
@@ -582,22 +597,25 @@ void softmax_forward_kernel(
     int outer_size) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
-  auto& queue = getCurrentSYCLQueue();
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int local_size = std::min(
-      (dim_size + vec_size - 1) / vec_size, int(syclMaxWorkGroupSize(dev_id)));
-
-  int64_t local_range{local_size};
-  int64_t global_range{local_size * outer_size};
-  auto ker = SoftmaxForwardKernelFunctor<
+  using KernelClass = SoftmaxForwardKernelFunctor<
       vec_size,
       scalar_t,
       accscalar_t,
       IndexType,
       LogSoftMax,
       vec_t,
-      align_bytes>(in_data, out_data, dim_size, outer_size, local_size);
-  sycl_kernel_submit(global_range, local_range, queue, ker);
+      align_bytes>;
+
+  int local_size = std::min(
+      (dim_size + vec_size - 1) / vec_size,
+      int(syclMaxWorkGroupSize<KernelClass>()));
+  int64_t local_range{local_size};
+  int64_t global_range{local_size * outer_size};
+
+  auto kfn = KernelClass(in_data, out_data, dim_size, outer_size, local_size);
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
@@ -756,10 +774,16 @@ void spatial_softmax_forward(
     int inner_size,
     int outer_size) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
-  auto& queue = getCurrentSYCLQueue();
+  using KernelClass = SpatialSoftmaxForwardKernelFunctor<
+      vec_size,
+      scalar_t,
+      accscalar_t,
+      IndexType,
+      LogSoftMax,
+      vec_t>;
 
   int local_size, block_row;
-  get_wgroup_size_spatial<vec_size>(
+  get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
@@ -767,7 +791,7 @@ void spatial_softmax_forward(
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
 
-  auto caller = SpatialSoftmaxForwardKernelFunctor<
+  auto kfn = SpatialSoftmaxForwardKernelFunctor<
       vec_size,
       scalar_t,
       accscalar_t,
@@ -782,7 +806,9 @@ void spatial_softmax_forward(
       local_size,
       block_row,
       group_num);
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
@@ -943,20 +969,10 @@ void dispatch_softmax_backward_kernel(
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
   constexpr int NUM = INNER_LOOP / vec_size * (SIMD32 / SIMD);
-  int sub_group_num, global_size_row, local_size_row, range, local_size;
-  get_wgroup_size<SIMD, vec_size, NUM>(
-      dim_size,
-      outer_size,
-      sub_group_num,
-      range,
-      global_size_row,
-      local_size_row,
-      local_size);
-  int64_t local_range{local_size_row * local_size};
-  int64_t global_range{global_size_row * local_size_row * local_size};
 
+  int sub_group_num, global_size_row, local_size_row, range, local_size;
   if constexpr (is_masked) {
-    auto caller = DispatchSoftmaxBackwardKernelFunctor<
+    using KernelClass = DispatchSoftmaxBackwardKernelFunctor<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -967,7 +983,18 @@ void dispatch_softmax_backward_kernel(
         is_masked,
         calc_t,
         vec_t,
-        NUM>(
+        NUM>;
+
+    get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+
+    auto kfn = KernelClass(
         gradInput,
         output,
         gradOutput,
@@ -980,10 +1007,14 @@ void dispatch_softmax_backward_kernel(
         local_size_row,
         range,
         local_size);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
     DummyFunctor dummy;
-    auto caller = DispatchSoftmaxBackwardKernelFunctor<
+    using KernelClass = DispatchSoftmaxBackwardKernelFunctor<
         INNER_LOOP,
         vec_size,
         SIMD,
@@ -994,7 +1025,18 @@ void dispatch_softmax_backward_kernel(
         is_masked,
         DummyFunctor,
         vec_t,
-        NUM>(
+        NUM>;
+
+    get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+        dim_size,
+        outer_size,
+        sub_group_num,
+        range,
+        global_size_row,
+        local_size_row,
+        local_size);
+
+    auto kfn = KernelClass(
         gradInput,
         output,
         gradOutput,
@@ -1007,7 +1049,11 @@ void dispatch_softmax_backward_kernel(
         local_size_row,
         range,
         local_size);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+
+    int64_t local_range{local_size_row * local_size};
+    int64_t global_range{global_size_row * local_size_row * local_size};
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 }
 
@@ -1129,24 +1175,25 @@ void softmax_backward_kernel(
     int outer_size) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
-  auto& queue = getCurrentSYCLQueue();
-
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int local_size = std::min(
-      (dim_size + vec_size - 1) / vec_size, int(syclMaxWorkGroupSize(dev_id)));
-  int64_t local_range{local_size};
-  int64_t global_range{local_size * outer_size};
-
-  auto caller = SoftmaxBackwardKernelFunctor<
+  using KernelClass = SoftmaxBackwardKernelFunctor<
       vec_size,
       scalar_t,
       accscalar_t,
       LogSoftMax,
       vec_t,
-      align_bytes>(
+      align_bytes>;
+
+  int local_size = std::min(
+      (dim_size + vec_size - 1) / vec_size,
+      int(syclMaxWorkGroupSize<KernelClass>()));
+  int64_t local_range{local_size};
+  int64_t global_range{local_size * outer_size};
+
+  auto kfn = KernelClass(
       gradInput, output, gradOutput, dim_size, outer_size, local_size);
 
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
@@ -1273,10 +1320,15 @@ void spatial_softmax_backward_kernel(
     int inner_size,
     int outer_size) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
-  auto& queue = getCurrentSYCLQueue();
+  using KernelClass = SpatialSoftmaxBackwardKernelFunctor<
+      vec_size,
+      scalar_t,
+      accscalar_t,
+      LogSoftMax,
+      vec_t>;
 
   int local_size, block_row;
-  get_wgroup_size_spatial<vec_size>(
+  get_wgroup_size_spatial<vec_size, KernelClass>(
       outer_size, dim_size, inner_size, local_size, block_row);
   int group_num =
       (inner_size + local_size * vec_size - 1) / (local_size * vec_size);
@@ -1284,7 +1336,7 @@ void spatial_softmax_backward_kernel(
       (size_t)outer_size, (size_t)block_row, (size_t)(group_num * local_size)};
   sycl::range<3> local_range{(size_t)1, (size_t)block_row, (size_t)local_size};
 
-  auto caller = SpatialSoftmaxBackwardKernelFunctor<
+  auto kfn = SpatialSoftmaxBackwardKernelFunctor<
       vec_size,
       scalar_t,
       accscalar_t,
@@ -1298,7 +1350,9 @@ void spatial_softmax_backward_kernel(
       outer_size,
       local_size,
       block_row);
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
@@ -1327,8 +1381,8 @@ void spatial_softmax_forward(
       canUse32BitIndexMath(input) && canUse32BitIndexMath(output);
 
   // decide SIMD: SIMD32 or SIMD16
-  auto* dev_prop =
-      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto dev_id = at::xpu::getDeviceIndexOfCurrentQueue();
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   auto sub_group_size = dev_prop->sub_group_sizes;
   int SIMD = sub_group_size[1];
   if (SIMD == SIMD32) {
@@ -1386,8 +1440,27 @@ void spatial_softmax_forward(
     // if the element number is smaller than max_work_group_size * INNER_LOOP,
     // the fast path (dispatch_softmax_forward) will be selected.
     // otherwise, the general path (softmax_forward_kernel) will be selected.
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int max_group_size = syclMaxWorkGroupSize(dev_id);
+
+    // Query the smallest max work group size of the kernel template. The kernel
+    // instance with the largest register pressure will have the smallest max
+    // work group size. Memory spill probably occurs more severely than
+    // any other instances, then compiler probably chooses less SIMD width to
+    // mitgate register pressure. Actual max work group size of these kernel
+    // template allowed by the compiler is less than device allowed max work
+    // group size.
+    using DispatchSoftmaxForwardKernel = DispatchSoftmaxForwardKernelFunctor<
+        INNER_LOOP,
+        max_vec_size,
+        SIMD32,
+        scalar_t,
+        accscalar_t,
+        uint32_t,
+        LogSoftMax,
+        INNER_LOOP / max_vec_size,
+        false,
+        DummyFunctor,
+        vec_t>;
+    int max_group_size = syclMaxWorkGroupSize<DispatchSoftmaxForwardKernel>();
 
     if (can_use_32bit_index && max_group_size * INNER_LOOP >= dim_size) {
       // it assumes vec_size * outer_loop * work_group_size >= dim_size
@@ -1549,8 +1622,29 @@ void spatial_softmax_backward(
       outer_size);
 
   if (inner_size == 1) {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int max_group_size = syclMaxWorkGroupSize(dev_id);
+    // Query the smallest max work group size of the kernel template. The kernel
+    // instance with the largest register pressure will have the smallest max
+    // work group size. Memory spill probably occurs more severely than
+    // any other instances, then compiler probably chooses less SIMD width to
+    // mitgate register pressure. Actual max work group size of these kernel
+    // template allowed by the compiler is less than device allowed max work
+    // group size.
+    constexpr int NUM = INNER_LOOP / max_vec_size /* * (SIMD32 / SIMD32) */;
+    using DispatchSoftmaxBackwardKernel = DispatchSoftmaxBackwardKernelFunctor<
+        INNER_LOOP,
+        max_vec_size,
+        SIMD32,
+        scalar_t,
+        accscalar_t,
+        uint32_t,
+        LogSoftMax,
+        false, /* No instance for true */
+        DummyFunctor,
+        vec_t,
+        NUM>;
+
+    int max_group_size = syclMaxWorkGroupSize<DispatchSoftmaxBackwardKernel>();
+
     // if the element number is smaller than max_work_group_size * INNER_LOOP
     // / 2, (2 indicates reading two tensors: output and gradOutput) the fast
     // path (dispatch_softmax_backward) will be selected. otherwise, the

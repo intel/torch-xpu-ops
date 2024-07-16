@@ -75,12 +75,7 @@ void apply_triu_tril(
     const Tensor& result,
     const Tensor& self,
     const int64_t k) {
-  auto& queue = getCurrentSYCLQueue();
-  auto dev_id = getDeviceIndexOfCurrentQueue();
   auto N = self.numel();
-  int64_t group_size = syclMaxWorkGroupSize(dev_id);
-  auto num_groups = ceil_div(N, group_size);
-  auto total_items = num_groups * group_size;
   IndexType self_size_0 = (IndexType)self.size(-2);
   IndexType self_size_1 = (IndexType)self.size(-1);
   IndexType self_stride = (IndexType)(self.dim() > 2 ? self.stride(-3) : 1);
@@ -107,6 +102,11 @@ void apply_triu_tril(
       result_stride_1,
       result_ptr,
       self_ptr);
+
+  int64_t group_size = syclMaxWorkGroupSize(kfn);
+  auto num_groups = ceil_div(N, group_size);
+  auto total_items = num_groups * group_size;
+  auto& queue = getCurrentSYCLQueue();
 
   sycl_kernel_submit(
       sycl::range<1>(total_items), sycl::range<1>(group_size), queue, kfn);

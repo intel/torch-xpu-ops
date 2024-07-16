@@ -13,5 +13,7 @@ namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(mse_stub, &xpu::mse_kernel);
 REGISTER_XPU_DISPATCH(mse_backward_stub, &xpu::mse_backward_kernel);
+REGISTER_XPU_DISPATCH(huber_stub, &xpu::huber_kernel);
+REGISTER_XPU_DISPATCH(huber_backward_stub, &xpu::huber_backward_kernel);
 } // namespace native
 } // namespace at

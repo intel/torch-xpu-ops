@@ -391,5 +391,9 @@ Tensor& index_out_xpu(
   return result;
 }
 
+Tensor count_nonzero_xpu(const Tensor& self, IntArrayRef dims) {
+  return (self != 0).sum(dims);
+}
+
 } // namespace native
 } // namespace at

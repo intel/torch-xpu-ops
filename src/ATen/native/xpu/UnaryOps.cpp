@@ -11,8 +11,15 @@
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcosKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricAcoshKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAsinhKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricAtanhKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricCosKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricCoshKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricSinKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricSinhKernel.h>
+#include <ATen/native/xpu/sycl/UnaryGeometricTanKernel.h>
 #include <ATen/native/xpu/sycl/UnaryGeometricTanhKernel.h>
 
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
@@ -47,5 +54,12 @@ REGISTER_XPU_DISPATCH(erf_stub, &xpu::erf_kernel);
 REGISTER_XPU_DISPATCH(erfc_stub, &xpu::erfc_kernel);
 REGISTER_XPU_DISPATCH(conj_physical_stub, &xpu::conj_physical_kernel);
 REGISTER_XPU_DISPATCH(ceil_stub, &xpu::ceil_kernel);
+REGISTER_XPU_DISPATCH(sinh_stub, &xpu::sinh_kernel);
+REGISTER_XPU_DISPATCH(asinh_stub, &xpu::asinh_kernel);
+REGISTER_XPU_DISPATCH(tan_stub, &xpu::tan_kernel);
+REGISTER_XPU_DISPATCH(atan_stub, &xpu::atan_kernel);
+REGISTER_XPU_DISPATCH(atanh_stub, &xpu::atanh_kernel);
+REGISTER_XPU_DISPATCH(cosh_stub, &xpu::cosh_kernel);
+REGISTER_XPU_DISPATCH(nan_to_num_stub, &xpu::nan_to_num_kernel);
 } // namespace native
 } // namespace at

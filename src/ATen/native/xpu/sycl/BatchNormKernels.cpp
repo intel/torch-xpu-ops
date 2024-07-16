@@ -134,16 +134,39 @@ struct Var {
   }
 };
 
+template <class KernelClass>
 int get_max_group_size(int simd = SIMD32) {
   // The max work group size required by batch_norm needs to ensure that the two
   // subgroup reduces can obtain correct results.
-  int max_size = syclMaxWorkGroupSize();
+  int max_size = syclMaxWorkGroupSize<KernelClass>();
   int shfl2_restricted_size = simd * simd;
   return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
 }
 
+template <class KernelClass>
 int get_num_threads(int nelem, int restricted_simd = SIMD32) {
-  int max_size = get_max_group_size(restricted_simd);
+  int max_size = get_max_group_size<KernelClass>(restricted_simd);
+  int thread_sizes[5] = {32, 64, 128, 256, max_size};
+  for (int i = 0; i < 5; ++i) {
+    if (nelem <= thread_sizes[i]) {
+      return thread_sizes[i];
+    }
+  }
+  return max_size;
+}
+
+int get_dev_max_group_size(int simd = SIMD32) {
+  // The max work group size required by batch_norm needs to ensure that the two
+  // subgroup reduces can obtain correct results.
+  int max_size = syclDeviceMaxWorkGroupSize();
+  int shfl2_restricted_size = simd * simd;
+  return max_size > shfl2_restricted_size ? shfl2_restricted_size : max_size;
+}
+
+int get_num_threads_by_dev_max_group_size(
+    int nelem,
+    int restricted_simd = SIMD32) {
+  int max_size = get_dev_max_group_size(restricted_simd);
   int thread_sizes[5] = {32, 64, 128, 256, max_size};
   for (int i = 0; i < 5; ++i) {
     if (nelem <= thread_sizes[i]) {
@@ -566,39 +589,53 @@ void batch_norm_stats_template(
 
   auto& queue = getCurrentSYCLQueue();
   int simd = get_prefer_simd(input.size(1), input.size(0) * input.size(2));
-  int max_group_size = get_max_group_size(simd);
-  int tf = get_num_threads(input.size(2), simd);
-  int64_t work_group_size_x = tf;
-  int64_t work_group_size_y = std::max(1, max_group_size / tf);
-  int64_t global_size_x = input.size(1) * work_group_size_x;
-  int64_t global_size_y = 1 * work_group_size_y;
 
   if (simd == SIMD32) {
-    auto caller = BatchNormCollectStatisticsKernelFunctor<
+    using KernelClass = BatchNormCollectStatisticsKernelFunctor<
         SIMD32,
         VarTransform,
         scalar_t,
         scalar_t,
         accscalar_t,
-        index_t>(input, epsilon, 0.0, mean, invstd);
+        index_t>;
+
+    auto kfn = KernelClass(input, epsilon, 0.0, mean, invstd);
+
+    int max_group_size = get_max_group_size<KernelClass>(simd);
+    int tf = get_num_threads<KernelClass>(input.size(2), simd);
+    int64_t work_group_size_x = tf;
+    int64_t work_group_size_y = std::max(1, max_group_size / tf);
+    int64_t global_size_x = input.size(1) * work_group_size_x;
+    int64_t global_size_y = 1 * work_group_size_y;
+
     sycl_kernel_submit(
         sycl::range<2>(global_size_y, global_size_x),
         sycl::range<2>(work_group_size_y, work_group_size_x),
         queue,
-        caller);
+        kfn);
   } else {
-    auto caller = BatchNormCollectStatisticsKernelFunctor<
+    using KernelClass = BatchNormCollectStatisticsKernelFunctor<
         SIMD16,
         VarTransform,
         scalar_t,
         scalar_t,
         accscalar_t,
-        index_t>(input, epsilon, 0.0, mean, invstd);
+        index_t>;
+
+    auto kfn = KernelClass(input, epsilon, 0.0, mean, invstd);
+
+    int max_group_size = get_max_group_size<KernelClass>(simd);
+    int tf = get_num_threads<KernelClass>(input.size(2), simd);
+    int64_t work_group_size_x = tf;
+    int64_t work_group_size_y = std::max(1, max_group_size / tf);
+    int64_t global_size_x = input.size(1) * work_group_size_x;
+    int64_t global_size_y = 1 * work_group_size_y;
+
     sycl_kernel_submit(
         sycl::range<2>(global_size_y, global_size_x),
         sycl::range<2>(work_group_size_y, work_group_size_x),
         queue,
-        caller);
+        kfn);
   }
 }
 
@@ -961,10 +998,11 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    size_t max_wg_sz = syclMaxWorkGroupSize();
-    shmem_mean_ = sycl_local_acc_t<accscalar_t>(sycl::range<1>{max_wg_sz}, cgh);
-    shmem_m2n_ = sycl_local_acc_t<accscalar_t>(sycl::range<1>{max_wg_sz}, cgh);
-    shmem_count_ = sycl_local_acc_t<int>(sycl::range<1>{max_wg_sz}, cgh);
+    shmem_mean_ =
+        sycl_local_acc_t<accscalar_t>(sycl::range<1>{(size_t)wg_size_}, cgh);
+    shmem_m2n_ =
+        sycl_local_acc_t<accscalar_t>(sycl::range<1>{(size_t)wg_size_}, cgh);
+    shmem_count_ = sycl_local_acc_t<int>(sycl::range<1>{(size_t)wg_size_}, cgh);
     is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>{1}, cgh);
   }
 
@@ -976,7 +1014,8 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
       int* semaphores,
       const int reduction_size,
       const int stride,
-      accscalar_t epsilon)
+      accscalar_t epsilon,
+      int wg_size)
       : input_(input),
         out_mean_(out_mean),
         out_invstd_(out_invstd),
@@ -984,7 +1023,8 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
         semaphores_(semaphores),
         reduction_size_(reduction_size),
         stride_(stride),
-        epsilon_(epsilon) {}
+        epsilon_(epsilon),
+        wg_size_(wg_size) {}
 
  private:
   const scalar_t* __restrict__ input_;
@@ -995,6 +1035,7 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
   const int reduction_size_;
   const int stride_;
   accscalar_t epsilon_;
+  int wg_size_;
   sycl_local_acc_t<accscalar_t> shmem_mean_;
   sycl_local_acc_t<accscalar_t> shmem_m2n_;
   sycl_local_acc_t<int> shmem_count_;
@@ -1040,7 +1081,7 @@ void batch_norm_stats_channels_last_template(
   int* semaphores_ptr =
       nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
 
-  auto caller = BatchNormCollectStatisticsChannelsLastKernelFunctor<
+  auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
       VarTransform,
       scalar_t,
       accscalar_t,
@@ -1052,8 +1093,10 @@ void batch_norm_stats_channels_last_template(
       semaphores_ptr,
       reduction_size,
       stride,
-      epsilon);
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+      epsilon,
+      wg_size_y * wg_size_x);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
@@ -1255,8 +1298,8 @@ void batch_norm_elemt_template(
   const double dummy_epsilon = 1e-5;
 
   int tf = std::max<int>(
-      get_num_threads(input.size(2) / 4),
-      std::min<int>(get_num_threads(input.size(2)), 64));
+      get_num_threads_by_dev_max_group_size(input.size(2) / 4),
+      std::min<int>(get_num_threads_by_dev_max_group_size(input.size(2)), 64));
   int tb = std::max<int>(64 / tf, 1);
   sycl::range<2> local_range(tb, tf);
   int nwg_x = input.size(1);
@@ -1267,14 +1310,14 @@ void batch_norm_elemt_template(
   nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto caller = BatchNormTransformInputKernelFunctor<
+  auto kfn = BatchNormTransformInputKernelFunctor<
       input_scalar_t,
       stat_scalar_t,
       stat_accscalar_t,
       true,
       index_t>(input, output, mean, invstd, weight, bias, dummy_epsilon);
 
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
 template <
@@ -1389,7 +1432,7 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type<scalar_t, true>;
-          auto caller = BatchNormTransformInputChannelsLastKernelFunctor<
+          auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
               scalar_t,
               accscalar_t,
               accscalar_t,
@@ -1404,7 +1447,7 @@ void batch_norm_elemt_channels_last_template(
               reduction_size,
               stride,
               fuse_relu);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   } else {
     if (weight.defined()) {
@@ -1418,7 +1461,7 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type<scalar_t, true>;
-          auto caller = BatchNormTransformInputChannelsLastKernelFunctor<
+          auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
               scalar_t,
               accscalar_t,
               scalar_t,
@@ -1433,7 +1476,7 @@ void batch_norm_elemt_channels_last_template(
               reduction_size,
               stride,
               fuse_relu);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   }
 }
@@ -1600,7 +1643,7 @@ struct BatchNormBackwardReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)get_max_group_size(SIMD)}, cgh);
+        sycl::range<1>{(size_t)wg_size_}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
@@ -1637,7 +1680,8 @@ struct BatchNormBackwardReduceKernelFunctor
       GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
           grad_weight,
       GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
-          grad_bias)
+          grad_bias,
+      int wg_size)
       : input_(input),
         grad_output_(grad_output),
         mean_(mean),
@@ -1645,7 +1689,8 @@ struct BatchNormBackwardReduceKernelFunctor
         sum_dy_(sum_dy),
         sum_dy_xmu_(sum_dy_xmu),
         grad_weight_(grad_weight),
-        grad_bias_(grad_bias) {}
+        grad_bias_(grad_bias),
+        wg_size_(wg_size) {}
 
  private:
   const GenericPackedTensorAccessor<
@@ -1672,6 +1717,7 @@ struct BatchNormBackwardReduceKernelFunctor
       grad_weight_;
   GenericPackedTensorAccessor<stat_scalar_t, 1, DefaultPtrTraits, index_t>
       grad_bias_;
+  int wg_size_;
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>> local_sum_;
 };
 
@@ -1740,21 +1786,24 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
   auto& queue = getCurrentSYCLQueue();
   int simd = get_prefer_simd(
       input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
-  int max_wg_size = get_max_group_size(simd);
-  int wg_size_y = std::min<int>(last_pow2(batch_size), max_wg_size / simd);
-  int wg_size_x = std::min<int>(
-      std::max<int>(get_num_threads(feature_size, simd), simd),
-      max_wg_size / wg_size_y);
-  sycl::range<2> local_range(wg_size_y, wg_size_x);
-  sycl::range<2> global_range(1 * wg_size_y, n_input * wg_size_x);
 
   if (simd == SIMD32) {
-    auto caller = BatchNormBackwardReduceKernelFunctor<
+    using KernelClass = BatchNormBackwardReduceKernelFunctor<
         SIMD32,
         input_scalar_t,
         stat_scalar_t,
         stat_accscalar_t,
-        index_t>(
+        index_t>;
+
+    int max_wg_size = get_max_group_size<KernelClass>(simd);
+    int wg_size_y = std::min<int>(last_pow2(batch_size), max_wg_size / simd);
+    int wg_size_x = std::min<int>(
+        std::max<int>(get_num_threads<KernelClass>(feature_size, simd), simd),
+        max_wg_size / wg_size_y);
+    sycl::range<2> local_range(wg_size_y, wg_size_x);
+    sycl::range<2> global_range(1 * wg_size_y, n_input * wg_size_x);
+
+    auto kfn = KernelClass(
         input,
         grad_output,
         mean,
@@ -1762,15 +1811,27 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
         sum_dy,
         sum_dy_xmu,
         grad_weight,
-        grad_bias);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+        grad_bias,
+        wg_size_y * wg_size_x);
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
-    auto caller = BatchNormBackwardReduceKernelFunctor<
+    using KernelClass = BatchNormBackwardReduceKernelFunctor<
         SIMD16,
         input_scalar_t,
         stat_scalar_t,
         stat_accscalar_t,
-        index_t>(
+        index_t>;
+
+    int max_wg_size = get_max_group_size<KernelClass>(simd);
+    int wg_size_y = std::min<int>(last_pow2(batch_size), max_wg_size / simd);
+    int wg_size_x = std::min<int>(
+        std::max<int>(get_num_threads<KernelClass>(feature_size, simd), simd),
+        max_wg_size / wg_size_y);
+    sycl::range<2> local_range(wg_size_y, wg_size_x);
+    sycl::range<2> global_range(1 * wg_size_y, n_input * wg_size_x);
+
+    auto kfn = KernelClass(
         input,
         grad_output,
         mean,
@@ -1778,8 +1839,10 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
         sum_dy,
         sum_dy_xmu,
         grad_weight,
-        grad_bias);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+        grad_bias,
+        wg_size_y * wg_size_x);
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   return std::make_tuple(sum_dy_, sum_dy_xmu_, grad_weight_, grad_bias_);
 }
@@ -1962,10 +2025,10 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shmem_sum_dy_ = sycl_local_acc_t<accscalar_t>(
-        sycl::range<1>{(size_t)get_max_group_size()}, cgh);
-    shmem_sum_dy_xmu_ = sycl_local_acc_t<accscalar_t>(
-        sycl::range<1>{(size_t)get_max_group_size()}, cgh);
+    shmem_sum_dy_ =
+        sycl_local_acc_t<accscalar_t>(sycl::range<1>{(size_t)wg_size_}, cgh);
+    shmem_sum_dy_xmu_ =
+        sycl_local_acc_t<accscalar_t>(sycl::range<1>{(size_t)wg_size_}, cgh);
     is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>{1}, cgh);
   }
 
@@ -1981,7 +2044,8 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
       volatile accscalar_t* staging_data,
       int* semaphores,
       const int reduction_size,
-      const int stride)
+      const int stride,
+      const int wg_size)
       : input_(input),
         grad_output_(grad_output),
         mean_(mean),
@@ -1993,7 +2057,8 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
         staging_data_(staging_data),
         semaphores_(semaphores),
         reduction_size_(reduction_size),
-        stride_(stride) {}
+        stride_(stride),
+        wg_size_(wg_size) {}
 
  private:
   const scalar_t* __restrict__ input_;
@@ -2008,6 +2073,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
   int* semaphores_;
   const int reduction_size_;
   const int stride_;
+  const int wg_size_;
   sycl_local_acc_t<accscalar_t> shmem_sum_dy_;
   sycl_local_acc_t<accscalar_t> shmem_sum_dy_xmu_;
   sycl_local_acc_t<bool> is_last_group_done_;
@@ -2070,7 +2136,7 @@ batch_norm_backward_reduce_channels_last_template(
               : nullptr;
           int* semaphores_ptr =
               nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
-          auto caller = BatchNormBackwardReduceChannelsLastKernelFunctor<
+          auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2086,8 +2152,9 @@ batch_norm_backward_reduce_channels_last_template(
               staging_data_ptr,
               semaphores_ptr,
               reduction_size,
-              stride);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+              stride,
+              wg_size_y * wg_size_x);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   } else {
     if (weight.defined()) {
@@ -2110,7 +2177,8 @@ batch_norm_backward_reduce_channels_last_template(
               : nullptr;
           int* semaphores_ptr =
               nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
-          auto caller = BatchNormBackwardReduceChannelsLastKernelFunctor<
+
+          auto kfn = BatchNormBackwardReduceChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2128,8 +2196,10 @@ batch_norm_backward_reduce_channels_last_template(
               staging_data_ptr,
               semaphores_ptr,
               reduction_size,
-              stride);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+              stride,
+              wg_size_y * wg_size_x);
+
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   }
 
@@ -2430,8 +2500,8 @@ Tensor batch_norm_backward_elemt_template(
 
   auto& queue = getCurrentSYCLQueue();
   int tf = std::max<int>(
-      get_num_threads(input.size(2) / 4),
-      std::min<int>(get_num_threads(input.size(2)), 64));
+      get_num_threads_by_dev_max_group_size(input.size(2) / 4),
+      std::min<int>(get_num_threads_by_dev_max_group_size(input.size(2)), 64));
   int tb = std::max<int>(64 / tf, 1);
   int nwg_x = input.size(1);
   int nwg_y = std::max<int>(
@@ -2445,7 +2515,7 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto caller = BatchNormBackwardElemtKernelFunctor<
+  auto kfn = BatchNormBackwardElemtKernelFunctor<
       input_scalar_t,
       stat_scalar_t,
       stat_accscalar_t,
@@ -2459,7 +2529,7 @@ Tensor batch_norm_backward_elemt_template(
       sum_dy_xmu,
       grad_input,
       norm_fct);
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 
   return grad_input_reshaped.view(input_.sizes());
 }
@@ -2511,8 +2581,8 @@ Tensor batch_norm_backward_elemt_template(
   auto& queue = getCurrentSYCLQueue();
 
   int tf = std::max<int>(
-      get_num_threads(input.size(2) / 4),
-      std::min<int>(get_num_threads(input.size(2)), 64));
+      get_num_threads_by_dev_max_group_size(input.size(2) / 4),
+      std::min<int>(get_num_threads_by_dev_max_group_size(input.size(2)), 64));
   int tb = std::max<int>(64 / tf, 1);
   int nwg_x = input.size(1);
   int nwg_y = std::max<int>(
@@ -2524,7 +2594,7 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto caller = BatchNormBackwardElemtKernelFunctor<
+  auto kfn = BatchNormBackwardElemtKernelFunctor<
       input_scalar_t,
       stat_scalar_t,
       stat_accscalar_t,
@@ -2541,7 +2611,7 @@ Tensor batch_norm_backward_elemt_template(
       0,
       count.const_data_ptr<int>(),
       count.numel());
-  sycl_kernel_submit(global_range, local_range, queue, caller);
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
 
   return grad_input_reshaped.view(input_.sizes());
 }
@@ -2682,7 +2752,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         using accscalar_t = at::acc_type<scalar_t, true>;
 
         if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
-          auto caller = BatchNormBackwardElemtChannelsLastKernelFunctor<
+          auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2698,9 +2768,9 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               static_cast<accscalar_t>(norm_fct),
               reduction_size,
               stride);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         } else {
-          auto caller = BatchNormBackwardElemtChannelsLastKernelFunctor<
+          auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2716,7 +2786,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               static_cast<accscalar_t>(norm_fct),
               reduction_size,
               stride);
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         }
       });
 
@@ -2752,7 +2822,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         "batchnorm_backward_element_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
-          auto caller = BatchNormBackwardElemtChannelsLastKernelFunctor<
+          auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2771,7 +2841,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               stride,
               count.const_data_ptr<int>(),
               count.numel());
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   } else {
     if (weight.defined()) {
@@ -2789,7 +2859,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         "batchnorm_backward_element_xpu",
         [&] {
           using accscalar_t = acc_type<scalar_t, true>;
-          auto caller = BatchNormBackwardElemtChannelsLastKernelFunctor<
+          auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
               accscalar_t,
@@ -2808,7 +2878,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
               stride,
               count.const_data_ptr<int>(),
               count.numel());
-          sycl_kernel_submit(global_range, local_range, queue, caller);
+          sycl_kernel_submit(global_range, local_range, queue, kfn);
         });
   }
 
@@ -3374,7 +3444,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)get_max_group_size(SIMD)}, cgh);
+        sycl::range<1>{(size_t)wg_size_}, cgh);
   }
 
   BatchNormBackwardKernelFunctor(
@@ -3420,7 +3490,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           DefaultPtrTraits,
           index_t> save_invstd,
       bool train,
-      stat_accscalar_t epsilon)
+      stat_accscalar_t epsilon,
+      int wg_size)
       : input_(input),
         grad_output_(grad_output),
         grad_input_(grad_input),
@@ -3432,7 +3503,8 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         save_mean_(save_mean),
         save_invstd_(save_invstd),
         train_(train),
-        epsilon_(epsilon) {}
+        epsilon_(epsilon),
+        wg_size_(wg_size) {}
 
  private:
   const GenericPackedTensorAccessor<
@@ -3485,6 +3557,7 @@ struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       save_invstd_;
   bool train_;
   stat_accscalar_t epsilon_;
+  int wg_size_;
   sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>> local_sum_;
 };
 
@@ -3560,19 +3633,22 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
       input_reshaped.size(1), input_reshaped.size(0) * input_reshaped.size(1));
 
   auto& queue = getCurrentSYCLQueue();
-  int max_group_size = get_max_group_size(simd);
-  int tf = get_num_threads(input.size(2), simd);
-  int wg_sz_y = std::max<int>(1, max_group_size / tf);
-  sycl::range<2> local_range(wg_sz_y, tf);
-  sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf);
 
   if (simd == SIMD32) {
-    auto caller = BatchNormBackwardKernelFunctor<
+    using KernelClass = BatchNormBackwardKernelFunctor<
         SIMD32,
         input_scalar_t,
         stat_scalar_t,
         accscalar_t,
-        index_t>(
+        index_t>;
+
+    int max_group_size = get_max_group_size<KernelClass>(simd);
+    int tf = get_num_threads<KernelClass>(input.size(2), simd);
+    int wg_sz_y = std::max<int>(1, max_group_size / tf);
+    sycl::range<2> local_range(wg_sz_y, tf);
+    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf);
+
+    auto kfn = KernelClass(
         input,
         grad_output,
         grad_input,
@@ -3584,15 +3660,25 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
         save_mean,
         save_invstd,
         train,
-        epsilon);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+        epsilon,
+        wg_sz_y * tf);
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   } else {
-    auto caller = BatchNormBackwardKernelFunctor<
+    using KernelClass = BatchNormBackwardKernelFunctor<
         SIMD16,
         input_scalar_t,
         stat_scalar_t,
         accscalar_t,
-        index_t>(
+        index_t>;
+
+    int max_group_size = get_max_group_size<KernelClass>(simd);
+    int tf = get_num_threads<KernelClass>(input.size(2), simd);
+    int wg_sz_y = std::max<int>(1, max_group_size / tf);
+    sycl::range<2> local_range(wg_sz_y, tf);
+    sycl::range<2> global_range(1 * wg_sz_y, input.size(1) * tf);
+
+    auto kfn = KernelClass(
         input,
         grad_output,
         grad_input,
@@ -3604,8 +3690,10 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
         save_mean,
         save_invstd,
         train,
-        epsilon);
-    sycl_kernel_submit(global_range, local_range, queue, caller);
+        epsilon,
+        wg_sz_y * tf);
+
+    sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
   return std::make_tuple(grad_input_, grad_weight_, grad_bias_);
 }

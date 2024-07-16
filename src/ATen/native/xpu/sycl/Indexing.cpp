@@ -74,12 +74,16 @@ static inline void _index_select_kernel(
     IdxInfo& index_info,
     int64_t dim) {
   using scalar_t = typename SrcInfo::scalar_t;
-  auto cfg = IndexKernelConfig<
+  using IdxConfig = IndexKernelConfig<
       SrcInfo,
       DstInfo,
       IdxInfo,
-      IndexSelectScalarFunctor<scalar_t>>::
-      make_config(
+      IndexSelectScalarFunctor<scalar_t>>;
+
+  using IndexKnownProblemInnerKernel =
+      IndexKernel<IdxConfig, TrivialOffCal, true>;
+  auto IndexKnownProblemInnerKernel_cfg =
+      IdxConfig::template make_config<IndexKnownProblemInnerKernel>(
           src_info,
           dst_info,
           index_info,
@@ -87,10 +91,25 @@ static inline void _index_select_kernel(
           dim,
           false,
           IndexSelectScalarFunctor<scalar_t>());
-  if (cfg.problem_inner_) {
-    launch_index_kernel<decltype(cfg), TrivialOffCal, true>(cfg);
+
+  using IndexUnknownProblemInnerKernel =
+      IndexKernel<IdxConfig, TrivialOffCal, false>;
+  auto IndexUnknownProblemInnerKernel_cfg =
+      IdxConfig::template make_config<IndexUnknownProblemInnerKernel>(
+          src_info,
+          dst_info,
+          index_info,
+          static_cast<scalar_t>(0),
+          dim,
+          false,
+          IndexSelectScalarFunctor<scalar_t>());
+
+  if (IndexKnownProblemInnerKernel_cfg.problem_inner_) {
+    launch_index_kernel<IdxConfig, TrivialOffCal, true>(
+        IndexKnownProblemInnerKernel_cfg);
   } else {
-    launch_index_kernel<decltype(cfg), TrivialOffCal, false>(cfg);
+    launch_index_kernel<IdxConfig, TrivialOffCal, false>(
+        IndexUnknownProblemInnerKernel_cfg);
   }
 }
 
@@ -382,19 +401,21 @@ void index_add_kernel(
               getTensorInfo<scalar_t, int64_t>(self_);
           int new_indexing_dim = dst_info.collapseDims(dim);
 
-          auto cfg = IndexKernelConfig<
+          using IdxConfig = IndexKernelConfig<
               decltype(src_info),
               decltype(dst_info),
               decltype(index_info),
-              IndexAddScalarFunctor<scalar_t>>::
-              make_config(
-                  src_info,
-                  dst_info,
-                  index_info,
-                  alpha.to<scalar_t>(),
-                  new_indexing_dim,
-                  true,
-                  IndexAddScalarFunctor<scalar_t>());
+              IndexAddScalarFunctor<scalar_t>>;
+          using KernelClass = IndexKernel<IdxConfig, false, false>;
+
+          auto cfg = IdxConfig::template make_config<KernelClass>(
+              src_info,
+              dst_info,
+              index_info,
+              alpha.to<scalar_t>(),
+              new_indexing_dim,
+              true,
+              IndexAddScalarFunctor<scalar_t>());
           launch_index_kernel(cfg);
         });
       });
