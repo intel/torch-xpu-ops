@@ -73,6 +73,7 @@ _xpu_computation_op_list = [
     "hardswish",
     "nn.functional.mish",
     "index_add",
+    "index_fill",
     "index_put",
     "index_select",
     "isin",
