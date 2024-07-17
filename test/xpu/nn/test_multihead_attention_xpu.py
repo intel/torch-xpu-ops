@@ -15,6 +15,17 @@ with XPUPatchForImport(False):
     import unittest
     import unittest.mock as mock
     from torch.testing._internal.common_utils import TEST_WITH_CROSSREF
+    from typing import Optional
+
+    def _check_arg_device2(x: Optional[torch.Tensor]) -> bool:
+        if x is not None:
+            return x.device.type in [
+                "cpu",
+                "cuda",
+                "xpu",
+                torch.utils.backend_registration._privateuse1_backend_name,
+            ]
+        return True
 
     @torch.no_grad()
     @unittest.skipIf(
@@ -63,6 +74,7 @@ with XPUPatchForImport(False):
                 self.assertTrue(fastpath_mock.called)
 
     TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = multihead_self_attn_two_masks_fast_path_mock
+    torch.nn.modules.activation._check_arg_device = _check_arg_device2
 
 instantiate_device_type_tests(TestMultiheadAttentionNNDeviceType, globals(), only_for='xpu', allow_xpu=True)
 instantiate_parametrized_tests(TestMultiheadAttentionNN)
