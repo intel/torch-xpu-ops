@@ -429,6 +429,77 @@ void index_add_kernel(
       });
 }
 
+template <typename ValType>
+struct IndexFillScalarFunctor {
+  void operator()(
+      ValType* dst,
+      ValType* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      ValType alpha) const {
+    dst[dst_off] = alpha;
+  }
+};
+
+void index_fill_kernel(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source) {
+  if (self.numel() == 0 || index.numel() == 0) {
+    return;
+  }
+
+  TORCH_CHECK(
+      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "self has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "index has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Bool,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::ComplexHalf,
+      self.scalar_type(),
+      "index_fill_xpu",
+      [&] {
+        TensorInfo<int64_t, int64_t> index_info =
+            getTensorInfo<int64_t, int64_t>(index);
+        index_info.collapseDims();
+
+        TensorInfo<scalar_t, int64_t> dst_info =
+            getTensorInfo<scalar_t, int64_t>(self);
+        int new_indexing_dim = dst_info.collapseDims(dim);
+
+        // No used in index kernel frame for index_fill.
+        auto src_info = TensorInfo<scalar_t, int64_t>();
+
+        using IdxConfig = IndexKernelConfig<
+            decltype(src_info),
+            decltype(dst_info),
+            decltype(index_info),
+            IndexFillScalarFunctor<scalar_t>>;
+        using KernelClass = IndexKernel<IdxConfig, false, false>;
+
+        auto cfg = IdxConfig::template make_config<KernelClass>(
+            src_info,
+            dst_info,
+            index_info,
+            source.to<scalar_t>(),
+            new_indexing_dim,
+            true,
+            IndexFillScalarFunctor<scalar_t>());
+        launch_index_kernel(cfg);
+      });
+}
+
 template <typename scalar_t>
 struct IndexPutAccumulateFunctor {
   void operator()(char* out_data, char* in_data, int64_t offset) const {
