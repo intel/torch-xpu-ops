@@ -73,6 +73,7 @@ _xpu_computation_op_list = [
     "maximum",
     "minimum",
     "mul",
+    "median",
     "native_dropout_backward",
     "ne",
     "neg",

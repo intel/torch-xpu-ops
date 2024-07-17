@@ -171,6 +171,8 @@ supported:
   - tanh
   - tanh_
   - tanh.out
+  - median
+  - median.out
   - neg
   - neg_
   - neg.out
