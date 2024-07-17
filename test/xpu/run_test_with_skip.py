@@ -847,16 +847,6 @@ res += launch_test("test_autograd_fallback.py")
 
 
 skip_list = (
-    # The following isin case fails on CPU fallback, as it could be backend-specific.
-    "test_isin_xpu_float16",  # RuntimeError: "isin_default_cpu" not implemented for 'Half'
-    "test_isin_different_devices_xpu_float32",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_float64",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int16",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int32",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int64",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int8",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_uint8",  # AssertionError: RuntimeError not raised
-    "test_isin_different_dtypes_xpu",  # RuntimeError: "isin_default_cpu" not implemented for 'Half'"
     "test_sort_large_slice_xpu",  # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
@@ -2808,8 +2798,6 @@ skip_list = (
     ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
     "test_is_set_to_xpu",
     "test_pin_memory_from_constructor_xpu",
-    ### Error #18 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Torch not compiled with CUDA enabled
-    "test_memory_format_cpu_and_cuda_ops_xpu",
     "test_sync_warning_xpu",
     ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
     "test_module_share_memory_xpu",
