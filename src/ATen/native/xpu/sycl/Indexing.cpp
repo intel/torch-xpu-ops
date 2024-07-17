@@ -443,34 +443,22 @@ struct IndexFillScalarFunctor {
 };
 
 void index_fill_kernel(
-    const Tensor& self,
+    Tensor& self,
     int64_t dim,
     const Tensor& index,
-    const Scalar& source,
-    const Tensor& result) {
-  if (!result.is_same(self)) {
-    result.copy_(self);
+    const Scalar& source) {
+  if (self.numel() == 0 || index.numel() == 0) {
+    return;
   }
-
-  auto numel = index.numel();
-
-  if (result.dim() > 1) {
-    if (numel == 0 || self.numel() == 0) {
-      return;
-    }
-  }
-
-  // Scalars are treated as 1-d tensor
-  const Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
 
   TORCH_CHECK(
-      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
-      "tensor has too many (>",
+      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "self has too many (>",
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
   TORCH_CHECK(
       index.dim() <= XPU_MAX_TENSORINFO_DIMS,
-      "tensor has too many (>",
+      "index has too many (>",
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
 
@@ -479,19 +467,19 @@ void index_fill_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::ComplexHalf,
-      self_.scalar_type(),
-      "index_fill_kernel",
+      self.scalar_type(),
+      "index_fill_xpu",
       [&] {
         TensorInfo<int64_t, int64_t> index_info =
             getTensorInfo<int64_t, int64_t>(index);
         index_info.collapseDims();
 
-        TensorInfo<scalar_t, int64_t> src_info =
-            getTensorInfo<scalar_t, int64_t>(self_);
-
         TensorInfo<scalar_t, int64_t> dst_info =
-            getTensorInfo<scalar_t, int64_t>(result);
+            getTensorInfo<scalar_t, int64_t>(self);
         int new_indexing_dim = dst_info.collapseDims(dim);
+
+        // No used in index kernel frame for index_fill.
+        auto src_info = TensorInfo<scalar_t, int64_t>();
 
         using IdxConfig = IndexKernelConfig<
             decltype(src_info),

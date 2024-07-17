@@ -12,7 +12,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
@@ -342,7 +342,9 @@ Tensor& XPUNativeFunctions::index_fill_(
 
   // Handle the case when `self` is 0-dim
   Tensor self_nonzero_dim = (self.dim() == 0) ? self.unsqueeze(-1) : self;
-  native::xpu::index_fill_kernel(self, dim, index, source, self);
+  dim = at::maybe_wrap_dim(dim, self_nonzero_dim);
+
+  native::xpu::index_fill_kernel(self, dim, index, source);
   return self;
 }
 
