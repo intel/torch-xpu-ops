@@ -21,33 +21,6 @@ inline const scalar_t* optional_data(const Tensor& source) {
   return source.defined() ? source.const_data_ptr<scalar_t>() : nullptr;
 }
 
-void check_inputs_nll_loss2d(
-    const Tensor& input,
-    const Tensor& target,
-    const Tensor& weight) {
-  TORCH_CHECK(
-      target.dim() == 3,
-      "only batches of spatial targets supported (3D tensors)"
-      " but got targets of size: : ",
-      target.sizes());
-  TORCH_CHECK(
-      input.dim() == 4,
-      "only batches of spatial inputs supported (4D tensors), "
-      "but got input of size: ",
-      input.sizes());
-  TORCH_CHECK(
-      !weight.defined() || weight.numel() == input.size(1),
-      "weight tensor should be defined either for all or no classes");
-
-  TORCH_CHECK(
-      input.size(0) == target.size(0) && input.size(2) == target.size(1) &&
-          input.size(3) == target.size(2),
-      "input and target batch or spatial sizes don't match: target ",
-      target.sizes(),
-      ", input ",
-      input.sizes());
-}
-
 template <typename scalar_t>
 struct NllLoss2dForwardNoReduceKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
@@ -202,24 +175,18 @@ struct NllLoss2dForwardAverageKernelFunctor {
   const scalar_t* total_weight_;
 };
 
-void nll_loss2d_forward_out_kernel(
+void nll_loss2d_forward_kernel(
     Tensor& output,
     Tensor& total_weight,
     const Tensor& input,
     const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
+    const Tensor& weight,
     int64_t reduction,
     int64_t ignore_index) {
   if (reduction != at::Reduction::None) {
-    at::globalContext().alertNotDeterministic("nll_loss2d_forward_out_kernel");
+    at::globalContext().alertNotDeterministic("nll_loss2d_forward_kernel");
   }
 
-  // See [Note: hacky wrapper removal for optional tensor]
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-
-  check_inputs_nll_loss2d(input, target, weight);
   total_weight.resize_({});
 
   if (reduction == at::Reduction::None) {
@@ -294,18 +261,18 @@ void nll_loss2d_forward_out_kernel(
             [&] {
               auto batch_size = target.size(0);
               int64_t map_nelem = target.numel() / batch_size;
-              using KernelClass = NllLoss2dForwardKernelFunctor<
-                  scalar_t,
-                  accscalar_t,
-                  index_t,
-                  32>;
-              int64_t max_work_group_size = syclMaxWorkGroupSize<KernelClass>();
-              int blocks_per_sample = (map_nelem + max_work_group_size - 1) /
-                  max_work_group_size / 128;
+              const int simd = 32;
+              int64_t work_group_size = get_group_reduce_group_size(simd);
+              int blocks_per_sample =
+                  (map_nelem + work_group_size - 1) / work_group_size / 128;
               blocks_per_sample =
                   (blocks_per_sample == 0) ? 1 : blocks_per_sample;
               int total_blocks = blocks_per_sample * batch_size;
-              NllLoss2dForwardKernelFunctor<scalar_t, accscalar_t, index_t, 32>
+              NllLoss2dForwardKernelFunctor<
+                  scalar_t,
+                  accscalar_t,
+                  index_t,
+                  simd>
                   kfn(output.mutable_data_ptr<scalar_t>(),
                       total_weight.mutable_data_ptr<scalar_t>(),
                       input_.const_data_ptr<scalar_t>(),
@@ -315,10 +282,10 @@ void nll_loss2d_forward_out_kernel(
                       input_.size(2) * input_.size(3),
                       blocks_per_sample,
                       ignore_index,
-                      max_work_group_size);
+                      work_group_size);
               sycl_kernel_submit(
-                  total_blocks * max_work_group_size,
-                  max_work_group_size,
+                  total_blocks * work_group_size,
+                  work_group_size,
                   getCurrentSYCLQueue(),
                   kfn);
               // Divide by total_weight
@@ -447,21 +414,15 @@ struct NllLoss2dBackwardKernelFunctor {
   int64_t ignore_index_;
 };
 
-void nll_loss2d_backward_out_kernel(
+void nll_loss2d_backward_kernel(
     Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
+    const Tensor& weight,
     int64_t reduction,
     int64_t ignore_index,
     const Tensor& total_weight) {
-  // See [Note: hacky wrapper removal for optional tensor]
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-
-  check_inputs_nll_loss2d(input, target, weight);
   grad_input.resize_as_(input);
   grad_input.zero_();
   TORCH_CHECK(grad_input.is_contiguous(), "grad_input must be contiguous");
@@ -543,7 +504,7 @@ void nll_loss2d_backward_out_kernel(
               (map_nelem + max_work_group_size - 1) / max_work_group_size / 128;
           blocks_per_sample = (blocks_per_sample == 0) ? 1 : blocks_per_sample;
           int total_blocks = blocks_per_sample * batch_size;
-          NllLoss2dBackwardKernelFunctor kfn(
+          KernelClass kfn(
               grad_input.mutable_data_ptr<scalar_t>(),
               grad_output.const_data_ptr<scalar_t>(),
               target_.const_data_ptr<int64_t>(),
