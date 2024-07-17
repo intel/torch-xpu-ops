@@ -7,6 +7,7 @@
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
+#include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
@@ -523,6 +524,100 @@ Tensor XPUNativeFunctions::copysign(const Tensor& self, const Tensor& other) {
   iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::copysign_kernel(iter);
   return iter.output();
+}
+
+// We need explicit cast to OutFunc because each *_out func is overloaded twice.
+// Without An explicit cast, merely referring to *_out function is ambiguous.
+using OutFunc =
+    std::add_const<Tensor& (&)(Tensor&, const Tensor&, const Tensor&)>::type;
+
+template <typename OutImpl>
+Tensor comparison_op(
+    const Tensor& self,
+    const Tensor& other,
+    OutImpl& out_impl) {
+  Tensor result = at::empty({0}, self.options().dtype(kBool));
+  return out_impl(result, self, other);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_(Tensor& self, const Tensor& other, OutImpl& out_impl) {
+  return out_impl(self, self, other);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_out(
+    Tensor& result,
+    const Tensor& self,
+    const Scalar& other,
+    OutImpl& out_impl) {
+  return out_impl(result, self, native::wrapped_scalar_tensor(other));
+}
+
+template <typename OutImpl>
+Tensor comparison_op(
+    const Tensor& self,
+    const Scalar& other,
+    OutImpl& out_impl) {
+  return comparison_op(self, native::wrapped_scalar_tensor(other), out_impl);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_(Tensor& self, const Scalar& other, OutImpl& out_impl) {
+  return out_impl(self, self, native::wrapped_scalar_tensor(other));
+}
+
+Tensor& XPUNativeFunctions::logical_and_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_and_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_and(
+    const Tensor& self,
+    const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_and_out));
+}
+
+Tensor& XPUNativeFunctions::logical_and_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_and_out));
+}
+
+Tensor& XPUNativeFunctions::logical_or_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_or_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_or(const Tensor& self, const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_or_out));
+}
+
+Tensor& XPUNativeFunctions::logical_or_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_or_out));
+}
+
+Tensor& XPUNativeFunctions::logical_xor_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_xor_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_xor(const Tensor& self, const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_xor_out));
+}
+
+Tensor& XPUNativeFunctions::logical_xor_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_xor_out));
 }
 
 } // namespace at
