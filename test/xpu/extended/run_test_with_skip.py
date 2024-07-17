@@ -16,6 +16,8 @@ skip_list = (
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
+    "test_compare_cpu_tan_xpu_complex128",
+    "test_compare_cpu_tan_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
@@ -25,6 +27,7 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex128",
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_cross_xpu_float16",
 
     # got inconsistent values between CPU / XPU
     # AssertionError: Tensor-likes are not close!
@@ -159,6 +162,11 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    "test_compare_cpu_isin_xpu",
+    "test_operator_isin_xpu_float32",
+    "test_view_replay_isin_xpu_float32",
 )
 
 
