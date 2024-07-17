@@ -25,6 +25,50 @@ class BatchKernelConfig {
   }
 
  public:
+  template <class KernelClass = class NullKernelClass>
+  static BatchKernelConfig make_config(
+      int64_t batch,
+      int64_t problem,
+      int64_t stride,
+      int64_t problem_batch,
+      bool problem_along_x,
+      Policy policy = Policy::pSegment,
+      int64_t prefer_wg_size = 0) {
+    BatchKernelConfig cfg = {
+        batch,
+        problem,
+        stride,
+        problem_batch,
+        problem_along_x,
+        policy,
+        prefer_wg_size};
+    cfg.template build<KernelClass>();
+
+    return cfg;
+  }
+
+  template <class KernelClass = class NullKernelClass>
+  static BatchKernelConfig make_config(
+      int64_t batch,
+      int64_t problem,
+      int64_t stride,
+      int64_t problem_batch,
+      bool problem_along_x,
+      std::vector<Policy> policies,
+      int64_t prefer_wg_size = 0) {
+    BatchKernelConfig cfg = {
+        batch,
+        problem,
+        stride,
+        problem_batch,
+        problem_along_x,
+        policies,
+        prefer_wg_size};
+    cfg.template build<KernelClass>();
+
+    return cfg;
+  }
+
   BatchKernelConfig(
       int64_t batch,
       int64_t problem,
@@ -52,11 +96,13 @@ class BatchKernelConfig {
 
   template <class KernelClass>
   void build() {
-    size_t wg_size = syclMaxWorkGroupSize<KernelClass>();
+    size_t wg_size = 0;
     size_t sg_size = syclMaxSubGroupSize();
     if (prefer_wg_size_ != 0 && prefer_wg_size_ % sg_size == 0 &&
-        prefer_wg_size_ < wg_size) {
+        prefer_wg_size_ <= syclDeviceMaxWorkGroupSize()) {
       wg_size = prefer_wg_size_;
+    } else {
+      wg_size = syclMaxWorkGroupSize<KernelClass>();
     }
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
@@ -247,12 +293,17 @@ class BatchKernelConfig {
       return Policy::pAdaptive;
     }
 
-    BatchKernelConfig cfg_ = {
-        batch, problem, stride, batch * stride, problem_along_x, Policy::pLoop};
+    BatchKernelConfig cfg_ = make_config(
+        batch,
+        problem,
+        stride,
+        batch * stride,
+        problem_along_x,
+        Policy::pLoop,
+        syclDeviceMaxWorkGroupSize());
     size_t wg_num = (cfg_.glb_range_x_ / cfg_.wg_range_x_) *
         (cfg_.glb_range_y_ / cfg_.wg_range_y_);
     size_t wg_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
-
     if (wg_size * (wg_num + 1) > target_wi_num) {
       return Policy::pLoop;
     }

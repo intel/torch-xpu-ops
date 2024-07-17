@@ -6,7 +6,6 @@
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
 #include "comm/Runtime.h"
-#include "comm/SYCLHelpers.h"
 
 namespace at::native::xpu {
 
@@ -117,7 +116,7 @@ static inline void launch_weight_norm_reduce_kernel(
 }
 
 template <class ScalarTypeInfo, class AccTypeInfo>
-static inline void weight_norm_reduce_(
+static inline void weight_norm_reduce(
     ScalarTypeInfo& vinfo,
     AccTypeInfo& ninfo,
     int dim_after_collapse,
@@ -126,9 +125,17 @@ static inline void weight_norm_reduce_(
   int64_t problem = vinfo.sizes[dim_after_collapse];
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
-
-  BatchKernelConfig cfg = {
-      batch, problem, stride, batch * stride, problem_along_x};
+  using scalar_t = typename ScalarTypeInfo::scalar_t;
+  using accscalar_t = typename AccTypeInfo::scalar_t;
+  using vec_t = at::detail::Array<accscalar_t, 1>;
+  using KernelClass = WeightNormReduceKernelFunctor<
+      ScalarTypeInfo,
+      AccTypeInfo,
+      scalar_t,
+      accscalar_t,
+      vec_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      batch, problem, stride, batch * stride, problem_along_x);
 
   if (cfg.problem_ <= cfg.problem_wg_range_) {
     launch_weight_norm_reduce_kernel(vinfo, ninfo, cfg, need_square, true);
@@ -143,7 +150,7 @@ static inline void weight_norm_reduce_(
           carrier);
   launch_weight_norm_reduce_kernel(vinfo, cinfo, cfg, need_square, false);
 
-  weight_norm_reduce_(cinfo, ninfo, 1, false);
+  weight_norm_reduce(cinfo, ninfo, 1, false);
   return;
 }
 
@@ -158,7 +165,6 @@ struct SegmentWeightNormKernelFunctor {
     int64_t si = id.glb_batch % cfg_.stride_;
     int64_t bi = id.glb_batch / cfg_.stride_;
     int64_t pi = id.chunk * id.chunk_size + id.chunk_off;
-
     int64_t w_lid = si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
     int64_t n_lid = id.glb_batch;
 
@@ -208,33 +214,32 @@ struct SegmentWeightNormKernelFunctor {
 };
 
 template <class ScalarTypeInfo, class AccTypeInfo>
-static inline void segment_weight_norm_(
+static inline void segment_weight_norm(
     ScalarTypeInfo& vinfo,
     ScalarTypeInfo& ginfo,
     ScalarTypeInfo& winfo,
     AccTypeInfo& ninfo,
     int dim_after_collapse) {
   // segment reduce for statistics
-  weight_norm_reduce_(vinfo, ninfo, dim_after_collapse, true);
+  weight_norm_reduce(vinfo, ninfo, dim_after_collapse, true);
 
   // normalization
   int64_t batch = vinfo.outerSize(dim_after_collapse);
   int64_t problem = vinfo.sizes[dim_after_collapse];
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
-
-  BatchKernelConfig cfg = {
-      batch, problem, stride, batch * stride, problem_along_x};
-
   using scalar_t = typename ScalarTypeInfo::scalar_t;
   using accscalar_t = typename AccTypeInfo::scalar_t;
 
-  SegmentWeightNormKernelFunctor<
+  using KernelClass = SegmentWeightNormKernelFunctor<
       ScalarTypeInfo,
       AccTypeInfo,
       scalar_t,
-      accscalar_t>
-      kfn(vinfo, ginfo, winfo, ninfo, cfg);
+      accscalar_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      batch, problem, stride, batch * stride, problem_along_x);
+
+  KernelClass kfn(vinfo, ginfo, winfo, ninfo, cfg);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
@@ -352,7 +357,7 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 };
 
 template <class ScalarTypeInfo, class AccTypeInfo>
-static inline void weight_norm_(
+static inline void weight_norm(
     ScalarTypeInfo& vinfo,
     ScalarTypeInfo& ginfo,
     ScalarTypeInfo& winfo,
@@ -362,27 +367,27 @@ static inline void weight_norm_(
   int64_t problem = vinfo.sizes[dim_after_collapse];
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
+  using scalar_t = typename ScalarTypeInfo::scalar_t;
+  using accscalar_t = typename AccTypeInfo::scalar_t;
+  using vec_t = at::detail::Array<accscalar_t, 1>;
 
-  BatchKernelConfig cfg = {
+  using KernelClass = WeightNormKernelFunctor<
+      ScalarTypeInfo,
+      AccTypeInfo,
+      scalar_t,
+      accscalar_t,
+      vec_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       batch,
       problem,
       stride,
       batch * stride,
       problem_along_x,
-      BatchKernelConfig::Policy::pLoop};
+      BatchKernelConfig::Policy::pLoop);
 
-  using scalar_t = typename ScalarTypeInfo::scalar_t;
-  using accscalar_t = typename AccTypeInfo::scalar_t;
-  using vec_t = at::detail::Array<accscalar_t, 1>;
   int wg_size = cfg.group_size().size();
   int batch_wg_range = wg_size / cfg.problem_wg_range_;
-  WeightNormKernelFunctor<
-      ScalarTypeInfo,
-      AccTypeInfo,
-      scalar_t,
-      accscalar_t,
-      vec_t>
-      kfn(vinfo, ginfo, winfo, ninfo, cfg, wg_size, batch_wg_range);
+  KernelClass kfn(vinfo, ginfo, winfo, ninfo, cfg, wg_size, batch_wg_range);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 
@@ -413,7 +418,6 @@ std::tuple<Tensor, Tensor> _weight_norm_interface_kernel(
       [&] {
         auto vinfo = at::xpu::detail::getTensorInfo<scalar_t, int64_t>(v);
         int dim_after_collapse = vinfo.collapseDims(dim);
-
         auto ginfo = at::xpu::detail::getTensorInfo<scalar_t, int64_t>(g);
         ginfo.collapseDims();
 
@@ -423,7 +427,6 @@ std::tuple<Tensor, Tensor> _weight_norm_interface_kernel(
         auto ninfo =
             at::xpu::detail::getTensorInfo<accscalar_t, int64_t>(norms);
         ninfo.collapseDims();
-
         dim_after_collapse = 1 - dim_after_collapse; // remain dim
 
         int64_t batch = vinfo.outerSize(dim_after_collapse);
@@ -434,9 +437,9 @@ std::tuple<Tensor, Tensor> _weight_norm_interface_kernel(
         if (BatchKernelConfig::Policy::pSegment ==
             BatchKernelConfig::suggest_policy(
                 batch, problem, stride, problem_along_x)) {
-          segment_weight_norm_(vinfo, ginfo, winfo, ninfo, dim_after_collapse);
+          segment_weight_norm(vinfo, ginfo, winfo, ninfo, dim_after_collapse);
         } else {
-          weight_norm_(vinfo, ginfo, winfo, ninfo, dim_after_collapse);
+          weight_norm(vinfo, ginfo, winfo, ninfo, dim_after_collapse);
         }
       });
 
@@ -574,16 +577,29 @@ static inline void weight_norm_backward_reduce(
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
 
-  BatchKernelConfig cfg = {
-      batch, problem, stride, batch * stride, problem_along_x};
-
+  using scalar1_t = typename ScalarType1Info::scalar_t;
+  using scalar2_t = typename ScalarType2Info::scalar_t;
+  using accscalar_t = typename AccTypeInfo::scalar_t;
+  using vec_t = at::detail::Array<accscalar_t, 1>;
+  using KernelClass = WeightNormBackwardReduceKernelFunctor<
+      true,
+      ScalarType1Info,
+      ScalarType2Info,
+      AccTypeInfo,
+      scalar1_t,
+      scalar2_t,
+      accscalar_t,
+      vec_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      batch, problem, stride, batch * stride, problem_along_x);
   if (cfg.problem_ <= cfg.problem_wg_range_) {
-    if (is_first)
+    if (is_first) {
       launch_weight_norm_backward_reduce_kernel<true>(
           vinfo, gwinfo, rinfo, cfg);
-    else
+    } else {
       launch_weight_norm_backward_reduce_kernel<false>(
           vinfo, gwinfo, rinfo, cfg);
+    }
     return;
   }
 
@@ -593,10 +609,11 @@ static inline void weight_norm_backward_reduce(
   auto cinfo =
       at::xpu::detail::getTensorInfo<typename AccTypeInfo::scalar_t, int64_t>(
           carrier);
-  if (is_first)
+  if (is_first) {
     launch_weight_norm_backward_reduce_kernel<true>(vinfo, gwinfo, cinfo, cfg);
-  else
+  } else {
     launch_weight_norm_backward_reduce_kernel<false>(vinfo, gwinfo, cinfo, cfg);
+  }
 
   weight_norm_backward_reduce(cinfo, gwinfo, rinfo, 1, false);
   return;
@@ -723,17 +740,17 @@ static inline void segment_weight_norm_backward(
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
 
-  BatchKernelConfig cfg = {
-      batch, problem, stride, batch * stride, problem_along_x};
-
   using scalar_t = typename ScalarTypeInfo::scalar_t;
   using accscalar_t = typename AccTypeInfo::scalar_t;
-  SegmentWeightNormBackwardKernelFunctor<
+  using KernelClass = SegmentWeightNormBackwardKernelFunctor<
       ScalarTypeInfo,
       AccTypeInfo,
       scalar_t,
-      accscalar_t>
-      kfn(vinfo, ginfo, gwinfo, ninfo, gvinfo, gginfo, rinfo, cfg);
+      accscalar_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      batch, problem, stride, batch * stride, problem_along_x);
+
+  KernelClass kfn(vinfo, ginfo, gwinfo, ninfo, gvinfo, gginfo, rinfo, cfg);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 
@@ -749,27 +766,22 @@ template <
 struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<2> item) const {
     auto id = cfg_.get_item_desc(item);
-
     int64_t n_lid = id.glb_batch;
-
     int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
         n_lid,
         ginfo_,
         at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
             NON_STRICT_CONTIGUOUS);
-
     int64_t gg_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
         n_lid,
         gginfo_,
         at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
             NON_STRICT_CONTIGUOUS);
-
     int64_t n_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
         n_lid,
         ninfo_,
         at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
             NON_STRICT_CONTIGUOUS);
-
     int64_t si = id.glb_batch % cfg_.stride_;
     int64_t bi = id.glb_batch / cfg_.stride_;
     int64_t pi = id.chunk_off;
@@ -903,34 +915,34 @@ static inline void weight_norm_backward(
   int64_t stride = vinfo.innerSize(dim_after_collapse);
   bool problem_along_x = vinfo.strides[dim_after_collapse] == 1 ? true : false;
 
-  BatchKernelConfig cfg = {
+  using scalar_t = typename ScalarTypeInfo::scalar_t;
+  using accscalar_t = typename AccTypeInfo::scalar_t;
+  using vec_t = at::detail::Array<accscalar_t, 1>;
+  using KernelClass = WeightNormBackwardKernelFunctor<
+      ScalarTypeInfo,
+      AccTypeInfo,
+      scalar_t,
+      accscalar_t,
+      vec_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       batch,
       problem,
       stride,
       batch * stride,
       problem_along_x,
-      BatchKernelConfig::Policy::pLoop};
-
-  using scalar_t = typename ScalarTypeInfo::scalar_t;
-  using accscalar_t = typename AccTypeInfo::scalar_t;
-  using vec_t = at::detail::Array<accscalar_t, 1>;
+      BatchKernelConfig::Policy::pLoop);
   int wg_size = cfg.group_size().size();
   int batch_wg_range = wg_size / cfg.problem_wg_range_;
-  WeightNormBackwardKernelFunctor<
-      ScalarTypeInfo,
-      AccTypeInfo,
-      scalar_t,
-      accscalar_t,
-      vec_t>
-      kfn(vinfo,
-          ginfo,
-          gwinfo,
-          ninfo,
-          gvinfo,
-          gginfo,
-          cfg,
-          wg_size,
-          batch_wg_range);
+  KernelClass kfn(
+      vinfo,
+      ginfo,
+      gwinfo,
+      ninfo,
+      gvinfo,
+      gginfo,
+      cfg,
+      wg_size,
+      batch_wg_range);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
   return;
@@ -942,13 +954,6 @@ std::tuple<Tensor, Tensor> _weight_norm_interface_backward_kernel(
     const Tensor& saved_g,
     const Tensor& saved_norms,
     int64_t dim) {
-  TORCH_CHECK(saved_v.is_contiguous(), "saved_v must be contiguous");
-  TORCH_CHECK(saved_g.is_contiguous(), "saved_g must be contiguous");
-  TORCH_CHECK(saved_norms.is_contiguous(), "saved_norms must be contiguous");
-  TORCH_CHECK(
-      dim == 0 || dim == saved_v.dim() - 1,
-      "fused kernels can only be applied for first or last dim")
-
   auto grad_v = at::empty_like(saved_v, c10::get_contiguous_memory_format());
   auto grad_g = at::empty_like(saved_g, c10::get_contiguous_memory_format());
 
