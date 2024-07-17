@@ -38,8 +38,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 res = 0
 
 # test_ops
-
-
 skip_list = (
     # Skip list of base line
     "test_dtypes___rmod___xpu",
@@ -794,6 +792,14 @@ skip_list = (
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
+
+    # Numeric difference
+    # https://github.com/intel/torch-xpu-ops/issues/544
+    # Mismatched elements: 7 / 1048576 (0.0%)
+    # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
+    # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
+    "test_python_ref__refs_log2_xpu_complex128",
+
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 )
@@ -1520,6 +1526,10 @@ skip_list = (
     "test_reference_numerics_extremal_asin_xpu_complex64",
     "test_reference_numerics_large__refs_acosh_xpu_complex64",
     "test_reference_numerics_large_acosh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_log10_xpu_complex64",
+    "test_reference_numerics_extremal__refs_log1p_xpu_complex64",
+    "test_reference_numerics_extremal_log10_xpu_complex64",
+    "test_reference_numerics_extremal_log1p_xpu_complex64",
     "test_reference_numerics_extremal__refs_tan_xpu_complex128",
     "test_reference_numerics_extremal__refs_tan_xpu_complex64",
     "test_reference_numerics_extremal_tan_xpu_complex128",
@@ -1547,6 +1557,13 @@ skip_list = (
     # Failed: Unexpected success
     "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
+
+    # Numeric difference
+    # https://github.com/intel/torch-xpu-ops/issues/544
+    # Expected 0.00497517 but got 0.00497520063072443.
+    # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
+    # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
+    "test_log1p_complex_xpu_complex64",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
