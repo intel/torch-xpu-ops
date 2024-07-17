@@ -4,7 +4,7 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <comm/TensorInfo.h>
 
 namespace at {
@@ -43,4 +43,5 @@ Tensor XPUNativeFunctions::index_select(
   auto out = at::empty({0}, self.options());
   return index_select_out(self, dim, index, out);
 }
+
 } // namespace at
