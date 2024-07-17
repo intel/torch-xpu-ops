@@ -15,6 +15,9 @@ supported:
   - cumsum
   - cumsum.out
   - cumsum_
+  - cumprod
+  - cumprod.out
+  - cumprod_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -87,6 +90,12 @@ supported:
   - ge_.Tensor
   - cat
   - cat.out
+  - isin.Tensor_Tensor_out
+  - isin.Tensor_Tensor
+  - isin.Tensor_Scalar_out
+  - isin.Tensor_Scalar
+  - isin.Scalar_Tensor_out
+  - isin.Scalar_Tensor
   - isnan
   - isnan.out
   - masked_fill_.Tensor

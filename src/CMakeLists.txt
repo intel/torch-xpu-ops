@@ -32,27 +32,41 @@ if(BUILD_SEPARATE_OPS)
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
 else()
-  # Split kernels into multiple libraries
-  list(LENGTH ATen_XPU_SYCL_SRCS NUM_SYCL_SRC)
-  math(EXPR MAX_NUM_SYCL_SRC_PER_LIB "50")
-  math(EXPR SYCL_SRC_BEGIN "0")
-  math(EXPR NUM_LIBS "(${NUM_SYCL_SRC} + ${MAX_NUM_SYCL_SRC_PER_LIB} - 1) / ${MAX_NUM_SYCL_SRC_PER_LIB}")
-  while(NUM_LIBS GREATER 0)
-    set(sycl_lib torch-xpu-ops-sycl-ker-part${NUM_LIBS})
-    list(SUBLIST ATen_XPU_SYCL_SRCS ${SYCL_SRC_BEGIN} ${MAX_NUM_SYCL_SRC_PER_LIB} sycl_src)
-    sycl_add_library(
-      ${sycl_lib}
-      SHARED
-      SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+  # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
+  set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
+  set(ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS)
 
-    # Decouple with PyTorch cmake definition.
-    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
+    string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
+    string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
+    if(IS_BINARY STREQUAL "" AND IS_UNARY STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS ${sycl_src})
+    else()
+      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+    endif()
+  endforeach()
 
-    math(EXPR NUM_LIBS "${NUM_LIBS} - 1")
-    math(EXPR SYCL_SRC_BEGIN "${SYCL_SRC_BEGIN} + ${MAX_NUM_SYCL_SRC_PER_LIB}")
-  endwhile()
+  set(sycl_unary_binary_lib torch_xpu_ops_sycl_unary_binary_kernels)
+  sycl_add_library(
+    ${sycl_unary_binary_lib}
+    SHARED
+    SYCL_SOURCES ${ATen_XPU_SYCL_UNARY_BINARY_SRCS})
+  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_unary_binary_lib})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_unary_binary_lib})
+
+  # Decouple with PyTorch cmake definition.
+  install(TARGETS ${sycl_unary_binary_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
+  set(sycl_lib torch_xpu_ops_sycl_kernels)
+  sycl_add_library(
+    ${sycl_lib}
+    SHARED
+    SYCL_SOURCES ${ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS})
+  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+
+  # Decouple with PyTorch cmake definition.
+  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 

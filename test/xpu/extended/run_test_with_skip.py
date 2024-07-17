@@ -164,6 +164,11 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    "test_compare_cpu_isin_xpu",
+    "test_operator_isin_xpu_float32",
+    "test_view_replay_isin_xpu_float32",
 )
 
 
