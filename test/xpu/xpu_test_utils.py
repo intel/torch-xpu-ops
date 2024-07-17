@@ -73,6 +73,7 @@ _xpu_computation_op_list = [
     "index_add",
     "index_put",
     "index_select",
+    "isin",
     "isnan",
     "le",
     "log",
