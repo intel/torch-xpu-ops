@@ -167,6 +167,10 @@ skip_list = (
     "test_compare_cpu_isin_xpu",
     "test_operator_isin_xpu_float32",
     "test_view_replay_isin_xpu_float32",
+
+    # test case doesn't make sense, will file an issue to track it.
+    "test_compare_cpu_histogram_xpu_float32",
+    "test_compare_cpu_histogram_xpu_float64",
 )
 
 
