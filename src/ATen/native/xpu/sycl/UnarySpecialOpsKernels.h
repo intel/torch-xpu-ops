@@ -14,6 +14,4 @@ void erfinv_kernel(TensorIteratorBase& iter);
 
 void exp2_kernel(TensorIteratorBase& iter);
 
-void expm1_kernel(TensorIteratorBase& iter);
-
 } // namespace at::native::xpu
