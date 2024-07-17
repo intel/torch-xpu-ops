@@ -249,8 +249,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "logit",
     "logit_backward.grad_input",
     "log_normal_",
-    "log_sigmoid_backward",
-    "log_sigmoid_forward",
     "logspace.out",
     "lu_unpack.out",
     "masked_scatter_",

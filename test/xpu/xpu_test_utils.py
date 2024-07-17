@@ -163,6 +163,7 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.huber_loss",
     "sigmoid",
+    "logsigmoid",
     "sgn",
     "nn.functional.embedding_bag",
     "bucketize",
