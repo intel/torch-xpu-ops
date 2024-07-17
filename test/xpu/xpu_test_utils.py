@@ -186,7 +186,7 @@ _xpu_computation_op_list = [
     "conj_physical",
     "erfinv",
     "expm1",
-    "exp2"
+    "exp2",
     "copysign",
     "count_nonzero",
     "nan_to_num",
