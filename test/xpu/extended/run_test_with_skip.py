@@ -67,7 +67,6 @@ skip_list = (
     # Require implementing aten::embedding_renorm_
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_backward_nn_functional_embedding_xpu_float32",
-    "test_cow_input_nn_functional_embedding_xpu_float32",
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
@@ -77,8 +76,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
 
-    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
-    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -163,10 +160,6 @@ skip_list = (
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
 
-    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
-    "test_compare_cpu_isin_xpu",
-    "test_operator_isin_xpu_float32",
-    "test_view_replay_isin_xpu_float32",
 )
 
 
