@@ -151,6 +151,29 @@ Tensor& XPUNativeFunctions::complex_out(
   return result;
 }
 
+Tensor& XPUNativeFunctions::polar_out(
+    const Tensor& abs,
+    const Tensor& angle,
+    Tensor& result) {
+  complex_check_dtype(result, abs, angle);
+  auto iter = TensorIteratorConfig()
+                  .add_output(result)
+                  .add_const_input(abs)
+                  .add_const_input(angle)
+                  .check_all_same_dtype(false)
+                  .build();
+  native::xpu::polar_kernel(iter);
+  return result;
+}
+
+Tensor XPUNativeFunctions::polar(const Tensor& abs, const Tensor& angle) {
+  complex_check_floating(abs, angle);
+  c10::TensorOptions options = abs.options();
+  options = options.dtype(toComplexType(abs.scalar_type()));
+  Tensor result = at::empty(0, options);
+  return at::polar_out(result, abs, angle);
+}
+
 Tensor& XPUNativeFunctions::randperm_out(
     int64_t n,
     c10::optional<Generator> generator,

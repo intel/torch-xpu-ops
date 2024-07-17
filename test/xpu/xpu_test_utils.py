@@ -183,6 +183,7 @@ _xpu_computation_op_list = [
     "renorm",
     "multinomial",
     "lerp",
+    "polar",
     "conj_physical",
     "copysign",
     "count_nonzero"

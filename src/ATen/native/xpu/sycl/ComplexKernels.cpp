@@ -21,4 +21,18 @@ void complex_kernel(TensorIterator& iter) {
       });
 }
 
+template <typename scalar_t>
+struct PolarFunctor {
+  c10::complex<scalar_t> operator()(scalar_t a, scalar_t b) const {
+    return c10::complex<scalar_t>(a * std::cos(b), a * std::sin(b));
+  }
+};
+
+void polar_kernel(TensorIterator& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(0), "polar_xpu", [&]() {
+    PolarFunctor<scalar_t> f;
+    gpu_kernel(iter, f);
+  });
+}
+
 } // namespace at::native::xpu
