@@ -46,6 +46,7 @@ supported:
   - fmod.Tensor_out
   - tanh_backward
   - tanh_backward.grad_input
+  - equal
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -90,6 +91,12 @@ supported:
   - ge_.Tensor
   - cat
   - cat.out
+  - isin.Tensor_Tensor_out
+  - isin.Tensor_Tensor
+  - isin.Tensor_Scalar_out
+  - isin.Tensor_Scalar
+  - isin.Scalar_Tensor_out
+  - isin.Scalar_Tensor
   - isnan
   - isnan.out
   - masked_fill_.Tensor
@@ -169,6 +176,15 @@ supported:
   - log
   - log_
   - log.out
+  - logical_and
+  - logical_and_
+  - logical_and.out
+  - logical_or
+  - logical_or_
+  - logical_or.out
+  - logical_xor
+  - logical_xor_
+  - logical_xor.out
   - logical_not
   - logical_not_
   - logical_not.out
@@ -403,6 +419,10 @@ supported:
   - hardsigmoid_
   - hardsigmoid_backward.grad_input
   - hardsigmoid_backward
+  - log_sigmoid_forward.output
+  - log_sigmoid_forward
+  - log_sigmoid_backward.grad_input
+  - log_sigmoid_backward
   - tril.out
   - tril
   - tril_
