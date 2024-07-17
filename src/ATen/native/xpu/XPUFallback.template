@@ -212,8 +212,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "igammac.out",
     "igamma.out",
     "index_copy.out",
-    "index_fill_.int_Scalar",
-    "index_fill_.int_Tensor",
     "index_reduce.out",
     "isneginf.out",
     "isposinf.out",
