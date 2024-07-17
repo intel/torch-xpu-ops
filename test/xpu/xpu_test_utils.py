@@ -58,6 +58,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
+    "cumprod"
     "cumsum",
     "eq",
     "fill",
@@ -73,6 +74,7 @@ _xpu_computation_op_list = [
     "index_fill",
     "index_put",
     "index_select",
+    "isin",
     "isnan",
     "le",
     "log",
