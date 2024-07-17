@@ -37,14 +37,15 @@ struct AdaptiveMaxPool2dKernelFunctor {
 
       scalar_t max = at::numeric_limits<scalar_t>::lower_bound();
       index_t argmax;
-      int64_t i_off = ob * istrideB_ + op * istrideP_;
+      int64_t i_bp_off = ob * istrideB_ + op * istrideP_;
       for (int64_t ih = istartH; ih < iendH; ih++) {
         for (int64_t iw = istartW; iw < iendW; iw++) {
-          int64_t i_hw_lid = ih * istrideH_ + iw * istrideW_;
-          scalar_t val = input_[i_off + i_hw_lid];
+          int64_t i_hw_off = ih * istrideH_ + iw * istrideW_;
+          int64_t i_hw_id = ih * isizeW_ + iw;
+          scalar_t val = input_[i_bp_off + i_hw_off];
           if ((val > max) || at::_isnan(val)) {
             max = val;
-            argmax = i_hw_lid;
+            argmax = i_hw_id;
           }
         }
       }
