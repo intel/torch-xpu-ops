@@ -8,6 +8,7 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
+#include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/ops/empty.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
@@ -519,7 +520,7 @@ void uniform_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct BernoulliFunctor {
   scalar_t operator()(scalar_t out, accscalar_t p) const {
-    return static_cast<scalar_t>((accscalar_t)out < p);
+    return static_cast<scalar_t>((accscalar_t)out <= p);
   }
 };
 
