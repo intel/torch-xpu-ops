@@ -4,6 +4,7 @@
 import copy
 import os
 import sys
+import unittest
 
 import torch
 from torch import bfloat16, cuda
@@ -58,7 +59,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cumprod"
+    "cumprod",
     "cumsum",
     "equal",
     "eq",
@@ -185,8 +186,24 @@ _xpu_computation_op_list = [
     "lerp",
     "conj_physical",
     "copysign",
-    "count_nonzero"
+    "count_nonzero",
     "nan_to_num",
+]
+
+# some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
+# but xpu can pass these case, and assert 'unexpected success'
+# the list will pass these case.
+
+
+_cuda_xfail_xpu_pass = [
+    ("rsqrt", "test_reference_numerics_large"),
+    ("_batch_norm_with_update", "test_noncontiguous_samples"),
+    ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
+    ("histc", "test_out"),
+    ("logcumsumexp", "test_out_warning"),
+    ("_refs.mul", "test_python_ref"),
+    ("_refs.mul", "test_python_ref_torch_fallback"),
+    ("logaddexp", "test_type_promotion"),
 ]
 
 
@@ -467,39 +484,35 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-    def replace_opinfo_device(self, info: OpInfo):
-        decorator_xpu = []
-        replaced = False
-        for decorator in info.decorators:
-            if type(decorator) == DecorateInfo:
-                if decorator.device_type == "cuda":
-                    decorator_xpu.append(decorator)
-                    decorator.device_type = "xpu"
-                    replaced = True
-                else:
-                    decorator_xpu.append(decorator)
-            elif self.only_cuda_fn == decorator:
-                decorator_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.decorators = tuple(decorator_xpu)
-        skip_xpu = []
-        replaced = False
-        for skip in info.skips:
-            if type(skip) == DecorateInfo:
-                if skip.device_type == "cuda":
-                    skip_xpu.append(decorator)
-                    skip.device_type = "xpu"
-                    replaced = True
-                else:
-                    skip_xpu.append(skip)
-            elif self.only_cuda_fn == skip:
-                skip_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.skips = tuple(skip_xpu)
-
     def adjust_db(self, db):
+        def replace_opinfo_device_info(info: OpInfo):
+            def replace_opinfo_device_list(name, wrappers):
+                wrapper_xpu = []
+                replaced = False
+                for wrapper in wrappers:
+                    if type(wrapper) == DecorateInfo:
+                        if wrapper.device_type == "cuda":
+                            if (
+                                unittest.expectedFailure in wrapper.decorators
+                                and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                            ):
+                                pass
+                            else:
+                                wrapper.device_type = "xpu"
+                                replaced = True
+                        wrapper_xpu.append(wrapper)
+                    elif self.only_cuda_fn == wrapper:
+                        wrapper_xpu.append(common_device_type.onlyCUDA)
+                        replaced = True
+                return replaced, wrapper_xpu
+
+            replaced, decorator_xpu = replace_opinfo_device_list(info.name, info.decorators)
+            if replaced:
+                info.decorators = tuple(decorator_xpu)
+            replaced, skip_xpu = replace_opinfo_device_list(info.name, info.skips)
+            if replaced:
+                info.skips = tuple(skip_xpu)
+
         for opinfo in db:
             if opinfo.name not in _xpu_computation_op_list:
                 opinfo.dtypesIfXPU = opinfo.dtypes
@@ -507,7 +520,7 @@ class XPUPatchForImport:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
                 backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
-            self.replace_opinfo_device(opinfo)
+            replace_opinfo_device_info(opinfo)
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
