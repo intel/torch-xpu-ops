@@ -105,6 +105,18 @@ void clamp_max_scalar_kernel(TensorIteratorBase& iter, Scalar max) {
   launch_clamp_scalar(iter, max, max, at::native::detail::ClampLimits::Max);
 }
 
+void isin_kernel(
+    const Tensor& elements,
+    const Tensor& test_elements,
+    bool invert,
+    const Tensor& out) {
+  std::vector<int64_t> bc_shape(elements.dim(), 1);
+  bc_shape.push_back(-1);
+  out.copy_(
+      invert ? elements.unsqueeze(-1).ne(test_elements.view(bc_shape)).all(-1)
+             : elements.unsqueeze(-1).eq(test_elements.view(bc_shape)).any(-1));
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

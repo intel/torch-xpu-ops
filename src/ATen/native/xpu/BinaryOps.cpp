@@ -10,6 +10,7 @@
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
+#include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
@@ -38,6 +39,9 @@ REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(hypot_stub, &xpu::hypot_kernel);
 REGISTER_XPU_DISPATCH(atan2_stub, &xpu::atan2_kernel);
 REGISTER_XPU_DISPATCH(copysign_stub, &xpu::copysign_kernel);
+REGISTER_XPU_DISPATCH(logical_and_stub, &xpu::logical_and_kernel);
+REGISTER_XPU_DISPATCH(logical_or_stub, &xpu::logical_or_kernel);
+REGISTER_XPU_DISPATCH(logical_xor_stub, &xpu::logical_xor_kernel);
 
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,

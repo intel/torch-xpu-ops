@@ -8,6 +8,7 @@
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>
 #include <ATen/native/xpu/sycl/TensorCompare.h>
+#include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <comm/ReduceOpsUtils.h>
 
 #include <ATen/ops/result_type_native.h>
@@ -63,6 +64,7 @@ REGISTER_XPU_DISPATCH(clamp_scalar_stub, &xpu::clamp_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_stub, &xpu::clamp_kernel);
 REGISTER_XPU_DISPATCH(max_stub, &max_kernel_impl);
 REGISTER_XPU_DISPATCH(min_stub, &min_kernel_impl)
+REGISTER_XPU_DISPATCH(isin_default_stub, &xpu::isin_kernel);
 } // namespace native
 
 } // namespace at
