@@ -44,7 +44,6 @@ struct Log10Functor {
 };
 
 void log10_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -61,7 +60,6 @@ struct Log1pFunctor {
 };
 
 void log1p_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -78,7 +76,6 @@ struct Log2Functor {
 };
 
 void log2_kernel(TensorIteratorBase& iter) {
-  auto common_dtype = iter.common_dtype();
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,
