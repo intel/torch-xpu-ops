@@ -50,6 +50,7 @@ skip_list = (
     "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
     "test_compare_cpu_addr_xpu_float16",
     "test_compare_cpu_nansum_xpu_bfloat16",
+    "test_compare_cpu_nanmean_xpu_bfloat16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
