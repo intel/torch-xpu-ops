@@ -274,8 +274,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "polygamma.out",
     "_prelu_kernel",
     "_prelu_kernel_backward",
-    "prod",
-    "prod.int_out",
     "put_",
     "renorm.out",
     "repeat_interleave.Tensor",

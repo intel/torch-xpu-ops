@@ -296,6 +296,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.int_out
+  - prod.dim_int
   - mean.out
   - mean.dim
   - std.correction

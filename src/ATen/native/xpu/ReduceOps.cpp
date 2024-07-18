@@ -51,17 +51,14 @@ static void cum_ops_meta(
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
-        result,
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+        result, self.sizes(), {}, self.options().dtype(out_dtype));
   } else {
-    auto is_integral = at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-    out_dtype = dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::xpu::create_out(
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+    auto is_integral =
+        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype =
+        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result =
+        at::xpu::create_out(self.sizes(), {}, self.options().dtype(out_dtype));
   }
 
   namedinference::propagate_names(result, self);
@@ -257,6 +254,57 @@ Tensor XPUNativeFunctions::mean(
   Tensor out;
   out = mean_meta(self, dim, keepdim, dtype, out);
   out = XPUNativeFunctions::mean_out(self, dim, keepdim, dtype, out);
+  return out;
+}
+
+Tensor& prod_meta(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& out) {
+  auto out_dtype = infer_dtype_from_optional(self, dtype, out);
+  out = resize_reduction(out, self, dim, keepdim, out_dtype);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::prod_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  result = prod_meta(self, dim, keepdim, dtype, result);
+  // device is not CPU
+  auto iter = at::meta::make_reduction_from_out_ty(
+      self, result, dim, keepdim, result.scalar_type());
+  if (iter.numel() == 0) {
+    result.fill_(1);
+  } else {
+    native::xpu::prod_kernel(iter);
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    std::optional<ScalarType> opt_dtype) {
+  auto dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
+  // auto shape = at::native::meta::get_reduction_shape(self, {}, false);
+  // Tensor out = at::empty(shape, self.options().dtype(dtype));
+  Tensor out;
+  out = prod_meta(self, {}, false, dtype, out);
+  return out;
+}
+
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype) {
+  Tensor out;
+  out = prod_meta(self, dim, keepdim, dtype, out);
+  out = XPUNativeFunctions::prod_out(self, dim, keepdim, dtype, out);
   return out;
 }
 
