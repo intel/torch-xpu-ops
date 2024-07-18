@@ -17,10 +17,10 @@ on:
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
       ut:
-        required: true
+        required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_example,op_extended,op_ut,torch_xpu`. Delimiter is comma
       triton:
         required: false
         type: string
@@ -141,7 +141,6 @@ jobs:
           echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          # echo "TORCHTEXT_COMMIT_ID=$(<.github/ci_commit_pins/text.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -181,7 +180,7 @@ jobs:
           suite: huggingface
           env_prepare: true
           dt: float32,bfloat16,float16
-          mode: inference,traning
+          mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
@@ -257,7 +256,6 @@ jobs:
           TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
           TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
           TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          # TORCHTEXT_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHTEXT_COMMIT_ID }}"
           TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
           TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
           TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
@@ -303,7 +301,7 @@ jobs:
             fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
-          echo "$cc_comment\n" >> ${{ github.workspace }}/report.txt
+          echo "$cc_comment" >> ${{ github.workspace }}/report.txt
           # Report
           report_txt=$(cat ${{ github.workspace }}/report.txt)
           gh --repo $repo issue comment $test_issue_id --body "$report_txt"

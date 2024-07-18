@@ -48,12 +48,14 @@ struct TLMetaForWG {
   uint32_t wg_to_chunk;
 };
 
-static inline int64_t multi_tensor_apply_kernel_get_wg_size() {
-  return syclMaxWorkGroupSize();
+template <class KernelClass>
+static int64_t multi_tensor_apply_kernel_get_wg_size() {
+  return syclMaxWorkGroupSize<KernelClass>();
 }
 
-static inline int64_t multi_tensor_apply_kernel_get_chunk_size() {
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size();
+template <class KernelClass>
+static int64_t multi_tensor_apply_kernel_get_chunk_size() {
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size<KernelClass>();
   return max_wg_size * kElementPerThread;
 }
 
@@ -116,17 +118,18 @@ void launch_multi_tensor_apply_kernel(
     U callable,
     int num_wg,
     ArgTypes... args) {
+  using KernelClass = MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...>;
+
   auto& q = getCurrentSYCLQueue();
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size<KernelClass>();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
 
   if constexpr (fused_kernel) {
     max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
-      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+  KernelClass kfn(kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
 
   sycl_kernel_submit(
       sycl::range<1>(num_wg * max_wg_size),
@@ -141,14 +144,20 @@ void multi_tensor_apply(
     at::ArrayRef<Scalar> scalars,
     T callable,
     ArgTypes... args) {
+  using scalar_vals_t = typename T::opmath_t;
+  using KernelClass = MultiTensorApplyKernelFunctor<
+      TLMetaForAddressScalar<scalar_vals_t, depth>*,
+      TLMetaForWG*,
+      T,
+      ArgTypes...>;
+
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
-  using scalar_vals_t = typename T::opmath_t;
 
   auto& q = getCurrentSYCLQueue();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors)},
@@ -221,13 +230,19 @@ void multi_tensor_apply(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
     T callable,
     ArgTypes... args) {
+  using KernelClass = MultiTensorApplyKernelFunctor<
+      TLMetaForAddress<depth>*,
+      TLMetaForWG*,
+      T,
+      ArgTypes...>;
+
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddress<depth>) * n_tensors)},
