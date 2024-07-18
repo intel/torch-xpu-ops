@@ -163,9 +163,6 @@ skip_list = (
     "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_bfloat16",
     "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_float16",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float32",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float64",
     "test_python_ref_executor__refs_nn_functional_triplet_margin_loss_executor_aten_xpu_uint8",
     "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
@@ -475,7 +472,6 @@ skip_list = (
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_complex128",
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_complex64",
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_float64",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_pdist_executor_aten_xpu_float64",
     "test_python_ref_meta__refs_linalg_svd_xpu_complex128",
     "test_python_ref_meta__refs_linalg_svd_xpu_complex64",
@@ -786,6 +782,7 @@ skip_list = (
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+
     # Op impl aligns with CUDA on the supported dtypes.
     # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
     # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
