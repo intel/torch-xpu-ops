@@ -12,7 +12,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
@@ -315,6 +315,53 @@ Tensor XPUNativeFunctions::index_add(
   return index_add_out(self, dim, index, source, alpha, out);
 }
 
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source) {
+  at::NoNamesGuard guard;
+
+  TORCH_CHECK_INDEX(
+      index.scalar_type() == ScalarType::Long,
+      "index_fill_(): Expected dtype int64 for index.");
+
+  at::assert_no_overlap(self, index);
+  if (at::has_internal_overlap(self) == at::MemOverlap::Yes) {
+    TORCH_WARN(
+        "Use of index_fill_ on expanded tensors is deprecated. "
+        "Please clone() the tensor before performing this operation. "
+        "This also applies to advanced indexing e.g. tensor[mask] = scalar");
+  }
+
+  if (!self.is_complex() && source.isComplex()) {
+    TORCH_CHECK(
+        false,
+        "index_fill_(): Converting complex Scalar to non-complex type is not supported");
+  }
+
+  // Handle the case when `self` is 0-dim
+  Tensor self_nonzero_dim = (self.dim() == 0) ? self.unsqueeze(-1) : self;
+  dim = at::maybe_wrap_dim(dim, self_nonzero_dim);
+
+  native::xpu::index_fill_kernel(self, dim, index, source);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source) {
+  TORCH_CHECK(
+      source.dim() == 0,
+      "index_fill_ only supports a 0-dimensional value tensor, but got tensor "
+      "with ",
+      source.dim(),
+      " dimension(s).");
+  return self.index_fill_(dim, index, source.item());
+}
+
 void check_indices_on_cpu_or_selfdevice(
     const Tensor& self,
     const c10::List<c10::optional<Tensor>>& indices) {
@@ -503,16 +550,7 @@ Tensor& XPUNativeFunctions::_index_put_impl_(
     }
   }
 
-  // Performance consideration:
-  // Avoid atomic operations when accumulating bf16 and hf16. No efficient
-  // atomic operation hardware support. We have to do CAS, whose performance
-  // is worse than deterministic implementation.
-  bool need_use_deterministic = (accumulate &&
-                                 (self.scalar_type() == at::kBFloat16 ||
-                                  self.scalar_type() == at::kHalf)) ||
-      globalContext().deterministicAlgorithms();
-
-  if (need_use_deterministic) {
+  if (accumulate || globalContext().deterministicAlgorithms()) {
     TORCH_CHECK(
         value_.device() == self.device(),
         "expected device ",
@@ -1403,6 +1441,10 @@ Tensor& XPUNativeFunctions::gather_out(
   // TODO: enable gather_expanded_index_kernel
   gather_kernel(out, self, dim, index);
   return out;
+}
+
+Tensor XPUNativeFunctions::count_nonzero(const Tensor& self, IntArrayRef dims) {
+  return (self != 0).sum(dims);
 }
 
 } // namespace at

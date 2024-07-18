@@ -9,9 +9,12 @@
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
+#include <ATen/native/xpu/sycl/ActivationLogSigmoidKernels.h>
+#include <ATen/native/xpu/sycl/ActivationMishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
+#include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
+#include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
-
 namespace at {
 
 Tensor XPUNativeFunctions::relu(const Tensor& self) {
@@ -505,6 +508,206 @@ Tensor& XPUNativeFunctions::leaky_relu_backward_out(
   auto iter = leaky_relu_backward_meta(
       grad_output, self, negval, is_result, grad_input);
   native::xpu::leaky_relu_backward_kernel(iter, negval);
+  return grad_input;
+}
+
+TensorIterator softplus_meta(
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold,
+    Tensor& out) {
+  return TensorIterator::unary_op(out, self);
+}
+
+Tensor XPUNativeFunctions::softplus(
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold) {
+  Tensor out;
+  auto iter = softplus_meta(self, beta, threshold, out);
+  native::xpu::softplus_kernel(iter, beta, threshold);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::softplus_out(
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold,
+    Tensor& out) {
+  auto iter = softplus_meta(self, beta, threshold, out);
+  native::xpu::softplus_kernel(iter, beta, threshold);
+  return out;
+}
+
+TensorIterator softplus_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold,
+    Tensor& grad_input) {
+  return TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+}
+
+Tensor XPUNativeFunctions::softplus_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold) {
+  Tensor grad_input;
+  auto iter =
+      softplus_backward_meta(grad_output, self, beta, threshold, grad_input);
+  native::xpu::softplus_backward_kernel(iter, beta, threshold);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::softplus_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& beta,
+    const Scalar& threshold,
+    Tensor& grad_input) {
+  auto iter =
+      softplus_backward_meta(grad_output, self, beta, threshold, grad_input);
+  native::xpu::softplus_backward_kernel(iter, beta, threshold);
+  return grad_input;
+}
+
+static inline void softshrink_check(const Scalar& lambd) {
+  double lamb = lambd.to<double>();
+  TORCH_CHECK(
+      lamb >= 0,
+      "lambda must be greater or equal to 0, but found to be ",
+      lamb,
+      ".");
+}
+
+TensorIterator softshrink_meta(
+    const Tensor& self,
+    const Scalar& lambd,
+    Tensor& out) {
+  softshrink_check(lambd);
+  return TensorIterator::unary_op(out, self);
+}
+
+Tensor XPUNativeFunctions::softshrink(const Tensor& self, const Scalar& lambd) {
+  Tensor out;
+  auto iter = softshrink_meta(self, lambd, out);
+  native::xpu::softshrink_kernel(iter, lambd);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::softshrink_out(
+    const Tensor& self,
+    const Scalar& lambd,
+    Tensor& out) {
+  auto iter = softshrink_meta(self, lambd, out);
+  native::xpu::softshrink_kernel(iter, lambd);
+  return out;
+}
+
+TensorIterator softshrink_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& lambd,
+    Tensor& grad_input) {
+  return TensorIterator::borrowing_binary_op(grad_input, grad_output, self);
+}
+
+Tensor XPUNativeFunctions::softshrink_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& lambd) {
+  Tensor grad_input;
+  auto iter = softshrink_backward_meta(grad_output, self, lambd, grad_input);
+  native::xpu::softshrink_backward_kernel(iter, lambd);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::softshrink_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Scalar& lambd,
+    Tensor& grad_input) {
+  auto iter = softshrink_backward_meta(grad_output, self, lambd, grad_input);
+  native::xpu::softshrink_backward_kernel(iter, lambd);
+  return grad_input;
+}
+
+std::tuple<Tensor&, Tensor&> XPUNativeFunctions::log_sigmoid_forward_out(
+    const Tensor& input,
+    Tensor& result,
+    Tensor& buffer) {
+  auto iter =
+      TensorIteratorConfig().add_output(result).add_const_input(input).build();
+  native::xpu::log_sigmoid_forward_kernel(iter);
+  return std::forward_as_tuple(result, buffer);
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::log_sigmoid_forward(
+    const Tensor& input) {
+  auto result = at::empty_like(input);
+  auto buffer = at::empty({0}, input.options());
+  log_sigmoid_forward_out(input, result, buffer);
+  return std::forward_as_tuple(result, buffer);
+}
+
+TensorIterator log_sigmoid_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build(TensorIteratorConfig()
+                 .add_output(grad_input)
+                 .add_const_input(input)
+                 .add_const_input(grad_output));
+  return iter;
+}
+
+Tensor XPUNativeFunctions::log_sigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& buffer) {
+  auto grad_input = at::empty_like(grad_output);
+  auto iter = log_sigmoid_backward_meta(grad_output, input, grad_input);
+  native::xpu::log_sigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::log_sigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& buffer,
+    Tensor& grad_input) {
+  auto iter = log_sigmoid_backward_meta(grad_output, input, grad_input);
+  native::xpu::log_sigmoid_backward_kernel(iter);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::mish(const Tensor& self) {
+  Tensor out;
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::mish_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::mish_out(const Tensor& self, Tensor& out) {
+  auto iter = TensorIterator::unary_op(out, self);
+  native::xpu::mish_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::mish_(Tensor& self) {
+  auto iter = TensorIterator::unary_op(self, self);
+  native::xpu::mish_kernel(iter);
+  return self;
+}
+
+Tensor XPUNativeFunctions::mish_backward(
+    const Tensor& grad_output,
+    const Tensor& input) {
+  Tensor grad_input = at::empty({0}, input.options());
+  auto iter = TensorIterator::binary_op(grad_input, grad_output, input);
+  native::xpu::mish_backward_kernel(iter);
   return grad_input;
 }
 
