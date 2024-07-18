@@ -54,4 +54,32 @@ inline c10::BFloat16 div<c10::BFloat16>(
   return res;
 }
 
+template <typename scalar_t>
+inline C10_HOST_DEVICE scalar_t div_floor_floating(scalar_t a, scalar_t b)
+    __ubsan_ignore_float_divide_by_zero__ {
+  if (C10_UNLIKELY(b == 0)) {
+    // Divide by zero: return standard IEEE result
+    return a / b;
+  }
+
+  auto mod = std::fmod(a, b);
+
+  // Compatible part. Suppress compiler optimization of data type conversion.
+  volatile auto div = (a - mod) / b;
+  if ((mod != 0) && (b < 0) != (mod < 0)) {
+    div -= scalar_t(1);
+  }
+
+  scalar_t floordiv;
+  if (div != 0) {
+    floordiv = std::floor(div);
+    if (div - floordiv > scalar_t(0.5)) {
+      floordiv += scalar_t(1.0);
+    }
+  } else {
+    floordiv = C10_COMPAT_COPYSIGN(scalar_t(0), a / b);
+  }
+  return floordiv;
+}
+
 } // namespace c10::xpu::compat
