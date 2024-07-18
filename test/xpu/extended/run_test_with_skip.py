@@ -13,6 +13,10 @@ skip_list = (
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
+    "test_compare_cpu_log10_xpu_complex64",
+    "test_compare_cpu_log1p_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex128",
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
@@ -127,6 +131,8 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_float16",
     "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
@@ -166,9 +172,11 @@ skip_list = (
     "test_compare_cpu_var_mean_xpu_bfloat16",
 
     # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    # https://github.com/intel/torch-xpu-ops/issues/572
     "test_compare_cpu_isin_xpu",
     "test_operator_isin_xpu_float32",
     "test_view_replay_isin_xpu_float32",
+    "test_backward_index_fill_xpu_float32",
 )
 
 

@@ -12,6 +12,10 @@ supported:
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
+  - adaptive_max_pool2d_backward.grad_input
+  - adaptive_max_pool2d_backward
+  - adaptive_max_pool2d.out
+  - adaptive_max_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
@@ -46,6 +50,7 @@ supported:
   - fmod.Tensor_out
   - tanh_backward
   - tanh_backward.grad_input
+  - equal
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -103,6 +108,8 @@ supported:
   - index_add.out
   - index_add_
   - index_add
+  - index_fill_.int_Scalar
+  - index_fill_.int_Tensor
   - index_select
   - index_select.out
   - gcd
@@ -175,6 +182,24 @@ supported:
   - log
   - log_
   - log.out
+  - log10
+  - log10_
+  - log10.out
+  - log1p
+  - log1p_
+  - log1p.out
+  - log2
+  - log2_
+  - log2.out
+  - logical_and
+  - logical_and_
+  - logical_and.out
+  - logical_or
+  - logical_or_
+  - logical_or.out
+  - logical_xor
+  - logical_xor_
+  - logical_xor.out
   - logical_not
   - logical_not_
   - logical_not.out
@@ -411,6 +436,10 @@ supported:
   - hardsigmoid_
   - hardsigmoid_backward.grad_input
   - hardsigmoid_backward
+  - log_sigmoid_forward.output
+  - log_sigmoid_forward
+  - log_sigmoid_backward.grad_input
+  - log_sigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -558,6 +587,10 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - nll_loss2d_forward.output
+  - nll_loss2d_forward
+  - nll_loss2d_backward.grad_input
+  - nll_loss2d_backward
   - linalg_cross
   - linalg_cross.out
   - copysign.out

@@ -51,17 +51,14 @@ static void cum_ops_meta(
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
-        result,
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+        result, self.sizes(), {}, self.options().dtype(out_dtype));
   } else {
-    auto is_integral = at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-    out_dtype = dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::xpu::create_out(
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+    auto is_integral =
+        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype =
+        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result =
+        at::xpu::create_out(self.sizes(), {}, self.options().dtype(out_dtype));
   }
 
   namedinference::propagate_names(result, self);
