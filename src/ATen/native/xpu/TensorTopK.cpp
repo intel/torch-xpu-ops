@@ -55,6 +55,11 @@ void topk_out_impl(
   TORCH_CHECK(
       k >= 0 && k <= (self.dim() > 0 ? self.size(dim) : 1),
       "selected index k out of range");
+  
+  // If k is 0 the result is an empty tensor, so we don't need to launch a kernel.
+  if (k == 0) {
+    return;
+  }
 
   if (self.dim() == 0 && self.numel() == 1) {
     values.copy_(self);
