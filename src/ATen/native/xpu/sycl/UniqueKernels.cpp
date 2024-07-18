@@ -245,8 +245,6 @@ struct UniqueDimLessFunctor {
       return a < b;
     // calculate the dictionary order
     for (int64_t i = 0; i < n_; ++i) {
-      // scalar_t lhs = input_flat_ptr_[i + a * n_];
-      // scalar_t rhs = input_flat_ptr_[i + b * n_];
       scalar_t lhs = c10::load(&input_flat_ptr_[i + a * n_]);
       scalar_t rhs = c10::load(&input_flat_ptr_[i + b * n_]);
       if (lhs < rhs) {
@@ -272,8 +270,6 @@ struct UniqueDimEqualFunctor {
   template <typename T>
   bool operator()(T a, T b) const {
     for (int64_t i = 0; i < n_; ++i) {
-      // scalar_t lhs = input_flat_ptr_[i + a * n_];
-      // scalar_t rhs = input_flat_ptr_[i + b * n_];
       scalar_t lhs = c10::load(&input_flat_ptr_[i + a * n_]);
       scalar_t rhs = c10::load(&input_flat_ptr_[i + b * n_]);
       if (lhs != rhs) {
@@ -295,8 +291,6 @@ struct UniqueDimNotEqualFunctor {
   template <typename T>
   bool operator()(T a, T b) const {
     for (int64_t i = 0; i < n_; ++i) {
-      // scalar_t lhs = input_flat_ptr_[i + a * n_];
-      // scalar_t rhs = input_flat_ptr_[i + b * n_];
       scalar_t lhs = c10::load(&input_flat_ptr_[i + a * n_]);
       scalar_t rhs = c10::load(&input_flat_ptr_[i + b * n_]);
       if (lhs != rhs) {
