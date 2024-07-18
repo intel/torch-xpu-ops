@@ -6,14 +6,19 @@
 
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {
 
 template <typename scalar_t>
 struct DivFloorFloatFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return c10::xpu::compat::div_floor_floating(a, b);
+    using acc_t = at::acc_type_device<scalar_t, c10::DeviceType::XPU>;
+    acc_t a = static_cast<acc_t>(a_);
+    acc_t b = static_cast<acc_t>(b_);
+
+    // suppress compiler optimization on data type promotion
+    volatile acc_t res = c10::div_floor_floating(a, b);
+    return res;
   }
 };
 
