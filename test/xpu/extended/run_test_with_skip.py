@@ -13,9 +13,15 @@ skip_list = (
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
+    "test_compare_cpu_log10_xpu_complex64",
+    "test_compare_cpu_log1p_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex128",
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
+    "test_compare_cpu_tan_xpu_complex128",
+    "test_compare_cpu_tan_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
@@ -25,6 +31,22 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex128",
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_cross_xpu_float16",
+
+    # got inconsistent values between CPU / XPU
+    # AssertionError: Tensor-likes are not close!
+    # compute results contain nan / inf
+    "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_asin_xpu_complex128",
+    "test_compare_cpu_asin_xpu_complex64",
+    "test_compare_cpu_asinh_xpu_complex128",
+    "test_compare_cpu_asinh_xpu_complex64",
+    "test_compare_cpu_atan_xpu_complex128",
+    "test_compare_cpu_atan_xpu_complex64",
+
+    # skip random failure due to accuracy
+    # AssertionError: Tensor-likes are not close!
+    "test_compare_cpu_atan2_xpu_bfloat16",
 
     # CPU result is not golden reference
     "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
@@ -58,8 +80,9 @@ skip_list = (
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
-    "nn_functional_interpolate_bicubic",
-    "nn_functional_interpolate_bilinear",
+
+    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
+    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -68,6 +91,9 @@ skip_list = (
     # https://en.cppreference.com/w/cpp/numeric/complex/exp
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
+
+    # Align with CUDA dtypes - RuntimeError: "avg_pool2d_out_xpu" not implemented for 'Long'
+    "test_compare_cpu_nn_functional_avg_pool2d_xpu_int64",
 
     # Special handle (different calculation order) in CPU reference impl.
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
@@ -80,19 +106,75 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
-    
+
+    # Not implemented operators, aten::_embedding_bag_backward.
+    # To retrieve cases when the operators are supported.
+    # https://github.com/intel/torch-xpu-ops/issues/536
+    "test_backward_nn_functional_embedding_bag_xpu_float32",
+
     #Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
-    
+
     # CPU reference fail. `abs_cpu` does not support bool.
     # The case should be skipped by PyTorch test infrastructure, but not be
     # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
     # https://github.com/intel/torch-xpu-ops/issues/412
     "test_compare_cpu_abs_xpu_bool",
 
+    # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_upsample_bilinear_xpu_float16",
+
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_float16",
+    "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
+    "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
+    "test_compare_cpu__batch_norm_with_update_xpu_float16",
+    "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+
+    # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
+    # aten::upsample_trilinear3d
+    "nn_functional_interpolate_linear",
+    "nn_functional_interpolate_bilinear",
+    "nn_functional_interpolate_trilinear",
+
+    # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float16",
+    # Not all operators are implemented for XPU tested in the case.
+    # Retrieve it once the operator is implemented.
+    # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
+    "test_forward_ad_nn_functional_glu_xpu_float32",
+
+    # Precision error.
+    # Mismatched elements: 1 / 812 (0.1%)
+    # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
+    # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
+    "test_compare_cpu_hypot_xpu_bfloat16",
+
+    # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
+    # https://github.com/intel/torch-xpu-ops/issues/549
+    # Example fail log
+    # FAILED test_ops_xpu.py::TestCommonXPU::test_compare_cpu_nn_functional_batch_norm_xpu_float16 - AssertionError: Tensor-likes are not close!
+    # Mismatched elements: 3 / 72 (4.2%)
+    # Greatest absolute difference: 0.0029296875 at index (0, 1, 1, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
+    "test_compare_cpu_std_mean_xpu_bfloat16",
+    "test_compare_cpu_sub_xpu_float16",
+    "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    # https://github.com/intel/torch-xpu-ops/issues/572
+    "test_compare_cpu_isin_xpu",
+    "test_operator_isin_xpu_float32",
+    "test_view_replay_isin_xpu_float32",
+    "test_backward_index_fill_xpu_float32",
 )
 
 

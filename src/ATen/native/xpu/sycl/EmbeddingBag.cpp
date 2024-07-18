@@ -42,6 +42,15 @@ void embedding_bag(
   using vec_t = at::detail::Array<scalar_t, vec_size>;
   using vec_acc_t = at::detail::Array<accscalar_t, vec_size>;
   using vec_idx_t = at::detail::Array<index_t, vec_size>;
+  using KernelClass = EmbeddingBagKernelFunctor<
+      scalar_t,
+      accscalar_t,
+      index_t,
+      mode,
+      vec_size,
+      vec_t,
+      vec_acc_t,
+      vec_idx_t>;
 
   vec_t* o_vec = reinterpret_cast<vec_t*>(output);
   vec_t* w_vec = reinterpret_cast<vec_t*>(weights);
@@ -50,16 +59,10 @@ void embedding_bag(
   vec_len = vec_len / vec_size;
   BatchKernelConfig cfg = {
       bag_num, vec_len, 1, bag_num, true, BatchKernelConfig::Policy::pAdaptive};
+  cfg.template build<KernelClass>();
+
   index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
-  auto caller = EmbeddingBagKernelFunctor<
-      scalar_t,
-      accscalar_t,
-      index_t,
-      mode,
-      vec_size,
-      vec_t,
-      vec_acc_t,
-      vec_idx_t>(
+  auto kfn = KernelClass(
       index,
       offset,
       offset2bag,
@@ -77,7 +80,7 @@ void embedding_bag(
       cfg,
       fixing_bag_size);
   sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), caller);
+      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
 
 #define EMBBAG_KERNEL_ACC(                                                   \
@@ -393,7 +396,14 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
   auto offset2bag = at::empty({indices.size(0)}, indices.options());
   auto output = at::empty({numBags, weight.size(1)}, weight.options());
 
-  Tensor max_indices = at::empty({numBags, weight.size(1)}, indices.options());
+  Tensor max_indices;
+
+  if (mode == MODE_MAX) {
+    max_indices = at::empty({numBags, weight.size(1)}, indices.options());
+  } else {
+    // No need to allocate if we aren't doing a backwards pass
+    max_indices = at::empty({0}, indices.options());
+  }
 
 #define EXTEND_EMBBAG_TEMPLATE(mode) \
   embedding_bag_##mode##_template(   \

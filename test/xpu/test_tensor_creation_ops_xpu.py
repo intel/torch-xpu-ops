@@ -3530,7 +3530,7 @@ class TestRandomTensorCreation(TestCase):
                     continue
                 if n > 256 and dtype == torch.bfloat16:
                     continue
-                with torch.random.fork_rng(devices=rng_device):
+                with torch.random.fork_rng(devices=rng_device, device_type="xpu"):
                     res1 = torch.randperm(n, dtype=dtype, device=device)
                 res2 = torch.empty(0, dtype=dtype, device=device)
                 torch.randperm(n, out=res2, dtype=dtype, device=device)
@@ -3562,7 +3562,7 @@ class TestRandomTensorCreation(TestCase):
         for n in (4, 5, 6, 10, 20):
             non_contiguous_tensor = torch.zeros((2, 3), dtype=torch.long, device=device).t()
             self.assertFalse(non_contiguous_tensor.is_contiguous())
-            with torch.random.fork_rng(devices=rng_device):
+            with torch.random.fork_rng(devices=rng_device, device_type="xpu"):
                 res = torch.randperm(n, dtype=torch.long, device=device)
             torch.randperm(n, out=non_contiguous_tensor)
             self.assertEqual(non_contiguous_tensor, res)

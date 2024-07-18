@@ -1,5 +1,5 @@
 #pragma once
-
+#include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ExpandBase.h>
@@ -8,6 +8,7 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
+#include <ATen/ops/empty.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
