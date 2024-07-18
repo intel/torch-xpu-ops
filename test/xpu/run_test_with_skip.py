@@ -796,6 +796,8 @@ skip_list = (
     "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+    # CUDA doesn't support operator
+    "test_dtypes_histogram_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
