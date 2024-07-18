@@ -2695,7 +2695,6 @@ skip_list = (
     "test_inplace_grad_addbmm_xpu_complex128",
     "test_inplace_gradgrad_addbmm_xpu_complex128",
     ### Error #2 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
-    "test_fn_grad_bernoulli_xpu_float64",
     "test_fn_grad_linalg_norm_xpu_complex128",
     "test_fn_grad_linalg_vector_norm_xpu_complex128",
     "test_fn_grad_nn_functional_rrelu_xpu_float64",
@@ -2758,7 +2757,6 @@ skip_list = (
     "test_storage_setitem_xpu_float32",
     "test_tensor_storage_type_xpu_float32",
     ### Error #5 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Scalars are not equal!
-    "test_bernoulli_edge_cases_xpu_float16",
     "test_strides_propagation_xpu",
     ### Error #7 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map2_ is only implemented on CPU tensors
     "test_broadcast_fn_map2_xpu",

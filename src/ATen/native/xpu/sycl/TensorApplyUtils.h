@@ -122,14 +122,13 @@ template <
     typename scalar1,
     typename scalar2,
     typename IndexType,
-    int ADims,
-    int BDims,
     int remaining_steps,
     typename... Offsets>
 struct ApplyOp2 {
   inline static void apply(
-      TensorInfo<scalar1, IndexType>& a,
-      TensorInfo<scalar2, IndexType>& b,
+      sycl::nd_item<1>& item,
+      TensorInfo<scalar1, IndexType> a,
+      TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int64_t n,
       IndexType linearIndex,
@@ -137,12 +136,12 @@ struct ApplyOp2 {
       Offsets... bOffsets) {
     // Convert `linearIndex` into an offset of `a`
     const IndexType aOffset = static_cast<int64_t>(sizeof...(Offsets)) < n
-        ? IndexToOffset<scalar1, IndexType, ADims>::get(linearIndex, a)
+        ? IndexToOffset<scalar1, IndexType>::get(linearIndex, a)
         : 0;
 
     // Convert `linearIndex` into an offset of `b`
     const IndexType bOffset = static_cast<int64_t>(sizeof...(Offsets)) < n
-        ? IndexToOffset<scalar2, IndexType, BDims>::get(linearIndex, b)
+        ? IndexToOffset<scalar2, IndexType>::get(linearIndex, b)
         : 0;
 
     ApplyOp2<
@@ -150,12 +149,11 @@ struct ApplyOp2 {
         scalar1,
         scalar2,
         IndexType,
-        ADims,
-        BDims,
         remaining_steps - 1,
         const IndexType,
         Offsets...>::
         apply(
+            item,
             a,
             b,
             op,
@@ -175,19 +173,18 @@ template <
     typename scalar1,
     typename scalar2,
     typename IndexType,
-    int ADims,
-    int BDims,
     typename Offset>
-struct ApplyOp2<Op, scalar1, scalar2, IndexType, ADims, BDims, 0, Offset> {
+struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offset> {
   inline static void apply(
-      TensorInfo<scalar1, IndexType>& a,
-      TensorInfo<scalar2, IndexType>& b,
+      sycl::nd_item<1>& item,
+      TensorInfo<scalar1, IndexType> a,
+      TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int /*n*/,
       IndexType /*linearIndex*/,
       Offset aOffset,
       Offset bOffset) {
-    op(a.data[aOffset], b.data[bOffset]);
+    op(item, a.data[aOffset], b.data[bOffset]);
   }
 };
 
@@ -196,19 +193,18 @@ template <
     typename scalar1,
     typename scalar2,
     typename IndexType,
-    int ADims,
-    int BDims,
     typename... Offsets>
-struct ApplyOp2<Op, scalar1, scalar2, IndexType, ADims, BDims, 0, Offsets...> {
+struct ApplyOp2<Op, scalar1, scalar2, IndexType, 0, Offsets...> {
   inline static void apply(
-      TensorInfo<scalar1, IndexType>& a,
-      TensorInfo<scalar2, IndexType>& b,
+      sycl::nd_item<1>& item,
+      TensorInfo<scalar1, IndexType> a,
+      TensorInfo<scalar2, IndexType> b,
       const Op& op,
       int n,
       IndexType linearIndex,
       Offsets... aOffsets,
       Offsets... bOffsets) {
-    op(n, a.data[aOffsets]..., b.data[bOffsets]...);
+    op(item, n, a.data[aOffsets]..., b.data[bOffsets]...);
   }
 };
 
@@ -217,8 +213,6 @@ template <
     typename scalar1,
     typename scalar2,
     typename IndexType,
-    int ADims,
-    int BDims,
     int step>
 struct PointwiseApply2Functor {
   void operator()(sycl::nd_item<1> item) const {
@@ -228,7 +222,8 @@ struct PointwiseApply2Functor {
          linearIndex < totalElements_;
          linearIndex +=
          item.get_group_range(0) * item.get_local_range(0) * step) {
-      ApplyOp2<Op, scalar1, scalar2, IndexType, ADims, BDims, step>::apply(
+      ApplyOp2<Op, scalar1, scalar2, IndexType, step>::apply(
+          item,
           a_,
           b_,
           op_,
@@ -272,8 +267,8 @@ template <
     typename Op,
     int threads_per_group>
 inline bool tensor_apply2(
-    at::TensorBase a,
-    at::TensorBase b,
+    at::TensorBase& a,
+    at::TensorBase& b,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
@@ -321,57 +316,6 @@ inline bool tensor_apply2(
     oldB = std::exchange(b, b.contiguous());
   }
 
-  // It is possible that the tensor dimensions are able to be collapsed,
-  // and thus we can reduce the actual code complexity of the copy by
-  // exploiting this knowledge statically, since the div/mod is the
-  // most expensive part of the operation, more so than memory accesses.
-  // For instance, when copying a non-contiguous to a contiguous tensor
-  // (or vice versa), the contiguous tensor can be collapsed to one
-  // dimension, and the loop to translate the linear index to the array
-  // index can be similarly collapsed. That is what this unrolling is for.
-
-#define HANDLE_CASE(TYPE, A, B)                                         \
-  {                                                                     \
-    using fn_t =                                                        \
-        PointwiseApply2Functor<Op, scalar1, scalar2, TYPE, A, B, step>; \
-    auto fn = fn_t(aInfo, bInfo, static_cast<TYPE>(totalElements), op); \
-    sycl_kernel_submit(                                                 \
-        group_count* threads_per_group,                                 \
-        threads_per_group,                                              \
-        getCurrentSYCLQueue(),                                          \
-        fn);                                                            \
-  }
-
-#define HANDLE_B_CASE(TYPE, A, B) \
-  {                               \
-    switch (B) {                  \
-      case 1:                     \
-        HANDLE_CASE(TYPE, A, 1);  \
-        break;                    \
-      case 2:                     \
-        HANDLE_CASE(TYPE, A, 2);  \
-        break;                    \
-      default:                    \
-        HANDLE_CASE(TYPE, A, -1); \
-        break;                    \
-    }                             \
-  }
-
-#define HANDLE_A_CASE(TYPE, A, B)   \
-  {                                 \
-    switch (A) {                    \
-      case 1:                       \
-        HANDLE_B_CASE(TYPE, 1, B);  \
-        break;                      \
-      case 2:                       \
-        HANDLE_B_CASE(TYPE, 2, B);  \
-        break;                      \
-      default:                      \
-        HANDLE_B_CASE(TYPE, -1, B); \
-        break;                      \
-    }                               \
-  }
-
   if (canUse32BitIndexMath(a) && canUse32BitIndexMath(b)) {
     TensorInfo<scalar1, unsigned int> aInfo =
         getTensorInfo<scalar1, unsigned int>(a);
@@ -382,7 +326,14 @@ inline bool tensor_apply2(
     aInfo.collapseDims();
     bInfo.collapseDims();
 
-    HANDLE_A_CASE(unsigned int, aInfo.dims, bInfo.dims);
+    using index_t = unsigned int;
+    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
+        aInfo, bInfo, static_cast<index_t>(totalElements), op);
+    sycl_kernel_submit(
+        group_count * threads_per_group,
+        threads_per_group,
+        getCurrentSYCLQueue(),
+        fn);
   } else {
     TensorInfo<scalar1, uint64_t> aInfo = getTensorInfo<scalar1, uint64_t>(a);
 
@@ -391,19 +342,15 @@ inline bool tensor_apply2(
     aInfo.collapseDims();
     bInfo.collapseDims();
 
-    /*
-    Only instantiates the all 1D special case and the fallback all nD case for
-    large (64-bit indexed) tensors to reduce compilation time.
-    */
-    if (aInfo.dims == 1 && bInfo.dims == 1) {
-      HANDLE_CASE(uint64_t, 1, 1);
-    } else {
-      HANDLE_CASE(uint64_t, -1, -1);
-    }
+    using index_t = uint64_t;
+    auto fn = PointwiseApply2Functor<Op, scalar1, scalar2, index_t, step>(
+        aInfo, bInfo, static_cast<index_t>(totalElements), op);
+    sycl_kernel_submit(
+        group_count * threads_per_group,
+        threads_per_group,
+        getCurrentSYCLQueue(),
+        fn);
   }
-#undef HANDLE_CASE
-#undef HANDLE_B_CASE
-#undef HANDLE_A_CASE
 
   if (oldA.defined()) {
     at::native::copy_ignoring_overlaps(oldA, a);
@@ -423,8 +370,8 @@ template <
     typename Op,
     int max_threads_per_group>
 inline bool tensor_apply2(
-    const at::TensorBase& a,
-    const at::TensorBase& b,
+    at::TensorBase& a,
+    at::TensorBase& b,
     const Op op,
     TensorArgType aType = TensorArgType::ReadWrite,
     TensorArgType bType = TensorArgType::ReadOnly) {
