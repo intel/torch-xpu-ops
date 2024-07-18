@@ -36,4 +36,52 @@ void log_kernel(TensorIteratorBase& iter) {
   }
 }
 
+template <typename scalar_t>
+struct Log10Functor {
+  scalar_t operator()(scalar_t x) const {
+    return std::log10(x);
+  }
+};
+
+void log10_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "log10_xpu",
+      [&]() { gpu_kernel(iter, Log10Functor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct Log1pFunctor {
+  scalar_t operator()(scalar_t x) const {
+    return std::log1p(x);
+  }
+};
+
+void log1p_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "log1p_xpu",
+      [&]() { gpu_kernel(iter, Log1pFunctor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct Log2Functor {
+  scalar_t operator()(scalar_t x) const {
+    return std::log2(x);
+  }
+};
+
+void log2_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "log2_xpu",
+      [&]() { gpu_kernel(iter, Log2Functor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu
