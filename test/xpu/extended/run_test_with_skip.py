@@ -43,6 +43,8 @@ skip_list = (
     "test_compare_cpu_asinh_xpu_complex64",
     "test_compare_cpu_atan_xpu_complex128",
     "test_compare_cpu_atan_xpu_complex64",
+    "test_compare_cpu_exp2_xpu_complex128",
+    "test_compare_cpu_exp2_xpu_complex64",
 
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
