@@ -612,7 +612,9 @@ Tensor& XPUNativeFunctions::logical_xor_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::logical_xor(const Tensor& self, const Tensor& other) {
+Tensor XPUNativeFunctions::logical_xor(
+    const Tensor& self,
+    const Tensor& other) {
   return comparison_op(self, other, static_cast<OutFunc>(at::logical_xor_out));
 }
 
