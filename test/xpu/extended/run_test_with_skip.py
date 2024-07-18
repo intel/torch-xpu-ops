@@ -32,6 +32,12 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_cross_xpu_float16",
+    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
+    "test_compare_cpu_div_trunc_rounding_xpu_float16",
+    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_float16",
+    "test_compare_cpu_addr_xpu_float16",
 
     # got inconsistent values between CPU / XPU
     # AssertionError: Tensor-likes are not close!
@@ -47,14 +53,6 @@ skip_list = (
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
     "test_compare_cpu_atan2_xpu_bfloat16",
-
-    # CPU result is not golden reference
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
-    "test_compare_cpu_floor_divide_xpu_bfloat16",
-    "test_compare_cpu_floor_divide_xpu_float16",
-    "test_compare_cpu_addr_xpu_float16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
