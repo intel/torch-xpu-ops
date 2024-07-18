@@ -192,7 +192,7 @@ void _mkl_dft(
 
   // Allocate USM workspace and provide it to the descriptor.
   Tensor workspaceBuf = at::empty(
-      {workspaceSizeBytes / sizeof(double)},
+      {(long)(workspaceSizeBytes / sizeof(double))},
       input.options().dtype(at::kDouble),
       c10::nullopt);
   desc.raw().set_workspace((double*)workspaceBuf.data_ptr());
