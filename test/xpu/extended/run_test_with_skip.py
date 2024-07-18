@@ -160,6 +160,7 @@ skip_list = (
     # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
     "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
     "test_compare_cpu_std_mean_xpu_bfloat16",
+    # verfieid cuda also has accuracy issue with alpha -3.125, see https://github.com/intel/torch-xpu-ops/issues/549
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
 
