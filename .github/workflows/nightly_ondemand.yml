@@ -180,7 +180,7 @@ jobs:
           suite: huggingface
           env_prepare: true
           dt: float32,bfloat16,float16
-          mode: inference,traning
+          mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test

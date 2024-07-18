@@ -38,8 +38,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 res = 0
 
 # test_ops
-
-
 skip_list = (
     # Skip list of base line
     "test_dtypes___rmod___xpu",
@@ -165,9 +163,6 @@ skip_list = (
     "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_bfloat16",
     "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_float16",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float32",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float64",
     "test_python_ref_executor__refs_nn_functional_triplet_margin_loss_executor_aten_xpu_uint8",
     "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
@@ -477,7 +472,6 @@ skip_list = (
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_complex128",
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_complex64",
     "test_python_ref_executor__refs_linalg_svd_executor_aten_xpu_float64",
-    "test_python_ref_executor__refs_nn_functional_nll_loss_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_nn_functional_pdist_executor_aten_xpu_float64",
     "test_python_ref_meta__refs_linalg_svd_xpu_complex128",
     "test_python_ref_meta__refs_linalg_svd_xpu_complex64",
@@ -788,12 +782,21 @@ skip_list = (
     # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
     # https://github.com/intel/torch-xpu-ops/issues/468
     "test_dtypes_nn_functional_interpolate_bilinear_xpu",
+
     # Op impl aligns with CUDA on the supported dtypes.
     # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
     # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
+
+    # Numeric difference
+    # https://github.com/intel/torch-xpu-ops/issues/544
+    # Mismatched elements: 7 / 1048576 (0.0%)
+    # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
+    # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
+    "test_python_ref__refs_log2_xpu_complex128",
+
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 )
@@ -841,16 +844,6 @@ res += launch_test("test_autograd_fallback.py")
 
 
 skip_list = (
-    # The following isin case fails on CPU fallback, as it could be backend-specific.
-    "test_isin_xpu_float16",  # RuntimeError: "isin_default_cpu" not implemented for 'Half'
-    "test_isin_different_devices_xpu_float32",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_float64",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int16",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int32",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int64",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_int8",  # AssertionError: RuntimeError not raised
-    "test_isin_different_devices_xpu_uint8",  # AssertionError: RuntimeError not raised
-    "test_isin_different_dtypes_xpu",  # RuntimeError: "isin_default_cpu" not implemented for 'Half'"
     "test_sort_large_slice_xpu",  # Hard code CUDA
 )
 res += launch_test("test_sort_and_select_xpu.py", skip_list)
@@ -1391,14 +1384,7 @@ res += launch_test("nn/test_pooling_xpu.py", skip_list)
 # nn/test_dropout
 
 
-skip_list = (
-    # Cannot freeze rng state. Need enhance test infrastructure to make XPU
-    # compatible in freeze_rng_state.
-    # https://github.com/intel/torch-xpu-ops/issues/259
-    "test_Dropout1d_xpu",
-    "test_Dropout3d_xpu",
-)
-res += launch_test("nn/test_dropout_xpu.py", skip_list)
+res += launch_test("nn/test_dropout_xpu.py")
 
 # test_dataloader
 
@@ -1530,6 +1516,10 @@ skip_list = (
     "test_reference_numerics_extremal_asin_xpu_complex64",
     "test_reference_numerics_large__refs_acosh_xpu_complex64",
     "test_reference_numerics_large_acosh_xpu_complex64",
+    "test_reference_numerics_extremal__refs_log10_xpu_complex64",
+    "test_reference_numerics_extremal__refs_log1p_xpu_complex64",
+    "test_reference_numerics_extremal_log10_xpu_complex64",
+    "test_reference_numerics_extremal_log1p_xpu_complex64",
     "test_reference_numerics_extremal__refs_tan_xpu_complex128",
     "test_reference_numerics_extremal__refs_tan_xpu_complex64",
     "test_reference_numerics_extremal_tan_xpu_complex128",
@@ -1557,6 +1547,13 @@ skip_list = (
     # Failed: Unexpected success
     "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
+
+    # Numeric difference
+    # https://github.com/intel/torch-xpu-ops/issues/544
+    # Expected 0.00497517 but got 0.00497520063072443.
+    # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
+    # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
+    "test_log1p_complex_xpu_complex64",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
@@ -2791,8 +2788,6 @@ skip_list = (
     ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
     "test_is_set_to_xpu",
     "test_pin_memory_from_constructor_xpu",
-    ### Error #18 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Torch not compiled with CUDA enabled
-    "test_memory_format_cpu_and_cuda_ops_xpu",
     "test_sync_warning_xpu",
     ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
     "test_module_share_memory_xpu",
@@ -2909,8 +2904,6 @@ skip_list = (
     "test_multihead_attn_fast_path_small_test_xpu_float64",
     "test_multihead_attn_in_proj_bias_none_xpu_float64",
     "test_multihead_attn_in_proj_weight_none_xpu_float64",
-    # issue 342
-    "test_multihead_self_attn_two_masks_fast_path_mock_xpu",
 )
 res += launch_test("nn/test_multihead_attention_xpu.py", skip_list)
 
