@@ -37,4 +37,18 @@ Tensor& XPUNativeFunctions::_fft_c2c_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::_fft_c2r(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size) {
+  TORCH_CHECK(self.is_complex());
+
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  return native::xpu::_fft_c2r_kernel(self, dim, normalization, last_dim_size);
+}
+
 } // namespace at

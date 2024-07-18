@@ -595,3 +595,4 @@ supported:
   - nan_to_num.out
   - _fft_c2c
   - _fft_c2c.out
+  - _fft_c2r

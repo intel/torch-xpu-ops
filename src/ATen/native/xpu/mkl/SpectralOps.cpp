@@ -481,4 +481,46 @@ Tensor _fft_c2c_kernel(
   return out;
 }
 
+Tensor _fft_c2r_kernel(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size) {
+  TORCH_CHECK(self.is_complex());
+  auto input = self;
+
+  auto in_sizes = input.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
+  double norm_scale = impl::_dft_scale(dim, in_sizes, out_sizes, normalization);
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c(
+        self,
+        c2c_dims,
+        static_cast<int64_t>(fft_norm_mode::none),
+        /*forward=*/false);
+    dim = dim.slice(dim.size() - 1);
+  }
+
+  // auto in_sizes = input.sizes();
+  // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  // out_sizes[dim.back()] = last_dim_size;
+
+  auto out = at::empty(
+      out_sizes,
+      self.options().dtype(c10::toRealValueType(self.scalar_type())));
+  return impl::_exec_fft(
+      out,
+      input,
+      out_sizes,
+      dim,
+      normalization,
+      norm_scale,
+      /*onesided=*/true,
+      /*forward=*/false);
+}
+
 } // namespace at::native::xpu
