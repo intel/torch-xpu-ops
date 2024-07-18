@@ -17,7 +17,7 @@ int64_t _nnz_csr(const Tensor& self) {
 }
 
 TORCH_LIBRARY_IMPL(aten, SparseCsrXPU, m) {
-  m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz_csr));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_nnz"), TORCH_FN(_nnz_csr));
 }
 
 } // namespace at::native::xpu

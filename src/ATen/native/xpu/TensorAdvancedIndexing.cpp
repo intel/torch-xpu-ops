@@ -12,7 +12,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
@@ -313,6 +313,53 @@ Tensor XPUNativeFunctions::index_add(
     const Scalar& alpha) {
   Tensor out;
   return index_add_out(self, dim, index, source, alpha, out);
+}
+
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source) {
+  at::NoNamesGuard guard;
+
+  TORCH_CHECK_INDEX(
+      index.scalar_type() == ScalarType::Long,
+      "index_fill_(): Expected dtype int64 for index.");
+
+  at::assert_no_overlap(self, index);
+  if (at::has_internal_overlap(self) == at::MemOverlap::Yes) {
+    TORCH_WARN(
+        "Use of index_fill_ on expanded tensors is deprecated. "
+        "Please clone() the tensor before performing this operation. "
+        "This also applies to advanced indexing e.g. tensor[mask] = scalar");
+  }
+
+  if (!self.is_complex() && source.isComplex()) {
+    TORCH_CHECK(
+        false,
+        "index_fill_(): Converting complex Scalar to non-complex type is not supported");
+  }
+
+  // Handle the case when `self` is 0-dim
+  Tensor self_nonzero_dim = (self.dim() == 0) ? self.unsqueeze(-1) : self;
+  dim = at::maybe_wrap_dim(dim, self_nonzero_dim);
+
+  native::xpu::index_fill_kernel(self, dim, index, source);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::index_fill_(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source) {
+  TORCH_CHECK(
+      source.dim() == 0,
+      "index_fill_ only supports a 0-dimensional value tensor, but got tensor "
+      "with ",
+      source.dim(),
+      " dimension(s).");
+  return self.index_fill_(dim, index, source.item());
 }
 
 void check_indices_on_cpu_or_selfdevice(

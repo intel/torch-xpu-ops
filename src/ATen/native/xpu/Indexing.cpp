@@ -4,7 +4,7 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <comm/TensorInfo.h>
 
 namespace at {

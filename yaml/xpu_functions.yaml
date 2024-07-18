@@ -104,6 +104,8 @@ supported:
   - index_add.out
   - index_add_
   - index_add
+  - index_fill_.int_Scalar
+  - index_fill_.int_Tensor
   - index_select
   - index_select.out
   - gcd
@@ -176,6 +178,15 @@ supported:
   - log
   - log_
   - log.out
+  - log10
+  - log10_
+  - log10.out
+  - log1p
+  - log1p_
+  - log1p.out
+  - log2
+  - log2_
+  - log2.out
   - logical_and
   - logical_and_
   - logical_and.out
@@ -580,6 +591,10 @@ supported:
   - expm1_
   - expm1.out
   - exponential_
+  - nll_loss2d_forward.output
+  - nll_loss2d_forward
+  - nll_loss2d_backward.grad_input
+  - nll_loss2d_backward
   - linalg_cross
   - linalg_cross.out
   - copysign.out
