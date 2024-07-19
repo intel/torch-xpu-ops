@@ -198,6 +198,72 @@ Tensor& XPUNativeFunctions::log_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::log10(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log10_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::log10_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::log10_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::log10_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log10_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::log1p(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log1p_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::log1p_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::log1p_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::log1p_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log1p_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::log2(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::log2_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::log2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::log2_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::log2_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::sqrt(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -722,6 +788,43 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   }
   auto iter = ceil_meta(self, out);
   native::xpu::ceil_kernel(iter);
+  return out;
+}
+
+TensorIterator meta_floor(const Tensor& self, Tensor& out) {
+  // Note: this is consistent with NumPy
+  TORCH_CHECK(!self.is_complex(), "floor is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::floor(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::floor_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  auto iter = meta_floor(self, self);
+  native::xpu::floor_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
   return out;
 }
 
