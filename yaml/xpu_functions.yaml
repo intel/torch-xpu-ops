@@ -232,6 +232,13 @@ supported:
   - exp
   - exp.out
   - exp_
+  - exp2
+  - exp2_
+  - exp2.out
+  - expm1
+  - expm1_
+  - expm1.out
+  - exponential_
   - empty.memory_format
   - empty_strided
   - eye.out
@@ -588,13 +595,25 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
-  - exp2
-  - exp2_
-  - exp2.out
-  - expm1
-  - expm1_
-  - expm1.out
-  - exponential_
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
   - nll_loss2d_forward.output
   - nll_loss2d_forward
   - nll_loss2d_backward.grad_input
