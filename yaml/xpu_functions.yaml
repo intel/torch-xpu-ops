@@ -12,6 +12,10 @@ supported:
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
+  - adaptive_max_pool2d_backward.grad_input
+  - adaptive_max_pool2d_backward
+  - adaptive_max_pool2d.out
+  - adaptive_max_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
@@ -178,6 +182,15 @@ supported:
   - log
   - log_
   - log.out
+  - log10
+  - log10_
+  - log10.out
+  - log1p
+  - log1p_
+  - log1p.out
+  - log2
+  - log2_
+  - log2.out
   - logical_and
   - logical_and_
   - logical_and.out
@@ -572,6 +585,10 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - nll_loss2d_forward.output
+  - nll_loss2d_forward
+  - nll_loss2d_backward.grad_input
+  - nll_loss2d_backward
   - linalg_cross
   - linalg_cross.out
   - copysign.out

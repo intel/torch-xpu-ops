@@ -155,8 +155,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
     "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
-    "adaptive_max_pool2d_backward.grad_input",
-    "adaptive_max_pool2d.out",
     "adaptive_max_pool3d_backward.grad_input",
     "adaptive_max_pool3d.out",
     "aminmax.out",
@@ -237,9 +235,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "linalg_solve_triangular",
     "_linalg_svd.U",
     "linspace.out",
-    "log10.out",
-    "log1p.out",
-    "log2.out",
     "logaddexp2.out",
     "logaddexp.out",
     "_logcumsumexp",
