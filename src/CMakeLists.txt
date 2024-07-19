@@ -99,4 +99,4 @@ if(NOT ONEMKL_FOUND)
   message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
 endif()
 
-target_link_libraries(torch_xpu_ops INTERFACE ${ONEMKL_LIBRARIES})
+target_link_libraries(torch_xpu_ops PUBLIC ${ONEMKL_LIBRARIES})

@@ -51,4 +51,7 @@ foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
   list(APPEND ONEMKL_LIBRARIES ${${LIB_NAME}_library})
 endforeach()
 
+list(INSERT ONEMKL_LIBRARIES 0 "-Wl,--no-as-needed")
+list(APPEND ONEMKL_LIBRARIES "-Wl,--as-needed")
+
 set(ONEMKL_FOUND TRUE)
