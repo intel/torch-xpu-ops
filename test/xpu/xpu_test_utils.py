@@ -190,9 +190,16 @@ _xpu_computation_op_list = [
     "unique",
     "multinomial",
     "lerp",
+    "frac",
+    "aminmax",
+    "argmin",
     "conj_physical",
+    "fmax",
+    "fmin",
+    "floor",
+    "floor_divide",
     "copysign",
-    "count_nonzero"
+    "count_nonzero",
     "nan_to_num",
 ]
 

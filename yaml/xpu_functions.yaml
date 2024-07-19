@@ -590,6 +590,25 @@ supported:
   - unique_consecutive
   - _unique
   - _unique2
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
   - nll_loss2d_forward.output
   - nll_loss2d_forward
   - nll_loss2d_backward.grad_input
