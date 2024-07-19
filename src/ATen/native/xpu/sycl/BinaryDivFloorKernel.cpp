@@ -11,7 +11,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct DivFloorFloatFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
+  scalar_t operator()(scalar_t a_, scalar_t b_) const {
     using acc_t = at::acc_type_device<scalar_t, c10::DeviceType::XPU>;
     acc_t a = static_cast<acc_t>(a_);
     acc_t b = static_cast<acc_t>(b_);
