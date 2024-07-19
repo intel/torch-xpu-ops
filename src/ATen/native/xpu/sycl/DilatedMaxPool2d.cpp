@@ -429,10 +429,12 @@ void launch_max_pool2d_backward_kernel(
 
   // By default, we disable the un-derterministic path in this kernel,
   // so that we make sure there will no side-effect with the accuracy.
-  // In the future, we will re-enable the un-deterministic path to improve performance.
+  // In the future, we will re-enable the un-deterministic path to improve
+  // performance.
   //
-  // The background of this is that we found this kernel has different behavior with CUDA in alexnet
-  // To avoid future problem, we decided to always use deterministic path.
+  // The background of this is that we found this kernel has different behavior
+  // with CUDA in alexnet To avoid future problem, we decided to always use
+  // deterministic path.
 
   using KernelClass =
       MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>;
