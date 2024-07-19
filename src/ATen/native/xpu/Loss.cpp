@@ -79,6 +79,63 @@ Tensor& XPUNativeFunctions::mse_loss_backward_out(
   return grad_input;
 }
 
+Tensor& XPUNativeFunctions::smooth_l1_loss_out(
+    const Tensor& input,
+    const Tensor& target,
+    int64_t reduction,
+    double beta,
+    Tensor& result) {
+  if (reduction != Reduction::None) {
+    TORCH_INTERNAL_ASSERT(
+        reduction == Reduction::Mean || reduction == Reduction::Sum);
+    result.resize_({});
+    Tensor loss;
+    auto iter = TensorIterator::borrowing_binary_op(loss, input, target);
+    native::xpu::smooth_l1_kernel(iter, beta);
+    if (reduction == Reduction::Mean) {
+      at::mean_out(const_cast<Tensor&>(result), iter.output(), IntArrayRef{});
+    } else {
+      at::sum_out(const_cast<Tensor&>(result), iter.output(), IntArrayRef{});
+    }
+  } else {
+    auto iter = TensorIterator::borrowing_binary_op(result, input, target);
+    native::xpu::smooth_l1_kernel(iter, beta);
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::smooth_l1_loss(
+    const Tensor& input,
+    const Tensor& target,
+    int64_t reduction,
+    double beta) {
+  Tensor result = at::empty_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  result = XPUNativeFunctions::smooth_l1_loss_out(
+      input, target, reduction, beta, result);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::smooth_l1_loss_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& target,
+    int64_t reduction,
+    double beta,
+    Tensor& grad_input) {
+  auto norm = reduction == Reduction::Mean ? 1. / input.numel() : 1.;
+  auto iter = at::TensorIteratorConfig()
+                  .add_output(grad_input)
+                  .add_const_input(input)
+                  .add_const_input(target)
+                  .add_const_input(grad_output)
+                  .promote_inputs_to_common_dtype(true)
+                  .cast_common_dtype_to_outputs(true)
+                  .enforce_safe_casting_to_output(true)
+                  .build();
+  native::xpu::smooth_l1_backward_kernel(iter, norm, beta);
+  return grad_input;
+}
+
 Tensor XPUNativeFunctions::huber_loss(
     const Tensor& input,
     const Tensor& target,

@@ -126,6 +126,40 @@ void mse_backward_kernel(TensorIterator& iter, const Scalar& value) {
 }
 
 template <typename scalar_t>
+struct SmoothL1BackwardFunctor {
+  scalar_t operator()(scalar_t input, scalar_t target, scalar_t grad_output)
+      const {
+    const auto x = input - target;
+    if (x < -beta_val)
+      return -norm_val * grad_output;
+    else if (x > beta_val)
+      return norm_val * grad_output;
+    else
+      return norm_val * x * grad_output / beta_val;
+  }
+  SmoothL1BackwardFunctor(scalar_t norm_val, scalar_t beta_val)
+      : norm_val(norm_val), beta_val(beta_val) {}
+
+ private:
+  scalar_t norm_val;
+  scalar_t beta_val;
+};
+
+void smooth_l1_backward_kernel(TensorIterator& iter, Scalar norm, double beta) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      iter.dtype(),
+      "smooth_l1_backward_xpu",
+      [&iter, &norm, beta] {
+        auto norm_val = norm.to<scalar_t>();
+        scalar_t beta_val(beta);
+        SmoothL1BackwardFunctor<scalar_t> f(norm_val, beta_val);
+        gpu_kernel(iter, f);
+      });
+}
+
+template <typename scalar_t>
 struct HuberBackwardFunctor {
   scalar_t operator()(scalar_t input, scalar_t target, scalar_t grad_output)
       const {
