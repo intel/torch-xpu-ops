@@ -55,4 +55,60 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, ReciprocalFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct FracFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return a - std::trunc(a);
+  }
+};
+
+void frac_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "frac_xpu", [&]() {
+        gpu_kernel(iter, FracFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
+struct CeilFunctor {
+  scalar_t operator()(const scalar_t a) const {
+    return std::ceil(a);
+  }
+};
+
+template <typename T>
+struct CeilFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(const c10::complex<T> a) const {
+    return c10::complex<T>(std::ceil(a.real()), std::ceil(a.imag()));
+  }
+};
+
+void ceil_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "ceil_xpu", [&]() {
+        gpu_kernel(iter, CeilFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
+struct FloorFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::floor(a);
+  }
+};
+
+template <typename T>
+struct FloorFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> v) const {
+    return c10::complex<T>(std::floor(v.real()), std::floor(v.imag()));
+  }
+};
+
+void floor_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "floor_xpu", [&]() {
+        gpu_kernel(iter, FloorFunctor<scalar_t>());
+      });
+}
+
 } // namespace at::native::xpu

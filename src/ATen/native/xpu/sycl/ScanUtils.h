@@ -186,14 +186,13 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    size_t wg_size = syclMaxWorkItemsPerEU(dev_id);
+    size_t wg_size = syclMaxWorkItemsPerEU();
     wg_range_x_ = 32;
     while (problem_ <= wg_range_x_ >> 1) {
       wg_range_x_ = wg_range_x_ >> 1;
     }
     wg_range_y_ = wg_size / wg_range_x_;
-    const auto target_global_size = syclMaxWorkItemsPerTile(dev_id);
+    const auto target_global_size = syclMaxWorkItemsPerTile();
     ;
     const size_t max_work_group_num = target_global_size / wg_size;
     const size_t wg_number =
@@ -392,18 +391,6 @@ class SegmentScanConfig : public BatchKernelConfig {
   using OutputInfoType = OutputInfo;
   using IndicesInfoType = IndicesInfo;
 
-  // // Manually enable copy constructor
-  // SegmentScanConfig(const SegmentScanConfig& cfg_) {
-  //   this->iinfo_ = cfg_.iinfo_;
-  //   this->oinfo_ = cfg_.oinfo_;
-  //   this->idxinfo_ = cfg_.idxinfo_;
-  //   this->init_ = cfg_.init_;
-  //   this->type_ = cfg_.type_;
-  //   this->func_ = cfg_.func_;
-  //   this->carrier_ = cfg_.carrier_;
-  //   this->carrier_idx_ = cfg_.carrier_idx_;
-  // }
-
   SegmentScanConfig() {}
 
   SegmentScanConfig(
@@ -432,6 +419,7 @@ class SegmentScanConfig : public BatchKernelConfig {
         carrier_(nullptr),
         carrier_idx_(nullptr) {}
 
+  template <class KernelClass>
   static SegmentScanConfig<
       InputInfo,
       OutputInfo,
@@ -450,17 +438,22 @@ class SegmentScanConfig : public BatchKernelConfig {
     int64_t stride = input_info.innerSize(scan_dim);
     int64_t problem = input_info.sizes[scan_dim];
     bool problem_along_x = input_info.strides[scan_dim] == 1 ? true : false;
-    return {
-        input_info,
-        output_info,
-        indices_info,
-        batch,
-        problem,
-        stride,
-        problem_along_x,
-        init,
-        type,
-        func};
+
+    SegmentScanConfig<InputInfo, OutputInfo, IndicesInfo, T, BinaryFunction>
+        cfg = {
+            input_info,
+            output_info,
+            indices_info,
+            batch,
+            problem,
+            stride,
+            problem_along_x,
+            init,
+            type,
+            func};
+
+    cfg.template build<KernelClass>();
+    return cfg;
   }
 
   int64_t carrier_size() {
@@ -706,13 +699,21 @@ static inline void _segment_scan_kernel(
     int dim_after_collapse,
     T init,
     BinaryFunction func) {
+  using SSConfig = SegmentScanConfig<
+      InputInfo,
+      OutputInfo,
+      OutputInfo /*not used*/,
+      T,
+      BinaryFunction>;
+  using KernelClass = SegmentScanKernel<SSConfig, TrivialOffCal, TrivialIdxCal>;
+
   auto cfg = SegmentScanConfig<
       InputInfo,
       OutputInfo,
       OutputInfo /*not used*/,
       T,
       BinaryFunction>::
-      make_config(
+      template make_config<KernelClass>(
           input_info,
           output_info,
           output_info /*not used*/,

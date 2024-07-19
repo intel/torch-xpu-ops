@@ -67,4 +67,11 @@ Tensor& XPUNativeFunctions::max_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_aminmax(const Tensor& self) {
+  TORCH_WARN_ONCE(
+      "_aminmax is deprecated as of PyTorch 1.11 and will be removed in a future release. Use aminmax instead."
+      " This warning will only appear once per process.");
+  return XPUNativeFunctions::aminmax(self, {}, false);
+}
+
 } // namespace at
