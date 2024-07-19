@@ -12,6 +12,10 @@ supported:
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
+  - adaptive_max_pool2d_backward.grad_input
+  - adaptive_max_pool2d_backward
+  - adaptive_max_pool2d.out
+  - adaptive_max_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
@@ -585,6 +589,16 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
   - nll_loss2d_forward.output
   - nll_loss2d_forward
   - nll_loss2d_backward.grad_input

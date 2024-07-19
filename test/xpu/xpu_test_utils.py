@@ -96,7 +96,6 @@ _xpu_computation_op_list = [
     "native_dropout_backward",
     "ne",
     "neg",
-    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
     "nn.functional.glu",
     "nn.functional.pad",
@@ -157,8 +156,10 @@ _xpu_computation_op_list = [
     "softmax",
     "scatter",
     "gather",
+    "nn.functional.adaptive_max_pool2d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
     "nn.functional.embedding",
     "nn.functional.unfold",
@@ -190,8 +191,12 @@ _xpu_computation_op_list = [
     "multinomial",
     "lerp",
     "conj_physical",
+    "fmax",
+    "fmin",
+    "floor",
+    "floor_divide",
     "copysign",
-    "count_nonzero"
+    "count_nonzero",
     "nan_to_num",
 ]
 
