@@ -2875,8 +2875,6 @@ skip_list = (
     "test_cuda_vitals_gpu_only_xpu",
     # torch.utils.swap_tensors AssertionError: RuntimeError not raised
     "test_swap_basic",
-    # Needs pr to enable deterministic implementation for interpolate op
-    "test_deterministic_interpolate_bilinear_xpu",
     # Precision error
     # Fail in high probability in preci.
     # Mismatched elements: 1 / 262144 (0.0%)
