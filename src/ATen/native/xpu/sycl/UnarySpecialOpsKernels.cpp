@@ -79,28 +79,30 @@ void erfc_kernel(TensorIteratorBase& iter) {
 
 template <typename scalar_t>
 struct Logit0Functor {
+  using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
-    using T_ACC = acc_type<scalar_t, true>;
     const T_ACC x_acc = static_cast<T_ACC>(x);
-    return std::log(x_acc / (T_ACC(1) - x_acc));
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = std::log(x_acc / (T_ACC(1) - x_acc));
+    return res;
   }
 };
 
 template <typename scalar_t>
 struct Logit1Functor {
+  using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
-    using T_ACC = acc_type<scalar_t, true>;
-    const T_ACC lo = eps_;
-    const T_ACC hi = T_ACC(1) - eps_;
     const T_ACC x_acc = static_cast<T_ACC>(x);
-    T_ACC z = x_acc < lo ? lo : (x_acc > hi ? hi : x_acc);
-    return std::log(z / (T_ACC(1) - z));
+    T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    return res;
   }
-  Logit1Functor(const scalar_t eps) : eps_(eps) {}
+  Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
 
  private:
-  using T_ACC = acc_type<scalar_t, true>;
-  T_ACC eps_;
+  T_ACC lo_;
+  T_ACC hi_;
 };
 
 void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
@@ -110,12 +112,14 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
       iter.common_dtype(),
       "logit_xpu",
       [&]() {
-        using T_ACC = acc_type<scalar_t, true>;
+        using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
         const T_ACC eps = eps_scalar.to<T_ACC>();
         if (eps < T_ACC(0)) {
           gpu_kernel(iter, Logit0Functor<scalar_t>());
         } else {
-          gpu_kernel(iter, Logit1Functor<scalar_t>(eps));
+          const T_ACC lo = eps;
+          const T_ACC hi = T_ACC(1) - eps;
+          gpu_kernel(iter, Logit1Functor<scalar_t>(lo, hi));
         }
       });
 }

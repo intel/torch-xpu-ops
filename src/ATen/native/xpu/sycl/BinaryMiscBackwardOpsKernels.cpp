@@ -45,32 +45,35 @@ void sigmoid_backward_kernel(TensorIteratorBase& iter) {
 
 template <typename scalar_t>
 struct LogitBackward0Functor {
+  using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t dy, scalar_t x) const {
-    using T_ACC = acc_type<scalar_t, true>;
     const T_ACC dy_acc = static_cast<T_ACC>(dy);
     const T_ACC x_acc = static_cast<T_ACC>(x);
-    return (x_acc < T_ACC(0) || x_acc > T_ACC(1))
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = (x_acc < T_ACC(0) || x_acc > T_ACC(1))
         ? std::numeric_limits<T_ACC>::quiet_NaN()
         : dy_acc / (x_acc * (T_ACC(1) - x_acc));
+    return res;
   }
 };
 
 template <typename scalar_t>
 struct LogitBackward1Functor {
+  using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t dy, scalar_t x) const {
-    using T_ACC = acc_type<scalar_t, true>;
-    const T_ACC lo = eps_;
-    const T_ACC hi = T_ACC(1) - eps_;
     const T_ACC dy_acc = static_cast<T_ACC>(dy);
     const T_ACC x_acc = static_cast<T_ACC>(x);
-    return (x_acc < lo || x_acc > hi) ? T_ACC(0)
-                                      : dy_acc / (x_acc * (T_ACC(1) - x_acc));
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = (x_acc < lo_ || x_acc > hi_)
+        ? T_ACC(0)
+        : dy_acc / (x_acc * (T_ACC(1) - x_acc));
+    return res;
   }
-  LogitBackward1Functor(const scalar_t eps) : eps_(eps) {}
+  LogitBackward1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
 
  private:
-  using T_ACC = acc_type<scalar_t, true>;
-  T_ACC eps_;
+  T_ACC lo_;
+  T_ACC hi_;
 };
 
 void logit_backward_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
@@ -85,7 +88,9 @@ void logit_backward_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
         if (eps < T_ACC(0)) {
           gpu_kernel(iter, LogitBackward0Functor<scalar_t>());
         } else {
-          gpu_kernel(iter, LogitBackward1Functor<scalar_t>(eps));
+          const T_ACC lo = eps;
+          const T_ACC hi = T_ACC(1) - eps;
+          gpu_kernel(iter, LogitBackward1Functor<scalar_t>(lo, hi));
         }
       });
 }
