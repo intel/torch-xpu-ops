@@ -141,6 +141,7 @@ _xpu_computation_op_list = [
     "std_mean",
     "var",
     "var_mean",
+    "norm",
     "hypot",
     "unfold",
     "uniform",
