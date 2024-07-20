@@ -177,6 +177,7 @@ void exp2_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, Exp2Functor<scalar_t>()); });
 }
 
+template <typename scalar_t>
 struct Logit0Functor {
   using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
