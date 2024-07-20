@@ -241,6 +241,13 @@ supported:
   - exp
   - exp.out
   - exp_
+  - exp2
+  - exp2_
+  - exp2.out
+  - expm1
+  - expm1_
+  - expm1.out
+  - exponential_
   - empty.memory_format
   - empty_strided
   - eye.out
@@ -551,6 +558,9 @@ supported:
   - erf
   - erf_
   - erf.out
+  - erfinv
+  - erfinv_
+  - erfinv.out
   - linalg_vector_norm
   - linalg_vector_norm.out
   - grid_sampler_2d

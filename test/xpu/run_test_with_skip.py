@@ -1464,12 +1464,8 @@ skip_list = (
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
     "test_reference_numerics_extremal__refs_acos_xpu_complex128",
-    "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
-    "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_exp2_xpu_complex128",
-    "test_reference_numerics_extremal_exp2_xpu_complex64",
     "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
@@ -1531,6 +1527,26 @@ skip_list = (
     # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
     # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
     "test_log1p_complex_xpu_complex64",
+
+    # CPU MKL::erfinv vs XPU impl. At most 6.e-06
+    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
+    "test_reference_numerics_large__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
+    "test_reference_numerics_large_erfinv_xpu_float64",
+    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
+    "test_reference_numerics_normal__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
+    "test_reference_numerics_normal_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
+    "test_reference_numerics_small__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
+    "test_reference_numerics_small_erfinv_xpu_float64",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
@@ -2745,8 +2761,6 @@ skip_list = (
     "test_corrcoef_xpu_complex64",
     ### Error #10 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: True is not false
     "test_discontiguous_out_cumsum_xpu",
-    ### Error #11 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: tensor(False, device='xpu:0') is not true
-    "test_exponential_no_zero_xpu_float16",
     ### Error #12 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'amp'
     "test_grad_scaler_pass_itself_xpu",
     "test_pickle_gradscaler_xpu",
