@@ -10,6 +10,7 @@ skip_list = (
     #     a. Different kernel implementations.
     #     b. Different std functions. (std::log, std::tanh, std::exp)
     # 5. The result of division between two same float values is not 1.
+    # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
@@ -34,10 +35,9 @@ skip_list = (
     "test_compare_cpu_cross_xpu_float16",
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
-
-    # got inconsistent values between CPU / XPU
-    # AssertionError: Tensor-likes are not close!
-    # compute results contain nan / inf
+    "test_compare_cpu_exp_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_complex128",
+    "test_compare_cpu_exp_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_asin_xpu_complex128",
     "test_compare_cpu_asin_xpu_complex64",
