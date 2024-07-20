@@ -10,9 +10,18 @@ supported:
   - add_.Scalar
   - add.Scalar_out
   - _adaptive_avg_pool2d_backward
+  - adaptive_avg_pool2d.out
+  - _adaptive_avg_pool2d
+  - adaptive_max_pool2d_backward.grad_input
+  - adaptive_max_pool2d_backward
+  - adaptive_max_pool2d.out
+  - adaptive_max_pool2d
   - cumsum
   - cumsum.out
   - cumsum_
+  - cumprod
+  - cumprod.out
+  - cumprod_
   - sub.Tensor
   - sub_.Tensor
   - sub.out
@@ -41,6 +50,7 @@ supported:
   - fmod.Tensor_out
   - tanh_backward
   - tanh_backward.grad_input
+  - equal
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
@@ -65,6 +75,12 @@ supported:
   - le.Tensor
   - le.Tensor_out
   - le_.Tensor
+  - lerp.Tensor
+  - lerp.Tensor_out
+  - lerp_.Tensor
+  - lerp.Scalar
+  - lerp.Scalar_out
+  - lerp_.Scalar
   - gt.Scalar
   - gt.Scalar_out
   - gt_.Scalar
@@ -79,6 +95,12 @@ supported:
   - ge_.Tensor
   - cat
   - cat.out
+  - isin.Tensor_Tensor_out
+  - isin.Tensor_Tensor
+  - isin.Tensor_Scalar_out
+  - isin.Tensor_Scalar
+  - isin.Scalar_Tensor_out
+  - isin.Scalar_Tensor
   - isnan
   - isnan.out
   - masked_fill_.Tensor
@@ -86,11 +108,16 @@ supported:
   - index_add.out
   - index_add_
   - index_add
+  - index_fill_.int_Scalar
+  - index_fill_.int_Tensor
   - index_select
   - index_select.out
   - gcd
   - gcd.out
   - gcd_
+  - hypot
+  - hypot.out
+  - hypot_
   - relu
   - relu_
   - relu.out
@@ -99,6 +126,18 @@ supported:
   - threshold.out
   - threshold_backward
   - threshold_backward.grad_input
+  - softplus
+  - softplus.out
+  - softplus_backward
+  - softplus_backward.grad_input
+  - softshrink
+  - softshrink.out
+  - softshrink_backward
+  - softshrink_backward.grad_input
+  - mish
+  - mish.out
+  - mish_
+  - mish_backward
   - gelu
   - gelu_
   - gelu.out
@@ -134,15 +173,12 @@ supported:
   - sin
   - sin_
   - sin.out
+  - sinh
+  - sinh_
+  - sinh.out
   - cos
   - cos_
   - cos.out
-  - log
-  - log_
-  - log.out
-  - logical_not
-  - logical_not_
-  - logical_not.out
   - digamma
   - digamma_
   - digamma.out
@@ -152,12 +188,43 @@ supported:
   - lgamma
   - lgamma_
   - lgamma.out
+  - log
+  - log_
+  - log.out
+  - log10
+  - log10_
+  - log10.out
+  - log1p
+  - log1p_
+  - log1p.out
+  - log2
+  - log2_
+  - log2.out
+  - logical_and
+  - logical_and_
+  - logical_and.out
+  - logical_or
+  - logical_or_
+  - logical_or.out
+  - logical_xor
+  - logical_xor_
+  - logical_xor.out
+  - logical_not
+  - logical_not_
+  - logical_not.out
+  - logaddexp
+  - logaddexp.out
+  - logaddexp2
+  - logaddexp2.out
   - sqrt
   - sqrt_
   - sqrt.out
   - rsqrt
   - rsqrt_
   - rsqrt.out
+  - tan
+  - tan_
+  - tan.out
   - tanh
   - tanh_
   - tanh.out
@@ -180,6 +247,10 @@ supported:
   - exp_
   - empty.memory_format
   - empty_strided
+  - eye.out
+  - eye.m_out
+  - _efficientzerotensor
+  - complex.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -255,6 +326,12 @@ supported:
   - sum.IntList_out
   - mean.out
   - mean.dim
+  - std.correction
+  - std.correction_out
+  - std_mean.correction
+  - var.correction
+  - var.correction_out
+  - var_mean.correction
   - all.dim
   - all.out
   - all.dims
@@ -370,6 +447,10 @@ supported:
   - hardsigmoid_
   - hardsigmoid_backward.grad_input
   - hardsigmoid_backward
+  - log_sigmoid_forward.output
+  - log_sigmoid_forward
+  - log_sigmoid_backward.grad_input
+  - log_sigmoid_backward
   - tril.out
   - tril
   - tril_
@@ -388,6 +469,29 @@ supported:
   - nll_loss_forward
   - nll_loss_backward.grad_input
   - nll_loss_backward
+  - huber_loss
+  - huber_loss.out
+  - huber_loss_backward.out
+  - batch_norm_stats
+  - batch_norm_elemt
+  - batch_norm_elemt.out
+  - batch_norm_backward_reduce
+  - batch_norm_backward_elemt
+  - batch_norm_update_stats
+  - native_batch_norm
+  - native_batch_norm.out
+  - native_batch_norm_backward
+  - _native_batch_norm_legit
+  - _native_batch_norm_legit.out
+  - _native_batch_norm_legit.no_stats
+  - _native_batch_norm_legit.no_stats_out
+  - _batch_norm_with_update
+  - _batch_norm_with_update.out
+  - batch_norm_backward
+  - upsample_bilinear2d
+  - upsample_bilinear2d.out
+  - upsample_bilinear2d_backward
+  - upsample_bilinear2d_backward.grad_input
   - _upsample_nearest_exact1d
   - _upsample_nearest_exact1d.out
   - upsample_nearest1d
@@ -404,6 +508,8 @@ supported:
   - _upsample_nearest_exact2d.out
   - _upsample_nearest_exact2d_backward
   - _upsample_nearest_exact2d_backward.grad_input
+  - upsample_bicubic2d
+  - upsample_bicubic2d.out
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -413,10 +519,27 @@ supported:
   - _cdist_forward
   - _pin_memory
   - is_pinned
+  - is_set_to
+  - bucketize.Tensor
+  - bucketize.Tensor_out
+  - bucketize.Scalar
+  - searchsorted.Tensor
+  - searchsorted.Tensor_out
+  - searchsorted.Scalar
+  - searchsorted.Scalar_out
+  - trace
+  - reflection_pad1d
+  - reflection_pad1d.out
+  - reflection_pad1d_backward
+  - reflection_pad1d_backward.grad_input
   - reflection_pad2d
   - reflection_pad2d.out
   - reflection_pad2d_backward
   - reflection_pad2d_backward.grad_input
+  - reflection_pad3d
+  - reflection_pad3d.out
+  - reflection_pad3d_backward
+  - reflection_pad3d_backward.grad_input
   - native_group_norm
   - native_group_norm_backward
   - elu
@@ -427,6 +550,8 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multinomial
+  - multinomial.out
   - erf
   - erf_
   - erf.out
@@ -446,9 +571,65 @@ supported:
   - avg_pool2d.out
   - avg_pool2d_backward
   - avg_pool2d_backward.grad_input
+  - addcdiv.out
+  - addcdiv
+  - addcdiv_
   - addcmul.out
   - addcmul
   - addcmul_
+  - asinh
+  - asinh.out
+  - asinh_
+  - asin
+  - asin.out
+  - asin_
+  - atan
+  - atan.out
+  - atan_
+  - atan2
+  - atan2.out
+  - atan2_
+  - atanh
+  - atanh.out
+  - atanh_
+  - cosh
+  - cosh.out
+  - cosh_
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
+  - nll_loss2d_forward.output
+  - nll_loss2d_forward
+  - nll_loss2d_backward.grad_input
+  - nll_loss2d_backward
+  - linalg_cross
+  - linalg_cross.out
+  - copysign.out
+  - copysign.Tensor
+  - copysign_.Tensor
+  - count_nonzero.dim_IntList
+  - conj_physical.out
+  - conj_physical_
+  - ceil
+  - ceil_
+  - ceil.out
+  - nan_to_num.out
