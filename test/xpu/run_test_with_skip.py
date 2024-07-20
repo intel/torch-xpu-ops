@@ -1531,7 +1531,7 @@ skip_list = (
     # CPU MKL::erfinv vs XPU impl. At most 6.e-06
     # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
     # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large__refs_erfinv_xpu_float64"
+    "test_reference_numerics_large__refs_erfinv_xpu_float64",
     # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
     # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
     "test_reference_numerics_large_erfinv_xpu_float64",
