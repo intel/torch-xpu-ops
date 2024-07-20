@@ -203,6 +203,10 @@ supported:
   - logical_not
   - logical_not_
   - logical_not.out
+  - logaddexp
+  - logaddexp.out
+  - logaddexp2
+  - logaddexp2.out
   - sqrt
   - sqrt_
   - sqrt.out

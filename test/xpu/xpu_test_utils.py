@@ -82,6 +82,8 @@ _xpu_computation_op_list = [
     "log10",
     "log1p",
     "log2",
+    "logaddexp",
+    "logaddexp2",
     "lt",
     "logical_and",
     "logical_or",

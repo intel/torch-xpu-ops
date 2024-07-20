@@ -12,10 +12,10 @@
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
-
 Tensor XPUNativeFunctions::add(
     const Tensor& self,
     const Tensor& other,
@@ -477,6 +477,38 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::logaddexp(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logaddexp2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return out;
 }
 
 Tensor& XPUNativeFunctions::floor_divide_out(
