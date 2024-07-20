@@ -229,8 +229,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "linspace.out",
     "_logcumsumexp",
-    "logit",
-    "logit_backward.grad_input",
     "log_normal_",
     "logspace.out",
     "lu_unpack.out",
