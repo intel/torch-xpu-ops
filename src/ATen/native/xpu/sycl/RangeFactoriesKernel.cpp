@@ -83,7 +83,6 @@ Tensor& arange_kernel(
       [&]() {
         using accscalar_t = at::acc_type<scalar_t, true>;
         auto xstart = start.to<accscalar_t>();
-        auto xend = end.to<accscalar_t>();
         auto xstep = step.to<accscalar_t>();
 
         bool is_contiguous = result.is_contiguous();
@@ -126,7 +125,6 @@ Tensor& range_kernel(
       at::ScalarType::Half, result.scalar_type(), "range_xpu", [&]() {
         using accscalar_t = acc_type<scalar_t, true>;
         auto xstart = start.to<accscalar_t>();
-        auto xend = end.to<accscalar_t>();
         auto xstep = step.to<accscalar_t>();
 
         bool is_contiguous = result.is_contiguous();
