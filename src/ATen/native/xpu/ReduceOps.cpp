@@ -912,7 +912,6 @@ static void impl_func_norm(
       const_cast<Tensor&>(result), self, p, dim, keepdim, opt_dtype);
 }
 
-// wrapper_CUDA_norm_ScalarOpt_dim_dtype
 Tensor XPUNativeFunctions::norm(
     const Tensor& self,
     const std::optional<Scalar>& p,
