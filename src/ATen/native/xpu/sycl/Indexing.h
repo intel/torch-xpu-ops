@@ -804,7 +804,7 @@ struct IndexPutDeterministicKernelFunctor {
     if (accumulate_)
       acc = self_[s_gid];
     for (int64_t inner_idx = id.glb_batch;
-         sorted_indices_[inner_idx] == idx && inner_idx < cfg_.problem_batch_;
+         inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
          inner_idx++) {
       int64_t idx_orig = indices_[inner_idx];
       int64_t v_gid = idx_orig * stride_ + v_stride;

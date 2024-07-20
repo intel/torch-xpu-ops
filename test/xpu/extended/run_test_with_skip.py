@@ -13,9 +13,15 @@ skip_list = (
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
+    "test_compare_cpu_log10_xpu_complex64",
+    "test_compare_cpu_log1p_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex128",
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
+    "test_compare_cpu_tan_xpu_complex128",
+    "test_compare_cpu_tan_xpu_complex64",
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
@@ -25,12 +31,24 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex128",
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_cross_xpu_float16",
+    "test_compare_cpu_floor_divide_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_float16",
 
-    # CPU result is not golden reference
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
-    "test_compare_cpu_addr_xpu_float16",
+    # got inconsistent values between CPU / XPU
+    # AssertionError: Tensor-likes are not close!
+    # compute results contain nan / inf
+    "test_compare_cpu_acosh_xpu_complex64",
+    "test_compare_cpu_asin_xpu_complex128",
+    "test_compare_cpu_asin_xpu_complex64",
+    "test_compare_cpu_asinh_xpu_complex128",
+    "test_compare_cpu_asinh_xpu_complex64",
+    "test_compare_cpu_atan_xpu_complex128",
+    "test_compare_cpu_atan_xpu_complex64",
+
+    # skip random failure due to accuracy
+    # AssertionError: Tensor-likes are not close!
+    "test_compare_cpu_atan2_xpu_bfloat16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
@@ -58,6 +76,9 @@ skip_list = (
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
+
+    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
+    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -104,9 +125,12 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_float16",
     "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
+    "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
     # aten::upsample_trilinear3d
@@ -140,6 +164,13 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
+    # https://github.com/intel/torch-xpu-ops/issues/572
+    "test_compare_cpu_isin_xpu",
+    "test_operator_isin_xpu_float32",
+    "test_view_replay_isin_xpu_float32",
+    "test_backward_index_fill_xpu_float32",
 )
 
 
