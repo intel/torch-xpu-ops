@@ -191,6 +191,15 @@ supported:
   - log2
   - log2_
   - log2.out
+  - logaddexp
+  - logaddexp.out
+  - logaddexp2
+  - logaddexp2.out
+  - logit
+  - logit_
+  - logit.out
+  - logit_backward.grad_input
+  - logit_backward
   - logical_and
   - logical_and_
   - logical_and.out
@@ -203,11 +212,6 @@ supported:
   - logical_not
   - logical_not_
   - logical_not.out
-  - logit
-  - logit_
-  - logit.out
-  - logit_backward.grad_input
-  - logit_backward
   - sqrt
   - sqrt_
   - sqrt.out
