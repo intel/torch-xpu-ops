@@ -32,6 +32,8 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_cross_xpu_float16",
+    "test_compare_cpu_floor_divide_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_float16",
 
     # got inconsistent values between CPU / XPU
     # AssertionError: Tensor-likes are not close!
@@ -47,12 +49,6 @@ skip_list = (
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
     "test_compare_cpu_atan2_xpu_bfloat16",
-
-    # CPU result is not golden reference
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
-    "test_compare_cpu_addr_xpu_float16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
@@ -135,6 +131,9 @@ skip_list = (
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+    # Align with CUDA impl by using accumulate type. But CPU doesn't use.
+    # When XPU uses original data type, the case passes.
+    "test_compare_cpu_logit_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
     # aten::upsample_trilinear3d

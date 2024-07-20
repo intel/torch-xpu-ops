@@ -191,6 +191,15 @@ supported:
   - log2
   - log2_
   - log2.out
+  - logaddexp
+  - logaddexp.out
+  - logaddexp2
+  - logaddexp2.out
+  - logit
+  - logit_
+  - logit.out
+  - logit_backward.grad_input
+  - logit_backward
   - logical_and
   - logical_and_
   - logical_and.out
@@ -585,6 +594,25 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
   - nll_loss2d_forward.output
   - nll_loss2d_forward
   - nll_loss2d_backward.grad_input

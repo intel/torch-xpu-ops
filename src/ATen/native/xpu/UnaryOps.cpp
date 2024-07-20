@@ -461,6 +461,30 @@ Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor& XPUNativeFunctions::logit_out(
+    const Tensor& self,
+    std::optional<double> eps,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::logit_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return out;
+}
+
+Tensor XPUNativeFunctions::logit(
+    const Tensor& self,
+    std::optional<double> eps) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::logit_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logit_(Tensor& self, std::optional<double> eps) {
+  return at::logit_out(self, self, eps);
+}
+
 Tensor XPUNativeFunctions::sgn(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
@@ -586,6 +610,28 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   TensorIterator iter;
   iter.build_borrowing_unary_float_op(out, self);
   native::xpu::erfc_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::frac(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::frac_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::frac_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  native::xpu::frac_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::frac_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::frac_kernel(iter);
   return out;
 }
 
@@ -788,6 +834,43 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   }
   auto iter = ceil_meta(self, out);
   native::xpu::ceil_kernel(iter);
+  return out;
+}
+
+TensorIterator meta_floor(const Tensor& self, Tensor& out) {
+  // Note: this is consistent with NumPy
+  TORCH_CHECK(!self.is_complex(), "floor is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::floor(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::floor_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  auto iter = meta_floor(self, self);
+  native::xpu::floor_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  auto iter = meta_floor(self, out);
+  native::xpu::floor_kernel(iter);
   return out;
 }
 
