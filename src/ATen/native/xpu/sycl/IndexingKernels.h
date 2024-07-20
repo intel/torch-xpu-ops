@@ -26,6 +26,12 @@ void index_add_kernel(
     const Scalar& alpha,
     const Tensor& out);
 
+void index_fill_kernel(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source);
+
 void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,

@@ -12,8 +12,10 @@ namespace at {
 namespace native {
 namespace xpu {
 
-inline size_t get_group_reduce_group_size() {
-  return syclMaxWorkGroupSize() / 2;
+inline int get_group_reduce_group_size(int simd) {
+  // Limited by group reduce implementation. We use two sub group shuffles,
+  // The second sub group shuffle only could handle simd size elements.
+  return std::min(512, simd * simd);
 }
 
 template <int DIM>

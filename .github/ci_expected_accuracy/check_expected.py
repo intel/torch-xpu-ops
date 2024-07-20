@@ -48,9 +48,9 @@ for model_name in model_names:
         passed_models.append([model_name, test_accuracy])
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
-            refer_data.loc[refer_data.tail(1).index.tolist()[0] + 1,:] = "N/A"
-            refer_data.at[refer_data.tail(1).index, "name"] = model_name
-            refer_data.at[refer_data.tail(1).index, args.dtype] = test_accuracy
+            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.at[len(refer_data) - 1, "name"] = model_name
+            refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
         elif 'pass' not in refer_accuracy:
             new_pass_models.append([model_name, test_accuracy])
             refer_data.at[refer_row[0], args.dtype] = test_accuracy
@@ -58,9 +58,9 @@ for model_name in model_names:
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
             real_failed_models.append([model_name, test_accuracy])
-            refer_data.loc[refer_data.tail(1).index.tolist()[0] + 1,:] = "N/A"
-            refer_data.at[refer_data.tail(1).index, "name"] = model_name
-            refer_data.at[refer_data.tail(1).index, args.dtype] = test_accuracy
+            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.at[len(refer_data) - 1, "name"] = model_name
+            refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
         elif "pass" in refer_accuracy:
             real_failed_models.append([model_name, test_accuracy])
         else:
@@ -80,7 +80,7 @@ print("Not run/in models:", len(lost_models), lost_models)
 print("Pass rate: {:.2f}%".format(len(passed_models) / len(model_names) * 100))
 
 if len(new_pass_models + new_models) > 0:
-    print("NOTE: New models result, please update the reference", new_pass_models)
+    print("NOTE: New models result, please update the reference", new_pass_models, new_models)
     if args.update:
         refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)
         print("Updated. Now, confirm the changes to .csvs and `git add` them if satisfied.")
