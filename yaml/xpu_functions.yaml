@@ -179,6 +179,15 @@ supported:
   - cos
   - cos_
   - cos.out
+  - digamma
+  - digamma_
+  - digamma.out
+  - polygamma
+  - polygamma_
+  - polygamma.out
+  - lgamma
+  - lgamma_
+  - lgamma.out
   - log
   - log_
   - log.out
@@ -616,6 +625,11 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - unique_dim
+  - unique_dim_consecutive
+  - unique_consecutive
+  - _unique
+  - _unique2
   - _aminmax
   - _aminmax.dim
   - aminmax

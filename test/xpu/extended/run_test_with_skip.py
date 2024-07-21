@@ -35,6 +35,7 @@ skip_list = (
     "test_compare_cpu_cross_xpu_float16",
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
     "test_compare_cpu_exp_xpu_bfloat16",
     "test_compare_cpu_exp_xpu_complex128",
     "test_compare_cpu_exp_xpu_complex64",
@@ -69,7 +70,6 @@ skip_list = (
     # Require implementing aten::embedding_renorm_
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_backward_nn_functional_embedding_xpu_float32",
-    "test_cow_input_nn_functional_embedding_xpu_float32",
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
@@ -79,8 +79,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
 
-    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
-    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -170,19 +168,11 @@ skip_list = (
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
 
-    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
-    # https://github.com/intel/torch-xpu-ops/issues/572
-    "test_compare_cpu_isin_xpu",
-    "test_operator_isin_xpu_float32",
-    "test_view_replay_isin_xpu_float32",
-
     # Precision error.
     # Mismatched elements: 2 / 125 (1.6%)
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
-
-    "test_backward_index_fill_xpu_float32",
 )
 
 
