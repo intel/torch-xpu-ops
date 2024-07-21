@@ -773,7 +773,13 @@ skip_list = (
     # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
     # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
     "test_python_ref__refs_log2_xpu_complex128",
-
+  
+    #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
+    #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
+    #XPU supports bfloat16, CUDA doesn't support it.
+    "test_dtypes_unique_consecutive_xpu",
+    "test_dtypes_unique_xpu",
+    
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 )
