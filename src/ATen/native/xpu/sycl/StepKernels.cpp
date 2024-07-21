@@ -13,8 +13,8 @@ struct NextafterFunctor {
 };
 
 void nextafter_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND(
-      kBFloat16, iter.common_dtype(), "nextafter_xpu", [&]() {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kBFloat16, kHalf, iter.common_dtype(), "nextafter_xpu", [&]() {
         gpu_kernel_with_scalars(iter, NextafterFunctor<scalar_t>());
       });
 }
