@@ -1553,6 +1553,15 @@ skip_list = (
     # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
     # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
     "test_reference_numerics_small_erfinv_xpu_float64",
+
+    # Issue: https://github.com/intel/torch-xpu-ops/issues/622
+    # Mismatched elements: 8 / 943593 (0.0%)
+    # Greatest absolute difference: inf at index (9, 860) (up to 0.001 allowed)
+    # Greatest relative difference: inf at index (9, 860) (up to 0.0012 allowed)
+    "test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
