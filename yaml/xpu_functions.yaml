@@ -657,3 +657,4 @@ supported:
   - norm.ScalarOpt_dim
   - norm.out
   - nan_to_num.out
+  - range.out
