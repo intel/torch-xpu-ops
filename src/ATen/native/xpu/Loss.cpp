@@ -88,7 +88,7 @@ Tensor XPUNativeFunctions::binary_cross_entropy(
   c10::MaybeOwned<Tensor> weight_maybe_owned =
       at::borrow_from_optional_tensor(weight_opt);
   const Tensor& weight = *weight_maybe_owned;
-  Tensor loss = at::empty_like(input);
+  Tensor loss = at::empty_like(self);
   return native::xpu::binary_cross_entropy_kernel(
       self, target, weight, reduction, loss);
 }
@@ -115,7 +115,7 @@ Tensor XPUNativeFunctions::binary_cross_entropy_backward(
   c10::MaybeOwned<Tensor> weight_maybe_owned =
       at::borrow_from_optional_tensor(weight_opt);
   const Tensor& weight = *weight_maybe_owned;
-  Tensor grad_input = at::empty_like(input);
+  Tensor grad_input = at::empty_like(self);
   return native::xpu::binary_cross_entropy_backward_kernel(
       grad_output, self, target, weight, reduction, grad_input);
 }
