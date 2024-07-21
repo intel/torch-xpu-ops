@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/RenormKernel.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
@@ -46,7 +47,7 @@ Tensor& renorm_impl(
   reduce_dims.erase(reduce_dims.begin() + dim);
 
   auto dtype = self.scalar_type();
-  auto acc_type = at::toAccumulateType(dtype, /*is_cuda=*/true);
+  auto acc_type = at::toAccumulateType(dtype, c10::DeviceType::XPU);
   Tensor norm;
   if (acc_type != dtype) {
     norm = at::linalg_vector_norm(
