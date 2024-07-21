@@ -84,7 +84,7 @@ Tensor& binary_cross_entropy_backward_kernel(
     const Tensor& grad,
     const Tensor& input,
     const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
+    const Tensor& weight,
     int64_t reduction,
     Tensor& grad_input) {
   Tensor grad_expand = grad.expand_as(input);
