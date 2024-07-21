@@ -198,6 +198,8 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "unique_consecutive",
+    "unique",
     "multinomial",
     "lerp",
     "frac",

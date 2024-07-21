@@ -312,8 +312,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "tril_indices",
     "triu_indices",
     "trunc.out",
-    "_unique2",
-    "unique_consecutive",
     "upsample_bicubic2d_backward.grad_input",
     "_upsample_bilinear2d_aa.out",
     "upsample_linear1d_backward.grad_input",
