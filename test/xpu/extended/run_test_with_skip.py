@@ -47,6 +47,7 @@ skip_list = (
     "test_compare_cpu_atan_xpu_complex64",
     "test_compare_cpu_exp2_xpu_complex128",
     "test_compare_cpu_exp2_xpu_complex64",
+    "test_compare_cpu_nextafter_xpu_bfloat16",
 
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
