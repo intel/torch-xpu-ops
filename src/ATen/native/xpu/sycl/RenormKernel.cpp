@@ -24,8 +24,7 @@ Tensor& renorm_scale_factor_kernel(TensorIteratorBase& iter, double maxnorm) {
       iter.common_dtype(),
       "renorm_scale_factor_xpu",
       [&] {
-        auto maxnorm_elm = maxnorm.to<scalar_t>();
-        RenormScalarFactorFunctor<scalar_t> f(maxnorm_elm);
+        RenormScalarFactorFunctor<scalar_t> f(maxnorm);
         gpu_kernel(iter, f);
       });
 }
