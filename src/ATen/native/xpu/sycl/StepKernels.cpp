@@ -1,8 +1,6 @@
-#define TORCH_ASSERT_NO_OPERATORS
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
-#include <ATen/MemoryOverlap.h>
 #include <ATen/native/TensorIterator.h>
+
 #include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
