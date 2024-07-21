@@ -179,6 +179,15 @@ supported:
   - cos
   - cos_
   - cos.out
+  - digamma
+  - digamma_
+  - digamma.out
+  - polygamma
+  - polygamma_
+  - polygamma.out
+  - lgamma
+  - lgamma_
+  - lgamma.out
   - log
   - log_
   - log.out
@@ -651,4 +660,8 @@ supported:
   - norm.dtype_out
   - norm.ScalarOpt_dim
   - norm.out
+  - renorm
+  - renorm.out
+  - renorm_
   - nan_to_num.out
+  - range.out
