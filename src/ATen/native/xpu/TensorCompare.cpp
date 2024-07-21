@@ -552,7 +552,7 @@ static void check_unsupported_complex(const char* name, const Tensor& self) {
   return {values, indices};
 }
 
-::std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_out(
+std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_out(
     const Tensor& self,
     int64_t dim,
     bool keepdim,
@@ -566,6 +566,246 @@ static void check_unsupported_complex(const char* name, const Tensor& self) {
 
   minmax_out_impl(self, dim, keepdim, values, indices, max_kernel_impl);
   return {values, indices};
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_aminmax(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim) {
+  TORCH_WARN_ONCE(
+      "_aminmax is deprecated as of PyTorch 1.11 and will be removed in a future release. Use aminmax instead."
+      " This warning will only appear once per process.");
+  return XPUNativeFunctions::aminmax(self, dim, keepdim);
+}
+
+static inline void check_for_unsupported_isin_dtype(const ScalarType type) {
+  // Bail out for dtypes unsupported by the sorting algorithm to keep the
+  // interface consistent.
+  TORCH_CHECK(
+      type != ScalarType::Bool && type != ScalarType::BFloat16 &&
+          type != ScalarType::ComplexFloat && type != ScalarType::ComplexDouble,
+      "Unsupported input type encountered for isin(): ",
+      type);
+}
+
+// Sorting-based algorithm for isin(); used when the number of test elements is
+// large.
+static void isin_sorting(
+    const Tensor& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert,
+    const Tensor& out) {
+  // 1. Concatenate unique elements with unique test elements in 1D form. If
+  //    assume_unique is true, skip calls to unique().
+  Tensor elements_flat, test_elements_flat, unique_order;
+  if (assume_unique) {
+    elements_flat = elements.ravel();
+    test_elements_flat = test_elements.ravel();
+  } else {
+    std::tie(elements_flat, unique_order) =
+        at::_unique(elements, /*sorted=*/false, /*return_inverse=*/true);
+    std::tie(test_elements_flat, std::ignore) =
+        at::_unique(test_elements, /*sorted=*/false);
+  }
+
+  // 2. Stable sort all elements, maintaining order indices to reverse the
+  //    operation. Stable sort is necessary to keep elements before test
+  //    elements within the sorted list.
+  Tensor all_elements =
+      at::cat({std::move(elements_flat), std::move(test_elements_flat)});
+  auto [sorted_elements, sorted_order] = all_elements.sort(
+      /*stable=*/true, /*dim=*/0, /*descending=*/false);
+
+  // 3. Create a mask for locations of adjacent duplicate values within the
+  //    sorted list. Duplicate values are in both elements and test elements.
+  Tensor duplicate_mask =
+      at::empty_like(sorted_elements, TensorOptions(ScalarType::Bool));
+  Tensor sorted_except_first = sorted_elements.slice(0, 1, at::indexing::None);
+  Tensor sorted_except_last = sorted_elements.slice(0, 0, -1);
+  duplicate_mask.slice(0, 0, -1).copy_(
+      invert ? sorted_except_first.ne(sorted_except_last)
+             : sorted_except_first.eq(sorted_except_last));
+  duplicate_mask.index_put_({-1}, invert);
+
+  // 4. Reorder the mask to match the pre-sorted element order.
+  Tensor mask = at::empty_like(duplicate_mask);
+  mask.index_copy_(0, sorted_order, duplicate_mask);
+
+  // 5. Index the mask to match the pre-unique element order. If
+  //    assume_unique is true, just take the first N items of the mask,
+  //    where N is the original number of elements.
+  if (assume_unique) {
+    out.copy_(mask.slice(0, 0, elements.numel()).view_as(out));
+  } else {
+    out.copy_(at::index(mask, {std::optional<Tensor>(unique_order)}));
+  }
+}
+
+void isin_Tensor_Tensor_meta(
+    const Tensor& elements,
+    Tensor test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  check_for_unsupported_isin_dtype(elements.scalar_type());
+  check_for_unsupported_isin_dtype(test_elements.scalar_type());
+  auto output_options =
+      TensorOptions(elements.device()).dtype(ScalarType::Bool);
+  if (out.defined()) {
+    xpu::resize_out(out, elements.sizes(), {}, output_options);
+  } else {
+    out = xpu::create_out(elements.sizes(), {}, output_options);
+  }
+}
+
+void isin_Tensor_Tensor_impl(
+    const Tensor& elements,
+    Tensor test_elements,
+    bool assume_unique,
+    bool invert,
+    const Tensor& out) {
+  if (elements.numel() == 0) {
+    return;
+  }
+
+  // Heuristic taken from numpy's implementation.
+  if (test_elements.numel() <
+      static_cast<int64_t>(
+          10.0f * std::pow(static_cast<double>(elements.numel()), 0.145))) {
+    out.fill_(invert);
+    native::xpu::isin_kernel(elements, test_elements, invert, out);
+  } else {
+    isin_sorting(elements, test_elements, assume_unique, invert, out);
+  }
+}
+
+Tensor& XPUNativeFunctions::isin_out(
+    const Tensor& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  isin_Tensor_Tensor_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Tensor_Tensor_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
+}
+
+Tensor XPUNativeFunctions::isin(
+    const Tensor& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert) {
+  Tensor out;
+  isin_Tensor_Tensor_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Tensor_Tensor_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
+}
+
+void isin_Tensor_Scalar_meta(
+    const Tensor& elements,
+    const Scalar& test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  check_for_unsupported_isin_dtype(elements.scalar_type());
+  check_for_unsupported_isin_dtype(test_elements.type());
+  auto output_options =
+      TensorOptions(elements.device()).dtype(ScalarType::Bool);
+  if (out.defined()) {
+    xpu::resize_out(out, elements.sizes(), {}, output_options);
+  } else {
+    out = xpu::create_out(elements.sizes(), {}, output_options);
+  }
+}
+
+void isin_Tensor_Scalar_impl(
+    const Tensor& elements,
+    const Scalar& test_elements,
+    bool assume_unique,
+    bool invert,
+    const Tensor& out) {
+  if (invert) {
+    at::ne_out(const_cast<Tensor&>(out), elements, test_elements);
+  } else {
+    at::eq_out(const_cast<Tensor&>(out), elements, test_elements);
+  }
+}
+
+Tensor& XPUNativeFunctions::isin_out(
+    const Tensor& elements,
+    const Scalar& test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  isin_Tensor_Scalar_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Tensor_Scalar_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
+}
+
+Tensor XPUNativeFunctions::isin(
+    const Tensor& elements,
+    const Scalar& test_elements,
+    bool assume_unique,
+    bool invert) {
+  Tensor out;
+  isin_Tensor_Scalar_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Tensor_Scalar_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
+}
+
+void isin_Scalar_Tensor_meta(
+    const Scalar& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  check_for_unsupported_isin_dtype(elements.type());
+  check_for_unsupported_isin_dtype(test_elements.scalar_type());
+  auto output_options =
+      TensorOptions(test_elements.device()).dtype(ScalarType::Bool);
+  if (out.defined()) {
+    xpu::resize_out(out, {0}, {}, output_options);
+  } else {
+    out = xpu::create_out({0}, {}, output_options);
+  }
+}
+
+void isin_Scalar_Tensor_impl(
+    const Scalar& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert,
+    const Tensor& out) {
+  // redispatch
+  at::isin_out(
+      const_cast<Tensor&>(out),
+      at::native::wrapped_scalar_tensor(elements, test_elements.device()),
+      test_elements,
+      assume_unique,
+      invert);
+}
+
+Tensor& XPUNativeFunctions::isin_out(
+    const Scalar& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert,
+    Tensor& out) {
+  isin_Scalar_Tensor_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Scalar_Tensor_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
+}
+
+Tensor XPUNativeFunctions::isin(
+    const Scalar& elements,
+    const Tensor& test_elements,
+    bool assume_unique,
+    bool invert) {
+  Tensor out;
+  isin_Scalar_Tensor_meta(elements, test_elements, assume_unique, invert, out);
+  isin_Scalar_Tensor_impl(elements, test_elements, assume_unique, invert, out);
+  return out;
 }
 
 } // namespace at

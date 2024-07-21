@@ -7,13 +7,15 @@
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
+#include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
+#include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 
 namespace at {
-
 Tensor XPUNativeFunctions::add(
     const Tensor& self,
     const Tensor& other,
@@ -457,6 +459,28 @@ Tensor& XPUNativeFunctions::minimum_out(
   return output;
 }
 
+Tensor& XPUNativeFunctions::logit_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::logit_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return iter.output();
+}
+
 Tensor& XPUNativeFunctions::sigmoid_backward_out(
     const Tensor& grad_output,
     const Tensor& output,
@@ -475,6 +499,252 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::logaddexp(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logaddexp2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::floor_divide_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = TensorIterator::binary_op(output, self, other);
+  native::xpu::div_floor_kernel(iter);
+  if (!output.defined()) {
+    output = iter.output();
+  }
+  return output;
+}
+
+Tensor XPUNativeFunctions::floor_divide(
+    const Tensor& self,
+    const Tensor& other) {
+  Tensor output;
+  auto iter = TensorIterator::binary_op(output, self, other);
+  native::xpu::div_floor_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::floor_divide_(Tensor& self, const Tensor& other) {
+  return XPUNativeFunctions::floor_divide_out(self, other, self);
+}
+
+TensorIterator meta_fmin_fmax(
+    const char* const name,
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  TORCH_CHECK(
+      !self.is_complex() && !other.is_complex(),
+      name,
+      " not implemented for complex tensors.");
+  TensorIterator iter;
+  iter.build_binary_op(output, self, other);
+  return iter;
+}
+
+Tensor& XPUNativeFunctions::fmax_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  native::xpu::fmax_kernel(iter);
+  return output;
+}
+
+Tensor XPUNativeFunctions::fmax(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_fmin_fmax("fmax", self, other, output);
+  native::xpu::fmax_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::fmin_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& output) {
+  auto iter = meta_fmin_fmax("fmin", self, other, output);
+  native::xpu::fmin_kernel(iter);
+  return output;
+}
+
+Tensor XPUNativeFunctions::fmin(const Tensor& self, const Tensor& other) {
+  Tensor output;
+  auto iter = meta_fmin_fmax("fmin", self, other, output);
+  native::xpu::fmin_kernel(iter);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::atan2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::atan2_(Tensor& self, const Tensor& other) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(self, self, other);
+  native::xpu::atan2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::atan2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::atan2_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::copysign_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::copysign_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::copysign_(Tensor& self, const Tensor& other) {
+  return XPUNativeFunctions::copysign_out(self, other, self);
+}
+
+Tensor XPUNativeFunctions::copysign(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::copysign_kernel(iter);
+  return iter.output();
+}
+
+// We need explicit cast to OutFunc because each *_out func is overloaded twice.
+// Without An explicit cast, merely referring to *_out function is ambiguous.
+using OutFunc =
+    std::add_const<Tensor& (&)(Tensor&, const Tensor&, const Tensor&)>::type;
+
+template <typename OutImpl>
+Tensor comparison_op(
+    const Tensor& self,
+    const Tensor& other,
+    OutImpl& out_impl) {
+  Tensor result = at::empty({0}, self.options().dtype(kBool));
+  return out_impl(result, self, other);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_(Tensor& self, const Tensor& other, OutImpl& out_impl) {
+  return out_impl(self, self, other);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_out(
+    Tensor& result,
+    const Tensor& self,
+    const Scalar& other,
+    OutImpl& out_impl) {
+  return out_impl(result, self, native::wrapped_scalar_tensor(other));
+}
+
+template <typename OutImpl>
+Tensor comparison_op(
+    const Tensor& self,
+    const Scalar& other,
+    OutImpl& out_impl) {
+  return comparison_op(self, native::wrapped_scalar_tensor(other), out_impl);
+}
+
+template <typename OutImpl>
+Tensor& comparison_op_(Tensor& self, const Scalar& other, OutImpl& out_impl) {
+  return out_impl(self, self, native::wrapped_scalar_tensor(other));
+}
+
+Tensor& XPUNativeFunctions::logical_and_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_and_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_and(
+    const Tensor& self,
+    const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_and_out));
+}
+
+Tensor& XPUNativeFunctions::logical_and_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_and_out));
+}
+
+Tensor& XPUNativeFunctions::logical_or_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_or_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_or(const Tensor& self, const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_or_out));
+}
+
+Tensor& XPUNativeFunctions::logical_or_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_or_out));
+}
+
+Tensor& XPUNativeFunctions::logical_xor_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::comparison_op(out, self, other);
+  native::xpu::logical_xor_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logical_xor(
+    const Tensor& self,
+    const Tensor& other) {
+  return comparison_op(self, other, static_cast<OutFunc>(at::logical_xor_out));
+}
+
+Tensor& XPUNativeFunctions::logical_xor_(Tensor& self, const Tensor& other) {
+  return comparison_op_(self, other, static_cast<OutFunc>(at::logical_xor_out));
 }
 
 } // namespace at

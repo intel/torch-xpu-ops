@@ -1,6 +1,6 @@
 #include <ATen/ATen.h>
-
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
@@ -127,6 +127,127 @@ void exp_kernel(TensorIteratorBase& iter) {
           gpu_kernel(iter, caller);
         });
   }
+}
+
+template <typename scalar_t>
+static inline scalar_t _nan_to_num_replace(
+    scalar_t a,
+    scalar_t nan_replacement,
+    scalar_t pos_inf_replacement,
+    scalar_t neg_inf_replacement) {
+  return at::_isnan(a) ? nan_replacement
+                       : (a == std::numeric_limits<scalar_t>::infinity()
+                              ? pos_inf_replacement
+                              : (a == -std::numeric_limits<scalar_t>::infinity()
+                                     ? neg_inf_replacement
+                                     : a));
+}
+
+template <typename scalar_t, typename value_t>
+struct NanToNumComplexFunctor {
+  scalar_t operator()(scalar_t a) const {
+    value_t res_real = _nan_to_num_replace(
+        a.real(), nan_replacement_, pos_inf_replacement_, neg_inf_replacement_);
+    value_t res_imag = _nan_to_num_replace(
+        a.imag(), nan_replacement_, pos_inf_replacement_, neg_inf_replacement_);
+    return scalar_t(res_real, res_imag);
+  }
+  NanToNumComplexFunctor(
+      value_t nan_replacement,
+      value_t pos_inf_replacement,
+      value_t neg_inf_replacement)
+      : nan_replacement_(nan_replacement),
+        pos_inf_replacement_(pos_inf_replacement),
+        neg_inf_replacement_(neg_inf_replacement) {}
+
+ private:
+  value_t nan_replacement_;
+  value_t pos_inf_replacement_;
+  value_t neg_inf_replacement_;
+};
+
+template <typename scalar_t>
+struct NanToNumFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return _nan_to_num_replace(
+        a, nan_replacement_, pos_inf_replacement_, neg_inf_replacement_);
+  }
+  NanToNumFunctor(
+      scalar_t nan_replacement,
+      scalar_t pos_inf_replacement,
+      scalar_t neg_inf_replacement)
+      : nan_replacement_(nan_replacement),
+        pos_inf_replacement_(pos_inf_replacement),
+        neg_inf_replacement_(neg_inf_replacement) {}
+
+ private:
+  scalar_t nan_replacement_;
+  scalar_t pos_inf_replacement_;
+  scalar_t neg_inf_replacement_;
+};
+
+void nan_to_num_kernel(
+    TensorIteratorBase& iter,
+    std::optional<double> nan,
+    std::optional<double> pos_inf,
+    std::optional<double> neg_inf) {
+  if (isComplexType(iter.dtype())) {
+    AT_DISPATCH_COMPLEX_TYPES(iter.dtype(), "nan_to_num_xpu", [&]() {
+      using value_t = scalar_t::value_type;
+      value_t nan_replacement = static_cast<value_t>(nan.value_or(0.));
+      value_t pos_inf_replacement = pos_inf.has_value()
+          ? static_cast<value_t>(pos_inf.value())
+          : std::numeric_limits<value_t>::max();
+      value_t neg_inf_replacement = neg_inf.has_value()
+          ? static_cast<value_t>(neg_inf.value())
+          : std::numeric_limits<value_t>::lowest();
+      gpu_kernel(
+          iter,
+          NanToNumComplexFunctor<scalar_t, value_t>(
+              nan_replacement, pos_inf_replacement, neg_inf_replacement));
+    });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, iter.dtype(), "nan_to_num_xpu", [&]() {
+          scalar_t nan_replacement = static_cast<scalar_t>(nan.value_or(0.));
+          scalar_t pos_inf_replacement = pos_inf.has_value()
+              ? static_cast<scalar_t>(pos_inf.value())
+              : std::numeric_limits<scalar_t>::max();
+          scalar_t neg_inf_replacement = neg_inf.has_value()
+              ? static_cast<scalar_t>(neg_inf.value())
+              : std::numeric_limits<scalar_t>::lowest();
+          gpu_kernel(
+              iter,
+              NanToNumFunctor<scalar_t>(
+                  nan_replacement, pos_inf_replacement, neg_inf_replacement));
+        });
+  }
+}
+
+template <typename scalar_t>
+struct Expm1Functor {
+  scalar_t operator()(scalar_t a) const {
+    return std::expm1(a);
+  }
+};
+
+template <typename T>
+struct Expm1Functor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> x) const {
+    auto a = std::sin(.5 * x.imag());
+    auto re = std::expm1(x.real()) * std::cos(x.imag()) - 2 * a * a;
+    auto im = std::exp(x.real()) * std::sin(x.imag());
+    return c10::complex<T>(re, im);
+  }
+};
+
+void expm1_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "expm1_xpu",
+      [&]() { gpu_kernel(iter, Expm1Functor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
