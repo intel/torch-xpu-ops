@@ -196,6 +196,8 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "unique_consecutive",
+    "unique",
     "multinomial",
     "lerp",
     "frac",
