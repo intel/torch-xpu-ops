@@ -613,6 +613,72 @@ Tensor& XPUNativeFunctions::erfc_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::erfinv(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erfinv_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::erfinv_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::erfinv_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::erfinv_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::erfinv_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::exp2(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::exp2_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::exp2_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::exp2_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::exp2_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::expm1(const Tensor& self) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::expm1_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::expm1_(Tensor& self) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::expm1_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::expm1_out(const Tensor& self, Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::expm1_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::frac(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
