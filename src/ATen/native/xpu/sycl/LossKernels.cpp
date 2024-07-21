@@ -7,7 +7,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct BinaryCrossEntropyKernelFunctor {
+struct BinaryCrossEntropyFunctor {
   scalar_t operator()(scalar_t input_val, scalar_t target_val) const {
     const scalar_t zero = 0;
     const scalar_t one = 1;
@@ -27,16 +27,12 @@ struct BinaryCrossEntropyKernelFunctor {
   }
 };
 
-Tensor& binary_cross_entropy_out_kernel(
+Tensor& binary_cross_entropy_kernel(
     const Tensor& input,
     const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
+    const Tensor& weight,
     int64_t reduction,
     Tensor& loss) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-
   Tensor loss_squeezed = at::squeeze(loss);
 
   TensorIterator iter = TensorIteratorConfig()
@@ -48,8 +44,8 @@ Tensor& binary_cross_entropy_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.common_dtype(),
-      "binary_cross_entropy_out_xpu",
-      [&]() { gpu_kernel(iter, BinaryCrossEntropyKernelFunctor<scalar_t>()); });
+      "binary_cross_entropy_xpu",
+      [&]() { gpu_kernel(iter, BinaryCrossEntropyFunctor<scalar_t>()); });
   if (weight.defined()) {
     loss.mul_(weight);
   }
@@ -67,21 +63,8 @@ Tensor& binary_cross_entropy_out_kernel(
   return loss;
 }
 
-Tensor binary_cross_entropy_kernel(
-    const Tensor& input,
-    const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
-    int64_t reduction) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-  Tensor loss = at::empty_like(input);
-  return binary_cross_entropy_out_kernel(
-      input, target, weight, reduction, loss);
-}
-
 template <typename scalar_t>
-struct BinaryCrossEntropyBackwardKernelFunctor {
+struct BinaryCrossEntropyBackwardFunctor {
   scalar_t operator()(
       scalar_t grad_val,
       scalar_t input_val,
@@ -97,14 +80,17 @@ struct BinaryCrossEntropyBackwardKernelFunctor {
   }
 };
 
-void binary_cross_entropy_backward_out_kernel_impl(
-    Tensor& grad_input,
+Tensor& binary_cross_entropy_backward_kernel(
     const Tensor& grad,
     const Tensor& input,
-    const Tensor& target) {
+    const Tensor& target,
+    const std::optional<Tensor>& weight_opt,
+    int64_t reduction,
+    Tensor& grad_input) {
+  Tensor grad_expand = grad.expand_as(input);
   at::TensorIterator iter = TensorIteratorConfig()
                                 .add_output(grad_input)
-                                .add_input(grad)
+                                .add_input(grad_expand)
                                 .add_input(input)
                                 .add_input(target)
                                 .build();
@@ -112,26 +98,10 @@ void binary_cross_entropy_backward_out_kernel_impl(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.common_dtype(),
-      "binary_cross_entropy_backward_out_xpu",
+      "binary_cross_entropy_backward_xpu",
       [&]() {
-        gpu_kernel(iter, BinaryCrossEntropyBackwardKernelFunctor<scalar_t>());
+        gpu_kernel(iter, BinaryCrossEntropyBackwardFunctor<scalar_t>());
       });
-}
-
-Tensor& binary_cross_entropy_backward_out_kernel(
-    const Tensor& grad,
-    const Tensor& input,
-    const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
-    int64_t reduction,
-    Tensor& grad_input) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-
-  Tensor grad_expand = grad.expand_as(input);
-  binary_cross_entropy_backward_out_kernel_impl(
-      grad_input, grad_expand, input, target);
 
   if (weight.defined()) {
     grad_input.mul_(weight);
@@ -140,20 +110,6 @@ Tensor& binary_cross_entropy_backward_out_kernel(
     grad_input.div_(input.numel());
   }
   return grad_input;
-}
-
-Tensor binary_cross_entropy_backward_kernel(
-    const Tensor& grad,
-    const Tensor& input,
-    const Tensor& target,
-    const std::optional<Tensor>& weight_opt,
-    int64_t reduction) {
-  c10::MaybeOwned<Tensor> weight_maybe_owned =
-      at::borrow_from_optional_tensor(weight_opt);
-  const Tensor& weight = *weight_maybe_owned;
-  Tensor grad_input = at::empty_like(input);
-  return binary_cross_entropy_backward_out_kernel(
-      grad, input, target, weight, reduction, grad_input);
 }
 
 } // namespace at::native::xpu
