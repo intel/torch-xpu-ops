@@ -10,6 +10,7 @@ skip_list = (
     #     a. Different kernel implementations.
     #     b. Different std functions. (std::log, std::tanh, std::exp)
     # 5. The result of division between two same float values is not 1.
+    # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
@@ -35,10 +36,9 @@ skip_list = (
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
     "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
-
-    # got inconsistent values between CPU / XPU
-    # AssertionError: Tensor-likes are not close!
-    # compute results contain nan / inf
+    "test_compare_cpu_exp_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_complex128",
+    "test_compare_cpu_exp_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_asin_xpu_complex128",
     "test_compare_cpu_asin_xpu_complex64",
@@ -46,6 +46,8 @@ skip_list = (
     "test_compare_cpu_asinh_xpu_complex64",
     "test_compare_cpu_atan_xpu_complex128",
     "test_compare_cpu_atan_xpu_complex64",
+    "test_compare_cpu_exp2_xpu_complex128",
+    "test_compare_cpu_exp2_xpu_complex64",
 
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
@@ -132,6 +134,9 @@ skip_list = (
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+    # Align with CUDA impl by using accumulate type. But CPU doesn't use.
+    # When XPU uses original data type, the case passes.
+    "test_compare_cpu_logit_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
     # aten::upsample_trilinear3d
