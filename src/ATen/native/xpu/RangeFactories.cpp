@@ -19,7 +19,7 @@ Tensor& XPUNativeFunctions::arange_out(
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      result.scalar_type(),
+      out.scalar_type(),
       "arange_xpu_preprocess",
       [&]() {
         using accscalar_t = at::acc_type<scalar_t, true>;
