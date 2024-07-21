@@ -125,23 +125,6 @@ void searchsorted_template(
     const bool& right,
     const Tensor& sorter) {
   int64_t numel_in = input.numel();
-  int64_t rng, grng, tile_size;
-  tile_size = syclMaxWorkGroupSize();
-  rng = numel_in;
-  if (rng == 0) {
-    rng = static_cast<int64_t>(1);
-  }
-
-  grng = rng;
-  if (tile_size > grng) {
-    tile_size = grng;
-  } else if (grng > tile_size) {
-    int64_t xMode = static_cast<int64_t>(grng % tile_size);
-    if (xMode != 0) {
-      grng += static_cast<int64_t>(tile_size - xMode);
-    }
-  }
-
   bool is_scalar_input = input.dim() == 0 && numel_in == 1;
   // inner most dim size of input and boundaries
   int64_t idim_in = is_scalar_input ? 1 : input.sizes().back();
@@ -166,6 +149,23 @@ void searchsorted_template(
       data_in_data,
       data_bd_data,
       data_out_data);
+
+  int64_t rng, grng, tile_size;
+  tile_size = syclMaxWorkGroupSize(kfn);
+  rng = numel_in;
+  if (rng == 0) {
+    rng = static_cast<int64_t>(1);
+  }
+
+  grng = rng;
+  if (tile_size > grng) {
+    tile_size = grng;
+  } else if (grng > tile_size) {
+    int64_t xMode = static_cast<int64_t>(grng % tile_size);
+    if (xMode != 0) {
+      grng += static_cast<int64_t>(tile_size - xMode);
+    }
+  }
 
   sycl_kernel_submit(grng, tile_size, getCurrentSYCLQueue(), kfn);
 }

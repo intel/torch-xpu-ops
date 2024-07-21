@@ -9,7 +9,6 @@
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
-
 #include <functional>
 
 namespace at::native::xpu::pstl {
@@ -174,31 +173,35 @@ static inline OutputIt _scan_kernel(
     InputIt last,
     OutputIt d_first,
     T init) {
+  using KSScanKernel = KSScanKernelFunctor<scan_type, InputIt, OutputIt, T>;
+  using KSScanWithCarrierKernel =
+      KSScanWithCarrierKernelFunctor<scan_type, InputIt, OutputIt, T>;
+
   const auto N = std::distance(first, last);
   auto& q = getCurrentSYCLQueue();
-  const auto wgroup_size = syclMaxWorkGroupSize();
-  const auto ngroups = (N + wgroup_size - 1) / wgroup_size;
+  const auto kss_wgroup_size = syclMaxWorkGroupSize<KSScanKernel>();
 
   auto options = map_options<T>();
 
-  if (N <= wgroup_size) {
+  if (N <= kss_wgroup_size) {
     // Kogge-Stone addr algorithm;
-    KSScanKernelFunctor<scan_type, InputIt, OutputIt, T> kfn1(
-        first, init, N, d_first);
+    KSScanKernel kfn1(first, init, N, d_first);
     sycl_kernel_submit(sycl::range<1>(N), sycl::range<1>(N), q, kfn1);
 
     return d_first + N;
   }
 
+  const auto kssc_wgroup_size = syclMaxWorkGroupSize<KSScanWithCarrierKernel>();
+  auto ngroups = (N + kssc_wgroup_size - 1) / kssc_wgroup_size;
   Tensor carry = at::empty({ngroups}, options);
   T* carry_ptr = carry.data_ptr<T>();
 
   // 1. do exclusive_scan on each workgroups
-  KSScanWithCarrierKernelFunctor<scan_type, InputIt, OutputIt, T> kfn2(
-      first, init, N, carry_ptr, wgroup_size, d_first);
+  KSScanWithCarrierKernel kfn2(
+      first, init, N, carry_ptr, kssc_wgroup_size, d_first);
   sycl_kernel_submit(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
+      sycl::range<1>(ngroups * kssc_wgroup_size),
+      sycl::range<1>(kssc_wgroup_size),
       q,
       kfn2);
 
@@ -207,9 +210,13 @@ static inline OutputIt _scan_kernel(
 
   // 3. reduce among all work groups and flush data to dst
   ScanAccumulateKernelFunctor<OutputIt, T> kfn3(d_first, carry_ptr, N);
+
+  const auto sa_wgroup_size = syclMaxWorkGroupSize(kfn3);
+  ngroups = (N + sa_wgroup_size - 1) / sa_wgroup_size;
+
   sycl_kernel_submit(
-      sycl::range<1>(ngroups * wgroup_size),
-      sycl::range<1>(wgroup_size),
+      sycl::range<1>(ngroups * sa_wgroup_size),
+      sycl::range<1>(sa_wgroup_size),
       q,
       kfn3);
 
@@ -1420,6 +1427,27 @@ void sort(
   RECORD_FUNCTION("pstl::sort", {});
   sort_pairs<KeyType, ValueType>(
       in_key, out_key, nullptr, out_val, sort_sz, descending);
+}
+
+template <class T, class ForwardIt>
+struct IotaKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    first_[item_id] = value_ + static_cast<T>(item_id);
+  }
+  IotaKernelFunctor(ForwardIt first, T value) : first_(first), value_(value) {}
+
+ private:
+  ForwardIt first_;
+  T value_;
+};
+
+template <class T, class ForwardIt>
+static inline void iota(ForwardIt first, ForwardIt last, T value) {
+  RECORD_FUNCTION("iota_xpu", {});
+  const auto N = std::distance(first, last);
+
+  IotaKernelFunctor<T, ForwardIt> kfn(first, value);
+  sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
 }
 
 } // namespace at::native::xpu::pstl
