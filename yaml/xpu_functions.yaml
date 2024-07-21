@@ -656,5 +656,8 @@ supported:
   - norm.dtype_out
   - norm.ScalarOpt_dim
   - norm.out
+  - renorm
+  - renorm.out
+  - renorm_
   - nan_to_num.out
   - range.out
