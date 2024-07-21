@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
-#include <ATen/AccumulateType.h>
+
 #include <ATen/native/xpu/sycl/Loops.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
@@ -17,7 +18,7 @@ struct RenormScalarFactorFunctor {
   scalar_t maxnorm_elm;
 };
 
-Tensor& renorm_scale_factor_kernel(TensorIteratorBase& iter, double maxnorm) {
+void renorm_scale_factor_kernel(TensorIteratorBase& iter, double maxnorm) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
