@@ -24,6 +24,14 @@ static void xpu_fallback_impl(
 
 namespace native::xpu {
 Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
+Tensor roi_align_autocast(
+    const Tensor& input,
+    const Tensor& rois,
+    double spatial_scale,
+    int64_t pooled_height,
+    int64_t pooled_width,
+    int64_t sampling_ratio,
+    bool aligned);
 }
 
 // Register op's implementation lazily since sometimes the op is not defined,
@@ -38,10 +46,14 @@ static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
   {"torchvision::_roi_align_backward", true},
 };
 
+static std::list<std::string> torchvision_ops_autocast_dispatching_table_ = {
+  "torchvision::roi_align",
+};
+
 // Return:
 // true  - Redispatch to implementation lazily registered.
 // false - Not redispatch.
-static bool lazy_registration_and_redispatch(
+static bool xpu_lazy_registration_and_redispatch(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
   auto register_func =
@@ -84,10 +96,42 @@ static bool lazy_registration_and_redispatch(
   }
 }
 
+static void autocastxpu_lazy_registration_and_redispatch(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  auto register_func =
+      [](torch::Library& m) -> void {
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::roi_align"),
+            TORCH_FN(at::native::xpu::roi_align_autocast));
+      };
+
+  static const torch::detail::TorchLibraryInit
+      torchvision_ops_autocast_impl_lazy_registration(
+          torch::Library::IMPL,
+          register_func,
+          "torchvision",
+          c10::make_optional(c10::DispatchKey::AutocastXPU),
+          __FILE__,
+          __LINE__);
+
+  bool need_redispatch_after_lazy_registration =
+      torchvision_ops_autocast_dispatching_table_.end() != torchvision_ops_autocast_dispatching_table_.find(op.schema().operator_name().name);
+
+  if (need_redispatch_after_lazy_registration) {
+    // Custom autocast. Won't reenter fallback.
+    op.redispatchBoxed(c10::DispatchKeySet(c10::DispatchKey::AutocastXPU), stack);
+  } else {
+    // Fallthrough.
+    c10::impl::ExcludeDispatchKeyGuard no_autocast(c10::DispatchKey::AutocastXPU);
+    op.callBoxed(stack);
+  }
+}
+
 static void xpu_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  if (lazy_registration_and_redispatch(op, stack)) {
+  if (xpu_lazy_registration_and_redispatch(op, stack)) {
     return;
   }
 
@@ -98,7 +142,7 @@ static void xpu_fallback(
 static void xpu_lazy_registration_or_error_fallback(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
-  if (!lazy_registration_and_redispatch(op, stack)) {
+  if (!xpu_lazy_registration_and_redispatch(op, stack)) {
     TORCH_CHECK_NOT_IMPLEMENTED(
         false,
         "The operator '",
@@ -125,6 +169,22 @@ TORCH_LIBRARY_IMPL(_, XPU, m) {
   } else {
     DEBUG_XPU_FALLBACK = true;
   }
+}
+
+/*
+ * Torchvision::operators are not the part of ATen::operators. They require
+ * separate registration and implementation for Autocast.
+ */
+static void torchvision_autocastxpu_lazy_registration(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  // Fallthrough or custom
+  autocastxpu_lazy_registration_and_redispatch(op, stack));
+}
+
+TORCH_LIBRARY_IMPL(torchvision, AutocastXPU, m) {
+  m.fallback(
+      torch::CppFunction::makeFromBoxedFunction<&torchvision_autocastxpu_lazy_registration>());
 }
 
 /*
