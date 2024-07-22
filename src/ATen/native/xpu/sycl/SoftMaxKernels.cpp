@@ -1738,7 +1738,7 @@ Tensor& host_softmax(
         input.scalar_type(),
         "host_softmax",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
           impl::spatial_softmax_forward<scalar_t, accscalar_t, LogSoftMax>(
               output, input, dim);
         });
@@ -1787,7 +1787,7 @@ Tensor& host_softmax_backward(
       grad.scalar_type(),
       "host_softmax_backward",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         impl::spatial_softmax_backward<scalar_t, accscalar_t, LogSoftMax>(
             gI, output, grad, dim);
       });

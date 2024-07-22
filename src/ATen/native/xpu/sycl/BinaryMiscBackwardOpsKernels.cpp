@@ -83,7 +83,7 @@ void logit_backward_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
       iter.dtype(),
       "logit_xpu",
       [&]() {
-        using T_ACC = acc_type<scalar_t, true>;
+        using T_ACC = acc_type_device<scalar_t, kXPU>;
         const T_ACC eps = eps_scalar.to<T_ACC>();
         if (eps < T_ACC(0)) {
           gpu_kernel(iter, LogitBackward0Functor<scalar_t>());
