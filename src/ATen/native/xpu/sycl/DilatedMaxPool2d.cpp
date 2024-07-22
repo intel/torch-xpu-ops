@@ -416,8 +416,6 @@ void launch_max_pool2d_backward_kernel(
     int dilation_h,
     int dilation_w) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int64_t gradOutputSize =
-      numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
   int64_t gradInputSize = numBatch * numPlane * gradInputSizeH * gradInputSizeW;
   auto out_cf_c_stride = gradOutputSizeH * gradOutputSizeW;
   auto in_cf_c_stride = gradInputSizeH * gradInputSizeW;
@@ -466,6 +464,8 @@ void launch_max_pool2d_backward_kernel(
       cfg);
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 #else
+  int64_t gradOutputSize =
+      numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
   using KernelClass =
       MaxPool2dBackwardKernelFunctor<scalar_t, is_channels_last>;
   BatchKernelConfig cfg = {
