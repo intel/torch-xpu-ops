@@ -421,8 +421,8 @@ void segmented_sort_pairs_(
     int num_elements) {
   constexpr int scaling_coef = sizeof(key_t) * sizeof(value_t) >= 64
       ? 2
-      : 1; // Attempt to reduce register pressure. Excessive register usage can
-           // cause calculation errors.
+      : 1; // Attempt to reduce register pressure. The result will be incorrect
+           // when using too many local variables (registers).
            // https://github.com/intel/torch-xpu-ops/issues/626
   if (num_elements > 4096 / scaling_coef) {
     // Considering register pressure, we use a problem size of 4096 to delineate
