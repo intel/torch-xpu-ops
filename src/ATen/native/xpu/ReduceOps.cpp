@@ -290,9 +290,8 @@ Tensor XPUNativeFunctions::prod(
     const Tensor& self,
     std::optional<ScalarType> opt_dtype) {
   auto dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
-  // auto shape = at::native::meta::get_reduction_shape(self, {}, false);
-  // Tensor out = at::empty(shape, self.options().dtype(dtype));
-  Tensor out;
+  auto shape = at::meta::get_reduction_shape(self, {}, false);
+  Tensor out = at::empty(shape, self.options().dtype(dtype));
   out = prod_meta(self, {}, false, dtype, out);
   return out;
 }
