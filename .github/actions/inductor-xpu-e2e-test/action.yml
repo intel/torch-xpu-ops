@@ -81,7 +81,6 @@ runs:
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
         source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
-        rm -f inductor_log/summary_accuracy.log
         # check param
         function contains() {
             contains_status="echo 'Start $2 ...'"
@@ -130,7 +129,7 @@ runs:
                         --mode $mode \
                         --dtype $dt \
                         --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv \
-                        2>&1 |tee -a ${{ github.workspace }}/summary_accuracy.log |tee -a inductor_log/summary_accuracy.log
+                        2>&1 |tee -a inductor_log/summary_accuracy.log
                 fi
               done
             done
