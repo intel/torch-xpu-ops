@@ -127,6 +127,7 @@ jobs:
 
           test_cmd="python test/run_test.py --include "
           # All Inductor UT under test/inductor
+          rm -rf /tmp/torchinductor_*
           for test in $(ls test/inductor | grep test);
           do 
               test_cmd="${test_cmd} inductor/$test";
