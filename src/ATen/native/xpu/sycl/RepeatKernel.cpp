@@ -47,16 +47,21 @@ static void compute_xpu(
     index_t* result_ptr,
     int64_t size,
     int64_t result_size) {
-  auto& queue = getCurrentSYCLQueue();
-  int64_t local_range = static_cast<int64_t>(1);
-  int64_t global_range = static_cast<int64_t>(1);
-  using KernelClass = RepeatInterleaveKernelFunctor<index_t>;
-  if (size != 0) {
-    int64_t wg_size = syclMaxWorkGroupSize<KernelClass>();
-    local_range = size < wg_size ? size : wg_size;
-    global_range = ((size + local_range - 1) / local_range) * local_range;
-  }
-  auto kfn = KernelClass(repeat_ptr, cumsum_ptr, result_ptr, size, result_size);
+  if (size == 0)
+    return;
+
+  auto kfn = RepeatInterleaveKernelFunctor<index_t>(
+      repeat_ptr,
+      cumsum_ptr,
+      result_ptr,
+      size,
+      result_size);
+
+  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t local_range = size < wg_size ? size : wg_size;
+  int64_t global_range = ((size + local_range - 1) / local_range) * local_range;
+
+  auto queue = getCurrentSYCLQueue();
   sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
