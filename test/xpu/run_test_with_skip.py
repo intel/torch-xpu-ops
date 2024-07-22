@@ -87,14 +87,6 @@ skip_list = (
     "test_out_warning_nanmean_xpu",
     "test_out_warning_nn_functional_logsigmoid_xpu",
     "test_python_ref__refs_div_trunc_rounding_xpu_bfloat16",
-    "test_python_ref__refs_floor_divide_xpu_float16",
-    "test_python_ref__refs_floor_divide_xpu_float32",
-    "test_python_ref__refs_floor_divide_xpu_float64",
-    "test_python_ref__refs_floor_divide_xpu_int16",
-    "test_python_ref__refs_floor_divide_xpu_int32",
-    "test_python_ref__refs_floor_divide_xpu_int64",
-    "test_python_ref__refs_floor_divide_xpu_int8",
-    "test_python_ref__refs_floor_divide_xpu_uint8",
     "test_python_ref__refs_linspace_tensor_overload_xpu_int16",
     "test_python_ref__refs_linspace_tensor_overload_xpu_int32",
     "test_python_ref__refs_linspace_tensor_overload_xpu_int64",
@@ -118,15 +110,6 @@ skip_list = (
     "test_python_ref__refs_square_xpu_bool",
     "test_python_ref__refs_trunc_xpu_float64",
     "test_python_ref_executor__refs_div_trunc_rounding_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_bfloat16",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_float16",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_float32",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_float64",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_int16",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_int32",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_int64",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_int8",
-    "test_python_ref_executor__refs_floor_divide_executor_aten_xpu_uint8",
     "test_python_ref_executor__refs_geometric_executor_aten_xpu_bfloat16",
     "test_python_ref_executor__refs_geometric_executor_aten_xpu_float16",
     "test_python_ref_executor__refs_geometric_executor_aten_xpu_float32",
@@ -168,14 +151,6 @@ skip_list = (
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
     "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
     "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_bfloat16",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_float16",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_float32",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_float64",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_int16",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_int32",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_int64",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_int8",
-    "test_python_ref_torch_fallback__refs_floor_divide_xpu_uint8",
     "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int16",
     "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int32",
     "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int64",
@@ -763,6 +738,8 @@ skip_list = (
     "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
     "test_conj_view_pca_lowrank_xpu_complex64",
     "test_conj_view_svd_lowrank_xpu_complex64",
+    "test_neg_conj_view_pca_lowrank_xpu_complex128",
+    "test_neg_conj_view_svd_lowrank_xpu_complex128",
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
     "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
@@ -796,7 +773,13 @@ skip_list = (
     # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
     # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
     "test_python_ref__refs_log2_xpu_complex128",
-
+  
+    #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
+    #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
+    #XPU supports bfloat16, CUDA doesn't support it.
+    "test_dtypes_unique_consecutive_xpu",
+    "test_dtypes_unique_xpu",
+    
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 )
@@ -1487,12 +1470,8 @@ skip_list = (
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
     "test_reference_numerics_extremal__refs_acos_xpu_complex128",
-    "test_reference_numerics_extremal__refs_exp2_xpu_complex128",
-    "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_exp2_xpu_complex128",
-    "test_reference_numerics_extremal_exp2_xpu_complex64",
     "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
     "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
@@ -1554,6 +1533,35 @@ skip_list = (
     # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
     # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
     "test_log1p_complex_xpu_complex64",
+
+    # CPU MKL::erfinv vs XPU impl. At most 6.e-06
+    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
+    "test_reference_numerics_large__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
+    "test_reference_numerics_large_erfinv_xpu_float64",
+    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
+    "test_reference_numerics_normal__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
+    "test_reference_numerics_normal_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
+    "test_reference_numerics_small__refs_erfinv_xpu_float64",
+    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
+    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
+    "test_reference_numerics_small_erfinv_xpu_float64",
+
+    # Issue: https://github.com/intel/torch-xpu-ops/issues/622
+    # Mismatched elements: 8 / 943593 (0.0%)
+    # Greatest absolute difference: inf at index (9, 860) (up to 0.001 allowed)
+    # Greatest relative difference: inf at index (9, 860) (up to 0.0012 allowed)
+    "test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16",
+    "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
@@ -2766,8 +2774,6 @@ skip_list = (
     "test_corrcoef_xpu_complex64",
     ### Error #10 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: True is not false
     "test_discontiguous_out_cumsum_xpu",
-    ### Error #11 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: tensor(False, device='xpu:0') is not true
-    "test_exponential_no_zero_xpu_float16",
     ### Error #12 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'amp'
     "test_grad_scaler_pass_itself_xpu",
     "test_pickle_gradscaler_xpu",
@@ -2882,8 +2888,6 @@ skip_list = (
     "test_cuda_vitals_gpu_only_xpu",
     # torch.utils.swap_tensors AssertionError: RuntimeError not raised
     "test_swap_basic",
-    # Needs pr to enable deterministic implementation for interpolate op
-    "test_deterministic_interpolate_bilinear_xpu",
     # Precision error
     # Fail in high probability in preci.
     # Mismatched elements: 1 / 262144 (0.0%)

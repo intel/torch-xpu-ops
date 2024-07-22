@@ -45,6 +45,15 @@ static inline TensorOptions map_options() {
         .dtype(kComplexDouble)
         .device(kXPU)
         .memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  else if (std::is_same<T, uint16_t>::value)
+    return at::TensorOptions().dtype(kUInt16).device(kXPU).memory_format(
+        LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  else if (std::is_same<T, uint32_t>::value)
+    return at::TensorOptions().dtype(kUInt32).device(kXPU).memory_format(
+        LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  else if (std::is_same<T, uint64_t>::value)
+    return at::TensorOptions().dtype(kUInt64).device(kXPU).memory_format(
+        LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   else {
     AT_ERROR("PSTLFunctions: data type cannot be mapped to tensor's dtype.");
   }
