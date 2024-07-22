@@ -10,7 +10,7 @@ parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs=
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 parser.add_argument('--html_off', action='store_true', help='turn off html file generate')
-parser.add_argument('--scenario', default='performance', choices=["performance", "accuracy"], type=str, help='Test scenario set')
+parser.add_argument('-sc', '--scenario', default=['performance'], nargs='*', type=str, help='Test scenario set')
 args = parser.parse_args()
 
 passrate_values = {}
@@ -46,16 +46,16 @@ def caculate_geomean(df, column_name):
 
 
 def caculate_passrate(df, key_word):
-    df = get_passing_entries(df, key_word)
     total = len(df.index)
     if 'performance' in args.scenario:
         passing = df[df[key_word] > 0.0][key_word].count()
     else:
+        df = get_passing_entries(df, key_word)
         passing = df[df[key_word].fillna('').str.contains('pass')][key_word].count()
     perc = int(percentage(passing, total, decimals=0))
     return f"{perc}%, {passing}/{total}"
 
-def get_perf_csv(precision, mode):
+def get_perf_csv(scenario, precision, mode):
     target_path = 'inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
     target_ori_data = pd.read_csv(target_path, header=0, encoding='utf-8')
     target_data = target_ori_data.copy()
@@ -195,7 +195,7 @@ def process(input, precision, mode):
     else:
         return pd.DataFrame()
 
-def update_details(precision, mode, excel):
+def update_details(scenario, precision, mode, excel):
     if 'performance' in args.scenario:
         h = {"A": 'Model suite', "B": '', "C": "target", "D": '', "E": '', "F": '', "G": '',"H": args.reference, "I": '', "J": '',"K": '',"L":'',"M": 'Result Comp',"N": '',"O": '',"P":''}
         if args.reference is None:
@@ -209,12 +209,12 @@ def update_details(precision, mode, excel):
     head.set_row_height(rows=[1], height=15)
 
     head.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=0, header=False)
-    target_raw_data = get_perf_csv(precision, mode)
+    target_raw_data = get_perf_csv(scenario, precision, mode)
     #print("target_raw_data", target_raw_data)
     target_data = process(target_raw_data, precision, mode)
     target_data.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=1, startcol=1)
 
-def update_summary(excel):
+def update_summary(excel, scenario):
     if 'performance' in args.scenario:
         data = {
             'Test Secnario': ['AMP_BF16 Inference', ' ', 'AMP_BF16 Training', ' ', 'AMP_FP16 Inference', ' ', 'AMP_FP16 Training', ' ', 'BF16 Inference', ' ', 'BF16 Training', ' ', 'FP16 Inference', ' ', 'FP16 Training', ' ', 'FP32 Inference', ' ', 'FP32 Training', ' '],
@@ -404,90 +404,90 @@ def update_summary(excel):
             sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
         
         if 'torchbench' in args.suite:
-        if 'amp_bf16' in args.precision:
-            if 'inference' in args.mode:
-                summary.iloc[0:1, 4:5] = passrate_values['target_amp_bf16_inference']
-                summary.iloc[1:2, 4:5] = geomean_values['target_amp_bf16_inference']
-            if 'training' in args.mode:
-                summary.iloc[2:3, 4:5] = passrate_values['target_amp_bf16_training']
-                summary.iloc[3:4, 4:5] = geomean_values['target_amp_bf16_training']
-        if 'amp_fp16' in args.precision:
-            if 'inference' in args.mode:
-                summary.iloc[4:5, 4:5] = passrate_values['target_amp_fp16_inference']
-                summary.iloc[5:6, 4:5] = geomean_values['target_amp_fp16_inference']
-            if 'training' in args.mode:
-                summary.iloc[6:7, 4:5] = passrate_values['target_amp_fp16_training']
-                summary.iloc[7:8, 4:5] = geomean_values['target_amp_fp16_training']
-
-        if 'bfloat16' in args.precision:
-            if 'inference' in args.mode:
-                summary.iloc[8:9, 4:5] = passrate_values['target_bfloat16_inference']
-                summary.iloc[9:10, 4:5] = geomean_values['target_bfloat16_inference']
-            if 'training' in args.mode:
-                summary.iloc[10:11, 4:5] = passrate_values['target_bfloat16_training']
-                summary.iloc[11:12, 4:5] = geomean_values['target_bfloat16_training']
-        if 'float16' in args.precision:
-            if 'inference' in args.mode:
-                summary.iloc[12:13, 4:5] = passrate_values['target_float16_inference']
-                summary.iloc[13:14, 4:5] = geomean_values['target_float16_inference']
-            if 'training' in args.mode:
-                summary.iloc[14:15, 4:5] = passrate_values['target_float16_training']
-                summary.iloc[15:16, 4:5] = geomean_values['target_float16_training']
-        if 'float32' in args.precision:
-            if 'inference' in args.mode:
-                summary.iloc[16:17, 4:5] = passrate_values['target_float32_inference']
-                summary.iloc[17:18, 4:5] = geomean_values['target_float32_inference']
-            if 'training' in args.mode:
-                summary.iloc[18:19, 4:5] = passrate_values['target_float32_training']
-                summary.iloc[19:20, 4:5] = geomean_values['target_float32_training']
-
-        if args.reference is not None:
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
-                    summary.iloc[0:1, 7:8] = passrate_values['reference_amp_bf16_inference']
-                    summary.iloc[1:2, 7:8] = geomean_values['reference_amp_bf16_inference']
+                    summary.iloc[0:1, 4:5] = passrate_values['target_amp_bf16_inference']
+                    summary.iloc[1:2, 4:5] = geomean_values['target_amp_bf16_inference']
                 if 'training' in args.mode:
-                    summary.iloc[2:3, 7:8] = passrate_values['reference_amp_bf16_training']
-                    summary.iloc[3:4, 7:8] = geomean_values['reference_amp_bf16_training']
+                    summary.iloc[2:3, 4:5] = passrate_values['target_amp_bf16_training']
+                    summary.iloc[3:4, 4:5] = geomean_values['target_amp_bf16_training']
             if 'amp_fp16' in args.precision:
                 if 'inference' in args.mode:
-                    summary.iloc[4:5, 7:8] = passrate_values['reference_amp_fp16_inference']
-                    summary.iloc[5:6, 7:8] = geomean_values['reference_amp_fp16_inference']
+                    summary.iloc[4:5, 4:5] = passrate_values['target_amp_fp16_inference']
+                    summary.iloc[5:6, 4:5] = geomean_values['target_amp_fp16_inference']
                 if 'training' in args.mode:
-                    summary.iloc[6:7, 7:8] = passrate_values['reference_amp_fp16_training']
-                    summary.iloc[7:8, 7:8] = geomean_values['reference_amp_fp16_training']
+                    summary.iloc[6:7, 4:5] = passrate_values['target_amp_fp16_training']
+                    summary.iloc[7:8, 4:5] = geomean_values['target_amp_fp16_training']
 
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
-                    summary.iloc[8:9, 7:8] = passrate_values['reference_bfloat16_inference']
-                    summary.iloc[9:10, 7:8] = geomean_values['reference_bfloat16_inference']
+                    summary.iloc[8:9, 4:5] = passrate_values['target_bfloat16_inference']
+                    summary.iloc[9:10, 4:5] = geomean_values['target_bfloat16_inference']
                 if 'training' in args.mode:
-                    summary.iloc[10:11, 7:8] = passrate_values['reference_bfloat16_training']
-                    summary.iloc[11:12, 7:8] = geomean_values['reference_bfloat16_training']
+                    summary.iloc[10:11, 4:5] = passrate_values['target_bfloat16_training']
+                    summary.iloc[11:12, 4:5] = geomean_values['target_bfloat16_training']
             if 'float16' in args.precision:
                 if 'inference' in args.mode:
-                    summary.iloc[12:13, 7:8] = passrate_values['reference_float16_inference']
-                    summary.iloc[13:14, 7:8] = geomean_values['reference_float16_inference']
+                    summary.iloc[12:13, 4:5] = passrate_values['target_float16_inference']
+                    summary.iloc[13:14, 4:5] = geomean_values['target_float16_inference']
                 if 'training' in args.mode:
-                    summary.iloc[14:15, 7:8] = passrate_values['reference_float16_training']
-                    summary.iloc[15:16, 7:8] = geomean_values['reference_float16_training']
+                    summary.iloc[14:15, 4:5] = passrate_values['target_float16_training']
+                    summary.iloc[15:16, 4:5] = geomean_values['target_float16_training']
             if 'float32' in args.precision:
                 if 'inference' in args.mode:
-                    summary.iloc[16:17, 7:8] = passrate_values['reference_float32_inference']
-                    summary.iloc[17:18, 7:8] = geomean_values['reference_float32_inference']
+                    summary.iloc[16:17, 4:5] = passrate_values['target_float32_inference']
+                    summary.iloc[17:18, 4:5] = geomean_values['target_float32_inference']
                 if 'training' in args.mode:
-                    summary.iloc[18:19, 7:8] = passrate_values['reference_float32_training']
-                    summary.iloc[19:20, 7:8] = geomean_values['reference_float32_training']
-        
-        print("====================Summary=============================")
-        print(summary)
-        
-        sf = StyleFrame(summary)
-        for i in range(1, 11):
-            sf.set_column_width(i, 22)
-        for j in range(1, 22):
-            sf.set_row_height(j, 30)
-        sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
+                    summary.iloc[18:19, 4:5] = passrate_values['target_float32_training']
+                    summary.iloc[19:20, 4:5] = geomean_values['target_float32_training']
+
+            if args.reference is not None:
+                if 'amp_bf16' in args.precision:
+                    if 'inference' in args.mode:
+                        summary.iloc[0:1, 7:8] = passrate_values['reference_amp_bf16_inference']
+                        summary.iloc[1:2, 7:8] = geomean_values['reference_amp_bf16_inference']
+                    if 'training' in args.mode:
+                        summary.iloc[2:3, 7:8] = passrate_values['reference_amp_bf16_training']
+                        summary.iloc[3:4, 7:8] = geomean_values['reference_amp_bf16_training']
+                if 'amp_fp16' in args.precision:
+                    if 'inference' in args.mode:
+                        summary.iloc[4:5, 7:8] = passrate_values['reference_amp_fp16_inference']
+                        summary.iloc[5:6, 7:8] = geomean_values['reference_amp_fp16_inference']
+                    if 'training' in args.mode:
+                        summary.iloc[6:7, 7:8] = passrate_values['reference_amp_fp16_training']
+                        summary.iloc[7:8, 7:8] = geomean_values['reference_amp_fp16_training']
+
+                if 'bfloat16' in args.precision:
+                    if 'inference' in args.mode:
+                        summary.iloc[8:9, 7:8] = passrate_values['reference_bfloat16_inference']
+                        summary.iloc[9:10, 7:8] = geomean_values['reference_bfloat16_inference']
+                    if 'training' in args.mode:
+                        summary.iloc[10:11, 7:8] = passrate_values['reference_bfloat16_training']
+                        summary.iloc[11:12, 7:8] = geomean_values['reference_bfloat16_training']
+                if 'float16' in args.precision:
+                    if 'inference' in args.mode:
+                        summary.iloc[12:13, 7:8] = passrate_values['reference_float16_inference']
+                        summary.iloc[13:14, 7:8] = geomean_values['reference_float16_inference']
+                    if 'training' in args.mode:
+                        summary.iloc[14:15, 7:8] = passrate_values['reference_float16_training']
+                        summary.iloc[15:16, 7:8] = geomean_values['reference_float16_training']
+                if 'float32' in args.precision:
+                    if 'inference' in args.mode:
+                        summary.iloc[16:17, 7:8] = passrate_values['reference_float32_inference']
+                        summary.iloc[17:18, 7:8] = geomean_values['reference_float32_inference']
+                    if 'training' in args.mode:
+                        summary.iloc[18:19, 7:8] = passrate_values['reference_float32_training']
+                        summary.iloc[19:20, 7:8] = geomean_values['reference_float32_training']
+            
+            print("====================Summary=============================")
+            print(summary)
+            
+            sf = StyleFrame(summary)
+            for i in range(1, 11):
+                sf.set_column_width(i, 22)
+            for j in range(1, 22):
+                sf.set_row_height(j, 30)
+            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
     else:
         data = {
@@ -710,27 +710,29 @@ def update_summary(excel):
             sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
 
-def generate_report(excel, precision_list, mode_list):
-    for p in precision_list:
-        for m in mode_list:
-            update_details(p, m, excel)
-    update_summary(excel)
+def generate_report(excel, scenario_list, precision_list, mode_list):
+    for s in scenario_list:
+        for p in precision_list:
+            for m in mode_list:
+                update_details(s, p, m, excel)
+    update_summary(excel, s)
 
 
-def excel_postprocess(file, precison, mode):
+def excel_postprocess(file, scenario, precison, mode):
     wb = file.book
     # Summary
-    ws = wb['Summary']
-    for i in range(2, 21, 2):
-        ws.merge_cells(start_row=i, end_row=i + 1, start_column=1, end_column=1)
+    #ws = wb['Summary']
+    #for i in range(2, 21, 2):
+    #    ws.merge_cells(start_row=i, end_row=i + 1, start_column=1, end_column=1)
     # details
-    for p in precison:
-        for m in mode:
-            wdt = wb[p + '_' + m]
-            wdt.merge_cells(start_row=1, end_row=2, start_column=1, end_column=1)
-            wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
-            wdt.merge_cells(start_row=1, end_row=1, start_column=8, end_column=12)
-            wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
+    for s in scenario:
+        for p in precison:
+            for m in mode:
+                wdt = wb[s + '_' + p + '_' + m]
+                wdt.merge_cells(start_row=1, end_row=2, start_column=1, end_column=1)
+                wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
+                wdt.merge_cells(start_row=1, end_row=1, start_column=8, end_column=12)
+                wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
     wb.save(file)
 
 def html_generate(html_off):
@@ -762,6 +764,6 @@ def html_generate(html_off):
 
 if __name__ == '__main__':
     excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
-    generate_report(excel, args.precision, args.mode)
-    excel_postprocess(excel, args.precision, args.mode)
+    generate_report(excel, args.scenario, args.precision, args.mode)
+    excel_postprocess(excel, args.scenario, args.precision, args.mode)
     #html_generate(args.html_off)
