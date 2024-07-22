@@ -10,6 +10,7 @@ skip_list = (
     #     a. Different kernel implementations.
     #     b. Different std functions. (std::log, std::tanh, std::exp)
     # 5. The result of division between two same float values is not 1.
+    # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
@@ -32,10 +33,12 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_cross_xpu_float16",
-
-    # got inconsistent values between CPU / XPU
-    # AssertionError: Tensor-likes are not close!
-    # compute results contain nan / inf
+    "test_compare_cpu_floor_divide_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_float16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_complex128",
+    "test_compare_cpu_exp_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_asin_xpu_complex128",
     "test_compare_cpu_asin_xpu_complex64",
@@ -43,16 +46,12 @@ skip_list = (
     "test_compare_cpu_asinh_xpu_complex64",
     "test_compare_cpu_atan_xpu_complex128",
     "test_compare_cpu_atan_xpu_complex64",
+    "test_compare_cpu_exp2_xpu_complex128",
+    "test_compare_cpu_exp2_xpu_complex64",
 
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
     "test_compare_cpu_atan2_xpu_bfloat16",
-
-    # CPU result is not golden reference
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
-    "test_compare_cpu_addr_xpu_float16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
@@ -71,7 +70,6 @@ skip_list = (
     # Require implementing aten::embedding_renorm_
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_backward_nn_functional_embedding_xpu_float32",
-    "test_cow_input_nn_functional_embedding_xpu_float32",
     "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
@@ -81,8 +79,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
 
-    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
-    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -135,6 +131,9 @@ skip_list = (
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+    # Align with CUDA impl by using accumulate type. But CPU doesn't use.
+    # When XPU uses original data type, the case passes.
+    "test_compare_cpu_logit_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
     # aten::upsample_trilinear3d
@@ -168,13 +167,6 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
-
-    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
-    # https://github.com/intel/torch-xpu-ops/issues/572
-    "test_compare_cpu_isin_xpu",
-    "test_operator_isin_xpu_float32",
-    "test_view_replay_isin_xpu_float32",
-    "test_backward_index_fill_xpu_float32",
 )
 
 

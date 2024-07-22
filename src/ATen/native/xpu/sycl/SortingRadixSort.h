@@ -106,7 +106,8 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = group_offset + lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < num_elements) {
-        ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_group_in[offset]);
+        ukeys_[ITEM] =
+            KeyTraits<KeyT>::convert(c10::load(&keys_group_in[offset]));
       } else {
         KeyTraitsT padding_key;
         if (IS_DESCENDING) {
