@@ -122,7 +122,6 @@ static Tensor& histogramdd_out(
     bool density,
     Tensor& hist,
     Tensor& bin_edges) {
-  globalContext().alertNotDeterministic("histogram_bin_xpu");
   histogramdd_check_inputs(self, bins, weight);
   histogramdd_prepare_out(self, bins, hist, bin_edges);
 
@@ -168,7 +167,6 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::histogram_out(
     bool density,
     Tensor& hist,
     Tensor& bin_edges) {
-  globalContext().alertNotDeterministic("histogram_bin_count_xpu");
   Tensor reshaped_self = self.reshape({self.numel()});
   std::optional<Tensor> reshaped_weight = weight.has_value()
       ? weight.value().reshape({weight.value().numel()})

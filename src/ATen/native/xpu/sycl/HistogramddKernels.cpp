@@ -151,6 +151,7 @@ void histogramdd_kernel(
     bool density,
     Tensor& hist,
     const Tensor& bin_edges_) {
+  globalContext().alertNotDeterministic("histogramdd_kernel_xpu");
   hist.fill_(0);
   Tensor bin_edges = bin_edges_.contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -180,6 +181,7 @@ void histogramdd_linear_kernel(
     bool density,
     Tensor& hist,
     Tensor& out_bin_edges) {
+  globalContext().alertNotDeterministic("histogramdd_linear_kernel_xpu");
   hist.fill_(0);
 
   // default range for empty input
