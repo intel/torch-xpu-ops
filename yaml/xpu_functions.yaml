@@ -529,6 +529,7 @@ supported:
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
+  - _embedding_bag_backward
   - sgn
   - sgn.out
   - sgn_
