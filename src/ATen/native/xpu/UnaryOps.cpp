@@ -395,6 +395,60 @@ Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sign(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sign_(Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(self, self);
+  native::xpu::sign_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_float_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::signbit(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+  native::xpu::signbit_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::signbit_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+  if (self.dtype() == at::kBool) {
+    out.fill_(false);
+  } else {
+    TensorIterator iter;
+    iter.build_borrowing_unary_force_boolean_op(out, self);
+    native::xpu::signbit_kernel(iter);
+  }
+  return out;
+}
+
 Tensor XPUNativeFunctions::sgn(const Tensor& self) {
   Tensor out;
   TensorIterator iter;
