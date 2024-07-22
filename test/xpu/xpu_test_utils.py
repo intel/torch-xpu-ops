@@ -215,6 +215,7 @@ _xpu_computation_op_list = [
     "copysign",
     "count_nonzero",
     "nan_to_num",
+    "scatter_reduce",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
