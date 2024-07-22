@@ -219,7 +219,7 @@ jobs:
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
-          find . -type f -name "*.tgz" -mtime +7 -delete # delete files older than a week
+          find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-$(date +%s).tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           failed_case=$(grep "Real failed: models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
           if [ ${failed_case} -ne 0 ];then
