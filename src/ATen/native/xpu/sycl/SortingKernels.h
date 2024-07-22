@@ -419,50 +419,54 @@ void segmented_sort_pairs_(
     value_t* values_out,
     int num_segments,
     int num_elements) {
-  if (num_elements > 4096) {
+  constexpr int scaling_coef = sizeof(key_t) * sizeof(value_t) >= 64
+      ? 2
+      : 1; // Attempt to reduce register pressure. For some reason, register
+           // spilling causes some incorrect results.
+  if (num_elements > 4096 / scaling_coef) {
     // Considering register pressure, we use a problem size of 4096 to delineate
     // the boundary between single tile sort and group sort.
     segmented_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         512,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 2048) {
+  } else if (num_elements > 2048 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         1024,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 1024) {
+  } else if (num_elements > 1024 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         512,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 512) {
+  } else if (num_elements > 512 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         256,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 256) {
+  } else if (num_elements > 256 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         128,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
@@ -471,7 +475,7 @@ void segmented_sort_pairs_(
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         64,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
