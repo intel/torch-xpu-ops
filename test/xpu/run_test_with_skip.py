@@ -782,6 +782,13 @@ skip_list = (
 
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
+    # Align with CPU implementation since,
+    # 1. most cases of nextafter require Half dtype.
+    # 2. Half dtype is a common dtype in workloads.
+    # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
+    "test_dtypes_nextafter_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -808,13 +815,6 @@ skip_list = (
     # Absolute difference: 9.183549615799121e-41
     # Relative difference: 1.0
     "test_nextafter_bfloat16_xpu_bfloat16",
-
-    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
-    # Align with CPU implementation since,
-    # 1. most cases of nextafter require Half dtype.
-    # 2. Half dtype is a common dtype in workloads.
-    # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA.
-    "test_dtypes_nextafter_xpu",
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
