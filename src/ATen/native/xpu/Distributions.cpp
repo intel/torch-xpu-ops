@@ -191,6 +191,24 @@ Tensor& XPUNativeFunctions::random_(
   return random_(self, 0, to, std::move(generator));
 }
 
+template <typename RNG>
+struct ExponentialStub {
+  void operator()(
+      TensorIteratorBase& iter,
+      double lambda,
+      c10::optional<Generator> gen) {
+    native::xpu::exponential_kernel(iter, lambda, gen);
+  }
+};
+
+Tensor& XPUNativeFunctions::exponential_(
+    Tensor& self,
+    double lambda,
+    std::optional<Generator> generator) {
+  return native::templates::exponential_impl_<ExponentialStub, Generator>(
+      self, lambda, std::move(generator));
+}
+
 /* The largest consecutive integer representable in float32 (2^24) */
 constexpr int64_t FLOAT32_MAX_CONSECUTIVE_INT = 1 << (24);
 
