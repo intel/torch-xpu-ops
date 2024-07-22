@@ -9,7 +9,6 @@
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
-
 #include <functional>
 
 namespace at::native::xpu::pstl {
@@ -1428,6 +1427,27 @@ void sort(
   RECORD_FUNCTION("pstl::sort", {});
   sort_pairs<KeyType, ValueType>(
       in_key, out_key, nullptr, out_val, sort_sz, descending);
+}
+
+template <class T, class ForwardIt>
+struct IotaKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    first_[item_id] = value_ + static_cast<T>(item_id);
+  }
+  IotaKernelFunctor(ForwardIt first, T value) : first_(first), value_(value) {}
+
+ private:
+  ForwardIt first_;
+  T value_;
+};
+
+template <class T, class ForwardIt>
+static inline void iota(ForwardIt first, ForwardIt last, T value) {
+  RECORD_FUNCTION("iota_xpu", {});
+  const auto N = std::distance(first, last);
+
+  IotaKernelFunctor<T, ForwardIt> kfn(first, value);
+  sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
 }
 
 } // namespace at::native::xpu::pstl
