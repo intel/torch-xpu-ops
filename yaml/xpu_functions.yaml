@@ -179,6 +179,15 @@ supported:
   - cos
   - cos_
   - cos.out
+  - digamma
+  - digamma_
+  - digamma.out
+  - polygamma
+  - polygamma_
+  - polygamma.out
+  - lgamma
+  - lgamma_
+  - lgamma.out
   - log
   - log_
   - log.out
@@ -191,6 +200,15 @@ supported:
   - log2
   - log2_
   - log2.out
+  - logaddexp
+  - logaddexp.out
+  - logaddexp2
+  - logaddexp2.out
+  - logit
+  - logit_
+  - logit.out
+  - logit_backward.grad_input
+  - logit_backward
   - logical_and
   - logical_and_
   - logical_and.out
@@ -232,6 +250,13 @@ supported:
   - exp
   - exp.out
   - exp_
+  - exp2
+  - exp2_
+  - exp2.out
+  - expm1
+  - expm1_
+  - expm1.out
+  - exponential_
   - empty.memory_format
   - empty_strided
   - eye.out
@@ -452,6 +477,10 @@ supported:
   - mse_loss.out
   - mse_loss_backward
   - mse_loss_backward.grad_input
+  - binary_cross_entropy
+  - binary_cross_entropy.out
+  - binary_cross_entropy_backward
+  - binary_cross_entropy_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
@@ -542,6 +571,9 @@ supported:
   - erf
   - erf_
   - erf.out
+  - erfinv
+  - erfinv_
+  - erfinv.out
   - linalg_vector_norm
   - linalg_vector_norm.out
   - grid_sampler_2d
@@ -585,6 +617,30 @@ supported:
   - randperm.generator_out
   - _amp_foreach_non_finite_check_and_unscale_
   - _amp_update_scale_
+  - unique_dim
+  - unique_dim_consecutive
+  - unique_consecutive
+  - _unique
+  - _unique2
+  - _aminmax
+  - _aminmax.dim
+  - aminmax
+  - aminmax.out
+  - argmin
+  - argmin.out
+  - frac
+  - frac_
+  - frac.out
+  - floor
+  - floor_
+  - floor.out
+  - floor_divide
+  - floor_divide_.Tensor
+  - floor_divide.out
+  - fmax
+  - fmax.out
+  - fmin
+  - fmin.out
   - nll_loss2d_forward.output
   - nll_loss2d_forward
   - nll_loss2d_backward.grad_input
@@ -604,4 +660,12 @@ supported:
   - histogram.bins_tensor_out
   - histogram.bin_ct
   - histogram.bin_ct_out
+  - norm.ScalarOpt_dim_dtype
+  - norm.dtype_out
+  - norm.ScalarOpt_dim
+  - norm.out
+  - renorm
+  - renorm.out
+  - renorm_
   - nan_to_num.out
+  - range.out
