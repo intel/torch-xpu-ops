@@ -42,7 +42,7 @@ void div_trunc_kernel(TensorIteratorBase& iter) {
     // precision compared to computing the division.
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, dtype, "div_trunc_xpu", [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto inv_b = accscalar_t(1.0) / iter.scalar_value<accscalar_t>(2);
           iter.remove_operand(2);
           gpu_kernel(iter, DivTruncScalarFunctor<scalar_t, accscalar_t>(inv_b));

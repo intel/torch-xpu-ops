@@ -463,7 +463,7 @@ void normal_kernel(const TensorBase& self, double mean_, double std_, RNG gen) {
       iter.dtype(),
       "normal_kernel_xpu",
       [&] {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto mean = static_cast<accscalar_t>(mean_);
         auto std = static_cast<accscalar_t>(std_);
         normal_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
@@ -628,7 +628,7 @@ void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
       iter.dtype(),
       "exponential__xpu_",
       [&] {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto lambd = static_cast<accscalar_t>(lambda);
         ExponentialFunctor<scalar_t, accscalar_t> exponential_func(lambd);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
