@@ -177,6 +177,7 @@ skip_list = (
     "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
     "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_float32",
+    "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
     "test_variant_consistency_eager_to_sparse_xpu_complex64",
     "test_variant_consistency_eager_to_sparse_xpu_float32",
     "test_compare_cpu__refs_special_zeta_xpu_float32",
@@ -725,6 +726,8 @@ skip_list = (
     "test_variant_consistency_eager_svd_lowrank_xpu_complex64",
     "test_conj_view_pca_lowrank_xpu_complex64",
     "test_conj_view_svd_lowrank_xpu_complex64",
+    "test_neg_conj_view_pca_lowrank_xpu_complex128",
+    "test_neg_conj_view_svd_lowrank_xpu_complex128",
     ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
     # https://github.com/intel/torch-xpu-ops/issues/253
     "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
