@@ -477,6 +477,10 @@ supported:
   - mse_loss.out
   - mse_loss_backward
   - mse_loss_backward.grad_input
+  - binary_cross_entropy
+  - binary_cross_entropy.out
+  - binary_cross_entropy_backward
+  - binary_cross_entropy_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
