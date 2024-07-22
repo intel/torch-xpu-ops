@@ -568,6 +568,16 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_out(
   return {values, indices};
 }
 
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_aminmax(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim) {
+  TORCH_WARN_ONCE(
+      "_aminmax is deprecated as of PyTorch 1.11 and will be removed in a future release. Use aminmax instead."
+      " This warning will only appear once per process.");
+  return XPUNativeFunctions::aminmax(self, dim, keepdim);
+}
+
 static inline void check_for_unsupported_isin_dtype(const ScalarType type) {
   // Bail out for dtypes unsupported by the sorting algorithm to keep the
   // interface consistent.
