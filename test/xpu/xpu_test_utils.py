@@ -112,6 +112,7 @@ _xpu_computation_op_list = [
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
+    "nextafter",
     "nonzero",
     "normal",
     "pow",

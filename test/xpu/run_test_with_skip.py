@@ -760,12 +760,17 @@ skip_list = (
     #XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
+    # Align with CPU implementation since,
+    # 1. most cases of nextafter require Half dtype.
+    # 2. Half dtype is a common dtype in workloads.
+    # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
+    "test_dtypes_nextafter_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
+
 # test_binary_ufuncs
-
-
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
@@ -777,12 +782,18 @@ skip_list = (
     "test_pow_xpu_uint8",
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
+    # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
+    # https://github.com/intel/torch-xpu-ops/issues/623
+    # AssertionError: Scalars are not equal!
+    # Expected 9.183549615799121e-41 but got 0.0.
+    # Absolute difference: 9.183549615799121e-41
+    # Relative difference: 1.0
+    "test_nextafter_bfloat16_xpu_bfloat16",
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
+
 # test_scatter_gather_ops
-
-
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
@@ -2641,7 +2652,6 @@ skip_list = (
     "test_inplace_grad_addbmm_xpu_complex128",
     "test_inplace_gradgrad_addbmm_xpu_complex128",
     ### Error #2 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
-    "test_fn_grad_bernoulli_xpu_float64",
     "test_fn_grad_linalg_norm_xpu_complex128",
     "test_fn_grad_linalg_vector_norm_xpu_complex128",
     "test_fn_grad_nn_functional_rrelu_xpu_float64",
@@ -2704,7 +2714,6 @@ skip_list = (
     "test_storage_setitem_xpu_float32",
     "test_tensor_storage_type_xpu_float32",
     ### Error #5 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Scalars are not equal!
-    "test_bernoulli_edge_cases_xpu_float16",
     "test_strides_propagation_xpu",
     ### Error #7 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map2_ is only implemented on CPU tensors
     "test_broadcast_fn_map2_xpu",

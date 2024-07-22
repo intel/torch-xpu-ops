@@ -118,6 +118,9 @@ supported:
   - hypot
   - hypot.out
   - hypot_
+  - nextafter
+  - nextafter.out
+  - nextafter_
   - relu
   - relu_
   - relu.out
@@ -529,6 +532,7 @@ supported:
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
+  - _embedding_bag_backward
   - sgn
   - sgn.out
   - sgn_
