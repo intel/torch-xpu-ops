@@ -773,21 +773,27 @@ skip_list = (
     # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
     # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
     "test_python_ref__refs_log2_xpu_complex128",
-  
+
     #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
     #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
     #XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
-    
+
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
+    # Align with CPU implementation since,
+    # 1. most cases of nextafter require Half dtype.
+    # 2. Half dtype is a common dtype in workloads.
+    # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
+    "test_dtypes_nextafter_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
+
 # test_binary_ufuncs
-
-
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
@@ -801,12 +807,19 @@ skip_list = (
     "_jiterator_",
     # Unexpected success
     "test_type_promotion_logaddexp_xpu",
+
+    # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
+    # https://github.com/intel/torch-xpu-ops/issues/623
+    # AssertionError: Scalars are not equal!
+    # Expected 9.183549615799121e-41 but got 0.0.
+    # Absolute difference: 9.183549615799121e-41
+    # Relative difference: 1.0
+    "test_nextafter_bfloat16_xpu_bfloat16",
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
+
 # test_scatter_gather_ops
-
-
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
