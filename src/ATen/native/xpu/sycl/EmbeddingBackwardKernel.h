@@ -141,18 +141,19 @@ struct ComputeGradWeightBagsKernelFunctor {
     const int idx_end =
         (id == num_of_segments_ - 1) ? numel_ : segment_offsets_ptr[id + 1];
 
-    acc_type<scalar_t, true> weight = 0.f;
+    acc_type_device<scalar_t, kXPU> weight = 0.f;
     for (int idx = idx_begin; idx < idx_end; ++idx) {
       const int orig_row = indices_ptr[idx];
       const int seq_number = offset2bag_ptr[orig_row];
       const int grad_output_row = seq_number * stride_;
 
-      acc_type<scalar_t, true> scale = count_ptr ? 1.f / count_ptr[idx] : 1.f;
+      acc_type_device<scalar_t, kXPU> scale =
+          count_ptr ? 1.f / count_ptr[idx] : 1.f;
       if (per_sample_weight_defined_) {
         scale *= per_sample_weights_ptr[orig_row * per_sample_weights_stride_];
       }
 
-      acc_type<scalar_t, true> gradient =
+      acc_type_device<scalar_t, kXPU> gradient =
           gradoutput_ptr[grad_output_row + startFeature];
       if (mode_mean_) {
         gradient /= bag_size_ptr[seq_number];
@@ -170,7 +171,7 @@ struct ComputeGradWeightBagsKernelFunctor {
       bool per_sample_weight_defined,
       bool count_defined,
       int64_t per_sample_weights_stride,
-      acc_type<scalar_t, true>* grad_weight_per_segment_data,
+      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
       index_t* indices_data,
       scalar_t* gradoutput_data,
       index_t* offset2bag_data,
@@ -204,7 +205,7 @@ struct ComputeGradWeightBagsKernelFunctor {
   bool per_sample_weight_defined_;
   bool count_defined_;
   int64_t per_sample_weights_stride_;
-  acc_type<scalar_t, true>* grad_weight_per_segment_data_;
+  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
   index_t* indices_data_;
   scalar_t* gradoutput_data_;
   index_t* offset2bag_data_;
@@ -234,7 +235,8 @@ void compute_grad_weight_bags(
       per_sample_weights.defined() ? per_sample_weights.stride(0) : 0;
 
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.template data_ptr<acc_type<scalar_t, true>>();
+      grad_weight_per_segment
+          .template data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto indices_data = indices.template data_ptr<index_t>();
   auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
   auto offset2bag_data = offset2bag.data_ptr<index_t>();
@@ -303,11 +305,11 @@ struct ComputeGradWeightKernelFunctor {
     const int idx_end =
         (id == num_of_segments_ - 1) ? numel_ : segment_offsets_ptr[id + 1];
 
-    acc_type<scalar_t, true> weight = 0.f;
+    acc_type_device<scalar_t, kXPU> weight = 0.f;
     for (int idx = idx_begin; idx < idx_end; idx++) {
       const index_t target_row = indices_ptr[idx];
 
-      const acc_type<scalar_t, true> scale =
+      const acc_type_device<scalar_t, kXPU> scale =
           count_ptr ? 1.f / count_ptr[idx] : 1.f;
       weight += grad_output_ptr[target_row * stride_ + startFeature] * scale;
     }
@@ -319,7 +321,7 @@ struct ComputeGradWeightKernelFunctor {
       int64_t num_of_segments,
       int64_t stride_warped,
       bool count_defined,
-      acc_type<scalar_t, true>* grad_weight_per_segment_data,
+      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
       index_t* indices_data,
       scalar_t* grad_output_data,
       index_t* count_data,
@@ -341,7 +343,7 @@ struct ComputeGradWeightKernelFunctor {
   int64_t num_of_segments_;
   int64_t stride_warped_;
   bool count_defined_;
-  acc_type<scalar_t, true>* grad_weight_per_segment_data_;
+  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
   index_t* indices_data_;
   scalar_t* grad_output_data_;
   index_t* count_data_;
@@ -361,7 +363,7 @@ void compute_grad_weight(
   bool count_defined = count.defined();
 
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.data_ptr<acc_type<scalar_t, true>>();
+      grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto indices_data = indices.data_ptr<index_t>();
   auto grad_output_data = grad_output.data_ptr<scalar_t>();
   auto count_data = count_defined
@@ -418,7 +420,7 @@ struct SumAndScatterKernelFunctor {
     const int idx_end = (id == num_of_segments_ - 1)
         ? num_of_partial_segments_
         : segment_sizes_offsets_ptr[id + 1];
-    acc_type<scalar_t, true> weight = 0.f;
+    acc_type_device<scalar_t, kXPU> weight = 0.f;
     for (int idx = idx_begin; idx < idx_end; idx++) {
       weight += grad_weight_per_segment_ptr[idx * stride_ + startFeature];
     }
@@ -437,7 +439,7 @@ struct SumAndScatterKernelFunctor {
       scalar_t* grad_weight_data,
       index_t* input_data,
       index_t* segment_offsets_data,
-      acc_type<scalar_t, true>* grad_weight_per_segment_data,
+      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
       index_t* segment_sizes_offsets_data)
       : stride_(stride),
         num_of_segments_(num_of_segments),
@@ -463,7 +465,7 @@ struct SumAndScatterKernelFunctor {
   scalar_t* grad_weight_data_;
   index_t* input_data_;
   index_t* segment_offsets_data_;
-  acc_type<scalar_t, true>* grad_weight_per_segment_data_;
+  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
   index_t* segment_sizes_offsets_data_;
 };
 
@@ -482,7 +484,7 @@ void sum_and_scatter(
   auto input_data = input.data_ptr<index_t>();
   auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.data_ptr<acc_type<scalar_t, true>>();
+      grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto segment_sizes_offsets_data = segment_sizes_offsets.data_ptr<index_t>();
 
   auto kfn = SumAndScatterKernelFunctor<scalar_t, index_t>(

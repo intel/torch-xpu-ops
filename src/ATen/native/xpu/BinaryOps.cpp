@@ -12,10 +12,11 @@
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
+#include <ATen/native/xpu/sycl/StepKernels.h>
 
 namespace at {
-
 Tensor XPUNativeFunctions::add(
     const Tensor& self,
     const Tensor& other,
@@ -383,6 +384,28 @@ Tensor& XPUNativeFunctions::gcd_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::nextafter(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::nextafter_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::nextafter_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::nextafter_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::nextafter_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::nextafter_kernel(iter);
+  return out;
+}
+
 Tensor XPUNativeFunctions::hypot(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
@@ -459,6 +482,28 @@ Tensor& XPUNativeFunctions::minimum_out(
   return output;
 }
 
+Tensor& XPUNativeFunctions::logit_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps,
+    Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::logit_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    std::optional<double> eps) {
+  Tensor grad_input;
+  TensorIterator iter;
+  iter.build_borrowing_binary_op(grad_input, grad_output, input);
+  native::xpu::logit_backward_kernel(iter, Scalar(eps ? eps.value() : -1.0));
+  return iter.output();
+}
+
 Tensor& XPUNativeFunctions::sigmoid_backward_out(
     const Tensor& grad_output,
     const Tensor& output,
@@ -477,6 +522,38 @@ Tensor XPUNativeFunctions::sigmoid_backward(
   iter.build_borrowing_binary_op(grad_input, grad_output, output);
   native::xpu::sigmoid_backward_kernel(iter);
   return iter.output();
+}
+
+Tensor XPUNativeFunctions::logaddexp(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::logaddexp2(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::logaddexp2_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::logaddexp2_kernel(iter);
+  return out;
 }
 
 Tensor& XPUNativeFunctions::floor_divide_out(

@@ -2,6 +2,7 @@
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
+#include <ATen/native/xpu/sycl/LossKernels.h>
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
@@ -79,6 +80,7 @@ Tensor& XPUNativeFunctions::mse_loss_backward_out(
   return grad_input;
 }
 
+
 Tensor& XPUNativeFunctions::smooth_l1_loss_out(
     const Tensor& input,
     const Tensor& target,
@@ -134,6 +136,60 @@ Tensor& XPUNativeFunctions::smooth_l1_loss_backward_out(
                   .build();
   native::xpu::smooth_l1_backward_kernel(iter, norm, beta);
   return grad_input;
+}
+
+Tensor XPUNativeFunctions::binary_cross_entropy(
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight_opt,
+    int64_t reduction) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  Tensor loss = at::empty_like(self);
+  return native::xpu::binary_cross_entropy_kernel(
+      self, target, weight, reduction, loss);
+}
+
+Tensor& XPUNativeFunctions::binary_cross_entropy_out(
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight_opt,
+    int64_t reduction,
+    Tensor& loss) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  return native::xpu::binary_cross_entropy_kernel(
+      self, target, weight, reduction, loss);
+}
+
+Tensor XPUNativeFunctions::binary_cross_entropy_backward(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight_opt,
+    int64_t reduction) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  Tensor grad_input = at::empty_like(self);
+  return native::xpu::binary_cross_entropy_backward_kernel(
+      grad_output, self, target, weight, reduction, grad_input);
+}
+
+Tensor& XPUNativeFunctions::binary_cross_entropy_backward_out(
+    const Tensor& grad_output,
+    const Tensor& self,
+    const Tensor& target,
+    const std::optional<Tensor>& weight_opt,
+    int64_t reduction,
+    Tensor& grad_input) {
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_opt);
+  const Tensor& weight = *weight_maybe_owned;
+  return native::xpu::binary_cross_entropy_backward_kernel(
+      grad_output, self, target, weight, reduction, grad_input);
 }
 
 Tensor XPUNativeFunctions::huber_loss(
