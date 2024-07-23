@@ -986,7 +986,7 @@ Tensor& XPUNativeFunctions::norm_out(
   impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
   return result;
 }
-  
+
 TensorIterator meta_aminmax(
     const Tensor& self,
     std::optional<int64_t> dim_opt,

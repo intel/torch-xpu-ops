@@ -302,7 +302,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "special_zeta.out",
     "take",
     "_thnn_fused_gru_cell",
-    "topk.values",
     "_to_sparse",
     "_to_sparse_csr",
     "triangular_solve.X",
