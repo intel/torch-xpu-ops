@@ -165,7 +165,7 @@ void upsample_bicubic2d_kernel(
         auto odata = output.packed_accessor64<scalar_t, 4>();
 
         // Get scaling factors
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         const accscalar_t rheight = area_pixel_compute_scale<accscalar_t>(
             input_height, output_height, align_corners, scales_h);
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(

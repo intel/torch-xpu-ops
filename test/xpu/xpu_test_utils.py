@@ -111,6 +111,7 @@ _xpu_computation_op_list = [
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
+    "nextafter",
     "nonzero",
     "normal",
     "pow",
@@ -154,6 +155,7 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    # "topk", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
     "roll",
     "tril",
@@ -176,6 +178,7 @@ _xpu_computation_op_list = [
     "nn.functional.upsample_nearest",
     "nn.functional.nll_loss",
     "nn.functional.mse_loss",
+    "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "sigmoid",
     "logsigmoid",

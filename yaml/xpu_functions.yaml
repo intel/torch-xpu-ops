@@ -118,6 +118,9 @@ supported:
   - hypot
   - hypot.out
   - hypot_
+  - nextafter
+  - nextafter.out
+  - nextafter_
   - relu
   - relu_
   - relu.out
@@ -406,6 +409,8 @@ supported:
   - sort.stable
   - sort.values_stable
   - argsort.stable
+  - topk
+  - topk.values
   - _foreach_add.Scalar
   - _foreach_add_.Scalar
   - _foreach_add.ScalarList
@@ -477,6 +482,10 @@ supported:
   - mse_loss.out
   - mse_loss_backward
   - mse_loss_backward.grad_input
+  - binary_cross_entropy
+  - binary_cross_entropy.out
+  - binary_cross_entropy_backward
+  - binary_cross_entropy_backward.grad_input
   - nll_loss_forward.output
   - nll_loss_forward
   - nll_loss_backward.grad_input
@@ -525,6 +534,7 @@ supported:
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
+  - _embedding_bag_backward
   - sgn
   - sgn.out
   - sgn_
@@ -668,4 +678,8 @@ supported:
   - norm.dtype_out
   - norm.ScalarOpt_dim
   - norm.out
+  - renorm
+  - renorm.out
+  - renorm_
   - nan_to_num.out
+  - range.out

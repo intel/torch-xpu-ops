@@ -76,7 +76,7 @@ void div_floor_kernel(TensorIteratorBase& iter) {
     // precision compared to computing the division.
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, dtype, "div_floor_xpu", [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto b = iter.scalar_value<accscalar_t>(2);
           if (C10_UNLIKELY(b == 0)) {
             return div_true_kernel(iter);
