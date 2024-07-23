@@ -409,6 +409,8 @@ supported:
   - sort.stable
   - sort.values_stable
   - argsort.stable
+  - topk
+  - topk.values
   - _foreach_add.Scalar
   - _foreach_add_.Scalar
   - _foreach_add.ScalarList
