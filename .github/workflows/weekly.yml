@@ -1,9 +1,9 @@
-name: Nightly-OnDemand Tests
+name: Weekly-OnDemand Tests
 
 on:
   schedule:
-    # GMT+8 21:00 every day
-    - cron: '0 13 * * *'
+    # GMT+8 0:00 Saturday
+    - cron: '0 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -19,38 +19,13 @@ on:
       ut:
         required: false
         type: string
-        default: 'torch_xpu'
+        default: 'op_example,op_extended,op_ut,torch_xpu'
         description: UT scope. `op_example,op_extended,op_ut,torch_xpu`. Delimiter is comma
       triton:
         required: false
         type: string
         default: ''
         description: Triton commit. Use pytorch pined commit by default
-      suite:
-        required: true
-        type: string
-        default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
-      dt:
-        required: true
-        type: string
-        default: 'float32'
-        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
-      mode:
-        required: true
-        type: string
-        default: 'inference'
-        description: Test mode. `inference,training`. Delimiter is comma
-      scenario:
-        required: true
-        type: string
-        default: 'accuracy'
-        description: Test scenario. `accuracy,performance`. Delimiter is comma
-      model:
-        required: false
-        type: string
-        default: ''
-        description: Model. Will only run this one mode if set
       python:
         required: false
         type: string
@@ -64,7 +39,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Linux-Nightly-Ondemand-UT-Tests:
+  Linux-Weekly-Ondemand-UT-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
     with: 
@@ -74,11 +49,11 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: linux.idc.xpu
 
-  Linux-Nightly-Ondemand-E2E-Tests:
+  Linux-Weekly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 900
+    timeout-minutes: 3000
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -174,45 +149,35 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
-      - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule'
+      # Huggingface
+      - name: Weekly Huggingface Full Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
-          scenario: accuracy
+          scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+      # Torchbench
+      - name: Weekly Torchbench Full Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
           env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+      # Timm_models
+      - name: Weekly Timm_models Full Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
-          dt: float16
-          mode: training
-          scenario: accuracy
           env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: github.event_name != 'schedule'
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: ${{ inputs.suite }}
-          env_prepare: true
-          dt: ${{ inputs.dt }}
-          mode: ${{ inputs.mode }}
-          scenario: ${{ inputs.scenario }}
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
         id: summary
@@ -242,7 +207,7 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-      
+
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: pvc_e2e
@@ -251,34 +216,34 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-Tests
+    needs: Linux-Weekly-Ondemand-E2E-Tests
     steps:
-      - name: Report github issue for XPU OPS nightly
+      - name: Report github issue for XPU OPS Weekly
         if: github.repository_owner == 'intel'
         run: |
           set -xe
           # Test env
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_COMMIT_ID }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.DRIVER_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
+          TORCH_BRANCH_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TORCH_BRANCH_ID }}"
+          TORCH_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TORCH_COMMIT_ID }}"
+          DRIVER_VERSION="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.DRIVER_VERSION }}"
+          BUNDLE_VERSION="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.BUNDLE_VERSION }}"
+          OS_PRETTY_NAME="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.OS_PRETTY_NAME }}"
+          GCC_VERSION="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.GCC_VERSION }}"
+          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
+          TORCHVISION_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
+          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
+          TRANSFORMERS_VERSION="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
+          TIMM_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
+          TRITON_COMMIT_ID="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
+          TIMEOUT_MODELS="${{ needs.Linux-Weekly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
           # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "success" ];then
+          if [ "${{ needs.Linux-Weekly-Ondemand-E2E-Tests.result }}" == "success" ];then
             test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "failure" ];then
+          elif [ "${{ needs.Linux-Weekly-Ondemand-E2E-Tests.result }}" == "failure" ];then
             test_status=Failure
-            cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
+            cc_comment="CC ${{ secrets.Weekly_EMAIL_LIST }}"
           else
             test_status=None
             exit 0
@@ -289,7 +254,7 @@ jobs:
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
           else
-            test_type="Nightly"
+            test_type="Weekly"
             test_issue_id=432
           fi
           # Test report
@@ -305,16 +270,6 @@ jobs:
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
           echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.triton }}" != "" ];then
-              test_scope+="; triton=${{ inputs.triton }}"
-            fi
-            if [ "${{ inputs.model }}" != "" ];then
-              test_scope+="; model=${{ inputs.model }}"
-            fi
-            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
-          fi
           echo "$TIMEOUT_MODELS" >> ${{ github.workspace }}/report.txt
           echo "$cc_comment" >> ${{ github.workspace }}/report.txt
           # Report
