@@ -797,12 +797,12 @@ res += launch_test("test_ops_xpu.py", skip_list)
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
-    # RuntimeError: false INTERNAL ASSERT FAILED at "torch-xpu-ops/src/ATen/native/xpu/sycl/PowKernels.cpp":233, please report a bug to PyTorch. invalid combination of type in Pow function, common dtype: Short, exp is integral? 0
+    # Mismatched elements: 33 / 100 (33.0%)
+    # Greatest absolute difference: 0.00038337233127094805 at index (4,) (up to 1e-05 allowed)
+    # Greatest relative difference: 1.9085073290625587e-06 at index (6,) (up to 1.3e-06 allowed)
     "test_pow_xpu_int16",
     "test_pow_xpu_int32",
     "test_pow_xpu_int64",
-    "test_pow_xpu_int8",
-    "test_pow_xpu_uint8",
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # Unexpected success
