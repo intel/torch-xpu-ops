@@ -797,6 +797,7 @@ res += launch_test("test_ops_xpu.py", skip_list)
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
+    # fail in complex_exponents=[-1.0 - 1.5j, 3.3j]
     # Mismatched elements: 33 / 100 (33.0%)
     # Greatest absolute difference: 0.00038337233127094805 at index (4,) (up to 1e-05 allowed)
     # Greatest relative difference: 1.9085073290625587e-06 at index (6,) (up to 1.3e-06 allowed)
