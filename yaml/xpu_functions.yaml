@@ -118,6 +118,9 @@ supported:
   - hypot
   - hypot.out
   - hypot_
+  - nextafter
+  - nextafter.out
+  - nextafter_
   - relu
   - relu_
   - relu.out

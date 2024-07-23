@@ -14,6 +14,7 @@
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
+#include <ATen/native/xpu/sycl/StepKernels.h>
 
 namespace at {
 Tensor XPUNativeFunctions::add(
@@ -380,6 +381,28 @@ Tensor& XPUNativeFunctions::gcd_out(
     Tensor& out) {
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
   native::xpu::gcd_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::nextafter(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::nextafter_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::nextafter_(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::borrowing_binary_op(self, self, other);
+  native::xpu::nextafter_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::nextafter_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  auto iter = TensorIterator::borrowing_binary_op(out, self, other);
+  native::xpu::nextafter_kernel(iter);
   return out;
 }
 

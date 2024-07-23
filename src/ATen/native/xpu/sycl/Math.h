@@ -13,7 +13,7 @@ template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   // [C++ Standard Reference: Gamma Function]
   // https://en.cppreference.com/w/cpp/numeric/math/tgamma
-  using accscalar_t = at::acc_type<scalar_t, /*is_cuda=*/true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   static const double PI_f64 = 3.14159265358979323846;
   const accscalar_t PSI_10 = 2.25175258906672110764;
   const accscalar_t A[] = {
@@ -77,7 +77,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_trigamma(scalar_t in) {
-  using accscalar_t = at::acc_type<scalar_t, /*is_cuda=*/true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   const accscalar_t PI = 3.14159265358979323846;
   accscalar_t x = static_cast<accscalar_t>(in);
   accscalar_t sign = +1;
