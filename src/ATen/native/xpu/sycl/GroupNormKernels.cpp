@@ -27,10 +27,10 @@ struct WelfordOpsXPU
   inline acc_t shfl_down(acc_t acc, int offset) const {
     auto sg = item.get_sub_group();
     return {
-        sg.shuffle_down(acc.mean, offset),
-        sg.shuffle_down(acc.m2, offset),
-        sg.shuffle_down(acc.n, offset),
-        sg.shuffle_down(acc.nf, offset)};
+        sycl::shift_group_left(sg, acc.mean, offset),
+        sycl::shift_group_left(sg, acc.m2, offset),
+        sycl::shift_group_left(sg, acc.n, offset),
+        sycl::shift_group_left(sg, acc.nf, offset)};
   }
 
   WelfordOpsXPU(acc_scalar_t correction, bool take_sqrt, sycl::nd_item<1>& item)

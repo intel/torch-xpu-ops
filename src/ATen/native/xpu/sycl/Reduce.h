@@ -50,7 +50,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   for (int offset = 1; offset < sg_size; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
-      arg_t other = sg.shuffle_down(value[i], offset);
+      arg_t other = sycl::shift_group_left(sg, value[i], offset);
       value[i] = combine(value[i], other);
     }
   }
@@ -71,7 +71,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       for (int offset = 1; offset < sg_range; offset <<= 1) {
 #pragma unroll(out_vec_sz)
         for (int i = 0; i < out_vec_sz; ++i) {
-          arg_t other = sg.shuffle_down(value[i], offset);
+          arg_t other = sycl::shift_group_left(sg, value[i], offset);
           value[i] = combine(value[i], other);
         }
       }
@@ -132,7 +132,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
   for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
-      arg_t other = sg.shuffle_down(value[i], offset);
+      arg_t other = sycl::shift_group_left(sg, value[i], offset);
       value[i] = combine(value[i], other);
     }
   }
@@ -541,8 +541,8 @@ struct ReduceOp {
           (const scalar_t*)((const char*)src + base_offsets1);
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
-    // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-    // pair for half dtype, We temporarily workaround to do
+    // TODO: Currently, there are bugs with sycl::shift_group_left when the
+    // arg_t is a pair for half dtype, We temporarily workaround to do
     // "reduce_for_compound_dtype" function.
     constexpr bool is_pair =
         std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
@@ -832,8 +832,8 @@ struct ReduceOp {
     return value_list[0];
   }
 
-  // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-  // pair with half dtype, We temporarily workaround to do
+  // TODO: Currently, there are bugs with sycl::shift_group_left when the arg_t
+  // is a pair with half dtype, We temporarily workaround to do
   // "reduce_for_compound_dtype" function.
   template <int output_vec_size>
   at::detail::Array<arg_t, output_vec_size> group_reduce_for_compound_dtype(
@@ -850,7 +850,7 @@ struct ReduceOp {
     for (int offset = 1; offset < (int)sbgrpSize; offset <<= 1) {
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; ++i) {
-        arg_t other = sg.shuffle_down(value[i], offset);
+        arg_t other = sycl::shift_group_left(sg, value[i], offset);
         value[i] = ops.combine(value[i], other);
       }
     }
@@ -879,8 +879,8 @@ struct ReduceOp {
                 other = std::pair<
                     typename arg_t::first_type,
                     typename arg_t::second_type>(
-                    sg.shuffle_down(value[i].first, offset),
-                    sg.shuffle_down(value[i].second, offset));
+                    sycl::shift_group_left(sg, value[i].first, offset),
+                    sycl::shift_group_left(sg, value[i].second, offset));
             value[i] = ops.combine(value[i], other);
           }
         }
@@ -907,8 +907,8 @@ struct ReduceOp {
     return value;
   }
 
-  // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-  // pair for half dtype, We temporarily workaround to do
+  // TODO: Currently, there are bugs with sycl::shift_group_left when the arg_t
+  // is a pair for half dtype, We temporarily workaround to do
   // "reduce_for_compound_dtype" function.
   template <int output_vec_size>
   at::detail::Array<arg_t, output_vec_size> group_x_reduce_for_compound_dtype(
@@ -950,8 +950,8 @@ struct ReduceOp {
         std::pair<typename arg_t::first_type, typename arg_t::second_type>
             other = std::
                 pair<typename arg_t::first_type, typename arg_t::second_type>(
-                    sg.shuffle_down(value[i].first, offset),
-                    sg.shuffle_down(value[i].second, offset));
+                    sycl::shift_group_left(sg, value[i].first, offset),
+                    sycl::shift_group_left(sg, value[i].second, offset));
         value[i] = ops.combine(value[i], other);
       }
     }
@@ -1121,7 +1121,8 @@ struct ReduceOp {
           decltype(combine),
           output_vec_size>(pos, shared_memory, value, combine);
       if (config.should_group_x_reduce()) {
-        // TODO: workaround because sg.shuffle_down will fail on `half` dtype.
+        // TODO: workaround because sycl::shift_group_left will fail on `half`
+        // dtype.
         constexpr bool is_pair =
             std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
         if constexpr (is_pair) {
