@@ -86,7 +86,7 @@ void parallel_replication_pad1d(
 }
 
 template <typename scalar_t>
-struct replication_pad1d_forward_kernel_functor {
+struct ReplicationPad1dForwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 3> input,
       PackedTensorAccessor64<scalar_t, 3> output,
@@ -105,12 +105,12 @@ void replication_pad1d_forward_template(
     PackedTensorAccessor64<scalar_t, 3> output,
     int64_t pad_left,
     int64_t pad_right) {
-  replication_pad1d_forward_kernel_functor<scalar_t> f;
+  ReplicationPad1dForwardFunctor<scalar_t> f;
   parallel_replication_pad1d(input, output, pad_left, pad_right, f);
 }
 
 template <typename scalar_t>
-struct replication_pad1d_backward_kernel_functor {
+struct ReplicationPad1dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 3> grad_input,
       PackedTensorAccessor64<scalar_t, 3> grad_output,
@@ -131,7 +131,7 @@ void replication_pad1d_backward_template(
     PackedTensorAccessor64<scalar_t, 3> grad_output,
     int64_t pad_left,
     int64_t pad_right) {
-  replication_pad1d_backward_kernel_functor<scalar_t> f;
+  ReplicationPad1dBackwardFunctor<scalar_t> f;
   parallel_replication_pad1d(grad_input, grad_output, pad_left, pad_right, f);
 }
 
@@ -203,7 +203,7 @@ void parallel_replication_pad2d(
 }
 
 template <typename scalar_t>
-struct replication_pad2d_forward_kernel_functor {
+struct ReplicationPad2dForwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 4> input,
       PackedTensorAccessor64<scalar_t, 4> output,
@@ -224,12 +224,12 @@ void replication_pad2d_forward_template(
     PackedTensorAccessor64<scalar_t, 4> output,
     int64_t padT,
     int64_t padL) {
-  replication_pad2d_forward_kernel_functor<scalar_t> f;
+  ReplicationPad2dForwardFunctor<scalar_t> f;
   parallel_replication_pad2d(input, output, padT, padL, f);
 }
 
 template <typename scalar_t>
-struct replication_pad2d_backward_kernel_functor {
+struct ReplicationPad2dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 4> grad_input,
       PackedTensorAccessor64<scalar_t, 4> grad_output,
@@ -252,7 +252,7 @@ void replication_pad2d_backward_template(
     PackedTensorAccessor64<scalar_t, 4> grad_output,
     const int padT,
     const int padL) {
-  replication_pad2d_backward_kernel_functor<scalar_t> f;
+  ReplicationPad2dBackwardFunctor<scalar_t> f;
   parallel_replication_pad2d(grad_input, grad_output, padT, padL, f);
 }
 
@@ -345,7 +345,7 @@ void parallel_replication_pad3d(
 }
 
 template <typename scalar_t>
-struct replication_pad3d_forward_kernel_functor {
+struct ReplicationPad3dForwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 5> input,
       PackedTensorAccessor64<scalar_t, 5> output,
@@ -369,12 +369,12 @@ void replication_pad3d_forward_template(
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
-  replication_pad3d_forward_kernel_functor<scalar_t> f;
+  ReplicationPad3dForwardFunctor<scalar_t> f;
   parallel_replication_pad3d(input, output, pad_left, pad_top, pad_front, f);
 }
 
 template <typename scalar_t>
-struct replication_pad3d_backward_kernel_functor {
+struct ReplicationPad3dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 5> grad_input,
       PackedTensorAccessor64<scalar_t, 5> grad_output,
@@ -400,7 +400,7 @@ void replication_pad3d_backward_template(
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
-  replication_pad3d_backward_kernel_functor<scalar_t> f;
+  ReplicationPad3dBackwardFunctor<scalar_t> f;
   parallel_replication_pad3d(
       grad_input, grad_output, pad_left, pad_top, pad_front, f);
 }
@@ -511,6 +511,9 @@ void replication_pad2d_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("replication_pad2d_backward_xpu");
   TORCH_CHECK(canUse32BitIndexMath(input),
       "input tensor must fit into 32-bit index math");
   TORCH_CHECK(canUse32BitIndexMath(grad_output),
@@ -683,6 +686,9 @@ void replication_pad3d_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("replication_pad3d_backward_xpu");
   TORCH_CHECK(padding.size() == 6, "padding Size is expected to be 6");
 
   int pad_left = padding[0];

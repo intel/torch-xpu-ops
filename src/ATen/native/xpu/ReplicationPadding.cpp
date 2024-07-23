@@ -260,9 +260,6 @@ Tensor& XPUNativeFunctions::replication_pad2d_backward_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& grad_input) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("replication_pad2d_backward_out_xpu");
   native::xpu::replication_pad2d_backward_kernel(
       grad_input, grad_output, input, padding);
   return grad_input;
@@ -272,9 +269,6 @@ Tensor XPUNativeFunctions::replication_pad2d_backward(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("replication_pad2d_backward_xpu");
   auto grad_input = at::empty_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   native::xpu::replication_pad2d_backward_kernel(
       grad_input, grad_output, input, padding);
@@ -303,9 +297,6 @@ Tensor XPUNativeFunctions::replication_pad3d_backward(
     const Tensor& grad_output,
     const Tensor& input,
     at::IntArrayRef padding) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("replication_pad3d_backward_xpu");
   auto grad_input = at::empty_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   native::xpu::replication_pad3d_backward_kernel(
       grad_input, grad_output, input, padding);
@@ -317,9 +308,6 @@ Tensor& XPUNativeFunctions::replication_pad3d_backward_out(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& grad_input) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("replication_pad3d_backward_out_xpu");
   native::xpu::replication_pad3d_backward_kernel(
       grad_input, grad_output, input, padding);
   return grad_input;
