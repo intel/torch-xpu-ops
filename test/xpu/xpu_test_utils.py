@@ -166,6 +166,7 @@ _xpu_computation_op_list = [
     "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
     "nn.functional.nll_loss",
+    "nn.functional.smooth_l1_loss",
     "nn.functional.mse_loss",
     "nn.functional.huber_loss",
     "sigmoid",
