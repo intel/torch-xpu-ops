@@ -210,6 +210,7 @@ _xpu_computation_op_list = [
     "argmin",
     "conj_physical",
     "histogram",
+    "repeat_interleave",
     "fmax",
     "fmin",
     "floor",
