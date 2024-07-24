@@ -13,7 +13,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
-from torch.testing._internal.common_modules import module_db, ModuleInfo
+from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
