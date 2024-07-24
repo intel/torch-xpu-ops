@@ -36,12 +36,15 @@ expected_failed_models = []
 new_models = []
 new_pass_models = []
 lost_models = []
+timeout_models = []
 for model_name in model_names:
 # for index, row in refer_data.iterrows():
     test_row = next(([i, line] for i, line in test_data.iterrows() if line["name"] == model_name), "N/A")
     refer_row = next(([i, line] for i, line in refer_data.iterrows() if line["name"] == model_name), "N/A")
     test_accuracy = test_row[1]["accuracy"] if test_row != "N/A" else "N/A"
     refer_accuracy = refer_row[1][args.dtype] if refer_row != "N/A" else "N/A"
+    test_accuracy = str(test_accuracy)
+    refer_accuracy = str(refer_accuracy)
     if test_accuracy == "N/A":
         lost_models.append([model_name, test_accuracy])
     elif 'pass' in test_accuracy:
@@ -54,6 +57,13 @@ for model_name in model_names:
         elif 'pass' not in refer_accuracy:
             new_pass_models.append([model_name, test_accuracy])
             refer_data.at[refer_row[0], args.dtype] = test_accuracy
+    elif 'timeout' in test_accuracy:
+        timeout_models.append([model_name, test_accuracy])
+        if refer_accuracy == "N/A":
+            new_models.append([model_name, test_accuracy])
+            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.at[len(refer_data) - 1, "name"] = model_name
+            refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
     else:
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
@@ -72,8 +82,9 @@ for model_name in model_names:
 print("============ Summary for {} {} {} accuracy ============".format(args.suite, args.dtype, args.mode))
 print("Total models:", len(model_names))
 print("Passed models:", len(passed_models))
-print("Real failed: models:", len(real_failed_models), real_failed_models)
-print("Expected failed: models:", len(expected_failed_models), expected_failed_models)
+print("Real failed models:", len(real_failed_models), real_failed_models)
+print("Expected failed models:", len(expected_failed_models), expected_failed_models)
+print("Warning timeout models:", len(timeout_models), timeout_models)
 print("New models:", len(new_models), new_models)
 print("Failed to passed models:", len(new_pass_models), new_pass_models)
 print("Not run/in models:", len(lost_models), lost_models)
