@@ -209,6 +209,7 @@ _xpu_computation_op_list = [
     "aminmax",
     "argmin",
     "conj_physical",
+    "repeat_interleave",
     "fmax",
     "fmin",
     "floor",

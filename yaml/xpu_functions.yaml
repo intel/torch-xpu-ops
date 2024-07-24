@@ -660,6 +660,7 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - repeat_interleave.Tensor
   - norm.ScalarOpt_dim_dtype
   - norm.dtype_out
   - norm.ScalarOpt_dim

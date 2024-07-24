@@ -248,7 +248,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "repeat_interleave.Tensor",
     "replication_pad1d_backward.grad_input",
     "replication_pad1d.out",
     "replication_pad2d_backward",
