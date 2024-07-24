@@ -10,7 +10,7 @@ parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs=
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 parser.add_argument('--html_off', action='store_true', help='turn off html file generate')
-parser.add_argument('-sc', '--scenario', default=['performance'], nargs='*', type=str, help='Test scenario set')
+parser.add_argument('-sc', '--scenario', default=["performance"], nargs='*', type=str, help='Test scenario set')
 args = parser.parse_args()
 
 passrate_values = {}
@@ -31,26 +31,28 @@ def percentage(part, whole, decimals=2):
     return round(100 * float(part) / float(whole), decimals)
 
 
-def get_passing_entries(df, column_name):
-    if 'performance' in args.scenario:
+def get_passing_entries(df, column_name, scenario):
+    #for scenario in args.scenario:
+    if scenario == 'performance':
         return df[column_name][df[column_name] > 0]
     else:
         return df[df[column_name].notnull()]
 
 
-def caculate_geomean(df, column_name):
-    cleaned_df = get_passing_entries(df, column_name).clip(1)
+def caculate_geomean(df, column_name, scenario):
+    cleaned_df = get_passing_entries(df, column_name, scenario).clip(1)
     if cleaned_df.empty:
         return "0.0x"
     return f"{gmean(cleaned_df):.2f}x"
 
 
-def caculate_passrate(df, key_word):
+def caculate_passrate(df, key_word, scenario):
     total = len(df.index)
-    if 'performance' in args.scenario:
+    #for scenario in args.scenario:
+    if scenario == 'performance':
         passing = df[df[key_word] > 0.0][key_word].count()
     else:
-        df = get_passing_entries(df, key_word)
+        df = get_passing_entries(df, key_word, scenario)
         passing = df[df[key_word].fillna('').str.contains('pass')][key_word].count()
     perc = int(percentage(passing, total, decimals=0))
     return f"{perc}%, {passing}/{total}"
@@ -71,44 +73,46 @@ def get_perf_csv(scenario, precision, mode):
     else:
         return target_data
 
-def process(input, precision, mode):
+def process(input, scenario, precision, mode):
     global geomean_values, passrate_values
-    if input is not None and 'performance' in args.scenario:
+    processed_data = pd.DataFrame()
+    if input is not None and scenario == 'performance':
         if args.reference is None:
             data_new = input[['name', 'batch_size', 'speedup', 'abs_latency','compilation_latency']].rename(columns={'name': 'name', 'batch_size': 'batch_size', 'speedup': 'speedup', "abs_latency": 'inductor', "compilation_latency": 'compilation_latency'})
             data_new['inductor'] = data_new['inductor'].apply(pd.to_numeric, errors='coerce').div(1000)
             data_new['speedup'] = data_new['speedup'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             data_new['eager'] = data_new['speedup'] * data_new['inductor']
-            geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speedup')
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor')
-            data = StyleFrame({'name': list(data_new['name']),
+            geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speedup', scenario)
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor', scenario)
+            #processed_data = data_new
+            processed_data = StyleFrame({'name': list(data_new['name']),
                             'batch_size': list(data_new['batch_size']),
                             'speedup': list(data_new['speedup']),
                             'inductor': list(data_new['inductor']),
                             'eager': list(data_new['eager']),
                             'compilation_latency': list(data_new['compilation_latency'])})
-            data.set_column_width(1, 10)
-            data.set_column_width(2, 18)
-            data.set_column_width(3, 18)
-            data.set_column_width(4, 18)
-            data.set_column_width(5, 15)
-            data.set_column_width(6, 20)
-            data.set_row_height(rows=data.row_indexes, height=15)
+            processed_data.set_column_width(1, 10)
+            processed_data.set_column_width(2, 18)
+            processed_data.set_column_width(3, 18)
+            processed_data.set_column_width(4, 18)
+            processed_data.set_column_width(5, 15)
+            processed_data.set_column_width(6, 20)
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)
         else:
             data_new=input[['name','batch_size_x','speedup_x','abs_latency_x','compilation_latency_x']].rename(columns={'name':'name','batch_size_x':'batch_size_new','speedup_x':'speed_up_new',"abs_latency_x":'inductor_new',"compilation_latency_x":'compilation_latency_new'})
             data_new['inductor_new']=data_new['inductor_new'].astype(float).div(1000)
             data_new['speed_up_new']=data_new['speed_up_new'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             data_new['eager_new'] = data_new['speed_up_new'] * data_new['inductor_new']
-            geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speed_up_new')
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor_new')        
+            geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speed_up_new', scenario)
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor_new', scenario)        
             data_old=input[['batch_size_y','speedup_y','abs_latency_y','compilation_latency_y']].rename(columns={'batch_size_y':'batch_size_old','speedup_y':'speed_up_old',"abs_latency_y":'inductor_old',"compilation_latency_y":'compilation_latency_old'}) 
             data_old['inductor_old']=data_old['inductor_old'].astype(float).div(1000)
             data_old['speed_up_old']=data_old['speed_up_old'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             data_old['eager_old'] = data_old['speed_up_old'] * data_old['inductor_old']
             input['speedup_x']=input['speedup_x'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             input['speedup_y']=input['speedup_y'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
-            geomean_values['reference_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_old, 'speed_up_old')
-            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'inductor_old')        
+            geomean_values['reference_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_old, 'speed_up_old', scenario)
+            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'inductor_old', scenario)        
             data_ratio= pd.DataFrame(round(input['speedup_x'] / input['speedup_y'],2),columns=['Ratio Speedup(New/old)'])
             data_ratio['Eager Ratio(old/new)'] = pd.DataFrame(round(data_old['eager_old'] / data_new['eager_new'],2))
             data_ratio['Inductor Ratio(old/new)'] = pd.DataFrame(round(data_old['inductor_old'] / data_new['inductor_new'],2))
@@ -131,48 +135,49 @@ def process(input, precision, mode):
                 'Inductor Ratio(old/new)': list(data_ratio['Inductor Ratio(old/new)']),
                 'Compilation_latency_Ratio(old/new)': list(data_ratio['Compilation_latency_Ratio(old/new)'])
                 })   
-            data = StyleFrame(combined_data)
-            data.set_column_width(1, 10)
-            data.set_column_width(2, 18) 
-            data.set_column_width(3, 18) 
-            data.set_column_width(4, 18)
-            data.set_column_width(5, 15)
-            data.set_column_width(6, 20)
-            data.set_column_width(7, 18)
-            data.set_column_width(8, 18) 
-            data.set_column_width(9, 18) 
-            data.set_column_width(10, 15)
-            data.set_column_width(11, 20)
-            data.set_column_width(12, 28)
-            data.set_column_width(13, 28) 
-            data.set_column_width(14, 28)
-            data.set_column_width(15, 32)
-            data.apply_style_by_indexes(indexes_to_style=data[data['batch_size_new'] == 0], styler_obj=failure_style)
-            data.apply_style_by_indexes(indexes_to_style=data[(data['Inductor Ratio(old/new)'] > 0) & (data['Inductor Ratio(old/new)'] < 0.9)],styler_obj=regression_style)
+            #processed_data = combined_data
+            processed_data = StyleFrame(combined_data)
+            processed_data.set_column_width(1, 10)
+            processed_data.set_column_width(2, 18) 
+            processed_data.set_column_width(3, 18) 
+            processed_data.set_column_width(4, 18)
+            processed_data.set_column_width(5, 15)
+            processed_data.set_column_width(6, 20)
+            processed_data.set_column_width(7, 18)
+            processed_data.set_column_width(8, 18) 
+            processed_data.set_column_width(9, 18) 
+            processed_data.set_column_width(10, 15)
+            processed_data.set_column_width(11, 20)
+            processed_data.set_column_width(12, 28)
+            processed_data.set_column_width(13, 28) 
+            processed_data.set_column_width(14, 28)
+            processed_data.set_column_width(15, 32)
+            processed_data.apply_style_by_indexes(indexes_to_style=processed_data[processed_data['batch_size_new'] == 0], styler_obj=failure_style)
+            processed_data.apply_style_by_indexes(indexes_to_style=processed_data[(processed_data['Inductor Ratio(old/new)'] > 0) & (processed_data['Inductor Ratio(old/new)'] < 0.9)],styler_obj=regression_style)
             global new_performance_regression
-            regression = data.loc[(data['Inductor Ratio(old/new)'] > 0) & (data['Inductor Ratio(old/new)'] < 0.9)]
+            regression = processed_data.loc[(processed_data['Inductor Ratio(old/new)'] > 0) & (processed_data['Inductor Ratio(old/new)'] < 0.9)]
             regression = regression.copy()
             regression.loc[0] = list(regression.shape[1]*'*')
             new_performance_regression = pd.concat([new_performance_regression,regression])
-            data.apply_style_by_indexes(indexes_to_style=data[data['Inductor Ratio(old/new)'] > 1.1],styler_obj=improve_style)
-            data.set_row_height(rows=data.row_indexes, height=15)        
-        return data
-    elif input is not None and 'accuracy' in args.scenario:
+            processed_data.apply_style_by_indexes(indexes_to_style=processed_data[processed_data['Inductor Ratio(old/new)'] > 1.1],styler_obj=improve_style)
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)        
+    if input is not None and scenario == 'accuracy':
         if args.reference is None:
             data_new = input[['name', 'batch_size', 'accuracy']].rename(columns={'name': 'name', 'batch_size': 'batch_size', 'accuracy': 'accuracy'})
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy')
-            data = StyleFrame({'name': list(data_new['name']),
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy', scenario)
+            processed_data = data_new
+            processed_data = StyleFrame({'name': list(data_new['name']),
                             'batch_size': list(data_new['batch_size']),
-                            'accuracy': list(data_new['accuracy'])})
-            data.set_column_width(1, 10)
-            data.set_column_width(2, 18)
-            data.set_column_width(3, 18)
-            data.set_row_height(rows=data.row_indexes, height=15)
+                             'accuracy': list(data_new['accuracy'])})
+            processed_data.set_column_width(1, 10)
+            processed_data.set_column_width(2, 18)
+            processed_data.set_column_width(3, 18)
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)
         else:
             data_new=input[['name','batch_size_x','accuracy_x']].rename(columns={'name':'name','batch_size_x':'batch_size_new','accuracy_x':'accuracy_new'})
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy_new')        
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy_new', scenario)        
             data_old=input[['batch_size_y','accuracy_y']].rename(columns={'batch_size_y':'batch_size_old','accuracy_y':'accuracy_old'}) 
-            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'accuracy_old')
+            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'accuracy_old', scenario)
             data_comp = pd.DataFrame((data_new['accuracy_new'] != 'pass') & (data_old['accuracy_old'] == 'pass'),columns=['Accuracy regression'])
             combined_data = pd.DataFrame({
                 'name': list(data_new['name']),
@@ -182,21 +187,21 @@ def process(input, precision, mode):
                 'accuracy_old': list(data_old['accuracy_old']),
                 'Accuracy regression': list(data_comp['Accuracy regression'])
                 })   
-            data = StyleFrame(combined_data)
-            data.set_column_width(1, 10)
-            data.set_column_width(2, 18) 
-            data.set_column_width(3, 18) 
-            data.set_column_width(4, 18)
-            data.set_column_width(5, 15)
-            data.set_column_width(6, 20)
-            data.apply_style_by_indexes(indexes_to_style=data[(data['Accuracy regression'] == 'regression')],styler_obj=regression_style)
-            data.set_row_height(rows=data.row_indexes, height=15)        
-        return data
-    else:
-        return pd.DataFrame()
+            #processed_data = combined_data
+            processed_data = StyleFrame(combined_data)
+            processed_data.set_column_width(1, 10)
+            processed_data.set_column_width(2, 18) 
+            processed_data.set_column_width(3, 18) 
+            processed_data.set_column_width(4, 18)
+            processed_data.set_column_width(5, 15)
+            processed_data.set_column_width(6, 20)
+            processed_data.apply_style_by_indexes(indexes_to_style=processed_data[(processed_data['Accuracy regression'] == 'regression')],styler_obj=regression_style)
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)        
+    return processed_data
 
 def update_details(scenario, precision, mode, excel):
-    if 'performance' in args.scenario:
+    #for scenario in args.scenario:
+    if scenario == 'performance':
         h = {"A": 'Model suite', "B": '', "C": "target", "D": '', "E": '', "F": '', "G": '',"H": args.reference, "I": '', "J": '',"K": '',"L":'',"M": 'Result Comp',"N": '',"O": '',"P":''}
         if args.reference is None:
             h = {"A": 'Model suite', "B": '', "C": "target", "D": '', "E": '', "F": '', "G": ''}
@@ -211,11 +216,12 @@ def update_details(scenario, precision, mode, excel):
     head.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=0, header=False)
     target_raw_data = get_perf_csv(scenario, precision, mode)
     #print("target_raw_data", target_raw_data)
-    target_data = process(target_raw_data, precision, mode)
+    target_data = process(target_raw_data, scenario, precision, mode)
     target_data.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=1, startcol=1)
 
 def update_summary(excel, scenario):
-    if 'performance' in args.scenario:
+    #for scenario in args.scenario:
+    if scenario == 'performance':
         data = {
             'Test Secnario': ['AMP_BF16 Inference', ' ', 'AMP_BF16 Training', ' ', 'AMP_FP16 Inference', ' ', 'AMP_FP16 Training', ' ', 'BF16 Inference', ' ', 'BF16 Training', ' ', 'FP16 Inference', ' ', 'FP16 Training', ' ', 'FP32 Inference', ' ', 'FP32 Training', ' '],
             'Comp Item': ['Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup', 'Pass Rate', 'Geomean Speedup'],
@@ -715,7 +721,7 @@ def generate_report(excel, scenario_list, precision_list, mode_list):
         for p in precision_list:
             for m in mode_list:
                 update_details(s, p, m, excel)
-    update_summary(excel, s)
+        update_summary(excel, s)
 
 
 def excel_postprocess(file, scenario, precison, mode):
@@ -733,7 +739,7 @@ def excel_postprocess(file, scenario, precison, mode):
                 wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
                 wdt.merge_cells(start_row=1, end_row=1, start_column=8, end_column=12)
                 wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
-    wb.save(file)
+        wb.save(file)
 
 def html_generate(html_off):
     if not html_off:
