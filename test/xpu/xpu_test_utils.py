@@ -13,6 +13,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_modules import module_db, ModuleInfo
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
@@ -516,28 +517,30 @@ class XPUPatchForImport:
             info.decorators = tuple(decorator_xpu)
         skip_xpu = []
         replaced = False
-        for skip in info.skips:
-            if type(skip) == DecorateInfo:
-                if skip.device_type == "cuda":
-                    skip_xpu.append(decorator)
-                    skip.device_type = "xpu"
+        if hasattr(info, "skips"):
+            for skip in info.skips:
+                if type(skip) == DecorateInfo:
+                    if skip.device_type == "cuda":
+                        skip_xpu.append(decorator)
+                        skip.device_type = "xpu"
+                        replaced = True
+                    else:
+                        skip_xpu.append(skip)
+                elif self.only_cuda_fn == skip:
+                    skip_xpu.append(common_device_type.onlyCUDA)
                     replaced = True
-                else:
-                    skip_xpu.append(skip)
-            elif self.only_cuda_fn == skip:
-                skip_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
         if replaced:
             info.skips = tuple(skip_xpu)
 
     def adjust_db(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list:
-                opinfo.dtypesIfXPU = opinfo.dtypes
-            else:
-                backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                backward_dtypes.add(bfloat16)
-                opinfo.backward_dtypes = tuple(backward_dtypes)
+            if not isinstance(opinfo, ModuleInfo):
+                if opinfo.name not in _xpu_computation_op_list:
+                    opinfo.dtypesIfXPU = opinfo.dtypes
+                else:
+                    backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
+                    backward_dtypes.add(bfloat16)
+                    opinfo.backward_dtypes = tuple(backward_dtypes)
             self.replace_opinfo_device(opinfo)
 
     def __enter__(self):
@@ -568,6 +571,7 @@ class XPUPatchForImport:
             common_methods_invocations.foreach_other_op_db,
             common_methods_invocations.python_ref_db,
             common_methods_invocations.op_db,
+            module_db,
         ]:
             self.adjust_db(db)
         common_methods_invocations.python_ref_db = [
