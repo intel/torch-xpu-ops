@@ -177,7 +177,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_fft_c2r",
-    "_fft_r2c",
     "_flash_attention_forward",
     "fractional_max_pool2d_backward.grad_input",
     "fractional_max_pool2d.output",
