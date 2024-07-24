@@ -47,7 +47,6 @@ static void cum_ops_meta(
   maybe_wrap_dim(dim, self.dim());
 
   ScalarType out_dtype;
-
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
