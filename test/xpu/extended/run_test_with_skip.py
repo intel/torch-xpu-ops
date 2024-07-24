@@ -137,10 +137,13 @@ skip_list = (
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
 
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
-    # aten::upsample_trilinear3d
-    "nn_functional_interpolate_linear",
+    # aten::upsample_trilinear3d,
     "nn_functional_interpolate_bilinear",
     "nn_functional_interpolate_trilinear",
+
+    #The results of XPU and CUDA are consistent, but the results of CPU and CUDA are inconsistent
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_float16",
 
     # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
