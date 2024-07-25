@@ -581,4 +581,10 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - round
+  - round_
+  - round.out
+  - round.decimals
+  - round_.decimals
+  - round.decimals_out
   - nan_to_num.out

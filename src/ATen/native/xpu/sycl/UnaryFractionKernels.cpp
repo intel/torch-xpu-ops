@@ -76,4 +76,75 @@ void ceil_kernel(TensorIteratorBase& iter) {
       });
 }
 
+// We manually overload nearbyint because std::nearbyint does not work with
+// std::complex types and ROCm.
+template <typename scalar_t>
+inline scalar_t nearbyint_wrapper(scalar_t a) {
+  return static_cast<scalar_t>(std::nearbyintf(static_cast<float>(a)));
+}
+
+inline double nearbyint_wrapper(double a) {
+  return std::nearbyint(a);
+}
+
+#pragma push
+inline c10::complex<float> nearbyint_wrapper(c10::complex<float> a) {
+  return c10::complex<float>(
+      std::nearbyintf(static_cast<float>(a.real())),
+      std::nearbyintf(static_cast<float>(a.imag())));
+}
+
+inline c10::complex<double> nearbyint_wrapper(c10::complex<double> a) {
+  return c10::complex<double>(
+      std::nearbyint(static_cast<double>(a.real())),
+      std::nearbyint(static_cast<double>(a.imag())));
+}
+#pragma pop
+
+template <typename scalar_t>
+struct RoundFunctor {
+  scalar_t operator()(scalar_t a) const {
+    // We do not use std::round because we would like to round midway
+    // numbers to the nearest even integer.
+    return nearbyint_wrapper(a);
+  }
+};
+
+template <typename scalar_t>
+struct RoundDecimalsFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return neg_flag_
+        ? std::nearbyint(a / ten_pow_decimals_) * ten_pow_decimals_
+        : std::nearbyint(a * ten_pow_decimals_) / ten_pow_decimals_;
+  }
+  RoundDecimalsFunctor(scalar_t ten_pow_decimals, bool neg_flag)
+      : ten_pow_decimals_(ten_pow_decimals), neg_flag_(neg_flag) {}
+
+ private:
+  scalar_t ten_pow_decimals_;
+  bool neg_flag_;
+};
+
+void round_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "round_xpu", [&]() {
+        gpu_kernel(iter, RoundFunctor<scalar_t>());
+      });
+}
+
+void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "round_xpu", [&]() {
+        bool neg_flag = false;
+        scalar_t ten_pow_decimals;
+        if (decimals < 0) {
+          decimals = -decimals;
+          neg_flag = true;
+        }
+        ten_pow_decimals = static_cast<scalar_t>(std::pow(10, decimals));
+        gpu_kernel(
+            iter, RoundDecimalsFunctor<scalar_t>(ten_pow_decimals, neg_flag));
+      });
+}
+
 } // namespace at::native::xpu
