@@ -783,6 +783,10 @@ skip_list = (
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 
+    # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
+    # but test_dtypes infrastructure leverage CUDA supported datatypes
+    "test_dtypes_histogram_xpu",
+
     # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
     # Align with CPU implementation since,
     # 1. most cases of nextafter require Half dtype.
