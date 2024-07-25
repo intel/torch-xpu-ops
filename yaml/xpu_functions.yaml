@@ -9,7 +9,7 @@ supported:
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
-  - _adaptive_avg_pool2d_backward
+  # - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
   - cumsum

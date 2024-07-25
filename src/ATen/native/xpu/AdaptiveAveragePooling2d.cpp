@@ -80,42 +80,42 @@ Tensor mean_backward(
 }
 } // namespace
 
-Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
-    const Tensor& grad_output,
-    const Tensor& input) {
-  TensorArg grad_output_arg{grad_output, "grad_output", 1},
-      input_arg{input, "input", 2};
+// Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
+//     const Tensor& grad_output,
+//     const Tensor& input) {
+//   TensorArg grad_output_arg{grad_output, "grad_output", 1},
+//       input_arg{input, "input", 2};
 
-  native::adaptive_pool_empty_output_check(
-      grad_output, "adaptive_avg_pool2d_backward");
+//   native::adaptive_pool_empty_output_check(
+//       grad_output, "adaptive_avg_pool2d_backward");
 
-  checkAllSameGPU(__func__, {grad_output_arg, input_arg});
+//   checkAllSameGPU(__func__, {grad_output_arg, input_arg});
 
-  TORCH_CHECK(
-      (input.ndimension() == 3 || input.ndimension() == 4),
-      "non-empty 3D or 4D (batch mode) tensor expected for input");
+//   TORCH_CHECK(
+//       (input.ndimension() == 3 || input.ndimension() == 4),
+//       "non-empty 3D or 4D (batch mode) tensor expected for input");
 
-  if (grad_output.size(-1) == 1 && grad_output.size(-2) == 1) {
-    return mean_backward(
-        grad_output,
-        input.sym_sizes().vec(),
-        {-1, -2},
-        input.sym_numel(),
-        true);
-  }
+//   if (grad_output.size(-1) == 1 && grad_output.size(-2) == 1) {
+//     return mean_backward(
+//         grad_output,
+//         input.sym_sizes().vec(),
+//         {-1, -2},
+//         input.sym_numel(),
+//         true);
+//   }
 
-  globalContext().alertNotDeterministic("_adaptive_avg_pool2d_backward");
+//   globalContext().alertNotDeterministic("_adaptive_avg_pool2d_backward");
 
-  Tensor grad_input;
-  if (input.numel() != 0) {
-    native::xpu::adaptive_avg_pool2d_backward_kernel(
-        grad_input, grad_output, input);
-  } else {
-    grad_input = at::zeros_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  }
+//   Tensor grad_input;
+//   if (input.numel() != 0) {
+//     native::xpu::adaptive_avg_pool2d_backward_kernel(
+//         grad_input, grad_output, input);
+//   } else {
+//     grad_input = at::zeros_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+//   }
 
-  return grad_input;
-}
+//   return grad_input;
+// }
 
 Tensor& XPUNativeFunctions::adaptive_avg_pool2d_out(
     const Tensor& input,
