@@ -118,6 +118,9 @@ supported:
   - hypot
   - hypot.out
   - hypot_
+  - nextafter
+  - nextafter.out
+  - nextafter_
   - relu
   - relu_
   - relu.out
@@ -408,6 +411,8 @@ supported:
   - sort.stable
   - sort.values_stable
   - argsort.stable
+  - topk
+  - topk.values
   - _foreach_add.Scalar
   - _foreach_add_.Scalar
   - _foreach_add.ScalarList
@@ -531,12 +536,11 @@ supported:
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
+  - _embedding_bag_backward
   - sgn
   - sgn.out
   - sgn_
   - _cdist_forward
-  - _pin_memory
-  - is_pinned
   - is_set_to
   - bucketize.Tensor
   - bucketize.Tensor_out
@@ -658,6 +662,11 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - histogram.bins_tensor
+  - histogram.bins_tensor_out
+  - histogram.bin_ct
+  - histogram.bin_ct_out
+  - repeat_interleave.Tensor
   - norm.ScalarOpt_dim_dtype
   - norm.dtype_out
   - norm.ScalarOpt_dim

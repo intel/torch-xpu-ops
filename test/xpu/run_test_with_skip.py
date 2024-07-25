@@ -773,40 +773,58 @@ skip_list = (
     # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
     # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
     "test_python_ref__refs_log2_xpu_complex128",
-  
+
     #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
     #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
     #XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
-    
+
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+
+    # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
+    # but test_dtypes infrastructure leverage CUDA supported datatypes
+    "test_dtypes_histogram_xpu",
+
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
+    # Align with CPU implementation since,
+    # 1. most cases of nextafter require Half dtype.
+    # 2. Half dtype is a common dtype in workloads.
+    # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
+    "test_dtypes_nextafter_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
+
 # test_binary_ufuncs
-
-
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
-    # RuntimeError: false INTERNAL ASSERT FAILED at "torch-xpu-ops/src/ATen/native/xpu/sycl/PowKernels.cpp":233, please report a bug to PyTorch. invalid combination of type in Pow function, common dtype: Short, exp is integral? 0
+    # fail in complex_exponents=[-1.0 - 1.5j, 3.3j]
+    # Mismatched elements: 33 / 100 (33.0%)
+    # Greatest absolute difference: 0.00038337233127094805 at index (4,) (up to 1e-05 allowed)
+    # Greatest relative difference: 1.9085073290625587e-06 at index (6,) (up to 1.3e-06 allowed)
     "test_pow_xpu_int16",
     "test_pow_xpu_int32",
     "test_pow_xpu_int64",
-    "test_pow_xpu_int8",
-    "test_pow_xpu_uint8",
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # Unexpected success
     "test_type_promotion_logaddexp_xpu",
+
+    # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
+    # https://github.com/intel/torch-xpu-ops/issues/623
+    # AssertionError: Scalars are not equal!
+    # Expected 9.183549615799121e-41 but got 0.0.
+    # Absolute difference: 9.183549615799121e-41
+    # Relative difference: 1.0
+    "test_nextafter_bfloat16_xpu_bfloat16",
 )
 res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
+
 # test_scatter_gather_ops
-
-
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
@@ -2703,7 +2721,6 @@ skip_list = (
     "test_inplace_grad_addbmm_xpu_complex128",
     "test_inplace_gradgrad_addbmm_xpu_complex128",
     ### Error #2 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
-    "test_fn_grad_bernoulli_xpu_float64",
     "test_fn_grad_linalg_norm_xpu_complex128",
     "test_fn_grad_linalg_vector_norm_xpu_complex128",
     "test_fn_grad_nn_functional_rrelu_xpu_float64",
@@ -2766,7 +2783,6 @@ skip_list = (
     "test_storage_setitem_xpu_float32",
     "test_tensor_storage_type_xpu_float32",
     ### Error #5 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Scalars are not equal!
-    "test_bernoulli_edge_cases_xpu_float16",
     "test_strides_propagation_xpu",
     ### Error #7 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map2_ is only implemented on CPU tensors
     "test_broadcast_fn_map2_xpu",

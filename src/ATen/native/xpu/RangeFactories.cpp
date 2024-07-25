@@ -22,7 +22,7 @@ Tensor& XPUNativeFunctions::arange_out(
       out.scalar_type(),
       "arange_xpu_preprocess",
       [&]() {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto xstart = start.to<accscalar_t>();
         auto xend = end.to<accscalar_t>();
         auto xstep = step.to<accscalar_t>();

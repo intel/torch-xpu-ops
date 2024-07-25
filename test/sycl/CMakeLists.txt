@@ -42,7 +42,7 @@ add_dependencies(test_sycl_build_archive sycl_simple_kernel_test)
 # Instead, we use explicit linkage option '--whole-archive', which is required
 # by linkage of device object modules archived in the static library. Then
 # explicit linkage configuration of SYCL runtime library is required.
-target_link_libraries(test_sycl_build_archive ${SYCL_LIBRARIES})
+target_link_libraries(test_sycl_build_archive ${SYCL_LIBRARY})
 
 if(INSTALL_TEST)
   install(TARGETS test_sycl_build_archive DESTINATION bin)

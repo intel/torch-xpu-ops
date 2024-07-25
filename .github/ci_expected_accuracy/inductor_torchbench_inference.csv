@@ -1,11 +1,11 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 BERT_pytorch,pass,pass,pass,pass,pass
-Background_Matting,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,pass_due_to_skip,eager_fail_to_run
+Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 LearningToPaint,pass,pass,pass,pass,pass
 Super_SloMo,pass,pass,pass,pass,pass
-alexnet,eager_two_runs_differ,pass,pass,pass,eager_two_runs_differ
+alexnet,pass,pass,pass,pass,pass
 basic_gnn_edgecnn,pass,pass,pass,pass,pass
 basic_gnn_gcn,pass,pass,pass,pass,pass
 basic_gnn_gin,pass,pass,pass,pass,pass
@@ -21,11 +21,11 @@ detectron2_fasterrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to
 detectron2_fasterrcnn_r_50_dc5,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fcos_r_50_fpn,pass,pass,pass,pass,pass
-detectron2_maskrcnn,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-detectron2_maskrcnn_r_50_fpn,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+detectron2_maskrcnn,fail_to_run,eager_fail_to_run,fail_to_run,eager_fail_to_run,fail_to_run
+detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_maskrcnn_r_50_fpn,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 dlrm,pass,pass,pass,pass,pass
 doctr_det_predictor,pass,pass,pass,eager_fail_to_run,pass
 doctr_reco_predictor,pass,pass,pass,pass,pass
@@ -61,7 +61,7 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,eager_fail_to_run,model_fail_to_load
+moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
@@ -71,7 +71,7 @@ phlippe_resnet,pass,pass,pass,pass,pass
 pyhpc_equation_of_state,pass,pass,fail_accuracy,pass,pass
 pyhpc_isoneutral_mixing,pass,pass,pass,pass,pass
 pyhpc_turbulent_kinetic_energy,pass,pass,pass,pass,pass
-pytorch_CycleGAN_and_pix2pix,pass,pass,eager_fail_to_run,pass,eager_fail_to_run
+pytorch_CycleGAN_and_pix2pix,pass,pass,pass,pass,pass
 pytorch_stargan,pass,pass,pass,pass,pass
 pytorch_unet,pass,pass,pass,pass,pass
 resnet152,pass,pass,pass,pass,pass
@@ -79,7 +79,7 @@ resnet18,pass,pass,pass,pass,pass
 resnet50,pass,pass,pass,pass,pass
 resnet50_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 resnext50_32x4d,pass,pass,pass,pass,pass
-sam,eager_two_runs_differ,pass,pass,pass,pass
+sam,pass,pass,pass,pass,pass
 sam_fast,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 shufflenet_v2_x1_0,pass,pass,pass,pass,pass
 simple_gpt,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
@@ -89,7 +89,7 @@ speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,fail_accuracy,fail_accuracy,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 stable_diffusion_unet,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-tacotron2,pass,pass,pass,model_fail_to_load,fail_to_run
+tacotron2,pass,pass,pass,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 timm_efficientnet,pass,pass,pass,pass,pass
 timm_nfnet,pass,pass,pass,pass,pass
@@ -100,6 +100,7 @@ timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
 tts_angular,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-vgg16,eager_two_runs_differ,pass,pass,pass,pass
+vgg16,pass,pass,pass,pass,pass
 vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
 yolov3,pass,pass,pass,pass,pass
+hf_Roberta_base,pass,pass,pass,pass,pass

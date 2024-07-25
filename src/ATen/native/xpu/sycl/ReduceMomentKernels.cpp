@@ -16,7 +16,7 @@ void std_var_template(
     bool take_sqrt) {
   // reducing unrolling factor to 2 for welford kernel
   // This is necessary to lower register usage that leads to register spills.
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   using ops_t =
       WelfordOps<scalar_t, accscalar_t, int32_t, std::pair<out_t, out_t>>;
   ops_t ops(static_cast<accscalar_t>(correction_opt), take_sqrt);

@@ -47,7 +47,6 @@ static void cum_ops_meta(
   maybe_wrap_dim(dim, self.dim());
 
   ScalarType out_dtype;
-
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
@@ -1021,7 +1020,7 @@ Tensor& XPUNativeFunctions::norm_out(
   impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
   return result;
 }
-  
+
 TensorIterator meta_aminmax(
     const Tensor& self,
     std::optional<int64_t> dim_opt,
