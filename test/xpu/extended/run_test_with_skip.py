@@ -151,6 +151,9 @@ skip_list = (
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
 
+    # Polar's backward is calculated using complex(), which does not support bfloat16.
+    "test_compare_cpu_polar_xpu_bfloat16",
+
     # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
     # https://github.com/intel/torch-xpu-ops/issues/549
     # Example fail log
