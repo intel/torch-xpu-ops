@@ -5,11 +5,10 @@ from scipy.stats import gmean
 from styleframe import StyleFrame, Styler, utils
 
 parser = argparse.ArgumentParser(description="Generate report")
-parser.add_argument('-s', '--suite', default='huggingface', choices=["torchbench", "huggingface", "timm_models"], type=str, help='model suite name')
+parser.add_argument('-s', '--suite', default=["huggingface"], nargs='*', type=str, help='model suite name')
 parser.add_argument('-p', '--precision', default=["amp_fp16", "float32"], nargs='*', type=str, help='precision')
 parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
-parser.add_argument('--html_off', action='store_true', help='turn off html file generate')
 parser.add_argument('-sc', '--scenario', default=["performance"], nargs='*', type=str, help='Test scenario set')
 args = parser.parse_args()
 
@@ -32,7 +31,6 @@ def percentage(part, whole, decimals=2):
 
 
 def get_passing_entries(df, column_name, scenario):
-    #for scenario in args.scenario:
     if scenario == 'performance':
         return df[column_name][df[column_name] > 0]
     else:
@@ -48,7 +46,6 @@ def caculate_geomean(df, column_name, scenario):
 
 def caculate_passrate(df, key_word, scenario):
     total = len(df.index)
-    #for scenario in args.scenario:
     if scenario == 'performance':
         passing = df[df[key_word] > 0.0][key_word].count()
     else:
@@ -57,14 +54,14 @@ def caculate_passrate(df, key_word, scenario):
     perc = int(percentage(passing, total, decimals=0))
     return f"{perc}%, {passing}/{total}"
 
-def get_perf_csv(scenario, precision, mode):
-    target_path = 'inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
+def get_perf_csv(scenario, precision, mode, suite):
+    target_path = 'inductor_log/' + suite + '/' + precision + '/inductor_' + suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
     target_ori_data = pd.read_csv(target_path, header=0, encoding='utf-8')
     target_data = target_ori_data.copy()
     target_data.sort_values(by=['name'])
     
     if args.reference is not None:
-        reference_file_path = args.reference + '/inductor_log/' + args.suite + '/' + precision + '/inductor_' + args.suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
+        reference_file_path = args.reference + '/inductor_log/' + suite + '/' + precision + '/inductor_' + suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
         reference_ori_data = pd.read_csv(reference_file_path, header=0, encoding='utf-8')
         reference_data = reference_ori_data.copy()
         reference_data.sort_values(by=['name'])
@@ -84,7 +81,6 @@ def process(input, scenario, precision, mode):
             data_new['eager'] = data_new['speedup'] * data_new['inductor']
             geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speedup', scenario)
             passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor', scenario)
-            #processed_data = data_new
             processed_data = StyleFrame({'name': list(data_new['name']),
                             'batch_size': list(data_new['batch_size']),
                             'speedup': list(data_new['speedup']),
@@ -134,8 +130,7 @@ def process(input, scenario, precision, mode):
                 'Eager Ratio(old/new)': list(data_ratio['Eager Ratio(old/new)']),
                 'Inductor Ratio(old/new)': list(data_ratio['Inductor Ratio(old/new)']),
                 'Compilation_latency_Ratio(old/new)': list(data_ratio['Compilation_latency_Ratio(old/new)'])
-                })   
-            #processed_data = combined_data
+                }) 
             processed_data = StyleFrame(combined_data)
             processed_data.set_column_width(1, 10)
             processed_data.set_column_width(2, 18) 
@@ -186,8 +181,7 @@ def process(input, scenario, precision, mode):
                 'batch_size_old': list(data_old['batch_size_old']),
                 'accuracy_old': list(data_old['accuracy_old']),
                 'Accuracy regression': list(data_comp['Accuracy regression'])
-                })   
-            #processed_data = combined_data
+                })
             processed_data = StyleFrame(combined_data)
             processed_data.set_column_width(1, 10)
             processed_data.set_column_width(2, 18) 
@@ -199,8 +193,7 @@ def process(input, scenario, precision, mode):
             processed_data.set_row_height(rows=processed_data.row_indexes, height=15)        
     return processed_data
 
-def update_details(scenario, precision, mode, excel):
-    #for scenario in args.scenario:
+def update_details(scenario, precision, mode, suite, excel):
     if scenario == 'performance':
         h = {"A": 'Model suite', "B": '', "C": "target", "D": '', "E": '', "F": '', "G": '',"H": args.reference, "I": '', "J": '',"K": '',"L":'',"M": 'Result Comp',"N": '',"O": '',"P":''}
         if args.reference is None:
@@ -212,15 +205,12 @@ def update_details(scenario, precision, mode, excel):
     head = StyleFrame(pd.DataFrame(h, index=[0]))
     head.set_column_width(1, 15)
     head.set_row_height(rows=[1], height=15)
-
-    head.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=0, header=False)
-    target_raw_data = get_perf_csv(scenario, precision, mode)
-    #print("target_raw_data", target_raw_data)
+    head.to_excel(excel_writer=excel, sheet_name=suite + '_' + precision + '_' + mode[0:3] + '_' + scenario[0:3], index=False, startrow=0, header=False)
+    target_raw_data = get_perf_csv(scenario, precision, mode, suite)
     target_data = process(target_raw_data, scenario, precision, mode)
-    target_data.to_excel(excel_writer=excel, sheet_name=scenario + '_' + precision + '_' + mode, index=False, startrow=1, startcol=1)
+    target_data.to_excel(excel_writer=excel, sheet_name=suite + '_' + precision + '_' + mode[0:3] + '_' + scenario[0:3], index=False, startrow=1, startcol=1)
 
-def update_summary(excel, scenario):
-    #for scenario in args.scenario:
+def update_summary(excel, scenario, suite):
     if scenario == 'performance':
         data = {
             'Test Secnario': ['AMP_BF16 Inference', ' ', 'AMP_BF16 Training', ' ', 'AMP_FP16 Inference', ' ', 'AMP_FP16 Training', ' ', 'BF16 Inference', ' ', 'BF16 Training', ' ', 'FP16 Inference', ' ', 'FP16 Training', ' ', 'FP32 Inference', ' ', 'FP32 Training', ' '],
@@ -236,7 +226,7 @@ def update_summary(excel, scenario):
         }
         summary = pd.DataFrame(data)
 
-        if 'huggingface' in args.suite:
+        if suite == 'huggingface':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[0:1, 5:6] = passrate_values['target_amp_bf16_inference']
@@ -311,18 +301,8 @@ def update_summary(excel, scenario):
                     if 'training' in args.mode:
                         summary.iloc[18:19, 8:9] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 8:9] = geomean_values['reference_float32_training']
-            
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 11):
-                sf.set_column_width(i, 22)
-            for j in range(1, 22):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
-        if 'timm_models' in args.suite:
+        if suite == 'timm_models':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[0:1, 6:7] = passrate_values['target_amp_bf16_inference']
@@ -398,18 +378,8 @@ def update_summary(excel, scenario):
                     if 'training' in args.mode:
                         summary.iloc[18:19, 9:10] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 9:10] = geomean_values['reference_float32_training']
-            
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 11):
-                sf.set_column_width(i, 22)
-            for j in range(1, 22):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
         
-        if 'torchbench' in args.suite:
+        if suite == 'torchbench':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[0:1, 4:5] = passrate_values['target_amp_bf16_inference']
@@ -485,15 +455,15 @@ def update_summary(excel, scenario):
                         summary.iloc[18:19, 7:8] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 7:8] = geomean_values['reference_float32_training']
             
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 11):
-                sf.set_column_width(i, 22)
-            for j in range(1, 22):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
+        print(f"===================={scenario}Summary=============================")
+        print(summary)
+        
+        sf = StyleFrame(summary)
+        for i in range(1, 11):
+            sf.set_column_width(i, 22)
+        for j in range(1, 22):
+            sf.set_row_height(j, 30)
+        sf.to_excel(sheet_name=suite + '_'  + scenario + '_Summary', excel_writer=excel)
 
     else:
         data = {
@@ -509,7 +479,7 @@ def update_summary(excel, scenario):
         }
         summary = pd.DataFrame(data)
 
-        if 'huggingface' in args.suite:
+        if suite == 'huggingface':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     # passrate
@@ -567,18 +537,8 @@ def update_summary(excel, scenario):
                         summary.iloc[8:9, 7:8] = passrate_values['reference_float32_inference']
                     if 'training' in args.mode:
                         summary.iloc[9:10, 7:8] = passrate_values['reference_float32_training']
-            
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 10):
-                sf.set_column_width(i, 22)
-            for j in range(1, 12):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
-        if 'timm_models' in args.suite:
+        if suite == 'timm_models':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     # passrate
@@ -635,18 +595,8 @@ def update_summary(excel, scenario):
                         summary.iloc[8:9, 8:9] = passrate_values['reference_float32_inference']
                     if 'training' in args.mode:
                         summary.iloc[9:10, 8:9] = passrate_values['reference_float32_training']
-            
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 10):
-                sf.set_column_width(i, 22)
-            for j in range(1, 12):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
 
-        if 'torchbench' in args.suite:
+        if suite == 'torchbench':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
                     # passrate
@@ -705,71 +655,46 @@ def update_summary(excel, scenario):
                     if 'training' in args.mode:
                         summary.iloc[9:10, 6:7] = passrate_values['reference_float32_training']
             
-            print("====================Summary=============================")
-            print(summary)
-            
-            sf = StyleFrame(summary)
-            for i in range(1, 10):
-                sf.set_column_width(i, 22)
-            for j in range(1, 12):
-                sf.set_row_height(j, 30)
-            sf.to_excel(sheet_name=scenario + '_Summary', excel_writer=excel)
+        print(f"===================={scenario} Summary=============================")
+        print(summary)
+        
+        sf = StyleFrame(summary)
+        for i in range(1, 10):
+            sf.set_column_width(i, 22)
+        for j in range(1, 12):
+            sf.set_row_height(j, 30)
+        sf.to_excel(sheet_name=suite + '_'  + scenario + '_Summary', excel_writer=excel)
 
 
-def generate_report(excel, scenario_list, precision_list, mode_list):
-    for s in scenario_list:
-        for p in precision_list:
-            for m in mode_list:
-                update_details(s, p, m, excel)
-        update_summary(excel, s)
+def generate_report(excel, scenario_list, precision_list, mode_list, suite_list):
+    for sc in scenario_list:
+        for s in suite_list:
+            for p in precision_list:
+                for m in mode_list:
+                    update_details(sc, p, m, s, excel)
+            update_summary(excel, sc, s)
 
 
-def excel_postprocess(file, scenario, precison, mode):
+def excel_postprocess(file, scenario, precison, mode, suite):
     wb = file.book
     # Summary
     #ws = wb['Summary']
     #for i in range(2, 21, 2):
     #    ws.merge_cells(start_row=i, end_row=i + 1, start_column=1, end_column=1)
     # details
-    for s in scenario:
-        for p in precison:
-            for m in mode:
-                wdt = wb[s + '_' + p + '_' + m]
-                wdt.merge_cells(start_row=1, end_row=2, start_column=1, end_column=1)
-                wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
-                wdt.merge_cells(start_row=1, end_row=1, start_column=8, end_column=12)
-                wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
-        wb.save(file)
-
-def html_generate(html_off):
-    if not html_off:
-        try:
-            content = pd.read_excel('inductor_log/' + args.suite + '/Inductor_' + args.suite + '_' + args.precision + '_' + args.mode + '_E2E_Test_Report' + '.xlsx')
-            #summary= pd.DataFrame(content[-1]).to_html(classes="table",index = False)
-            #swinfo= pd.DataFrame(content[1]).to_html(classes="table",index = False)
-            #refer_swinfo_html = ''
-            #if args.reference is not None:
-            #    refer_swinfo = pd.read_table(args.reference+'/inductor_log/version.txt', sep = '\:', header = None,names=['item', 'commit'],engine='python')
-            #    refer_swinfo_html = refer_swinfo.to_html(classes="table",index = False)            
-            #mt_failures= pd.DataFrame(content[2]).to_html(classes="table",index = False)
-            #st_failures= pd.DataFrame(content[3]).to_html(classes="table",index = False)
-            perf_regression= new_performance_regression.to_html(classes="table",index = False)
-            #failures_regression= new_failures.to_html(classes="table",index = False)
-            #with open('inductor_log/inductor_model_bench.html',mode = "a") as f,open('inductor_log/inductor_perf_regression.html',mode = "a") as perf_f,open('inductor_log/inductor_failures.html',mode = "a") as failure_f:
-            with open('inductor_log/' + args.suite + '/inductor_perf_regression.html',mode = "a") as perf_f:
-                #f.write(html_head()+"<p>Summary</p>"+summary+"<p>SW info</p>"+swinfo+"<p>Multi-threads Failures</p>"+mt_failures+"<p>Single-thread Failures</p>"+st_failures+"<p>new_perf_regression</p>"+perf_regression+"<p>new_failures</p>"+failures_regression+f"<p>image: docker pull ccr-registry.caas.intel.com/pytorch/pt_inductor:{args.image_tag}</p>"+html_tail())
-                perf_f.write("<p>new_perf_regression </p>"+perf_regression)
-                #failure_f.write(f"<p>new_failures in {str((datetime.now() - timedelta(days=2)).date())}</p>"+failures_regression)
-            #f.close()
-            perf_f.close()
-            #failure_f.close()              
-        except:
-            print("html_generate_failed")
-            pass
+    for sc in scenario:
+        for s in suite:
+            for p in precison:
+                for m in mode:
+                    wdt = wb[s + '_' + p + '_' + m[0:3] + '_' + sc[0:3]]
+                    wdt.merge_cells(start_row=1, end_row=2, start_column=1, end_column=1)
+                    wdt.merge_cells(start_row=1, end_row=1, start_column=3, end_column=7)
+                    wdt.merge_cells(start_row=1, end_row=1, start_column=8, end_column=12)
+                    wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
+            wb.save(file)
 
 
 if __name__ == '__main__':
-    excel = StyleFrame.ExcelWriter('inductor_log/' + str(args.suite) + '/Inductor_' + args.suite + '_E2E_Test_Report.xlsx')
-    generate_report(excel, args.scenario, args.precision, args.mode)
-    excel_postprocess(excel, args.scenario, args.precision, args.mode)
-    #html_generate(args.html_off)
+    excel = StyleFrame.ExcelWriter('inductor_log/Inductor_E2E_Test_Report.xlsx')
+    generate_report(excel, args.scenario, args.precision, args.mode, args.suite)
+    excel_postprocess(excel, args.scenario, args.precision, args.mode, args.suite)
