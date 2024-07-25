@@ -51,11 +51,7 @@ static void compute_xpu(
     return;
 
   auto kfn = RepeatInterleaveKernelFunctor<index_t>(
-      repeat_ptr,
-      cumsum_ptr,
-      result_ptr,
-      size,
-      result_size);
+      repeat_ptr, cumsum_ptr, result_ptr, size, result_size);
 
   int64_t wg_size = syclMaxWorkGroupSize(kfn);
   int64_t local_range = size < wg_size ? size : wg_size;

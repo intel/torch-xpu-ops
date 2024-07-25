@@ -53,7 +53,6 @@ skip_list = (
     "test_compare_cpu_to_sparse_xpu_float32",
     "test_errors_dot_xpu",
     "test_errors_kthvalue_xpu",
-    "test_errors_masked_select_xpu",
     "test_errors_sparse_mul_layout0_xpu",
     "test_errors_sparse_mul_layout1_xpu",
     "test_errors_sparse_mul_layout2_xpu",
