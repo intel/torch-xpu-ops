@@ -2,9 +2,8 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/op_registration/adaption.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/TensorInfo.h>
 
 namespace at {
@@ -42,6 +41,37 @@ Tensor XPUNativeFunctions::index_select(
     const Tensor& index) {
   auto out = at::empty({0}, self.options());
   return index_select_out(self, dim, index, out);
+}
+
+Tensor& XPUNativeFunctions::masked_scatter_(
+    Tensor& self,
+    const Tensor& mask,
+    const Tensor& source) {
+  at::assert_no_internal_overlap(self);
+  TORCH_CHECK(
+      self.scalar_type() == source.scalar_type(),
+      "masked_scatter_: expected self and source to have same dtypes but got ",
+      self.scalar_type(),
+      " and ",
+      source.scalar_type());
+  TORCH_CHECK(
+      mask.dtype() == ScalarType::Bool,
+      "masked_scatter_ only supports boolean masks, "
+      "but got mask with dtype ",
+      mask.dtype());
+
+  c10::MaybeOwned<Tensor> b_mask =
+      expand_inplace(self, mask, "masked_scatter_");
+
+  if (self.numel() == 0) {
+    return self;
+  }
+
+  auto maskPrefixSum = at::empty(self.sizes(), mask.options().dtype(kLong));
+  native::xpu::launch_masked_scatter_kernel(
+      self, *b_mask, maskPrefixSum, source);
+
+  return self;
 }
 
 } // namespace at
