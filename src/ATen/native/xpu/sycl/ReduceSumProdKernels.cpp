@@ -76,39 +76,36 @@ void sum_kernel(TensorIterator& iter) {
   reduce_dispatch<sum_functor>(iter, general_dispatcher);
 }
 
-template <typename acc_t>
-struct NanSumFunctor {
-  inline acc_t operator()(acc_t a, acc_t b) const {
-    return a + (at::_isnan(b) ? acc_t{0.} : acc_t{b});
-  }
-};
-
-template <>
-struct NanSumFunctor<c10::complex<at::Half>> {
-  using scalar_t = c10::complex<at::Half>;
-  using acc_t = at::opmath_type<scalar_t>;
-  inline acc_t operator()(acc_t a, acc_t b) const {
-    return a + (at::_isnan(b) ? acc_t{0.} : acc_t{b});
-  }
-};
-
 template <
     typename scalar_t,
     typename acc_t = scalar_t,
     typename out_t = scalar_t>
 struct nansum_functor {
   void operator()(TensorIterator& iter) {
-    gpu_reduce_kernel<scalar_t, out_t>(
-        iter, func_wrapper<out_t>(NanSumFunctor<acc_t>()));
+    gpu_reduce_kernel<scalar_t, out_t>(iter, NanSumOps<acc_t, out_t>{});
+  }
+};
+
+template <typename scalar_t>
+struct nansum_functor_complex {
+  void operator()(TensorIterator& iter) {
+    using acc_t = at::opmath_type<scalar_t>;
+    gpu_reduce_kernel<scalar_t, scalar_t>(iter, NanSumOps<acc_t, scalar_t>{});
   }
 };
 
 void nansum_kernel(TensorIterator& iter) {
   auto general_dispatcher = [](TensorIterator& iter) {
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
-        kComplexHalf, iter.dtype(), "nansum_xpu", [&]() {
-          nansum_functor<scalar_t>{}(iter);
-        });
+    auto dtype = iter.dtype();
+    if (at::isComplexType(dtype)) {
+      AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "nansum_xpu", [&]() {
+        nansum_functor_complex<scalar_t>{}(iter);
+      });
+    } else {
+      AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "nansum_xpu", [&]() {
+        nansum_functor<scalar_t>{}(iter);
+      });
+    }
   };
   reduce_dispatch<nansum_functor>(iter, general_dispatcher);
 }
