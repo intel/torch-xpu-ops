@@ -2724,7 +2724,6 @@ skip_list = (
     "test_fn_grad_linalg_norm_xpu_complex128",
     "test_fn_grad_linalg_vector_norm_xpu_complex128",
     "test_fn_grad_nn_functional_rrelu_xpu_float64",
-    "test_fn_grad_norm_inf_xpu_complex128",
     "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
     "test_inplace_grad_nn_functional_rrelu_xpu_float64",
     "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
@@ -2733,7 +2732,6 @@ skip_list = (
     "test_fn_grad_renorm_xpu_complex128",
     "test_fn_gradgrad_linalg_vector_norm_xpu_complex128",
     "test_fn_gradgrad_masked_normalize_xpu_complex128",
-    "test_fn_gradgrad_norm_inf_xpu_complex128",
     "test_fn_gradgrad_renorm_xpu_complex128",
     "test_inplace_grad_renorm_xpu_complex128",
     "test_inplace_gradgrad_renorm_xpu_complex128",
@@ -2746,9 +2744,6 @@ skip_list = (
     "test_fn_gradgrad_nn_functional_conv_transpose2d_xpu_float64",
     "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_complex128",
     "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_float64",
-    ### Error #5 in TestBwdGradientsXPU , totally 2 , RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-    "test_fn_grad_nn_functional_group_norm_xpu_float64",
-    "test_fn_gradgrad_nn_functional_group_norm_xpu_float64",
     ### Error #6 in TestBwdGradientsXPU , totally 5 , torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
     "test_fn_grad_nn_functional_max_pool2d_xpu_float64",
     "test_fn_gradgrad_index_reduce_mean_xpu_float64",
