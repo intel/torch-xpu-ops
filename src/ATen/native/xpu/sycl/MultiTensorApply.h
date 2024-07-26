@@ -180,7 +180,7 @@ void multi_tensor_apply(
     tlAddress[t].scalar_vals = scalars[t].to<scalar_t>();
     totalWG += (numel + kChunkSize - 1) / kChunkSize;
     for (int d = 0; d < depth; ++d) {
-      tlAddress[t].addresses[d] = tensor_lists[d][t].data_ptr();
+      tlAddress[t].addresses[d] = tensor_lists[d][t].mutable_data_ptr();
     }
   }
 
@@ -249,7 +249,7 @@ void multi_tensor_apply(
       {(int)(sizeof(TLMetaForAddress<depth>) * n_tensors)},
       tensor_lists[0][0].options().dtype(at::kByte));
   auto metaAddressInput =
-      static_cast<TLMetaForAddress<depth>*>(addressStorage.data_ptr());
+      static_cast<TLMetaForAddress<depth>*>(addressStorage.mutable_data_ptr());
   TLMetaForAddress<depth>* tlAddress = nullptr;
 
   auto tlAddress_dptr =
@@ -263,7 +263,7 @@ void multi_tensor_apply(
     tlAddress[t].numel_to_tensor = numel;
     totalWG += (numel + kChunkSize - 1) / kChunkSize;
     for (int d = 0; d < depth; ++d) {
-      tlAddress[t].addresses[d] = tensor_lists[d][t].data_ptr();
+      tlAddress[t].addresses[d] = tensor_lists[d][t].mutable_data_ptr();
     }
   }
 
@@ -279,7 +279,8 @@ void multi_tensor_apply(
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
       tensor_lists[0][0].options().dtype(at::kByte));
-  auto metaWGInput = static_cast<TLMetaForWG*>(wgMetaStorage.data_ptr());
+  auto metaWGInput =
+      static_cast<TLMetaForWG*>(wgMetaStorage.mutable_data_ptr());
   TLMetaForWG* tlWGMeta = nullptr;
 
   auto tlWGMeta_dptr = at::xpu::HostAlloc(sizeof(TLMetaForWG) * totalWG);
@@ -325,8 +326,8 @@ void multi_tensor_apply_for_fused_optimizer(
   auto addressStorage = at::empty(
       {(int)(sizeof(TLFusedMetaForAddress<depth>) * n_tensors)},
       tensor_lists[0][0].options().dtype(at::kByte));
-  auto metaFusedAddressInput =
-      static_cast<TLFusedMetaForAddress<depth>*>(addressStorage.data_ptr());
+  auto metaFusedAddressInput = static_cast<TLFusedMetaForAddress<depth>*>(
+      addressStorage.mutable_data_ptr());
   TLFusedMetaForAddress<depth>* tlAddress = nullptr;
 
   auto tlAddress_dptr =
@@ -338,10 +339,10 @@ void multi_tensor_apply_for_fused_optimizer(
   for (size_t t = 0; t < n_tensors; ++t) {
     auto numel = tensor_lists[0][t].numel();
     tlAddress[t].numel_to_tensor = numel;
-    tlAddress[t].state_steps_addresses = state_steps[t].data_ptr();
+    tlAddress[t].state_steps_addresses = state_steps[t].mutable_data_ptr();
     totalWG += (numel + kChunkSize - 1) / kChunkSize;
     for (int d = 0; d < depth; ++d) {
-      tlAddress[t].addresses[d] = tensor_lists[d][t].data_ptr();
+      tlAddress[t].addresses[d] = tensor_lists[d][t].mutable_data_ptr();
     }
   }
 
@@ -357,7 +358,8 @@ void multi_tensor_apply_for_fused_optimizer(
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
       tensor_lists[0][0].options().dtype(at::kByte));
-  auto metaWGInput = static_cast<TLMetaForWG*>(wgMetaStorage.mutable_data_ptr());
+  auto metaWGInput =
+      static_cast<TLMetaForWG*>(wgMetaStorage.mutable_data_ptr());
   TLMetaForWG* tlWGMeta = nullptr;
 
   auto tlWGMeta_dptr = at::xpu::HostAlloc(sizeof(TLMetaForWG) * totalWG);
