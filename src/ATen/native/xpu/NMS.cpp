@@ -48,7 +48,8 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
   auto mask = nms_kernel(dets_sorted, iou_threshold);
 
   at::Tensor mask_cpu = mask.to(at::kCPU);
-  unsigned long long* mask_host = (unsigned long long*)mask_cpu.mutable_data_ptr();
+  unsigned long long* mask_host =
+      (unsigned long long*)mask_cpu.mutable_data_ptr();
 
   std::vector<unsigned long long> remv(col_blocks);
   memset(&remv[0], 0, sizeof(unsigned long long) * col_blocks);

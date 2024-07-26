@@ -196,7 +196,8 @@ void multi_tensor_apply(
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
       tensor_lists[0][0].options().dtype(at::kByte));
-  auto metaWGInput = static_cast<TLMetaForWG*>(wgMetaStorage.data_ptr());
+  auto metaWGInput =
+      static_cast<TLMetaForWG*>(wgMetaStorage.mutable_data_ptr());
   TLMetaForWG* tlWGMeta = nullptr;
 
   auto tlWGMeta_dptr = at::xpu::HostAlloc(sizeof(TLMetaForWG) * totalWG);
