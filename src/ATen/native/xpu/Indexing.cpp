@@ -69,11 +69,11 @@ static Tensor& masked_select_out_impl(
   // owning and expand_outplace returns a borrow, the returned borrow
   // would dangle.
   auto mask_self_expanded = expand_outplace(*mask_temp, *self_temp);
-  at::index_out(
-      result,
+  XPUNativeFunctions::index_out(
       *std::get<1>(mask_self_expanded),
       c10::List<std::optional<at::Tensor>>(
-          {*std::move(std::get<0>(mask_self_expanded))}));
+          {*std::move(std::get<0>(mask_self_expanded))}),
+      result);
 
   return result;
 }
