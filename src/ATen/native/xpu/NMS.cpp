@@ -55,7 +55,7 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
 
   at::Tensor keep =
       at::empty({dets_num}, dets.options().dtype(at::kLong).device(at::kCPU));
-  int64_t* keep_out = (int64_t*)keep.data_ptr();
+  int64_t* keep_out = keep.mutable_data_ptr<int64_t>();
 
   int num_to_keep = 0;
   for (int i = 0; i < dets_num; i++) {

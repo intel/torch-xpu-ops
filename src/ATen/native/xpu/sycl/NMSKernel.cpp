@@ -111,7 +111,7 @@ Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
             (size_t)col_blocks, (size_t)col_blocks * nms_items_per_group};
         sycl::range<2> local_range{1, (size_t)nms_items_per_group};
         using acc_t = acc_type_device<scalar_t, kXPU>;
-        auto dets_sorted_ptr = (scalar_t*)dets_sorted.data_ptr();
+        auto dets_sorted_ptr = dets_sorted.const_data_ptr<scalar_t>();
         auto mask_ptr = (unsigned long long*)mask.data_ptr();
         auto caller = NMSKernelFunctor<scalar_t, acc_t>(
             dets_num, iou_threshold, dets_sorted_ptr, mask_ptr);
