@@ -163,6 +163,11 @@ skip_list = (
     "test_compare_cpu_std_mean_xpu_bfloat16",
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
+
+    # test case doesn't make sense, will file an issue to track it.
+    # https://github.com/pytorch/pytorch/issues/130916
+    "test_compare_cpu_histogram_xpu_float32",
+    "test_compare_cpu_histogram_xpu_float64",
 )
 
 

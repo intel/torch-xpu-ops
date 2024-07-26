@@ -407,7 +407,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       OUTPUT ${output_file}
       DEPENDS ${object_files}
       COMMAND ${SYCL_EXECUTABLE}
-      -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs "\"${SYCL_OFFLINE_COMPILER_FLAGS}\""
@@ -471,7 +470,7 @@ macro(SYCL_ADD_LIBRARY sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
-    ${SYCL_LIBRARIES})
+    ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}
     PROPERTIES
@@ -530,7 +529,7 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
-    ${SYCL_LIBRARIES})
+    ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}
     PROPERTIES
