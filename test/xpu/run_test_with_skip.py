@@ -1139,6 +1139,11 @@ skip_list = (
     "test_save_load_nn_Transformer_xpu_float64",
     # AssertionError: Tensor-likes are not close!
     "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
+    # Unexpected success:
+    "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+    "test_memory_format_nn_AvgPool2d_xpu_float32",
+    "test_memory_format_nn_AvgPool2d_xpu_float64",
     # AssertionError: False is not true
     "test_memory_format_nn_Conv2d_xpu_float64",
     "test_memory_format_nn_ConvTranspose2d_xpu_float64",
