@@ -93,7 +93,7 @@ tacotron2,fail_to_run,fail_to_run,fail_to_run,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 timm_efficientnet,pass,pass,pass,pass,pass
 timm_nfnet,pass,pass,pass,pass,pass
-timm_regnet,pass,pass,pass,pass,pass
+timm_regnet,pass,fail_accuracy,pass,pass,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
 timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
