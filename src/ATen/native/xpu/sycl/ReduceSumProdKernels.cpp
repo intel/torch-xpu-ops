@@ -80,14 +80,14 @@ template <
     typename scalar_t,
     typename acc_t = scalar_t,
     typename out_t = scalar_t>
-struct nansum_functor {
+struct NansumFunctor {
   void operator()(TensorIterator& iter) {
     gpu_reduce_kernel<scalar_t, out_t>(iter, NanSumOps<acc_t, out_t>{});
   }
 };
 
 template <typename scalar_t>
-struct nansum_functor_complex {
+struct NansumComplexFunctor {
   void operator()(TensorIterator& iter) {
     using acc_t = at::opmath_type<scalar_t>;
     gpu_reduce_kernel<scalar_t, scalar_t>(iter, NanSumOps<acc_t, scalar_t>{});
@@ -99,11 +99,11 @@ void nansum_kernel(TensorIterator& iter) {
     auto dtype = iter.dtype();
     if (at::isComplexType(dtype)) {
       AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "nansum_xpu", [&]() {
-        nansum_functor_complex<scalar_t>{}(iter);
+        NansumComplexFunctor<scalar_t>{}(iter);
       });
     } else {
       AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "nansum_xpu", [&]() {
-        nansum_functor<scalar_t>{}(iter);
+        NansumFunctor<scalar_t>{}(iter);
       });
     }
   };
