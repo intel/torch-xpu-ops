@@ -539,8 +539,6 @@ supported:
   - sgn.out
   - sgn_
   - _cdist_forward
-  - _pin_memory
-  - is_pinned
   - is_set_to
   - bucketize.Tensor
   - bucketize.Tensor_out
@@ -662,6 +660,11 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - histogram.bins_tensor
+  - histogram.bins_tensor_out
+  - histogram.bin_ct
+  - histogram.bin_ct_out
+  - repeat_interleave.Tensor
   - norm.ScalarOpt_dim_dtype
   - norm.dtype_out
   - norm.ScalarOpt_dim

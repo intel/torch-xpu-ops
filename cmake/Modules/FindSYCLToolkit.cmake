@@ -25,15 +25,19 @@ This will define the following variables:
 
 #]=======================================================================]
 
-set(SYCLTOOLKIT_FOUND False)
-include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+include(${TORCH_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
 
-set(SYCL_ROOT "")
-if(DEFINED ENV{SYCL_ROOT})
-  set(SYCL_ROOT $ENV{SYCL_ROOT})
-elseif(DEFINED ENV{CMPLR_ROOT})
-  set(SYCL_ROOT $ENV{CMPLR_ROOT})
+if(NOT SYCL_FOUND)
+  set(SYCLTOOLKIT_FOUND FALSE)
+  return()
 endif()
+
+if(SYCLTOOLKIT_FOUND)
+  return()
+endif()
+set(SYCLTOOLKIT_FOUND TRUE)
+
+include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 if(WIN32)
   set(SYCL_EXECUTABLE_NAME icx)
@@ -69,43 +73,6 @@ if(nocmplr)
   set(SYCLTOOLKIT_FOUND False)
   set(SYCL_REASON_FAILURE "SYCL: CMAKE_CXX_COMPILER not set!!")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
-endif()
-
-find_file(
-  SYCL_INCLUDE_DIR
-  NAMES include
-  HINTS ${SYCL_ROOT}
-  NO_DEFAULT_PATH
-  )
-
-find_file(
-  SYCL_INCLUDE_SYCL_DIR
-  NAMES sycl
-  HINTS ${SYCL_ROOT}/include
-  NO_DEFAULT_PATH
-  )
-
-list(APPEND SYCL_INCLUDE_DIR ${SYCL_INCLUDE_SYCL_DIR})
-
-find_file(
-  SYCL_LIBRARY_DIR
-  NAMES lib lib64
-  HINTS ${SYCL_ROOT}
-  NO_DEFAULT_PATH
-  )
-
-find_library(
-  SYCL_LIBRARY
-  NAMES sycl
-  HINTS ${SYCL_LIBRARY_DIR}
-  NO_DEFAULT_PATH
-)
-
-if((NOT SYCL_INCLUDE_DIR) OR (NOT SYCL_LIBRARY_DIR) OR (NOT SYCL_LIBRARY))
-  set(SYCLTOOLKIT_FOUND False)
-  set(SYCL_REASON_FAILURE "SYCL sdk is incomplete!!")
-  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
-  return()
 endif()
 
 # Function to write a test case to verify SYCL features.
@@ -202,6 +169,13 @@ set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
 list(APPEND SYCL_FLAGS "-fsycl")
 list(APPEND SYCL_LINK_FLAGS "-fsycl")
+if(LINUX)
+  string(REGEX MATCH "libsycl-preview.so" is_abi_neutral ${SYCL_LIBRARY})
+  if(is_abi_neutral)
+    list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
+    list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
+  endif()
+endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 
@@ -249,14 +223,3 @@ endif()
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
-
-# Avoid module variables conflict due to calling find_package recursively
-# e.g. find_package -> add_subdirectory(entering in a sub-project) -> find_package
-# find_package_handle_standard_args(
-#   SYCLToolkit
-#   FOUND_VAR SYCLTOOLKIT_FOUND
-#   REQUIRED_VARS SYCL_INCLUDE_DIR SYCL_LIBRARY_DIR SYCL_LIBRARY SYCL_FLAGS
-#   VERSION_VAR SYCL_LANGUAGE_VERSION
-#   REASON_FAILURE_MESSAGE "${SYCL_REASON_FAILURE}")
-set(SYCLTOOLKIT_FOUND True)
-
