@@ -164,7 +164,7 @@ void multi_tensor_apply(
       tensor_lists[0][0].options().dtype(at::kByte));
   auto metaAddressInput =
       static_cast<TLMetaForAddressScalar<scalar_vals_t, depth>*>(
-          addressStorage.data_ptr());
+          addressStorage.mutable_data_ptr());
   TLMetaForAddressScalar<scalar_vals_t, depth>* tlAddress = nullptr;
 
   auto tlAddress_dptr = at::xpu::HostAlloc(
@@ -356,7 +356,7 @@ void multi_tensor_apply_for_fused_optimizer(
   auto wgMetaStorage = at::empty(
       {(int)(sizeof(TLMetaForWG) * totalWG)},
       tensor_lists[0][0].options().dtype(at::kByte));
-  auto metaWGInput = static_cast<TLMetaForWG*>(wgMetaStorage.data_ptr());
+  auto metaWGInput = static_cast<TLMetaForWG*>(wgMetaStorage.mutable_data_ptr());
   TLMetaForWG* tlWGMeta = nullptr;
 
   auto tlWGMeta_dptr = at::xpu::HostAlloc(sizeof(TLMetaForWG) * totalWG);
