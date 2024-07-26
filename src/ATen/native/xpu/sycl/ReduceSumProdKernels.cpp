@@ -107,7 +107,7 @@ void nansum_kernel(TensorIterator& iter) {
       });
     }
   };
-  reduce_dispatch<nansum_functor>(iter, general_dispatcher);
+  reduce_dispatch<NansumFunctor>(iter, general_dispatcher);
 }
 
 } // namespace xpu
