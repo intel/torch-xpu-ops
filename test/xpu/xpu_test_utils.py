@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "index_fill",
     "index_put",
     "index_select",
+    "masked_select",
     "isin",
     "isnan",
     "le",

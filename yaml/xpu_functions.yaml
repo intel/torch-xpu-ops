@@ -112,6 +112,8 @@ supported:
   - index_fill_.int_Tensor
   - index_select
   - index_select.out
+  - masked_select
+  - masked_select.out
   - gcd
   - gcd.out
   - gcd_
