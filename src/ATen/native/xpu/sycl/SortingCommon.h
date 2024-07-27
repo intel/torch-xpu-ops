@@ -3,12 +3,12 @@
 #include <ATen/ATen.h>
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
+#include <comm/TensorInfo.h>
 #include <stdlib.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
+using namespace at::xpu::detail;
 struct NullType {
   using value_type = NullType;
   template <typename T>
@@ -85,6 +85,50 @@ struct KeyTraits<uint8_t> {
   }
 };
 
+template <>
+struct KeyTraits<uint16_t> {
+  using Type = uint16_t;
+  using SrcType = uint16_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
+
+template <>
+struct KeyTraits<uint32_t> {
+  using Type = uint32_t;
+  using SrcType = uint32_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
+
+template <>
+struct KeyTraits<uint64_t> {
+  using Type = uint64_t;
+  using SrcType = uint64_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
 template <>
 struct KeyTraits<int8_t> {
   using Type = uint8_t;
@@ -310,9 +354,9 @@ inline T group_inclusive_cumsum(T* slm_storage, sycl::nd_item<1>& item) {
 
 template <typename scalar_t, typename index_t, typename Launcher>
 void run_launcher(
-    Tensor& values,
-    Tensor& indices,
-    const Tensor& self,
+    const TensorBase& values,
+    const TensorBase& indices,
+    const TensorBase& self,
     int64_t dim,
     Launcher l) {
   auto self_info = getTensorInfo<scalar_t, index_t>(self);
@@ -388,6 +432,5 @@ void run_launcher(
   }
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+} // namespace at::native::xpu
+

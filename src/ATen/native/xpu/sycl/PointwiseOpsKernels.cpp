@@ -9,7 +9,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct AddcmulFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return static_cast<accscalar_t>(a) +
         alpha_ * static_cast<accscalar_t>(b) * static_cast<accscalar_t>(c);
@@ -47,7 +47,7 @@ void addcmul_kernel(TensorIterator& iter, Scalar value) {
         iter.dtype(),
         "addcmul_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
         });
@@ -56,7 +56,7 @@ void addcmul_kernel(TensorIterator& iter, Scalar value) {
 
 template <typename scalar_t>
 struct AddcdivFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return a + alpha_ * (b / static_cast<accscalar_t>(c));
   }
@@ -94,7 +94,7 @@ void addcdiv_kernel(TensorIterator& iter, Scalar value) {
         iter.dtype(),
         "addcdiv_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           AddcdivFunctor<scalar_t> f(alpha);
           gpu_kernel(iter, f);
@@ -122,6 +122,43 @@ void mse_backward_kernel(TensorIterator& iter, const Scalar& value) {
       [&]() {
         auto alpha = value.to<scalar_t>();
         gpu_kernel(iter, MSEBackwardFunctor<scalar_t>(alpha));
+      });
+}
+
+template <typename scalar_t>
+struct HuberBackwardFunctor {
+  scalar_t operator()(scalar_t input, scalar_t target, scalar_t grad_output)
+      const {
+    const auto x = input - target;
+    if (x < -delta_val_) {
+      return -norm_val_ * grad_output * delta_val_;
+    } else if (x > delta_val_) {
+      return norm_val_ * grad_output * delta_val_;
+    } else {
+      return norm_val_ * x * grad_output;
+    }
+  }
+  HuberBackwardFunctor(scalar_t norm_val, scalar_t delta_val)
+      : norm_val_(norm_val), delta_val_(delta_val) {}
+
+ private:
+  scalar_t norm_val_;
+  scalar_t delta_val_;
+};
+
+void huber_backward_kernel(
+    TensorIterator& iter,
+    const Scalar& norm,
+    double delta) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kBFloat16,
+      kHalf,
+      iter.dtype(),
+      "huber_backward_xpu",
+      [&iter, &norm, delta] {
+        auto norm_val = norm.to<scalar_t>();
+        scalar_t delta_val(delta);
+        gpu_kernel(iter, HuberBackwardFunctor<scalar_t>(norm_val, delta_val));
       });
 }
 

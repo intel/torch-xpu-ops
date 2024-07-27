@@ -42,7 +42,7 @@ struct WelfordOpsXPU
 
 template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
   using WelfordType = at::native::WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
@@ -173,7 +173,7 @@ void group_norm_1d_forward(
     int64_t C,
     int64_t group,
     Tensor& Y) {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
   const int64_t G = group;
   const int64_t D = C / G;
   if (gamma.defined() && beta.defined()) {
@@ -242,7 +242,7 @@ void group_norm_kernel_impl(
     Tensor& rstd) {
   auto X = X_.contiguous();
 
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
   TORCH_CHECK(X.numel() == N * C * HxW);
   TORCH_CHECK(!gamma.defined() || gamma.numel() == C);
   TORCH_CHECK(!beta.defined() || beta.numel() == C);
@@ -443,7 +443,7 @@ struct GroupNorm1dBackwardFunctor {
 template <typename T>
 struct GammaBeta1dBackwardSmallKernel {
   void operator()(sycl::nd_item<1> item) const {
-    using T_ACC = acc_type<T, true>;
+    using T_ACC = acc_type_device<T, kXPU>;
     const int64_t c = item.get_local_linear_id();
     if (c < C_) {
       const int64_t G = group_;
@@ -504,7 +504,7 @@ struct GammaBeta1dBackwardSmallKernel {
 
 template <typename T, int SIMD, int kReduceTileSize>
 struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
@@ -644,7 +644,7 @@ void group_norm_1d_backward(
     Tensor& dX,
     Tensor& dgamma,
     Tensor& dbeta) {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
   const int64_t G = group;
   const int64_t D = C / G;
   const T* dY_data = dY.const_data_ptr<T>();
@@ -764,7 +764,7 @@ void group_norm_1d_backward(
 
 template <typename T, int SIMD>
 struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
@@ -827,7 +827,7 @@ struct GroupNormBackwardDXFunctor {
 template <typename T, int SIMD>
 struct ComputeBackwardFusedParamsFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
@@ -906,7 +906,7 @@ struct ComputeBackwardFusedParamsFunctor
 
 template <typename T>
 struct GammaBetaBackwardPlainFunctor {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
 
   void operator()(sycl::item<1> item) const {
     auto c = item.get_id(0);
@@ -965,7 +965,7 @@ struct GammaBetaBackwardPlainFunctor {
 
 template <typename T, int SIMD, int kReduceTileSize>
 struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
@@ -1108,7 +1108,7 @@ void group_norm_backward_kernel_impl(
   auto dY = dY_.contiguous();
   auto X = X_.contiguous();
 
-  using T_ACC = acc_type<T, true>;
+  using T_ACC = acc_type_device<T, kXPU>;
   const int64_t G = group;
   const int64_t D = C / G;
   TORCH_CHECK(dY.numel() == N * C * HxW);

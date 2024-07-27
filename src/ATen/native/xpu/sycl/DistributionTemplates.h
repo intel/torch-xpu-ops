@@ -8,6 +8,8 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
+#include <ATen/native/xpu/sycl/TensorApplyUtils.h>
+#include <ATen/ops/empty.h>
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
@@ -462,7 +464,7 @@ void normal_kernel(const TensorBase& self, double mean_, double std_, RNG gen) {
       iter.dtype(),
       "normal_kernel_xpu",
       [&] {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto mean = static_cast<accscalar_t>(mean_);
         auto std = static_cast<accscalar_t>(std_);
         normal_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
@@ -515,51 +517,110 @@ void uniform_kernel(
 
 // ====================== Bernoulli ======================
 
-template <typename scalar_t, typename accscalar_t>
-struct BernoulliFunctor {
-  scalar_t operator()(scalar_t out, accscalar_t p) const {
-    return static_cast<scalar_t>((accscalar_t)out < p);
+template <typename scalar_t, typename prob_t>
+struct BernoulliTensorApplyFunctor {
+  void operator()(
+      sycl::nd_item<1> item,
+      int n,
+      scalar_t& v1,
+      scalar_t& v2,
+      scalar_t& v3,
+      scalar_t& v4,
+      const prob_t& p1,
+      const prob_t& p2,
+      const prob_t& p3,
+      const prob_t& p4) const {
+    auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(
+        std::get<0>(seeds),
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
+        std::get<1>(seeds),
+        &state);
+    auto rand = rand_uniform4(&state);
+    switch (n) {
+      case 4: {
+        SYCL_KERNEL_ASSERT(0 <= p4 && p4 <= 1);
+        v4 = static_cast<scalar_t>(rand.w <= p4);
+        [[fallthrough]];
+      }
+      case 3: {
+        SYCL_KERNEL_ASSERT(0 <= p3 && p3 <= 1);
+        v3 = static_cast<scalar_t>(rand.z <= p3);
+        [[fallthrough]];
+      }
+      case 2: {
+        SYCL_KERNEL_ASSERT(0 <= p2 && p2 <= 1);
+        v2 = static_cast<scalar_t>(rand.y <= p2);
+        [[fallthrough]];
+      }
+      case 1: {
+        SYCL_KERNEL_ASSERT(0 <= p1 && p1 <= 1);
+        v1 = static_cast<scalar_t>(rand.x <= p1);
+      }
+    }
   }
+  BernoulliTensorApplyFunctor(std::pair<uint64_t, uint64_t> rng_engine_inputs)
+      : philox_args_(
+            std::get<0>(rng_engine_inputs),
+            std::get<1>(rng_engine_inputs)) {}
+
+ private:
+  PhiloxState philox_args_;
 };
+
+template <typename scalar_t, typename prob_t>
+void bernoulli_tensor_kernel(
+    TensorBase& ret,
+    TensorBase& p,
+    std::pair<uint64_t, uint64_t> rng_engine_inputs) {
+  auto functor =
+      BernoulliTensorApplyFunctor<scalar_t, prob_t>(rng_engine_inputs);
+  // The template argument `4` below indicates that we want to operate on four
+  // element at each time.
+  at::native::xpu::tensor_apply2<
+      scalar_t,
+      prob_t,
+      4,
+      decltype(functor),
+      /*threads_per_group=*/512>(ret, p, functor);
+}
 
 template <typename RNG>
 void bernoulli_kernel(const TensorBase& self, const TensorBase& p_, RNG gen) {
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
+  {
+    // See Note [Acquire lock when using random generators]
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    rng_engine_inputs = gen->philox_engine_inputs(10);
+  }
   TORCH_CHECK(
       at::isFloatingType(p_.scalar_type()),
       "expected probabilities tensor to have floating type, got ",
       p_.scalar_type());
+  // cast probabilities tensor to double for double `self` tensor, and to
+  // `float` for everything else
   const auto p_type = self.dtype() == at::kDouble ? at::kDouble : at::kFloat;
   auto p_xpu = p_.to(TensorOptions().device(self.device()).dtype(p_type));
   auto p = expand_inplace(self, p_xpu);
-
-  Tensor self_float;
-  auto self_type = self.scalar_type();
-  if (!(self_type == at::ScalarType::Float ||
-        self_type == at::ScalarType::Double))
-    self_float = at::empty(self.sizes(), self.options().dtype(at::kFloat));
-  else
-    self_float = self;
-
-  auto iter_uniform = at::TensorIterator::borrowing_nullary_op(self_float);
-  uniform_kernel<RNG>(iter_uniform, 0.0, 1.0, gen);
-
-  auto iter = TensorIteratorConfig()
-                  .add_output(self)
-                  .add_input(self_float)
-                  .add_input(*p)
-                  .check_all_same_dtype(false)
-                  .build();
-
   AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::Bool,
       self.scalar_type(),
-      "bernoulli_xpu",
+      "bernoulli_tensor_xpu_self_",
       [&] {
-        using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
-        auto f = BernoulliFunctor<scalar_t, accscalar_t>();
-        gpu_kernel(iter, f);
+        if (std::is_same<scalar_t, double>::value) {
+          return bernoulli_tensor_kernel<double, double>(
+              const_cast<TensorBase&>(self),
+              const_cast<TensorBase&>(*p),
+              rng_engine_inputs);
+        } else {
+          return bernoulli_tensor_kernel<scalar_t, float>(
+              const_cast<TensorBase&>(self),
+              const_cast<TensorBase&>(*p),
+              rng_engine_inputs);
+        }
       });
 }
 
@@ -587,6 +648,51 @@ void bernoulli_kernel(TensorIteratorBase& iter, double p, RNG gen) {
         using accscalar_t = at::DiscreteDistributionType<scalar_t>::type;
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
             iter, gen, BernoulliScalarFunctor<scalar_t, accscalar_t>(p));
+      });
+}
+
+// ====================== Exponential ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct ExponentialFunctor {
+  auto operator()(accscalar_t val) const {
+    // BEFORE TOUCHING THIS CODE READ:
+    // https://github.com/pytorch/pytorch/issues/16706
+    // rand_uniform has (0,1] bounds. log(1) is 0 and exponential
+    // excludes 0. we need log to be not 0, and not underflow when
+    // converted to half
+    accscalar_t log;
+    if (val >= static_cast<accscalar_t>(1.f) -
+            std::numeric_limits<scalar_t>::epsilon() / 2.f) {
+      log = -std::numeric_limits<scalar_t>::epsilon() / 2.f;
+    } else {
+      log = std::log(val);
+    }
+    return static_cast<accscalar_t>(-1.f) / lambd_ * log;
+  }
+  ExponentialFunctor(accscalar_t lambd) : lambd_(lambd) {}
+
+ private:
+  accscalar_t lambd_;
+};
+
+template <typename RNG>
+void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
+  TORCH_CHECK(
+      isFloatingType(iter.dtype()),
+      "Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ",
+      iter.dtype());
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "exponential__xpu_",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto lambd = static_cast<accscalar_t>(lambda);
+        ExponentialFunctor<scalar_t, accscalar_t> exponential_func(lambd);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, exponential_func);
       });
 }
 

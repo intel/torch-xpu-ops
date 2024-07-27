@@ -5664,11 +5664,9 @@ else:
 
         for mf, shape in formats_shapes:
             self._test_memory_format_transformations(
-                'cuda', get_generator(mf, shape), transformation_cpu_fn, mf, default_is_preserve=True)
+                'cpu', get_generator(mf, shape), transformation_xpu_fn, mf, default_is_preserve=True)
             self._test_memory_format_transformations(
-                'cpu', get_generator(mf, shape), transformation_cuda_fn, mf, default_is_preserve=True)
-            self._test_memory_format_transformations(
-                'xpu', get_generator(mf, shape), transformation_xpu_fn, mf, default_is_preserve=True)
+                'xpu', get_generator(mf, shape), transformation_cpu_fn, mf, default_is_preserve=True)
 
     # FIXME: move to test_serialization
     @onlyNativeDeviceTypes
@@ -8574,31 +8572,17 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         # TypeError would be better
         self.assertRaises(RuntimeError, lambda: x.new(z.storage()))
 
-    @unittest.skipIf(PYTORCH_CUDA_MEMCHECK, "is_pinned uses failure to detect pointer property")
     def test_pin_memory(self):
         x = torch.randn(3, 5)
         self.assertFalse(x.is_pinned())
-        if not torch.cuda.is_available() or not torch.xpu.is_available():
-            self.assertRaises(RuntimeError, lambda: x.pin_memory())
-        else:
-            if torch.xpu.is_available():
-                device = 'xpu'
-                self.assertFalse(x.is_pinned(device))
-                pinned = x.pin_memory(device)
-                self.assertTrue(pinned.is_pinned(device))
-                self.assertEqual(pinned, x)
-                self.assertNotEqual(pinned.data_ptr(), x.data_ptr())
-                # test that pin_memory on already pinned tensor has no effect
-                self.assertIs(pinned, pinned.pin_memory(device))
-                self.assertEqual(pinned.data_ptr(), pinned.pin_memory(device).data_ptr())
-            else:
-                pinned = x.pin_memory()
-                self.assertTrue(pinned.is_pinned())
-                self.assertEqual(pinned, x)
-                self.assertNotEqual(pinned.data_ptr(), x.data_ptr())
-                # test that pin_memory on already pinned tensor has no effect
-                self.assertIs(pinned, pinned.pin_memory())
-                self.assertEqual(pinned.data_ptr(), pinned.pin_memory().data_ptr())
+        if torch.cuda.is_available() or torch.xpu.is_available():
+            pinned = x.pin_memory()
+            self.assertTrue(pinned.is_pinned())
+            self.assertEqual(pinned, x)
+            self.assertNotEqual(pinned.data_ptr(), x.data_ptr())
+            # test that pin_memory on already pinned tensor has no effect
+            self.assertIs(pinned, pinned.pin_memory())
+            self.assertEqual(pinned.data_ptr(), pinned.pin_memory().data_ptr())
 
 
 

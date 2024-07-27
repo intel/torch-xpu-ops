@@ -11,8 +11,14 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct DivFloorFloatFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return c10::div_floor_floating(a, b);
+  scalar_t operator()(scalar_t a_, scalar_t b_) const {
+    using acc_t = at::acc_type_device<scalar_t, c10::DeviceType::XPU>;
+    acc_t a = static_cast<acc_t>(a_);
+    acc_t b = static_cast<acc_t>(b_);
+
+    // suppress compiler optimization on data type promotion
+    volatile acc_t res = c10::div_floor_floating(a, b);
+    return res;
   }
 };
 
@@ -70,7 +76,7 @@ void div_floor_kernel(TensorIteratorBase& iter) {
     // precision compared to computing the division.
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, dtype, "div_floor_xpu", [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto b = iter.scalar_value<accscalar_t>(2);
           if (C10_UNLIKELY(b == 0)) {
             return div_true_kernel(iter);

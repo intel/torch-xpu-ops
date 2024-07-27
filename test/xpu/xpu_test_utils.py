@@ -15,7 +15,15 @@ from torch.testing._internal import (
 )
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
-
+from torch.testing._internal.opinfo.core import (
+    BinaryUfuncInfo,
+    DecorateInfo,
+    OpInfo,
+    ReductionOpInfo,
+    ShapeFuncInfo,
+    SpectralFuncInfo,
+    UnaryUfuncInfo,
+)
 
 _xpu_computation_op_list = [
     "empty",
@@ -38,6 +46,7 @@ _xpu_computation_op_list = [
     "abs",
     "erf",
     "erfc",
+    "erfinv",
     "bernoulli",
     "bitwise_and",
     "bitwise_not",
@@ -50,9 +59,14 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cos",
+    "cumprod"
     "cumsum",
+    "equal",
     "eq",
+    "exp",
+    "exp2",
+    "expm1",
+    "exponential",
     "fill",
     "fmod",
     "gcd",
@@ -61,23 +75,35 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.mish",
     "index_add",
+    "index_fill",
     "index_put",
     "index_select",
+    "isin",
     "isnan",
     "le",
     "log",
+    "log10",
+    "log1p",
+    "log2",
+    "logaddexp",
+    "logaddexp2",
+    "logit",
     "lt",
+    "logical_and",
+    "logical_or",
+    "logical_xor",
     "logical_not",
     "masked_fill",
     "maximum",
     "minimum",
     "mul",
     "median",
+    "nanmedian",
     "native_dropout_backward",
     "ne",
     "neg",
-    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
     "nn.functional.glu",
     "nn.functional.pad",
@@ -87,6 +113,7 @@ _xpu_computation_op_list = [
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
+    "nextafter",
     "nonzero",
     "normal",
     "pow",
@@ -96,7 +123,19 @@ _xpu_computation_op_list = [
     "remainder",
     "reshape",
     "rsqrt",
+    "cos",
+    "cosh",
+    "acos",
+    "acosh",
     "sin",
+    "sinh`",
+    "asin",
+    "asinh",
+    "tan",
+    "tanh",
+    "atan",
+    "atan2",
+    "atanh",
     "sqrt",
     "sum",
     "amin",
@@ -105,7 +144,7 @@ _xpu_computation_op_list = [
     "std_mean",
     "var",
     "var_mean",
-    "tanh",
+    "norm",
     "hypot",
     "unfold",
     "uniform",
@@ -118,6 +157,7 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    # "topk", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
     "roll",
     "tril",
@@ -127,8 +167,10 @@ _xpu_computation_op_list = [
     "softmax",
     "scatter",
     "gather",
+    "nn.functional.adaptive_max_pool2d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
     "nn.functional.embedding",
     "nn.functional.unfold",
@@ -136,17 +178,18 @@ _xpu_computation_op_list = [
     "nn.functional.interpolate",
     "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
-    # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "nn.functional.nll_loss",
     "nn.functional.mse_loss",
+    "nn.functional.binary_cross_entropy",
+    "nn.functional.huber_loss",
     "sigmoid",
+    "logsigmoid",
     "sgn",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
     "grid_sampler_2d",
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
-    "acos",
-    "acosh",
     "addr",
     "cdist",
     "nn.functional.group_norm",
@@ -155,9 +198,28 @@ _xpu_computation_op_list = [
     "_native_batch_norm_legit",
     "_batch_norm_with_update",
     "bincount",
+    "cross",
     "renorm",
+    "digamma",
+    "polygamma",
+    "lgamma",
+    "unique_consecutive",
+    "unique",
+    "multinomial",
     "lerp",
+    "frac",
+    "aminmax",
+    "argmin",
     "conj_physical",
+    "histogram",
+    "repeat_interleave",
+    "fmax",
+    "fmin",
+    "floor",
+    "floor_divide",
+    "copysign",
+    "count_nonzero",
+    "nan_to_num",
 ]
 
 
@@ -423,6 +485,13 @@ class XPUPatchForImport:
         self.instantiate_parametrized_tests_fn = (
             common_utils.instantiate_parametrized_tests
         )
+        self.foreach_unary_op_db = common_methods_invocations.foreach_unary_op_db
+        self.foreach_binary_op_db = common_methods_invocations.foreach_binary_op_db
+        self.foreach_pointwise_op_db = (
+            common_methods_invocations.foreach_pointwise_op_db
+        )
+        self.foreach_reduce_op_db = common_methods_invocations.foreach_reduce_op_db
+        self.foreach_other_op_db = common_methods_invocations.foreach_other_op_db
         self.python_ref_db = common_methods_invocations.python_ref_db
         self.ops_and_refs = common_methods_invocations.ops_and_refs
         self.largeTensorTest = common_device_type.largeTensorTest
@@ -430,6 +499,48 @@ class XPUPatchForImport:
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+
+    def replace_opinfo_device(self, info: OpInfo):
+        decorator_xpu = []
+        replaced = False
+        for decorator in info.decorators:
+            if type(decorator) == DecorateInfo:
+                if decorator.device_type == "cuda":
+                    decorator_xpu.append(decorator)
+                    decorator.device_type = "xpu"
+                    replaced = True
+                else:
+                    decorator_xpu.append(decorator)
+            elif self.only_cuda_fn == decorator:
+                decorator_xpu.append(common_device_type.onlyCUDA)
+                replaced = True
+        if replaced:
+            info.decorators = tuple(decorator_xpu)
+        skip_xpu = []
+        replaced = False
+        for skip in info.skips:
+            if type(skip) == DecorateInfo:
+                if skip.device_type == "cuda":
+                    skip_xpu.append(decorator)
+                    skip.device_type = "xpu"
+                    replaced = True
+                else:
+                    skip_xpu.append(skip)
+            elif self.only_cuda_fn == skip:
+                skip_xpu.append(common_device_type.onlyCUDA)
+                replaced = True
+        if replaced:
+            info.skips = tuple(skip_xpu)
+
+    def adjust_db(self, db):
+        for opinfo in db:
+            if opinfo.name not in _xpu_computation_op_list:
+                opinfo.dtypesIfXPU = opinfo.dtypes
+            else:
+                backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
+                backward_dtypes.add(bfloat16)
+                opinfo.backward_dtypes = tuple(backward_dtypes)
+            self.replace_opinfo_device(opinfo)
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -451,20 +562,16 @@ class XPUPatchForImport:
                 size, device if device and device != "cuda" else "xpu"
             )
         )
-        for op in common_methods_invocations.op_db:
-            if op.decorators and len(op.decorators) > 0:
-                if self.only_cuda_fn in op.decorators:
-                    tmp = list(op.decorators)
-                    for i in range(len(op.decorators)):
-                        if op.decorators[i] == self.only_cuda_fn:
-                            tmp[i] = common_device_type.onlyCUDA
-                    op.decorators = tuple(tmp)
-            if op.name not in _xpu_computation_op_list:
-                op.dtypesIfXPU = op.dtypes
-            else:
-                backward_dtypes = set(op.backward_dtypesIfCUDA)
-                backward_dtypes.add(bfloat16)
-                op.backward_dtypes = tuple(backward_dtypes)
+        for db in [
+            common_methods_invocations.foreach_unary_op_db,
+            common_methods_invocations.foreach_binary_op_db,
+            common_methods_invocations.foreach_pointwise_op_db,
+            common_methods_invocations.foreach_reduce_op_db,
+            common_methods_invocations.foreach_other_op_db,
+            common_methods_invocations.python_ref_db,
+            common_methods_invocations.op_db,
+        ]:
+            self.adjust_db(db)
         common_methods_invocations.python_ref_db = [
             op
             for op in self.python_ref_db
@@ -473,6 +580,64 @@ class XPUPatchForImport:
         common_methods_invocations.ops_and_refs = (
             common_methods_invocations.op_db + common_methods_invocations.python_ref_db
         )
+        common_methods_invocations.unary_ufuncs = [
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, UnaryUfuncInfo)
+        ]
+        common_methods_invocations.binary_ufuncs = [
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, BinaryUfuncInfo)
+        ]
+        common_methods_invocations.binary_ufuncs_and_refs = tuple(
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, BinaryUfuncInfo)
+        )
+        common_methods_invocations.spectral_funcs = [
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, SpectralFuncInfo)
+        ]
+        common_methods_invocations.sparse_unary_ufuncs = [
+            op
+            for op in common_methods_invocations.op_db
+            if isinstance(op, UnaryUfuncInfo) and op.supports_sparse
+        ]
+        common_methods_invocations.sparse_csr_unary_ufuncs = [
+            op
+            for op in common_methods_invocations.op_db
+            if isinstance(op, UnaryUfuncInfo) and op.supports_sparse_csr
+        ]
+        common_methods_invocations.sparse_reduction_ops = [
+            op
+            for op in common_methods_invocations.op_db
+            if isinstance(op, ReductionOpInfo) and op.supports_sparse
+        ]
+        common_methods_invocations.shape_funcs = [
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, ShapeFuncInfo)
+        ]
+        common_methods_invocations.reduction_ops = [
+            op
+            for op in common_methods_invocations.ops_and_refs
+            if isinstance(op, ReductionOpInfo)
+        ]
+        common_methods_invocations.reference_filtered_ops = [
+            op for op in common_methods_invocations.reduction_ops if op.ref is not None
+        ]
+        common_methods_invocations.reference_masked_ops = [
+            op
+            for op in common_methods_invocations.reference_filtered_ops
+            if op.name.startswith("masked.")
+        ]
+        common_methods_invocations.sparse_masked_reduction_ops = [
+            op
+            for op in common_methods_invocations.sparse_reduction_ops
+            if op.name.startswith("masked.")
+        ]
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         cuda.is_available = lambda: True

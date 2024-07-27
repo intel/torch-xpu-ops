@@ -3,7 +3,9 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Sorting.h>
+#include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+#include <comm/TensorInfo.h>
 #include <comm/RegisterUtils.h>
 
 namespace at {
@@ -87,6 +89,7 @@ std::tuple<Tensor&, Tensor&> median_with_indices_impl(
   // choosing which of the duplicates to use for the indices output is
   // nondeterministic.
   at::globalContext().alertNotDeterministic("median XPU with indices output");
+  NoNamesGuard guard;
 
   dim = at::maybe_wrap_dim(dim, self.dim());
   Tensor in = self.dim() > 0 ? self.contiguous() : self.unsqueeze(0);
@@ -96,13 +99,13 @@ std::tuple<Tensor&, Tensor&> median_with_indices_impl(
   checkSameType("median", {values, "values", 0}, {self, "self", 2});
 
   TORCH_CHECK(
-      self.dim() <= MAX_TENSORINFO_DIMS,
+      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "median() cannot operate on more than ",
-      MAX_TENSORINFO_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       " dimensions");
 
   std::vector<int64_t> out_shape = self.sizes().vec();
-  zero_numel_check_dims(self, dim, "median()");
+  native::zero_numel_check_dims(self, dim, "median()");
   if (self.dim() > 0) {
     assert(dim >= 0);
     assert(dim < static_cast<int64_t>(out_shape.size()));
@@ -123,7 +126,7 @@ std::tuple<Tensor&, Tensor&> median_with_indices_impl(
     Tensor vals = keepdim && self.dim() > 0 ? values : values.unsqueeze(dim);
     Tensor inds = keepdim && self.dim() > 0 ? indices : indices.unsqueeze(dim);
 
-    launch_median_kernel(vals, inds, in, dim, ignore_nan);
+    at::native::xpu::launch_median_kernel(vals, inds, in, dim, ignore_nan);
   }
 
   guard.reset();
