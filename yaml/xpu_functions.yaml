@@ -112,6 +112,8 @@ supported:
   - index_fill_.int_Tensor
   - index_select
   - index_select.out
+  - masked_select
+  - masked_select.out
   - gcd
   - gcd.out
   - gcd_
@@ -343,6 +345,8 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - nansum
+  - nansum.out
   - mean.out
   - mean.dim
   - std.correction

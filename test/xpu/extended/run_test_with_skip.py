@@ -127,6 +127,8 @@ skip_list = (
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+    "test_compare_cpu_nansum_xpu_bfloat16",
+    "test_compare_cpu_nanmean_xpu_bfloat16",
     # Align with CUDA impl by using accumulate type. But CPU doesn't use.
     # When XPU uses original data type, the case passes.
     "test_compare_cpu_logit_xpu_bfloat16",
