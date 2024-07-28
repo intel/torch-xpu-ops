@@ -672,7 +672,7 @@ void avg_pool2d_kernel(
   if (count != 0) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_xpu", [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
           switch (memory_format) {
             case MemoryFormat::ChannelsLast: {
@@ -775,7 +775,7 @@ void avg_pool2d_backward_kernel(
       use_divisor ? divisor_override.value() : 0;
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_backward_xpu", [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
         AT_DISPATCH_INDEX_TYPES(
             at::native::canUse32BitIndexMath(input, INT_MAX) ? ScalarType::Int

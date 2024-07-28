@@ -81,6 +81,7 @@ _xpu_computation_op_list = [
     "index_fill",
     "index_put",
     "index_select",
+    "masked_select",
     "isin",
     "isnan",
     "le",
@@ -137,6 +138,7 @@ _xpu_computation_op_list = [
     "atanh",
     "sqrt",
     "sum",
+    "nansum",
     "amin",
     "amax",
     "std",
@@ -156,6 +158,7 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    # "topk", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
     "roll",
     "tril",
@@ -209,6 +212,8 @@ _xpu_computation_op_list = [
     "aminmax",
     "argmin",
     "conj_physical",
+    "histogram",
+    "repeat_interleave",
     "fmax",
     "fmin",
     "floor",
@@ -217,6 +222,7 @@ _xpu_computation_op_list = [
     "count_nonzero",
     "nan_to_num",
     "scatter_reduce",
+    "nanmean",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -534,7 +540,9 @@ class XPUPatchForImport:
                         replaced = True
                 return replaced, wrapper_xpu
 
-            replaced, decorator_xpu = replace_opinfo_device_list(info.name, info.decorators)
+            replaced, decorator_xpu = replace_opinfo_device_list(
+                info.name, info.decorators
+            )
             if replaced:
                 info.decorators = tuple(decorator_xpu)
             replaced, skip_xpu = replace_opinfo_device_list(info.name, info.skips)

@@ -55,7 +55,6 @@ skip_list = (
     "test_compare_cpu_to_sparse_xpu_float32",
     "test_errors_dot_xpu",
     "test_errors_kthvalue_xpu",
-    "test_errors_masked_select_xpu",
     "test_errors_sparse_mul_layout0_xpu",
     "test_errors_sparse_mul_layout1_xpu",
     "test_errors_sparse_mul_layout2_xpu",
@@ -755,11 +754,14 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
-    #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
-    #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
-    #XPU supports bfloat16, CUDA doesn't support it.
+    # AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
+    # The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
+    # XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
+    # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
+    # but test_dtypes infrastructure leverage CUDA supported datatypes
+    "test_dtypes_histogram_xpu",
     # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
     # Align with CPU implementation since,
     # 1. most cases of nextafter require Half dtype.
@@ -771,15 +773,17 @@ res += launch_test("test_ops_xpu.py", skip_list)
 
 
 # test_binary_ufuncs
+
 skip_list = (
     "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
     "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
-    # RuntimeError: false INTERNAL ASSERT FAILED at "torch-xpu-ops/src/ATen/native/xpu/sycl/PowKernels.cpp":233, please report a bug to PyTorch. invalid combination of type in Pow function, common dtype: Short, exp is integral? 0
+    # fail in complex_exponents=[-1.0 - 1.5j, 3.3j]
+    # Mismatched elements: 33 / 100 (33.0%)
+    # Greatest absolute difference: 0.00038337233127094805 at index (4,) (up to 1e-05 allowed)
+    # Greatest relative difference: 1.9085073290625587e-06 at index (6,) (up to 1.3e-06 allowed)
     "test_pow_xpu_int16",
     "test_pow_xpu_int32",
     "test_pow_xpu_int64",
-    "test_pow_xpu_int8",
-    "test_pow_xpu_uint8",
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
@@ -794,6 +798,7 @@ res += launch_test("test_binary_ufuncs_xpu.py", skip_list)
 
 
 # test_scatter_gather_ops
+
 skip_list = (
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
     "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
@@ -1484,27 +1489,6 @@ skip_list = (
     # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
     # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
     "test_log1p_complex_xpu_complex64",
-
-    # CPU MKL::erfinv vs XPU impl. At most 6.e-06
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small_erfinv_xpu_float64",
-
     # Issue: https://github.com/intel/torch-xpu-ops/issues/622
     # Mismatched elements: 8 / 943593 (0.0%)
     # Greatest absolute difference: inf at index (9, 860) (up to 0.001 allowed)
