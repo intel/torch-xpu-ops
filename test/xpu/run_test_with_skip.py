@@ -1261,12 +1261,12 @@ skip_list = (
     "test_RReLU_with_up_down_cuda",
     # AssertionError: Scalars are not close!
     "test_RReLU_with_up_down_scalar_cuda",
-    # lstm: AssertionError: Scalars are not equal!
+    # rnn fallback to cpu
     "test_cudnn_weight_format",
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
+    # not correct assert in LossNLL2d
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
     "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
     # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
@@ -1289,8 +1289,7 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
+    # native_group_norm : RuntimeError: Expected X.is_contiguous(memory_format) to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
     "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
@@ -1308,8 +1307,7 @@ skip_list = (
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-    "test_grid_sample_error_checking",
-    # Failed: Unexpected success
+    #upsamplingNearest2d: Failed: Unexpected success
     "test_upsamplingNearest2d_launch_fail_xpu",
     # CPU fallback could not cover
     # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
@@ -1321,18 +1319,10 @@ skip_list = (
     # AssertionError: False is not true
     "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
     "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-    # NotImplementedError: Could not run 'aten::batch_norm_stats' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_accuracy_cuda",
-    # NotImplementedError: Could not run 'aten::batch_norm_backward_elemt' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_backward_elemt",
     # RuntimeError: "smooth_l1_backward_cpu_out" not implemented for 'Half'
     "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_sum_cuda_half",
-    # RuntimeError: "mse_backward_cpu_out" not implemented for 'Half'
-    "test_MSELoss_no_batch_dim_mean_cuda_half",
-    "test_MSELoss_no_batch_dim_none_cuda_half",
-    "test_MSELoss_no_batch_dim_sum_cuda_half",
     # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
