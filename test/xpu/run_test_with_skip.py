@@ -1295,9 +1295,6 @@ skip_list = (
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: False is not true
-    "test_device_mask_xpu",
-    "test_overwrite_module_params_on_conversion_cpu_device_xpu",
     # AssertionError: RuntimeError not raised
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
@@ -1327,9 +1324,6 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
-    # align CUDA to skip, XPU implementation is not yet supporting uint8
-    "test_upsamplingBiMode2d_consistency",
-    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
