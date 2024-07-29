@@ -3020,8 +3020,12 @@ res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-res += launch_test("nn/test_module_hooks_xpu.py")
+skip_list = (
+    # TypeError: TestStateDictHooks.test_register_state_dict_post_hook() missing 1 required positional argument: 'private'
+    # https://github.com/intel/torch-xpu-ops/issues/658
+    "test_register_state_dict_post_hook",
+)
+res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 # test_parametrization
 
