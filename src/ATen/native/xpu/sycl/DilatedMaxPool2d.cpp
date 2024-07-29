@@ -435,9 +435,8 @@ void launch_max_pool2d_backward_kernel(
 
   using KernelClass =
       MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(1,
-                    gradInputSize, 1, 1, true,
-                    BatchKernelConfig::Policy::pAdaptive);
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   cfg.template build<KernelClass>();
   auto kfn = KernelClass(
       gradInput,
