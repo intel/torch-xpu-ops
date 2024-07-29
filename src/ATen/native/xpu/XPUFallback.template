@@ -257,8 +257,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "signbit.out",
     "sign.out",
     "sinc.out",
-    "smooth_l1_loss_backward.grad_input",
-    "smooth_l1_loss.out",
     "special_airy_ai.out",
     "special_bessel_j0.out",
     "special_bessel_j1.out",
