@@ -128,8 +128,7 @@ struct TopKTypeConfig<at::Half> {
 
   static inline at::Half deconvert(RadixType v) {
     RadixType mask = ((v >> 15) - 1) | 0x8000;
-    auto v_de = v ^ mask;
-    return *((at::Half*)&v_de);
+    return __ushort_as_half(v ^ mask);
   }
 };
 
