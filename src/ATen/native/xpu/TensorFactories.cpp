@@ -166,14 +166,6 @@ Tensor& XPUNativeFunctions::polar_out(
   return result;
 }
 
-Tensor XPUNativeFunctions::polar(const Tensor& abs, const Tensor& angle) {
-  complex_check_floating(abs, angle);
-  c10::TensorOptions options = abs.options();
-  options = options.dtype(toComplexType(abs.scalar_type()));
-  Tensor result = at::empty(0, options);
-  return at::polar_out(result, abs, angle);
-}
-
 Tensor& XPUNativeFunctions::randperm_out(
     int64_t n,
     c10::optional<Generator> generator,
