@@ -1367,9 +1367,9 @@ void spatial_softmax_forward(Tensor& output, Tensor& input, int dim) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   int input_start =
-      ((uint64_t)input.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)input.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int output_start =
-      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)output.const_data_ptr()) % align_bytes / sizeof(scalar_t);
 
   // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
   bool can_use_32bit_index =
@@ -1558,11 +1558,11 @@ void spatial_softmax_backward(
   using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   int gradin_start =
-      ((uint64_t)gradInput.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)gradInput.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int output_start =
-      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)output.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int gradoutput_start =
-      ((uint64_t)gradOutput.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)gradOutput.const_data_ptr()) % align_bytes / sizeof(scalar_t);
 
   // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
   bool can_use_32bit_index = canUse32BitIndexMath(gradInput) &&
@@ -1738,7 +1738,7 @@ Tensor& host_softmax(
         input.scalar_type(),
         "host_softmax",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
           impl::spatial_softmax_forward<scalar_t, accscalar_t, LogSoftMax>(
               output, input, dim);
         });
@@ -1787,7 +1787,7 @@ Tensor& host_softmax_backward(
       grad.scalar_type(),
       "host_softmax_backward",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         impl::spatial_softmax_backward<scalar_t, accscalar_t, LogSoftMax>(
             gI, output, grad, dim);
       });

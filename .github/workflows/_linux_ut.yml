@@ -40,6 +40,11 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
@@ -57,10 +62,6 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           conda install -c intel mkl-static mkl-include -y
           cd ../pytorch
