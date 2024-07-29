@@ -8,7 +8,6 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
-#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
@@ -90,9 +89,6 @@ void upsample_linear1d_kernel(
 
   AT_ASSERT(input_width > 0 && output_width > 0);
 
-  const int num_kernels = output_width;
-  const int num_threads = 512;
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -105,10 +101,12 @@ void upsample_linear1d_kernel(
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
-        UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t> kfn(
-            num_kernels, rwidth, align_corners, idata, odata);
-        auto global_range = ceil_div(num_kernels, num_threads);
-        auto local_range = num_threads;
+        const int num_kernels = output_width;
+        using KernelClass =
+            UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t>;
+        int64_t local_range = syclMaxWorkGroupSize<KernelClass>();
+        KernelClass kfn(num_kernels, rwidth, align_corners, idata, odata);
+        auto global_range = (num_kernels + local_range - 1) / local_range;
         sycl_kernel_submit(
             global_range * local_range,
             local_range,
@@ -187,13 +185,12 @@ void upsample_linear1d_backward_kernel(
     bool align_corners,
     std::optional<double> scales,
     Tensor& grad_input) {
+  globalContext().alertNotDeterministic("upsample_linear1d_backward_xpu");
+
   int output_width = output_size[0];
   int input_width = input_size[2];
   Tensor grad_output = grad_output_.contiguous();
   grad_input.zero_();
-
-  const int num_kernels = output_width;
-  const int num_threads = 512;
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -202,15 +199,16 @@ void upsample_linear1d_backward_kernel(
       "upsample_linear1d_backward",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-
+        const int num_kernels = output_width;
         auto idata = grad_input.packed_accessor64<scalar_t, 3>();
         auto odata = grad_output.packed_accessor64<const scalar_t, 3>();
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
-        UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
-            num_kernels, rwidth, align_corners, idata, odata);
-        auto global_range = ceil_div(num_kernels, num_threads);
-        auto local_range = num_threads;
+        using KernelClass =
+            UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t>;
+        int64_t local_range = syclMaxWorkGroupSize<KernelClass>();
+        KernelClass kfn(num_kernels, rwidth, align_corners, idata, odata);
+        auto global_range = (num_kernels + local_range - 1) / local_range;
         sycl_kernel_submit(
             global_range * local_range,
             local_range,

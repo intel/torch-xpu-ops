@@ -7,8 +7,8 @@
 #include <ATen/ATen.h>
 #include <ATen/Context.h>
 #include <ATen/Dispatch.h>
-#include <ATen/native/IndexingUtils.h>
 #include <ATen/ceil_div.h>
+#include <ATen/native/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
@@ -34,7 +34,12 @@ struct ParallelReplicationPad1dKernelFunctor {
           imin(imax(pad_left_, output_x), input_.size(2) + pad_left_ - 1) -
           o_start_x + i_start_x;
 
-      f_(input_, output_, item.get_group(1), item.get_group(0), output_x, input_x);
+      f_(input_,
+         output_,
+         item.get_group(1),
+         item.get_group(0),
+         output_x,
+         input_x);
     }
   }
   ParallelReplicationPad1dKernelFunctor(
@@ -143,31 +148,31 @@ struct ParallelReplicationPad2dKernelFunctor {
     const int plane = item.get_global_id(1);
 
     if (output_id < output_.size(2) * output_.size(3)) {
-      const int output_x = output_id / output_.size(3);  // height
-      const int output_y = output_id % output_.size(3);  // width
+      const int output_x = output_id / output_.size(3); // height
+      const int output_y = output_id % output_.size(3); // width
 
       const int iStartX = imax(0, -padT_);
       const int iStartY = imax(0, -padL_);
       const int oStartX = imax(0, padT_);
       const int oStartY = imax(0, padL_);
 
-      const int input_x = imin(imax(padT_, output_x), input_.size(2) + padT_ - 1) - oStartX + iStartX;
-      const int input_y = imin(imax(padL_, output_y), input_.size(3) + padL_ - 1) - oStartY + iStartY;
+      const int input_x =
+          imin(imax(padT_, output_x), input_.size(2) + padT_ - 1) - oStartX +
+          iStartX;
+      const int input_y =
+          imin(imax(padL_, output_y), input_.size(3) + padL_ - 1) - oStartY +
+          iStartY;
 
       f_(input_, output_, batch, plane, input_x, input_y, output_x, output_y);
     }
-}
+  }
   ParallelReplicationPad2dKernelFunctor(
       PackedTensorAccessor64<scalar_t, 4> input,
       PackedTensorAccessor64<scalar_t, 4> output,
       int64_t padT,
       int64_t padL,
       const F f)
-      : input_(input),
-        output_(output),
-        padT_(padT),
-        padL_(padL),
-        f_(f) {}
+      : input_(input), output_(output), padT_(padT), padL_(padL), f_(f) {}
 
  private:
   PackedTensorAccessor64<scalar_t, 4> input_;
@@ -276,22 +281,22 @@ struct ParallelReplicationPad3dKernelFunctor {
           imin(imax(pad_left_, output_x), input_.size(4) + pad_left_ - 1) -
           o_start_x + i_start_x;
       int64_t input_y =
-          imin(imax(pad_top_, output_y), input_.size(3) + pad_top_ - 1) - o_start_y +
-          i_start_y;
+          imin(imax(pad_top_, output_y), input_.size(3) + pad_top_ - 1) -
+          o_start_y + i_start_y;
       int64_t input_z =
           imin(imax(pad_front_, output_z), input_.size(2) + pad_front_ - 1) -
           o_start_z + i_start_z;
 
       f_(input_,
-        output_,
-        item.get_group(1),
-        item.get_group(0),
-        output_z,
-        output_y,
-        output_x,
-        input_z,
-        input_y,
-        input_x);
+         output_,
+         item.get_group(1),
+         item.get_group(0),
+         output_z,
+         output_y,
+         output_x,
+         input_z,
+         input_y,
+         input_x);
     }
   }
   ParallelReplicationPad3dKernelFunctor(
@@ -339,8 +344,9 @@ void parallel_replication_pad3d(
   int64_t nbatch = output.size(0);
 
   sycl_kernel_submit(
-          sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
-          sycl::range<3>(1, 1, work_group_size), queue,
+      sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
+      sycl::range<3>(1, 1, work_group_size),
+      queue,
       kfn);
 }
 
@@ -387,8 +393,8 @@ struct ReplicationPad3dBackwardFunctor {
       int64_t intput_y,
       int64_t intput_x) const {
     auto value_to_add = grad_output[batch][plane][output_z][output_y][output_x];
-    auto target =
-        (sycl_global_ptr<scalar_t>)&grad_input[batch][plane][intput_z][intput_y][intput_x];
+    auto target = (sycl_global_ptr<scalar_t>)&grad_input[batch][plane][intput_z]
+                                                        [intput_y][intput_x];
     atomicAdd(target, value_to_add);
   }
 };
@@ -409,7 +415,8 @@ void replication_pad1d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef padding) {
-  TORCH_CHECK(input.numel() < std::numeric_limits<int64_t>::max(),
+  TORCH_CHECK(
+      input.numel() < std::numeric_limits<int64_t>::max(),
       "replication_pad1d only supports input tensors with less than 2^63 - 1 elements");
 
   if (input.numel() == 0) {
@@ -446,9 +453,11 @@ void replication_pad1d_backward_kernel(
   // Nondeterministic because of atomicAdd usage
   globalContext().alertNotDeterministic("replication_pad1d_backward_xpu");
 
-  TORCH_CHECK(input.numel() < std::numeric_limits<int64_t>::max(),
+  TORCH_CHECK(
+      input.numel() < std::numeric_limits<int64_t>::max(),
       "replication_pad1d only supports input tensors with less than 2^63 - 1 elements");
-  TORCH_CHECK(grad_output.numel() < std::numeric_limits<int64_t>::max(),
+  TORCH_CHECK(
+      grad_output.numel() < std::numeric_limits<int64_t>::max(),
       "replication_pad1d only supports output tensors with less than 2^63 - 1 elements");
 
   if (grad_input.numel() == 0) {
@@ -484,26 +493,27 @@ void replication_pad2d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef padding) {
-  TORCH_CHECK(canUse32BitIndexMath(input),
+  TORCH_CHECK(
+      canUse32BitIndexMath(input),
       "input tensor must fit into 32-bit index math");
   if (input.numel() == 0) {
     return;
   }
   const auto padL = padding[0];
   const auto padT = padding[2];
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(kHalf, kBFloat16,
-    input.scalar_type(), "replication_pad2d_xpu", [&] {
-      Tensor input_ = input;
-      Tensor output_ = output;
-      if (input.dim() == 3) {
-        input_ = input.unsqueeze(0);
-        output_ = output.unsqueeze(0);
-      }
-      auto devInput = input_.packed_accessor64<scalar_t, 4>();
-      auto devOutput = output_.packed_accessor64<scalar_t, 4>();
-      replication_pad2d_forward_template<scalar_t>(devInput, devOutput, padT, padL);
-    }
-  );
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      kHalf, kBFloat16, input.scalar_type(), "replication_pad2d_xpu", [&] {
+        Tensor input_ = input;
+        Tensor output_ = output;
+        if (input.dim() == 3) {
+          input_ = input.unsqueeze(0);
+          output_ = output.unsqueeze(0);
+        }
+        auto devInput = input_.packed_accessor64<scalar_t, 4>();
+        auto devOutput = output_.packed_accessor64<scalar_t, 4>();
+        replication_pad2d_forward_template<scalar_t>(
+            devInput, devOutput, padT, padL);
+      });
 }
 
 void replication_pad2d_backward_kernel(
@@ -514,9 +524,11 @@ void replication_pad2d_backward_kernel(
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage
   globalContext().alertNotDeterministic("replication_pad2d_backward_xpu");
-  TORCH_CHECK(canUse32BitIndexMath(input),
+  TORCH_CHECK(
+      canUse32BitIndexMath(input),
       "input tensor must fit into 32-bit index math");
-  TORCH_CHECK(canUse32BitIndexMath(grad_output),
+  TORCH_CHECK(
+      canUse32BitIndexMath(grad_output),
       "output gradient tensor must fit into 32-bit index math");
   TORCH_CHECK(padding.size() == 4, "padding Size is expected to be 4");
 
@@ -535,13 +547,19 @@ void replication_pad2d_backward_kernel(
   const auto iheight = input.size(dimh);
   const auto iwidth = input.size(dimw);
   const auto oheight = iheight + padT + padB;
-  const auto owidth  = iwidth + padL + padR;
+  const auto owidth = iwidth + padL + padR;
 
-  TORCH_CHECK(owidth == grad_output.size(dimw),
-      "grad_output width unexpected. Expected: ", owidth, ", Got: ",
+  TORCH_CHECK(
+      owidth == grad_output.size(dimw),
+      "grad_output width unexpected. Expected: ",
+      owidth,
+      ", Got: ",
       grad_output.size(dimw));
-  TORCH_CHECK(oheight == grad_output.size(dimh),
-      "grad_output height unexpected. Expected: ", oheight, ", Got: ",
+  TORCH_CHECK(
+      oheight == grad_output.size(dimh),
+      "grad_output height unexpected. Expected: ",
+      oheight,
+      ", Got: ",
       grad_output.size(dimh));
 
   grad_input.resize_as_(input);
@@ -550,9 +568,12 @@ void replication_pad2d_backward_kernel(
   }
   grad_input.zero_();
 
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(kHalf, kBFloat16,
-      input.scalar_type(), "replication_pad2d_backward_xpu", [&] {
-
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      input.scalar_type(),
+      "replication_pad2d_backward_xpu",
+      [&] {
         auto grad_input_ = grad_input;
         auto grad_output_ = grad_output;
         if (numInputDims == 3) {
@@ -562,9 +583,9 @@ void replication_pad2d_backward_kernel(
         auto grad_input_packed = grad_input_.packed_accessor64<scalar_t, 4>();
         auto grad_output_packed = grad_output_.packed_accessor64<scalar_t, 4>();
 
-        replication_pad2d_backward_template<scalar_t>(grad_input_packed, grad_output_packed, padT, padL);
-      }
-  );
+        replication_pad2d_backward_template<scalar_t>(
+            grad_input_packed, grad_output_packed, padT, padL);
+      });
 }
 
 void replication_pad3d_kernel(
@@ -606,7 +627,8 @@ static inline void shapeAndGradOutputCheck3d(
     int64_t pad_bottom,
     int64_t pad_front,
     int64_t pad_back) {
-  TORCH_CHECK(canUse32BitIndexMath(input),
+  TORCH_CHECK(
+      canUse32BitIndexMath(input),
       "input tensor must fit into 32-bit index math");
   int64_t num_input_dims = input.dim();
 
@@ -652,7 +674,8 @@ static inline void shapeAndGradOutputCheck3d(
       " W: ",
       owidth);
 
-  TORCH_CHECK(canUse32BitIndexMath(grad_output),
+  TORCH_CHECK(
+      canUse32BitIndexMath(grad_output),
       "output gradient tensor must fit into 32-bit index math");
 
   TORCH_CHECK(

@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/RegisterUtils.h>
@@ -6,41 +7,14 @@
 
 namespace at {
 
-static C10_UNUSED std::array<int64_t, 3> upsample_1d_common_check(
-    IntArrayRef input_size,
-    IntArrayRef output_size) {
-  TORCH_CHECK(
-      output_size.size() == 1,
-      "It is expected output_size equals to 1, but got size ",
-      output_size.size());
-
-  TORCH_CHECK(
-      input_size.size() == 3,
-      "It is expected input_size equals to 3, but got size ",
-      input_size.size());
-
-  int64_t output_width = output_size[0];
-  int64_t nbatch = input_size[0];
-  int64_t channels = input_size[1];
-  int64_t input_width = input_size[2];
-
-  TORCH_CHECK(
-      input_width > 0 && output_width > 0,
-      "Input and output sizes should be greater than 0, but got input (W: ",
-      input_width,
-      ") and output (W: ",
-      output_width,
-      ")");
-
-  return {nbatch, channels, output_width};
-}
 void upsample_linear1d_meta(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
     std::optional<double> scales,
     Tensor& output) {
-  auto full_output_size = upsample_1d_common_check(input.sizes(), output_size);
+  auto full_output_size =
+      at::native::xpu::upsample_1d_common_check(input.sizes(), output_size);
 
   // Allow for empty batch size but not other dimensions
   TORCH_CHECK(
@@ -61,7 +35,8 @@ void upsample_linear1d_backward_meta(
     bool align_corners,
     std::optional<double> scales,
     Tensor& grad_input) {
-  auto full_output_size = upsample_1d_common_check(input_size, output_size);
+  auto full_output_size =
+      at::native::xpu::upsample_1d_common_check(input_size, output_size);
 
   TORCH_CHECK(
       input_size.size() == 3,
@@ -125,7 +100,6 @@ Tensor& XPUNativeFunctions::upsample_linear1d_backward_out(
   upsample_linear1d_backward_meta(
       grad_output, output_size, input_size, align_corners, scales, grad_input);
 
-  globalContext().alertNotDeterministic("upsample_linear1d_backward_out_xpu");
   TensorArg grad_output_arg{grad_output, "grad_output", 1},
       grad_input_arg{grad_input, "grad_input", 2};
   checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
