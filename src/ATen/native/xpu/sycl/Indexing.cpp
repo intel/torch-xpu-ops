@@ -705,7 +705,7 @@ struct MaskedScatterSizeCheckFunctor {
   const int64_t srcSize_;
 };
 
-void launch_masked_scatter_kernel(
+void masked_scatter_kernel(
     const TensorBase& self,
     const TensorBase& mask,
     const TensorBase& maskPrefixSum,

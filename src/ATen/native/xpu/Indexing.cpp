@@ -68,8 +68,7 @@ Tensor& XPUNativeFunctions::masked_scatter_(
   }
 
   auto maskPrefixSum = at::empty(self.sizes(), mask.options().dtype(kLong));
-  native::xpu::launch_masked_scatter_kernel(
-      self, *b_mask, maskPrefixSum, source);
+  native::xpu::masked_scatter_kernel(self, *b_mask, maskPrefixSum, source);
 
   return self;
 }
