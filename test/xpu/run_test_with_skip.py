@@ -1320,10 +1320,6 @@ skip_list = (
     "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_sum_cuda_half",
-    # RuntimeError: "mse_backward_cpu_out" not implemented for 'Half'
-    "test_MSELoss_no_batch_dim_mean_cuda_half",
-    "test_MSELoss_no_batch_dim_none_cuda_half",
-    "test_MSELoss_no_batch_dim_sum_cuda_half",
     # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
