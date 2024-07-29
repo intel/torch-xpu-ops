@@ -69,9 +69,6 @@ skip_list = (
     # TestCompositeCompliance
     # CPU fallback fails
     # Require implementing aten::embedding_renorm_
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
-    "test_backward_nn_functional_embedding_xpu_float32",
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
     # TestCompositeCompliance::test_cow_input
