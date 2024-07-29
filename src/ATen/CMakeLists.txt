@@ -1,6 +1,6 @@
 # ATen XPU sources
 
-file(GLOB xpu_cpp "xpu/*.cpp", "native/xpu/*.cpp", "native/sparse/*.cpp")
+file(GLOB xpu_cpp "xpu/*.cpp" "native/xpu/*.cpp" "native/sparse/*.cpp")
 file(GLOB xpu_sycl "native/xpu/sycl/*.cpp")
 
 list(APPEND ATen_XPU_CPP_SRCS ${xpu_cpp})

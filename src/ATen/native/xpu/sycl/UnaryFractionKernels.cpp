@@ -56,6 +56,20 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
+struct FracFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return a - std::trunc(a);
+  }
+};
+
+void frac_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "frac_xpu", [&]() {
+        gpu_kernel(iter, FracFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
 struct CeilFunctor {
   scalar_t operator()(const scalar_t a) const {
     return std::ceil(a);
@@ -76,8 +90,6 @@ void ceil_kernel(TensorIteratorBase& iter) {
       });
 }
 
-// We manually overload nearbyint because std::nearbyint does not work with
-// std::complex types and ROCm.
 template <typename scalar_t>
 inline scalar_t nearbyint_wrapper(scalar_t a) {
   return static_cast<scalar_t>(std::nearbyintf(static_cast<float>(a)));
@@ -104,8 +116,6 @@ inline c10::complex<double> nearbyint_wrapper(c10::complex<double> a) {
 template <typename scalar_t>
 struct RoundFunctor {
   scalar_t operator()(scalar_t a) const {
-    // We do not use std::round because we would like to round midway
-    // numbers to the nearest even integer.
     return nearbyint_wrapper(a);
   }
 };
@@ -144,6 +154,27 @@ void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
         ten_pow_decimals = static_cast<scalar_t>(std::pow(10, decimals));
         gpu_kernel(
             iter, RoundDecimalsFunctor<scalar_t>(ten_pow_decimals, neg_flag));
+      });
+}
+
+template <typename scalar_t>
+struct FloorFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::floor(a);
+  }
+};
+
+template <typename T>
+struct FloorFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> v) const {
+    return c10::complex<T>(std::floor(v.real()), std::floor(v.imag()));
+  }
+};
+
+void floor_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "floor_xpu", [&]() {
+        gpu_kernel(iter, FloorFunctor<scalar_t>());
       });
 }
 

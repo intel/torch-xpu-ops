@@ -256,7 +256,7 @@ class NormConfig {
           ? kFloat
           : X.scalar_type();
       int scratchpad_size = 2 * batch_size * workgroup_num_foreach *
-          sizeof(acc_type<scalar_t, true>);
+          sizeof(acc_type_device<scalar_t, kXPU>);
       scratchpad = at::zeros(scratchpad_size, X.options().dtype(kAccType));
       semaphores_ptr = semaphores.data_ptr<int>();
       scratchpad_ptr = scratchpad.data_ptr();
@@ -359,7 +359,7 @@ template <
     bool one_moment = false>
 class NormForward {
  public:
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   NormForward() = delete;
   NormForward(
       scalar_t* X_data,
@@ -485,7 +485,7 @@ template <
     bool one_moment = false>
 class NormBackward {
  public:
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   NormBackward(
       scalar_t* X_data,
       scalar_t* dY_data,
@@ -646,7 +646,7 @@ template <
 void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t>& norm,
     const NormConfig& cfg) {
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using vec_t = aligned_vector<scalar_t, vec_size>;
   using weight_vec_t = aligned_vector<weight_t, vec_size>;
   sycl::range<3> local_range{
@@ -816,7 +816,7 @@ template <
 void launch_rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t>& norm,
     NormConfig& cfg) {
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using vec_t = aligned_vector<scalar_t, vec_size>;
   using weight_vec_t = aligned_vector<weight_t, vec_size>;
 

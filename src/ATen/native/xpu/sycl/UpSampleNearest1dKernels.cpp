@@ -122,7 +122,7 @@ void upsample_nearest1d_backward_kernel(
       grad_output.scalar_type(),
       "upsample_nearest1d_backward_xpu",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         auto idata = grad_input_c.data_ptr<scalar_t>();
         auto odata = grad_output.data_ptr<scalar_t>();
         const float scale_factor = compute_scales_value_backwards<float>(
