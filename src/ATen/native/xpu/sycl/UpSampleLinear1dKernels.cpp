@@ -185,7 +185,7 @@ void upsample_linear1d_backward_kernel(
     bool align_corners,
     std::optional<double> scales,
     Tensor& grad_input) {
-  globalContext().alertNotDeterministic("upsample_linear1d_backward_xpu");
+  globalContext().alertNotDeterministic("upsample_linear1d_backward_out_xpu");
 
   int output_width = output_size[0];
   int input_width = input_size[2];
