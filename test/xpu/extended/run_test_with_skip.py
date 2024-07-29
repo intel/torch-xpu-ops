@@ -155,7 +155,7 @@ skip_list = (
     "test_compare_cpu_hypot_xpu_bfloat16",
 
     # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
-    # Polar's backward is calculated using complex(), which does not support bfloat16. Cuda fails with same error.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
     "test_compare_cpu_polar_xpu_bfloat16",
 
     # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
