@@ -59,7 +59,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cumprod"
+    "cumprod",
     "cumsum",
     "equal",
     "eq",
@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "index_fill",
     "index_put",
     "index_select",
+    "masked_select",
     "isin",
     "isnan",
     "le",
@@ -136,6 +137,7 @@ _xpu_computation_op_list = [
     "atanh",
     "sqrt",
     "sum",
+    "nansum",
     "amin",
     "amax",
     "std",
@@ -209,6 +211,8 @@ _xpu_computation_op_list = [
     "aminmax",
     "argmin",
     "conj_physical",
+    "histogram",
+    "repeat_interleave",
     "fmax",
     "fmin",
     "floor",
@@ -216,6 +220,7 @@ _xpu_computation_op_list = [
     "copysign",
     "count_nonzero",
     "nan_to_num",
+    "nanmean",
 ]
 
 
