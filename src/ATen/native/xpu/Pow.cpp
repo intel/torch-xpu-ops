@@ -58,7 +58,13 @@ Tensor& XPUNativeFunctions::pow_out(
 Tensor XPUNativeFunctions::pow(const Tensor& self, const Scalar& exponent) {
   Tensor out;
   auto iter = pow_tensor_scalar_meta(self, exponent, out);
-  native::xpu::pow_tensor_scalar_kernel(iter, exponent);
+  if (exponent.equal(0.0) || exponent.equal(false)) {
+    iter.output().fill_(1);
+  } else if (exponent.equal(1.0) || exponent.equal(true)) {
+    iter.output().copy_(self);
+  } else {
+    native::xpu::pow_tensor_scalar_kernel(iter, exponent);
+  }
   return iter.output();
 }
 
