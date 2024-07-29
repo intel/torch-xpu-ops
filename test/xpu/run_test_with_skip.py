@@ -756,9 +756,6 @@ skip_list = (
     # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
     "test_dtypes_nn_functional_pad_replicate_negative_xpu",
     "test_dtypes_nn_functional_pad_replicate_xpu",
-    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
-    # https://github.com/intel/torch-xpu-ops/issues/468
-    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
 
     # Op impl aligns with CUDA on the supported dtypes.
     # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
@@ -779,9 +776,6 @@ skip_list = (
     #XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
-
-    # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
-    "test_dtypes_cosh_xpu",
 
     # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
     # but test_dtypes infrastructure leverage CUDA supported datatypes
@@ -1322,10 +1316,6 @@ skip_list = (
     # AssertionError: False is not true
     "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
     "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-    # NotImplementedError: Could not run 'aten::batch_norm_stats' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_accuracy_cuda",
-    # NotImplementedError: Could not run 'aten::batch_norm_backward_elemt' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_backward_elemt",
     # RuntimeError: "smooth_l1_backward_cpu_out" not implemented for 'Half'
     "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
@@ -1487,13 +1477,7 @@ skip_list = (
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
-    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_large__refs_tanh_xpu_complex32",
     "test_reference_numerics_large_tanh_xpu_complex32",
     # For extreme value processing, Numpy and XPU results are inconsistent
     # std operations get different behavior on std::complex operarands for extremal cases
@@ -1537,12 +1521,7 @@ skip_list = (
     "test_reference_numerics_normal__refs_asinh_xpu_complex64",
     "test_reference_numerics_normal_asinh_xpu_complex64",
 
-    # CPU Fallback fails
-    # New ATen operators fails on CPU Fallback.
-    # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
-    "_special_",
     # Failed: Unexpected success
-    "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
 
     # Numeric difference
