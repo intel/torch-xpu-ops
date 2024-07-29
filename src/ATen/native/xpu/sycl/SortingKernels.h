@@ -403,6 +403,124 @@ void segmented_radix_sort_pairs_kernel(
   }
 }
 
+// ======================= group radix select =======================
+
+template <int n, typename index_t>
+inline index_t make_alignment_n(index_t size) {
+  return (size + n - 1) / n * n;
+}
+
+template <typename method_t, typename key_t, typename value_t>
+struct SegmentedGroupRadixSelectPairsFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  enum {
+    MAX_KV_BYTES = std::max(sizeof(key_t), sizeof(value_t)),
+  };
+
+  [[intel::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
+      sycl::nd_item<1> item) const {
+    int seg_idx = item.get_group(0);
+    int seg_offset = seg_idx * nelements_;
+    auto method = method_t(item, slm_);
+
+    auto keys_in_seg = keys_in_ + seg_offset;
+    auto values_in_seg =
+        values_in_ == nullptr ? nullptr : values_in_ + seg_offset;
+
+    key_t* keys_temp = reinterpret_cast<key_t*>(
+        slm_.template get_multi_ptr<sycl::access::decorated::no>().get() +
+        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()));
+    value_t* values_temp = reinterpret_cast<value_t*>(
+        reinterpret_cast<char*>(keys_temp) +
+        make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)));
+
+    method.load_keys(keys_in_seg, nelements_);
+    method.load_values(values_in_seg, nelements_);
+
+    int num_start = method_t::PROCESSING_LENGTH;
+    while (num_start < nelements_) {
+      method.topk(KeyTraits<key_t>::endbit(), 0, k_, keys_temp, values_temp);
+      item.barrier(sycl_local_fence);
+      method.topk_append_keys(
+          keys_in_seg, keys_temp, nelements_, num_start, k_);
+      method.topk_append_values(
+          values_in_seg, values_temp, nelements_, num_start, k_);
+      num_start += method_t::PROCESSING_LENGTH - k_;
+      item.barrier(sycl_local_fence);
+    }
+
+    method.topk(
+        KeyTraits<key_t>::endbit(),
+        0,
+        k_,
+        keys_out_ + seg_idx * k_,
+        values_out_ + seg_idx * k_);
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    slm_ = sycl_local_acc_t<char>(
+        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()) +
+            make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)) +
+            k_ * sizeof(value_t),
+        cgh);
+  }
+
+  SegmentedGroupRadixSelectPairsFunctor(
+      const key_t* keys_in,
+      key_t* keys_out,
+      const value_t* values_in,
+      value_t* values_out,
+      int nelements,
+      int k)
+      : keys_in_(keys_in),
+        keys_out_(keys_out),
+        values_in_(values_in),
+        values_out_(values_out),
+        nelements_(nelements),
+        k_(k) {}
+
+ private:
+  const key_t* keys_in_;
+  key_t* keys_out_;
+  const value_t* values_in_;
+  value_t* values_out_;
+  int nelements_;
+  int k_;
+  sycl_local_acc_t<char> slm_;
+};
+
+template <
+    typename key_t,
+    typename value_t,
+    bool IS_DESCENDING,
+    int KEYS_PER_ITEM,
+    int GROUP_SIZE,
+    int SUBGROUP_SIZE>
+inline void group_radix_select_pairs_kernel(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_segments,
+    int num_elements,
+    int k) {
+  using method_t = GroupRadixSort<
+      key_t,
+      GROUP_SIZE,
+      SUBGROUP_SIZE,
+      KEYS_PER_ITEM,
+      IS_DESCENDING,
+      value_t>;
+  TORCH_CHECK(k <= method_t::PROCESSING_LENGTH);
+  auto caller = SegmentedGroupRadixSelectPairsFunctor<method_t, key_t, value_t>(
+      keys_in, keys_out, values_in, values_out, num_elements, k);
+  sycl_kernel_submit(
+      num_segments * GROUP_SIZE,
+      GROUP_SIZE,
+      at::xpu::getCurrentSYCLQueue(),
+      caller);
+}
+
 // ======================= interface =======================
 
 // NOTE: Subgroup size of 32 provides better performance currently.
@@ -419,50 +537,53 @@ void segmented_sort_pairs_(
     value_t* values_out,
     int num_segments,
     int num_elements) {
-  if (num_elements > 4096) {
+  constexpr int scaling_coef = sizeof(key_t) * sizeof(value_t) >= 64
+      ? 2
+      : 1; // Attempt to reduce register pressure for performance.
+  if (num_elements > 4096 / scaling_coef) {
     // Considering register pressure, we use a problem size of 4096 to delineate
     // the boundary between single tile sort and group sort.
     segmented_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         512,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 2048) {
+  } else if (num_elements > 2048 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         1024,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 1024) {
+  } else if (num_elements > 1024 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         512,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 512) {
+  } else if (num_elements > 512 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         256,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
-  } else if (num_elements > 256) {
+  } else if (num_elements > 256 / scaling_coef) {
     segmented_group_radix_sort_pairs_kernel<
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         128,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
@@ -471,7 +592,7 @@ void segmented_sort_pairs_(
         key_t,
         value_t,
         IS_DESCENDING,
-        4,
+        4 / scaling_coef,
         64,
         SUBGROUP_SIZE>(
         keys_in, keys_out, values_in, values_out, num_segments, num_elements);
@@ -505,6 +626,112 @@ void sort_pairs(
     bool descending) {
   segmented_sort_pairs<key_t, value_t>(
       keys_in, keys_out, values_in, values_out, 1, num_elements, descending);
+}
+
+inline uint64_t radix_select_last_power2(uint64_t n) {
+  n--;
+  n |= n >> 1;
+  n |= n >> 2;
+  n |= n >> 4;
+  n |= n >> 8;
+  n |= n >> 16;
+  n++;
+  return n;
+}
+
+template <
+    typename key_t,
+    typename value_t,
+    bool IS_DESCENDING,
+    int SUBGROUP_SIZE = 32>
+void segmented_group_select_pairs_(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_segments,
+    int num_elements,
+    int k) {
+#define RUN_RADIX_SELECT(PADDED_N)   \
+  {                                  \
+    group_radix_select_pairs_kernel< \
+        key_t,                       \
+        value_t,                     \
+        IS_DESCENDING,               \
+        4,                           \
+        PADDED_N / 4,                \
+        SUBGROUP_SIZE>(              \
+        keys_in,                     \
+        keys_out,                    \
+        values_in,                   \
+        values_out,                  \
+        num_segments,                \
+        num_elements,                \
+        k);                          \
+  }
+  constexpr int max_group_size = 1024; // simd32-specific
+  if (num_elements <= max_group_size * 4) {
+    switch (radix_select_last_power2(num_elements)) {
+      case 4096:
+        RUN_RADIX_SELECT(4096); // gsz 1024
+        break;
+      case 2048:
+        RUN_RADIX_SELECT(2048); // gsz 512
+        break;
+      case 1024:
+        RUN_RADIX_SELECT(1024); // gsz 256
+        break;
+      case 512:
+        RUN_RADIX_SELECT(512); // gsz 128
+        break;
+      default:
+        RUN_RADIX_SELECT(256); // gsz 64
+        break;
+    }
+  } else {
+    switch (max_group_size) {
+      case 1024:
+        RUN_RADIX_SELECT(4096);
+        break;
+      case 512:
+        RUN_RADIX_SELECT(2048);
+        break;
+      default:
+        RUN_RADIX_SELECT(1024);
+        break;
+    }
+  }
+#undef RUN_RADIX_SELECT
+}
+
+template <typename key_t, typename value_t>
+void segmented_group_select_pairs(
+    const key_t* keys_in,
+    key_t* keys_out,
+    const value_t* values_in,
+    value_t* values_out,
+    int num_segments,
+    int num_elements,
+    int k,
+    bool largest) {
+  if (largest)
+    segmented_group_select_pairs_<key_t, value_t, true>(
+        keys_in,
+        keys_out,
+        values_in,
+        values_out,
+        num_segments,
+        num_elements,
+        k);
+  else
+    segmented_group_select_pairs_<key_t, value_t, false>(
+        keys_in,
+        keys_out,
+        values_in,
+        values_out,
+        num_segments,
+        num_elements,
+        k);
 }
 
 } // namespace xpu

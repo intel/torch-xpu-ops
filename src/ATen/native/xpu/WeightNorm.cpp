@@ -5,7 +5,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface(
     const Tensor& v,
     const Tensor& g,
     int64_t dim) {
-  return native::xpu::_weight_norm_interface_kernel(v, g, dim);
+  return native::xpu::weight_norm_kernel(v, g, dim);
 }
 
 std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface_backward(
@@ -21,7 +21,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface_backward(
       dim == 0 || dim == saved_v.dim() - 1,
       "fused kernels can only be applied for first or last dim")
 
-  return native::xpu::_weight_norm_interface_backward_kernel(
+  return native::xpu::weight_norm_backward_kernel(
       grad_w, saved_v, saved_g, saved_norms, dim);
 }
 } // namespace at

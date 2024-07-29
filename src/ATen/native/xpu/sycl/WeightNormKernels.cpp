@@ -394,7 +394,7 @@ static inline void weight_norm(
   return;
 }
 
-std::tuple<Tensor, Tensor> _weight_norm_interface_kernel(
+std::tuple<Tensor, Tensor> weight_norm_kernel(
     const Tensor& v,
     const Tensor& g,
     int64_t dim) {
@@ -948,7 +948,7 @@ static inline void weight_norm_backward(
   return;
 }
 
-std::tuple<Tensor, Tensor> _weight_norm_interface_backward_kernel(
+std::tuple<Tensor, Tensor> weight_norm_backward_kernel(
     const Tensor& grad_w,
     const Tensor& saved_v,
     const Tensor& saved_g,

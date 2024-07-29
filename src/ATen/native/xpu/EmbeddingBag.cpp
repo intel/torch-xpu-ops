@@ -68,4 +68,33 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
       include_last_offset,
       padding_idx);
 }
+
+Tensor XPUNativeFunctions::_embedding_bag_backward(
+    const Tensor& grad,
+    const Tensor& indices,
+    const Tensor& offsets,
+    const Tensor& offset2bag,
+    const Tensor& bag_size,
+    const Tensor& maximum_indices,
+    int64_t num_weights,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    bool sparse,
+    const c10::optional<Tensor>& per_sample_weights,
+    int64_t padding_idx) {
+  return at::native::_embedding_bag_backward_symint(
+      grad,
+      indices,
+      offsets,
+      offset2bag,
+      bag_size,
+      maximum_indices,
+      num_weights,
+      scale_grad_by_freq,
+      mode,
+      sparse,
+      per_sample_weights,
+      padding_idx);
+}
+
 } // namespace at
