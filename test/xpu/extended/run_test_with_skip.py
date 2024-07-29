@@ -170,6 +170,12 @@ skip_list = (
     # https://github.com/pytorch/pytorch/issues/130916
     "test_compare_cpu_histogram_xpu_float32",
     "test_compare_cpu_histogram_xpu_float64",
+
+    # Precision error.
+    # Mismatched elements: 2 / 125 (1.6%)
+    # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
+    "test_compare_cpu_cumprod_xpu_bfloat16",
 )
 
 

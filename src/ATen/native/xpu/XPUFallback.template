@@ -246,10 +246,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "replication_pad1d_backward.grad_input",
-    "replication_pad1d.out",
-    "replication_pad2d_backward",
-    "replication_pad2d.out",
     "round.decimals_out",
     "round.out",
     "rrelu_with_noise",
@@ -318,8 +314,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "vdot",
     "xlogy.OutTensor",
     "_upsample_bicubic2d_aa.out",
-    "replication_pad3d.out",
-    "replication_pad3d_backward",
   };
   for (auto& op_name : fallback_list) {
     m.impl(
