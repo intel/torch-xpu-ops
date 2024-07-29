@@ -186,7 +186,7 @@ void parallel_cat(
     int nDims) {
   // First, let's set up our kernel parameters. We start with a raw pointer to
   // the storage for the output Tensor.
-  scalar_out_t* data = static_cast<scalar_out_t*>(out.data_ptr());
+  scalar_out_t* data = static_cast<scalar_out_t*>(out.mutable_data_ptr());
 
   // Kernel Parameter
   int64_t tensorMetadataSize =
@@ -195,7 +195,7 @@ void parallel_cat(
   auto d_inputs_storage =
       at::empty({tensorMetadataSize}, out.options().dtype(at::kByte));
   auto d_inputs = static_cast<CatArrInputTensor<scalar_in_t, unsigned int>*>(
-      d_inputs_storage.data_ptr());
+      d_inputs_storage.mutable_data_ptr());
 
   OutputTensorSizeStride<unsigned int, CAT_ARRAY_MAX_INPUT_DIMS> param;
 
