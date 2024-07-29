@@ -536,7 +536,7 @@ Tensor XPUNativeFunctions::sign(const Tensor& self) {
       "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
   Tensor out;
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
+  iter.build_borrowing_unary_op(out, self);
   native::xpu::sign_kernel(iter);
   return iter.output();
 }
@@ -546,7 +546,7 @@ Tensor& XPUNativeFunctions::sign_(Tensor& self) {
       !self.is_complex(),
       "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
+  iter.build_borrowing_unary_op(self, self);
   native::xpu::sign_kernel(iter);
   return self;
 }
@@ -556,7 +556,7 @@ Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
       !self.is_complex(),
       "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
+  iter.build_borrowing_unary_op(out, self);
   native::xpu::sign_kernel(iter);
   return out;
 }
