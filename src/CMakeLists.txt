@@ -82,7 +82,7 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_include_directories(${lib} PUBLIC ${ATen_XPU_INCLUDE_DIRS})
   target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
 
-  target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARIES})
+  target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
 endforeach()
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/ClangFormat.cmake)

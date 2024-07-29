@@ -439,7 +439,7 @@ void multinomial_kernel(
       self_v.scalar_type(),
       "multinomial_kernel_xpu",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         using KernelClass = SampleMultinomialOnceFunctor<scalar_t, accscalar_t>;
         int maxThreads = syclMaxWorkGroupSize<KernelClass>();
         int maxShared = syclLocalMemSize();

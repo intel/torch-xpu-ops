@@ -277,7 +277,7 @@ void upsample_nearest2d_backward_kernel(
         grad_output.scalar_type(),
         "upsample_nearest2d_backward_channels_last_xpu",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
           const scalar_t* go = grad_output.data_ptr<scalar_t>();
           scalar_t* gi = grad_input.data_ptr<scalar_t>();
@@ -329,7 +329,7 @@ void upsample_nearest2d_backward_kernel(
         grad_output.scalar_type(),
         "upsample_nearest2d_backward_xpu",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
           auto idata = grad_input_c.data_ptr<scalar_t>();
           auto odata = grad_output.data_ptr<scalar_t>();
