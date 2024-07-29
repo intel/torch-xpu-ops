@@ -797,7 +797,8 @@ skip_list = (
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
 
-    #Polar's backward is calculated using complex(), which does not support bfloat16.
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. Cuda fails with same error.
     "test_dtypes_polar_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
