@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
@@ -7,13 +8,13 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
 
 namespace at {
@@ -197,6 +198,43 @@ Tensor XPUNativeFunctions::sum(
   return XPUNativeFunctions::sum_out(self, dim, keepdim, opt_dtype, out);
 }
 
+static void impl_func_prod(
+    const Tensor& self,
+    IntArrayRef dims,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  auto out_dtype = infer_dtype_from_optional(self, dtype, result);
+  result = resize_reduction(result, self, dims, keepdim, out_dtype);
+  auto iter = meta::make_reduction_from_out_ty(
+      self, result, dims, keepdim, result.scalar_type());
+  if (iter.numel() == 0) {
+    result.fill_(1);
+  } else {
+    native::xpu::prod_kernel(iter);
+  }
+}
+
+Tensor& XPUNativeFunctions::prod_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  impl_func_prod(self, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    std::optional<ScalarType> opt_dtype) {
+  auto dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
+  auto shape = meta::get_reduction_shape(self, {}, false);
+  Tensor result = at::empty(shape, self.options().dtype(dtype));
+  impl_func_prod(self, {}, false, dtype, result);
+  return result;
+}
+
 Tensor& mean_meta(
     const Tensor& self,
     OptionalIntArrayRef opt_dim,
@@ -254,56 +292,6 @@ Tensor XPUNativeFunctions::mean(
   Tensor out;
   out = mean_meta(self, dim, keepdim, dtype, out);
   out = XPUNativeFunctions::mean_out(self, dim, keepdim, dtype, out);
-  return out;
-}
-
-Tensor& prod_meta(
-    const Tensor& self,
-    int64_t dim,
-    bool keepdim,
-    std::optional<ScalarType> dtype,
-    Tensor& out) {
-  auto out_dtype = infer_dtype_from_optional(self, dtype, out);
-  out = resize_reduction(out, self, dim, keepdim, out_dtype);
-  return out;
-}
-
-Tensor& XPUNativeFunctions::prod_out(
-    const Tensor& self,
-    int64_t dim,
-    bool keepdim,
-    std::optional<ScalarType> dtype,
-    Tensor& result) {
-  result = prod_meta(self, dim, keepdim, dtype, result);
-  // device is not CPU
-  auto iter = at::meta::make_reduction_from_out_ty(
-      self, result, dim, keepdim, result.scalar_type());
-  if (iter.numel() == 0) {
-    result.fill_(1);
-  } else {
-    native::xpu::prod_kernel(iter);
-  }
-  return result;
-}
-
-Tensor XPUNativeFunctions::prod(
-    const Tensor& self,
-    std::optional<ScalarType> opt_dtype) {
-  auto dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
-  auto shape = at::meta::get_reduction_shape(self, {}, false);
-  Tensor out = at::empty(shape, self.options().dtype(dtype));
-  out = prod_meta(self, {}, false, dtype, out);
-  return out;
-}
-
-Tensor XPUNativeFunctions::prod(
-    const Tensor& self,
-    int64_t dim,
-    bool keepdim,
-    std::optional<ScalarType> dtype) {
-  Tensor out;
-  out = prod_meta(self, dim, keepdim, dtype, out);
-  out = XPUNativeFunctions::prod_out(self, dim, keepdim, dtype, out);
   return out;
 }
 

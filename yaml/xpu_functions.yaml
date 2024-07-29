@@ -297,8 +297,8 @@ supported:
   - sum.dim_IntList
   - sum.IntList_out
   - prod
-  - prod.int_out
   - prod.dim_int
+  - prod.int_out
   - mean.out
   - mean.dim
   - std.correction
