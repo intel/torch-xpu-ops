@@ -195,7 +195,7 @@ void embedding_bag_sum_template(
       [&] {
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_bag_sum_xpu", [&] {
-              using accscalar_t = at::acc_type<scalar_t, true>;
+              using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;
@@ -261,7 +261,7 @@ void embedding_bag_mean_template(
       [&] {
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_bag_mean_xpu", [&] {
-              using accscalar_t = at::acc_type<scalar_t, true>;
+              using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;
@@ -326,7 +326,7 @@ void embedding_bag_max_template(
       [&] {
         AT_DISPATCH_INDEX_TYPES(
             indices.scalar_type(), "embedding_bag_max_xpu", [&] {
-              // using accscalar_t = at::acc_type<scalar_t, true>;
+              // using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;

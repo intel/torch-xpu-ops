@@ -9,7 +9,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct AddcmulFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return static_cast<accscalar_t>(a) +
         alpha_ * static_cast<accscalar_t>(b) * static_cast<accscalar_t>(c);
@@ -47,7 +47,7 @@ void addcmul_kernel(TensorIterator& iter, Scalar value) {
         iter.dtype(),
         "addcmul_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
         });
@@ -56,7 +56,7 @@ void addcmul_kernel(TensorIterator& iter, Scalar value) {
 
 template <typename scalar_t>
 struct AddcdivFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return a + alpha_ * (b / static_cast<accscalar_t>(c));
   }
@@ -94,7 +94,7 @@ void addcdiv_kernel(TensorIterator& iter, Scalar value) {
         iter.dtype(),
         "addcdiv_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           AddcdivFunctor<scalar_t> f(alpha);
           gpu_kernel(iter, f);
