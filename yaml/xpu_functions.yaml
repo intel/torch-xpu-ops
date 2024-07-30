@@ -698,4 +698,6 @@ supported:
   - upsample_linear1d.out
   - upsample_linear1d
   - upsample_linear1d_backward
+  - _weight_norm_interface
+  - _weight_norm_interface_backward
   - range.out

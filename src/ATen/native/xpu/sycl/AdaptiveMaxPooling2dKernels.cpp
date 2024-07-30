@@ -124,8 +124,8 @@ void launch_adaptive_max_pool2d_kernel(
   using KernelClass = AdaptiveMaxPool2dKernelFunctor<scalar_t, index_t>;
 
   int64_t output_size = batch * plane * osizeH * osizeW;
-  BatchKernelConfig cfg = {
-      1, output_size, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, output_size, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
 
   cfg.build<KernelClass>();
 
@@ -301,8 +301,8 @@ void launch_adaptive_max_pool2d_backward_kernel(
     int64_t sizeP) {
   using KernelClass = AdaptiveMaxPool2dBackwardKernelFunctor<scalar_t, index_t>;
 
-  BatchKernelConfig cfg = {
-      1, osize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, osize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
 
   cfg.build<KernelClass>();
 
