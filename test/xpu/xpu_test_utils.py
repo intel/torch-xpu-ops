@@ -210,6 +210,7 @@ _xpu_computation_op_list = [
     "unique",
     "multinomial",
     "lerp",
+    "polar",
     "frac",
     "aminmax",
     "argmin",

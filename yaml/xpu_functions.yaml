@@ -272,6 +272,7 @@ supported:
   - eye.m_out
   - _efficientzerotensor
   - complex.out
+  - polar.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
