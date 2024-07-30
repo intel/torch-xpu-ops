@@ -224,7 +224,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "log_normal_",
     "logspace.out",
     "lu_unpack.out",
-    "masked_scatter_",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
     "max_unpool2d",
