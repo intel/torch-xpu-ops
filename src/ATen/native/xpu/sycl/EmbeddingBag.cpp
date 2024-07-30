@@ -57,9 +57,8 @@ void embedding_bag(
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   vec_len = vec_len / vec_size;
-  BatchKernelConfig cfg = {
-      bag_num, vec_len, 1, bag_num, true, BatchKernelConfig::Policy::pAdaptive};
-  cfg.template build<KernelClass>();
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      bag_num, vec_len, 1, bag_num, true, BatchKernelConfig::Policy::pAdaptive);
 
   index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
   auto kfn = KernelClass(
