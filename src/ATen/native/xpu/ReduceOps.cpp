@@ -47,7 +47,6 @@ static void cum_ops_meta(
   maybe_wrap_dim(dim, self.dim());
 
   ScalarType out_dtype;
-
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
@@ -868,6 +867,40 @@ Tensor XPUNativeFunctions::amin(
   out = amax_amin_meta(out, "amin()", self, dim, keepdim);
   amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
+}
+
+Tensor& XPUNativeFunctions::nansum_out(
+    const Tensor& self,
+    at::OptionalIntArrayRef dim,
+    bool keepdim,
+    optional<ScalarType> opt_dtype,
+    Tensor& result) {
+  // For integral types, use existing sum as
+  // integral types don't have `Nan`.
+  if (c10::isIntegralType(self.scalar_type(), true)) {
+    return at::sum_out(result, self, dim, keepdim, opt_dtype);
+  }
+
+  auto out_dtype = infer_dtype_from_optional(self, opt_dtype, result);
+  result = resize_reduction(result, self, dim, keepdim, out_dtype);
+  auto iter = meta::make_reduction_from_out_ty(
+      self, result, dim, keepdim, result.scalar_type());
+
+  if (iter.numel() == 0) {
+    result = result.zero_();
+  } else {
+    native::xpu::nansum_kernel(iter);
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::nansum(
+    const Tensor& self,
+    at::OptionalIntArrayRef dim,
+    bool keepdim,
+    std::optional<ScalarType> opt_dtype) {
+  Tensor result;
+  return XPUNativeFunctions::nansum_out(self, dim, keepdim, opt_dtype, result);
 }
 
 static ScalarType get_result_or_self_value_dtype(
