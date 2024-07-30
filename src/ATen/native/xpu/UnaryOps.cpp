@@ -564,21 +564,37 @@ Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
 Tensor XPUNativeFunctions::signbit(const Tensor& self) {
   TORCH_CHECK(
       !self.is_complex(), "signbit is not implemented for complex tensors.");
+  TORCH_CHECK(
+      maybe_get_output().defined() ? maybe_get_output().dtype() == at::kBool
+                                   : true,
+      "signbit does not support non-boolean outputs.");
+
   Tensor out;
   TensorIterator iter;
   iter.build_borrowing_unary_force_boolean_op(out, self);
-  native::xpu::signbit_kernel(iter);
+
+  if (self.dtype() == at::kBool) {
+    iter.output().fill_(false);
+  } else {
+    native::xpu::signbit_kernel(iter);
+  }
   return iter.output();
 }
 
 Tensor& XPUNativeFunctions::signbit_out(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       !self.is_complex(), "signbit is not implemented for complex tensors.");
+  TORCH_CHECK(
+      maybe_get_output().defined() ? maybe_get_output().dtype() == at::kBool
+                                   : true,
+      "signbit does not support non-boolean outputs.");
+
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+
   if (self.dtype() == at::kBool) {
     out.fill_(false);
   } else {
-    TensorIterator iter;
-    iter.build_borrowing_unary_force_boolean_op(out, self);
     native::xpu::signbit_kernel(iter);
   }
   return out;
