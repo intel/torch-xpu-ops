@@ -1008,7 +1008,7 @@ Tensor& XPUNativeFunctions::round_out(const Tensor& self, Tensor& out) {
 Tensor XPUNativeFunctions::round(const Tensor& self, int64_t decimals) {
   Tensor out;
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
+  iter.build_borrowing_unary_op(out, self);
   if (decimals != 0) {
     native::xpu::round_decimals_kernel(iter, decimals);
   } else {
@@ -1019,7 +1019,7 @@ Tensor XPUNativeFunctions::round(const Tensor& self, int64_t decimals) {
 
 Tensor& XPUNativeFunctions::round_(Tensor& self, int64_t decimals) {
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(self, self);
+  iter.build_borrowing_unary_op(self, self);
   if (decimals != 0) {
     native::xpu::round_decimals_kernel(iter, decimals);
   } else {
@@ -1033,7 +1033,7 @@ Tensor& XPUNativeFunctions::round_out(
     int64_t decimals,
     Tensor& out) {
   TensorIterator iter;
-  iter.build_borrowing_unary_float_op(out, self);
+  iter.build_borrowing_unary_op(out, self);
   if (decimals != 0) {
     native::xpu::round_decimals_kernel(iter, decimals);
   } else {
