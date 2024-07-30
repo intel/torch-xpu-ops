@@ -60,10 +60,10 @@ Tensor _values(const Tensor& self) {
 
 TORCH_LIBRARY_IMPL(aten, SparseXPU, m) {
   m.impl(
-      TORCH_SELECTIVE_NAME("_sparse_coo_tensor_with_dims_and_tensors"),
+      TORCH_SELECTIVE_NAME("aten::_sparse_coo_tensor_with_dims_and_tensors"),
       TORCH_FN(_sparse_coo_tensor_with_dims_and_tensors));
-  m.impl(TORCH_SELECTIVE_NAME("_nnz"), TORCH_FN(_nnz));
-  m.impl(TORCH_SELECTIVE_NAME("_values"), TORCH_FN(_values));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_nnz"), TORCH_FN(_nnz));
+  m.impl(TORCH_SELECTIVE_NAME("aten::_values"), TORCH_FN(_values));
 }
 
 } // namespace at::native::xpu

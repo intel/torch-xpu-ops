@@ -17,7 +17,7 @@ inline bool dev_iou(
   scalar_t top = std::max(a[1], b[1]), bottom = std::min(a[3], b[3]);
   scalar_t width = std::max(right - left, (scalar_t)0),
            height = std::max(bottom - top, (scalar_t)0);
-  using acc_t = acc_type<scalar_t, true>;
+  using acc_t = acc_type_device<scalar_t, kXPU>;
   acc_t area_inter = (acc_t)width * height;
   acc_t area_a = ((acc_t)a[2] - a[0]) * (a[3] - a[1]);
   acc_t area_b = ((acc_t)b[2] - b[0]) * (b[3] - b[1]);
@@ -110,9 +110,9 @@ Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
         sycl::range<2> global_range{
             (size_t)col_blocks, (size_t)col_blocks * nms_items_per_group};
         sycl::range<2> local_range{1, (size_t)nms_items_per_group};
-        using acc_t = acc_type<scalar_t, true>;
-        auto dets_sorted_ptr = (scalar_t*)dets_sorted.data_ptr();
-        auto mask_ptr = (unsigned long long*)mask.data_ptr();
+        using acc_t = acc_type_device<scalar_t, kXPU>;
+        auto dets_sorted_ptr = dets_sorted.data_ptr<scalar_t>();
+        auto mask_ptr = (unsigned long long*)mask.data_ptr<int64_t>();
         auto caller = NMSKernelFunctor<scalar_t, acc_t>(
             dets_num, iou_threshold, dets_sorted_ptr, mask_ptr);
         sycl_kernel_submit(

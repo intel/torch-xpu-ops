@@ -26,6 +26,12 @@ void index_add_kernel(
     const Scalar& alpha,
     const Tensor& out);
 
+void index_fill_kernel(
+    Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Scalar& source);
+
 void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
@@ -40,5 +46,11 @@ void index_put_deterministic_kernel(
     const Tensor& value,
     bool accumulate,
     bool unsafe);
+
+void masked_scatter_kernel(
+    const TensorBase& self,
+    const TensorBase& mask,
+    const TensorBase& maskPrefixSum,
+    const TensorBase& source);
 
 } // namespace at::native::xpu
