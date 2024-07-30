@@ -180,6 +180,19 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+
+    # different results for value index due to unstable sort.
+    # XPU and CUDA have the same result.
+    "test_compare_cpu_median_xpu_int16",
+    "test_compare_cpu_median_xpu_int32",
+    "test_compare_cpu_median_xpu_int64",
+    "test_compare_cpu_median_xpu_int8",
+    "test_compare_cpu_median_xpu_uint8",
+    "test_compare_cpu_nanmedian_xpu_int16",
+    "test_compare_cpu_nanmedian_xpu_int32",
+    "test_compare_cpu_nanmedian_xpu_int64",
+    "test_compare_cpu_nanmedian_xpu_int8",
+    "test_compare_cpu_nanmedian_xpu_uint8",
 )
 
 
