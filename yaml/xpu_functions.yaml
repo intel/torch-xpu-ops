@@ -105,6 +105,7 @@ supported:
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - masked_scatter_
   - index_add.out
   - index_add_
   - index_add
@@ -268,6 +269,7 @@ supported:
   - eye.m_out
   - _efficientzerotensor
   - complex.out
+  - polar.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -308,6 +310,9 @@ supported:
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
+  - smooth_l1_loss
+  - smooth_l1_loss.out
+  - smooth_l1_loss_backward.grad_input
   - bitwise_not.out
   - where.self_out
   - where.self
@@ -689,4 +694,6 @@ supported:
   - renorm.out
   - renorm_
   - nan_to_num.out
+  - _weight_norm_interface
+  - _weight_norm_interface_backward
   - range.out

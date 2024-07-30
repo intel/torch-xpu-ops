@@ -47,4 +47,10 @@ void index_put_deterministic_kernel(
     bool accumulate,
     bool unsafe);
 
+void masked_scatter_kernel(
+    const TensorBase& self,
+    const TensorBase& mask,
+    const TensorBase& maskPrefixSum,
+    const TensorBase& source);
+
 } // namespace at::native::xpu
