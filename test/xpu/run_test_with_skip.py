@@ -759,6 +759,9 @@ skip_list = (
     # XPU supports bfloat16, CUDA doesn't support it.
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
+    "test_dtypes_polar_xpu",
     # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
     # but test_dtypes infrastructure leverage CUDA supported datatypes
     "test_dtypes_histogram_xpu",
@@ -2952,9 +2955,12 @@ res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-
-res += launch_test("nn/test_module_hooks_xpu.py")
+skip_list = (
+    # TypeError: TestStateDictHooks.test_register_state_dict_post_hook() missing 1 required positional argument: 'private'
+    # https://github.com/intel/torch-xpu-ops/issues/658
+    "test_register_state_dict_post_hook",
+)
+res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 # test_parametrization
 
