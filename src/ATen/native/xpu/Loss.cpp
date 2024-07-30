@@ -80,7 +80,6 @@ Tensor& XPUNativeFunctions::mse_loss_backward_out(
   return grad_input;
 }
 
-
 Tensor& XPUNativeFunctions::smooth_l1_loss_out(
     const Tensor& input,
     const Tensor& target,

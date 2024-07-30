@@ -93,7 +93,7 @@ void upsample_linear1d_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_linear1d_kernel",
+      "upsample_linear1d_xpu",
       [&] {
         auto idata = input.packed_accessor64<const scalar_t, 3>();
         auto odata = output.packed_accessor64<scalar_t, 3>();
@@ -102,10 +102,9 @@ void upsample_linear1d_kernel(
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
         const int num_kernels = output_width;
-        using KernelClass =
-            UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t>;
-        int64_t local_range = syclMaxWorkGroupSize<KernelClass>();
-        KernelClass kfn(num_kernels, rwidth, align_corners, idata, odata);
+        UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t> kfn(
+            num_kernels, rwidth, align_corners, idata, odata);
+        const auto local_range = syclMaxWorkGroupSize(kfn);
         auto global_range = (num_kernels + local_range - 1) / local_range;
         sycl_kernel_submit(
             global_range * local_range,
@@ -196,7 +195,7 @@ void upsample_linear1d_backward_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       grad_output.scalar_type(),
-      "upsample_linear1d_backward",
+      "upsample_linear1d_backward_xpu",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         const int num_kernels = output_width;
@@ -204,10 +203,9 @@ void upsample_linear1d_backward_kernel(
         auto odata = grad_output.packed_accessor64<const scalar_t, 3>();
         const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
             input_width, output_width, align_corners, scales);
-        using KernelClass =
-            UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t>;
-        int64_t local_range = syclMaxWorkGroupSize<KernelClass>();
-        KernelClass kfn(num_kernels, rwidth, align_corners, idata, odata);
+        UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+            num_kernels, rwidth, align_corners, idata, odata);
+        const auto local_range = syclMaxWorkGroupSize(kfn);
         auto global_range = (num_kernels + local_range - 1) / local_range;
         sycl_kernel_submit(
             global_range * local_range,
