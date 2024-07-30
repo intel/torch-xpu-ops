@@ -1563,6 +1563,28 @@ skip_list = (
     "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16",
     "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16",
     "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16",
+
+    # Aligned with CUDA implementation. No bool support.
+    # The test infra issue. The test should algin with typesIfCUDA, but seems not.
+    # https://github.com/intel/torch-xpu-ops/issues/661
+    "test_batch_vs_slicing__refs_signbit_xpu_bool",
+    "test_batch_vs_slicing_signbit_xpu_bool",
+    "test_contig_size1__refs_signbit_xpu_bool",
+    "test_contig_size1_large_dim__refs_signbit_xpu_bool",
+    "test_contig_size1_large_dim_signbit_xpu_bool",
+    "test_contig_size1_signbit_xpu_bool",
+    "test_contig_vs_every_other__refs_signbit_xpu_bool",
+    "test_contig_vs_every_other_signbit_xpu_bool",
+    "test_contig_vs_transposed__refs_signbit_xpu_bool",
+    "test_contig_vs_transposed_signbit_xpu_bool",
+    "test_non_contig__refs_signbit_xpu_bool",
+    "test_non_contig_expand__refs_signbit_xpu_bool",
+    "test_non_contig_expand_signbit_xpu_bool",
+    "test_non_contig_index__refs_signbit_xpu_bool",
+    "test_non_contig_index_signbit_xpu_bool",
+    "test_non_contig_signbit_xpu_bool",
+    "test_reference_numerics_normal__refs_signbit_xpu_bool",
+    "test_reference_numerics_normal_signbit_xpu_bool",
 )
 res += launch_test("test_unary_ufuncs_xpu.py", skip_list)
 
