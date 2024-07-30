@@ -240,7 +240,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "ormqr",
     "_pdist_backward",
     "_pdist_forward",
-    "polar.out",
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "prod",
