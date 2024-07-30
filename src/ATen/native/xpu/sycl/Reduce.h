@@ -13,6 +13,7 @@
 #include <c10/macros/Macros.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
+#include <comm/XPUPair.h>
 #include <functional>
 #include <iosfwd>
 #include <type_traits>
@@ -545,7 +546,7 @@ struct ReduceOp {
     // arg_t is a pair for half dtype, We temporarily workaround to do
     // "reduce_for_compound_dtype" function.
     constexpr bool is_pair =
-        std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
+        std::is_same<at::xpu::pair<scalar_t, int64_t>, arg_t>::value;
 
     auto combine = [=](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
@@ -875,12 +876,13 @@ struct ReduceOp {
 #pragma unroll(output_vec_size)
           for (int i = 0; i < output_vec_size; ++i) {
             // Shuffle down separately for first and second pair.
-            std::pair<typename arg_t::first_type, typename arg_t::second_type>
-                other = std::pair<
-                    typename arg_t::first_type,
-                    typename arg_t::second_type>(
-                    sycl::shift_group_left(sg, value[i].first, offset),
-                    sycl::shift_group_left(sg, value[i].second, offset));
+            at::xpu::
+                pair<typename arg_t::first_type, typename arg_t::second_type>
+                    other = at::xpu::pair<
+                        typename arg_t::first_type,
+                        typename arg_t::second_type>(
+                        sycl::shift_group_left(sg, value[i].first, offset),
+                        sycl::shift_group_left(sg, value[i].second, offset));
             value[i] = ops.combine(value[i], other);
           }
         }
@@ -947,8 +949,8 @@ struct ReduceOp {
     for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; ++i) {
-        std::pair<typename arg_t::first_type, typename arg_t::second_type>
-            other = std::
+        at::xpu::pair<typename arg_t::first_type, typename arg_t::second_type>
+            other = xpu::
                 pair<typename arg_t::first_type, typename arg_t::second_type>(
                     sycl::shift_group_left(sg, value[i].first, offset),
                     sycl::shift_group_left(sg, value[i].second, offset));
@@ -1028,7 +1030,8 @@ struct ReduceOp {
 
   // Currently implemented for max of two outputs
   template <class T1, class T2>
-  void set_results(const std::pair<T1, T2> x, const index_t base_offset) const {
+  void set_results(const at::xpu::pair<T1, T2> x, const index_t base_offset)
+      const {
     if (noutputs >= 1) {
       auto res0 = (T1*)((char*)dst[0] + base_offset);
       *res0 = x.first;
@@ -1124,7 +1127,7 @@ struct ReduceOp {
         // TODO: workaround because sycl::shift_group_left will fail on `half`
         // dtype.
         constexpr bool is_pair =
-            std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
+            std::is_same<at::xpu::pair<scalar_t, int64_t>, arg_t>::value;
         if constexpr (is_pair) {
           value = group_x_reduce_for_compound_dtype<output_vec_size>(
               pos, value, shared_memory);
