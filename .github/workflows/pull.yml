@@ -127,7 +127,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
-        if: always()
+        if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
@@ -137,7 +137,7 @@ jobs:
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}

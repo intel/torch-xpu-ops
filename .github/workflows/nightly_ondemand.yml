@@ -2,8 +2,10 @@ name: Nightly-OnDemand Tests
 
 on:
   schedule:
-    # GMT+8 21:00 every day
-    - cron: '0 13 * * *'
+    # GMT+8 21:00 every workday
+    - cron: '0 13 * * 0-4'
+    # GMT+8 0:00 Saturday
+    - cron: '0 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -78,7 +80,7 @@ jobs:
     runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 900
+    timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -174,8 +176,10 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+
+      # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -185,7 +189,7 @@ jobs:
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -195,7 +199,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -204,6 +208,38 @@ jobs:
           scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # Weekly launch
+      - name: Weekly Huggingface Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly Torchbench Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly Timm_models Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: github.event_name != 'schedule'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -216,7 +252,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
         id: summary
-        if: always()
+        if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
@@ -237,14 +273,14 @@ jobs:
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-      
+
   Tests-Failure-And-Report:
-    if: always()
+    if: ${{ ! cancelled() }}
     runs-on: pvc_e2e
     permissions:
       issues: write
@@ -288,6 +324,9 @@ jobs:
             test_type="On-demand"
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
+          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
+            test_type="Weekly"
+            test_issue_id=432
           else
             test_type="Nightly"
             test_issue_id=432
