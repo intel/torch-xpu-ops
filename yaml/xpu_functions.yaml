@@ -105,6 +105,7 @@ supported:
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - masked_scatter_
   - index_add.out
   - index_add_
   - index_add
