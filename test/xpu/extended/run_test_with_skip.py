@@ -154,6 +154,10 @@ skip_list = (
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
 
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
+    "test_compare_cpu_polar_xpu_bfloat16",
+
     # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
     # https://github.com/intel/torch-xpu-ops/issues/549
     # Example fail log
@@ -170,6 +174,12 @@ skip_list = (
     # https://github.com/pytorch/pytorch/issues/130916
     "test_compare_cpu_histogram_xpu_float32",
     "test_compare_cpu_histogram_xpu_float64",
+
+    # Precision error.
+    # Mismatched elements: 2 / 125 (1.6%)
+    # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
+    "test_compare_cpu_cumprod_xpu_bfloat16",
 )
 
 
