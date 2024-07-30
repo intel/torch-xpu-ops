@@ -694,4 +694,6 @@ supported:
   - renorm.out
   - renorm_
   - nan_to_num.out
+  - _weight_norm_interface
+  - _weight_norm_interface_backward
   - range.out

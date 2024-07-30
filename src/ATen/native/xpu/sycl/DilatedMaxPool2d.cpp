@@ -371,9 +371,8 @@ void launch_max_pool2d_kernel(
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
   int stride = numPlane * outputSizeH * outputSizeW;
-  BatchKernelConfig cfg = {
-      1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
-  cfg.template build<KernelClass>();
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   auto kfn = KernelClass(
       output,
       indices,
@@ -436,8 +435,8 @@ void launch_max_pool2d_backward_kernel(
 
   using KernelClass =
       MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>;
-  BatchKernelConfig cfg = {
-      1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   cfg.template build<KernelClass>();
   auto kfn = KernelClass(
       gradInput,
@@ -468,8 +467,8 @@ void launch_max_pool2d_backward_kernel(
       numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
   using KernelClass =
       MaxPool2dBackwardKernelFunctor<scalar_t, is_channels_last>;
-  BatchKernelConfig cfg = {
-      1, gradOutputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive};
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+      1, gradOutputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   cfg.template build<KernelClass>();
   auto kfn = KernelClass(
       gradInput,
