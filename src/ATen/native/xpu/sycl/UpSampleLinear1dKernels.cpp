@@ -105,12 +105,10 @@ void upsample_linear1d_kernel(
         UpsampleLinear1dKernelFunctor<scalar_t, accscalar_t> kfn(
             num_kernels, rwidth, align_corners, idata, odata);
         const auto local_range = syclMaxWorkGroupSize(kfn);
-        auto global_range = (num_kernels + local_range - 1) / local_range;
+        auto global_range =
+            (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit(
-            global_range * local_range,
-            local_range,
-            getCurrentSYCLQueue(),
-            kfn);
+            global_range, local_range, getCurrentSYCLQueue(), kfn);
       });
 }
 
@@ -206,12 +204,10 @@ void upsample_linear1d_backward_kernel(
         UpsampleLinear1dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
             num_kernels, rwidth, align_corners, idata, odata);
         const auto local_range = syclMaxWorkGroupSize(kfn);
-        auto global_range = (num_kernels + local_range - 1) / local_range;
+        auto global_range =
+            (num_kernels + local_range - 1) / local_range * local_range;
         sycl_kernel_submit(
-            global_range * local_range,
-            local_range,
-            getCurrentSYCLQueue(),
-            kfn);
+            global_range, local_range, getCurrentSYCLQueue(), kfn);
       });
 }
 } // namespace at::native::xpu
