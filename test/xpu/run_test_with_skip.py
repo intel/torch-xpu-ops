@@ -2698,7 +2698,7 @@ skip_list = (
     "test_fn_grad_svd_lowrank_xpu_complex128",
     "test_fn_gradgrad_pca_lowrank_xpu_complex128",
     "test_fn_gradgrad_svd_lowrank_xpu_complex128",
-    "test_fn_grad_linalg_norm_xpu_complex128,
+    "test_fn_grad_linalg_norm_xpu_complex128",
     ### Error #1 in TestBwdGradientsXPU , totally 4 , RuntimeError: value cannot be converted to type float without overflow
     "test_fn_grad_addbmm_xpu_complex128",
     "test_fn_gradgrad_addbmm_xpu_complex128",
