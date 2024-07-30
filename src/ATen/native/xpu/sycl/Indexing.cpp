@@ -597,6 +597,7 @@ void index_put_deterministic_kernel(
 
   if (expandedValue.numel() < num_indices * nElemBefore * sliceSize) {
     auto expanded_size = at::DimVector(expandedValue.sizes());
+
     auto size1 = expandedValue.sizes();
     auto size2 = linearIndex.sizes();
     if (are_expandable(size1, size2)) {
@@ -667,6 +668,95 @@ void index_put_deterministic_kernel(
   }
 }
 
+template <typename scalar_t>
+struct MaskedScatterElementwiseFunctor {
+  scalar_t operator()(
+      const scalar_t a,
+      const bool mask,
+      const int64_t maskPrefixSum) const {
+    if (mask) {
+      return source_ptr_[maskPrefixSum];
+    }
+    return a;
+  }
+  MaskedScatterElementwiseFunctor(const scalar_t* source_ptr)
+      : source_ptr_(source_ptr) {}
+
+ private:
+  const scalar_t* source_ptr_;
+};
+
+struct MaskedScatterSizeCheckFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const auto totalElements = *mask_exclusive_sum_ + *mask_;
+    SYCL_KERNEL_ASSERT(totalElements <= srcSize_);
+  }
+  MaskedScatterSizeCheckFunctor(
+      const int64_t* const mask_exclusive_sum,
+      const bool* const mask,
+      const int64_t srcSize)
+      : mask_exclusive_sum_(mask_exclusive_sum),
+        mask_(mask),
+        srcSize_(srcSize) {}
+
+ private:
+  const int64_t* const mask_exclusive_sum_;
+  const bool* const mask_;
+  const int64_t srcSize_;
+};
+
+void masked_scatter_kernel(
+    const TensorBase& self,
+    const TensorBase& mask,
+    const TensorBase& maskPrefixSum,
+    const TensorBase& source) {
+  const auto srcSize = source.numel();
+  const auto mask_cont = mask.contiguous();
+  const auto mask_numel = mask.numel();
+
+  // Use a prefix sum to determine the output locations of the masked elements
+  auto maskPrefixSum_data = maskPrefixSum.mutable_data_ptr<int64_t>();
+  auto mask_data = mask_cont.const_data_ptr<bool>();
+
+  pstl::exclusive_scan(
+      mask_data,
+      mask_data + mask_numel,
+      maskPrefixSum_data,
+      static_cast<int64_t>(0));
+
+  // Asynchronously check that the number of `1` elements present in the mask
+  // must be <= the number of elements available in `src`.
+  auto caller = MaskedScatterSizeCheckFunctor(
+      &maskPrefixSum_data[mask_numel - 1], &mask_data[mask_numel - 1], srcSize);
+  sycl_kernel_submit((size_t)1, (size_t)1, getCurrentSYCLQueue(), caller);
+
+  // We are getting elements from `src` based on an offset from
+  // `maskPrefixSum`, so that should be made contiguous too
+  auto source_contig = source.contiguous();
+
+  auto iter = TensorIteratorConfig()
+                  .set_check_mem_overlap(false)
+                  .check_all_same_dtype(false)
+                  .resize_outputs(false)
+                  .add_output(self)
+                  .add_input(self)
+                  .add_const_input(mask_cont)
+                  .add_input(maskPrefixSum)
+                  .build();
+
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      ScalarType::Bool,
+      ScalarType::BFloat16,
+      ScalarType::Half,
+      self.scalar_type(),
+      "masked_scatter_",
+      [&]() {
+        auto source_ptr = source_contig.const_data_ptr<scalar_t>();
+        gpu_kernel(iter, MaskedScatterElementwiseFunctor<scalar_t>(source_ptr));
+      });
+}
+
 } // namespace at::native::xpu
+
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
