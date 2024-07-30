@@ -234,6 +234,16 @@ Tensor XPUNativeFunctions::prod(
   return result;
 }
 
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype) {
+  Tensor result;
+  impl_func_prod(self, dim, keepdim, dtype, result);
+  return result;
+}
+
 Tensor& mean_meta(
     const Tensor& self,
     OptionalIntArrayRef opt_dim,
