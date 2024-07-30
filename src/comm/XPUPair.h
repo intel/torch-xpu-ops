@@ -4,8 +4,6 @@
 
 namespace at::xpu {
 
-#pragma once
-
 // define null_type
 struct null_type {};
 
