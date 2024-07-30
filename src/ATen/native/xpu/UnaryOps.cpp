@@ -564,10 +564,6 @@ Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
 Tensor XPUNativeFunctions::signbit(const Tensor& self) {
   TORCH_CHECK(
       !self.is_complex(), "signbit is not implemented for complex tensors.");
-  TORCH_CHECK(
-      maybe_get_output().defined() ? maybe_get_output().dtype() == at::kBool
-                                   : true,
-      "signbit does not support non-boolean outputs.");
 
   Tensor out;
   TensorIterator iter;
@@ -585,8 +581,7 @@ Tensor& XPUNativeFunctions::signbit_out(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       !self.is_complex(), "signbit is not implemented for complex tensors.");
   TORCH_CHECK(
-      maybe_get_output().defined() ? maybe_get_output().dtype() == at::kBool
-                                   : true,
+      out().dtype() == at::kBool,
       "signbit does not support non-boolean outputs.");
 
   TensorIterator iter;
