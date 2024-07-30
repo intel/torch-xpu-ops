@@ -112,6 +112,8 @@ supported:
   - index_fill_.int_Tensor
   - index_select
   - index_select.out
+  - masked_select
+  - masked_select.out
   - gcd
   - gcd.out
   - gcd_
@@ -266,6 +268,7 @@ supported:
   - eye.m_out
   - _efficientzerotensor
   - complex.out
+  - polar.out
   - clone
   - fill_.Scalar
   - fill_.Tensor
@@ -306,6 +309,9 @@ supported:
   - bitwise_and.Tensor_out
   - bitwise_or.Tensor_out
   - bitwise_xor.Tensor_out
+  - smooth_l1_loss
+  - smooth_l1_loss.out
+  - smooth_l1_loss_backward.grad_input
   - bitwise_not.out
   - where.self_out
   - where.self
@@ -339,6 +345,8 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - nansum
+  - nansum.out
   - mean.out
   - mean.dim
   - std.correction
@@ -560,6 +568,18 @@ supported:
   - reflection_pad3d.out
   - reflection_pad3d_backward
   - reflection_pad3d_backward.grad_input
+  - replication_pad1d
+  - replication_pad1d.out
+  - replication_pad1d_backward
+  - replication_pad1d_backward.grad_input
+  - replication_pad2d
+  - replication_pad2d.out
+  - replication_pad2d_backward
+  - replication_pad2d_backward.grad_input
+  - replication_pad3d
+  - replication_pad3d.out
+  - replication_pad3d_backward
+  - replication_pad3d_backward.grad_input
   - native_group_norm
   - native_group_norm_backward
   - elu

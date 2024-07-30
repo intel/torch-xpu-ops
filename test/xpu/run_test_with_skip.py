@@ -53,7 +53,6 @@ skip_list = (
     "test_compare_cpu_to_sparse_xpu_float32",
     "test_errors_dot_xpu",
     "test_errors_kthvalue_xpu",
-    "test_errors_masked_select_xpu",
     "test_errors_sparse_mul_layout0_xpu",
     "test_errors_sparse_mul_layout1_xpu",
     "test_errors_sparse_mul_layout2_xpu",
@@ -782,6 +781,10 @@ skip_list = (
 
     # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
     "test_dtypes_cosh_xpu",
+
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
+    "test_dtypes_polar_xpu",
 
     # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
     # but test_dtypes infrastructure leverage CUDA supported datatypes
@@ -1556,26 +1559,6 @@ skip_list = (
     # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
     # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
     "test_log1p_complex_xpu_complex64",
-
-    # CPU MKL::erfinv vs XPU impl. At most 6.e-06
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small_erfinv_xpu_float64",
 
     # Issue: https://github.com/intel/torch-xpu-ops/issues/622
     # Mismatched elements: 8 / 943593 (0.0%)
@@ -3042,8 +3025,12 @@ res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-res += launch_test("nn/test_module_hooks_xpu.py")
+skip_list = (
+    # TypeError: TestStateDictHooks.test_register_state_dict_post_hook() missing 1 required positional argument: 'private'
+    # https://github.com/intel/torch-xpu-ops/issues/658
+    "test_register_state_dict_post_hook",
+)
+res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 # test_parametrization
 
