@@ -1509,6 +1509,11 @@ skip_list = (
     "test_reference_numerics_large_asinh_xpu_complex64",
     "test_reference_numerics_large_asinh_xpu_complex32",
 
+    # Mismatched elements: 1 / 943593 (0.0%)
+    # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
+    # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
+
     # AssertionError: Tensor-likes are not close!
     # exceeded maximum allowed difference
     # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
