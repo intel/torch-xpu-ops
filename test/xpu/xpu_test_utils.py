@@ -59,7 +59,7 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cumprod"
+    "cumprod",
     "cumsum",
     "equal",
     "eq",
@@ -80,6 +80,8 @@ _xpu_computation_op_list = [
     "index_fill",
     "index_put",
     "index_select",
+    "masked_scatter",
+    "masked_select",
     "isin",
     "isnan",
     "le",
@@ -136,6 +138,7 @@ _xpu_computation_op_list = [
     "atanh",
     "sqrt",
     "sum",
+    "nansum",
     "amin",
     "amax",
     "std",
@@ -177,6 +180,7 @@ _xpu_computation_op_list = [
     "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
     "nn.functional.nll_loss",
+    "nn.functional.smooth_l1_loss",
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
@@ -205,6 +209,7 @@ _xpu_computation_op_list = [
     "unique",
     "multinomial",
     "lerp",
+    "polar",
     "frac",
     "aminmax",
     "argmin",
@@ -218,6 +223,7 @@ _xpu_computation_op_list = [
     "copysign",
     "count_nonzero",
     "nan_to_num",
+    "nanmean",
 ]
 
 
