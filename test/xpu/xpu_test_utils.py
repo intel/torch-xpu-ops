@@ -13,6 +13,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
@@ -101,6 +102,8 @@ _xpu_computation_op_list = [
     "maximum",
     "minimum",
     "mul",
+    "median",
+    "nanmedian",
     "native_dropout_backward",
     "ne",
     "neg",
@@ -187,6 +190,7 @@ _xpu_computation_op_list = [
     "sigmoid",
     "logsigmoid",
     "sgn",
+    "round",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
@@ -504,39 +508,41 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-    def replace_opinfo_device(self, info: OpInfo):
-        decorator_xpu = []
-        replaced = False
-        for decorator in info.decorators:
-            if type(decorator) == DecorateInfo:
-                if decorator.device_type == "cuda":
-                    decorator_xpu.append(decorator)
-                    decorator.device_type = "xpu"
+    def align_db_decorators(self, db):
+        for info in db:
+            decorator_xpu = []
+            replaced = False
+            for decorator in info.decorators:
+                if type(decorator) == DecorateInfo:
+                    if decorator.device_type == "cuda":
+                        decorator_xpu.append(decorator)
+                        decorator.device_type = "xpu"
+                        replaced = True
+                    else:
+                        decorator_xpu.append(decorator)
+                elif self.only_cuda_fn == decorator:
+                    decorator_xpu.append(common_device_type.onlyCUDA)
                     replaced = True
-                else:
-                    decorator_xpu.append(decorator)
-            elif self.only_cuda_fn == decorator:
-                decorator_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.decorators = tuple(decorator_xpu)
-        skip_xpu = []
-        replaced = False
-        for skip in info.skips:
-            if type(skip) == DecorateInfo:
-                if skip.device_type == "cuda":
-                    skip_xpu.append(decorator)
-                    skip.device_type = "xpu"
-                    replaced = True
-                else:
-                    skip_xpu.append(skip)
-            elif self.only_cuda_fn == skip:
-                skip_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.skips = tuple(skip_xpu)
+            if replaced:
+                info.decorators = tuple(decorator_xpu)
+            skip_xpu = []
+            replaced = False
+            if hasattr(info, "skips"):
+                for skip in info.skips:
+                    if type(skip) == DecorateInfo:
+                        if skip.device_type == "cuda":
+                            skip_xpu.append(decorator)
+                            skip.device_type = "xpu"
+                            replaced = True
+                        else:
+                            skip_xpu.append(skip)
+                    elif self.only_cuda_fn == skip:
+                        skip_xpu.append(common_device_type.onlyCUDA)
+                        replaced = True
+            if replaced:
+                info.skips = tuple(skip_xpu)
 
-    def adjust_db(self, db):
+    def align_supported_dtypes(self, db):
         for opinfo in db:
             if opinfo.name not in _xpu_computation_op_list:
                 opinfo.dtypesIfXPU = opinfo.dtypes
@@ -544,7 +550,6 @@ class XPUPatchForImport:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
                 backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
-            self.replace_opinfo_device(opinfo)
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -575,7 +580,9 @@ class XPUPatchForImport:
             common_methods_invocations.python_ref_db,
             common_methods_invocations.op_db,
         ]:
-            self.adjust_db(db)
+            self.align_supported_dtypes(db)
+            self.align_db_decorators(db)
+        self.align_db_decorators(module_db)
         common_methods_invocations.python_ref_db = [
             op
             for op in self.python_ref_db
