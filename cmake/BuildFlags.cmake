@@ -64,7 +64,25 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_USE_CXX11_ABI})
   endif()
 
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} --version
+    OUTPUT_VARIABLE ICPC_VERSION_OUTPUT
+    ERROR_VARIABLE ICPC_VERSION_OUTPUT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  message(STATUS "icpx --version output: ${ICPC_VERSION_OUTPUT}")
+  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" ICPC_VERSION ${ICPC_VERSION_OUTPUT})
+  if(ICPC_VERSION)
+    set(MIN_VERSION "2024.1.3")
+    if(ICPC_VERSION_NUMBER VERSION_GREATER_EQUAL MIN_VERSION)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
+    else()
+      message(STATUS "icpx version ${ICPC_VERSION} is less than ${MIN_VERSION}")
+    endif()
+  else()
+    message(WARNING "Failed to extract icpx version")
+  endif()
+
   
   set(SYCL_FLAGS ${SYCL_FLAGS} ${SYCL_KERNEL_OPTIONS})
 
