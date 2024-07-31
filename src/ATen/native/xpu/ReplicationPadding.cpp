@@ -34,9 +34,13 @@ void replication_pad1d_meta(
   int64_t iwidth = input.size(dimw);
   int64_t owidth = iwidth + pad_l + pad_r;
 
-  TORCH_CHECK(owidth >= 1,
-      "input (W: ", iwidth, ") is too small."
-      " Calculated output W: ", owidth);
+  TORCH_CHECK(
+      owidth >= 1,
+      "input (W: ",
+      iwidth,
+      ") is too small."
+      " Calculated output W: ",
+      owidth);
 
   if (output.defined()) {
     if (input.ndimension() == 2) {
@@ -69,11 +73,14 @@ void replication_pad1d_backward_meta(
 
   /* sizes */
   int64_t iwidth = input.size(dimw);
-  int64_t owidth  = iwidth + pad_l + pad_r;
+  int64_t owidth = iwidth + pad_l + pad_r;
 
-  TORCH_CHECK(owidth == grad_output.size(dimw),
-      "grad_output width unexpected. Expected: ", owidth,
-      " Got: ", grad_output.size(dimw));
+  TORCH_CHECK(
+      owidth == grad_output.size(dimw),
+      "grad_output width unexpected. Expected: ",
+      owidth,
+      " Got: ",
+      grad_output.size(dimw));
 
   if (grad_input.defined()) {
     xpu::resize_out(grad_input, input.sizes(), {}, input.options());
@@ -110,25 +117,30 @@ void replication_pad2d_meta(
   int64_t iheight = input.size(dimh);
   int64_t iwidth = input.size(dimw);
   int64_t oheight = iheight + pad_t + pad_b;
-  int64_t owidth  = iwidth + pad_l + pad_r;
+  int64_t owidth = iwidth + pad_l + pad_r;
 
-  TORCH_CHECK(owidth >= 1 || oheight >= 1,
-      "input (H: ", iheight, ", W: ", iwidth, " ) is too small."
-      " Calculated output H: ", oheight, " W: ", owidth);
+  TORCH_CHECK(
+      owidth >= 1 || oheight >= 1,
+      "input (H: ",
+      iheight,
+      ", W: ",
+      iwidth,
+      " ) is too small."
+      " Calculated output H: ",
+      oheight,
+      " W: ",
+      owidth);
 
   if (output.defined()) {
     if (input.dim() == 3) {
-      xpu::resize_out(
-          output,
-          {nslices, oheight, owidth}, {}, input.options());
+      xpu::resize_out(output, {nslices, oheight, owidth}, {}, input.options());
     } else {
       xpu::resize_out(
           output, {nbatch, nslices, oheight, owidth}, {}, input.options());
     }
   } else {
     if (input.dim() == 3) {
-      output = xpu::create_out(
-          {nslices, oheight, owidth}, {}, input.options());
+      output = xpu::create_out({nslices, oheight, owidth}, {}, input.options());
     } else {
       output = xpu::create_out(
           {nbatch, nslices, oheight, owidth}, {}, input.options());
@@ -170,21 +182,34 @@ void replication_pad3d_meta(
   int64_t iwidth = input.size(dimw);
   int64_t odepth = idepth + pfront + pback;
   int64_t oheight = iheight + ptop + pbottom;
-  int64_t owidth  = iwidth + pleft + pright;
+  int64_t owidth = iwidth + pleft + pright;
 
-  TORCH_CHECK(owidth >= 1 || oheight >= 1 || odepth >= 1,
-      "input (D: ", idepth, " H: ", iheight, ", W: ", iwidth,
+  TORCH_CHECK(
+      owidth >= 1 || oheight >= 1 || odepth >= 1,
+      "input (D: ",
+      idepth,
+      " H: ",
+      iheight,
+      ", W: ",
+      iwidth,
       ") is too small."
-      " Calculated output D: ", odepth, " H: ", oheight, " W: ", owidth);
+      " Calculated output D: ",
+      odepth,
+      " H: ",
+      oheight,
+      " W: ",
+      owidth);
 
   if (output.defined()) {
     if (input.dim() == 4) {
       xpu::resize_out(
-          output,
-          {nslices, odepth, oheight, owidth}, {}, input.options());
+          output, {nslices, odepth, oheight, owidth}, {}, input.options());
     } else {
       xpu::resize_out(
-          output, {nbatch, nslices, odepth, oheight, owidth}, {}, input.options());
+          output,
+          {nbatch, nslices, odepth, oheight, owidth},
+          {},
+          input.options());
     }
   } else {
     if (input.dim() == 4) {

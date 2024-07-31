@@ -2824,7 +2824,6 @@ skip_list = (
     "test_nondeterministic_alert_histc_xpu",
     "test_nondeterministic_alert_interpolate_bicubic_xpu",
     "test_nondeterministic_alert_interpolate_bilinear_xpu",
-    "test_nondeterministic_alert_interpolate_linear_xpu",
     "test_nondeterministic_alert_interpolate_trilinear_xpu",
     "test_nondeterministic_alert_kthvalue_xpu_float64",
     "test_nondeterministic_alert_median_xpu_float64",
