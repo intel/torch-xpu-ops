@@ -3029,5 +3029,11 @@ res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 res += launch_test("nn/test_parametrization_xpu.py")
 
+# test_spectral_ops
+skip_list = (
+  "test_cufft_plan_cache_xpu_float64",
+)
+res += launch_test("test_spectral_ops_xpu.py", skip_list)
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
