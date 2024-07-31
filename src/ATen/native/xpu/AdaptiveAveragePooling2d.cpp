@@ -69,23 +69,23 @@ Tensor sum_backward(
 
 Tensor mean_backward(
     const Tensor& grad,
+    const Tensor& input,
     c10::SymIntArrayRef shape,
     OptionalIntArrayRef opt_dim,
     c10::SymInt numel,
-    bool keepdim,
-    const Tensor& input) {
+    bool keepdim) {
   bool is_all_reduce = !opt_dim.has_value() || opt_dim.value().empty();
   auto n =
       is_all_reduce ? std::move(numel) : _safe_size(shape, opt_dim.value());
 
-  Tensor grad_input_ =
+  Tensor grad_input =
       sum_backward(grad, shape, opt_dim, keepdim) / std::move(n);
 
   if (input.suggest_memory_format() == at::MemoryFormat::ChannelsLast) {
-    grad_input_ = grad_input_.contiguous(input.suggest_memory_format());
+    grad_input = grad_input.contiguous(input.suggest_memory_format());
   }
 
-  return grad_input_;
+  return grad_input;
 }
 } // namespace
 
@@ -107,11 +107,11 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
   if (grad_output.size(-1) == 1 && grad_output.size(-2) == 1) {
     return mean_backward(
         grad_output,
+        input,
         input.sym_sizes().vec(),
         {-1, -2},
         input.sym_numel(),
-        true,
-        input);
+        true);
   }
 
   globalContext().alertNotDeterministic("_adaptive_avg_pool2d_backward");
