@@ -101,6 +101,8 @@ _xpu_computation_op_list = [
     "maximum",
     "minimum",
     "mul",
+    "median",
+    "nanmedian",
     "native_dropout_backward",
     "ne",
     "neg",

@@ -239,6 +239,10 @@ supported:
   - tanh
   - tanh_
   - tanh.out
+  - median
+  - median.dim_values
+  - nanmedian
+  - nanmedian.dim_values
   - neg
   - neg_
   - neg.out
