@@ -1234,9 +1234,6 @@ skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
     # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
     "test_TransformerEncoderLayer_empty_xpu",
     "test_transformerencoderlayer_xpu_float16",
@@ -1436,13 +1433,7 @@ skip_list = (
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
-    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_large__refs_tanh_xpu_complex32",
     "test_reference_numerics_large_tanh_xpu_complex32",
     # For extreme value processing, Numpy and XPU results are inconsistent
     # std operations get different behavior on std::complex operarands for extremal cases
@@ -1478,6 +1469,10 @@ skip_list = (
     "test_reference_numerics_large_asinh_xpu_complex128",
     "test_reference_numerics_large_asinh_xpu_complex64",
     "test_reference_numerics_large_asinh_xpu_complex32",
+    # Mismatched elements: 1 / 943593 (0.0%)
+    # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
+    # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
     # AssertionError: Tensor-likes are not close!
     # exceeded maximum allowed difference
     # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
@@ -1489,7 +1484,6 @@ skip_list = (
     # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
     "_special_",
     # Failed: Unexpected success
-    "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
     # Numeric difference
     # https://github.com/intel/torch-xpu-ops/issues/544
