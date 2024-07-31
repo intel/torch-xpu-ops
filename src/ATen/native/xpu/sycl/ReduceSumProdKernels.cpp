@@ -154,11 +154,14 @@ struct prod_functor<c10::complex<at::Half>> {
 };
 
 void prod_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      kComplexHalf, kBool, iter.dtype(), "prod_xpu", [&]() {
-        prod_functor<scalar_t>{}(iter);
-      });
-};
+  auto general_dispatcher = [](TensorIterator& iter) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+        kComplexHalf, kBool, iter.dtype(), "prod_xpu", [&]() {
+          prod_functor<scalar_t>{}(iter);
+        });
+  };
+  reduce_dispatch<prod_functor>(iter, general_dispatcher);
+}
 
 } // namespace xpu
 } // namespace native
