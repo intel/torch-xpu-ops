@@ -190,6 +190,7 @@ _xpu_computation_op_list = [
     "sigmoid",
     "logsigmoid",
     "sgn",
+    "round",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",

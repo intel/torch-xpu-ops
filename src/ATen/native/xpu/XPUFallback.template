@@ -241,8 +241,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "prod",
     "prod.int_out",
     "put_",
-    "round.decimals_out",
-    "round.out",
     "rrelu_with_noise",
     "__rshift__.Scalar",
     "_scaled_dot_product_efficient_attention",
