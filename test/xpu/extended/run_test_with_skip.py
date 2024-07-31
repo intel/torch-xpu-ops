@@ -119,10 +119,12 @@ skip_list = (
     # When XPU uses original data type, the case passes.
     "test_compare_cpu_logit_xpu_bfloat16",
     # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
-    # aten::upsample_trilinear3d
-    "nn_functional_interpolate_linear",
+    # aten::upsample_trilinear3d,
     "nn_functional_interpolate_bilinear",
     "nn_functional_interpolate_trilinear",
+    # The results of XPU and CUDA are consistent, but the results of CPU and CUDA are inconsistent
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_float16",
     # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
@@ -159,12 +161,23 @@ skip_list = (
     # https://github.com/pytorch/pytorch/issues/130916
     "test_compare_cpu_histogram_xpu_float32",
     "test_compare_cpu_histogram_xpu_float64",
-
     # Precision error.
     # Mismatched elements: 2 / 125 (1.6%)
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+    # different results for value index due to unstable sort.
+    # XPU and CUDA have the same result.
+    "test_compare_cpu_median_xpu_int16",
+    "test_compare_cpu_median_xpu_int32",
+    "test_compare_cpu_median_xpu_int64",
+    "test_compare_cpu_median_xpu_int8",
+    "test_compare_cpu_median_xpu_uint8",
+    "test_compare_cpu_nanmedian_xpu_int16",
+    "test_compare_cpu_nanmedian_xpu_int32",
+    "test_compare_cpu_nanmedian_xpu_int64",
+    "test_compare_cpu_nanmedian_xpu_int8",
+    "test_compare_cpu_nanmedian_xpu_uint8",
 )
 
 

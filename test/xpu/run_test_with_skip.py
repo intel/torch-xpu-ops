@@ -1106,6 +1106,11 @@ skip_list = (
     "test_save_load_nn_Transformer_xpu_float64",
     # AssertionError: Tensor-likes are not close!
     "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
+    # Unexpected success:
+    "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+    "test_memory_format_nn_AvgPool2d_xpu_float32",
+    "test_memory_format_nn_AvgPool2d_xpu_float64",
     # AssertionError: False is not true
     "test_memory_format_nn_Conv2d_xpu_float64",
     "test_memory_format_nn_ConvTranspose2d_xpu_float64",
@@ -2754,7 +2759,6 @@ skip_list = (
     "test_nondeterministic_alert_histc_xpu",
     "test_nondeterministic_alert_interpolate_bicubic_xpu",
     "test_nondeterministic_alert_interpolate_bilinear_xpu",
-    "test_nondeterministic_alert_interpolate_linear_xpu",
     "test_nondeterministic_alert_interpolate_trilinear_xpu",
     "test_nondeterministic_alert_kthvalue_xpu_float64",
     "test_nondeterministic_alert_median_xpu_float64",

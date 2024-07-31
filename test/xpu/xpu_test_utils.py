@@ -14,6 +14,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
@@ -102,6 +103,8 @@ _xpu_computation_op_list = [
     "maximum",
     "minimum",
     "mul",
+    "median",
+    "nanmedian",
     "native_dropout_backward",
     "ne",
     "neg",
@@ -188,6 +191,7 @@ _xpu_computation_op_list = [
     "sigmoid",
     "logsigmoid",
     "sgn",
+    "round",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
@@ -521,37 +525,36 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-    def adjust_db(self, db):
-        def replace_opinfo_device_info(info: OpInfo):
-            def replace_opinfo_device_list(name, wrappers):
-                wrapper_xpu = []
-                replaced = False
-                for wrapper in wrappers:
-                    if type(wrapper) == DecorateInfo:
-                        if wrapper.device_type == "cuda":
-                            if (
-                                unittest.expectedFailure in wrapper.decorators
-                                and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
-                            ):
-                                pass
-                            else:
-                                wrapper.device_type = "xpu"
-                                replaced = True
-                        wrapper_xpu.append(wrapper)
-                    elif self.only_cuda_fn == wrapper:
-                        wrapper_xpu.append(common_device_type.onlyCUDA)
-                        replaced = True
-                return replaced, wrapper_xpu
+    def align_db_decorators(self, db):
+        def gen_xpu_wrappers(name, wrappers):
+            wrapper_xpu = []
+            replaced = False
+            for wrapper in wrappers:
+                if type(wrapper) == DecorateInfo:
+                    if wrapper.device_type == "cuda":
+                        if (
+                            unittest.expectedFailure in wrapper.decorators
+                            and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                        ):
+                            pass
+                        else:
+                            wrapper.device_type = "xpu"
+                            replaced = True
+                    wrapper_xpu.append(wrapper)
+                elif self.only_cuda_fn == wrapper:
+                    wrapper_xpu.append(common_device_type.onlyCUDA)
+                    replaced = True
+            return replaced, wrapper_xpu
 
-            replaced, decorator_xpu = replace_opinfo_device_list(
-                info.name, info.decorators
-            )
+        for info in db:
+            replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
             if replaced:
                 info.decorators = tuple(decorator_xpu)
-            replaced, skip_xpu = replace_opinfo_device_list(info.name, info.skips)
+            replaced, skip_xpu = gen_xpu_wrappers(info.name, info.skips)
             if replaced:
                 info.skips = tuple(skip_xpu)
 
+    def align_supported_dtypes(self, db):
         for opinfo in db:
             if opinfo.name not in _xpu_computation_op_list:
                 opinfo.dtypesIfXPU = opinfo.dtypes
@@ -559,7 +562,6 @@ class XPUPatchForImport:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
                 backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
-            replace_opinfo_device_info(opinfo)
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -590,7 +592,9 @@ class XPUPatchForImport:
             common_methods_invocations.python_ref_db,
             common_methods_invocations.op_db,
         ]:
-            self.adjust_db(db)
+            self.align_supported_dtypes(db)
+            self.align_db_decorators(db)
+        self.align_db_decorators(module_db)
         common_methods_invocations.python_ref_db = [
             op
             for op in self.python_ref_db

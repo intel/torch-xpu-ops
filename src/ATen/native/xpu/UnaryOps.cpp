@@ -972,6 +972,76 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+
+Tensor XPUNativeFunctions::round(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::round_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::round_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  native::xpu::round_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::round_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::round_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::round(const Tensor& self, int64_t decimals) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::round_(Tensor& self, int64_t decimals) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
+  return self;
+}
+
+Tensor& XPUNativeFunctions::round_out(
+    const Tensor& self,
+    int64_t decimals,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
+  return out;
+}
+
 TensorIterator meta_floor(const Tensor& self, Tensor& out) {
   // Note: this is consistent with NumPy
   TORCH_CHECK(!self.is_complex(), "floor is not supported for complex inputs");
