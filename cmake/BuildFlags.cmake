@@ -69,9 +69,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     if(SYCL_COMPILER_VERSION GREATER_EQUAL MIN_DATE_VERSION)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
     else()
-      message(WARNING "SYCL Compiler Version ${SYCL_COMPILER_VERSION} \
-      is less than ${MIN_DATE_VERSION}. Disable FP64 conversion emulation. \
-      There might be unknown behavior on some platforms that don't support FP64.")
+      message(WARNING "On some platforms that don't support FP64, \
+      running operations with the FP64 datatype will raise a Runtime error \
+      or a Native API failed error.")
     endif()
   endif()
 
