@@ -180,11 +180,6 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
-
-    # Aligned with CUDA implementation.
-    # RuntimeError: "signbit_xpu" not implemented for 'Bool'
-    "test_compare_cpu_signbit_xpu_bool",
-    "test_non_standard_bool_values_signbit_xpu_bool",
 )
 
 
