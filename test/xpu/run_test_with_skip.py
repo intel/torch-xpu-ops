@@ -1275,9 +1275,6 @@ skip_list = (
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
     # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
     "test_TransformerEncoderLayer_empty_xpu",
     "test_transformerencoderlayer_xpu_float16",
