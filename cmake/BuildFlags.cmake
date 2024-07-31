@@ -64,24 +64,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_USE_CXX11_ABI})
   endif()
 
-  execute_process(
-    COMMAND ${CMAKE_CXX_COMPILER} --version
-    OUTPUT_VARIABLE ICPC_VERSION_OUTPUT
-    ERROR_VARIABLE ICPC_VERSION_OUTPUT
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-  message(STATUS "-- Found icpx version: ${ICPC_VERSION_OUTPUT}")
-  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" ICPX_VERSION ${ICPC_VERSION_OUTPUT})
-  if(ICPX_VERSION)
-    set(MIN_VERSION "2024.1.3")
-    if(ICPX_VERSION VERSION_GREATER_EQUAL MIN_VERSION)
-      message(STATUS "Add flag -fsycl-fp64-conv-emu")
+  if(SYCL_COMPILER_VERSION)
+    set(MIN_DATE_VERSION "20240604")
+    if(SYCL_COMPILER_VERSION GREATER_EQUAL MIN_DATE_VERSION)
+      message(STATUS "Enable Double Emulation Feature")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
     else()
-      message(STATUS "icpx version ${ICPC_VERSION} is less than ${MIN_VERSION}")
+      message(STATUS "SYCL Compiler Version ${SYCL_COMPILER_VERSION} is less than ${MIN_VERSION}. Disable Double Emulation Feature")
     endif()
-  else()
-    message(WARNING "Failed to extract icpx version")
   endif()
 
   set(SYCL_FLAGS ${SYCL_FLAGS} ${SYCL_KERNEL_OPTIONS})
