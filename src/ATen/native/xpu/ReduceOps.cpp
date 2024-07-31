@@ -197,14 +197,23 @@ Tensor XPUNativeFunctions::sum(
   return XPUNativeFunctions::sum_out(self, dim, keepdim, opt_dtype, out);
 }
 
+Tensor& prod_meta(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  auto out_dtype = infer_dtype_from_optional(self, dtype, result);
+  result = resize_reduction(result, self, dim, keepdim, out_dtype);
+  return result;
+}
+
 static void impl_func_prod(
     const Tensor& self,
     IntArrayRef dims,
     bool keepdim,
     std::optional<ScalarType> dtype,
     Tensor& result) {
-  auto out_dtype = infer_dtype_from_optional(self, dtype, result);
-  result = resize_reduction(result, self, dims, keepdim, out_dtype);
   auto iter = meta::make_reduction_from_out_ty(
       self, result, dims, keepdim, result.scalar_type());
   if (iter.numel() == 0) {
@@ -220,6 +229,7 @@ Tensor& XPUNativeFunctions::prod_out(
     bool keepdim,
     std::optional<ScalarType> dtype,
     Tensor& result) {
+  result = prod_meta(self, dim, keepdim, dtype, result);
   impl_func_prod(self, dim, keepdim, dtype, result);
   return result;
 }
@@ -240,6 +250,7 @@ Tensor XPUNativeFunctions::prod(
     bool keepdim,
     std::optional<ScalarType> dtype) {
   Tensor result;
+  result = prod_meta(self, dim, keepdim, dtype, result);
   impl_func_prod(self, dim, keepdim, dtype, result);
   return result;
 }
