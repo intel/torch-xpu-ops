@@ -187,7 +187,6 @@ _xpu_computation_op_list = [
     "logsigmoid",
     "sgn",
     "round",
-    "round.decimals",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
