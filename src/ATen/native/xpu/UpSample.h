@@ -228,4 +228,33 @@ static scalar_t upsample_get_value_bounded(
   return data[batch][channel][access_y][access_x];
 }
 
+static C10_UNUSED std::array<int64_t, 3> upsample_1d_common_check(
+    IntArrayRef input_size,
+    IntArrayRef output_size) {
+  TORCH_CHECK(
+      output_size.size() == 1,
+      "It is expected output_size equals to 1, but got size ",
+      output_size.size());
+
+  TORCH_CHECK(
+      input_size.size() == 3,
+      "It is expected input_size equals to 3, but got size ",
+      input_size.size());
+
+  int64_t output_width = output_size[0];
+  int64_t nbatch = input_size[0];
+  int64_t channels = input_size[1];
+  int64_t input_width = input_size[2];
+
+  TORCH_CHECK(
+      input_width > 0 && output_width > 0,
+      "Input and output sizes should be greater than 0, but got input (W: ",
+      input_width,
+      ") and output (W: ",
+      output_width,
+      ")");
+
+  return {nbatch, channels, output_width};
+}
+
 } // namespace at::native::xpu
