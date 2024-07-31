@@ -4,7 +4,7 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 set(ATen_XPU_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
 
-set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src)
+set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Include directory")
 
 add_subdirectory(ATen)
 
