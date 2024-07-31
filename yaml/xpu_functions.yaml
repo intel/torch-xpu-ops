@@ -105,6 +105,7 @@ supported:
   - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
+  - masked_scatter_
   - index_add.out
   - index_add_
   - index_add
@@ -238,6 +239,10 @@ supported:
   - tanh
   - tanh_
   - tanh.out
+  - median
+  - median.dim_values
+  - nanmedian
+  - nanmedian.dim_values
   - neg
   - neg_
   - neg.out
@@ -693,4 +698,10 @@ supported:
   - renorm.out
   - renorm_
   - nan_to_num.out
+  - upsample_linear1d_backward.grad_input
+  - upsample_linear1d.out
+  - upsample_linear1d
+  - upsample_linear1d_backward
+  - _weight_norm_interface
+  - _weight_norm_interface_backward
   - range.out
