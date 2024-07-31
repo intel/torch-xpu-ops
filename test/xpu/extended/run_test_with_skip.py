@@ -180,6 +180,11 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+
+    # Wrong supported datatype in op_info.
+    # CUDA also fails but numpy ref test case is skip here.
+    "test_compare_cpu_prod_xpu_float16",
+    "test_compare_cpu_prod_xpu_bfloat16 ",
 )
 
 
