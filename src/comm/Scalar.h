@@ -22,6 +22,11 @@ union ull_to_double {
   double out;
 };
 
+union ushort_to_half {
+  unsigned short int in;
+  sycl::half out;
+};
+
 union double_to_u32 {
   double in;
   struct {
@@ -61,4 +66,10 @@ static inline uint32_t __double_as_int(double val) {
 
 static inline float __int_as_double(uint32_t val) {
   return (double)val;
+}
+
+static inline sycl::half __ushort_as_half(unsigned short int val) {
+  ushort_to_half cn;
+  cn.in = val;
+  return cn.out;
 }
