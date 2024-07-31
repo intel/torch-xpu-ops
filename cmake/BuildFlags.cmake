@@ -67,10 +67,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   if(SYCL_COMPILER_VERSION)
     set(MIN_DATE_VERSION "20240604")
     if(SYCL_COMPILER_VERSION GREATER_EQUAL MIN_DATE_VERSION)
-      message(STATUS "Enable Double Emulation Feature")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
     else()
-      message(STATUS "SYCL Compiler Version ${SYCL_COMPILER_VERSION} is less than ${MIN_DATE_VERSION}. Disable Double Emulation Feature")
+      message(WARNING "SYCL Compiler Version ${SYCL_COMPILER_VERSION} \
+      is less than ${MIN_DATE_VERSION}. Disable FP64 conversion emulation. \
+      There might be unknown behavior on some platforms that don't support FP64.")
     endif()
   endif()
 
