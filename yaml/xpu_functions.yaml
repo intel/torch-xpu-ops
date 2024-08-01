@@ -239,6 +239,10 @@ supported:
   - tanh
   - tanh_
   - tanh.out
+  - median
+  - median.dim_values
+  - nanmedian
+  - nanmedian.dim_values
   - neg
   - neg_
   - neg.out
@@ -346,6 +350,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
@@ -466,6 +473,11 @@ supported:
   - sigmoid
   - sigmoid.out
   - sigmoid_
+  - sign
+  - sign.out
+  - sign_
+  - signbit
+  - signbit.out
   - sigmoid_backward.grad_input
   - sigmoid_backward
   - hardsigmoid.out
@@ -681,6 +693,12 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - round
+  - round_
+  - round.out
+  - round.decimals
+  - round_.decimals
+  - round.decimals_out
   - histogram.bins_tensor
   - histogram.bins_tensor_out
   - histogram.bin_ct
@@ -694,6 +712,10 @@ supported:
   - renorm.out
   - renorm_
   - nan_to_num.out
+  - upsample_linear1d_backward.grad_input
+  - upsample_linear1d.out
+  - upsample_linear1d
+  - upsample_linear1d_backward
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out

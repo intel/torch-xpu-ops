@@ -69,9 +69,6 @@ skip_list = (
     # TestCompositeCompliance
     # CPU fallback fails
     # Require implementing aten::embedding_renorm_
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
-    "test_backward_nn_functional_embedding_xpu_float32",
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
     # TestCompositeCompliance::test_cow_input
@@ -133,11 +130,23 @@ skip_list = (
     # When XPU uses original data type, the case passes.
     "test_compare_cpu_logit_xpu_bfloat16",
 
-    # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
-    # aten::upsample_trilinear3d
-    "nn_functional_interpolate_linear",
-    "nn_functional_interpolate_bilinear",
-    "nn_functional_interpolate_trilinear",
+    # precison error
+    #     Mismatched elements: 1 / 24 (4.2%)
+    # Greatest absolute difference: 0.03125 at index (0, 1, 0, 1) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0048828125 at index (0, 1, 0, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_bfloat16",
+
+    # RuntimeError: "compute_index_ranges_weights" not implemented for 'Half'
+    "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float16",
+
+    # AssertionError: False is not true : Argument 0 during forward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_forward=False...
+    "test_cow_input_nn_functional_interpolate_bilinear_xpu_float32",
+    "test_cow_input_nn_functional_interpolate_linear_xpu_float32",
+    "test_cow_input_nn_functional_interpolate_trilinear_xpu_float32",
+
+    #The results of XPU and CUDA are consistent, but the results of CPU and CUDA are inconsistent
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_float16",
 
     # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
@@ -180,6 +189,26 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+
+    # Precision error.
+    # Mismatched elements: 1 / 9 (11.1%)
+    # Greatest absolute difference: 0.001953125 at index (2, 2) (up to 0.001 allowed)
+    # Greatest relative difference: 0.004669189453125 at index (2, 2) (up to 0.001 allowed)
+    # Not in CUDA test scope too
+    "test_compare_cpu_prod_xpu_bfloat16 ",
+
+    # different results for value index due to unstable sort.
+    # XPU and CUDA have the same result.
+    "test_compare_cpu_median_xpu_int16",
+    "test_compare_cpu_median_xpu_int32",
+    "test_compare_cpu_median_xpu_int64",
+    "test_compare_cpu_median_xpu_int8",
+    "test_compare_cpu_median_xpu_uint8",
+    "test_compare_cpu_nanmedian_xpu_int16",
+    "test_compare_cpu_nanmedian_xpu_int32",
+    "test_compare_cpu_nanmedian_xpu_int64",
+    "test_compare_cpu_nanmedian_xpu_int8",
+    "test_compare_cpu_nanmedian_xpu_uint8",
 )
 
 

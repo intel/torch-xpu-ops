@@ -530,6 +530,71 @@ Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sign(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sign_(Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  native::xpu::sign_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::signbit(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+
+  if (self.dtype() == at::kBool) {
+    iter.output().fill_(false);
+  } else {
+    native::xpu::signbit_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::signbit_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+  TORCH_CHECK(
+      out.dtype() == at::kBool,
+      "signbit does not support non-boolean outputs.");
+
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+
+  if (self.dtype() == at::kBool) {
+    out.fill_(false);
+  } else {
+    native::xpu::signbit_kernel(iter);
+  }
+  return out;
+}
+
 Tensor& XPUNativeFunctions::logit_out(
     const Tensor& self,
     std::optional<double> eps,
@@ -969,6 +1034,76 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   }
   auto iter = ceil_meta(self, out);
   native::xpu::ceil_kernel(iter);
+  return out;
+}
+
+
+Tensor XPUNativeFunctions::round(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::round_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::round_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  native::xpu::round_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::round_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::round_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::round(const Tensor& self, int64_t decimals) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::round_(Tensor& self, int64_t decimals) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
+  return self;
+}
+
+Tensor& XPUNativeFunctions::round_out(
+    const Tensor& self,
+    int64_t decimals,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  if (decimals != 0) {
+    native::xpu::round_decimals_kernel(iter, decimals);
+  } else {
+    native::xpu::round_kernel(iter);
+  }
   return out;
 }
 
