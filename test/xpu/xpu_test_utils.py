@@ -141,6 +141,7 @@ _xpu_computation_op_list = [
     "atanh",
     "sqrt",
     "sum",
+    "prod",
     "nansum",
     "amin",
     "amax",
