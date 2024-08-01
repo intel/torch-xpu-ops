@@ -3,8 +3,8 @@
 function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
 set(TEMP_DIR "${CMAKE_BINARY_DIR}/temp")
 file(MAKE_DIRECTORY ${TEMP_DIR})
-set(TEST_SRC_FILE "${TEMP_DIR}/demo.cpp")
-set(TEST_EXE_FILE "${TEMP_DIR}/demo.out")
+set(TEST_SRC_FILE "${TEMP_DIR}/check_options.cpp")
+set(TEST_EXE_FILE "${TEMP_DIR}/check_options.out")
 file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Hello, World!\" << std::endl; return 0; }\n")
 execute_process(
     COMMAND ${SYCL_COMPILER} -fsycl ${TEST_SRC_FILE} -o ${TEST_EXE_FILE} ${FLAG}
@@ -16,7 +16,7 @@ execute_process(
 )
 if(result EQUAL 0)
     set(${VARIABLE_NAME} TRUE PARENT_SCOPE)
-    message(STATUS "The compiler supports ${FLAG}")
+    message(STATUS "The compiler support ${FLAG}")
 else()
     set(${VARIABLE_NAME} FALSE PARENT_SCOPE)
     message(WARNING "The compiler does not support ${FLAG}")
@@ -89,8 +89,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_USE_CXX11_ABI})
   endif()
 
-  CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_FLAG)
-  if(SUPPORTS_FP64_FLAG)
+  CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
+  if(SUPPORTS_FP64_CONV_EMU)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
   else()
     message(WARNING "On some platforms that don't support FP64, \
