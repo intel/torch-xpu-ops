@@ -1,28 +1,28 @@
 # Setup building flags for SYCL device and host codes.
 
 function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
-set(TEMP_DIR "${CMAKE_BINARY_DIR}/temp")
-file(MAKE_DIRECTORY ${TEMP_DIR})
-set(TEST_SRC_FILE "${TEMP_DIR}/check_options.cpp")
-set(TEST_EXE_FILE "${TEMP_DIR}/check_options.out")
-file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Hello, World!\" << std::endl; return 0; }\n")
-execute_process(
-    COMMAND ${SYCL_COMPILER} -fsycl ${TEST_SRC_FILE} -o ${TEST_EXE_FILE} ${FLAG}
-    WORKING_DIRECTORY ${TEMP_DIR}
-    OUTPUT_VARIABLE output
-    ERROR_VARIABLE output
-    RESULT_VARIABLE result
-    TIMEOUT 60
-)
-if(result EQUAL 0)
-    set(${VARIABLE_NAME} TRUE PARENT_SCOPE)
-    message(STATUS "The compiler support ${FLAG}")
-else()
-    set(${VARIABLE_NAME} FALSE PARENT_SCOPE)
-    message(WARNING "The compiler does not support ${FLAG}")
-    message(STATUS "compile output is: ${output}")
-endif()
-file(REMOVE_RECURSE ${TEMP_DIR})
+  set(TEMP_DIR "${CMAKE_BINARY_DIR}/temp")
+  file(MAKE_DIRECTORY ${TEMP_DIR})
+  set(TEST_SRC_FILE "${TEMP_DIR}/check_options.cpp")
+  set(TEST_EXE_FILE "${TEMP_DIR}/check_options.out")
+  file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Hello, World!\" << std::endl; return 0; }\n")
+  execute_process(
+      COMMAND ${SYCL_COMPILER} -fsycl ${TEST_SRC_FILE} -o ${TEST_EXE_FILE} ${FLAG}
+      WORKING_DIRECTORY ${TEMP_DIR}
+      OUTPUT_VARIABLE output
+      ERROR_VARIABLE output
+      RESULT_VARIABLE result
+      TIMEOUT 60
+  )
+  if(result EQUAL 0)
+      set(${VARIABLE_NAME} TRUE PARENT_SCOPE)
+      message(STATUS "The compiler support ${FLAG}")
+  else()
+      set(${VARIABLE_NAME} FALSE PARENT_SCOPE)
+      message(WARNING "The compiler does not support ${FLAG}")
+      message(STATUS "compile output is: ${output}")
+  endif()
+  file(REMOVE_RECURSE ${TEMP_DIR})
 endfunction()
 
 # Support GCC on Linux and MSVC on Windows at the moment.
