@@ -1146,9 +1146,6 @@ skip_list = (
     "test_memory_format_nn_ConvTranspose2d_xpu_float64",
     "test_memory_format_nn_LazyConv2d_xpu_float64",
     "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
-    "test_cpu_gpu_parity_nn_CrossEntropyLoss_xpu_float16",
     # CPU fallback could not cover these
     # CUDA xfails
     # Failed: Unexpected success
@@ -2987,14 +2984,7 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-skip_list = (
-    # Regression after PyTorch uplift
-    # https://github.com/intel/torch-xpu-ops/issues/549
-    # AssertionError: 3 != 3.0
-    "test_symnode_hashing",
-)
-res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
+res += launch_test("test_dynamic_shapes_xpu.py")
 
 # test_load_state_dict
 
