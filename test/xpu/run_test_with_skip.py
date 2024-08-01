@@ -1289,9 +1289,6 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
-    "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
