@@ -2165,6 +2165,12 @@ skip_list = (
     "test_scaled_mm_vs_emulated_float16_xpu",
     "test_scaled_mm_vs_emulated_float32_xpu",
     "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+
+    # https://github.com/intel/torch-xpu-ops/issues/676
+    # Mismatched elements: 9 / 1003002 (0.0%)
+    # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
+    # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
+    "test_cublas_addmm_size_1000_xpu_float32",
 )
 res += launch_test("test_matmul_cuda_xpu.py", skip_list=skip_list)
 

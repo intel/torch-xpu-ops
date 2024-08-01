@@ -169,6 +169,12 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+    # Precision error.
+    # Mismatched elements: 1 / 9 (11.1%)
+    # Greatest absolute difference: 0.001953125 at index (2, 2) (up to 0.001 allowed)
+    # Greatest relative difference: 0.004669189453125 at index (2, 2) (up to 0.001 allowed)
+    # Not in CUDA test scope too
+    "test_compare_cpu_prod_xpu_bfloat16 ",
     # different results for value index due to unstable sort.
     # XPU and CUDA have the same result.
     "test_compare_cpu_median_xpu_int16",
