@@ -22,11 +22,6 @@ struct pair {
 
   template <typename U1, typename U2>
   pair(const std::pair<U1, U2>& p) : first(p.first), second(p.second) {}
-
-  inline void swap(pair& p) {
-    std::swap(first, p.first);
-    std::swap(second, p, second);
-  }
 };
 
 template <typename T1, typename T2>
