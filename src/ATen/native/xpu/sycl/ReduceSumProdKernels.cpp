@@ -110,6 +110,59 @@ void nansum_kernel(TensorIterator& iter) {
   reduce_dispatch<NansumFunctor>(iter, general_dispatcher);
 }
 
+template <typename acc_t>
+struct ProdFunctor {
+  inline acc_t operator()(acc_t a, acc_t b) const {
+    return a * b;
+  }
+};
+
+template <>
+struct ProdFunctor<bool> {
+  inline bool operator()(bool a, bool b) const {
+    return a && b;
+  }
+};
+
+template <
+    typename scalar_t,
+    typename acc_t = scalar_t,
+    typename out_t = scalar_t>
+struct prod_functor {
+  void operator()(TensorIterator& iter) {
+    gpu_reduce_kernel<scalar_t, out_t>(
+        iter, func_wrapper<out_t>(ProdFunctor<acc_t>()), 1.);
+  }
+};
+
+template <>
+struct prod_functor<bool> {
+  void operator()(TensorIterator& iter) {
+    gpu_reduce_kernel<bool, bool>(
+        iter, func_wrapper<bool>(ProdFunctor<bool>()), 1);
+  }
+};
+
+template <>
+struct prod_functor<c10::complex<at::Half>> {
+  void operator()(TensorIterator& iter) {
+    using scalar_t = c10::complex<at::Half>;
+    using acc_t = at::opmath_type<scalar_t>;
+    gpu_reduce_kernel<scalar_t, scalar_t>(
+        iter, func_wrapper<scalar_t>(ProdFunctor<acc_t>()), acc_t{1.});
+  }
+};
+
+void prod_kernel(TensorIterator& iter) {
+  auto general_dispatcher = [](TensorIterator& iter) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+        kComplexHalf, kBool, iter.dtype(), "prod_xpu", [&]() {
+          prod_functor<scalar_t>{}(iter);
+        });
+  };
+  reduce_dispatch<prod_functor>(iter, general_dispatcher);
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at

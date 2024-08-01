@@ -350,6 +350,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
