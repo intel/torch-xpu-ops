@@ -220,7 +220,7 @@ jobs:
               num_failed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_failed_summary.log)
               num_passed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_passed_summary.log)
               let num_failed=num_failed_binary_UT
-              if if [[ $num_failed -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_binary_UT -lt 0 ]]; then
+              if [[ $num_failed -gt ${{ inputs.expected_fail_num }} ]] && [[ $num_passed_binary_UT -lt 0 ]]; then
                 echo -e "[ERROR] Inductor UT ${ut_suite} test Fail"
                 exit 1
               fi
