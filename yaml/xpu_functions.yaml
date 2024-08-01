@@ -350,6 +350,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
@@ -685,6 +688,12 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - round
+  - round_
+  - round.out
+  - round.decimals
+  - round_.decimals
+  - round.decimals_out
   - histogram.bins_tensor
   - histogram.bins_tensor_out
   - histogram.bin_ct
