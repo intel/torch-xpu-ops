@@ -5,7 +5,7 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
   file(MAKE_DIRECTORY ${TEMP_DIR})
   set(TEST_SRC_FILE "${TEMP_DIR}/check_options.cpp")
   set(TEST_EXE_FILE "${TEMP_DIR}/check_options.out")
-  file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Hello, World!\" << std::endl; return 0; }\n")
+  file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Checking compiler options ...\" << std::endl; return 0; }\n")
   execute_process(
       COMMAND ${SYCL_COMPILER} -fsycl ${TEST_SRC_FILE} -o ${TEST_EXE_FILE} ${FLAG}
       WORKING_DIRECTORY ${TEMP_DIR}
@@ -16,11 +16,8 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
   )
   if(result EQUAL 0)
       set(${VARIABLE_NAME} TRUE PARENT_SCOPE)
-      message(STATUS "The compiler support ${FLAG}")
   else()
       set(${VARIABLE_NAME} FALSE PARENT_SCOPE)
-      message(WARNING "The compiler does not support ${FLAG}")
-      message(STATUS "compile output is: ${output}")
   endif()
   file(REMOVE_RECURSE ${TEMP_DIR})
 endfunction()
@@ -93,7 +90,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   if(SUPPORTS_FP64_CONV_EMU)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
   else()
-    message(WARNING "On some platforms that don't support FP64, \
+    message(WARNING "The compiler does not support flag '-fsycl-fp64-conv-emu' \
+    On some platforms that don't support FP64, \
     running operations with the FP64 datatype will raise a Runtime error \
     or a Native API failed error.")
   endif()
