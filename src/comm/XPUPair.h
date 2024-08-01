@@ -55,11 +55,6 @@ bool operator>=(const pair<T1, T2>& x, const pair<T1, T2>& y) {
 }
 
 template <typename T1, typename T2>
-inline void swap(pair<T1, T2>& x, pair<T1, T2>& y) {
-  return x.swap(y);
-}
-
-template <typename T1, typename T2>
 inline pair<T1, T2> make_pair(T1 x, T2 y) {
   return pair<T1, T2>(x, y);
 }
