@@ -530,6 +530,71 @@ Tensor& XPUNativeFunctions::sigmoid_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
+Tensor XPUNativeFunctions::sign(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::sign_(Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(self, self);
+  native::xpu::sign_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::sign_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(),
+      "Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  native::xpu::sign_kernel(iter);
+  return out;
+}
+
+Tensor XPUNativeFunctions::signbit(const Tensor& self) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+
+  if (self.dtype() == at::kBool) {
+    iter.output().fill_(false);
+  } else {
+    native::xpu::signbit_kernel(iter);
+  }
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::signbit_out(const Tensor& self, Tensor& out) {
+  TORCH_CHECK(
+      !self.is_complex(), "signbit is not implemented for complex tensors.");
+  TORCH_CHECK(
+      out.dtype() == at::kBool,
+      "signbit does not support non-boolean outputs.");
+
+  TensorIterator iter;
+  iter.build_borrowing_unary_force_boolean_op(out, self);
+
+  if (self.dtype() == at::kBool) {
+    out.fill_(false);
+  } else {
+    native::xpu::signbit_kernel(iter);
+  }
+  return out;
+}
+
 Tensor& XPUNativeFunctions::logit_out(
     const Tensor& self,
     std::optional<double> eps,

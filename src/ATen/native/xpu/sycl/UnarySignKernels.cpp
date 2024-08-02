@@ -55,6 +55,35 @@ void sign_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
+struct SignbitIntFunctor {
+  bool operator()(scalar_t a) const {
+    return is_negative(a);
+  }
+};
+
+template <typename scalar_t>
+struct SignbitFunctor {
+  bool operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    return std::signbit(opmath_t{a});
+  }
+};
+
+void signbit_kernel(TensorIteratorBase& iter) {
+  // NOTE: signbit does not always support integral arguments.
+  if (at::isIntegralType(iter.input_dtype(), /*includeBool=*/false)) {
+    AT_DISPATCH_INTEGRAL_TYPES(iter.input_dtype(), "signbit_xpu", [&]() {
+      gpu_kernel(iter, SignbitIntFunctor<scalar_t>());
+    });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kBFloat16, ScalarType::Half, iter.input_dtype(), "signbit_xpu", [&]() {
+          gpu_kernel(iter, SignbitFunctor<scalar_t>());
+        });
+  }
+}
+
+template <typename scalar_t>
 struct LogicalNotFunctor {
   scalar_t operator()(scalar_t a) const {
     return static_cast<bool>(!a);
