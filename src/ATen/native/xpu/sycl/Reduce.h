@@ -13,6 +13,7 @@
 #include <c10/macros/Macros.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
+#include <comm/XPUPair.h>
 #include <functional>
 #include <iosfwd>
 #include <type_traits>
@@ -50,7 +51,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   for (int offset = 1; offset < sg_size; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
-      arg_t other = sg.shuffle_down(value[i], offset);
+      arg_t other = sycl::shift_group_left(sg, value[i], offset);
       value[i] = combine(value[i], other);
     }
   }
@@ -71,7 +72,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
       for (int offset = 1; offset < sg_range; offset <<= 1) {
 #pragma unroll(out_vec_sz)
         for (int i = 0; i < out_vec_sz; ++i) {
-          arg_t other = sg.shuffle_down(value[i], offset);
+          arg_t other = sycl::shift_group_left(sg, value[i], offset);
           value[i] = combine(value[i], other);
         }
       }
@@ -132,7 +133,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
   for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(out_vec_sz)
     for (int i = 0; i < out_vec_sz; ++i) {
-      arg_t other = sg.shuffle_down(value[i], offset);
+      arg_t other = sycl::shift_group_left(sg, value[i], offset);
       value[i] = combine(value[i], other);
     }
   }
@@ -541,11 +542,11 @@ struct ReduceOp {
           (const scalar_t*)((const char*)src + base_offsets1);
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
-    // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-    // pair for half dtype, We temporarily workaround to do
+    // TODO: Currently, there are bugs with sycl::shift_group_left when the
+    // arg_t is a pair for half dtype, We temporarily workaround to do
     // "reduce_for_compound_dtype" function.
     constexpr bool is_pair =
-        std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
+        std::is_same<at::xpu::pair<scalar_t, int64_t>, arg_t>::value;
 
     auto combine = [=](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
@@ -832,8 +833,8 @@ struct ReduceOp {
     return value_list[0];
   }
 
-  // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-  // pair with half dtype, We temporarily workaround to do
+  // TODO: Currently, there are bugs with sycl::shift_group_left when the arg_t
+  // is a pair with half dtype, We temporarily workaround to do
   // "reduce_for_compound_dtype" function.
   template <int output_vec_size>
   at::detail::Array<arg_t, output_vec_size> group_reduce_for_compound_dtype(
@@ -850,7 +851,7 @@ struct ReduceOp {
     for (int offset = 1; offset < (int)sbgrpSize; offset <<= 1) {
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; ++i) {
-        arg_t other = sg.shuffle_down(value[i], offset);
+        arg_t other = sycl::shift_group_left(sg, value[i], offset);
         value[i] = ops.combine(value[i], other);
       }
     }
@@ -875,12 +876,13 @@ struct ReduceOp {
 #pragma unroll(output_vec_size)
           for (int i = 0; i < output_vec_size; ++i) {
             // Shuffle down separately for first and second pair.
-            std::pair<typename arg_t::first_type, typename arg_t::second_type>
-                other = std::pair<
-                    typename arg_t::first_type,
-                    typename arg_t::second_type>(
-                    sg.shuffle_down(value[i].first, offset),
-                    sg.shuffle_down(value[i].second, offset));
+            at::xpu::
+                pair<typename arg_t::first_type, typename arg_t::second_type>
+                    other = at::xpu::pair<
+                        typename arg_t::first_type,
+                        typename arg_t::second_type>(
+                        sycl::shift_group_left(sg, value[i].first, offset),
+                        sycl::shift_group_left(sg, value[i].second, offset));
             value[i] = ops.combine(value[i], other);
           }
         }
@@ -907,8 +909,8 @@ struct ReduceOp {
     return value;
   }
 
-  // TODO: Currently, there are bugs with shuffle_down when the arg_t is a
-  // pair for half dtype, We temporarily workaround to do
+  // TODO: Currently, there are bugs with sycl::shift_group_left when the arg_t
+  // is a pair for half dtype, We temporarily workaround to do
   // "reduce_for_compound_dtype" function.
   template <int output_vec_size>
   at::detail::Array<arg_t, output_vec_size> group_x_reduce_for_compound_dtype(
@@ -947,11 +949,11 @@ struct ReduceOp {
     for (int offset = 1; offset < dim_x; offset <<= 1) {
 #pragma unroll(output_vec_size)
       for (int i = 0; i < output_vec_size; ++i) {
-        std::pair<typename arg_t::first_type, typename arg_t::second_type>
-            other = std::
+        at::xpu::pair<typename arg_t::first_type, typename arg_t::second_type>
+            other = xpu::
                 pair<typename arg_t::first_type, typename arg_t::second_type>(
-                    sg.shuffle_down(value[i].first, offset),
-                    sg.shuffle_down(value[i].second, offset));
+                    sycl::shift_group_left(sg, value[i].first, offset),
+                    sycl::shift_group_left(sg, value[i].second, offset));
         value[i] = ops.combine(value[i], other);
       }
     }
@@ -1028,7 +1030,8 @@ struct ReduceOp {
 
   // Currently implemented for max of two outputs
   template <class T1, class T2>
-  void set_results(const std::pair<T1, T2> x, const index_t base_offset) const {
+  void set_results(const at::xpu::pair<T1, T2> x, const index_t base_offset)
+      const {
     if (noutputs >= 1) {
       auto res0 = (T1*)((char*)dst[0] + base_offset);
       *res0 = x.first;
@@ -1121,9 +1124,10 @@ struct ReduceOp {
           decltype(combine),
           output_vec_size>(pos, shared_memory, value, combine);
       if (config.should_group_x_reduce()) {
-        // TODO: workaround because sg.shuffle_down will fail on `half` dtype.
+        // TODO: workaround because sycl::shift_group_left will fail on `half`
+        // dtype.
         constexpr bool is_pair =
-            std::is_same<std::pair<scalar_t, int64_t>, arg_t>::value;
+            std::is_same<at::xpu::pair<scalar_t, int64_t>, arg_t>::value;
         if constexpr (is_pair) {
           value = group_x_reduce_for_compound_dtype<output_vec_size>(
               pos, value, shared_memory);
