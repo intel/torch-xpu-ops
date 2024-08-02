@@ -1264,7 +1264,7 @@ skip_list = (
     "test_RReLU_with_up_down_cuda",
     # AssertionError: Scalars are not close!
     "test_RReLU_with_up_down_scalar_cuda",
-    # lstm: AssertionError: Scalars are not equal!
+    # rnn fallback to cpu
     "test_cudnn_weight_format",
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
@@ -1289,16 +1289,12 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
+    # native_group_norm : RuntimeError: Expected X.is_contiguous(memory_format) to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
     "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: False is not true
-    "test_device_mask_xpu",
-    "test_overwrite_module_params_on_conversion_cpu_device_xpu",
     # AssertionError: RuntimeError not raised
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
@@ -1308,8 +1304,7 @@ skip_list = (
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-    "test_grid_sample_error_checking",
-    # Failed: Unexpected success
+    #upsamplingNearest2d: Failed: Unexpected success
     "test_upsamplingNearest2d_launch_fail_xpu",
     # CPU fallback could not cover
     # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
@@ -1329,9 +1324,6 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
-    # align CUDA to skip, XPU implementation is not yet supporting uint8
-    "test_upsamplingBiMode2d_consistency",
-    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
@@ -2217,6 +2209,12 @@ skip_list = (
     "test_scaled_mm_vs_emulated_float16_xpu",
     "test_scaled_mm_vs_emulated_float32_xpu",
     "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+
+    # https://github.com/intel/torch-xpu-ops/issues/676
+    # Mismatched elements: 9 / 1003002 (0.0%)
+    # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
+    # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
+    "test_cublas_addmm_size_1000_xpu_float32",
 )
 res += launch_test("test_matmul_cuda_xpu.py", skip_list=skip_list)
 

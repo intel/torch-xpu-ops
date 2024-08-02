@@ -245,8 +245,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_scaled_mm",
     "segment_reduce",
     "_segment_reduce_backward",
-    "signbit.out",
-    "sign.out",
     "sinc.out",
     "special_airy_ai.out",
     "special_bessel_j0.out",

@@ -1,9 +1,9 @@
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
 namespace at::native::xpu {
 
@@ -12,7 +12,7 @@ void _min_max_values_kernel_xpu_impl(TensorIterator& iter) {
   gpu_reduce_kernel<scalar_t, scalar_t>(
       iter,
       MinMaxOps<scalar_t, scalar_t, int32_t>{},
-      std::pair<scalar_t, scalar_t>(
+      at::xpu::pair<scalar_t, scalar_t>(
           at::numeric_limits<scalar_t>::upper_bound(),
           at::numeric_limits<scalar_t>::lower_bound()));
 }

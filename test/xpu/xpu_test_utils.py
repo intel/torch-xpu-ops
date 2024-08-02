@@ -191,6 +191,8 @@ _xpu_computation_op_list = [
     "sigmoid",
     "logsigmoid",
     "sgn",
+    "sign",
+    "signbit",
     "round",
     "nn.functional.embedding_bag",
     "bucketize",
