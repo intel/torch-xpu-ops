@@ -29,6 +29,7 @@ on:
         default: 'linux.idc.xpu'
         description: Runner label
 
+permissions: read-all
 
 jobs:
   Torch-XPU-UT-Tests:
