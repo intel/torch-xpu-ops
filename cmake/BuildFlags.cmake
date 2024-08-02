@@ -92,7 +92,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   else()
     message(WARNING "The compiler does not support the '-fsycl-fp64-conv-emu' flag, \
     will disable it. On some platforms that don't support FP64, \
-    running operations with the FP64 datatype will raise a Runtime error or a Native API failed error.")
+    running operations with the FP64 datatype will raise a Runtime error: Required aspect fp64 is not supported on the device \
+    or a Native API failed error.")
   endif()
 
   set(SYCL_FLAGS ${SYCL_FLAGS} ${SYCL_KERNEL_OPTIONS})
