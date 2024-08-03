@@ -53,7 +53,6 @@ skip_list = (
     "test_compare_cpu_to_sparse_xpu_float32",
     "test_errors_dot_xpu",
     "test_errors_kthvalue_xpu",
-    "test_errors_masked_select_xpu",
     "test_errors_sparse_mul_layout0_xpu",
     "test_errors_sparse_mul_layout1_xpu",
     "test_errors_sparse_mul_layout2_xpu",
@@ -756,9 +755,6 @@ skip_list = (
     # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
     "test_dtypes_nn_functional_pad_replicate_negative_xpu",
     "test_dtypes_nn_functional_pad_replicate_xpu",
-    # Fallback to cpu‘s implementation but use the dtypes claim by xpu , AssertionError: The supported dtypes for nn.functional.interpolate on device type xpu are incorrect!
-    # https://github.com/intel/torch-xpu-ops/issues/468
-    "test_dtypes_nn_functional_interpolate_bilinear_xpu",
 
     # Op impl aligns with CUDA on the supported dtypes.
     # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
@@ -780,8 +776,13 @@ skip_list = (
     "test_dtypes_unique_consecutive_xpu",
     "test_dtypes_unique_xpu",
 
-    # torch.complex32 - "sinh_cpu" not implemented for 'ComplexHalf'
-    "test_dtypes_cosh_xpu",
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
+    "test_dtypes_polar_xpu",
+
+    # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
+    # but test_dtypes infrastructure leverage CUDA supported datatypes
+    "test_dtypes_histogram_xpu",
 
     # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
     # Align with CPU implementation since,
@@ -1135,6 +1136,11 @@ skip_list = (
     "test_save_load_nn_Transformer_xpu_float64",
     # AssertionError: Tensor-likes are not close!
     "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
+    # Unexpected success:
+    "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+    "test_memory_format_nn_AvgPool2d_xpu_float32",
+    "test_memory_format_nn_AvgPool2d_xpu_float64",
     # AssertionError: False is not true
     "test_memory_format_nn_Conv2d_xpu_float64",
     "test_memory_format_nn_ConvTranspose2d_xpu_float64",
@@ -1258,14 +1264,11 @@ skip_list = (
     "test_RReLU_with_up_down_cuda",
     # AssertionError: Scalars are not close!
     "test_RReLU_with_up_down_scalar_cuda",
-    # lstm: AssertionError: Scalars are not equal!
+    # rnn fallback to cpu
     "test_cudnn_weight_format",
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
     "test_Embedding_sparse_cuda",
-    # AssertionError: 'XPU error: device-side assert triggered' not found in '  File "<string>", line 8\n    def test_cross_entropy_loss_2d_out_of_bounds_class_index(self):\n    ^\nIndentationError: expected an indented block\n'
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float16",
-    "test_cross_entropy_loss_2d_out_of_bounds_class_index_xpu_float32",
     # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
     "test_TransformerEncoderLayer_empty_xpu",
     "test_transformerencoderlayer_xpu_float16",
@@ -1286,16 +1289,12 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
+    # native_group_norm : RuntimeError: Expected X.is_contiguous(memory_format) to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
     "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: False is not true
-    "test_device_mask_xpu",
-    "test_overwrite_module_params_on_conversion_cpu_device_xpu",
     # AssertionError: RuntimeError not raised
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
@@ -1305,8 +1304,7 @@ skip_list = (
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-    "test_grid_sample_error_checking",
-    # Failed: Unexpected success
+    #upsamplingNearest2d: Failed: Unexpected success
     "test_upsamplingNearest2d_launch_fail_xpu",
     # CPU fallback could not cover
     # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
@@ -1318,25 +1316,14 @@ skip_list = (
     # AssertionError: False is not true
     "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
     "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-    # NotImplementedError: Could not run 'aten::batch_norm_stats' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_accuracy_cuda",
-    # NotImplementedError: Could not run 'aten::batch_norm_backward_elemt' with arguments from the 'CPU' backend.
-    "test_sync_batchnorm_backward_elemt",
     # RuntimeError: "smooth_l1_backward_cpu_out" not implemented for 'Half'
     "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
     "test_SmoothL1Loss_no_batch_dim_sum_cuda_half",
-    # RuntimeError: "mse_backward_cpu_out" not implemented for 'Half'
-    "test_MSELoss_no_batch_dim_mean_cuda_half",
-    "test_MSELoss_no_batch_dim_none_cuda_half",
-    "test_MSELoss_no_batch_dim_sum_cuda_half",
     # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
-    # align CUDA to skip, XPU implementation is not yet supporting uint8
-    "test_upsamplingBiMode2d_consistency",
-    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
@@ -1483,13 +1470,7 @@ skip_list = (
     # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
     "_jiterator_",
     # CPU Fallback fails: Tensor-likes are not close!
-    "test_reference_numerics_extremal__refs_acos_xpu_complex128",
     "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_extremal_acos_xpu_complex128",
-    "test_reference_numerics_extremal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal__refs_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-    "test_reference_numerics_large__refs_tanh_xpu_complex32",
     "test_reference_numerics_large_tanh_xpu_complex32",
     # For extreme value processing, Numpy and XPU results are inconsistent
     # std operations get different behavior on std::complex operarands for extremal cases
@@ -1526,6 +1507,11 @@ skip_list = (
     "test_reference_numerics_large_asinh_xpu_complex64",
     "test_reference_numerics_large_asinh_xpu_complex32",
 
+    # Mismatched elements: 1 / 943593 (0.0%)
+    # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
+    # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
+    "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
+
     # AssertionError: Tensor-likes are not close!
     # exceeded maximum allowed difference
     # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
@@ -1533,12 +1519,7 @@ skip_list = (
     "test_reference_numerics_normal__refs_asinh_xpu_complex64",
     "test_reference_numerics_normal_asinh_xpu_complex64",
 
-    # CPU Fallback fails
-    # New ATen operators fails on CPU Fallback.
-    # E.g. aten::special_spherical_bessel_j0, aten::special_airy_ai.
-    "_special_",
     # Failed: Unexpected success
-    "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
     "test_reference_numerics_large_rsqrt_xpu_complex32",
 
     # Numeric difference
@@ -1547,26 +1528,6 @@ skip_list = (
     # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
     # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
     "test_log1p_complex_xpu_complex64",
-
-    # CPU MKL::erfinv vs XPU impl. At most 6.e-06
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (0,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (0,) (up to 1e-07 allowed)
-    "test_reference_numerics_large_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 4.829411781148707e-06 at index (690, 855) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.5588752485769885e-06 at index (690, 855) (up to 1e-07 allowed)
-    "test_reference_numerics_normal_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small__refs_erfinv_xpu_float64",
-    # Greatest absolute difference: 5.250126961175994e-06 at index (96,) (up to 1e-07 allowed)
-    # Greatest relative difference: 1.680894105274219e-06 at index (96,) (up to 1e-07 allowed)
-    "test_reference_numerics_small_erfinv_xpu_float64",
 
     # Issue: https://github.com/intel/torch-xpu-ops/issues/622
     # Mismatched elements: 8 / 943593 (0.0%)
@@ -2248,6 +2209,12 @@ skip_list = (
     "test_scaled_mm_vs_emulated_float16_xpu",
     "test_scaled_mm_vs_emulated_float32_xpu",
     "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+
+    # https://github.com/intel/torch-xpu-ops/issues/676
+    # Mismatched elements: 9 / 1003002 (0.0%)
+    # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
+    # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
+    "test_cublas_addmm_size_1000_xpu_float32",
 )
 res += launch_test("test_matmul_cuda_xpu.py", skip_list=skip_list)
 
@@ -2711,16 +2678,14 @@ skip_list = (
     "test_fn_grad_svd_lowrank_xpu_complex128",
     "test_fn_gradgrad_pca_lowrank_xpu_complex128",
     "test_fn_gradgrad_svd_lowrank_xpu_complex128",
+    "test_fn_grad_linalg_norm_xpu_complex128",
     ### Error #1 in TestBwdGradientsXPU , totally 4 , RuntimeError: value cannot be converted to type float without overflow
     "test_fn_grad_addbmm_xpu_complex128",
     "test_fn_gradgrad_addbmm_xpu_complex128",
     "test_inplace_grad_addbmm_xpu_complex128",
     "test_inplace_gradgrad_addbmm_xpu_complex128",
-    ### Error #2 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
-    "test_fn_grad_linalg_norm_xpu_complex128",
-    "test_fn_grad_linalg_vector_norm_xpu_complex128",
+    ### rrelu_xpu op is not implemented,try these cases after implementing rrelu.
     "test_fn_grad_nn_functional_rrelu_xpu_float64",
-    "test_fn_grad_norm_inf_xpu_complex128",
     "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
     "test_inplace_grad_nn_functional_rrelu_xpu_float64",
     "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
@@ -2729,7 +2694,6 @@ skip_list = (
     "test_fn_grad_renorm_xpu_complex128",
     "test_fn_gradgrad_linalg_vector_norm_xpu_complex128",
     "test_fn_gradgrad_masked_normalize_xpu_complex128",
-    "test_fn_gradgrad_norm_inf_xpu_complex128",
     "test_fn_gradgrad_renorm_xpu_complex128",
     "test_inplace_grad_renorm_xpu_complex128",
     "test_inplace_gradgrad_renorm_xpu_complex128",
@@ -2742,9 +2706,6 @@ skip_list = (
     "test_fn_gradgrad_nn_functional_conv_transpose2d_xpu_float64",
     "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_complex128",
     "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_float64",
-    ### Error #5 in TestBwdGradientsXPU , totally 2 , RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-    "test_fn_grad_nn_functional_group_norm_xpu_float64",
-    "test_fn_gradgrad_nn_functional_group_norm_xpu_float64",
     ### Error #6 in TestBwdGradientsXPU , totally 5 , torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
     "test_fn_grad_nn_functional_max_pool2d_xpu_float64",
     "test_fn_gradgrad_index_reduce_mean_xpu_float64",
@@ -2838,7 +2799,6 @@ skip_list = (
     "test_nondeterministic_alert_histc_xpu",
     "test_nondeterministic_alert_interpolate_bicubic_xpu",
     "test_nondeterministic_alert_interpolate_bilinear_xpu",
-    "test_nondeterministic_alert_interpolate_linear_xpu",
     "test_nondeterministic_alert_interpolate_trilinear_xpu",
     "test_nondeterministic_alert_kthvalue_xpu_float64",
     "test_nondeterministic_alert_median_xpu_float64",
@@ -3033,8 +2993,12 @@ res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 res += launch_test("nn/test_load_state_dict_xpu.py")
 
 # test_module_hooks
-
-res += launch_test("nn/test_module_hooks_xpu.py")
+skip_list = (
+    # TypeError: TestStateDictHooks.test_register_state_dict_post_hook() missing 1 required positional argument: 'private'
+    # https://github.com/intel/torch-xpu-ops/issues/658
+    "test_register_state_dict_post_hook",
+)
+res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 # test_parametrization
 

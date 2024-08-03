@@ -1,7 +1,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
@@ -38,7 +38,7 @@ void max_kernel(TensorIterator& iter) {
         gpu_reduce_kernel<scalar_t, scalar_t>(
             iter,
             MaxOps<scalar_t>{},
-            std::pair<scalar_t, int64_t>(
+            at::xpu::pair<scalar_t, int64_t>(
                 at::numeric_limits<scalar_t>::lower_bound(), 0));
       });
 }

@@ -16,6 +16,10 @@ void mean_kernel(TensorIterator& iter);
 
 void sum_kernel(TensorIterator& iter);
 
+void prod_kernel(TensorIterator& iter);
+
+void nansum_kernel(TensorIterator& iter);
+
 void std_var_kernel(TensorIterator& iter, double correction, bool take_sqrt);
 
 void aminmax_kernel(TensorIterator& iter);
