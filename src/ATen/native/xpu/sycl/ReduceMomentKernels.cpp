@@ -1,9 +1,9 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
 namespace at {
 namespace native {
@@ -18,7 +18,7 @@ void std_var_template(
   // This is necessary to lower register usage that leads to register spills.
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   using ops_t =
-      WelfordOps<scalar_t, accscalar_t, int32_t, std::pair<out_t, out_t>>;
+      WelfordOps<scalar_t, accscalar_t, int32_t, at::xpu::pair<out_t, out_t>>;
   ops_t ops(static_cast<accscalar_t>(correction_opt), take_sqrt);
   gpu_reduce_kernel<scalar_t, out_t, 2>(iter, ops, typename ops_t::acc_t{});
 }
