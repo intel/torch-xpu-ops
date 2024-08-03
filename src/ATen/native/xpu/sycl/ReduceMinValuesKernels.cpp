@@ -1,6 +1,6 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
@@ -37,7 +37,7 @@ void min_kernel(TensorIterator& iter) {
         gpu_reduce_kernel<scalar_t, scalar_t>(
             iter,
             MinOps<scalar_t>{},
-            std::pair<scalar_t, int64_t>(
+            at::xpu::pair<scalar_t, int64_t>(
                 at::numeric_limits<scalar_t>::upper_bound(), 0));
       });
 }
