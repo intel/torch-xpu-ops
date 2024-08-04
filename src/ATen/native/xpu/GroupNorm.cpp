@@ -60,10 +60,6 @@ std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_group_norm(
   // repeated check so expanded weights can call native_group_norm directly but
   // save mean and variance from forward
   check_group_norm_inputs(X, gamma, beta, C, group);
-  auto memory_format = X.device().is_cpu() ? X.suggest_memory_format()
-                                           : at::MemoryFormat::Contiguous;
-
-  TORCH_CHECK(X.is_contiguous(memory_format));
 
   bool mixed_type = at::native::is_mixed_type(X, gamma, beta);
   if (mixed_type) {
@@ -76,7 +72,7 @@ std::tuple<Tensor, Tensor, Tensor> XPUNativeFunctions::native_group_norm(
       c10::nullopt /* layout */,
       c10::nullopt /* device */,
       c10::nullopt /* pin_memory */,
-      memory_format);
+      MemoryFormat::Contiguous);
   const auto dtype = at::native::param_scalar_type(X, mixed_type);
   Tensor mean = at::empty({N, group}, X.options().dtype(dtype));
   Tensor rstd = at::empty({N, group}, X.options().dtype(dtype));

@@ -1286,8 +1286,6 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # native_group_norm : RuntimeError: Expected X.is_contiguous(memory_format) to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
-    "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
