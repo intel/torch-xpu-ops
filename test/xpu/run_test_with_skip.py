@@ -1285,6 +1285,7 @@ skip_list = (
     "test_rnn_fused_xpu_float64",
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
+    # oneDNN addmm issue: LSTMCell has invalid result from linear_ih
     "test_variable_sequence_xpu_float64",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
