@@ -2,17 +2,17 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
+#include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
 
@@ -361,6 +361,62 @@ Tensor& XPUNativeFunctions::bitwise_xor_out(
   return out;
 }
 
+Tensor XPUNativeFunctions::__lshift__(const Tensor& self, const Tensor& other) {
+  Tensor result;
+  auto iter = TensorIterator::binary_op(result, self, other);
+  native::xpu::lshift_kernel(iter);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::__lshift__(const Tensor& self, const Scalar& other) {
+  Tensor result;
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  auto iter = TensorIterator::binary_op(result, self, wrapper);
+  native::xpu::lshift_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::__ilshift__(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::binary_op(self, self, other);
+  native::xpu::lshift_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::__ilshift__(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  auto iter = TensorIterator::binary_op(self, self, wrapper);
+  native::xpu::lshift_kernel(iter);
+  return self;
+}
+
+Tensor XPUNativeFunctions::__rshift__(const Tensor& self, const Tensor& other) {
+  Tensor result;
+  auto iter = TensorIterator::binary_op(result, self, other);
+  native::xpu::rshift_kernel(iter);
+  return iter.output();
+}
+
+Tensor XPUNativeFunctions::__rshift__(const Tensor& self, const Scalar& other) {
+  Tensor result;
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  auto iter = TensorIterator::binary_op(result, self, wrapper);
+  native::xpu::rshift_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::__irshift__(Tensor& self, const Tensor& other) {
+  auto iter = TensorIterator::binary_op(self, self, other);
+  native::xpu::rshift_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::__irshift__(Tensor& self, const Scalar& other) {
+  auto wrapper = native::wrapped_scalar_tensor(other);
+  auto iter = TensorIterator::binary_op(self, self, wrapper);
+  native::xpu::rshift_kernel(iter);
+  return self;
+}
+
 Tensor XPUNativeFunctions::gcd(const Tensor& self, const Tensor& other) {
   Tensor out;
   auto iter = TensorIterator::borrowing_binary_op(out, self, other);
@@ -612,7 +668,9 @@ Tensor& XPUNativeFunctions::logical_xor_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::logical_xor(const Tensor& self, const Tensor& other) {
+Tensor XPUNativeFunctions::logical_xor(
+    const Tensor& self,
+    const Tensor& other) {
   return comparison_op(self, other, static_cast<OutFunc>(at::logical_xor_out));
 }
 

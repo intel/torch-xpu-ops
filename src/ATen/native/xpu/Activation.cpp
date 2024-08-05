@@ -11,12 +11,13 @@
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLogSigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationMishKernels.h>
+#include <ATen/native/xpu/sycl/ActivationPreluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
-namespace at {
 
+namespace at {
 Tensor XPUNativeFunctions::relu(const Tensor& self) {
   TORCH_CHECK(
       self.scalar_type() != at::kBool, "Boolean inputs not supported for relu");
@@ -631,6 +632,78 @@ Tensor& XPUNativeFunctions::softshrink_backward_out(
   auto iter = softshrink_backward_meta(grad_output, self, lambd, grad_input);
   native::xpu::softshrink_backward_kernel(iter, lambd);
   return grad_input;
+}
+
+Tensor XPUNativeFunctions::prelu(const Tensor& self, const Tensor& weight_) {
+  TORCH_INTERNAL_ASSERT(weight_.defined());
+  auto self_dim = self.dim();
+  TORCH_CHECK(
+      self.scalar_type() == weight_.scalar_type(),
+      "prelu: Type promoting not supported. Got ",
+      self.scalar_type(),
+      " and ",
+      weight_.scalar_type());
+  if (weight_.sym_numel() != 1) {
+    TORCH_CHECK(self_dim > 0, "Not allow zero-dim input tensor.");
+
+    auto channel_size =
+        self_dim > 1 ? self.sym_size(1) : 1; // channel_size default to 1
+    TORCH_CHECK(
+        channel_size == weight_.sym_numel(),
+        "Mismatch of parameter numbers and input channel size. Found parameter numbers = ",
+        weight_.numel(),
+        " and channel size = ",
+        channel_size,
+        ".");
+  }
+
+  TORCH_CHECK(
+      weight_.dim() <= 1,
+      "prelu: Expected `weight` to be a scalar or 1D tensor, but got: ndim = ",
+      weight_.dim());
+  // Adjust weight to broadcast over self and have weight.ndim == self.ndim
+  auto weight = weight_;
+  if (self_dim != weight.dim()) {
+    SymDimVector dim_w(self_dim, 1);
+    if (self_dim > 1) {
+      dim_w[1] = weight_.sym_numel();
+    }
+    // This will always be a view in CPU/CUDA, but some backends
+    // like MKLDNN do not support views
+    weight = weight.reshape_symint(dim_w);
+  }
+  return at::_prelu_kernel(self, weight);
+}
+
+Tensor XPUNativeFunctions::_prelu_kernel(
+    const Tensor& self,
+    const Tensor& weight) {
+  // Weight broadcasts over self and they have the same dtype
+  auto result = at::empty_like(self);
+  auto iter = TensorIteratorConfig()
+                  .add_output(result)
+                  .add_const_input(self)
+                  .add_const_input(weight)
+                  .build();
+  native::xpu::prelu_kernel(iter);
+  return result;
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_prelu_kernel_backward(
+    const Tensor& grad_out,
+    const Tensor& self,
+    const Tensor& weight) {
+  Tensor grad_self = at::empty({0}, self.options());
+  Tensor grad_weight = at::empty({0}, weight.options());
+  auto iter = TensorIteratorConfig()
+                  .add_output(grad_self)
+                  .add_output(grad_weight)
+                  .add_const_input(self)
+                  .add_const_input(weight)
+                  .add_const_input(grad_out)
+                  .build();
+  native::xpu::prelu_backward_kernel(iter);
+  return {grad_self, grad_weight};
 }
 
 std::tuple<Tensor&, Tensor&> XPUNativeFunctions::log_sigmoid_forward_out(
