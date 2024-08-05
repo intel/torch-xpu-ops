@@ -320,7 +320,8 @@ inline TensorIterator get_allany_iter(
     const Tensor& result,
     OptionalIntArrayRef dims,
     bool keepdim) {
-  return meta::make_reduction(self, result, dims, keepdim, self.scalar_type());
+  return meta::make_reduction_from_out_ty(
+      self, result, dims, keepdim, result.scalar_type());
 }
 
 template <int identity, typename Stub>
