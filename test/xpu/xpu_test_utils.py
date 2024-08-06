@@ -550,12 +550,14 @@ class XPUPatchForImport:
             return replaced, wrapper_xpu
 
         for info in db:
-            replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
-            if replaced:
-                info.decorators = tuple(decorator_xpu)
-            replaced, skip_xpu = gen_xpu_wrappers(info.name, info.skips)
-            if replaced:
-                info.skips = tuple(skip_xpu)
+            if hasattr(info, "decorators"):
+                replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
+                if replaced:
+                    info.decorators = tuple(decorator_xpu)
+            if hasattr(info, "skips"):
+                replaced, skip_xpu = gen_xpu_wrappers(info.name, info.skips)
+                if replaced:
+                    info.skips = tuple(skip_xpu)
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
