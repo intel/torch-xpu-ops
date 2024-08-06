@@ -350,6 +350,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
@@ -470,6 +473,11 @@ supported:
   - sigmoid
   - sigmoid.out
   - sigmoid_
+  - sign
+  - sign.out
+  - sign_
+  - signbit
+  - signbit.out
   - sigmoid_backward.grad_input
   - sigmoid_backward
   - hardsigmoid.out
