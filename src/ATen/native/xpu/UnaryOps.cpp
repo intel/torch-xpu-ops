@@ -1037,7 +1037,6 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
-
 Tensor XPUNativeFunctions::round(const Tensor& self) {
   if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
     return self.clone();
@@ -1141,6 +1140,43 @@ Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
   }
   auto iter = meta_floor(self, out);
   native::xpu::floor_kernel(iter);
+  return out;
+}
+
+TensorIterator meta_trunc(const Tensor& self, Tensor& out) {
+  // Note: this is consistent with NumPy
+  TORCH_CHECK(!self.is_complex(), "trunc is not supported for complex inputs");
+  TensorIterator iter;
+  iter.build_borrowing_unary_op(out, self);
+  return iter;
+}
+
+Tensor XPUNativeFunctions::trunc(const Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self.clone();
+  }
+  Tensor out;
+  auto iter = meta_trunc(self, out);
+  native::xpu::trunc_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::trunc_(Tensor& self) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    return self;
+  }
+  auto iter = meta_trunc(self, self);
+  native::xpu::trunc_kernel(iter);
+  return self;
+}
+
+Tensor& XPUNativeFunctions::trunc_out(const Tensor& self, Tensor& out) {
+  if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
+    out.copy_(self);
+    return out;
+  }
+  auto iter = meta_trunc(self, out);
+  native::xpu::trunc_kernel(iter);
   return out;
 }
 

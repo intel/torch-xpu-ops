@@ -9,6 +9,7 @@
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
+#include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
@@ -292,6 +293,50 @@ Tensor& XPUNativeFunctions::remainder_out(
 Tensor XPUNativeFunctions::remainder(const Scalar& self, const Tensor& other) {
   auto wrapper = native::wrapped_scalar_tensor(self);
   return XPUNativeFunctions::remainder(wrapper, other);
+}
+
+Tensor XPUNativeFunctions::xlogy(const Tensor& self, const Tensor& other) {
+  Tensor out;
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::xlogy_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::xlogy_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& out) {
+  TensorIterator iter;
+  iter.build_borrowing_binary_float_op(out, self, other);
+  native::xpu::xlogy_kernel(iter);
+  return out;
+}
+
+Tensor& XPUNativeFunctions::xlogy_out(
+    const Scalar& self,
+    const Tensor& other,
+    Tensor& result) {
+  return at::xlogy_out(result, native::wrapped_scalar_tensor(self), other);
+}
+
+Tensor& XPUNativeFunctions::xlogy_out(
+    const Tensor& self,
+    const Scalar& other,
+    Tensor& result) {
+  return at::xlogy_out(result, self, native::wrapped_scalar_tensor(other));
+}
+
+Tensor XPUNativeFunctions::xlogy(const Scalar& x, const Tensor& y) {
+  return at::xlogy(native::wrapped_scalar_tensor(x), y);
+}
+
+Tensor XPUNativeFunctions::xlogy(const Tensor& x, const Scalar& y) {
+  return at::xlogy(x, native::wrapped_scalar_tensor(y));
+}
+
+Tensor& XPUNativeFunctions::xlogy_(Tensor& x, const Scalar& y) {
+  return at::xlogy_(x, native::wrapped_scalar_tensor(y));
 }
 
 Tensor XPUNativeFunctions::fmod(const Tensor& self, const Tensor& other) {
