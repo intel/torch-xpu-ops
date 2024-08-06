@@ -27,6 +27,15 @@ jobs:
       ut: op_example,op_extended,op_ut
       runner: linux.idc.xpu
 
+  preci-ut-abi-0:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      abi: 0
+      ut: op_extended
+      runner: linux.idc.xpu
+
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
@@ -41,7 +50,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=3.10 cmake ninja -y
           source activate e2e_ci
-          conda install -c intel mkl-static mkl-include -y
+          pip install mkl-static mkl-include
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
@@ -127,7 +136,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
-        if: always()
+        if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
@@ -137,7 +146,7 @@ jobs:
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}

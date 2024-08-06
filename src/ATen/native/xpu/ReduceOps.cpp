@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
@@ -7,13 +8,13 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
 
 namespace at {
@@ -47,21 +48,17 @@ static void cum_ops_meta(
   maybe_wrap_dim(dim, self.dim());
 
   ScalarType out_dtype;
-
   if (result.defined()) {
     out_dtype = dtype.value_or(result.scalar_type());
     at::xpu::resize_out(
-        result,
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+        result, self.sizes(), {}, self.options().dtype(out_dtype));
   } else {
-    auto is_integral = at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
-    out_dtype = dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
-    result = at::xpu::create_out(
-        self.sizes(),
-        {},
-        self.options().dtype(out_dtype));
+    auto is_integral =
+        at::isIntegralType(self.scalar_type(), /*includeBool=*/true);
+    out_dtype =
+        dtype.value_or(is_integral ? ScalarType::Long : self.scalar_type());
+    result =
+        at::xpu::create_out(self.sizes(), {}, self.options().dtype(out_dtype));
   }
 
   namedinference::propagate_names(result, self);
@@ -200,6 +197,64 @@ Tensor XPUNativeFunctions::sum(
   return XPUNativeFunctions::sum_out(self, dim, keepdim, opt_dtype, out);
 }
 
+Tensor& prod_meta(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  auto out_dtype = infer_dtype_from_optional(self, dtype, result);
+  result = resize_reduction(result, self, dim, keepdim, out_dtype);
+  return result;
+}
+
+static void impl_func_prod(
+    const Tensor& self,
+    IntArrayRef dims,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  auto iter = meta::make_reduction_from_out_ty(
+      self, result, dims, keepdim, result.scalar_type());
+  if (iter.numel() == 0) {
+    result.fill_(1);
+  } else {
+    native::xpu::prod_kernel(iter);
+  }
+}
+
+Tensor& XPUNativeFunctions::prod_out(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype,
+    Tensor& result) {
+  result = prod_meta(self, dim, keepdim, dtype, result);
+  impl_func_prod(self, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    std::optional<ScalarType> opt_dtype) {
+  auto dtype = at::native::get_dtype_from_self(self, opt_dtype, true);
+  auto shape = meta::get_reduction_shape(self, {}, false);
+  Tensor result = at::empty(shape, self.options().dtype(dtype));
+  impl_func_prod(self, {}, false, dtype, result);
+  return result;
+}
+
+Tensor XPUNativeFunctions::prod(
+    const Tensor& self,
+    int64_t dim,
+    bool keepdim,
+    std::optional<ScalarType> dtype) {
+  Tensor result;
+  result = prod_meta(self, dim, keepdim, dtype, result);
+  impl_func_prod(self, dim, keepdim, dtype, result);
+  return result;
+}
+
 Tensor& mean_meta(
     const Tensor& self,
     OptionalIntArrayRef opt_dim,
@@ -265,7 +320,8 @@ inline TensorIterator get_allany_iter(
     const Tensor& result,
     OptionalIntArrayRef dims,
     bool keepdim) {
-  return meta::make_reduction(self, result, dims, keepdim, self.scalar_type());
+  return meta::make_reduction_from_out_ty(
+      self, result, dims, keepdim, result.scalar_type());
 }
 
 template <int identity, typename Stub>
@@ -506,6 +562,45 @@ Tensor& XPUNativeFunctions::argmax_out(
     Tensor& out) {
   out = argmax_meta(self, dim, keepdim, out);
   argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
+  return out;
+}
+
+Tensor XPUNativeFunctions::argmax(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim) {
+  Tensor out;
+  out = argmax_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
+  return out;
+}
+
+Tensor& argmin_meta(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    Tensor& out) {
+  check_argmax_argmin("argmin()", self, dim);
+  return resize_reduction(out, self, optional_to_arrayref(dim), keepdim, kLong);
+}
+
+Tensor& XPUNativeFunctions::argmin_out(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim,
+    Tensor& out) {
+  out = argmin_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmin_kernel);
+  return out;
+}
+
+Tensor XPUNativeFunctions::argmin(
+    const Tensor& self,
+    c10::optional<int64_t> dim,
+    bool keepdim) {
+  Tensor out;
+  out = argmin_meta(self, dim, keepdim, out);
+  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmin_kernel);
   return out;
 }
 
@@ -756,17 +851,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::std_mean(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
 
-Tensor XPUNativeFunctions::argmax(
-    const Tensor& self,
-    c10::optional<int64_t> dim,
-    bool keepdim) {
-  Tensor out;
-  out = argmax_meta(self, dim, keepdim, out);
-  argmax_argmin_impl(self, dim, keepdim, out, native::xpu::argmax_kernel);
-  return out;
-}
-
-static Tensor amax_amin_meta(
+static Tensor& amax_amin_meta(
     Tensor& result,
     const char* name,
     const Tensor& self,
@@ -842,6 +927,278 @@ Tensor XPUNativeFunctions::amin(
   out = amax_amin_meta(out, "amin()", self, dim, keepdim);
   amax_amin_impl(self, dim, keepdim, out, native::xpu::min_all_kernel);
   return out;
+}
+
+Tensor& XPUNativeFunctions::nansum_out(
+    const Tensor& self,
+    at::OptionalIntArrayRef dim,
+    bool keepdim,
+    optional<ScalarType> opt_dtype,
+    Tensor& result) {
+  // For integral types, use existing sum as
+  // integral types don't have `Nan`.
+  if (c10::isIntegralType(self.scalar_type(), true)) {
+    return at::sum_out(result, self, dim, keepdim, opt_dtype);
+  }
+
+  auto out_dtype = infer_dtype_from_optional(self, opt_dtype, result);
+  result = resize_reduction(result, self, dim, keepdim, out_dtype);
+  auto iter = meta::make_reduction_from_out_ty(
+      self, result, dim, keepdim, result.scalar_type());
+
+  if (iter.numel() == 0) {
+    result = result.zero_();
+  } else {
+    native::xpu::nansum_kernel(iter);
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::nansum(
+    const Tensor& self,
+    at::OptionalIntArrayRef dim,
+    bool keepdim,
+    std::optional<ScalarType> opt_dtype) {
+  Tensor result;
+  return XPUNativeFunctions::nansum_out(self, dim, keepdim, opt_dtype, result);
+}
+
+static ScalarType get_result_or_self_value_dtype(
+    const Tensor& self,
+    const Tensor& result,
+    const std::optional<ScalarType>& dtype) {
+  if (result.defined()) {
+    return result.scalar_type();
+  } else {
+    return dtype.value_or(toRealValueType(self.scalar_type()));
+  }
+}
+
+Tensor& norm_scalaropt_dim_dtype_meta(
+    const Tensor& self,
+    const OptionalScalarRef p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype,
+    Tensor& result) {
+  TORCH_CHECK(
+      at::isFloatingType(dtype) || at::isComplexType(dtype),
+      "norm(): the desired output dtype should be either floating point or complex. "
+      "Got ",
+      dtype,
+      " instead.");
+  auto out_dtype = get_result_or_self_value_dtype(self, result, dtype);
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
+}
+
+static void impl_func_norm(
+    const Tensor& self,
+    const OptionalScalarRef& opt_p,
+    IntArrayRef dim,
+    bool keepdim,
+    optional<ScalarType> opt_dtype,
+    const Tensor& result) {
+  // Left this implementation without deprecating it as it is called in a number
+  // of places in the codebase. We should swap those by linalg_vector_norm
+  auto p = opt_p.has_value() ? opt_p.get() : Scalar(2.0).to<double>();
+  at::linalg_vector_norm_out(
+      const_cast<Tensor&>(result), self, p, dim, keepdim, opt_dtype);
+}
+
+Tensor XPUNativeFunctions::norm(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype) {
+  Tensor result;
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_dtype_meta(self, p_, dim, keepdim, dtype, result);
+  impl_func_norm(self, p_, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::norm_out(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    ScalarType dtype,
+    Tensor& result) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_dtype_meta(self, p_, dim, keepdim, dtype, result);
+  impl_func_norm(self, p_, dim, keepdim, dtype, result);
+  return result;
+}
+
+Tensor& norm_scalaropt_dim_meta(
+    const Tensor& self,
+    const OptionalScalarRef p,
+    IntArrayRef dim,
+    bool keepdim,
+    Tensor& result) {
+  TORCH_CHECK(
+      at::isFloatingType(self.scalar_type()) ||
+          at::isComplexType(self.scalar_type()),
+      "norm(): input dtype should be either floating point or complex. "
+      "Got ",
+      self.scalar_type(),
+      " instead.");
+
+  auto out_dtype = get_result_or_self_value_dtype(self, result, c10::nullopt);
+  return resize_reduction(result, self, dim, keepdim, out_dtype);
+}
+
+Tensor XPUNativeFunctions::norm(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  Tensor result;
+  result = norm_scalaropt_dim_meta(self, p_, dim, keepdim, result);
+  impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
+  return result;
+}
+
+Tensor& XPUNativeFunctions::norm_out(
+    const Tensor& self,
+    const std::optional<Scalar>& p,
+    IntArrayRef dim,
+    bool keepdim,
+    Tensor& result) {
+  auto p_ =
+      (p.has_value() ? at::OptionalScalarRef(&(p.value()))
+                     : at::OptionalScalarRef());
+  result = norm_scalaropt_dim_meta(self, p_, dim, keepdim, result);
+  impl_func_norm(self, p_, dim, keepdim, c10::nullopt, result);
+  return result;
+}
+
+TensorIterator meta_aminmax(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  TensorIterator iter;
+  auto dtype = self.scalar_type();
+  DimVector shape;
+  if (dim_opt.has_value()) {
+    auto dim = maybe_wrap_dim(dim_opt.value(), self.ndimension());
+    native::zero_numel_check_dims(self, dim, "aminmax");
+    shape = meta::get_reduction_shape(self, dim, keepdim);
+    iter = at::native::make_reduction(
+        "aminmax_xpu", min, max, self, dim, keepdim, dtype);
+  } else {
+    TORCH_CHECK(
+        self.numel() > 0,
+        "aminmax(): cannot compute aminmax over an empty dimension as the "
+        "operation has no identity.");
+    if (keepdim) {
+      shape = DimVector(self.ndimension(), 1);
+    }
+    iter = at::native::make_reduction(
+        "aminmax_xpu",
+        min,
+        max,
+        self.contiguous(),
+        IntArrayRef{},
+        false,
+        dtype);
+  }
+  const auto options = self.options();
+  iter.set_output_raw_strided(
+      0, shape, {}, options, min.has_names() ? min.names() : DimnameList{});
+  iter.set_output_raw_strided(
+      1, shape, {}, options, max.has_names() ? max.names() : DimnameList{});
+  return iter;
+}
+
+void aminmax_impl(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  TensorIterator iter;
+  iter = meta_aminmax(self, dim_opt, keepdim, min, max);
+  if (iter.numel() != 0) {
+    native::xpu::aminmax_kernel(iter);
+  }
+}
+
+void aminmax_allreduce_impl(const Tensor& self, Tensor& min, Tensor& max) {
+  TensorIterator iter;
+  iter = meta_aminmax(self, {}, false, min, max);
+  TORCH_CHECK(
+      iter.numel() > 0, "min_max on a tensor with no elements is not defined.");
+  native::xpu::aminmax_allreduce_kernel(iter);
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::aminmax(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim) {
+  Tensor min;
+  Tensor max;
+  return XPUNativeFunctions::aminmax_out(self, dim_opt, keepdim, min, max);
+}
+
+std::tuple<Tensor&, Tensor&> XPUNativeFunctions::aminmax_out(
+    const Tensor& self,
+    std::optional<int64_t> dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  if (!min.defined()) {
+    min = native::create_reduction_result(
+        self,
+        dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
+        false,
+        self.scalar_type());
+  }
+  if (!max.defined()) {
+    max = native::create_reduction_result(
+        self,
+        dim_opt.has_value() ? dim_opt.value() : IntArrayRef{},
+        false,
+        self.scalar_type());
+  }
+
+  TORCH_CHECK(
+      self.dtype() == min.dtype(),
+      "Expected out tensor to have dtype ",
+      self.dtype(),
+      ", but got ",
+      min.dtype(),
+      " instead");
+
+  TORCH_CHECK(
+      self.dtype() == max.dtype(),
+      "Expected out tensor to have dtype ",
+      self.dtype(),
+      ", but got ",
+      max.dtype(),
+      " instead");
+
+  if (dim_opt.has_value()) {
+    aminmax_impl(
+        self,
+        maybe_wrap_dim(dim_opt.value(), self.ndimension()),
+        keepdim,
+        min,
+        max);
+  } else {
+    aminmax_allreduce_impl(self.contiguous(), min, max);
+  }
+  return std::tuple<Tensor&, Tensor&>(min, max);
 }
 
 } // namespace at

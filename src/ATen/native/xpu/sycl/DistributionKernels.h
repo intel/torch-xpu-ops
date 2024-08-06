@@ -38,4 +38,9 @@ void bernoulli_scalar_kernel(
     double p,
     c10::optional<Generator> gen);
 
+void exponential_kernel(
+    TensorIteratorBase& iter,
+    double lambda,
+    c10::optional<Generator> gen);
+
 } // namespace at::native::xpu

@@ -263,7 +263,8 @@ static inline void group_reduce(
   // uint32_t SIMD = sg.get_local_range()[0];
 #pragma unroll
   for (int i = 1; i < SIMD; i <<= 1) {
-    val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+    val = bin_op(
+        val, static_cast<accscalar_t>(sycl::shift_group_left(sg, val, i)));
   }
   if (sub_group_num == 1) {
     if (lane_id == 0) {
@@ -294,7 +295,8 @@ static inline void group_reduce(
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+      val = bin_op(
+          val, static_cast<accscalar_t>(sycl::shift_group_left(sg, val, i)));
       if (i >= ((sub_group_num + 1) >> 1))
         break;
     }
@@ -450,10 +452,10 @@ struct BatchNormCollectStatisticsKernelFunctor
     // one value per subgroup
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      stat_accscalar_t o_avg = sg.shuffle_xor(avg, i);
-      int o_n = sg.shuffle_xor(n, i);
+      stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
+      int o_n = sycl::permute_group_by_xor(sg, n, i);
       stat_accscalar_t factor = 1.0 / fmaxf(1.0, n + o_n);
-      var_n += sg.shuffle_xor(var_n, i) +
+      var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
       n += o_n;
@@ -481,10 +483,10 @@ struct BatchNormCollectStatisticsKernelFunctor
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      stat_accscalar_t o_avg = sg.shuffle_xor(avg, i);
-      int o_n = sg.shuffle_xor(n, i);
+      stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
+      int o_n = sycl::permute_group_by_xor(sg, n, i);
       stat_accscalar_t factor = 1.0f / fmaxf(1.0f, n + o_n);
-      var_n += sg.shuffle_xor(var_n, i) +
+      var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
       n += o_n;
@@ -557,7 +559,7 @@ void batch_norm_stats_template(
     const Tensor& out_invstd,
     const Tensor& input_,
     double epsilon) {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   int64_t n_input = input_.size(1);
   Tensor dummy_mean_;
   Tensor dummy_var_;
@@ -1047,7 +1049,7 @@ void batch_norm_stats_channels_last_template(
     Tensor& out_invstd,
     const Tensor& input,
     double epsilon) {
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
@@ -1261,7 +1263,7 @@ void batch_norm_elemt_template(
     const Tensor& bias_,
     const Tensor& mean_,
     const Tensor& invstd_) {
-  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  using stat_accscalar_t = acc_type_device<stat_scalar_t, kXPU>;
   auto input_reshaped = input_.reshape(
       {input_.size(0),
        input_.size(1),
@@ -1430,7 +1432,7 @@ void batch_norm_elemt_channels_last_template(
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
               scalar_t,
               accscalar_t,
@@ -1459,7 +1461,7 @@ void batch_norm_elemt_channels_last_template(
     }
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
               scalar_t,
               accscalar_t,
@@ -1512,7 +1514,7 @@ void batch_norm_elemt_kernel(
           self.scalar_type(),
           "batch_norm_elementwise_xpu",
           [&] {
-            using accscalar_t = acc_type<scalar_t, true>;
+            using accscalar_t = acc_type_device<scalar_t, kXPU>;
             const bool mixed_type = is_mixed_type(self, *weight, *bias);
             if (mixed_type) {
               batch_norm_elemt_template<scalar_t, accscalar_t, int32_t>(
@@ -1581,7 +1583,7 @@ void batch_norm_elemt_kernel(
           self.scalar_type(),
           "batch_norm_elementwise_xpu",
           [&] {
-            using acc_t = acc_type<scalar_t, true>;
+            using acc_t = acc_type_device<scalar_t, kXPU>;
             auto f = BatchNormElementwiseLoopsFunctor<scalar_t, acc_t>();
             gpu_kernel(iter, f);
           });
@@ -1731,7 +1733,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_template(
     const bool input_g,
     const bool weight_g,
     const bool bias_g) {
-  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  using stat_accscalar_t = acc_type_device<stat_scalar_t, kXPU>;
   int64_t n_input = input_.size(1);
   Tensor sum_dy_;
   Tensor sum_dy_xmu_;
@@ -2129,7 +2131,7 @@ batch_norm_backward_reduce_channels_last_template(
         input.scalar_type(),
         "batchnorm_backward_reduce_xpu",
         [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           accscalar_t* staging_data_ptr = nwg_y > 1
               ? staging_data.mutable_data_ptr<accscalar_t>()
               : nullptr;
@@ -2170,7 +2172,7 @@ batch_norm_backward_reduce_channels_last_template(
         input.scalar_type(),
         "batchnorm_backward_reduce_xpu",
         [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           accscalar_t* staging_data_ptr = nwg_y > 1
               ? staging_data.mutable_data_ptr<accscalar_t>()
               : nullptr;
@@ -2239,7 +2241,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
             mean_st == invstd_st,
             "mean and invstd need to have the same data types");
         const bool mixed_type = is_mixed_type(input, weight);
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
         if (canUse32BitIndexMath(grad_output)) {
           if (mixed_type) {
@@ -2462,7 +2464,7 @@ Tensor batch_norm_backward_elemt_template(
     const Tensor& weight_,
     const Tensor& sum_dy_,
     const Tensor& sum_dy_xmu_) {
-  using stat_accscalar_t = acc_type<stat_scalar_t, true>;
+  using stat_accscalar_t = acc_type_device<stat_scalar_t, kXPU>;
   int64_t n_input = input_.size(1);
   auto input_reshaped = input_.reshape(
       {input_.size(0),
@@ -2543,7 +2545,7 @@ Tensor batch_norm_backward_elemt_template(
     const Tensor& sum_dy_,
     const Tensor& sum_dy_xmu_,
     const Tensor& count) {
-  using stat_accscalar_t = at::acc_type<stat_scalar_t, true>;
+  using stat_accscalar_t = at::acc_type_device<stat_scalar_t, kXPU>;
   auto input_reshaped = input_.reshape(
       {input_.size(0),
        input_.size(1),
@@ -2748,7 +2750,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
       input.scalar_type(),
       "batchnorm_backward_element_xpu",
       [&] {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
 
         if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
           auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
@@ -2820,7 +2822,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         input.scalar_type(),
         "batchnorm_backward_element_xpu",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
           auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
@@ -2857,7 +2859,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
         input.scalar_type(),
         "batchnorm_backward_element_xpu",
         [&] {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
           auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
               ELEMENTS_PER_ITER,
               scalar_t,
@@ -2920,7 +2922,7 @@ Tensor batch_norm_backward_elemt_kernel(
             std::is_same<scalar_t, at::Half>::value && mean_st == at::kFloat;
         bool is_bfloat16_float = std::is_same<scalar_t, at::BFloat16>::value &&
             mean_st == at::kFloat;
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         if (canUse32BitIndexMath(self)) {
           if (is_half_float || is_bfloat16_float) {
             return batch_norm_backward_elemt_template<
@@ -3004,7 +3006,7 @@ void batch_norm_update_stats(
       running_mean.scalar_type(),
       "batch_norm_update_stats_xpu",
       [&] {
-        using acc_t = acc_type<scalar_t, true>;
+        using acc_t = acc_type_device<scalar_t, kXPU>;
         const auto bessel_correction_factor = static_cast<acc_t>(
             static_cast<double>(N) / static_cast<double>(N - 1));
         const auto momentum = static_cast<acc_t>(momentum_);
@@ -3151,7 +3153,7 @@ void batch_norm_update_stats_and_invert(
       running_mean.scalar_type(),
       "batch_norm_update_stats_and_invert_xpu",
       [&] {
-        using acc_t = acc_type<scalar_t, true>;
+        using acc_t = acc_type_device<scalar_t, kXPU>;
         const auto bessel_correction_factor = static_cast<acc_t>(
             static_cast<double>(N) / static_cast<double>(N - 1));
         const auto eps = static_cast<acc_t>(epsilon);
@@ -3191,7 +3193,7 @@ void batch_norm_calc_invstd(
       running_var.scalar_type(),
       "batch_norm_invert_std_xpu",
       [&] {
-        using acc_t = at::acc_type<scalar_t, true>;
+        using acc_t = at::acc_type_device<scalar_t, kXPU>;
         auto eps = static_cast<acc_t>(epsilon);
         BatchNormCalcInvstdFunctor<scalar_t, acc_t> f(eps);
         gpu_kernel(iter, f);
@@ -3229,7 +3231,7 @@ void batch_norm_elementwise(
           self.scalar_type(),
           "batch_norm_elementwise_xpu",
           [&] {
-            using accscalar_t = at::acc_type<scalar_t, true>;
+            using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
             const bool mixed_type = is_mixed_type(self, *weight, *bias);
             if (mixed_type) {
               batch_norm_elemt_template<scalar_t, accscalar_t, int32_t>(
@@ -3298,7 +3300,7 @@ void batch_norm_elementwise(
           self.scalar_type(),
           "batch_norm_elementwise_xpu",
           [&] {
-            using acc_t = at::acc_type<scalar_t, true>;
+            using acc_t = at::acc_type_device<scalar_t, kXPU>;
             BatchNormElementwiseFunctor<scalar_t, acc_t> f;
             gpu_kernel(iter, f);
           });
@@ -3572,7 +3574,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
     bool train,
     double epsilon,
     std::array<bool, 3> grad_input_mask) {
-  using accscalar_t = acc_type<stat_scalar_t, true>;
+  using accscalar_t = acc_type_device<stat_scalar_t, kXPU>;
   Tensor grad_input_;
   Tensor grad_input_reshaped;
   Tensor grad_weight_;
@@ -3739,7 +3741,7 @@ Tensor batch_norm_elementwise_backward_train(
           input.scalar_type(),
           "batch_norm_backward_elemt_xpu",
           [&] {
-            using accscalar_t = at::acc_type<scalar_t, true>;
+            using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
             const bool mixed_type = is_mixed_type(input, weight);
             if (mixed_type) {
               return batch_norm_backward_elemt_template<
@@ -3803,7 +3805,7 @@ Tensor batch_norm_elementwise_backward_train(
           grad_out.scalar_type(),
           "batch_norm_eval_backward_xpu",
           [&] {
-            using accscalar_t = at::acc_type<scalar_t, true>;
+            using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
             auto norm_fct =
                 static_cast<accscalar_t>(1.0 / (input.numel() / input.size(1)));
             BatchNormElementwiseBackwardTrainFunctor<scalar_t, accscalar_t> f(
@@ -3863,7 +3865,7 @@ Tensor batch_norm_elementwise_backward_eval(
         grad_out.scalar_type(),
         "batch_norm_eval_backward_xpu",
         [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           BatchNormElementwiseBackwardEvalWithWeightfunctor<
               scalar_t,
               accscalar_t>
@@ -3885,7 +3887,7 @@ Tensor batch_norm_elementwise_backward_eval(
         grad_out.scalar_type(),
         "batch_norm_eval_backward_xpu",
         [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           BatchNormElementwiseBackwardEvalfunctor<scalar_t, accscalar_t> f;
           gpu_kernel(iter, f);
         });
@@ -3924,7 +3926,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
       canUse32BitIndexMath(input) && canUse32BitIndexMath(grad_out)) {
     return AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batch_norm_backward_xpu", [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           const bool mixed_type =
               is_mixed_type(input, *weight, *running_mean, *running_var);
           if (mixed_type) {

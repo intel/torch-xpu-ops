@@ -18,6 +18,11 @@ on:
         type: string
         default: ''
         description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
+      abi:
+        required: false
+        type: string
+        default: 1
+        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -29,6 +34,7 @@ on:
         default: 'linux.idc.xpu'
         description: Runner label
 
+permissions: read-all
 
 jobs:
   Torch-XPU-UT-Tests:
@@ -40,6 +46,11 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
@@ -57,21 +68,29 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          conda install -c intel mkl-static mkl-include -y
+          pip install mkl-static mkl-include
           cd ../pytorch
           pip install -r requirements.txt
           export USE_XPU=1
           source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          if [[ ${{ inputs.abi }} == '0' ]]; then
+            export _GLIBCXX_USE_CXX11_ABI=0
+          else
+            export _GLIBCXX_USE_CXX11_ABI=1
+          fi
           WERROR=1 python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           pip install -r .ci/docker/requirements-ci.txt
+      - name: Torch Config
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
       - name: Run XPU OP Examples
         if: contains(inputs.ut, 'op_example') || github.event_name == 'schedule'
         run: |

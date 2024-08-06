@@ -86,6 +86,12 @@ class TestCommon(TestCase):
             self.proxy = Namespace.TestCommonProxy()
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
+        # for CUDA doesn't support operators
+        elif (op.name in ["histogram",]):
+            if dtype in op.dtypes:
+                self.proxy = Namespace.TestCommonProxy()
+                test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+                test_common_test_fn(self.proxy, device, dtype, op)
         else:
             pytest.skip(f"{op.name} has not supported {dtype} yet both for cpu and xpu")
 

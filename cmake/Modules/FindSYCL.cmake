@@ -71,26 +71,6 @@ else()
     )
 endif()
 
-set(SYCL_LIBRARIES)
-find_library(SYCL_RUNTIME_LIBRARY sycl HINTS ${SYCL_LIBRARY_DIR})
-# On Windows, currently there's no sycl.lib. Only sycl7.lib with version suffix,
-# where the current version of the SYCL runtime is 7.
-# Until oneAPI adds support to sycl.lib without the version suffix,
-# sycl_runtime_version needs to be hardcoded and uplifted when SYCL runtime version uplifts.
-# TODO: remove this when sycl.lib is supported on Windows
-if(WIN32)
-  set(sycl_runtime_version 7)
-  find_library(
-    SYCL_RUNTIME_LIBRARY
-    NAMES "sycl${sycl_runtime_version}"
-    HINTS ${SYCL_LIBRARY_DIR}
-  )
-  if(SYCL_RUNTIME_LIBRARY STREQUAL "SYCL_RUNTIME_LIBRARY-NOTFOUND")
-    message(FATAL_ERROR "Cannot find a SYCL library on Windows")
-  endif()
-endif()
-list(APPEND SYCL_LIBRARIES ${SYCL_RUNTIME_LIBRARY})
-
 # Parse HOST_COMPILATION mode.
 option(SYCL_HOST_COMPILATION_CXX "Generated file extension" ON)
 
@@ -427,7 +407,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       OUTPUT ${output_file}
       DEPENDS ${object_files}
       COMMAND ${SYCL_EXECUTABLE}
-      -fsycl
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs "\"${SYCL_OFFLINE_COMPILER_FLAGS}\""
@@ -491,7 +470,7 @@ macro(SYCL_ADD_LIBRARY sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
-    ${SYCL_LIBRARIES})
+    ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}
     PROPERTIES
@@ -550,7 +529,7 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
-    ${SYCL_LIBRARIES})
+    ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}
     PROPERTIES

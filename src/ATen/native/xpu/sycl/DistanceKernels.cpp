@@ -120,7 +120,7 @@ scalar_t subgroup_reduce_agg_without_broadcast_impl(
 
 #pragma unroll
   for (int offset = (SG_SIZE >> 1); offset > 0; offset >>= 1) {
-    F::agg(value, sg.shuffle_down(value, offset));
+    F::agg(value, sycl::shift_group_left(sg, value, offset));
   }
   return value;
 }
@@ -290,7 +290,7 @@ static void launch_cdist_forward_kernel(
     const int64_t l2_size) {
   const auto ngroups = result.numel();
   auto wgroup_size = 32;
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   auto p_val = static_cast<accscalar_t>(p);
   auto out_data = result.data_ptr<scalar_t>();
   auto x1_data = x1.data_ptr<scalar_t>();

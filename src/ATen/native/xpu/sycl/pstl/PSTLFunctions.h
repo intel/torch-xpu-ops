@@ -1,15 +1,13 @@
 #pragma once
 
 #include <ATen/ceil_div.h>
-#include <ATen/record_function.h>
-
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
+#include <ATen/record_function.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
-
 #include <functional>
 
 namespace at::native::xpu::pstl {
@@ -24,10 +22,10 @@ struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // initialize local_input
     auto cur_init = init_;
     if (scan_type == 1) {
-      local_scan_[local_id] = first_[local_id];
+      local_scan_[local_id] = c10::load(&first_[local_id]);
     } else {
       if (local_id > 0)
-        local_scan_[local_id] = first_[local_id - 1];
+        local_scan_[local_id] = c10::load(&first_[local_id - 1]);
       else
         local_scan_[local_id] = 0;
     }
@@ -73,17 +71,17 @@ struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto cur_init = (group_id == 0 ? init_ : 0);
     if (global_id < N_) {
       if (scan_type == 1) {
-        local_scan_[local_id] = first_[global_id];
+        local_scan_[local_id] = c10::load(&first_[global_id]);
       } else {
         if (local_id > 0)
-          local_scan_[local_id] = first_[global_id - 1];
+          local_scan_[local_id] = c10::load(&first_[global_id - 1]);
         else
           local_scan_[local_id] = 0;
       }
       if (local_id == 0)
         local_scan_[local_id] += cur_init;
       if (local_id == wgroup_size_ - 1) {
-        carry_ptr_[group_id] = first_[global_id];
+        carry_ptr_[group_id] = c10::load(&first_[global_id]);
       }
     }
     item_id.barrier(sycl_local_fence);
@@ -1428,6 +1426,27 @@ void sort(
   RECORD_FUNCTION("pstl::sort", {});
   sort_pairs<KeyType, ValueType>(
       in_key, out_key, nullptr, out_val, sort_sz, descending);
+}
+
+template <class T, class ForwardIt>
+struct IotaKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    first_[item_id] = value_ + static_cast<T>(item_id);
+  }
+  IotaKernelFunctor(ForwardIt first, T value) : first_(first), value_(value) {}
+
+ private:
+  ForwardIt first_;
+  T value_;
+};
+
+template <class T, class ForwardIt>
+static inline void iota(ForwardIt first, ForwardIt last, T value) {
+  RECORD_FUNCTION("iota_xpu", {});
+  const auto N = std::distance(first, last);
+
+  IotaKernelFunctor<T, ForwardIt> kfn(first, value);
+  sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
 }
 
 } // namespace at::native::xpu::pstl
