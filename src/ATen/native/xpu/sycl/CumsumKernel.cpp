@@ -1,6 +1,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 
+#include <ATen/native/xpu/sycl/CumsumKernel.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 
 namespace at::native::xpu {
