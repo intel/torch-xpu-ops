@@ -4,11 +4,6 @@ import sys
 import pytest
 import unittest
 
-import os
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_dir)
-
-
 import torch
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,

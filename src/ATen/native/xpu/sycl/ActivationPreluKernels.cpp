@@ -20,11 +20,14 @@ struct PreluFunctor {
 
 template <typename scalar_t>
 struct PreluBackwardFunctor {
-  scalar_t operator()(scalar_t input, scalar_t weight, scalar_t grad) const {
+  std::tuple<scalar_t, scalar_t> operator()(
+      scalar_t input,
+      scalar_t weight,
+      scalar_t grad) const {
     auto mask = input > 0;
     auto grad_input = mask ? grad : weight * grad;
     auto grad_weight = mask ? scalar_t{0} : input * grad;
-    return {grad_input, grad_weight};
+    return std::tuple<scalar_t, scalar_t>{grad_input, grad_weight};
   }
 };
 
