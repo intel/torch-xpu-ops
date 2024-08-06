@@ -245,6 +245,7 @@ struct ReduceConfig {
     // reduction of small shape input only requires some shift operations
     // in side of SG. It is functional WA. We got case failures on some
     // platforms supporting SIMD8.
+    // https://github.com/intel/torch-xpu-ops/issues/698
     auto max_sg_sz = syclMinSubGroupSize() == 8
         ? syclMinSubGroupSize()
         : syclMaxSubGroupSize();
