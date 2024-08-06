@@ -20,7 +20,7 @@ struct LshiftFunctor {
 
 void lshift_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "lshift_xpu", [&]() {
-    gpu_kernel_with_scalars(iter, LshiftFunctor<scalar_t>(delta_val));
+    gpu_kernel_with_scalars(iter, LshiftFunctor<scalar_t>());
   });
 }
 
@@ -41,7 +41,7 @@ struct RshiftFunctor {
 
 void rshift_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_INTEGRAL_TYPES(iter.dtype(), "rshift_xpu", [&]() {
-    gpu_kernel_with_scalars(iter, RshiftFunctor<scalar_t>(delta_val));
+    gpu_kernel_with_scalars(iter, RshiftFunctor<scalar_t>());
   });
 }
 
