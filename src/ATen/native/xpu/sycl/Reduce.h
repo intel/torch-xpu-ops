@@ -241,11 +241,13 @@ struct ReduceConfig {
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
     auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
-    auto max_sg_sz = syclMinSubGroupSize() <= 8
+    // Bypass reduction on SLM by sparing workload to other SGs. As the result,
+    // reduction of small shape input only requires some shift operations
+    // in side of SG. It is functional WA. We got case failures on some
+    // platforms supporting SIMD8.
+    auto max_sg_sz = syclMinSubGroupSize() == 8
         ? syclMinSubGroupSize()
-        : syclMaxSubGroupSize(); // Unknown errors occur in the software stack
-                                 // when the minimum value of dim_x is limited
-                                 // to syclMaxSubGroupSize for SIMD8 case.
+        : syclMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
