@@ -27,6 +27,15 @@ jobs:
       ut: op_example,op_extended,op_ut
       runner: linux.idc.xpu
 
+  preci-ut-abi-0:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      abi: 0
+      ut: op_extended
+      runner: linux.idc.xpu
+
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
