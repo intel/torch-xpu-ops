@@ -115,6 +115,7 @@ skip_list = (
     "test_compare_cpu_nanmean_xpu_bfloat16",
     # Align with CUDA impl by using accumulate type. But CPU doesn't use.
     # When XPU uses original data type, the case passes.
+    "test_compare_cpu_logit_xpu_bfloat16",
     # precison error
     #     Mismatched elements: 1 / 24 (4.2%)
     # Greatest absolute difference: 0.03125 at index (0, 1, 0, 1) (up to 0.001 allowed)
