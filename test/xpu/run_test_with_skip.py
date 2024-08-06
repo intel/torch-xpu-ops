@@ -1292,6 +1292,7 @@ skip_list = (
     # Mismatched elements: 49 / 112 (43.8%)
     # Greatest absolute difference: 0.413818359375 at index (0, 0, 3) (up to 0.01 allowed)
     # Greatest relative difference: 642.5 at index (1, 3, 3) (up to 0 allowed)
+    # reference: https://github.com/intel/torch-xpu-ops/issues/663
     "test_variable_sequence_xpu_float16",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
