@@ -241,19 +241,23 @@ struct ReduceConfig {
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
     auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
-    auto min_sg_sz = syclMinSubGroupSize();
+    auto max_sg_sz = syclMinSubGroupSize() <= 8
+        ? syclMinSubGroupSize()
+        : syclMaxSubGroupSize(); // Unknown errors occur in the software stack
+                                 // when the minimum value of dim_x is limited
+                                 // to syclMaxSubGroupSize for SIMD8 case.
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
     int dim1_pow2 = dim1 < max_num_items ? static_cast<int>(last_pow2(dim1))
                                          : max_num_items;
-    group_width = std::min(dim0_pow2, int(min_sg_sz));
+    group_width = std::min(dim0_pow2, int(max_sg_sz));
     group_height = std::min(dim1_pow2, int(max_num_items / group_width));
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-    if (num_items < min_sg_sz)
-      group_width = min_sg_sz;
+    if (num_items < max_sg_sz)
+      group_width = max_sg_sz;
   }
 
   int split_input(int parallelism) {
