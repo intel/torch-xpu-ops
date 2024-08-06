@@ -26,7 +26,6 @@ jobs:
     with: 
       ut: op_example,op_extended,op_ut
       runner: linux.idc.xpu
-      expected_fail_num: 0
 
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
