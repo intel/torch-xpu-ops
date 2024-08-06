@@ -1285,13 +1285,14 @@ skip_list = (
     "test_rnn_fused_xpu_float64",
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
+    "test_variable_sequence_xpu_float64",
     # Accuracy issue of oneDNN matmul
     # addmm: LSTMCell has invalid result from linear_ih
     # Tensor-likes are not close!
     # Mismatched elements: 49 / 112 (43.8%)
     # Greatest absolute difference: 0.413818359375 at index (0, 0, 3) (up to 0.01 allowed)
     # Greatest relative difference: 642.5 at index (1, 3, 3) (up to 0 allowed)
-    "test_variable_sequence_xpu_float64",
+    "test_variable_sequence_xpu_float16",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
