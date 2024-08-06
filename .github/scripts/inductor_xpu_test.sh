@@ -1,6 +1,9 @@
 #! /bin/bash
 # This script work for xpu / cuda device inductor tests
 
+export DisableScratchPages=1 
+export NEOReadDebugKeys=1
+
 SUITE=${1:-huggingface}     # huggingface / torchbench / timm_models
 DT=${2:-float32}            # float32 / float16 / amp (amp_bf16) / amp_fp16
 MODE=${3:-inference}        # inference / training
