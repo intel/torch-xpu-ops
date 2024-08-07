@@ -72,6 +72,7 @@ jobs:
           pip install mkl-static mkl-include
           cd ../pytorch
           pip install -r requirements.txt
+          pip install -r .ci/docker/requirements-ci.txt
           export USE_XPU=1
           source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -83,7 +84,6 @@ jobs:
           WERROR=1 python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
