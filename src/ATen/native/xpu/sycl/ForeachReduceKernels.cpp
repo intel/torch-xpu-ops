@@ -194,8 +194,12 @@ std::vector<Tensor> foreach_norm_kernel(
       dtype.has_value() ? dtype.value() : tensors[0].scalar_type();
   const auto options = tensors[0].options();
   auto output_per_tensor_option = options.dtype(toOpMathType(output_dtype));
-  auto res_option = options.dtype(output_dtype);
-  auto ret_per_tensor = at::empty({ntensors}, res_option);
+  std::vector<at::Tensor> ret_per_tensor;
+  ret_per_tensor.reserve(ntensors);
+  const auto res_option = options.dtype(output_dtype);
+  for (const auto i : c10::irange(ntensors)) {
+    ret_per_tensor.push_back(at::empty({}, res_option));
+  }
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   int64_t wg_size;
@@ -230,12 +234,18 @@ std::vector<Tensor> foreach_norm_kernel(
                     max_chunks_per_tensor);
 
                 // sum final val for all chunks
+                void* tensor_list_addresses[ntensors];
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
+
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L1,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    ret_per_tensor.mutable_data_ptr<out_t>(),
+                    (out_t*)tensor_list_addresses,
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
@@ -268,12 +278,18 @@ std::vector<Tensor> foreach_norm_kernel(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
 
+                const void* tensor_list_addresses[ntensors];
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
+
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    ret_per_tensor.mutable_data_ptr<out_t>(),
+                    (out_t*)tensor_list_addresses,
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
