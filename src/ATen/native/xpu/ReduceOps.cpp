@@ -1,3 +1,5 @@
+
+#include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>
@@ -17,6 +19,7 @@
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
@@ -30,6 +33,7 @@ namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(sum_stub, &xpu::sum_kernel);
 REGISTER_XPU_DISPATCH(mean_stub, &xpu::mean_kernel);
+REGISTER_XPU_DISPATCH(prod_stub, &xpu::prod_kernel);
 REGISTER_XPU_DISPATCH(argmax_stub, &xpu::argmax_kernel);
 REGISTER_XPU_DISPATCH(argmin_stub, &xpu::argmin_kernel);
 REGISTER_XPU_DISPATCH(and_stub, &xpu::and_kernel);

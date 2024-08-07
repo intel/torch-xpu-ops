@@ -56,6 +56,7 @@ REGISTER_XPU_DISPATCH(sigmoid_stub, &xpu::sigmoid_kernel);
 REGISTER_XPU_DISPATCH(logit_stub, &xpu::logit_kernel);
 REGISTER_XPU_DISPATCH(sgn_stub, &xpu::sgn_kernel);
 REGISTER_XPU_DISPATCH(sign_stub, &xpu::sign_kernel);
+REGISTER_XPU_DISPATCH(signbit_stub, &xpu::signbit_kernel);
 REGISTER_XPU_DISPATCH(acos_stub, &xpu::acos_kernel);
 REGISTER_XPU_DISPATCH(acosh_stub, &xpu::acosh_kernel);
 REGISTER_XPU_DISPATCH(erf_stub, &xpu::erf_kernel);

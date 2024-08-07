@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+import torch.nn.utils.rnn as rnn_utils
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
@@ -1685,6 +1686,170 @@ def _test_sync_batchnorm_accuracy_xpu(self):
     _batch_norm_stats(torch.randn(1, 96, 112, 112, dtype=torch.float, device='xpu'), torch.channels_last, (0, 2, 3))
     _batch_norm_stats(torch.randn(1, 96, 112, 112, 112, dtype=torch.float, device='xpu'), torch.channels_last_3d, (0, 2, 3, 4))
 TestNN.test_sync_batchnorm_accuracy_cuda=_test_sync_batchnorm_accuracy_xpu
+
+@parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
+@parametrize_test("mode", ["bilinear", "bicubic"])
+@parametrize_test("antialias", [True, False])
+@parametrize_test("align_corners", [True, False])
+@parametrize_test("num_channels", [3, 5])
+@parametrize_test("output_size", [32, 600])
+@parametrize_test("check_as_unsqueezed_3d_tensor", [True, False])
+@parametrize_test("non_contig", [False, "sliced", "restrided"])
+@parametrize_test("batch_size", [1, 5])
+def _test_upsamplingBiMode2d_consistency(
+    self,
+    device,
+    memory_format,
+    mode,
+    antialias,
+    align_corners,
+    num_channels,
+    output_size,
+    check_as_unsqueezed_3d_tensor,
+    non_contig,
+    batch_size,
+):
+    # Check output value consistency between resized_input_uint8 and resized input_float
+    if torch.device(device).type == "xpu":
+        raise SkipTest("XPU implementation is not yet supporting uint8")
+
+    torch.manual_seed(0)
+
+    # - input range is set to [30, 220] for bicubic mode, because the bicubic kernel may create
+    #   [intermediate] values outside of the [0, 255] range, which need
+    #   to be clipped in uint8 path, but not in float path. This isn't
+    #   an issue with bilinear kernel.
+    input_range = (30, 220) if mode == "bicubic" else (0, 256)
+    input_ui8 = torch.randint(*input_range, size=(batch_size, num_channels, 400, 400), dtype=torch.uint8, device=device)
+    input_ui8 = input_ui8.contiguous(memory_format=memory_format)
+
+    if non_contig == "sliced":
+        input_ui8 = input_ui8[:, :, 10:-10, 10:-10]
+    elif non_contig == "restrided":
+        input_ui8 = input_ui8[:, :, ::2, ::2]
+
+    if batch_size == 1 and check_as_unsqueezed_3d_tensor:
+        input_ui8 = input_ui8[0, ...]
+        input_ui8 = input_ui8[None, ...]
+
+    input_f32 = input_ui8.float()
+
+    output_f32 = F.interpolate(
+        input_f32, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
+    ).round().clip(0, 255)
+    output_ui8 = F.interpolate(
+        input_ui8, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=antialias
+    )
+
+    if non_contig is False:
+        self.assertTrue(input_ui8.is_contiguous(memory_format=memory_format))
+
+    # FIXME if-clause shows the current behaviour which is definitely unexpected.
+    # Ideally we want to fix it such that both the ui8 and f32 outputs are also channels_last
+    # See for more details: https://github.com/pytorch/pytorch/pull/100373
+    if batch_size == 1 and check_as_unsqueezed_3d_tensor and memory_format == torch.channels_last:
+        self.assertTrue(output_ui8.is_contiguous())
+        self.assertTrue(output_f32.is_contiguous())
+    else:
+        self.assertTrue(output_ui8.is_contiguous(memory_format=memory_format))
+        self.assertTrue(output_f32.is_contiguous(memory_format=memory_format))
+
+    if mode == "bilinear":
+        torch.testing.assert_close(output_f32, output_ui8.float(), rtol=0, atol=1)
+    else:
+        diff = (output_f32 - output_ui8.float()).abs()
+        self.assertLess(diff.max(), 15)
+
+        threshold = 2
+        percent = 3
+        self.assertLess((diff > threshold).float().mean(), percent / 100)
+
+        threshold = 5
+        percent = 1
+        self.assertLess((diff > threshold).float().mean(), percent / 100)
+
+        self.assertLess(diff.mean(), 0.4)
+TestNNDeviceType.test_upsamplingBiMode2d_consistency=_test_upsamplingBiMode2d_consistency
+
+@parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
+@parametrize_test("align_corners", [True, False])
+@parametrize_test("input_size, output_size", [(399, 437), (403, 377)])
+def _test_upsamplingBiLinear2d_consistency_interp_size_bug(self, device, memory_format, align_corners, input_size, output_size):
+    # Non-regression test for https://github.com/pytorch/pytorch/pull/101403
+
+    if torch.device(device).type == "xpu":
+        raise SkipTest("XPU implementation is not yet supporting uint8")
+
+    mode = "bilinear"
+    input_ui8 = torch.randint(0, 256, size=(1, 3, input_size, input_size), dtype=torch.uint8, device=device)
+    input_ui8 = input_ui8.contiguous(memory_format=memory_format)
+    input_f32 = input_ui8.float()
+
+    output_f32 = F.interpolate(
+        input_f32, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=False
+    ).round().to(torch.uint8)
+    output_ui8 = F.interpolate(
+        input_ui8, size=(output_size, output_size), mode=mode, align_corners=align_corners, antialias=False
+    )
+    torch.testing.assert_close(output_f32, output_ui8, atol=1, rtol=0)
+TestNNDeviceType.test_upsamplingBiLinear2d_consistency_interp_size_bug=_test_upsamplingBiLinear2d_consistency_interp_size_bug
+
+def _test_device_mask(self, device):
+    def is_xpu(packed):
+        return packed.data.device.type=="xpu"
+    for enforce_sorted in [True, False]:
+        padded, lengths = self._padded_sequence('cpu', torch.float)
+        packed = rnn_utils.pack_padded_sequence(
+            padded, lengths, enforce_sorted=enforce_sorted)
+        self.assertFalse(is_xpu(packed))
+        packed = packed.to(device)
+        self.assertTrue(is_xpu(packed))
+        unpacked, _ = rnn_utils.pad_packed_sequence(packed)
+        self.assertTrue(is_xpu(unpacked))
+        self.assertEqual(unpacked.dtype, torch.float)
+TestNNDeviceType.test_device_mask=_test_device_mask
+
+def _test_overwrite_module_params_on_conversion_cpu_device(self, device):
+    # Test that under the current default settings
+    # (`torch.__future__.get_overwrite_module_params_on_conversion() == False`),
+    # a view to a module's parameters is not pointing to the same storage as
+    # its base variable after converting the module to a different device.
+    m = nn.Linear(20, 10)
+    mw = m.weight[:]
+    m.to(device)
+    with torch.no_grad():
+        # Without using `torch.no_grad()`, this will leak CUDA memory.
+        # (Issue is filed at https://github.com/pytorch/pytorch/issues/21875)
+        mw[0][0] = 5
+        self.assertTrue(mw[0][0].device.type == "cpu")
+        self.assertTrue(mw._base[0][0].device.type == "xpu")
+
+    try:
+        torch.__future__.set_overwrite_module_params_on_conversion(True)
+
+        # Test that if `torch.__future__.get_overwrite_module_params_on_conversion() == True`,
+        # a view to a module's parameters is still pointing to the same storage as
+        # its base variable after converting the module to a different device.
+        m = nn.Linear(20, 10)
+        mw = m.weight[:]
+        m.to(device)
+        with torch.no_grad():
+            mw[0][0] = 5
+        self.assertTrue(mw[0][0] == mw._base[0][0])
+
+        # Test that if `torch.__future__.get_overwrite_module_params_on_conversion() == True`,
+        # `cpu_module.to("cuda")` doesn't preserve previous references to
+        # `cpu_module`'s parameters or gradients.
+        m = nn.Linear(20, 10)
+        m.weight.grad = torch.randn(10, 20)
+        weight_ref = m.weight
+        weight_grad_ref = m.weight.grad
+        m.to(device)
+        self.assertNotEqual(weight_ref.device, m.weight.device)
+        self.assertNotEqual(weight_grad_ref.device, m.weight.grad.device)
+    finally:
+        torch.__future__.set_overwrite_module_params_on_conversion(False)
+TestNNDeviceType.test_overwrite_module_params_on_conversion_cpu_device=_test_overwrite_module_params_on_conversion_cpu_device
 
 def _test_ctc_loss_xpu(self, device):
     batch_size = 16

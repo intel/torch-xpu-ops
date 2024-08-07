@@ -42,7 +42,8 @@ static inline void softmax_group_reduce(
   // uint32_t SIMD = sg.get_local_range()[0];
 #pragma unroll
   for (int i = 1; i < SIMD; i <<= 1) {
-    val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+    val = bin_op(
+        val, static_cast<accscalar_t>(sycl::shift_group_left(sg, val, i)));
   }
   if (sub_group_num == 1) {
     val = sycl::group_broadcast(sg, val, 0);
@@ -70,7 +71,8 @@ static inline void softmax_group_reduce(
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      val = bin_op(val, static_cast<accscalar_t>(sg.shuffle_down(val, i)));
+      val = bin_op(
+          val, static_cast<accscalar_t>(sycl::shift_group_left(sg, val, i)));
       if (i >= ((sub_group_num + 1) >> 1))
         break;
     }

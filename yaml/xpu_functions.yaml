@@ -6,6 +6,7 @@ supported:
   - add.Tensor
   - add_.Tensor
   - add.out
+<<<<<<< HEAD
   - add.Scalar
   - add_.Scalar
   - add.Scalar_out
@@ -15,6 +16,8 @@ supported:
   - add.Scalar_out #Composite
   - _adaptive_avg_pool2d_backward #need add
 =======
+=======
+>>>>>>> main
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
@@ -38,15 +41,15 @@ supported:
   - mul.Tensor
   - mul_.Tensor
   - mul.out
-  - mul.Scalar
-  - mul_.Scalar
-  - mul.Scalar_out
   - div.Tensor
   - div_.Tensor
   - div.out
+<<<<<<< HEAD
   - div.Scalar # COMPO
   - div_.Scalar #COMPO
   - div.Scalar_out #COMPO
+=======
+>>>>>>> main
   - div.Tensor_mode
   - div_.Tensor_mode
   - div.out_mode
@@ -439,6 +442,9 @@ supported:
   - sum.out # not sure
   - sum.dim_IntList #not sure
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
@@ -559,6 +565,11 @@ supported:
   - sigmoid
   - sigmoid.out
   - sigmoid_
+  - sign
+  - sign.out
+  - sign_
+  - signbit
+  - signbit.out
   - sigmoid_backward.grad_input
   - sigmoid_backward
   - hardsigmoid.out

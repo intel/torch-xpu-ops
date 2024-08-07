@@ -93,7 +93,7 @@ def _test_to(self, device, dtype, module_info, training, swap, set_grad):
     devices = ['xpu']
     dtypes = module_info.dtypes
     module_inputs = module_info.module_inputs_func(module_info, device=device, dtype=dtype,
-                                                    requires_grad=False, training=training)
+                                                   requires_grad=False, training=training)
     torch.__future__.set_swap_module_params_on_conversion(swap)
 
     for module_input in module_inputs:

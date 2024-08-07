@@ -12,4 +12,6 @@ void sgn_kernel(TensorIteratorBase& iter);
 
 void sign_kernel(TensorIteratorBase& iter);
 
+void signbit_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

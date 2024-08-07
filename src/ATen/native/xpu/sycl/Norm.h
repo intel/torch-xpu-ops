@@ -39,8 +39,10 @@ static inline void norm_group_reduce(
   // uint32_t SIMD = sg.get_local_range()[0];
 #pragma unroll
   for (int i = 1; i < SIMD; i <<= 1) {
-    sum1 = bin_op(sum1, static_cast<accscalar_t>(sg.shuffle_down(sum1, i)));
-    sum2 = bin_op(sum2, static_cast<accscalar_t>(sg.shuffle_down(sum2, i)));
+    sum1 = bin_op(
+        sum1, static_cast<accscalar_t>(sycl::shift_group_left(sg, sum1, i)));
+    sum2 = bin_op(
+        sum2, static_cast<accscalar_t>(sycl::shift_group_left(sg, sum2, i)));
   }
   if (sub_group_num == 1) {
     sum1 = sycl::group_broadcast(sg, sum1, 0);
@@ -73,8 +75,10 @@ static inline void norm_group_reduce(
     }
 #pragma unroll
     for (int i = 1; i < SIMD; i <<= 1) {
-      sum1 = bin_op(sum1, static_cast<accscalar_t>(sg.shuffle_down(sum1, i)));
-      sum2 = bin_op(sum2, static_cast<accscalar_t>(sg.shuffle_down(sum2, i)));
+      sum1 = bin_op(
+          sum1, static_cast<accscalar_t>(sycl::shift_group_left(sg, sum1, i)));
+      sum2 = bin_op(
+          sum2, static_cast<accscalar_t>(sycl::shift_group_left(sg, sum2, i)));
       if (i >= ((sub_group_num + 1) >> 1))
         break;
     }

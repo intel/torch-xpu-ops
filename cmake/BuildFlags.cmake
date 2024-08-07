@@ -1,5 +1,27 @@
 # Setup building flags for SYCL device and host codes.
 
+function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
+  set(TEMP_DIR "${CMAKE_BINARY_DIR}/temp")
+  file(MAKE_DIRECTORY ${TEMP_DIR})
+  set(TEST_SRC_FILE "${TEMP_DIR}/check_options.cpp")
+  set(TEST_EXE_FILE "${TEMP_DIR}/check_options.out")
+  file(WRITE ${TEST_SRC_FILE} "#include <iostream>\nint main() { std::cout << \"Checking compiler options ...\" << std::endl; return 0; }\n")
+  execute_process(
+      COMMAND ${SYCL_COMPILER} -fsycl ${TEST_SRC_FILE} -o ${TEST_EXE_FILE} ${FLAG}
+      WORKING_DIRECTORY ${TEMP_DIR}
+      OUTPUT_VARIABLE output
+      ERROR_VARIABLE output
+      RESULT_VARIABLE result
+      TIMEOUT 60
+  )
+  if(result EQUAL 0)
+      set(${VARIABLE_NAME} TRUE PARENT_SCOPE)
+  else()
+      set(${VARIABLE_NAME} FALSE PARENT_SCOPE)
+  endif()
+  file(REMOVE_RECURSE ${TEMP_DIR})
+endfunction()
+
 # Support GCC on Linux and MSVC on Windows at the moment.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # # -- Host flags (SYCL_CXX_FLAGS)
@@ -69,8 +91,16 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_USE_CXX11_ABI})
   endif()
 
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
-  
+  CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
+  if(SUPPORTS_FP64_CONV_EMU)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
+  else()
+    message(WARNING "The compiler does not support the '-fsycl-fp64-conv-emu' flag, \
+    will disable it. On some platforms that don't support FP64, \
+    running operations with the FP64 datatype will raise a Runtime error: Required aspect fp64 is not supported on the device \
+    or a Native API failed error.")
+  endif()
+
   set(SYCL_FLAGS ${SYCL_FLAGS} ${SYCL_KERNEL_OPTIONS})
 
   set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})

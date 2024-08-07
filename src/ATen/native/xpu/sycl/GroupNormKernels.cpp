@@ -2,10 +2,10 @@
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
-#include <ATen/native/SharedReduceOps.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 #include <comm/MemoryFormat.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -18,23 +18,23 @@ template <
     typename index_t,
     typename res_t>
 struct WelfordOpsXPU
-    : public at::native::WelfordOps<scalar_t, acc_scalar_t, index_t, res_t> {
+    : public WelfordOps<scalar_t, acc_scalar_t, index_t, res_t> {
   sycl::nd_item<1>& item;
 
  public:
-  using acc_t = typename at::native::
-      WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>::acc_t;
+  using acc_t =
+      typename WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>::acc_t;
   inline acc_t shfl_down(acc_t acc, int offset) const {
     auto sg = item.get_sub_group();
     return {
-        sg.shuffle_down(acc.mean, offset),
-        sg.shuffle_down(acc.m2, offset),
-        sg.shuffle_down(acc.n, offset),
-        sg.shuffle_down(acc.nf, offset)};
+        sycl::shift_group_left(sg, acc.mean, offset),
+        sycl::shift_group_left(sg, acc.m2, offset),
+        sycl::shift_group_left(sg, acc.n, offset),
+        sycl::shift_group_left(sg, acc.nf, offset)};
   }
 
   WelfordOpsXPU(acc_scalar_t correction, bool take_sqrt, sycl::nd_item<1>& item)
-      : at::native::WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>(
+      : WelfordOps<scalar_t, acc_scalar_t, index_t, res_t>(
             correction,
             take_sqrt),
         item(item) {}
@@ -43,7 +43,7 @@ struct WelfordOpsXPU
 template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
-  using WelfordType = at::native::WelfordData<T_ACC, int64_t>;
+  using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 

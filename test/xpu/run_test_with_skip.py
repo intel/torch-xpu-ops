@@ -1311,40 +1311,18 @@ skip_list = (
     "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
     "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
     "test_save_load_nn_Transformer_xpu_float64",
-    # AssertionError: Tensor-likes are not close!
-    "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
     # Unexpected success:
     "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
     "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
     "test_memory_format_nn_AvgPool2d_xpu_float32",
     "test_memory_format_nn_AvgPool2d_xpu_float64",
-    # AssertionError: False is not true
-    "test_memory_format_nn_Conv2d_xpu_float64",
-    "test_memory_format_nn_ConvTranspose2d_xpu_float64",
-    "test_memory_format_nn_LazyConv2d_xpu_float64",
-    "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
-    "test_cpu_gpu_parity_nn_CrossEntropyLoss_xpu_float16",
     # CPU fallback could not cover these
     # CUDA xfails
     # Failed: Unexpected success
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
     # CPU fallback fails
-    # AssertionError: False is not true
-    "test_memory_format_nn_ReflectionPad3d_xpu_float32",
-    "test_memory_format_nn_ReflectionPad3d_xpu_float64",
-    "test_memory_format_nn_ReplicationPad2d_xpu_float32",
-    "test_memory_format_nn_ReplicationPad2d_xpu_float64",
-    "test_memory_format_nn_ReplicationPad3d_xpu_float32",
-    "test_memory_format_nn_ReplicationPad3d_xpu_float64",
-    # CPU fallback fails
     # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
-    "test_memory_format_nn_GroupNorm_xpu_bfloat16",
-    "test_memory_format_nn_GroupNorm_xpu_float16",
-    "test_memory_format_nn_GroupNorm_xpu_float32",
-    "test_memory_format_nn_GroupNorm_xpu_float64",
     "test_save_load_nn_GRU_eval_mode_xpu_float32",
     "test_save_load_nn_GRUCell_xpu_float32",
     "test_save_load_nn_GRU_train_mode_xpu_float32",
@@ -1369,9 +1347,6 @@ skip_list = (
     "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
     "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
     "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
-    # Reflection_pad2d doesn't support channel last, CUDA skipped too.
-    "test_memory_format_nn_ReflectionPad2d_xpu_float32",
-    "test_memory_format_nn_ReflectionPad2d_xpu_float64",
     # AssertionError: False is not true
     "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",
@@ -1441,7 +1416,7 @@ skip_list = (
     "test_RReLU_with_up_down_cuda",
     # AssertionError: Scalars are not close!
     "test_RReLU_with_up_down_scalar_cuda",
-    # lstm: AssertionError: Scalars are not equal!
+    # rnn fallback to cpu
     "test_cudnn_weight_format",
     # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
     "test_EmbeddingBag_sparse_cuda",
@@ -1466,16 +1441,10 @@ skip_list = (
     "test_rnn_retain_variables_xpu_float64",
     "test_transformerencoderlayer_xpu_float64",
     "test_variable_sequence_xpu_float64",
-    # CPU fallback fails
-    # AssertionError: Tensor-likes are not close!
-    "test_GroupNorm_memory_format_xpu",
     # AssertionError: Scalars are not close!
     "test_InstanceNorm1d_general_xpu",
     "test_InstanceNorm2d_general_xpu",
     "test_InstanceNorm3d_general_xpu",
-    # AssertionError: False is not true
-    "test_device_mask_xpu",
-    "test_overwrite_module_params_on_conversion_cpu_device_xpu",
     # AssertionError: RuntimeError not raised
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
@@ -1485,8 +1454,7 @@ skip_list = (
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
     "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-    "test_grid_sample_error_checking",
-    # Failed: Unexpected success
+    #upsamplingNearest2d: Failed: Unexpected success
     "test_upsamplingNearest2d_launch_fail_xpu",
     # CPU fallback could not cover
     # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
@@ -1506,9 +1474,6 @@ skip_list = (
     "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
     "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
-    # align CUDA to skip, XPU implementation is not yet supporting uint8
-    "test_upsamplingBiMode2d_consistency",
-    "test_upsamplingBiLinear2d_consistency_interp_size_bug",
 )
 res += launch_test("test_nn_xpu.py", skip_list)
 
@@ -2394,6 +2359,12 @@ skip_list = (
     "test_scaled_mm_vs_emulated_float16_xpu",
     "test_scaled_mm_vs_emulated_float32_xpu",
     "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+
+    # https://github.com/intel/torch-xpu-ops/issues/676
+    # Mismatched elements: 9 / 1003002 (0.0%)
+    # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
+    # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
+    "test_cublas_addmm_size_1000_xpu_float32",
 )
 res += launch_test("test_matmul_cuda_xpu.py", skip_list=skip_list)
 
@@ -3158,14 +3129,7 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-skip_list = (
-    # Regression after PyTorch uplift
-    # https://github.com/intel/torch-xpu-ops/issues/549
-    # AssertionError: 3 != 3.0
-    "test_symnode_hashing",
-)
-res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
+res += launch_test("test_dynamic_shapes_xpu.py")
 
 # test_load_state_dict
 
