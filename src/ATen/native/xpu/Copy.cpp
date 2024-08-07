@@ -294,12 +294,44 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 }
 
 Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
-  // TODO: valid check
+  TORCH_CHECK(self.defined(), "self is undefined");
+  TORCH_CHECK(src.defined(), "src is undefined");
+
+  // Copies into meta self are OK and just ignored (similar to inplace)
+  if (self.is_meta()) {
+    auto shape = infer_size_symdimvector(self.sym_sizes(), src.sym_sizes());
+    TORCH_CHECK(
+        self.sym_sizes().equals(shape),
+        "output with shape ",
+        self.sym_sizes(),
+        " doesn't match the broadcast shape ",
+        shape);
+    return self;
+  }
+
+  if (src.is_meta()) {
+    TORCH_CHECK_NOT_IMPLEMENTED(false, "Cannot copy out of meta tensor; no data!")
+  }
+
   if (self.is_same(src)) {
     return self;
   }
 
   // TODO: Support quantization
+
+  // Exit early if self and src are views of the same data
+  const bool is_same_data = (
+      self.is_alias_of(src) &&
+      self.storage_offset() == src.storage_offset() &&
+      self.strides().equals(src.strides()) &&
+      self.sizes().equals(src.sizes()) &&
+      self.scalar_type() == src.scalar_type() &&
+      self.is_conj() == src.is_conj() &&
+      self.is_neg() == src.is_neg()
+    );
+  if (is_same_data) {
+    return self;
+  }
 
   auto iter = TensorIteratorConfig()
                   .set_check_mem_overlap(true)
@@ -324,6 +356,12 @@ Tensor& XPUNativeFunctions::copy_(
     Tensor& self,
     const Tensor& src,
     bool non_blocking) {
+  if (self._is_zerotensor()) {
+    TORCH_CHECK(false, "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
+  }
+  if (src._is_zerotensor()) {
+    return self.zero_();
+  }
   return native::xpu::_copy_xpu(self, src, non_blocking);
 }
 
