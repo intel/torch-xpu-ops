@@ -1109,11 +1109,11 @@ skip_list = (
     "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
     "test_memory_format_nn_AvgPool2d_xpu_float32",
     "test_memory_format_nn_AvgPool2d_xpu_float64",
-    # AssertionError: False is not true
-    "test_memory_format_nn_Conv2d_xpu_float64",
-    "test_memory_format_nn_ConvTranspose2d_xpu_float64",
-    "test_memory_format_nn_LazyConv2d_xpu_float64",
-    "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
+    # CPU fallback could not cover these
+    # CUDA xfails
+    # Failed: Unexpected success
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
+    "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
     # CPU fallback fails
     # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
     "test_save_load_nn_GRU_eval_mode_xpu_float32",
