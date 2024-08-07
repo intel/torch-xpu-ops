@@ -12,6 +12,12 @@ Tensor& arange_kernel(
     const Scalar& step,
     Tensor& result);
 
+Tensor& range_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    const Scalar& step,
+    Tensor& result);
+
 } // namespace xpu
 } // namespace native
 } // namespace at

@@ -290,7 +290,7 @@ static void launch_cdist_forward_kernel(
     const int64_t l2_size) {
   const auto ngroups = result.numel();
   auto wgroup_size = 32;
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   auto p_val = static_cast<accscalar_t>(p);
   auto out_data = result.data_ptr<scalar_t>();
   auto x1_data = x1.data_ptr<scalar_t>();

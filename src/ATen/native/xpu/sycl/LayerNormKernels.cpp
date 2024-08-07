@@ -16,7 +16,7 @@ namespace xpu {
 template <typename scalar_t, typename mean_t, typename weight_t>
 class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
  public:
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   typedef NormForward<scalar_t, mean_t, weight_t> NF;
   LayerNormForward() = delete;
   LayerNormForward(
@@ -115,7 +115,7 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
 template <typename scalar_t, typename mean_t, typename weight_t>
 class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
  public:
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   LayerNormBackward() = delete;
   LayerNormBackward(
       scalar_t* X_data,
@@ -273,7 +273,7 @@ void _layer_norm_kernel(
     const Tensor& beta,
     int64_t M,
     int64_t N,
-    acc_type<scalar_t, true> eps,
+    acc_type_device<scalar_t, kXPU> eps,
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
@@ -533,7 +533,7 @@ void _layer_norm_backward_kernel(
   TORCH_CHECK(mean.numel() == M);
   TORCH_CHECK(rstd.numel() == M);
 
-  using accscalar_t = acc_type<scalar_t, true>;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   mean_t* mean_data = mean.data_ptr<mean_t>();
   mean_t* var_data = rstd.data_ptr<mean_t>();
   weight_t* gamma_data = gamma.defined() ? gamma.data_ptr<weight_t>() : nullptr;
@@ -608,7 +608,7 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
         X.scalar_type(),
         "layer_norm_xpu",
         [&]() {
-          using acc_t = acc_type<scalar_t, true>;
+          using acc_t = acc_type_device<scalar_t, kXPU>;
           _layer_norm_kernel<scalar_t, acc_t, scalar_t>(
               X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
         });
@@ -636,7 +636,7 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
         X.scalar_type(),
         "layer_norm_backward_xpu",
         [&]() {
-          using accscalar_t = acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
           _layer_norm_backward_kernel<scalar_t, accscalar_t, scalar_t>(
               dY.contiguous(),
               X,

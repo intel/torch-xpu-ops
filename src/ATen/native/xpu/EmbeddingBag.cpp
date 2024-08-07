@@ -71,5 +71,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only_xpu(
       include_last_offset,
       padding_idx);
 }
+
 } // namespace native
 } // namespace at

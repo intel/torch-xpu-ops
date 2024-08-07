@@ -52,7 +52,7 @@ struct TensorInfo {
       IndexType sz[XPU_MAX_TENSORINFO_DIMS],
       IndexType st[XPU_MAX_TENSORINFO_DIMS]);
 
-  // Set the sive of given dimension to 1, as if were a
+  // Set the size of given dimension to 1, as if were a
   // reduction dim (allow you to calculate offsets of the
   // reduction slice)
   void reduceDim(int dim);
@@ -194,7 +194,7 @@ struct IndexToOffset<T, IndexType, true> {
 };
 
 template <typename scalar, typename IndexType>
-TensorInfo<scalar, IndexType> getTensorInfo(const at::Tensor& t) {
+TensorInfo<scalar, IndexType> getTensorInfo(const at::TensorBase& t) {
   IndexType sz[XPU_MAX_TENSORINFO_DIMS];
   IndexType st[XPU_MAX_TENSORINFO_DIMS];
 
@@ -218,7 +218,15 @@ TensorInfo<scalar, IndexType> getTensorInfo(const at::Tensor& t) {
     st[0] = 1;
   }
 
-  return TensorInfo<scalar, IndexType>(t.data_ptr<scalar>(), dims, sz, st);
+  scalar* data_ptr = nullptr;
+
+  if constexpr (std::is_const<scalar>::value) {
+    data_ptr = t.const_data_ptr<scalar>();
+  } else {
+    data_ptr = t.mutable_data_ptr<scalar>();
+  }
+
+  return TensorInfo<scalar, IndexType>(data_ptr, dims, sz, st);
 }
 
 } // namespace detail

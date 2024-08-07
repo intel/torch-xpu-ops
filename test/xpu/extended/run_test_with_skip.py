@@ -10,9 +10,14 @@ skip_list = (
     #     a. Different kernel implementations.
     #     b. Different std functions. (std::log, std::tanh, std::exp)
     # 5. The result of division between two same float values is not 1.
+    # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_log_xpu_complex64",
+    "test_compare_cpu_log10_xpu_complex64",
+    "test_compare_cpu_log1p_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex64",
+    "test_compare_cpu_log2_xpu_complex128",
     "test_compare_cpu_mul_xpu_complex64",
     "test_compare_cpu_pow_xpu_complex128",
     "test_compare_cpu_pow_xpu_complex64",
@@ -28,10 +33,12 @@ skip_list = (
     "test_compare_cpu_acos_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_cross_xpu_float16",
-
-    # got inconsistent values between CPU / XPU
-    # AssertionError: Tensor-likes are not close!
-    # compute results contain nan / inf
+    "test_compare_cpu_floor_divide_xpu_bfloat16",
+    "test_compare_cpu_floor_divide_xpu_float16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_bfloat16",
+    "test_compare_cpu_exp_xpu_complex128",
+    "test_compare_cpu_exp_xpu_complex64",
     "test_compare_cpu_acosh_xpu_complex64",
     "test_compare_cpu_asin_xpu_complex128",
     "test_compare_cpu_asin_xpu_complex64",
@@ -39,16 +46,13 @@ skip_list = (
     "test_compare_cpu_asinh_xpu_complex64",
     "test_compare_cpu_atan_xpu_complex128",
     "test_compare_cpu_atan_xpu_complex64",
+    "test_compare_cpu_exp2_xpu_complex128",
+    "test_compare_cpu_exp2_xpu_complex64",
+    "test_compare_cpu_nextafter_xpu_bfloat16",
 
     # skip random failure due to accuracy
     # AssertionError: Tensor-likes are not close!
     "test_compare_cpu_atan2_xpu_bfloat16",
-
-    # CPU result is not golden reference
-    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
-    "test_compare_cpu_div_trunc_rounding_xpu_float16",
-    "test_compare_cpu_div_trunc_rounding_xpu_bfloat16",
-    "test_compare_cpu_addr_xpu_float16",
 
     # CUDA does not support the data type either
     "test_compare_cpu_native_dropout_backward_xpu_bool",
@@ -65,10 +69,6 @@ skip_list = (
     # TestCompositeCompliance
     # CPU fallback fails
     # Require implementing aten::embedding_renorm_
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
-    "test_backward_nn_functional_embedding_xpu_float32",
-    "test_cow_input_nn_functional_embedding_xpu_float32",
-    "test_forward_ad_nn_functional_embedding_xpu_float32",
     "test_view_replay_nn_functional_embedding_xpu_float32",
 
     # TestCompositeCompliance::test_cow_input
@@ -77,8 +77,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input",
 
-    # The operator 'aten::sinh.out on the XPU backend is falling back to run on the CPU.
-    "test_cow_input_cosh_xpu_float32",
 
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
@@ -103,11 +101,6 @@ skip_list = (
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
 
-    # Not implemented operators, aten::_embedding_bag_backward.
-    # To retrieve cases when the operators are supported.
-    # https://github.com/intel/torch-xpu-ops/issues/536
-    "test_backward_nn_functional_embedding_bag_xpu_float32",
-
     #Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
 
@@ -125,16 +118,35 @@ skip_list = (
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_nll_loss_xpu_float16",
     "test_compare_cpu_nn_functional_batch_norm_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_bfloat16",
     "test_compare_cpu__batch_norm_with_update_xpu_float16",
     "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
+    "test_compare_cpu_nansum_xpu_bfloat16",
+    "test_compare_cpu_nanmean_xpu_bfloat16",
+    # Align with CUDA impl by using accumulate type. But CPU doesn't use.
+    # When XPU uses original data type, the case passes.
+    "test_compare_cpu_logit_xpu_bfloat16",
 
-    # Not implemented operators, aten::upsample_linear1d, aten::upsample_bilinear2d,
-    # aten::upsample_trilinear3d
-    "nn_functional_interpolate_linear",
-    "nn_functional_interpolate_bilinear",
-    "nn_functional_interpolate_trilinear",
+    # precison error
+    #     Mismatched elements: 1 / 24 (4.2%)
+    # Greatest absolute difference: 0.03125 at index (0, 1, 0, 1) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0048828125 at index (0, 1, 0, 1) (up to 0.001 allowed)
+    "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_bfloat16",
+
+    # RuntimeError: "compute_index_ranges_weights" not implemented for 'Half'
+    "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float16",
+
+    # AssertionError: False is not true : Argument 0 during forward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_forward=False...
+    "test_cow_input_nn_functional_interpolate_bilinear_xpu_float32",
+    "test_cow_input_nn_functional_interpolate_linear_xpu_float32",
+    "test_cow_input_nn_functional_interpolate_trilinear_xpu_float32",
+
+    #The results of XPU and CUDA are consistent, but the results of CPU and CUDA are inconsistent
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_linear_xpu_float16",
 
     # bicubic interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
@@ -151,6 +163,10 @@ skip_list = (
     # Greatest relative difference: 0.00396728515625 at index (610,) (up to 0.001 allowed)
     "test_compare_cpu_hypot_xpu_bfloat16",
 
+    # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
+    # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
+    "test_compare_cpu_polar_xpu_bfloat16",
+
     # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
     # https://github.com/intel/torch-xpu-ops/issues/549
     # Example fail log
@@ -163,10 +179,29 @@ skip_list = (
     "test_compare_cpu_sub_xpu_float16",
     "test_compare_cpu_var_mean_xpu_bfloat16",
 
-    # NotImplementedError: The operator 'aten::_unique' is not currently implemented for the XPU device.
-    "test_compare_cpu_isin_xpu",
-    "test_operator_isin_xpu_float32",
-    "test_view_replay_isin_xpu_float32",
+    # test case doesn't make sense, will file an issue to track it.
+    # https://github.com/pytorch/pytorch/issues/130916
+    "test_compare_cpu_histogram_xpu_float32",
+    "test_compare_cpu_histogram_xpu_float64",
+
+    # Precision error.
+    # Mismatched elements: 2 / 125 (1.6%)
+    # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
+    "test_compare_cpu_cumprod_xpu_bfloat16",
+
+    # different results for value index due to unstable sort.
+    # XPU and CUDA have the same result.
+    "test_compare_cpu_median_xpu_int16",
+    "test_compare_cpu_median_xpu_int32",
+    "test_compare_cpu_median_xpu_int64",
+    "test_compare_cpu_median_xpu_int8",
+    "test_compare_cpu_median_xpu_uint8",
+    "test_compare_cpu_nanmedian_xpu_int16",
+    "test_compare_cpu_nanmedian_xpu_int32",
+    "test_compare_cpu_nanmedian_xpu_int64",
+    "test_compare_cpu_nanmedian_xpu_int8",
+    "test_compare_cpu_nanmedian_xpu_uint8",
 )
 
 

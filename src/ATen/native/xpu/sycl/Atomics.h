@@ -325,6 +325,18 @@ static inline void atomicAdd(
   target.fetch_add(val);
 }
 
+static inline void atomicAdd(const sycl_local_ptr<int>& address, int val) {
+  sycl_atomic_ref_rlx_wg_local_t<int> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAdd(
+    const sycl_local_ptr<int64_t>& address,
+    int64_t val) {
+  sycl_atomic_ref_rlx_wg_local_t<int64_t> target(*address);
+  target.fetch_add(val);
+}
+
 // Atomic add implementation.
 SYCL_ATOMIC_INTEGER(Add, a || b, bool)
 SYCL_ATOMIC_INTEGER(Add, std::plus<uint8_t>()(a, b), uint8_t)

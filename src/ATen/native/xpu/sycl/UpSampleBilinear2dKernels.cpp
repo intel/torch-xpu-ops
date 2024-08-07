@@ -309,7 +309,7 @@ void upsample_bilinear2d_out_kernel(
       input.scalar_type(),
       "upsample_bilinear2d_xpu",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         auto idata_acc = input.packed_accessor64<scalar_t, 4>();
         auto odata_acc = output.packed_accessor64<scalar_t, 4>();
 
@@ -372,7 +372,7 @@ void upsample_bilinear2d_backward_out_kernel(
       grad_output_.scalar_type(),
       "upsample_bilinear2d_backward_xpu",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
         // TODO: using PackedTensorAccessor instead of copy
         Tensor grad_input_c = grad_input.is_contiguous()

@@ -10,7 +10,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/IndexingKernel.h>
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
@@ -22,7 +22,7 @@
 namespace at {
 
 namespace native {
-
+REGISTER_XPU_DISPATCH(index_stub, &xpu::index_kernel);
 REGISTER_XPU_DISPATCH(index_put_stub, &xpu::index_put_kernel);
 REGISTER_XPU_DISPATCH(
     index_put_with_sort_stub,
@@ -37,6 +37,8 @@ REGISTER_XPU_DISPATCH(
     scatter_scalar_reduce_stub,
     &xpu::scatter_scalar_reduce_kernel);
 REGISTER_XPU_DISPATCH(gather_stub, &xpu::gather_kernel);
+
+// REGISTER_XPU_DISPATCH(index_fill_stub, &xpu::index_fill_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
@@ -217,6 +219,7 @@ AdvancedIndex::AdvancedIndex(const Tensor& src, TensorList indices_list) {
   }
 }
 
+// PyTorch defines it in cpp source. Copy it.
 static TensorIterator make_index_put_iterator(
     const AdvancedIndex& info,
     const Tensor& value) {
@@ -247,66 +250,6 @@ static TensorIterator make_index_put_iterator(
   }
   return config.build();
 }
-
-// Tensor& _index_put_impl_xpu_(
-//     Tensor& self,
-//     const torch::List<c10::optional<Tensor>>& indices,
-//     const Tensor& value,
-//     bool accumulate,
-//     bool unsafe) {
-//   TORCH_CHECK_INDEX(
-//       indices.size() <= (size_t)self.dim(),
-//       "too many indices for tensor of dimension ",
-//       self.dim(),
-//       " (got ",
-//       indices.size(),
-//       ")");
-//   if (at::has_internal_overlap(self) == MemOverlap::Yes) {
-//     TORCH_WARN(
-//         "Use of index_put_ on expanded tensors is deprecated. "
-//         "Please clone() the tensor before performing this operation. "
-//         "This also applies to advanced indexing e.g. tensor[indices] =
-//         tensor");
-//   }
-//   if (!accumulate) {
-//     auto masked_fill_dispatch = canDispatchToMaskedFill(self, indices,
-//     value); if (std::get<0>(masked_fill_dispatch)) {
-//       return self.masked_fill_(std::get<1>(masked_fill_dispatch),
-//       value.item());
-//     }
-//   }
-//   auto value_ = value;
-//   if (value.device() != self.device() && value.numel() == 1 &&
-//       value.dim() == 0) {
-//     value_ = value.to(self.device());
-//   }
-//   at::assert_no_overlap(self, value);
-//   // NOLINTNEXTLINE(performance-implicit-conversion-in-loop)
-//   for (const c10::optional<Tensor>& index : indices) {
-//     if (index.has_value()) {
-//       at::assert_no_overlap(self, *index);
-//     }
-//   }
-
-//   if (accumulate || globalContext().deterministicAlgorithms()) {
-//     TORCH_CHECK(
-//         value_.device() == self.device(),
-//         "expected device ",
-//         self.device(),
-//         " but got device ",
-//         value_.device(),
-//         " for value tensor");
-//     xpu::index_put_deterministic_kernel(
-//         self, indices, value_, accumulate, unsafe);
-//     return self;
-//   }
-
-//   auto info = make_info(self, indices);
-//   auto iter = make_index_put_iterator(info, value_);
-//   xpu::index_put_kernel(
-//       iter, info.indexed_sizes, info.indexed_strides, accumulate);
-//   return self;
-// }
 
 void check_indices_on_cpu_or_selfdevice(
     const Tensor& self,
@@ -351,44 +294,6 @@ static void build_index_op(
         info.src.scalar_type(), info.src.device());
   }
   iter.build(config);
-}
-Tensor& index_out_xpu(
-    const Tensor& self,
-    const c10::List<c10::optional<Tensor>>& indices,
-    Tensor& result) {
-  TORCH_CHECK(
-      indices.size() <= (size_t)self.dim(),
-      "too many indices for tensor of dimension ",
-      self.dim(),
-      " (got ",
-      indices.size(),
-      ")");
-
-  check_indices_on_cpu_or_selfdevice(self, indices);
-
-  if (result.defined()) {
-    TORCH_CHECK(
-        self.scalar_type() == result.scalar_type(),
-        "index_out: self (",
-        self.scalar_type(),
-        ") and result (",
-        result.scalar_type(),
-        ") must have the same scalar type");
-    at::assert_no_internal_overlap(result);
-    at::assert_no_overlap(result, self);
-    for (const c10::optional<Tensor>& index : indices) {
-      if (index.has_value()) {
-        at::assert_no_overlap(result, *index);
-      }
-    }
-  }
-  auto info = make_info(self, std::move(indices));
-  TensorIterator iter;
-  build_index_op(iter, info, result);
-
-  xpu::index_kernel(iter, info.indexed_sizes, info.indexed_strides);
-
-  return result;
 }
 
 Tensor count_nonzero_xpu(const Tensor& self, IntArrayRef dims) {

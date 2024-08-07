@@ -4,6 +4,10 @@
 #include <ATen/native/Sorting.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Sorting.h>
+
+#include <ATen/native/ReduceOpsUtils.h>
+#include <comm/TensorInfo.h>
+
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 

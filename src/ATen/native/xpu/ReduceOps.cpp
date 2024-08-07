@@ -31,6 +31,7 @@ namespace native {
 REGISTER_XPU_DISPATCH(sum_stub, &xpu::sum_kernel);
 REGISTER_XPU_DISPATCH(mean_stub, &xpu::mean_kernel);
 REGISTER_XPU_DISPATCH(argmax_stub, &xpu::argmax_kernel);
+REGISTER_XPU_DISPATCH(argmin_stub, &xpu::argmin_kernel);
 REGISTER_XPU_DISPATCH(and_stub, &xpu::and_kernel);
 REGISTER_XPU_DISPATCH(or_stub, &xpu::or_kernel);
 REGISTER_XPU_DISPATCH(max_values_stub, &xpu::max_values_kernel);
@@ -38,6 +39,7 @@ REGISTER_XPU_DISPATCH(min_values_stub, &xpu::min_values_kernel);
 REGISTER_XPU_DISPATCH(std_var_stub, &xpu::std_var_kernel);
 REGISTER_XPU_DISPATCH(cumsum_stub, &xpu::cumsum_kernel);
 REGISTER_XPU_DISPATCH(cumprod_stub, &xpu::cumprod_kernel);
+REGISTER_XPU_DISPATCH(nansum_stub, &xpu::nansum_kernel);
 
 static inline void warn_invalid_degrees_of_freedom(
     const char* fname,
@@ -285,6 +287,32 @@ std::tuple<Tensor, Tensor> std_mean_xpu(
   return std_var_mean_out(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
+
+void aminmax_impl(
+    const Tensor& self,
+    int64_t dim_opt,
+    bool keepdim,
+    Tensor& min,
+    Tensor& max) {
+  auto dtype = self.scalar_type();
+  TensorIterator iter = make_reduction(
+      "aminmax_xpu", min, max, self.contiguous(), dim_opt, false, dtype);
+  if (iter.numel() != 0) {
+    native::xpu::aminmax_kernel(iter);
+  }
+}
+
+void aminmax_allreduce_impl(const Tensor& self, Tensor& min, Tensor& max) {
+  auto dtype = self.scalar_type();
+  auto iter = make_reduction(
+      "aminmax_xpu", min, max, self, IntArrayRef{}, false, dtype);
+  TORCH_CHECK(
+      iter.numel() > 0, "min_max on a tensor with no elements is not defined.");
+  native::xpu::aminmax_allreduce_kernel(iter);
+}
+
+REGISTER_XPU_DISPATCH(aminmax_stub, &aminmax_impl);
+REGISTER_XPU_DISPATCH(aminmax_allreduce_stub, &aminmax_allreduce_impl)
 
 } // namespace native
 } // namespace at

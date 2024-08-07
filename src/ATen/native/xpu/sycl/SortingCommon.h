@@ -2,13 +2,12 @@
 
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
-#include <comm/xpu_aten.h>
+#include <comm/TensorInfo.h>
 #include <stdlib.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
+using namespace at::xpu::detail;
 struct NullType {
   using value_type = NullType;
   template <typename T>
@@ -85,6 +84,50 @@ struct KeyTraits<uint8_t> {
   }
 };
 
+template <>
+struct KeyTraits<uint16_t> {
+  using Type = uint16_t;
+  using SrcType = uint16_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
+
+template <>
+struct KeyTraits<uint32_t> {
+  using Type = uint32_t;
+  using SrcType = uint32_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
+
+template <>
+struct KeyTraits<uint64_t> {
+  using Type = uint64_t;
+  using SrcType = uint64_t;
+  static inline Type convert(SrcType v) {
+    return v;
+  }
+  static inline SrcType deconvert(Type v) {
+    return v;
+  }
+  static inline int endbit() {
+    return sizeof(Type) << 3;
+  }
+};
 template <>
 struct KeyTraits<int8_t> {
   using Type = uint8_t;
@@ -308,6 +351,84 @@ inline T group_inclusive_cumsum(T* slm_storage, sycl::nd_item<1>& item) {
       slm_storage, item);
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+template <typename scalar_t, typename index_t, typename Launcher>
+void run_launcher(
+    const TensorBase& values,
+    const TensorBase& indices,
+    const TensorBase& self,
+    int64_t dim,
+    Launcher l) {
+  auto self_info = getTensorInfo<scalar_t, index_t>(self);
+  auto values_info = getTensorInfo<scalar_t, index_t>(values);
+  auto indices_info = getTensorInfo<int64_t, index_t>(indices);
+
+  int64_t slice_size = self.size(dim);
+  /* We use these structures solely to find the offset to */
+  /* each slice we are operating on */
+  self_info.reduceDim(dim);
+  values_info.reduceDim(dim);
+  indices_info.reduceDim(dim);
+
+  /* Collapse all other dims */
+  int collapse_self_dim = self_info.collapseDims(dim);
+  int collapse_values_dim = values_info.collapseDims(dim);
+  int collapse_indices_dim = indices_info.collapseDims(dim);
+
+  int64_t num_slices = 1;
+  for (int i = 0; i < self_info.dims; ++i) {
+    num_slices *= self_info.sizes[i];
+  }
+
+  /* This is used as a template parameter to calculate indices. */
+  /* We only specialize it if all collapsed dim sizes are the */
+  /* same; otherwise, we use -1 which is the specialization */
+  /* parameter for arbitrary dimensions */
+  int all_dims = self_info.dims;
+  if (values_info.dims != all_dims || indices_info.dims != all_dims) {
+    all_dims = -1;
+  }
+
+  if (all_dims == 1) {
+    l.template launch<scalar_t, index_t, 1>(
+        values_info,
+        collapse_values_dim,
+        indices_info,
+        collapse_indices_dim,
+        self_info,
+        collapse_self_dim,
+        num_slices,
+        slice_size);
+  } else if (all_dims == 2) {
+    l.template launch<scalar_t, index_t, 2>(
+        values_info,
+        collapse_values_dim,
+        indices_info,
+        collapse_indices_dim,
+        self_info,
+        collapse_self_dim,
+        num_slices,
+        slice_size);
+  } else if (all_dims == 3) {
+    l.template launch<scalar_t, index_t, 3>(
+        values_info,
+        collapse_values_dim,
+        indices_info,
+        collapse_indices_dim,
+        self_info,
+        collapse_self_dim,
+        num_slices,
+        slice_size);
+  } else {
+    l.template launch<scalar_t, index_t, -1>(
+        values_info,
+        collapse_values_dim,
+        indices_info,
+        collapse_indices_dim,
+        self_info,
+        collapse_self_dim,
+        num_slices,
+        slice_size);
+  }
+}
+
+} // namespace at::native::xpu

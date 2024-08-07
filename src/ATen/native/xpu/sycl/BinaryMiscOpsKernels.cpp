@@ -24,6 +24,32 @@ void mse_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
+struct SmoothL1Functor {
+  scalar_t operator()(scalar_t input, scalar_t target) const {
+    auto z = std::abs(input - target);
+    return z < beta_val ? scalar_t(0.5) * z * z / beta_val
+                        : z - scalar_t(0.5) * beta_val;
+  }
+  SmoothL1Functor(scalar_t beta_val) : beta_val(beta_val) {}
+
+ private:
+  scalar_t beta_val;
+};
+
+void smooth_l1_kernel(TensorIteratorBase& iter, double beta) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "smooth_l1_xpu",
+      [&iter, beta]() {
+        scalar_t beta_val(beta);
+        SmoothL1Functor<scalar_t> f(beta_val);
+        gpu_kernel(iter, f);
+      });
+}
+
+template <typename scalar_t>
 struct HuberFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     auto z = std::abs(a - b);

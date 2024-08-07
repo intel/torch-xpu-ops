@@ -13,6 +13,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
@@ -46,6 +47,7 @@ _xpu_computation_op_list = [
     "abs",
     "erf",
     "erfc",
+    "erfinv",
     "bernoulli",
     "bitwise_and",
     "bitwise_not",
@@ -58,10 +60,14 @@ _xpu_computation_op_list = [
     "clamp_min",
     "clone",
     "copy",
-    "cumprod"
+    "cumprod",
     "cumsum",
     "equal",
     "eq",
+    "exp",
+    "exp2",
+    "expm1",
+    "exponential",
     "fill",
     "fmod",
     "gcd",
@@ -72,12 +78,21 @@ _xpu_computation_op_list = [
     "hardswish",
     "nn.functional.mish",
     "index_add",
+    "index_fill",
     "index_put",
     "index_select",
+    "masked_scatter",
+    "masked_select",
     "isin",
     "isnan",
     "le",
     "log",
+    "log10",
+    "log1p",
+    "log2",
+    "logaddexp",
+    "logaddexp2",
+    "logit",
     "lt",
     "logical_and",
     "logical_or",
@@ -87,10 +102,11 @@ _xpu_computation_op_list = [
     "maximum",
     "minimum",
     "mul",
+    "median",
+    "nanmedian",
     "native_dropout_backward",
     "ne",
     "neg",
-    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.elu",
     "nn.functional.glu",
     "nn.functional.pad",
@@ -100,6 +116,7 @@ _xpu_computation_op_list = [
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
+    "nextafter",
     "nonzero",
     "normal",
     "pow",
@@ -124,12 +141,14 @@ _xpu_computation_op_list = [
     "atanh",
     "sqrt",
     "sum",
+    "nansum",
     "amin",
     "amax",
     "std",
     "std_mean",
     "var",
     "var_mean",
+    "norm",
     "hypot",
     "unfold",
     "uniform",
@@ -142,6 +161,7 @@ _xpu_computation_op_list = [
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
+    # "topk", # Comparison with CPU is not feasible due to its unstable sorting algorithm
     "flip",
     "roll",
     "tril",
@@ -151,8 +171,10 @@ _xpu_computation_op_list = [
     "softmax",
     "scatter",
     "gather",
+    "nn.functional.adaptive_max_pool2d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
     "nn.functional.embedding",
     "nn.functional.unfold",
@@ -160,12 +182,15 @@ _xpu_computation_op_list = [
     "nn.functional.interpolate",
     "nn.functional.upsample_bilinear",
     "nn.functional.upsample_nearest",
-    # "nn.functional.nll_loss", # Lack of XPU implementation of aten::nll_loss2d_forward. Will retrieve the case, only if the op is implemented.
+    "nn.functional.nll_loss",
+    "nn.functional.smooth_l1_loss",
     "nn.functional.mse_loss",
+    "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "sigmoid",
     "logsigmoid",
     "sgn",
+    "round",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
@@ -181,12 +206,28 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "digamma",
+    "polygamma",
+    "lgamma",
+    "unique_consecutive",
+    "unique",
     "multinomial",
     "lerp",
+    "polar",
+    "frac",
+    "aminmax",
+    "argmin",
     "conj_physical",
+    "histogram",
+    "repeat_interleave",
+    "fmax",
+    "fmin",
+    "floor",
+    "floor_divide",
     "copysign",
-    "count_nonzero"
+    "count_nonzero",
     "nan_to_num",
+    "nanmean",
 ]
 
 
@@ -467,39 +508,41 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-    def replace_opinfo_device(self, info: OpInfo):
-        decorator_xpu = []
-        replaced = False
-        for decorator in info.decorators:
-            if type(decorator) == DecorateInfo:
-                if decorator.device_type == "cuda":
-                    decorator_xpu.append(decorator)
-                    decorator.device_type = "xpu"
+    def align_db_decorators(self, db):
+        for info in db:
+            decorator_xpu = []
+            replaced = False
+            for decorator in info.decorators:
+                if type(decorator) == DecorateInfo:
+                    if decorator.device_type == "cuda":
+                        decorator_xpu.append(decorator)
+                        decorator.device_type = "xpu"
+                        replaced = True
+                    else:
+                        decorator_xpu.append(decorator)
+                elif self.only_cuda_fn == decorator:
+                    decorator_xpu.append(common_device_type.onlyCUDA)
                     replaced = True
-                else:
-                    decorator_xpu.append(decorator)
-            elif self.only_cuda_fn == decorator:
-                decorator_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.decorators = tuple(decorator_xpu)
-        skip_xpu = []
-        replaced = False
-        for skip in info.skips:
-            if type(skip) == DecorateInfo:
-                if skip.device_type == "cuda":
-                    skip_xpu.append(decorator)
-                    skip.device_type = "xpu"
-                    replaced = True
-                else:
-                    skip_xpu.append(skip)
-            elif self.only_cuda_fn == skip:
-                skip_xpu.append(common_device_type.onlyCUDA)
-                replaced = True
-        if replaced:
-            info.skips = tuple(skip_xpu)
+            if replaced:
+                info.decorators = tuple(decorator_xpu)
+            skip_xpu = []
+            replaced = False
+            if hasattr(info, "skips"):
+                for skip in info.skips:
+                    if type(skip) == DecorateInfo:
+                        if skip.device_type == "cuda":
+                            skip_xpu.append(decorator)
+                            skip.device_type = "xpu"
+                            replaced = True
+                        else:
+                            skip_xpu.append(skip)
+                    elif self.only_cuda_fn == skip:
+                        skip_xpu.append(common_device_type.onlyCUDA)
+                        replaced = True
+            if replaced:
+                info.skips = tuple(skip_xpu)
 
-    def adjust_db(self, db):
+    def align_supported_dtypes(self, db):
         for opinfo in db:
             if opinfo.name not in _xpu_computation_op_list:
                 opinfo.dtypesIfXPU = opinfo.dtypes
@@ -507,7 +550,6 @@ class XPUPatchForImport:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
                 backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
-            self.replace_opinfo_device(opinfo)
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
@@ -538,7 +580,9 @@ class XPUPatchForImport:
             common_methods_invocations.python_ref_db,
             common_methods_invocations.op_db,
         ]:
-            self.adjust_db(db)
+            self.align_supported_dtypes(db)
+            self.align_db_decorators(db)
+        self.align_db_decorators(module_db)
         common_methods_invocations.python_ref_db = [
             op
             for op in self.python_ref_db

@@ -86,8 +86,8 @@ void apply_triu_tril(
   IndexType result_stride_0 = (IndexType)result.stride(-2);
   IndexType result_stride_1 = (IndexType)result.stride(-1);
 
-  scalar_t* result_ptr = (scalar_t*)(result.data_ptr());
-  scalar_t* self_ptr = (scalar_t*)(self.data_ptr());
+  scalar_t* result_ptr = result.data_ptr<scalar_t>();
+  scalar_t* self_ptr = self.data_ptr<scalar_t>();
 
   ApplyTriuTrilKernelFunctor<scalar_t, IndexType, upper> kfn(
       k,

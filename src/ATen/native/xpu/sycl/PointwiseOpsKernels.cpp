@@ -10,7 +10,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct AddcmulFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return static_cast<accscalar_t>(a) +
         alpha_ * static_cast<accscalar_t>(b) * static_cast<accscalar_t>(c);
@@ -48,7 +48,7 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
         iter.dtype(),
         "addcmul_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           gpu_kernel(iter, AddcmulFunctor<scalar_t>(alpha));
         });
@@ -57,7 +57,7 @@ void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
 
 template <typename scalar_t>
 struct AddcdivFunctor {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
     return a + alpha_ * (b / static_cast<accscalar_t>(c));
   }
@@ -95,7 +95,7 @@ void addcdiv_kernel(TensorIteratorBase& iter, const Scalar& value) {
         iter.dtype(),
         "addcdiv_xpu",
         [&]() {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto alpha = value.to<accscalar_t>();
           AddcdivFunctor<scalar_t> f(alpha);
           gpu_kernel(iter, f);
@@ -123,6 +123,43 @@ void mse_backward_kernel(TensorIterator& iter, const Scalar& value) {
       [&]() {
         auto alpha = value.to<scalar_t>();
         gpu_kernel(iter, MSEBackwardFunctor<scalar_t>(alpha));
+      });
+}
+
+template <typename scalar_t>
+struct SmoothL1BackwardFunctor {
+  scalar_t operator()(scalar_t input, scalar_t target, scalar_t grad_output)
+      const {
+    const auto x = input - target;
+    if (x < -beta_val)
+      return -norm_val * grad_output;
+    else if (x > beta_val)
+      return norm_val * grad_output;
+    else
+      return norm_val * x * grad_output / beta_val;
+  }
+  SmoothL1BackwardFunctor(scalar_t norm_val, scalar_t beta_val)
+      : norm_val(norm_val), beta_val(beta_val) {}
+
+ private:
+  scalar_t norm_val;
+  scalar_t beta_val;
+};
+
+void smooth_l1_backward_kernel(
+    TensorIterator& iter,
+    const Scalar& norm,
+    double beta) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      iter.dtype(),
+      "smooth_l1_backward_xpu",
+      [&iter, &norm, beta] {
+        auto norm_val = norm.to<scalar_t>();
+        scalar_t beta_val(beta);
+        SmoothL1BackwardFunctor<scalar_t> f(norm_val, beta_val);
+        gpu_kernel(iter, f);
       });
 }
 
