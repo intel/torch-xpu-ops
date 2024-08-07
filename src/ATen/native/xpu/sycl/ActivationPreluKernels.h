@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void prelu_kernel(TensorIteratorBase& iter);
+void prelu_kernel(TensorIterator& iter);
 
-void prelu_backward_kernel(TensorIteratorBase& iter);
+void prelu_backward_kernel(TensorIterator& iter);
 
 } // namespace at::native::xpu
