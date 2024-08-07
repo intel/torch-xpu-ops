@@ -96,7 +96,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"" 
+          TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Run XPU OP Examples
