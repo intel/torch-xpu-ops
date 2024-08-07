@@ -293,25 +293,21 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   }
 }
 
-Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
+} // namespace native::xpu
+
+Tensor& XPUNativeFunctions::copy_(
+    Tensor& self,
+    const Tensor& src,
+    bool non_blocking) {
+  if (self._is_zerotensor()) {
+    TORCH_CHECK(false, "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
+  }
+  if (src._is_zerotensor()) {
+    return self.zero_();
+  }
+
   TORCH_CHECK(self.defined(), "self is undefined");
   TORCH_CHECK(src.defined(), "src is undefined");
-
-  // Copies into meta self are OK and just ignored (similar to inplace)
-  if (self.is_meta()) {
-    auto shape = infer_size_symdimvector(self.sym_sizes(), src.sym_sizes());
-    TORCH_CHECK(
-        self.sym_sizes().equals(shape),
-        "output with shape ",
-        self.sym_sizes(),
-        " doesn't match the broadcast shape ",
-        shape);
-    return self;
-  }
-
-  if (src.is_meta()) {
-    TORCH_CHECK_NOT_IMPLEMENTED(false, "Cannot copy out of meta tensor; no data!")
-  }
 
   if (self.is_same(src)) {
     return self;
@@ -346,23 +342,9 @@ Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking) {
     return self;
   }
 
-  _copy_xpu(iter, non_blocking);
+  native::xpu::_copy_xpu(iter, non_blocking);
 
   return self;
-}
-} // namespace native::xpu
-
-Tensor& XPUNativeFunctions::copy_(
-    Tensor& self,
-    const Tensor& src,
-    bool non_blocking) {
-  if (self._is_zerotensor()) {
-    TORCH_CHECK(false, "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
-  }
-  if (src._is_zerotensor()) {
-    return self.zero_();
-  }
-  return native::xpu::_copy_xpu(self, src, non_blocking);
 }
 
 Tensor XPUNativeFunctions::_to_copy(
