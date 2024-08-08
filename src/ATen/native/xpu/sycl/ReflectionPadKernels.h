@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
@@ -27,12 +27,12 @@ void reflection_pad2d_backward_kernel(
     IntArrayRef padding);
 
 void reflection_pad3d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding);
 
 void reflection_pad3d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding);

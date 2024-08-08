@@ -1,16 +1,11 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorFactories.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <c10/xpu/XPUFunctions.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/ops/empty_native.h>
 #include <ATen/ops/empty_strided_native.h>
-#endif
+#include <xpu/ATen/ops/_efficientzerotensor_native.h>
 
 #include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
@@ -18,11 +13,12 @@
 
 namespace at {
 
-Tensor& XPUNativeFunctions::eye_out(int64_t n, Tensor& result) {
-  return XPUNativeFunctions::eye_out(n, n, result);
-}
+namespace native {
 
-Tensor& XPUNativeFunctions::eye_out(int64_t n, int64_t m, Tensor& result) {
+REGISTER_XPU_DISPATCH(complex_stub, &xpu::complex_kernel);
+REGISTER_XPU_DISPATCH(polar_stub, &xpu::polar_kernel);
+
+Tensor& eye_out_xpu(int64_t n, int64_t m, Tensor& result) {
   TORCH_CHECK(n >= 0, "n must be greater or equal to 0, got ", n);
   TORCH_CHECK(m >= 0, "m must be greater or equal to 0, got ", m);
 
@@ -37,7 +33,11 @@ Tensor& XPUNativeFunctions::eye_out(int64_t n, int64_t m, Tensor& result) {
   return result;
 }
 
-Tensor XPUNativeFunctions::empty(
+Tensor& eye_out_xpu(int64_t n, Tensor& result) {
+  return eye_out_xpu(n, n, result);
+}
+
+Tensor empty_xpu(
     IntArrayRef size,
     c10::optional<ScalarType> dtype_opt,
     c10::optional<Layout> layout_opt,
@@ -60,7 +60,7 @@ Tensor XPUNativeFunctions::empty(
   return result;
 }
 
-Tensor XPUNativeFunctions::empty_strided(
+Tensor empty_strided_xpu(
     IntArrayRef size,
     IntArrayRef stride,
     c10::optional<ScalarType> dtype_opt,
@@ -78,13 +78,7 @@ Tensor XPUNativeFunctions::empty_strided(
   return result;
 }
 
-Tensor XPUNativeFunctions::clone(
-    const Tensor& self,
-    c10::optional<MemoryFormat> memory_format) {
-  return at::native::clone(self, memory_format);
-}
-
-Tensor XPUNativeFunctions::_efficientzerotensor(
+Tensor _efficientzerotensor_xpu(
     IntArrayRef size,
     std::optional<ScalarType> dtype,
     std::optional<Layout> layout,
@@ -103,70 +97,7 @@ Tensor XPUNativeFunctions::_efficientzerotensor(
   return out;
 }
 
-static void complex_check_floating(const Tensor& a, const Tensor& b) {
-  TORCH_CHECK(
-      (a.scalar_type() == kFloat || a.scalar_type() == kDouble ||
-       a.scalar_type() == kHalf) &&
-          (b.scalar_type() == kFloat || b.scalar_type() == kDouble ||
-           b.scalar_type() == kHalf),
-      "Expected both inputs to be Half, Float or Double tensors but got ",
-      a.scalar_type(),
-      " and ",
-      b.scalar_type());
-}
-
-static void complex_check_dtype(
-    const Tensor& result,
-    const Tensor& a,
-    const Tensor& b) {
-  complex_check_floating(a, b);
-  TORCH_CHECK(
-      a.scalar_type() == b.scalar_type(),
-      "Expected object of scalar type ",
-      a.scalar_type(),
-      " but got scalar type ",
-      b.scalar_type(),
-      " for second argument");
-  TORCH_CHECK(
-      result.scalar_type() == toComplexType(a.scalar_type()),
-      "Expected object of scalar type ",
-      toComplexType(a.scalar_type()),
-      " but got scalar type ",
-      result.scalar_type(),
-      " for argument 'out'");
-}
-
-Tensor& XPUNativeFunctions::complex_out(
-    const Tensor& real,
-    const Tensor& imag,
-    Tensor& result) {
-  complex_check_dtype(result, real, imag);
-  auto iter = TensorIteratorConfig()
-                  .add_output(result)
-                  .add_const_input(real)
-                  .add_const_input(imag)
-                  .check_all_same_dtype(false)
-                  .build();
-  native::xpu::complex_kernel(iter);
-  return result;
-}
-
-Tensor& XPUNativeFunctions::polar_out(
-    const Tensor& abs,
-    const Tensor& angle,
-    Tensor& result) {
-  complex_check_dtype(result, abs, angle);
-  auto iter = TensorIteratorConfig()
-                  .add_output(result)
-                  .add_const_input(abs)
-                  .add_const_input(angle)
-                  .check_all_same_dtype(false)
-                  .build();
-  native::xpu::polar_kernel(iter);
-  return result;
-}
-
-Tensor& XPUNativeFunctions::randperm_out(
+Tensor& randperm_out_xpu(
     int64_t n,
     c10::optional<Generator> generator,
     Tensor& result) {
@@ -183,4 +114,5 @@ Tensor& XPUNativeFunctions::randperm_out(
   return result;
 }
 
+} // namespace native
 } // namespace at

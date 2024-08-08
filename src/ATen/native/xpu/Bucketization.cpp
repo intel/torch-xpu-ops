@@ -1,11 +1,11 @@
 #include <ATen/native/BucketizationUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BucketizationKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
+namespace native {
 
-Tensor& XPUNativeFunctions::searchsorted_out(
+Tensor& searchsorted_out_xpu(
     const Tensor& sorted_sequence,
     const Tensor& self,
     bool out_int32,
@@ -17,9 +17,9 @@ Tensor& XPUNativeFunctions::searchsorted_out(
   c10::MaybeOwned<Tensor> sorter_maybe_owned =
       at::borrow_from_optional_tensor(sorter_opt);
   const Tensor& sorter = *sorter_maybe_owned;
-  at::native::searchsorted_pre_check(
+  searchsorted_pre_check(
       sorted_sequence, self, result, out_int32, right, side_opt, sorter);
-  at::native::resize_output(result, self.sizes());
+  resize_output(result, self.sizes());
 
   if (self.numel() == 0) {
     return result;
@@ -28,12 +28,12 @@ Tensor& XPUNativeFunctions::searchsorted_out(
   // we have two inputs to set right, pre_check checks that they aren't set to
   // opposites
   bool is_right = (side_opt && *side_opt == "right") || right;
-  at::native::xpu::searchsorted_kernel(
+  xpu::searchsorted_kernel(
       result, self, sorted_sequence, out_int32, is_right, sorter);
   return result;
 }
 
-Tensor& XPUNativeFunctions::searchsorted_out(
+Tensor& searchsorted_out_xpu(
     const Tensor& sorted_sequence,
     const Scalar& self,
     bool out_int32,
@@ -42,8 +42,8 @@ Tensor& XPUNativeFunctions::searchsorted_out(
     const std::optional<Tensor>& sorter_opt,
     Tensor& result) {
   const Tensor& scalar_tensor =
-      at::native::searchsorted_scalar_tensor(self, sorted_sequence.device());
-  return searchsorted_out(
+      searchsorted_scalar_tensor(self, sorted_sequence.device());
+  return searchsorted_out_xpu(
       sorted_sequence,
       scalar_tensor,
       out_int32,
@@ -53,7 +53,7 @@ Tensor& XPUNativeFunctions::searchsorted_out(
       result);
 }
 
-Tensor XPUNativeFunctions::searchsorted(
+Tensor searchsorted_xpu(
     const Tensor& sorted_sequence,
     const Tensor& self,
     bool out_int32,
@@ -64,12 +64,12 @@ Tensor XPUNativeFunctions::searchsorted(
   c10::TensorOptions options =
       TensorOptions().device(self.options().device()).dtype(scalar_type);
   Tensor result = at::empty({0}, options, MemoryFormat::Contiguous);
-  searchsorted_out(
+  searchsorted_out_xpu(
       sorted_sequence, self, out_int32, right, side_opt, sorter, result);
   return result;
 }
 
-Tensor XPUNativeFunctions::searchsorted(
+Tensor searchsorted_xpu(
     const Tensor& sorted_sequence,
     const Scalar& self,
     bool out_int32,
@@ -77,12 +77,12 @@ Tensor XPUNativeFunctions::searchsorted(
     const std::optional<c10::string_view> side_opt,
     const std::optional<Tensor>& sorter) {
   const Tensor& scalar_tensor =
-      at::native::searchsorted_scalar_tensor(self, sorted_sequence.device());
-  return searchsorted(
+      searchsorted_scalar_tensor(self, sorted_sequence.device());
+  return searchsorted_xpu(
       sorted_sequence, scalar_tensor, out_int32, right, side_opt, sorter);
 }
 
-Tensor& XPUNativeFunctions::bucketize_out(
+Tensor& bucketize_out_xpu(
     const Tensor& self,
     const Tensor& boundaries,
     bool out_int32,
@@ -93,12 +93,12 @@ Tensor& XPUNativeFunctions::bucketize_out(
       "boundaries tensor must be 1 dimension, but got dim(",
       boundaries.dim(),
       ")");
-  searchsorted_out(
+  searchsorted_out_xpu(
       boundaries, self, out_int32, right, nullopt, nullopt, result);
   return result;
 }
 
-Tensor XPUNativeFunctions::bucketize(
+Tensor bucketize_xpu(
     const Tensor& self,
     const Tensor& boundaries,
     bool out_int32,
@@ -107,19 +107,20 @@ Tensor XPUNativeFunctions::bucketize(
   c10::TensorOptions options =
       TensorOptions().device(self.options().device()).dtype(scalar_type);
   Tensor result = at::empty({0}, options, MemoryFormat::Contiguous);
-  bucketize_out(self, boundaries, out_int32, right, result);
+  bucketize_out_xpu(self, boundaries, out_int32, right, result);
   return result;
 }
 
-Tensor XPUNativeFunctions::bucketize(
+Tensor bucketize_xpu(
     const Scalar& self,
     const Tensor& boundaries,
     bool out_int32,
     bool right) {
-  return bucketize(
-      at::native::searchsorted_scalar_tensor(self, boundaries.device()),
+  return bucketize_xpu(
+      searchsorted_scalar_tensor(self, boundaries.device()),
       boundaries,
       out_int32,
       right);
 }
+} // namespace native
 } // namespace at

@@ -1,12 +1,11 @@
-#include <ATen/ATen.h>
 #include <ATen/native/ForeachUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/AmpKernels.h>
 
 namespace at {
-
-void XPUNativeFunctions::_amp_foreach_non_finite_check_and_unscale_(
+namespace native {
+void _amp_foreach_non_finite_check_and_unscale_xpu_(
     TensorList scaled_grads,
     Tensor& found_inf,
     const Tensor& inv_scale) {
@@ -79,7 +78,7 @@ void XPUNativeFunctions::_amp_foreach_non_finite_check_and_unscale_(
       tensor_lists, found_inf, inv_scale);
 }
 
-Tensor& XPUNativeFunctions::_amp_update_scale_(
+Tensor& _amp_update_scale_xpu_(
     Tensor& current_scale,
     Tensor& growth_tracker,
     const Tensor& found_inf,
@@ -115,5 +114,5 @@ Tensor& XPUNativeFunctions::_amp_update_scale_(
 
   return current_scale;
 }
-
+} // namespace native
 } // namespace at

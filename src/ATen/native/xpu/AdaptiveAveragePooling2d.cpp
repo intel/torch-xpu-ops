@@ -1,15 +1,14 @@
-#include <ATen/ATen.h>
+
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/AdaptivePooling.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
-#include <aten/src/ATen/ops/mean_ops.h>
-#endif
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/mean.h>
+#include <ATen/ops/zeros_like.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_backward_native.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_native.h>
 
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.h>
 
@@ -89,7 +88,8 @@ Tensor mean_backward(
 }
 } // namespace
 
-Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
+namespace native {
+Tensor adaptive_avg_pool2d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& input) {
   TensorArg grad_output_arg{grad_output, "grad_output", 1},
@@ -127,7 +127,7 @@ Tensor XPUNativeFunctions::_adaptive_avg_pool2d_backward(
   return grad_input;
 }
 
-Tensor& XPUNativeFunctions::adaptive_avg_pool2d_out(
+Tensor& adaptive_avg_pool2d_out_xpu(
     const Tensor& input,
     IntArrayRef output_size,
     Tensor& output) {
@@ -166,17 +166,18 @@ Tensor& XPUNativeFunctions::adaptive_avg_pool2d_out(
       output.as_strided__symint({n, c, 1, 1}, {c, 1, c, c});
     }
   } else {
-    native::xpu::adaptive_avg_pool2d_kernel(output, input, output_size);
+    xpu::adaptive_avg_pool2d_kernel(output, input, output_size);
   }
   return output;
 }
 
-Tensor XPUNativeFunctions::_adaptive_avg_pool2d(
+Tensor adaptive_avg_pool2d_xpu(
     at::Tensor const& input,
     IntArrayRef output_size) {
   auto output = at::empty({0}, input.options());
-  adaptive_avg_pool2d_out(input, output_size, output);
+  adaptive_avg_pool2d_out_xpu(input, output_size, output);
   return output;
 }
 
+} // namespace native
 } // namespace at

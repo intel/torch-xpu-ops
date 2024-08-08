@@ -2,13 +2,12 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #include <comm/SYCLContext.h>
+#include <xpu/ATen/ops/_local_scalar_dense_native.h>
 
-namespace at {
+namespace at::native {
 
-Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
+Scalar _local_scalar_dense_xpu(const Tensor& self) {
   Scalar r;
   AT_DISPATCH_V2(
       self.scalar_type(),
@@ -41,4 +40,4 @@ Scalar XPUNativeFunctions::_local_scalar_dense(const Tensor& self) {
   return r;
 }
 
-} // namespace at
+} // namespace at::native

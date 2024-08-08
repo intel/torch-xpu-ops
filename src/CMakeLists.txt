@@ -26,6 +26,9 @@ if(BUILD_SEPARATE_OPS)
       SHARED
       SYCL_SOURCES ${sycl_src})
     target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    if(USE_PER_OPERATOR_HEADERS)
+      target_compile_definitions(torch_xpu_ops PUBLIC -DAT_PER_OPERATOR_HEADERS)
+    endif()
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
@@ -77,6 +80,10 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   torch_compile_options(${lib})
   target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
   target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
+
+  if(USE_PER_OPERATOR_HEADERS)
+    target_compile_definitions(${lib}  PUBLIC -DAT_PER_OPERATOR_HEADERS)
+  endif()
 
   target_include_directories(${lib} PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
   target_include_directories(${lib} PUBLIC ${ATen_XPU_INCLUDE_DIRS})

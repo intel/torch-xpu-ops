@@ -1,9 +1,10 @@
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
 
+#include <xpu/ATen/ops/bincount_native.h>
 namespace at {
-Tensor XPUNativeFunctions::bincount(
+namespace native {
+Tensor _bincount_xpu(
     const Tensor& self,
     const c10::optional<Tensor>& weights_opt,
     int64_t minlength) {
@@ -20,5 +21,6 @@ Tensor XPUNativeFunctions::bincount(
 
   return native::xpu::bincount_kernel(self, weights, minlength);
 }
+} // namespace native
 
 } // namespace at

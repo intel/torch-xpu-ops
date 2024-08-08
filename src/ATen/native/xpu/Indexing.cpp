@@ -1,16 +1,21 @@
-#include <ATen/ATen.h>
+
 #include <ATen/ExpandUtils.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NamedTensorUtils.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/op_registration/adaption.h>
+
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/TensorInfo.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/index.h>
+#include <xpu/ATen/ops/index_native.h>
 
 namespace at {
+namespace native {
 
-Tensor& XPUNativeFunctions::index_select_out(
+Tensor& index_select_out_xpu(
     const Tensor& self,
     int64_t dim,
     const Tensor& index,
@@ -32,20 +37,17 @@ Tensor& XPUNativeFunctions::index_select_out(
   dim = at::maybe_wrap_dim(dim, self);
   TORCH_CHECK(self.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
   TORCH_CHECK(index.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
-  native::xpu::index_select_kernel(self, dim, index, out);
+  xpu::index_select_kernel(self, dim, index, out);
 
   return out;
 }
 
-Tensor XPUNativeFunctions::index_select(
-    const Tensor& self,
-    int64_t dim,
-    const Tensor& index) {
-  auto out = at::empty({0}, self.options());
-  return index_select_out(self, dim, index, out);
+Tensor index_select_xpu_(const Tensor& self, int64_t dim, const Tensor& index) {
+  Tensor result = at::empty({0}, self.options());
+  return at::native::index_select_out_xpu(self, dim, index, result);
 }
 
-Tensor& XPUNativeFunctions::masked_scatter_(
+Tensor& masked_scatter__xpu(
     Tensor& self,
     const Tensor& mask,
     const Tensor& source) {
@@ -99,29 +101,27 @@ static Tensor& masked_select_out_impl(
   // owning and expand_outplace returns a borrow, the returned borrow
   // would dangle.
   auto mask_self_expanded = expand_outplace(*mask_temp, *self_temp);
-  XPUNativeFunctions::index_out(
+  at::index_out(
+      result,
       *std::get<1>(mask_self_expanded),
       c10::List<std::optional<at::Tensor>>(
-          {*std::move(std::get<0>(mask_self_expanded))}),
-      result);
+          {*std::move(std::get<0>(mask_self_expanded))}));
 
   return result;
 }
 
-Tensor XPUNativeFunctions::masked_select(
-    const Tensor& self,
-    const Tensor& mask) {
+Tensor masked_select_xpu(const Tensor& self, const Tensor& mask) {
   namedinference::compute_broadcast_outnames(self, mask);
   Tensor result = at::empty({0}, self.options());
   return masked_select_out_impl(result, self, mask);
 }
 
-Tensor& XPUNativeFunctions::masked_select_out(
+Tensor& masked_select_out_xpu(
     const Tensor& self,
     const Tensor& mask,
     Tensor& result) {
   namedinference::compute_broadcast_outnames(self, mask);
   return masked_select_out_impl(result, self, mask);
 }
-
+} // namespace native
 } // namespace at

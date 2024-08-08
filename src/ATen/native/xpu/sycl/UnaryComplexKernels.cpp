@@ -1,4 +1,4 @@
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -44,7 +44,7 @@ struct ConjPhysicalFunctor<c10::complex<TYPE>> {
   }
 };
 
-void conj_physical_kernel(TensorIterator& iter) {
+void conj_physical_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_SWITCH(
       iter.common_dtype(),
       "conj_xpu",

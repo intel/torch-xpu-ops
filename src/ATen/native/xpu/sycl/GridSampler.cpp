@@ -4,12 +4,12 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/GridSamplerUtils.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/GridSampler.h>

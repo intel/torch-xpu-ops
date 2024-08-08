@@ -1,9 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

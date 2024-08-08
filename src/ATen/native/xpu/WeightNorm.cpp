@@ -1,14 +1,15 @@
 #include <ATen/native/xpu/sycl/WeightNormKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+
 namespace at {
-std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface(
+namespace native {
+std::tuple<Tensor, Tensor> weight_norm_xpu(
     const Tensor& v,
     const Tensor& g,
     int64_t dim) {
   return native::xpu::weight_norm_kernel(v, g, dim);
 }
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface_backward(
+std::tuple<Tensor, Tensor> weight_norm_backward_xpu(
     const Tensor& grad_w,
     const Tensor& saved_v,
     const Tensor& saved_g,
@@ -24,4 +25,6 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::_weight_norm_interface_backward(
   return native::xpu::weight_norm_backward_kernel(
       grad_w, saved_v, saved_g, saved_norms, dim);
 }
+
+} // namespace native
 } // namespace at
