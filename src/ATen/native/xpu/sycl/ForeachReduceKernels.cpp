@@ -197,7 +197,7 @@ std::vector<Tensor> foreach_norm_kernel(
   std::vector<at::Tensor> ret_per_tensor;
   ret_per_tensor.reserve(ntensors);
   const auto res_option = options.dtype(output_dtype);
-  for (const auto i : c10::irange(ntensors)) {
+  for (const int i; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
