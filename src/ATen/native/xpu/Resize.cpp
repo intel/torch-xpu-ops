@@ -6,6 +6,7 @@
 #include <torch/library.h>
 
 #include <ATen/native/Resize.h>
+#include <xpu/ATen/ops/copy.h>
 #include <xpu/ATen/ops/resize_native.h>
 #include <xpu/ATen/ops/set_native.h>
 
@@ -20,8 +21,6 @@ const at::Tensor& resize_(
     ::std::optional<at::MemoryFormat> memory_format = ::std::nullopt);
 }
 namespace native::xpu {
-
-extern Tensor& _copy_xpu(Tensor& self, const Tensor& src, bool non_blocking);
 
 const Tensor& resize_xpu_(
     const Tensor& self,
@@ -65,12 +64,12 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
   } else {
     at::native::resize_(dst, self.sizes());
   }
-  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, false);
+  return const_cast<Tensor&>(dst.copy_(self, false));
 }
 
 Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
   dst.resize_as_(self);
-  return native::xpu::_copy_xpu(const_cast<Tensor&>(dst), self, non_blocking);
+  return const_cast<Tensor&>(dst.copy_(self, non_blocking));
 }
 
 // Should not register the operator. Desc of resize_as_ and
