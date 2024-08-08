@@ -81,7 +81,6 @@ runs:
         source .github/scripts/env.sh
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
-        source .github/scripts/env.sh
 
         # check param
         function contains() {
