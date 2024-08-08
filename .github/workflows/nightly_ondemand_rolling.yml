@@ -1,4 +1,4 @@
-name: Nightly-OnDemand Tests Rolling
+name: Nightly-OnDemand Rolling Tests
 
 on:
   schedule:
