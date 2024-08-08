@@ -246,6 +246,7 @@ void nll_loss2d_forward_kernel(
   output.zero_();
   total_weight.zero_();
 
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -288,7 +289,7 @@ void nll_loss2d_forward_kernel(
                   work_group_size,
                   getCurrentSYCLQueue(),
                   kfn);
-              // Divide by total_weight
+  //             // Divide by total_weight
               if (reduction == at::Reduction::Mean) {
                 NllLoss2dForwardAverageKernelFunctor kfn_average(
                     output.mutable_data_ptr<scalar_t>(),
