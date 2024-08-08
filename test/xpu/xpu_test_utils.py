@@ -4,6 +4,7 @@
 import copy
 import os
 import sys
+import unittest
 
 import torch
 from torch import bfloat16, cuda
@@ -230,7 +231,23 @@ _xpu_computation_op_list = [
     "copysign",
     "count_nonzero",
     "nan_to_num",
+    "scatter_reduce",
     "nanmean",
+]
+
+# some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
+# but xpu can pass these case, and assert 'unexpected success'
+# the list will pass these case.
+
+
+_cuda_xfail_xpu_pass = [
+    ("rsqrt", "test_reference_numerics_large"),
+    ("_batch_norm_with_update", "test_noncontiguous_samples"),
+    ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
+    ("histc", "test_out"),
+    ("logcumsumexp", "test_out_warning"),
+    ("_refs.mul", "test_python_ref"),
+    ("_refs.mul", "test_python_ref_torch_fallback"),
 ]
 
 
@@ -512,38 +529,35 @@ class XPUPatchForImport:
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
     def align_db_decorators(self, db):
-        for info in db:
-            decorator_xpu = []
+        def gen_xpu_wrappers(name, wrappers):
+            wrapper_xpu = []
             replaced = False
-            for decorator in info.decorators:
-                if type(decorator) == DecorateInfo:
-                    if decorator.device_type == "cuda":
-                        decorator_xpu.append(decorator)
-                        decorator.device_type = "xpu"
-                        replaced = True
-                    else:
-                        decorator_xpu.append(decorator)
-                elif self.only_cuda_fn == decorator:
-                    decorator_xpu.append(common_device_type.onlyCUDA)
-                    replaced = True
-            if replaced:
-                info.decorators = tuple(decorator_xpu)
-            skip_xpu = []
-            replaced = False
-            if hasattr(info, "skips"):
-                for skip in info.skips:
-                    if type(skip) == DecorateInfo:
-                        if skip.device_type == "cuda":
-                            skip_xpu.append(decorator)
-                            skip.device_type = "xpu"
-                            replaced = True
+            for wrapper in wrappers:
+                if type(wrapper) == DecorateInfo:
+                    if wrapper.device_type == "cuda":
+                        if (
+                            unittest.expectedFailure in wrapper.decorators
+                            and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                        ):
+                            pass
                         else:
-                            skip_xpu.append(skip)
-                    elif self.only_cuda_fn == skip:
-                        skip_xpu.append(common_device_type.onlyCUDA)
-                        replaced = True
-            if replaced:
-                info.skips = tuple(skip_xpu)
+                            wrapper.device_type = "xpu"
+                            replaced = True
+                    wrapper_xpu.append(wrapper)
+                elif self.only_cuda_fn == wrapper:
+                    wrapper_xpu.append(common_device_type.onlyCUDA)
+                    replaced = True
+            return replaced, wrapper_xpu
+
+        for info in db:
+            if hasattr(info, "decorators"):
+                replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
+                if replaced:
+                    info.decorators = tuple(decorator_xpu)
+            if hasattr(info, "skips"):
+                replaced, skip_xpu = gen_xpu_wrappers(info.name, info.skips)
+                if replaced:
+                    info.skips = tuple(skip_xpu)
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
