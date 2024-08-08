@@ -99,7 +99,7 @@ static std::tuple<Tensor, int64_t, int64_t, int64_t> computeLinearIndex(
 static std::
     tuple<Tensor, Tensor, int64_t, int64_t, int64_t, std::vector<int64_t>>
     makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
-  checkIndexTensorTypes(orig);
+  checkIndexTensorTypes(orig, /*allow_int*/ true);
   // first expand BoolTensor (masks) or ByteTensor (masks) into 1 or more
   // LongTensors
   auto indices = expandTensors(self, orig);
