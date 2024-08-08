@@ -1418,6 +1418,11 @@ skip_list = (
     "test_copy__xpu",
     "test_checkpointing_non_reentrant_autocast_cpu",
     "test_per_dispatch_key_input_saving_xpu",
+
+    # Runtime error after enabling PTI
+    # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+    # https://github.com/intel/torch-xpu-ops/issues/731
+    "test_profiler",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
