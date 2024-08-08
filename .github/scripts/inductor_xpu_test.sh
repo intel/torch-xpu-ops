@@ -1,6 +1,9 @@
 #! /bin/bash
 # This script work for xpu / cuda device inductor tests
 
+export DisableScratchPages=1 
+export NEOReadDebugKeys=1
+
 SUITE=${1:-huggingface}     # huggingface / torchbench / timm_models
 DT=${2:-float32}            # float32 / float16 / amp (amp_bf16) / amp_fp16
 MODE=${3:-inference}        # inference / training
@@ -60,6 +63,6 @@ fi
 
 ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \
-    python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n10 --no-skip --dashboard \
+    python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n100 --no-skip --dashboard \
     ${DT_extra} ${Mode_extra} ${Shape_extra} ${partition_flags} ${Model_only_extra} --backend=inductor --timeout=10800 \
     --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
