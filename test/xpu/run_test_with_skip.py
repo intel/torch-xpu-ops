@@ -749,11 +749,6 @@ skip_list = (
     # in XPU supported operators. Then the case will work.
     "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
     "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
-    # Numeric difference
-    # Mismatched elements: 2 / 125 (1.6%)
-    # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
-    # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
-    "test_compare_cpu_cumprod_xpu_bfloat16",
     # AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
     # The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
     # XPU supports bfloat16, CUDA doesn't support it.
