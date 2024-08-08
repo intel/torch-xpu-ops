@@ -485,7 +485,7 @@ Tensor XPUNativeFunctions::any(const Tensor& self) {
   return out;
 }
 
-// aten::any.any_out
+// aten::any.all_out
 Tensor& XPUNativeFunctions::any_out(const Tensor& self, Tensor& out) {
   out = allany_meta(out, "any", self, {}, false);
   allany_impl<0>(self, out, {}, false, native::xpu::or_kernel);
