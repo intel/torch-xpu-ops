@@ -2,11 +2,11 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/div_rtn.h>
 #include <ATen/native/TensorIterator.h>
-#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 #include <ATen/native/xpu/sycl/Col2ImKernel.h>
 
+#include <comm/xpu_aten.h>
 #include <xpu/ATen/ops/col2im_native.h>
 
 namespace at::native {

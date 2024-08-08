@@ -47,5 +47,4 @@ TORCH_IMPL_FUNC(adaptive_max_pool2d_backward_out_xpu)
 }
 
 } // namespace native
-
 } // namespace at

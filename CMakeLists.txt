@@ -20,8 +20,6 @@
 
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-# message(FATAL_ERROR "In XPU cmakefile ${USE_PER_OPERATOR_HEADERS}")
-
 set(PROJECT_NAME "torch-xpu-ops")
 set(PROJECT_VERSION "2.3.0")
 cmake_policy(SET CMP0048 NEW)

@@ -3,12 +3,12 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Dropout.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
-#include <comm/xpu_aten.h>
 
-#include <ATen/ops/native_dropout_backward_native.h>
-#include <ATen/ops/native_dropout_native.h>
+#include <xpu/ATen/ops/native_dropout_backward_native.h>
+#include <xpu/ATen/ops/native_dropout_native.h>
 
 #include <ATen/native/xpu/sycl/Dropout.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 
@@ -34,6 +34,6 @@ Tensor native_dropout_backward_xpu(
       common_device, mask, "xpu::native_dropout_backward", "mask");
   return at::native::xpu::dropout_backward_kernel(grad_output, mask, scale);
 }
-} // namespace native
 
+} // namespace native
 } // namespace at

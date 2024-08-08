@@ -1,8 +1,9 @@
 #include <ATen/core/op_registration/adaption.h>
-#include <comm/xpu_aten.h>
+
+#include <xpu/ATen/ops/embedding_dense_backward_native.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
-#include <xpu/ATen/ops/embedding_dense_backward_native.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {
@@ -25,5 +26,4 @@ Tensor embedding_dense_backward_xpu(
   ;
 }
 } // namespace native
-
 } // namespace at

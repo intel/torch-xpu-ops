@@ -7,7 +7,6 @@
 #include <xpu/ATen/ops/_foreach_mul_native.h>
 
 namespace at {
-
 namespace native {
 ::std::vector<at::Tensor> foreach_tensor_add_scalar_kernel_slow(
     at::TensorList self,
@@ -153,5 +152,4 @@ FOREACH_POINTWISE_OP_SCALARLIST(addcmul)
 FOREACH_POINTWISE_OP_SCALARLIST(addcdiv)
 
 }; // namespace native
-
 } // namespace at

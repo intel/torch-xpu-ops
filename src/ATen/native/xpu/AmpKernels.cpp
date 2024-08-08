@@ -115,5 +115,4 @@ Tensor& _amp_update_scale_xpu_(
   return current_scale;
 }
 } // namespace native
-
 } // namespace at

@@ -15,11 +15,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#else
 #include <ATen/ops/empty_like.h>
-#endif
 
 using namespace at;
 using namespace at::xpu;

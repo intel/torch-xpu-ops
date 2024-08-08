@@ -3,15 +3,15 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/DispatchStub.h>
-#include <comm/xpu_aten.h>
-
 #include <ATen/native/DistributionTemplates.h>
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnaryOps.h>
+
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
 #include <ATen/native/xpu/sycl/MultinomialKernel.h>
 #include <ATen/ops/div.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
 namespace native {

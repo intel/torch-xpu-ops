@@ -154,5 +154,4 @@ void foreach_tensor_lerp_list_xpu_(
 }
 
 } // namespace native
-
 } // namespace at

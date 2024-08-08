@@ -2,13 +2,14 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/div_rtn.h>
 #include <ATen/native/TensorIterator.h>
-#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-#include <ATen/native/xpu/sycl/Im2ColKernel.h>
 #include <xpu/ATen/ops/im2col_native.h>
-namespace at::native {
 
+#include <ATen/native/xpu/sycl/Im2ColKernel.h>
+#include <comm/xpu_aten.h>
+
+namespace at::native {
 Tensor& im2col_out_xpu(
     const Tensor& self,
     IntArrayRef kernel_size,
@@ -40,5 +41,4 @@ Tensor im2col_xpu(
       output, self, kernel_size, dilation, padding, stride);
   return output;
 }
-
 } // namespace at::native

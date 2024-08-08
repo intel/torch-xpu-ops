@@ -1,9 +1,8 @@
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BinaryOps.h>
-#include <ATen/native/TensorIterator.h>
-
 #include <ATen/native/DispatchStub.h>
+#include <ATen/native/TensorIterator.h>
 
 #include <xpu/ATen/ops/add_native.h>
 

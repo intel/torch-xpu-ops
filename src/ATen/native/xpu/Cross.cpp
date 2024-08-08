@@ -8,5 +8,5 @@
 namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(cross_stub, &xpu::linalg_cross_kernel);
-}
+} // namespace native
 } // namespace at

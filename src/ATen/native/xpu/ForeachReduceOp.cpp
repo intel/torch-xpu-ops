@@ -40,7 +40,7 @@ static inline void check_foreach_norm_dtype(
   }
 }
 
-std::vector<Tensor> foreach_norm_xpu(
+std::vector<Tensor> foreach_tensor_norm_xpu(
     TensorList tensors,
     const Scalar& ord,
     c10::optional<ScalarType> dtype) {

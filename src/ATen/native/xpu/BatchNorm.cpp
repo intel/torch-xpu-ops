@@ -337,5 +337,4 @@ std::tuple<Tensor, Tensor, Tensor> _new_batch_norm_backward_xpu(
 }
 
 } // namespace native
-
 } // namespace at
