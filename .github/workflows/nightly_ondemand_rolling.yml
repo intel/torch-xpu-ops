@@ -1,11 +1,11 @@
-name: Nightly-OnDemand Tests
+name: Nightly-OnDemand Tests Rolling
 
 on:
   schedule:
-    # GMT+8 21:00 every workday
-    - cron: '0 13 * * 0-4'
-    # GMT+8 0:00 Saturday
-    - cron: '0 16 * * 5'
+    # GMT+8 21:30 every workday
+    - cron: '30 13 * * 0-4'
+    # GMT+8 0:30 Saturday
+    - cron: '30 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -69,23 +69,27 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
+    env:
+      ZE_AFFINITY_MASK: 0
     with: 
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: linux.idc.xpu
+      runner: pvc_rolling
   
   Linux-Weekly-UT-Tests-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
+    env:
+      ZE_AFFINITY_MASK: 0
     with: 
       abi: 0
       ut: op_example,op_extended,op_ut,torch_xpu
-      runner: linux.idc.xpu
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+    runs-on: pvc_rolling
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
