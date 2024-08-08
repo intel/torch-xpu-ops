@@ -79,7 +79,7 @@ jobs:
       runner: pvc_rolling
   
   Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
     env:
       ZE_AFFINITY_MASK: 0
@@ -190,7 +190,7 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -200,7 +200,7 @@ jobs:
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -210,7 +210,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -221,7 +221,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -231,7 +231,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -241,7 +241,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -335,7 +335,7 @@ jobs:
             test_type="On-demand"
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
+          elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
             test_type="Weekly"
             test_issue_id=432
           else
