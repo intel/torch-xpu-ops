@@ -94,4 +94,5 @@ if(CLANG_FORMAT)
   add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
 endif()
 
+target_include_directories(torch_xpu_ops PUBLIC ${ONEMKL_INCLUDE_DIR})
 target_link_libraries(torch_xpu_ops PUBLIC ${ONEMKL_LIBRARIES})

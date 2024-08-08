@@ -2992,6 +2992,7 @@ res += launch_test("nn/test_parametrization_xpu.py")
 
 # test_spectral_ops
 skip_list = (
+  # CUDA specific case
   "test_cufft_plan_cache_xpu_float64",
 )
 res += launch_test("test_spectral_ops_xpu.py", skip_list)
