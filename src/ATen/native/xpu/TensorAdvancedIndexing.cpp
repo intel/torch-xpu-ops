@@ -359,6 +359,16 @@ Tensor& XPUNativeFunctions::index_fill_(
       "with ",
       source.dim(),
       " dimension(s).");
+
+  TORCH_CHECK(
+      self.device() == index.device(),
+      "index_fill_(): self and index value tensors ",
+      "should have same device type, but got self tensor device type ",
+      self.device(),
+      " and index value ",
+      "tensor device type ",
+      index.device());
+
   return self.index_fill_(dim, index, source.item());
 }
 
