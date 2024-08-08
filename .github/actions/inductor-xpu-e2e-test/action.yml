@@ -41,7 +41,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+        source .github/scripts/env.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
           cd audio && git checkout $TORCHAUDIO_COMMIT_ID
@@ -78,9 +78,10 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
         source activate e2e_ci
+        source .github/scripts/env.sh
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
-        source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+        source .github/scripts/env.sh
 
         # check param
         function contains() {

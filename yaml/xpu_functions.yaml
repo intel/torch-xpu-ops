@@ -6,9 +6,6 @@ supported:
   - add.Tensor
   - add_.Tensor
   - add.out
-  - add.Scalar
-  - add_.Scalar
-  - add.Scalar_out
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
@@ -28,15 +25,9 @@ supported:
   - mul.Tensor
   - mul_.Tensor
   - mul.out
-  - mul.Scalar
-  - mul_.Scalar
-  - mul.Scalar_out
   - div.Tensor
   - div_.Tensor
   - div.out
-  - div.Scalar
-  - div_.Scalar
-  - div.Scalar_out
   - div.Tensor_mode
   - div_.Tensor_mode
   - div.out_mode
@@ -350,6 +341,9 @@ supported:
   - min.dim_min
   - sum.dim_IntList
   - sum.IntList_out
+  - prod
+  - prod.dim_int
+  - prod.int_out
   - nansum
   - nansum.out
   - mean.out
@@ -470,6 +464,11 @@ supported:
   - sigmoid
   - sigmoid.out
   - sigmoid_
+  - sign
+  - sign.out
+  - sign_
+  - signbit
+  - signbit.out
   - sigmoid_backward.grad_input
   - sigmoid_backward
   - hardsigmoid.out
@@ -685,6 +684,12 @@ supported:
   - ceil
   - ceil_
   - ceil.out
+  - round
+  - round_
+  - round.out
+  - round.decimals
+  - round_.decimals
+  - round.decimals_out
   - histogram.bins_tensor
   - histogram.bins_tensor_out
   - histogram.bin_ct
