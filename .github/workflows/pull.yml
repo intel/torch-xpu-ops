@@ -27,6 +27,15 @@ jobs:
       ut: op_example,op_extended,op_ut
       runner: linux.idc.xpu
 
+  preci-ut-abi-0:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      abi: 0
+      ut: op_extended
+      runner: linux.idc.xpu
+
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
@@ -70,11 +79,10 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           source activate e2e_ci
+          source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          export USE_XPU=1
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
-          export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
       - name: Identify pinned versions

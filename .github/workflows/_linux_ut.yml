@@ -18,6 +18,11 @@ on:
         type: string
         default: ''
         description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
+      abi:
+        required: false
+        type: string
+        default: 1
+        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -65,22 +70,33 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh
           pip install mkl-static mkl-include
           cd ../pytorch
           pip install -r requirements.txt
-          export USE_XPU=1
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
-          export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          if [[ ${{ inputs.abi }} == '0' ]]; then
+            export _GLIBCXX_USE_CXX11_ABI=0
+          else
+            export _GLIBCXX_USE_CXX11_ABI=1
+          fi
           WERROR=1 python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
           git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           pip install -r .ci/docker/requirements-ci.txt
+      - name: Torch Config
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
       - name: Run XPU OP Examples
         if: contains(inputs.ut, 'op_example') || github.event_name == 'schedule'
         run: |
           cd ${{ github.workspace }}
           xpu-smi discovery
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           mkdir -p ut_log
@@ -90,7 +106,7 @@ jobs:
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
@@ -98,7 +114,7 @@ jobs:
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           export PYTORCH_TEST_WITH_SLOW=1
@@ -112,7 +128,7 @@ jobs:
       - name: Run Torch XPU UT
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
+          source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
           TEST_REPORTS_DIR=$(pwd)/test/test-reports
