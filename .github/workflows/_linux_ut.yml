@@ -180,12 +180,12 @@ jobs:
               }
           }
           set -xe
-          cp .github/scripts/ut_result_check.sh ${{ github.workspace }}/ut_log
           for ut_suite in $(echo ${{ inputs.ut_suite }} |sed 's/,/ /g')
           do
             contains "op_example,op_extended,op_ut,torch_xpu" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
+            cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
           done
 
