@@ -137,6 +137,8 @@ supported:
   - __rshift__.Tensor
   - __irshift__.Scalar
   - __irshift__.Tensor
+  - bitwise_left_shift.Tensor_out
+  - bitwise_right_shift.Tensor_out
   - threshold
   - threshold_
   - threshold.out

@@ -391,6 +391,15 @@ Tensor& XPUNativeFunctions::__ilshift__(Tensor& self, const Scalar& other) {
   return self;
 }
 
+Tensor& XPUNativeFunctions::bitwise_left_shift_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& result) {
+  auto iter = TensorIterator::borrowing_binary_op(result, self, other);
+  native::xpu::lshift_kernel(iter);
+  return result;
+}
+
 Tensor XPUNativeFunctions::__rshift__(const Tensor& self, const Tensor& other) {
   Tensor result;
   auto iter = TensorIterator::binary_op(result, self, other);
@@ -417,6 +426,15 @@ Tensor& XPUNativeFunctions::__irshift__(Tensor& self, const Scalar& other) {
   auto iter = TensorIterator::binary_op(self, self, wrapper);
   native::xpu::rshift_kernel(iter);
   return self;
+}
+
+Tensor& XPUNativeFunctions::bitwise_right_shift_out(
+    const Tensor& self,
+    const Tensor& other,
+    Tensor& result) {
+  auto iter = TensorIterator::borrowing_binary_op(result, self, other);
+  native::xpu::rshift_kernel(iter);
+  return result;
 }
 
 Tensor XPUNativeFunctions::gcd(const Tensor& self, const Tensor& other) {
