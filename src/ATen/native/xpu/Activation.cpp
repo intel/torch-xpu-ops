@@ -634,47 +634,6 @@ Tensor& XPUNativeFunctions::softshrink_backward_out(
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::prelu(const Tensor& self, const Tensor& weight_) {
-  TORCH_INTERNAL_ASSERT(weight_.defined());
-  auto self_dim = self.dim();
-  TORCH_CHECK(
-      self.scalar_type() == weight_.scalar_type(),
-      "prelu: Type promoting not supported. Got ",
-      self.scalar_type(),
-      " and ",
-      weight_.scalar_type());
-  if (weight_.sym_numel() != 1) {
-    TORCH_CHECK(self_dim > 0, "Not allow zero-dim input tensor.");
-
-    auto channel_size =
-        self_dim > 1 ? self.sym_size(1) : 1; // channel_size default to 1
-    TORCH_CHECK(
-        channel_size == weight_.sym_numel(),
-        "Mismatch of parameter numbers and input channel size. Found parameter numbers = ",
-        weight_.numel(),
-        " and channel size = ",
-        channel_size,
-        ".");
-  }
-
-  TORCH_CHECK(
-      weight_.dim() <= 1,
-      "prelu: Expected `weight` to be a scalar or 1D tensor, but got: ndim = ",
-      weight_.dim());
-  // Adjust weight to broadcast over self and have weight.ndim == self.ndim
-  auto weight = weight_;
-  if (self_dim != weight.dim()) {
-    SymDimVector dim_w(self_dim, 1);
-    if (self_dim > 1) {
-      dim_w[1] = weight_.sym_numel();
-    }
-    // This will always be a view in CPU/CUDA, but some backends
-    // like MKLDNN do not support views
-    weight = weight.reshape_symint(dim_w);
-  }
-  return at::_prelu_kernel(self, weight);
-}
-
 Tensor XPUNativeFunctions::_prelu_kernel(
     const Tensor& self,
     const Tensor& weight) {
