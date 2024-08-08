@@ -3,8 +3,8 @@
 #include <ATen/native/ReduceAllOps.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
-#include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 

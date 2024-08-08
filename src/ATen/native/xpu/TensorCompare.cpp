@@ -5,8 +5,8 @@
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/TypeProperties.h>
-#include <ATen/native/xpu/sycl/ReduceMaxValuesKernel.h>
-#include <ATen/native/xpu/sycl/ReduceMinValuesKernel.h>
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+#include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/TensorCompare.h>
 #include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <comm/ReduceOpsUtils.h>

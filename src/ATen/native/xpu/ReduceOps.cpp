@@ -19,7 +19,6 @@
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
