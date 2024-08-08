@@ -44,30 +44,31 @@ if [[ ${ut_suite} == 'op_ut' ]]; then
 fi
 if [[ ${ut_suite} == 'torch_xpu' ]]; then
     echo "Pytorch XPU binary UT checking"
-    cd ../pytorch
+    cd ../../pytorch
     TEST_REPORTS_DIR=$(pwd)/test/test-reports
     for xpu_case in build/bin/*{xpu,sycl}*; do
       if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
         case_name=$(basename "$xpu_case")
-        grep -E "FAILED" binary_UT_${ut_suite}_${case_name}_Test.log | awk '{print $2}' > ./binary_UT_${ut_suite}_${case_name}_failed.log
-        echo $(cat ./binary_UT_${ut_suite}_${case_name}_failed.log | wc -l) | tee -a ./binary_UT_${ut_suite}_failed_summary.log
-        grep -E "PASSED|Pass" binary_UT_${ut_suite}_${case_name}_Test.log | awk '{print $2}' > ./binary_UT_${ut_suite}_${case_name}_passed.log
-        echo $(cat ./binary_UT_${ut_suite}_${case_name}_passed.log | wc -l) | tee -a ./binary_UT_${ut_suite}_passed_summary.log
+        cd ../ut_log/torch_xpu
+        grep -E "FAILED" binary_ut_${ut_suite}_${case_name}_test.log | awk '{print $2}' > ./binary_ut_${ut_suite}_${case_name}_failed.log
+        echo $(cat ./binary_ut_${ut_suite}_${case_name}_failed.log | wc -l) | tee -a ./binary_ut_${ut_suite}_failed_summary.log
+        grep -E "PASSED|Pass" binary_ut_${ut_suite}_${case_name}_test.log | awk '{print $2}' > ./binary_ut_${ut_suite}_${case_name}_passed.log
+        echo $(cat ./binary_ut_${ut_suite}_${case_name}_passed.log | wc -l) | tee -a ./binary_ut_${ut_suite}_passed_summary.log
+        cd -
       fi
     done
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cat ./binary_UT_${ut_suite}_${case_name}_failed.log
-    num_failed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_failed_summary.log)
-    num_passed_binary_UT=$(awk '{sum += $1};END {print sum}' binary_UT_${ut_suite}_passed_summary.log)
-    let num_failed=num_failed_binary_UT
-    if [[ $num_failed -gt 0 ]] && [[ $num_passed_binary_UT -lt 0 ]]; then
+    cd ../ut_log/torch_xpu
+    cat ./binary_ut_${ut_suite}_${case_name}_failed.log
+    num_failed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_${ut_suite}_failed_summary.log)
+    num_passed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_${ut_suite}_passed_summary.log)
+    let num_failed=num_failed_binary_ut
+    if [[ $num_failed -gt 0 ]] && [[ $num_passed_binary_ut -lt 0 ]]; then
       echo -e "[ERROR] Inductor UT ${ut_suite} test Fail"
       exit 1
     else
       echo -e "[PASS] Inductor UT ${ut_suite} test Pass"
     fi
 fi
-
-
