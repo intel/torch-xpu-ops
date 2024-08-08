@@ -1134,37 +1134,18 @@ skip_list = (
     "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
     "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
     "test_save_load_nn_Transformer_xpu_float64",
-    # AssertionError: Tensor-likes are not close!
-    "test_cpu_gpu_parity_nn_ConvTranspose3d_xpu_complex32",
     # Unexpected success:
     "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
     "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
     "test_memory_format_nn_AvgPool2d_xpu_float32",
     "test_memory_format_nn_AvgPool2d_xpu_float64",
-    # AssertionError: False is not true
-    "test_memory_format_nn_Conv2d_xpu_float64",
-    "test_memory_format_nn_ConvTranspose2d_xpu_float64",
-    "test_memory_format_nn_LazyConv2d_xpu_float64",
-    "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
     # CPU fallback could not cover these
     # CUDA xfails
     # Failed: Unexpected success
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
     "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
     # CPU fallback fails
-    # AssertionError: False is not true
-    "test_memory_format_nn_ReflectionPad3d_xpu_float32",
-    "test_memory_format_nn_ReflectionPad3d_xpu_float64",
-    "test_memory_format_nn_ReplicationPad2d_xpu_float32",
-    "test_memory_format_nn_ReplicationPad2d_xpu_float64",
-    "test_memory_format_nn_ReplicationPad3d_xpu_float32",
-    "test_memory_format_nn_ReplicationPad3d_xpu_float64",
-    # CPU fallback fails
     # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
-    "test_memory_format_nn_GroupNorm_xpu_bfloat16",
-    "test_memory_format_nn_GroupNorm_xpu_float16",
-    "test_memory_format_nn_GroupNorm_xpu_float32",
-    "test_memory_format_nn_GroupNorm_xpu_float64",
     "test_save_load_nn_GRU_eval_mode_xpu_float32",
     "test_save_load_nn_GRUCell_xpu_float32",
     "test_save_load_nn_GRU_train_mode_xpu_float32",
@@ -1189,9 +1170,6 @@ skip_list = (
     "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
     "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
     "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
-    # Reflection_pad2d doesn't support channel last, CUDA skipped too.
-    "test_memory_format_nn_ReflectionPad2d_xpu_float32",
-    "test_memory_format_nn_ReflectionPad2d_xpu_float64",
     # AssertionError: False is not true
     "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",

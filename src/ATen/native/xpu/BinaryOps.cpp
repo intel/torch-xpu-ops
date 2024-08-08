@@ -49,31 +49,6 @@ Tensor& XPUNativeFunctions::add_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::add(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::add(self, wrapper, alpha);
-}
-
-Tensor& XPUNativeFunctions::add_(
-    Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::add_(self, wrapper, alpha);
-}
-
-Tensor& XPUNativeFunctions::add_out(
-    const Tensor& self,
-    const Scalar& other,
-    const Scalar& alpha,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::add_out(self, wrapper, alpha, out);
-}
-
 Tensor XPUNativeFunctions::sub(
     const Tensor& self,
     const Tensor& other,
@@ -131,24 +106,6 @@ Tensor& XPUNativeFunctions::mul_out(
   return out;
 }
 
-Tensor XPUNativeFunctions::mul(const Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::mul(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::mul_(Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::mul_(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::mul_out(
-    const Tensor& self,
-    const Scalar& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::mul_out(self, wrapper, out);
-}
-
 Tensor XPUNativeFunctions::div(const Tensor& self, const Tensor& other) {
   Tensor out;
   TensorIterator iter;
@@ -172,24 +129,6 @@ Tensor& XPUNativeFunctions::div_out(
   iter.build_borrowing_binary_float_op(out, self, other);
   native::xpu::div_true_kernel(iter);
   return out;
-}
-
-Tensor XPUNativeFunctions::div(const Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::div(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::div_(Tensor& self, const Scalar& other) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::div_(self, wrapper);
-}
-
-Tensor& XPUNativeFunctions::div_out(
-    const Tensor& self,
-    const Scalar& other,
-    Tensor& out) {
-  auto wrapper = native::wrapped_scalar_tensor(other);
-  return XPUNativeFunctions::div_out(self, wrapper, out);
 }
 
 static inline TensorIterator meta_func_div_Tensor_mode(
