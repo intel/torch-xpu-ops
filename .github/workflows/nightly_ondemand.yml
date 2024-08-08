@@ -191,7 +191,7 @@ jobs:
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
