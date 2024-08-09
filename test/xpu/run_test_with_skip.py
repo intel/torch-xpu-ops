@@ -790,6 +790,26 @@ skip_list = (
     # 2. Half dtype is a common dtype in workloads.
     # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
     "test_dtypes_nextafter_xpu",
+
+    # The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}.
+    "test_dtypes_fft_fft2_xpu",
+    "test_dtypes_fft_fft_xpu",
+    "test_dtypes_fft_fftn_xpu",
+    "test_dtypes_fft_hfft2_xpu",
+    "test_dtypes_fft_hfft_xpu",
+    "test_dtypes_fft_hfftn_xpu",
+    "test_dtypes_fft_ifft2_xpu",
+    "test_dtypes_fft_ifft_xpu",
+    "test_dtypes_fft_ifftn_xpu",
+    "test_dtypes_fft_ihfft2_xpu",
+    "test_dtypes_fft_ihfft_xpu",
+    "test_dtypes_fft_ihfftn_xpu",
+    "test_dtypes_fft_irfft2_xpu",
+    "test_dtypes_fft_irfft_xpu",
+    "test_dtypes_fft_irfftn_xpu",
+    "test_dtypes_fft_rfft2_xpu",
+    "test_dtypes_fft_rfft_xpu",
+    "test_dtypes_fft_rfftn_xpu",
 )
 res += launch_test("test_ops_xpu.py", skip_list)
 
@@ -2969,6 +2989,13 @@ res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 # test_parametrization
 
 res += launch_test("nn/test_parametrization_xpu.py")
+
+# test_spectral_ops
+skip_list = (
+  # CUDA specific case
+  "test_cufft_plan_cache_xpu_float64",
+)
+res += launch_test("test_spectral_ops_xpu.py", skip_list)
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
