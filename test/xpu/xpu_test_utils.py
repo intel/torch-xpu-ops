@@ -207,7 +207,6 @@ _xpu_computation_op_list = [
     "_native_batch_norm_legit",
     "_batch_norm_with_update",
     "bincount",
-    "histc",
     "cross",
     "renorm",
     "digamma",
