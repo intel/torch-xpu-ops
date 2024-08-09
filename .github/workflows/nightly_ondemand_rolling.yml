@@ -1,4 +1,4 @@
-name: Nightly-OnDemand Rolling Tests
+name: Nightly-OnDemand Tests Rolling
 
 on:
   schedule:
@@ -66,7 +66,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Linux-Nightly-Ondemand-UT-Tests:
+  Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
     env:
@@ -78,7 +78,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: pvc_rolling
   
-  Linux-Weekly-UT-Tests-ABI-0:
+  Linux-Weekly-UT-Tests-ABI-0-Rolling:
     if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
     env:
@@ -88,7 +88,7 @@ jobs:
       ut: op_example,op_extended,op_ut,torch_xpu
       runner: pvc_rolling
 
-  Linux-Nightly-Ondemand-E2E-Tests:
+  Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
@@ -354,7 +354,7 @@ jobs:
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.triton }}" != "" ];then
