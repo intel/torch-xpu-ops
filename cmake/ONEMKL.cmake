@@ -3,5 +3,7 @@ if(NOT ONEMKL_FOUND)
   message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
 endif()
 
-list(INSERT ONEMKL_LIBRARIES 0 "-Wl,--no-as-needed")
-list(APPEND ONEMKL_LIBRARIES "-Wl,--as-needed")
+set(TORCH_XPU_OPS_ONEMKL_LIBRARIES ${ONEMKL_LIBRARIES})
+
+list(INSERT TORCH_XPU_OPS_ONEMKL_LIBRARIES 0 "-Wl,--no-as-needed")
+list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--as-needed")

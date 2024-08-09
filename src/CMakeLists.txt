@@ -95,4 +95,4 @@ if(CLANG_FORMAT)
 endif()
 
 target_include_directories(torch_xpu_ops PUBLIC ${ONEMKL_INCLUDE_DIR})
-target_link_libraries(torch_xpu_ops PUBLIC ${ONEMKL_LIBRARIES})
+target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
