@@ -172,11 +172,10 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           source activate e2e_ci
+          source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          export USE_XPU=1
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
-          export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
@@ -192,7 +191,7 @@ jobs:
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
