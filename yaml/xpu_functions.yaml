@@ -553,6 +553,8 @@ supported:
   - upsample_bicubic2d
   - upsample_bicubic2d.out
   - bincount
+  - histc
+  - histc.out
   - _embedding_bag
   - _embedding_bag_forward_only
   - _embedding_bag_backward
@@ -703,6 +705,8 @@ supported:
   - histogram.bins_tensor_out
   - histogram.bin_ct
   - histogram.bin_ct_out
+  - histc
+  - histc.out
   - repeat_interleave.Tensor
   - norm.ScalarOpt_dim_dtype
   - norm.dtype_out

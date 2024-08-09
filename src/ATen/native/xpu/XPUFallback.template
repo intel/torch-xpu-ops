@@ -191,7 +191,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "hardshrink_backward.grad_input",
     "hardshrink.out",
     "heaviside.out",
-    "histc",
     "i0.out",
     "igammac.out",
     "igamma.out",

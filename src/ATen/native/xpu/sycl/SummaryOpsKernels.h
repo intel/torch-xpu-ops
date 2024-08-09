@@ -8,4 +8,10 @@ Tensor bincount_kernel(
     const Tensor& weights,
     int64_t minlength);
 
+Tensor _histc_kernel(
+    const Tensor& self,
+    int64_t nbins,
+    const Scalar& min,
+    const Scalar& max);
+
 } // namespace at::native::xpu
