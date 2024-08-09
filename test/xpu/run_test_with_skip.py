@@ -1423,6 +1423,7 @@ skip_list = (
     # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
     # https://github.com/intel/torch-xpu-ops/issues/731
     "test_profiler",
+    "test_record_function",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
