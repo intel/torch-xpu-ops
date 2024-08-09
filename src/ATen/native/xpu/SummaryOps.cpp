@@ -1,3 +1,4 @@
+#include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 #include <comm/SYCLContext.h>
@@ -19,6 +20,32 @@ Tensor XPUNativeFunctions::bincount(
   }
 
   return native::xpu::bincount_kernel(self, weights, minlength);
+}
+
+Tensor XPUNativeFunctions::histc(
+    const Tensor& self,
+    int64_t nbins,
+    const Scalar& min,
+    const Scalar& max) {
+  if (self.scalar_type() == ScalarType::Half) {
+    AT_ERROR("HalfTensor is not supported");
+  }
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("_histc_xpu");
+  return native::xpu::_histc_kernel(self, nbins, min, max);
+}
+
+Tensor& XPUNativeFunctions::histc_out(
+    const Tensor& self,
+    int64_t bins,
+    const Scalar& min,
+    const Scalar& max,
+    Tensor& result) {
+  auto ret = histc(self, bins, min, max);
+  at::native::resize_output(result, ret.sizes());
+  result.copy_(ret);
+  return result;
 }
 
 } // namespace at
