@@ -1418,6 +1418,12 @@ skip_list = (
     "test_copy__xpu",
     "test_checkpointing_non_reentrant_autocast_cpu",
     "test_per_dispatch_key_input_saving_xpu",
+
+    # Runtime error after enabling PTI
+    # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+    # https://github.com/intel/torch-xpu-ops/issues/731
+    "test_profiler",
+    "test_record_function",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 
@@ -1862,6 +1868,12 @@ skip_list = (
     # XPU does not support tunable.
     "test_bmm_tunableop_rocm_xpu_float32",
     "test_numeric_check_leak_tunableop_rocm_xpu_float32",
+
+    # CUDA bias cases added in latest PyTorch
+    # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+    "test_matmul_check_entries_tunableop_xpu_float16",
+    "test_minimum_tuning_iteration_tunableop_xpu_float16",
+    "test_validator_tunableop_rocm_xpu_float32",
 )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
