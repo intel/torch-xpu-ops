@@ -10,10 +10,14 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <c10/core/Allocator.h>
+#include <c10/core/Stream.h>
 #include <c10/macros/Macros.h>
+#include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUStream.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
+#include <sycl/queue.hpp>
 #include <functional>
 #include <iosfwd>
 #include <type_traits>
@@ -25,6 +29,7 @@ namespace xpu {
 
 using namespace at::xpu;
 using at::detail::Array;
+using namespace c10::xpu;
 
 namespace detail {
 
@@ -246,9 +251,8 @@ struct ReduceConfig {
     // in side of SG. It is functional WA. We got case failures on some
     // platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8
-        ? syclMinSubGroupSize()
-        : syclMaxSubGroupSize();
+    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
+                                                : syclMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
@@ -1074,7 +1078,10 @@ class AccumulationBuffer {
       numerator_ = 1;
       denominator_ = 1;
     } else {
-      buffer_ = c10::GetAllocator(kXPU)->allocate(size);
+      // buffer_ = c10::GetAllocator(kXPU)->allocate(size);
+      auto& allocator = *c10::xpu::XPUCachingAllocator::get();
+      buffer_ = allocator.allocate(size);
+
       acc_ptr_ = (char*)buffer_.get();
       numerator_ = acc_t_size;
       denominator_ = out_t_size;
@@ -1149,6 +1156,9 @@ inline void gpu_reduce_kernel(
       iter.numel() > 0 && iter.ntensors() - iter.noutputs() == 1 &&
       iter.noutputs() >= 1);
 
+  std::cout << "current device 1 " << (int)current_device() << "\n"
+            << std::endl;
+
   using traits = function_traits<decltype(&ops_t::reduce)>;
   using arg_t = typename traits::template arg<0>::type;
   static constexpr bool can_accumulate_in_output =
@@ -1179,7 +1189,8 @@ inline void gpu_reduce_kernel(
     }
     acc_buf_ptr = owned_buf_ptr.get();
   }
-
+  std::cout << "current device 2 " << (int)current_device() << "\n"
+            << std::endl;
   if (!can_use_32bit_indexing) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
       int64_t sub_iter_base_idx = sub_iter.view_offsets()[0];
@@ -1189,7 +1200,8 @@ inline void gpu_reduce_kernel(
     }
     return;
   }
-
+  std::cout << "current device 3 " << (int)current_device() << "\n"
+            << std::endl;
   char* in_data = (char*)iter.data_ptr(iter.ntensors() - 1);
   char* out_data = (char*)iter.data_ptr(0);
   const auto noutputs = iter.noutputs();
@@ -1201,6 +1213,8 @@ inline void gpu_reduce_kernel(
   }
   char* acc_data = acc_buf_ptr->get_acc_slice(out_data);
 
+  std::cout << "current device 4 " << (int)current_device() << "\n"
+            << std::endl;
   // Start by assuming that each thread handles a single output and all
   // the inputs for that output.
   int64_t num_outputs = iter.num_output_elements();
@@ -1214,6 +1228,8 @@ inline void gpu_reduce_kernel(
   int64_t fastest_moving_stride;
   bool reduction_on_fastest_striding_dimension;
 
+  std::cout << "current device 5 " << (int)current_device() << "\n"
+            << std::endl;
   if (iter.ndim() > 0) {
     // Adjust group size to map group width to fastest changing dimension of
     // the input tensor. This grants the best possible memory accessing
@@ -1251,7 +1267,8 @@ inline void gpu_reduce_kernel(
     dim0 = 1;
     dim1 = 1;
   }
-
+  std::cout << "current device 6 " << (int)current_device() << "\n"
+            << std::endl;
   // We do vectorization to gain better memory access, there are two cases
   // which we call "vectorize along input" and "vectorize along output". Note
   // that the "input/output" here does not mean we are vectorizing load/store
@@ -1284,7 +1301,8 @@ inline void gpu_reduce_kernel(
       dim0 /= config.output_vec_size;
     }
   }
-
+  std::cout << "current device 7 " << (int)current_device() << "\n"
+            << std::endl;
   // Adjust group_width and group_height
   // Mapping to launch_reduce_kernel
   using R = ReduceOp<scalar_t, ops_t, uint32_t, out_scalar_t, vt0>;
@@ -1302,7 +1320,8 @@ inline void gpu_reduce_kernel(
       break;
     }
   }
-
+  std::cout << "current device 8 " << (int)current_device() << "\n"
+            << std::endl;
   int group_width = config.group_width;
   int group_height = config.group_height;
 
@@ -1329,6 +1348,9 @@ inline void gpu_reduce_kernel(
     // Otherwise, each SG handles a separate output.
     config.output_mult[1] = config.split_output(group_height);
   }
+
+  std::cout << "current device 9 " << (int)current_device() << "\n"
+            << std::endl;
 
   // We are finding a general rountine to work out target max WI number on dev
   // And now we use catch-all configuration
@@ -1361,25 +1383,46 @@ inline void gpu_reduce_kernel(
     if (config.groups_per_output > 1) {
       config.input_mult[2] = config.split_input(config.groups_per_output);
     }
+
+    std::cout << "current device 10 " << (int)current_device() << "\n"
+              << std::endl;
   }
 
-  Tensor buffer;
-  Tensor semaphores;
+  // Tensor buffer;
+  // Tensor semaphores;
+  at::DataPtr buffer;
+  at::DataPtr semaphores;
+
   if (config.should_global_reduce()) {
     // auto allocator = c10::xpu::XPUCachingAllocator::get();
-    buffer = at::empty(
-        config.global_memory_size(),
-        at::TensorOptions().dtype(kChar).device(kXPU));
-    semaphores = at::empty(
-        config.semaphore_size(), at::TensorOptions().dtype(kChar).device(kXPU));
+    // buffer = at::empty(
+    //     config.global_memory_size(),
+    //     at::TensorOptions().dtype(kChar).device(kXPU));
+    // semaphores = at::empty(
+    //     config.semaphore_size(),
+    //     at::TensorOptions().dtype(kChar).device(kXPU));
+    std::cout << "current device 11 " << (int)current_device() << "\n"
+              << std::endl;
+    auto& allocator = *c10::xpu::XPUCachingAllocator::get();
+    buffer = allocator.allocate(config.global_memory_size());
+    semaphores = allocator.allocate(config.semaphore_size());
+
+    getCurrentSYCLQueue().memset(
+        (void*)buffer.get(), 0, config.global_memory_size());
+    getCurrentSYCLQueue().memset(
+        (void*)semaphores.get(), 0, config.semaphore_size());
+
     at::detail::Array<char*, 1> data;
-    data[0] = (char*)semaphores.data_ptr();
+    // data[0] = (char*)semaphores.data_ptr();
+    data[0] = (char*)semaphores.get();
     ReduceKernelEmptyFunctor fn;
     int vec_size = at::native::memory::can_vectorize_up_to<decltype(fn)>(data);
     auto ic = TrivialOffsetCalculator<traits::arity>();
     launch_vectorized_kernel(config.semaphore_size(), fn, data, ic, vec_size);
   }
 
+  std::cout << "current device 12 " << (int)current_device() << "\n"
+            << std::endl;
   AT_ASSERT(can_use_32bit_indexing);
   auto output_calc = make_output_calculator<uint32_t>(iter);
   auto input_calc = make_input_calculator<uint32_t>(iter);
@@ -1392,15 +1435,20 @@ inline void gpu_reduce_kernel(
         out_data,
         out_data_extra,
         acc_data,
-        buffer.defined() ? (void*)buffer.data_ptr() : nullptr,
-        buffer.defined() ? (int*)semaphores.data_ptr() : nullptr,
+        // buffer.defined() ? (void*)buffer.data_ptr() : nullptr,
+        // buffer.defined() ? (int*)semaphores.data_ptr() : nullptr,
+        (void*)buffer.get(),
+        (int*)semaphores.get(),
         ident,
         noutputs,
         base_idx);
   reduce.accumulate = iter.should_accumulate();
   reduce.final_output = iter.is_final_output();
-
+  std::cout << "current device 13 " << (int)current_device() << "\n"
+            << std::endl;
   launch_reduce_kernel(config, reduce);
+  std::cout << "current device 14 " << (int)current_device() << "\n"
+            << std::endl;
 }
 
 } // namespace xpu
