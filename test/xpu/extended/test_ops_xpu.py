@@ -26,9 +26,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
+    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
 except Exception as e:
-    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
+    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
 
 with XPUPatchForImport():
     from test_ops import TestCommon as TestCommonBase
@@ -82,7 +82,7 @@ class TestCommon(TestCase):
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
         # for CUDA doesn't support operators
-        elif (op.name in ["histogram",]):
+        elif (op.name in _ops_without_cuda_support):
             if dtype in op.dtypes:
                 self.proxy = Namespace.TestCommonProxy()
                 test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
