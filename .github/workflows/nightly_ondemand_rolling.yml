@@ -292,7 +292,7 @@ jobs:
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
-    runs-on: self-hosted
+    runs-on: [ self-hosted, Linux ]
     permissions:
       issues: write
     env:
@@ -343,7 +343,7 @@ jobs:
             test_issue_id=432
           fi
           # Test report
-          echo -e "**${test_status}** $test_type Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
+          echo -e "**${test_status}** $test_type Rolling Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
           printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
