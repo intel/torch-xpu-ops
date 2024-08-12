@@ -14,7 +14,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
-from torch.testing._internal.common_device_type import toleranceOverride
+from torch.testing._internal.common_device_type import toleranceOverride, tol
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
@@ -255,7 +255,9 @@ _cuda_xfail_xpu_pass = [
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
 
-_xpu_tolerance_override = {}
+_xpu_tolerance_override = {
+    "nn.functional.tanhshrink":{("TestUnaryUfuncs",'test_reference_numerics_normal'):{torch.complex64: tol(atol=2e-05, rtol=9e-06)}},
+}
 
 
 def get_wrapped_fn(fn):
@@ -556,7 +558,7 @@ class XPUPatchForImport:
                     replaced = True
             if op_name in _xpu_tolerance_override:
                 replaced = True
-                for case, tolerance in _xpu_tolerance_override[op_name]:
+                for case, tolerance in _xpu_tolerance_override[op_name].items():
                     wrapper_xpu.append(
                         DecorateInfo(
                             toleranceOverride(tolerance),
