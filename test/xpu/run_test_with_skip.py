@@ -14,7 +14,10 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             + test_case
         )
         test_command += skip_options
-        return os.system(test_command)
+        # return os.system(test_command)
+        res = os.system(test_command)
+        print(test_case, ":", res)
+        return res
     elif exe_list != None:
         exe_options = " -k '" + exe_list[0]
         for exe_case in exe_list[1:]:
@@ -26,13 +29,19 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             + test_case
         )
         test_command += exe_options
-        return os.system(test_command)
+        # return os.system(test_command)
+        res = os.system(test_command)
+        print(test_case, ":", res)
+        return res
     else:
         test_command = (
             "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
             + test_case
         )
-        return os.system(test_command)
+        # return os.system(test_command)
+        res = os.system(test_command)
+        print(test_case, ":", res)
+        return res
 
 
 res = 0
