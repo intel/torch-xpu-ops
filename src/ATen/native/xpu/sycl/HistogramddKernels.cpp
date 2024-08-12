@@ -151,7 +151,9 @@ void histogramdd_kernel(
     const TensorList& bin_edges_) {
   globalContext().alertNotDeterministic("histogramdd_kernel_xpu");
   // remove this check once we support multi-dimension
-  TORCH_CHECK(bin_edges_.size() == 1, "histogramdd_kernel xpu kernel doesn't support multi-dimensional histogram");
+  TORCH_CHECK(
+      bin_edges_.size() == 1,
+      "histogramdd_kernel xpu kernel doesn't support multi-dimensional histogram");
   hist.fill_(0);
   Tensor bin_edges = bin_edges_[0].contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -182,7 +184,9 @@ void histogramdd_linear_kernel(
     bool local_search) {
   globalContext().alertNotDeterministic("histogramdd_linear_kernel_xpu");
   // remove this check once we support multi-dimension
-  TORCH_CHECK(bin_edges_.size() == 1, "histogramdd_linear_kernel xpu kernel doesn't support multi-dimensional histogram");
+  TORCH_CHECK(
+      bin_edges_.size() == 1,
+      "histogramdd_linear_kernel xpu kernel doesn't support multi-dimensional histogram");
 
   hist.fill_(0);
   Tensor bin_edges = bin_edges_[0].contiguous();
@@ -206,8 +210,11 @@ void histogramdd_linear_kernel(
   }
 }
 
-void histogram_select_outer_bin_edges_kernel(const Tensor& input, const int64_t N,
-        std::vector<double> &leftmost_edges, std::vector<double> &rightmost_edges) {
+void histogram_select_outer_bin_edges_kernel(
+    const Tensor& input,
+    const int64_t N,
+    std::vector<double>& leftmost_edges,
+    std::vector<double>& rightmost_edges) {
   auto [min, max] = at::aminmax(input, 0);
 
   for (const auto i : c10::irange(N)) {
