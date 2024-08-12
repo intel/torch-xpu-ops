@@ -90,9 +90,11 @@ struct HistogramddLinearKernelFunctor {
     int64_t wi_id = item_id.get_global_id();
     if (wi_id < input_size_) {
       scalar_t i_value = input_[wi_id];
-      if (i_value >= leftmost_edge_ && i_value <= rightmost_edge_) {
+      scalar_t leftmost_edge = bin_edges_[0];
+      scalar_t rightmost_edge = bin_edges_[bin_size_];
+      if (i_value >= leftmost_edge && i_value <= rightmost_edge) {
         int64_t bin =
-            (int64_t)(((i_value - leftmost_edge_)) * bin_size_ / (rightmost_edge_ - leftmost_edge_));
+            (int64_t)(((i_value - leftmost_edge)) * bin_size_ / (rightmost_edge - leftmost_edge));
         if (bin == bin_size_)
           bin -= 1;
         scalar_t value = weight_ ? weight_[wi_id] : (scalar_t)1;
@@ -103,42 +105,38 @@ struct HistogramddLinearKernelFunctor {
 
   HistogramddLinearKernelFunctor(
       const scalar_t* input,
+      const scalar_t* bin_edges,
       scalar_t* hist,
       const scalar_t* weight,
       int64_t input_size,
-      int64_t bin_size,
-      double leftmost_edge,
-      double rightmost_edge)
+      int64_t bin_size)
       : input_(input),
+        bin_edges_(bin_edges),
         hist_(hist),
         weight_(weight),
         input_size_(input_size),
-        bin_size_(bin_size),
-        leftmost_edge_(leftmost_edge),
-        rightmost_edge_(rightmost_edge) {}
+        bin_size_(bin_size) {}
 
  private:
   const scalar_t* input_;
+  const scalar_t* bin_edges_;
   scalar_t* hist_;
   const scalar_t* weight_;
   int64_t input_size_;
   int64_t bin_size_;
-  double leftmost_edge_;
-  double rightmost_edge_;
 };
 
 // For one dimension case
 template <typename scalar_t>
 void histogramdd_linear_template(
     const scalar_t* input,
+    const scalar_t* bin_edges,
     scalar_t* hist,
     const scalar_t* weight,
     int64_t input_size,
-    int64_t bin_size,
-    double leftmost_edge,
-    double rightmost_edge) {
+    int64_t bin_size) {
   HistogramddLinearKernelFunctor<scalar_t> kfn(
-      input, hist, weight, input_size, bin_size, leftmost_edge, rightmost_edge);
+      input, bin_edges, hist, weight, input_size, bin_size);
   const int64_t work_group_size = syclMaxWorkGroupSize(kfn);
   const int64_t num_wg = (input_size + work_group_size - 1) / work_group_size;
   sycl_kernel_submit(
@@ -150,10 +148,12 @@ void histogramdd_kernel(
     const std::optional<Tensor>& weight,
     bool density,
     Tensor& hist,
-    const Tensor& bin_edges_) {
+    const TensorList& bin_edges_) {
   globalContext().alertNotDeterministic("histogramdd_kernel_xpu");
+  // remove this check once we support multi-dimension
+  TORCH_CHECK(bin_edges_.size() == 1, "histogramdd_kernel xpu kernel doesn't support multi-dimensional histogram");
   hist.fill_(0);
-  Tensor bin_edges = bin_edges_.contiguous();
+  Tensor bin_edges = bin_edges_[0].contiguous();
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kBFloat16, kHalf, self.scalar_type(), "histogram_xpu", [&]() {
         histogramdd_template<scalar_t>(
@@ -175,49 +175,44 @@ void histogramdd_kernel(
 
 void histogramdd_linear_kernel(
     const Tensor& self,
-    int64_t bin_ct,
-    std::optional<c10::ArrayRef<double>> range,
     const std::optional<Tensor>& weight,
     bool density,
     Tensor& hist,
-    Tensor& out_bin_edges) {
+    const TensorList& bin_edges_,
+    bool local_search) {
   globalContext().alertNotDeterministic("histogramdd_linear_kernel_xpu");
+  // remove this check once we support multi-dimension
+  TORCH_CHECK(bin_edges_.size() == 1, "histogramdd_linear_kernel xpu kernel doesn't support multi-dimensional histogram");
+
   hist.fill_(0);
+  Tensor bin_edges = bin_edges_[0].contiguous();
 
-  // default range for empty input
-  double leftmost_edge = 0., rightmost_edge = 1.;
-  if (range.has_value()) {
-    leftmost_edge = range.value()[0];
-    rightmost_edge = range.value()[1];
-  } else if (self.numel() > 0) {
-    auto extrema = at::aminmax(self);
-    leftmost_edge = std::get<0>(extrema).item<double>();
-    rightmost_edge = std::get<1>(extrema).item<double>();
-  }
-
-  if (leftmost_edge == rightmost_edge) {
-    leftmost_edge -= 0.5;
-    rightmost_edge += 0.5;
-  }
-
-  at::linspace_out(out_bin_edges, leftmost_edge, rightmost_edge, bin_ct + 1);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kBFloat16, kHalf, self.scalar_type(), "histogram_linear_xpu", [&]() {
         histogramdd_linear_template<scalar_t>(
             self.data_ptr<scalar_t>(),
+            bin_edges.data_ptr<scalar_t>(),
             hist.data_ptr<scalar_t>(),
             weight.has_value() ? weight->data_ptr<scalar_t>() : nullptr,
             self.numel(),
-            bin_ct,
-            leftmost_edge,
-            rightmost_edge);
+            bin_edges.numel() - 1);
       });
 
   if (density) {
     const auto hist_sum = hist.sum();
     hist.div_(hist_sum);
-    Tensor bin_lengths = out_bin_edges.diff();
+    Tensor bin_lengths = bin_edges.diff();
     hist.div_(bin_lengths);
+  }
+}
+
+void histogram_select_outer_bin_edges_kernel(const Tensor& input, const int64_t N,
+        std::vector<double> &leftmost_edges, std::vector<double> &rightmost_edges) {
+  auto [min, max] = at::aminmax(input, 0);
+
+  for (const auto i : c10::irange(N)) {
+    leftmost_edges[i] = min[i].item().to<double>();
+    rightmost_edges[i] = max[i].item().to<double>();
   }
 }
 

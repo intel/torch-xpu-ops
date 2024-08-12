@@ -7,8 +7,9 @@
 namespace at {
 
 namespace native {
-// REGISTER_XPU_DISPATCH(histogramdd_stub, &xpu::histogramdd_kernel);
-// REGISTER_XPU_DISPATCH(histogramdd_linear_stub,
-// &xpu::histogramdd_linear_kernel);
+REGISTER_XPU_DISPATCH(histogramdd_stub, &xpu::histogramdd_kernel);
+REGISTER_XPU_DISPATCH(histogramdd_linear_stub, &xpu::histogramdd_linear_kernel);
+REGISTER_XPU_DISPATCH(histogram_select_outer_bin_edges_stub, &xpu::histogram_select_outer_bin_edges_kernel);
+
 } // namespace native
 } // namespace at
