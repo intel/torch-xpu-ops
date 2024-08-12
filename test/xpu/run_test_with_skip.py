@@ -2933,5 +2933,7 @@ res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 res += launch_test("nn/test_parametrization_xpu.py")
 
+res += launch_test("test_segment_reductions_xpu.py")
+
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
