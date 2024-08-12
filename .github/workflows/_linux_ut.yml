@@ -193,5 +193,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.jobs[github.job].name }}
           path: ${{ github.workspace }}/ut_log
