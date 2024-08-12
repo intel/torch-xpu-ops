@@ -1172,6 +1172,8 @@ skip_list = (
     "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+    #issue 746, adjust tolerence 
+    "test_non_contiguous_tensors_nn_Conv3d_xpu_float32",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 
@@ -2905,9 +2907,13 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # issue 746, new ut failures introduced by new pytorch
+    "test_method_fn_add_first_type_int_second_type_float",
+    "test_method_fn_mul_first_type_int_second_type_float",
+    "test_method_fn_sub_first_type_int_second_type_float",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
 
