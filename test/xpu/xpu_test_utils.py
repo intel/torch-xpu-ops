@@ -14,6 +14,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_device_type import toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
@@ -249,6 +250,12 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
 ]
+
+# some case should adjust tolerance to pass.
+# The new threshold is at the same order of magnitude as cuda's or cpu's.
+# format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
+
+_xpu_tolerance_override = {}
 
 
 def get_wrapped_fn(fn):
@@ -529,7 +536,7 @@ class XPUPatchForImport:
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
     def align_db_decorators(self, db):
-        def gen_xpu_wrappers(name, wrappers):
+        def gen_xpu_wrappers(op_name, wrappers):
             wrapper_xpu = []
             replaced = False
             for wrapper in wrappers:
@@ -537,7 +544,7 @@ class XPUPatchForImport:
                     if wrapper.device_type == "cuda":
                         if (
                             unittest.expectedFailure in wrapper.decorators
-                            and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                            and (op_name, wrapper.test_name) in _cuda_xfail_xpu_pass
                         ):
                             pass
                         else:
@@ -547,6 +554,17 @@ class XPUPatchForImport:
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
                     replaced = True
+            if op_name in _xpu_tolerance_override:
+                replaced = True
+                for case, tolerance in _xpu_tolerance_override[op_name]:
+                    wrapper_xpu.append(
+                        DecorateInfo(
+                            toleranceOverride(tolerance),
+                            case[0],  # cls_name
+                            case[1],  # test_name
+                            device_type="xpu",
+                        )
+                    )
             return replaced, wrapper_xpu
 
         for info in db:
