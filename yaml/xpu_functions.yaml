@@ -6,29 +6,13 @@ supported:
   - add.Tensor
   - add_.Tensor
   - add.out
-<<<<<<< HEAD
-  - add.Scalar
-  - add_.Scalar
-  - add.Scalar_out
-<<<<<<< HEAD
-  - add.Scalar #Composite
-  - add_.Scalar #Composite
-  - add.Scalar_out #Composite
-  - _adaptive_avg_pool2d_backward #need add
-=======
-=======
->>>>>>> main
   - _adaptive_avg_pool2d_backward
   - adaptive_avg_pool2d.out
   - _adaptive_avg_pool2d
-<<<<<<< HEAD
->>>>>>> main
-=======
   - adaptive_max_pool2d_backward.grad_input
   - adaptive_max_pool2d_backward
   - adaptive_max_pool2d.out
   - adaptive_max_pool2d
->>>>>>> main
   - cumsum
   - cumsum.out
   - cumsum_
@@ -44,71 +28,43 @@ supported:
   - div.Tensor
   - div_.Tensor
   - div.out
-<<<<<<< HEAD
-  - div.Scalar # COMPO
-  - div_.Scalar #COMPO
-  - div.Scalar_out #COMPO
-=======
->>>>>>> main
   - div.Tensor_mode
   - div_.Tensor_mode
   - div.out_mode
   - rsub.Tensor
-  - rsub.Tensor_out
-  - rsub.Scalar #composiite
-  - rsub.Scalar_out #composite
   - remainder.Tensor
   - remainder_.Tensor
   - remainder.Tensor_out
-  - remainder.Scalar #composite
-  - remainder_.Scalar #composite
-  - remainder.Scalar_out #composite
-  - remainder.Scalar_Tensor #composite
-  - remainder.Scalar_Tensor_out #composite
+  - remainder.Scalar_Tensor
   - fmod.Tensor
   - fmod_.Tensor
   - fmod.Tensor_out
-  - fmod.Scalar #composite
-  - fmod_.Scalar #composie
-  - fmod.Scalar_out #composite
   - tanh_backward
   - tanh_backward.grad_input
-<<<<<<< HEAD
-  - eq.Scalar #structured delegate
-  - eq.Scalar_out #structured delgeat
-  - eq_.Scalar #structured delgeat
-=======
   - equal
   - eq.Scalar
   - eq.Scalar_out
   - eq_.Scalar
->>>>>>> main
   - eq.Tensor
   - eq.Tensor_out
-  - eq_.Tensor #structured delgeat
-  - ne.Scalar #structured delgeat
-  - ne.Scalar_out #structured delgeat
-  - ne_.Scalar #structured delgeat
+  - eq_.Tensor
+  - ne.Scalar
+  - ne.Scalar_out
+  - ne_.Scalar
   - ne.Tensor
   - ne.Tensor_out
-  - ne_.Tensor #structured delgeat
-  - lt.Scalar #structured
-  - lt.Scalar_out #structured
-  - lt_.Scalar #structured
+  - ne_.Tensor
+  - lt.Scalar
+  - lt.Scalar_out
+  - lt_.Scalar
   - lt.Tensor
-  - lt.Tensor_out 
-  - lt_.Tensor #structured
-  - le.Scalar #structured
-  - le.Scalar_out #structured
-  - le_.Scalar #structured
+  - lt.Tensor_out
+  - lt_.Tensor
+  - le.Scalar
+  - le.Scalar_out
+  - le_.Scalar
   - le.Tensor
   - le.Tensor_out
-<<<<<<< HEAD
-  - le_.Tensor #structured
-  - gt.Scalar #structured
-  - gt.Scalar_out #structured
-  - gt_.Scalar #structured
-=======
   - le_.Tensor
   - lerp.Tensor
   - lerp.Tensor_out
@@ -119,20 +75,14 @@ supported:
   - gt.Scalar
   - gt.Scalar_out
   - gt_.Scalar
->>>>>>> main
   - gt.Tensor
   - gt.Tensor_out
-  - gt_.Tensor #structured
-  - ge.Scalar #structured
-  - ge.Scalar_out #structured
-  - ge_.Scalar #structured
+  - gt_.Tensor
+  - ge.Scalar
+  - ge.Scalar_out
+  - ge_.Scalar
   - ge.Tensor
   - ge.Tensor_out
-<<<<<<< HEAD
-  - ge_.Tensor #structured
-  - cat  # NEED ADD
-  - cat.out #NEED ADD
-=======
   - ge_.Tensor
   - cat
   - cat.out
@@ -142,9 +92,8 @@ supported:
   - isin.Tensor_Scalar
   - isin.Scalar_Tensor_out
   - isin.Scalar_Tensor
->>>>>>> main
   - isnan
-  - isnan.out # autogen
+  - isnan.out
   - masked_fill_.Tensor
   - masked_fill_.Scalar
   - masked_scatter_
@@ -158,34 +107,22 @@ supported:
   - masked_select
   - masked_select.out
   - gcd
-<<<<<<< HEAD
-  - gcd.out #structured
-  - gcd_ #structured
-=======
   - gcd.out
   - gcd_
   - hypot
   - hypot.out
   - hypot_
-<<<<<<< HEAD
->>>>>>> main
-=======
   - nextafter
   - nextafter.out
   - nextafter_
->>>>>>> main
   - relu
   - relu_
   - relu.out
-  - threshold #structured
-  - threshold_ #structured
+  - threshold
+  - threshold_
   - threshold.out
-  - threshold_backward #structued
+  - threshold_backward
   - threshold_backward.grad_input
-<<<<<<< HEAD
-  - gelu #structured
-  - gelu_ #structured
-=======
   - softplus
   - softplus.out
   - softplus_backward
@@ -200,19 +137,14 @@ supported:
   - mish_backward
   - gelu
   - gelu_
->>>>>>> main
   - gelu.out
   - gelu_backward
-<<<<<<< HEAD
-  - gelu_backward.grad_input #structured
-=======
   - gelu_backward.grad_input
   - leaky_relu
   - leaky_relu_
   - leaky_relu.out
   - leaky_relu_backward
   - leaky_relu_backward.grad_input
->>>>>>> main
   - silu
   - silu_
   - silu.out
@@ -232,16 +164,9 @@ supported:
   - hardswish_
   - hardswish_backward
   - arange.start_out
-  - abs #structured
-  - abs_ #structured
+  - abs
+  - abs_
   - abs.out
-<<<<<<< HEAD
-  - sin #structured
-  - sin_ #structured
-  - sin.out 
-  - cos #structured
-  - cos_ #structured
-=======
   - sin
   - sin_
   - sin.out
@@ -250,12 +175,7 @@ supported:
   - sinh.out
   - cos
   - cos_
->>>>>>> main
   - cos.out
-<<<<<<< HEAD
-  - log #structured
-  - log_ #structured
-=======
   - digamma
   - digamma_
   - digamma.out
@@ -267,7 +187,6 @@ supported:
   - lgamma.out
   - log
   - log_
->>>>>>> main
   - log.out
   - log10
   - log10_
@@ -299,47 +218,35 @@ supported:
   - logical_not
   - logical_not_
   - logical_not.out
-  - sqrt #structured
-  - sqrt_ #structured
   - sqrt
   - sqrt_
   - sqrt.out
-  - rsqrt  #structured
-  - rsqrt_ #structured
+  - rsqrt
+  - rsqrt_
   - rsqrt.out
-<<<<<<< HEAD
-  - tanh #structured
-  - tanh_ #structured
-=======
   - tan
   - tan_
   - tan.out
   - tanh
   - tanh_
->>>>>>> main
   - tanh.out
-<<<<<<< HEAD
-  - neg #structured
-  - neg_ #structured
-=======
   - median
   - median.dim_values
   - nanmedian
   - nanmedian.dim_values
   - neg
   - neg_
->>>>>>> main
   - neg.out
-  - reciprocal #structured
-  - reciprocal_ #structured
+  - reciprocal
+  - reciprocal_
   - reciprocal.out
-  - pow.Tensor_Tensor #structured
-  - pow_.Tensor #structured
+  - pow.Tensor_Tensor
+  - pow_.Tensor
   - pow.Tensor_Tensor_out
-  - pow.Tensor_Scalar #structured
-  - pow_.Scalar #structured
+  - pow.Tensor_Scalar
+  - pow_.Scalar
   - pow.Tensor_Scalar_out
-  - pow.Scalar #structured
+  - pow.Scalar
   - pow.Scalar_out
   - exp
   - exp.out
@@ -353,19 +260,12 @@ supported:
   - exponential_
   - empty.memory_format
   - empty_strided
-<<<<<<< HEAD
-<<<<<<< HEAD
-  - clone # not sure
-=======
-=======
   - eye.out
   - eye.m_out
->>>>>>> main
   - _efficientzerotensor
   - complex.out
   - polar.out
   - clone
->>>>>>> main
   - fill_.Scalar
   - fill_.Tensor
   - zero_
@@ -384,9 +284,9 @@ supported:
   - bernoulli_.Tensor
   - bernoulli_.float
   - native_dropout
-  - native_dropout_backward # not sure
-  - copy_ # not sure
-  - _to_copy # not sure
+  - native_dropout_backward
+  - copy_
+  - _to_copy
   - view
   - view_as_real
   - view_as_complex
@@ -439,8 +339,7 @@ supported:
   - min
   - min.unary_out
   - min.dim_min
-  - sum.out # not sure
-  - sum.dim_IntList #not sure
+  - sum.dim_IntList
   - sum.IntList_out
   - prod
   - prod.dim_int
@@ -461,7 +360,7 @@ supported:
   - all.dims_out
   - all
   - all.all_out
-  - any.dim # structure
+  - any.dim
   - any.out
   - any.dims
   - any.dims_out
