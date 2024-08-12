@@ -69,8 +69,6 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
-    env:
-      ZE_AFFINITY_MASK: 0
     with: 
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
@@ -81,8 +79,6 @@ jobs:
   Linux-Weekly-UT-Tests-ABI-0-Rolling:
     if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
-    env:
-      ZE_AFFINITY_MASK: 0
     with: 
       abi: 0
       ut: op_example,op_extended,op_ut,torch_xpu
