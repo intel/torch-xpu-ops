@@ -1,11 +1,11 @@
-name: Nightly-OnDemand Tests
+name: Nightly-OnDemand Tests Rolling
 
 on:
   schedule:
-    # GMT+8 21:00 every workday
-    - cron: '0 13 * * 0-4'
-    # GMT+8 0:00 Saturday
-    - cron: '0 16 * * 5'
+    # GMT+8 21:30 every workday
+    - cron: '30 13 * * 0-4'
+    # GMT+8 0:30 Saturday
+    - cron: '30 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -66,26 +66,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Linux-Nightly-Ondemand-UT-Tests:
+  Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
+    env:
+      ZE_AFFINITY_MASK: 0
     with: 
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: linux.idc.xpu
+      runner: pvc_rolling
   
-  Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+  Linux-Weekly-UT-Tests-ABI-0-Rolling:
+    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
+    env:
+      ZE_AFFINITY_MASK: 0
     with: 
       abi: 0
       ut: op_example,op_extended,op_ut,torch_xpu
-      runner: linux.idc.xpu
+      runner: pvc_rolling
 
-  Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+  Linux-Nightly-Ondemand-E2E-Tests-Rolling:
+    runs-on: pvc_rolling
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
@@ -186,17 +190,17 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          dt: float32,bfloat16,float16
           mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -206,7 +210,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -217,7 +221,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -227,7 +231,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -237,7 +241,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -331,7 +335,7 @@ jobs:
             test_type="On-demand"
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
+          elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
             test_type="Weekly"
             test_issue_id=432
           else
@@ -339,7 +343,7 @@ jobs:
             test_issue_id=432
           fi
           # Test report
-          echo -e "**${test_status}** $test_type Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
+          echo -e "**${test_status}** $test_type Rolling Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
           printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
@@ -350,7 +354,7 @@ jobs:
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.triton }}" != "" ];then
