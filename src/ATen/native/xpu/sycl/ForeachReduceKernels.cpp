@@ -197,14 +197,9 @@ std::vector<Tensor> foreach_norm_kernel(
   std::vector<at::Tensor> ret_per_tensor;
   ret_per_tensor.reserve(ntensors);
   const auto res_option = options.dtype(output_dtype);
-  for (const int i; i < ntensors; i++) {
+  for (int i = 0; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
-  const void* tensor_list_addresses[ntensors];
-  for (int i = 0; i < ntensors; i++) {
-    tensor_list_addresses[i] = ret_per_tensor[i].mutable_data_ptr<out_t>();
-  }
-
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   int64_t wg_size;
@@ -239,6 +234,11 @@ std::vector<Tensor> foreach_norm_kernel(
                     max_chunks_per_tensor);
 
                 // sum final val for all chunks
+                const void* tensor_list_addresses[ntensors];
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L1,
@@ -276,7 +276,11 @@ std::vector<Tensor> foreach_norm_kernel(
                     LpNormFunctor<scalar_t, NormType::L2, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
-
+                const void* tensor_list_addresses[ntensors];
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
