@@ -61,20 +61,6 @@ struct ClampScalarFunctor {
   at::native::detail::ClampLimits minmax_;
 };
 
-void where_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "where_xpu", [&] {
-        gpu_kernel(iter, WhereFunctor<scalar_t>());
-      });
-}
-
-void clamp_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND2(
-      kHalf, kBFloat16, iter.common_dtype(), "clamp_xpu", [&] {
-        gpu_kernel(iter, ClampFunctor<scalar_t>());
-      });
-}
-
 void inline launch_clamp_scalar(
     TensorIteratorBase& iter,
     Scalar lim0,
@@ -88,13 +74,6 @@ void inline launch_clamp_scalar(
         gpu_kernel(
             iter, ClampScalarFunctor<scalar_t>(lim0_val, lim1_val, minmax));
       });
-}
-
-void clamp_scalar_kernel(
-    TensorIteratorBase& iter,
-    const Scalar& min,
-    const Scalar& max) {
-  launch_clamp_scalar(iter, min, max, at::native::detail::ClampLimits::MinMax);
 }
 
 void clamp_min_scalar_kernel(TensorIteratorBase& iter, Scalar min) {
