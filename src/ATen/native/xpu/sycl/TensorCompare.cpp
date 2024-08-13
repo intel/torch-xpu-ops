@@ -76,14 +76,6 @@ void inline launch_clamp_scalar(
       });
 }
 
-void clamp_min_scalar_kernel(TensorIteratorBase& iter, Scalar min) {
-  launch_clamp_scalar(iter, min, min, at::native::detail::ClampLimits::Min);
-}
-
-void clamp_max_scalar_kernel(TensorIteratorBase& iter, Scalar max) {
-  launch_clamp_scalar(iter, max, max, at::native::detail::ClampLimits::Max);
-}
-
 } // namespace xpu
 } // namespace native
 } // namespace at
