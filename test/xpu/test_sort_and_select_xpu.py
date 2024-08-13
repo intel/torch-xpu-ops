@@ -21,7 +21,7 @@ with XPUPatchForImport(False):
 
     # FIXME: remove torch.bool from unsupported types once support is added for cub sort
     @dtypes(*all_types_and(torch.half, torch.bfloat16))
-    def test_stable_sort_against_numpy(self, device, dtype):
+    def stable_sort_against_numpy(self, device, dtype):
         if dtype in floating_types_and(torch.float16, torch.bfloat16):
             inf = float("inf")
             neg_inf = -float("inf")
@@ -91,7 +91,7 @@ with XPUPatchForImport(False):
             idx_numpy = np.argsort(sample_numpy, axis=dim, kind="stable")
             self.assertEqual(idx_torch, idx_numpy)
 
-    TestSortAndSelect.test_stable_sort_against_numpy = test_stable_sort_against_numpy
+    TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
