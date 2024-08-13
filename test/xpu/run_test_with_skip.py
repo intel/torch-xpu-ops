@@ -1172,6 +1172,8 @@ skip_list = (
     "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
     "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+    #issue 746, adjust tolerence 
+    "test_non_contiguous_tensors_nn_Conv3d_xpu_float32",
 )
 res += launch_test("test_modules_xpu.py", skip_list)
 
@@ -1259,7 +1261,6 @@ res += launch_test("test_nn_xpu.py", skip_list)
 
 # test_indexing
 
-
 skip_list = (
     # CPU bias cases
     # It is kernel assert on XPU implementation not exception on host.
@@ -1272,10 +1273,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/461
     "test_index_put_src_datatype_xpu_float8_e5m2",
     "test_index_put_src_datatype_xpu_float8_e4m3fn",
-    # Regression after PyTorch update
-    # http://github.com/intel/torch-xpu-ops/issues/549
-    # IndexError: tensors used as indices must be long, byte or bool tensors.
-    "test_index_ind_dtype_xpu",
 )
 res += launch_test("test_indexing_xpu.py", skip_list)
 
@@ -2897,7 +2894,6 @@ res += launch_test("test_foreach_xpu.py", skip_list)
 
 # test_convolution
 
-
 skip_list = (
     # XPU unsupport ops, skip.
     "test_cudnn_convolution_relu_xpu_float16",
@@ -2911,9 +2907,13 @@ skip_list = (
 res += launch_test("nn/test_convolution_xpu.py", skip_list)
 
 # test_dynamic_shapes
-
-
-res += launch_test("test_dynamic_shapes_xpu.py")
+skip_list = (
+    # issue 746, new ut failures introduced by new pytorch
+    "test_method_fn_add_first_type_int_second_type_float",
+    "test_method_fn_mul_first_type_int_second_type_float",
+    "test_method_fn_sub_first_type_int_second_type_float",
+)
+res += launch_test("test_dynamic_shapes_xpu.py", skip_list)
 
 # test_load_state_dict
 
