@@ -1,13 +1,9 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
-#include <ATen/NumericUtils.h>
-#include <ATen/core/TensorBase.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
-#include <c10/core/Scalar.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {
 
