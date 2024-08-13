@@ -272,8 +272,7 @@ jobs:
             TIMEOUT_MODELS="$(
               grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
             )"
-            echo "${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
-            grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
+            echo "TIMEOUT_MODELS=${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
             grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
