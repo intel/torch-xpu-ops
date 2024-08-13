@@ -39,7 +39,6 @@ TORCH_IMPL_FUNC(nll_loss_backward_out_xpu)
  int64_t ignore_index,
  const Tensor& total_weight,
  const Tensor& grad_input) {
-  const Tensor& weight = weight_opt.getTensorRef();
   grad_input.zero_();
   xpu::nll_loss_backward_kernel(
       grad_output,
