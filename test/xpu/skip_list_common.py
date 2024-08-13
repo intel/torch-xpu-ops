@@ -755,7 +755,7 @@ skip_dict = {
 
     "test_autograd_fallback.py": None,
 
-    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu"),  # Hard code CUDA
+    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu",),  # Hard code CUDA
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
