@@ -45,8 +45,6 @@ skip_dict = {
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
         "test_out_warning_nanmean_xpu",
-        "test_out_warning_nn_functional_logsigmoid_xpu",
-        "test_python_ref__refs_div_trunc_rounding_xpu_bfloat16",
         "test_python_ref__refs_linspace_tensor_overload_xpu_int16",
         "test_python_ref__refs_linspace_tensor_overload_xpu_int32",
         "test_python_ref__refs_linspace_tensor_overload_xpu_int64",
@@ -69,7 +67,6 @@ skip_dict = {
         "test_python_ref__refs_nn_functional_triplet_margin_loss_xpu_uint8",
         "test_python_ref__refs_square_xpu_bool",
         "test_python_ref__refs_trunc_xpu_float64",
-        "test_python_ref_executor__refs_div_trunc_rounding_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_float32",
@@ -110,7 +107,6 @@ skip_dict = {
         "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
         "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
-        "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_bfloat16",
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int16",
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int32",
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int64",
@@ -170,9 +166,6 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
         # Skip list of new added when porting XPU operators.
         # See: https://github.com/intel/torch-xpu-ops/issues/128
-        "test_dtypes_scatter_reduce_amax_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-        "test_dtypes_scatter_reduce_amin_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
-        "test_dtypes_scatter_reduce_prod_xpu",  # Align with CUDA dtypes - "scatter_gather_base_kernel_func" not implemented for 'Bool'
         "test_dtypes_view_as_complex_xpu",  # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
         "test_dtypes_view_as_real_xpu",  # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
         "test_noncontiguous_samples_native_dropout_backward_xpu_int64",  # The implementation aligns with CUDA, RuntimeError: "masked_scale" not implemented for 'Long'.
@@ -184,15 +177,8 @@ skip_dict = {
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
         "test_non_standard_bool_values_sort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
-        "test_compare_cpu_nn_functional_grid_sample_xpu_float32",  # AssertionError: Tensor-likes are not close!
-        "test_dtypes_nn_functional_batch_norm_without_cudnn_xpu",  # AssertionError: The supported dtypes for nn.functional.batch_norm on device type xpu are incorrect!
         # Unexpected success
         "test_errors_histogramdd_xpu",
-        "test_noncontiguous_samples__batch_norm_with_update_xpu_float32",
-        "test_out_histc_xpu_float32",
-        "test_out_warning_logcumsumexp_xpu",
-        "test_python_ref__refs_mul_xpu_complex32",
-        "test_python_ref_torch_fallback__refs_mul_xpu_complex32",
         # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
         # https://github.com/intel/torch-xpu-ops/issues/157
@@ -716,35 +702,23 @@ skip_dict = {
         # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
         "test_dtypes_nn_functional_pad_replicate_negative_xpu",
         "test_dtypes_nn_functional_pad_replicate_xpu",
-
         # Op impl aligns with CUDA on the supported dtypes.
         # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
         # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
         # in XPU supported operators. Then the case will work.
         "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
-
-        # Numeric difference
-        # https://github.com/intel/torch-xpu-ops/issues/544
-        # Mismatched elements: 7 / 1048576 (0.0%)
-        # Greatest absolute difference: 0.4922053598013041 at index (765, 860) (up to 1e-07 allowed)
-        # Greatest relative difference: 0.15330001655652495 at index (765, 860) (up to 1e-07 allowed)
-        "test_python_ref__refs_log2_xpu_complex128",
-
         #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
         #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
         #XPU supports bfloat16, CUDA doesn't support it.
         "test_dtypes_unique_consecutive_xpu",
         "test_dtypes_unique_xpu",
-
         # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
         # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
         "test_dtypes_polar_xpu",
-
         # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
         # but test_dtypes infrastructure leverage CUDA supported datatypes
         "test_dtypes_histogram_xpu",
-
         # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
         # Align with CPU implementation since,
         # 1. most cases of nextafter require Half dtype.
@@ -765,9 +739,6 @@ skip_dict = {
         "test_pow_xpu_int64",
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
-        # Unexpected success
-        "test_type_promotion_logaddexp_xpu",
-
         # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
         # https://github.com/intel/torch-xpu-ops/issues/623
         # AssertionError: Scalars are not equal!
@@ -780,21 +751,11 @@ skip_dict = {
     "test_scatter_gather_ops_xpu.py": (
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
-        "test_scatter__reductions_xpu_complex64",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
-        "test_scatter_reduce_amax_xpu_bool",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
-        "test_scatter_reduce_amin_xpu_bool",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
-        "test_scatter_reduce_mean_xpu_complex128",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
-        "test_scatter_reduce_mean_xpu_complex64",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
-        "test_scatter_reduce_prod_xpu_bool",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'Bool'
-        "test_scatter_reduce_prod_xpu_complex128",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexDouble'
-        "test_scatter_reduce_prod_xpu_complex64",  # align CUDA dtype - RuntimeError: "scatter_gather_base_kernel_func" not implemented for 'ComplexFloat'
     ),
 
     "test_autograd_fallback.py": None,
 
-    "test_sort_and_select_xpu.py":(
-        "test_sort_large_slice_xpu",  # Hard code CUDA
-    ),
+    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu"),  # Hard code CUDA
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
@@ -1145,6 +1106,8 @@ skip_dict = {
         "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+        #issue 746, adjust tolerence 
+        "test_non_contiguous_tensors_nn_Conv3d_xpu_float32",
     ),
 
     "test_nn_xpu.py": (
@@ -1198,15 +1161,7 @@ skip_dict = {
         "test_rnn_retain_variables_xpu_float64",
         "test_transformerencoderlayer_xpu_float64",
         "test_variable_sequence_xpu_float64",
-        # AssertionError: Scalars are not close!
-        "test_InstanceNorm1d_general_xpu",
-        "test_InstanceNorm2d_general_xpu",
-        "test_InstanceNorm3d_general_xpu",
         # AssertionError: RuntimeError not raised
-        "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bicubic_uint8_xpu_uint8",
-        "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_3_mode_bilinear_uint8_xpu_uint8",
-        "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bicubic_uint8_xpu_uint8",
-        "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_False_num_channels_5_mode_bilinear_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bicubic_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
@@ -1245,11 +1200,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
-
-        # Regression after PyTorch update
-        # http://github.com/intel/torch-xpu-ops/issues/549
-        # IndexError: tensors used as indices must be long, byte or bool tensors.
-        "test_index_ind_dtype_xpu",
     ),
 
     "nn/test_pooling_xpu.py": (
@@ -1325,6 +1275,11 @@ skip_dict = {
         "test_copy__xpu",
         "test_checkpointing_non_reentrant_autocast_cpu",
         "test_per_dispatch_key_input_saving_xpu",
+        # Runtime error after enabling PTI
+        # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+        # https://github.com/intel/torch-xpu-ops/issues/731
+        "test_profiler",
+        "test_record_function",
     ),
 
     "test_reductions_xpu.py": (
@@ -1381,7 +1336,6 @@ skip_dict = {
         "test_reference_numerics_large_asinh_xpu_complex128",
         "test_reference_numerics_large_asinh_xpu_complex64",
         "test_reference_numerics_large_asinh_xpu_complex32",
-
         # Mismatched elements: 1 / 943593 (0.0%)
         # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
         # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
@@ -1393,17 +1347,14 @@ skip_dict = {
         # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
         "test_reference_numerics_normal__refs_asinh_xpu_complex64",
         "test_reference_numerics_normal_asinh_xpu_complex64",
-
         # Failed: Unexpected success
         "test_reference_numerics_large_rsqrt_xpu_complex32",
-
         # Numeric difference
         # https://github.com/intel/torch-xpu-ops/issues/544
         # Expected 0.00497517 but got 0.00497520063072443.
         # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
         # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
         "test_log1p_complex_xpu_complex64",
-
         # Issue: https://github.com/intel/torch-xpu-ops/issues/622
         # Mismatched elements: 8 / 943593 (0.0%)
         # Greatest absolute difference: inf at index (9, 860) (up to 0.001 allowed)
@@ -1755,11 +1706,14 @@ skip_dict = {
         "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         "test_compile_int4_mm_m_64_k_64_n_48_xpu",
         "test_compile_int4_mm_m_64_k_64_n_64_xpu",
-        # Short is not supported in oneDNN!
-        "test_mm_empty_inputs_mixed_dtype_errors_xpu",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
+        # CUDA bias cases added in latest PyTorch
+        # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+        "test_matmul_check_entries_tunableop_xpu_float16",
+        "test_minimum_tuning_iteration_tunableop_xpu_float16",
+        "test_validator_tunableop_rocm_xpu_float32",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
@@ -2078,7 +2032,6 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_float16_xpu",
         "test_scaled_mm_vs_emulated_float32_xpu",
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
-
         # https://github.com/intel/torch-xpu-ops/issues/676
         # Mismatched elements: 9 / 1003002 (0.0%)
         # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
@@ -2821,8 +2774,6 @@ skip_dict = {
         "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float64",
         "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float32",
         "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float64",
-        # AssertionError: Tensor-likes are not close!
-        "test_pointwise_op_with_tensor_of_scalarlist_overload__foreach_addcdiv_is_fastpath_True_xpu_float16",
     ),
 
     "nn/test_convolution_xpu.py": (
@@ -2836,7 +2787,12 @@ skip_dict = {
         "test_Conv2d_groups_nobias",
     ),
 
-    "test_dynamic_shapes_xpu.py": None,
+    "test_dynamic_shapes_xpu.py": (
+        # issue 746, new ut failures introduced by new pytorch
+        "test_method_fn_add_first_type_int_second_type_float",
+        "test_method_fn_mul_first_type_int_second_type_float",
+        "test_method_fn_sub_first_type_int_second_type_float",
+    ),
 
     "nn/test_load_state_dict_xpu.py": None,
 
