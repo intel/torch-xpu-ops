@@ -1953,10 +1953,10 @@
 #   dispatch:
 #     CompositeExplicitAutograd: sort_out
 
-# - func: sort.values_stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
-#   structured: True
-#   dispatch:
-#     XPU: sort_stable_out
+- func: sort.values_stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  structured: True
+  dispatch:
+    XPU: sort_stable_out
 
 # - func: sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)
 #   device_check: NoCheck   # TensorIterator
@@ -1965,9 +1965,9 @@
 #     CompositeExplicitAutograd: sort
 #   tags: core
 
-# - func: sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)
-#   structured_delegate: sort.values_stable
-#   variants: method, function
+- func: sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)
+  structured_delegate: sort.values_stable
+  variants: method, function
 
 - func: cat(Tensor[] tensors, int dim=0) -> Tensor
   structured_delegate: cat.out
