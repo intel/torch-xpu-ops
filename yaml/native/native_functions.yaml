@@ -202,6 +202,106 @@
     XPU: div_out
   tags: pointwise
 
+- func: div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: div.out_mode
+  tags: [core, pointwise]
+
+- func: div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: div.out_mode
+  tags: pointwise
+
+- func: div.out_mode(Tensor self, Tensor other, *, str? rounding_mode, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: div_out_mode
+  tags: pointwise
+
+# For C++ only, until we have conversion from C++ numbers to Tensor
+- func: div.Scalar(Tensor self, Scalar other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: div
+    NestedTensorCPU, NestedTensorCUDA: NestedTensor_div_Scalar
+  tags: [core, pointwise]
+
+- func: div_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: div_
+  autogen: div.Scalar_out
+  tags: pointwise
+
+- func: div.Scalar_mode(Tensor self, Scalar other, *, str? rounding_mode) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: div
+  tags: [core, pointwise]
+
+- func: div_.Scalar_mode(Tensor(a!) self, Scalar other, *, str? rounding_mode) -> Tensor(a!)
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: div_
+  autogen: div.Scalar_mode_out
+  tags: pointwise
+
+# divide, alias for div
+- func: divide.Tensor(Tensor self, Tensor other) -> Tensor
+  variants: function, method
+
+- func: divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  variants: method
+
+- func: divide.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+
+- func: divide.Scalar(Tensor self, Scalar other) -> Tensor
+  variants: function, method
+
+- func: divide_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
+  variants: method
+
+- func: divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor
+  variants: function, method
+
+- func: divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)
+  variants: method
+
+- func: divide.out_mode(Tensor self, Tensor other, *, str? rounding_mode, Tensor(a!) out) -> Tensor(a!)
+
+- func: divide.Scalar_mode(Tensor self, Scalar other, *, str? rounding_mode) -> Tensor
+  variants: function, method
+
+- func: divide_.Scalar_mode(Tensor(a!) self, Scalar other, *, str? rounding_mode) -> Tensor(a!)
+  variants: method
+
+  # true_divide, an alias for div
+- func: true_divide.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: pointwise
+
+- func: true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+
+- func: true_divide.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+
+- func: true_divide.Scalar(Tensor self, Scalar other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: true_divide_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+
 - func: rsub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function
@@ -1312,25 +1412,25 @@
   structured_delegate: bitwise_or.Tensor_out
   tags: pointwise
 
-# - func: bitwise_not(Tensor self) -> Tensor
-#   device_check: NoCheck   # TensorIterator
-#   structured_delegate: bitwise_not.out
-#   variants: function, method
-#   tags: [core, pointwise]
+- func: bitwise_not(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: bitwise_not.out
+  variants: function, method
+  tags: [core, pointwise]
 
-# - func: bitwise_not_(Tensor(a!) self) -> Tensor(a!)
-#   device_check: NoCheck   # TensorIterator
-#   structured_delegate: bitwise_not.out
-#   variants: method
-#   tags: pointwise
+- func: bitwise_not_(Tensor(a!) self) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: bitwise_not.out
+  variants: method
+  tags: pointwise
 
-# - func: bitwise_not.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
-#   device_check: NoCheck   # TensorIterator
-#   structured: True
-#   structured_inherits: TensorIteratorBase
-#   dispatch:
-#     XPU: bitwise_not_out
-#   tags: pointwise
+- func: bitwise_not.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: bitwise_not_out
+  tags: pointwise
 
 - func: where.self_out(Tensor condition, Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -1677,6 +1777,18 @@
   structured: True
   dispatch:
     XPU: softmax_backward_xpu_out
+
+- func: log_softmax.Dimname(Tensor self, Dimname dim, *, ScalarType? dtype=None) -> Tensor
+  variants: function, method
+
+- func: _log_softmax(Tensor self, int dim, bool half_to_float) -> Tensor
+  structured_delegate: _log_softmax.out
+  tags: core
+
+- func: _log_softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: log_softmax_xpu_out
 
 - func: _log_softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
   structured_delegate: _log_softmax_backward_data.out
@@ -4104,47 +4216,47 @@
   dispatch:
     XPU: aminmax_out
 
-- func: index_fill_.int_Scalar(Tensor(a!) self, int dim, Tensor index, Scalar value) -> Tensor(a!)
-  device_check: NoCheck   # TensorIterator
-  variants: method
-  dispatch:
-    XPU: index_fill_
-  autogen: index_fill.int_Scalar_out
+# - func: index_fill_.int_Scalar(Tensor(a!) self, int dim, Tensor index, Scalar value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   dispatch:
+#     XPU: index_fill_
+#   autogen: index_fill.int_Scalar_out
 
-- func: index_fill.int_Scalar(Tensor self, int dim, Tensor index, Scalar value) -> Tensor
-  device_check: NoCheck   # TensorIterator
-  variants: function, method
-  dispatch:
-    CompositeExplicitAutograd: index_fill
+# - func: index_fill.int_Scalar(Tensor self, int dim, Tensor index, Scalar value) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   dispatch:
+#     CompositeExplicitAutograd: index_fill
 
-- func: index_fill_.int_Tensor(Tensor(a!) self, int dim, Tensor index, Tensor value) -> Tensor(a!)
-  device_check: NoCheck   # TensorIterator
-  variants: method
-  dispatch:
-    XPU: index_fill_
-  autogen: index_fill.int_Tensor_out
+# - func: index_fill_.int_Tensor(Tensor(a!) self, int dim, Tensor index, Tensor value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
+#   dispatch:
+#     XPU: index_fill_
+#   autogen: index_fill.int_Tensor_out
 
-- func: index_fill.int_Tensor(Tensor self, int dim, Tensor index, Tensor value) -> Tensor
-  device_check: NoCheck   # TensorIterator
-  variants: function, method
-  dispatch:
-    CompositeExplicitAutograd: index_fill
+# - func: index_fill.int_Tensor(Tensor self, int dim, Tensor index, Tensor value) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
+#   dispatch:
+#     CompositeExplicitAutograd: index_fill
 
-- func: index_fill_.Dimname_Scalar(Tensor(a!) self, Dimname dim, Tensor index, Scalar value) -> Tensor(a!)
-  device_check: NoCheck   # TensorIterator
-  variants: method
+# - func: index_fill_.Dimname_Scalar(Tensor(a!) self, Dimname dim, Tensor index, Scalar value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
 
-- func: index_fill_.Dimname_Tensor(Tensor(a!) self, Dimname dim, Tensor index, Tensor value) -> Tensor(a!)
-  device_check: NoCheck   # TensorIterator
-  variants: method
+# - func: index_fill_.Dimname_Tensor(Tensor(a!) self, Dimname dim, Tensor index, Tensor value) -> Tensor(a!)
+#   device_check: NoCheck   # TensorIterator
+#   variants: method
 
-- func: index_fill.Dimname_Scalar(Tensor self, Dimname dim, Tensor index, Scalar value) -> Tensor
-  device_check: NoCheck   # TensorIterator
-  variants: function, method
+# - func: index_fill.Dimname_Scalar(Tensor self, Dimname dim, Tensor index, Scalar value) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
 
-- func: index_fill.Dimname_Tensor(Tensor self, Dimname dim, Tensor index, Tensor value) -> Tensor
-  device_check: NoCheck   # TensorIterator
-  variants: function, method
+# - func: index_fill.Dimname_Tensor(Tensor self, Dimname dim, Tensor index, Tensor value) -> Tensor
+#   device_check: NoCheck   # TensorIterator
+#   variants: function, method
 
 - func: polar(Tensor abs, Tensor angle) -> Tensor
   variants: function
@@ -4778,3 +4890,43 @@
   dispatch:
     XPU: signbit_out
   tags: pointwise
+
+- func: median(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: median_xpu
+  autogen: median.out
+
+- func: median.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: median
+
+- func: median.dim_values(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  dispatch:
+    XPU: median_out_xpu
+
+- func: median.names_dim(Tensor self, Dimname dim, bool keepdim=False) -> (Tensor values, Tensor indices)
+  variants: function, method
+
+- func: median.names_dim_values(Tensor self, Dimname dim, bool keepdim=False, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+
+- func: nanmedian(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: nanmedian_xpu
+  autogen: nanmedian.out
+
+- func: nanmedian.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: nanmedian
+
+- func: nanmedian.dim_values(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  dispatch:
+    XPU: nanmedian_out_xpu
+
+- func: nanmedian.names_dim(Tensor self, Dimname dim, bool keepdim=False) -> (Tensor values, Tensor indices)
+  variants: function, method
+
+- func: nanmedian.names_dim_values(Tensor self, Dimname dim, bool keepdim=False, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)

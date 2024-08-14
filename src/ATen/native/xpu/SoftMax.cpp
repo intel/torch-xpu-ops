@@ -6,6 +6,7 @@
 #include <comm/xpu_aten.h>
 
 #include <xpu/ATen/ops/_log_softmax_backward_data_native.h>
+#include <xpu/ATen/ops/_log_softmax_native.h>
 #include <xpu/ATen/ops/_softmax_backward_data_native.h>
 #include <xpu/ATen/ops/_softmax_native.h>
 namespace at::native {
@@ -66,4 +67,13 @@ TORCH_IMPL_FUNC(log_softmax_backward_xpu_out)
   native::xpu::_log_softmax_backward_kernel(
       grad, output, dim, false, grad_input);
 }
+
+TORCH_IMPL_FUNC(log_softmax_xpu_out)
+(const Tensor& input,
+ const int64_t dim,
+ const bool half_to_float,
+ const Tensor& output) {
+  xpu::_log_softmax_kernel(input, dim, half_to_float, output);
+}
+
 } // namespace at::native
