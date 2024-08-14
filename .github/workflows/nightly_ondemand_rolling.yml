@@ -69,8 +69,6 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
-    env:
-      ZE_AFFINITY_MASK: 0
     with: 
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
@@ -81,8 +79,6 @@ jobs:
   Linux-Weekly-UT-Tests-ABI-0-Rolling:
     if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
-    env:
-      ZE_AFFINITY_MASK: 0
     with: 
       abi: 0
       ut: op_example,op_extended,op_ut,torch_xpu
@@ -276,8 +272,7 @@ jobs:
             TIMEOUT_MODELS="$(
               grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
             )"
-            echo "${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
-            grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
+            echo "TIMEOUT_MODELS=${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
             grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
@@ -298,7 +293,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-Tests
+    needs: Linux-Nightly-Ondemand-E2E-Tests-Rolling
     steps:
       - name: Report github issue for XPU OPS nightly
         if: github.repository_owner == 'intel'
@@ -307,23 +302,23 @@ jobs:
           # Test env
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_COMMIT_ID }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.DRIVER_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
+          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_BRANCH_ID }}"
+          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_COMMIT_ID }}"
+          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.DRIVER_VERSION }}"
+          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.BUNDLE_VERSION }}"
+          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.OS_PRETTY_NAME }}"
+          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.GCC_VERSION }}"
+          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHBENCH_COMMIT_ID }}"
+          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHVISION_COMMIT_ID }}"
+          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHAUDIO_COMMIT_ID }}"
+          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TRANSFORMERS_VERSION }}"
+          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TIMM_COMMIT_ID }}"
+          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TRITON_COMMIT_ID }}"
+          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TIMEOUT_MODELS }}"
           # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "success" ];then
+          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.result }}" == "success" ];then
             test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "failure" ];then
+          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.result }}" == "failure" ];then
             test_status=Failure
             cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
           else
