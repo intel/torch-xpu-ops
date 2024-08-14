@@ -2787,12 +2787,13 @@ skip_dict = {
         "test_Conv2d_groups_nobias",
     ),
 
-    "test_dynamic_shapes_xpu.py": (
-        # issue 746, new ut failures introduced by new pytorch
-        "test_method_fn_add_first_type_int_second_type_float",
-        "test_method_fn_mul_first_type_int_second_type_float",
-        "test_method_fn_sub_first_type_int_second_type_float",
-    ),
+    "test_dynamic_shapes_xpu.py": None, 
+    #"test_dynamic_shapes_xpu.py": (
+    #    # issue 746, new ut failures introduced by new pytorch
+    #    "test_method_fn_add_first_type_int_second_type_float",
+    #    "test_method_fn_mul_first_type_int_second_type_float",
+    #    "test_method_fn_sub_first_type_int_second_type_float",
+    #),
 
     "nn/test_load_state_dict_xpu.py": None,
 
