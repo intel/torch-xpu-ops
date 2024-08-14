@@ -158,7 +158,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_cholesky_solve_helper",
     "dot",
     "_efficient_attention_forward",
-    "_fft_c2c",
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",

@@ -2,6 +2,7 @@
 include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
 set(ATen_XPU_CPP_SRCS)
+set(ATen_XPU_MKL_SRCS)
 set(ATen_XPU_NATIVE_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
 set(ATen_XPU_XCCL_SRCS)
@@ -29,4 +30,10 @@ if(CLANG_FORMAT)
   file(GLOB_RECURSE ALL_CSRCS ${TORCH_XPU_OPS_ROOT}/**.[ch] ${TORCH_XPU_OPS_ROOT}/**.[ch]pp)
   add_custom_target(CL_FORMAT_CSRCS COMMAND ${CLANG_FORMAT_EXEC} -i -style=file ${ALL_CSRCS})
   add_dependencies(torch_xpu_ops CL_FORMAT_CSRCS)
+endif()
+
+if(USE_ONEMKL)
+  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL")
+  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
+  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
 endif()
