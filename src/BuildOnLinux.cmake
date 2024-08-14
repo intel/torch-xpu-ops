@@ -7,6 +7,7 @@ add_library(
   torch_xpu_ops
   STATIC
   ${ATen_XPU_CPP_SRCS}
+  ${ATen_XPU_MKL_SRCS}
   ${ATen_XPU_NATIVE_CPP_SRCS}
   ${ATen_XPU_GEN_SRCS})
 
