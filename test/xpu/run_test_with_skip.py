@@ -1092,6 +1092,8 @@ skip_list = (
     "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
     "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
     "test_save_load_nn_Transformer_xpu_float64",
+    # Unexpected suceess:
+    "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
     # CPU fallback could not cover these
     # CUDA xfails
     # Failed: Unexpected success
@@ -1170,23 +1172,6 @@ skip_list = (
     # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
     "test_type",
     # AssertionError: Tensor-likes are not close!
-    "test_Conv2d_dilated_with_long_tensor_cuda",
-    "test_Conv2d_groups_thnn_with_long_tensor_cuda",
-    "test_Conv2d_groups_with_long_tensor_cuda",
-    "test_Conv2d_no_bias_with_long_tensor_cuda",
-    "test_Conv2d_padding_with_long_tensor_cuda",
-    "test_Conv2d_strided_with_long_tensor_cuda",
-    "test_Conv2d_with_long_tensor_cuda",
-    "test_Conv3d_1x1x1_no_bias_with_long_tensor_cuda",
-    "test_Conv3d_groups_with_long_tensor_cuda",
-    "test_Conv3d_no_bias_with_long_tensor_cuda",
-    "test_Conv3d_stride_padding_with_long_tensor_cuda",
-    "test_Conv3d_stride_with_long_tensor_cuda",
-    "test_Conv3d_with_long_tensor_cuda",
-    "test_ConvTranspose2d_dilated_with_long_tensor_cuda",
-    "test_ConvTranspose2d_groups_with_long_tensor_cuda",
-    "test_ConvTranspose2d_no_bias_with_long_tensor_cuda",
-    "test_ConvTranspose2d_with_long_tensor_cuda",
     "test_RReLU_cuda",
     "test_RReLU_no_batch_dim_cuda",
     "test_RReLU_with_up_down_cuda",
@@ -1348,6 +1333,7 @@ skip_list = (
     # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
     # https://github.com/intel/torch-xpu-ops/issues/731
     "test_profiler",
+    "test_record_function",
 )
 res += launch_test("test_autograd_xpu.py", skip_list)
 

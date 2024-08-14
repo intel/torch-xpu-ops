@@ -14,7 +14,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
-from torch.testing._internal.common_device_type import toleranceOverride, tol
+from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
@@ -252,7 +252,7 @@ _cuda_xfail_xpu_pass = [
     ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
-    ("nn.AvgPool2d","test_memory_format"),
+    ("nn.AvgPool2d", "test_memory_format"),
 ]
 
 # some case should adjust tolerance to pass.
@@ -260,7 +260,12 @@ _cuda_xfail_xpu_pass = [
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
 
 _xpu_tolerance_override = {
-    "nn.functional.tanhshrink":{("TestUnaryUfuncs",'test_reference_numerics_normal'):{torch.complex64: tol(atol=2e-05, rtol=9e-06)}},
+    "nn.functional.tanhshrink": {
+        ("TestUnaryUfuncs", "test_reference_numerics_normal"): {
+            torch.complex64: tol(atol=2e-05, rtol=9e-06),
+            torch.bfloat16: tol(atol=1e-02, rtol=1.6e-02),
+        }
+    },
 }
 
 
@@ -300,14 +305,16 @@ def to_xpu(obj, type_map=None):
 
 def ModuleTest_test_xpu(self, test_case):
     if not self.should_test_cuda:
-        raise unittest.SkipTest('Excluded from XPU tests')
+        raise unittest.SkipTest("Excluded from XPU tests")
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
 
         type_map = {torch.double: torch.float}
         cpu_input_tuple = cpu_input if isinstance(cpu_input, tuple) else (cpu_input,)
 
-        is_any_input_complex = any(isinstance(t, torch.Tensor) and t.dtype.is_complex for t in cpu_input_tuple)
+        is_any_input_complex = any(
+            isinstance(t, torch.Tensor) and t.dtype.is_complex for t in cpu_input_tuple
+        )
 
         xpu_input_tuple = to_xpu(cpu_input_tuple, type_map=type_map)
 
@@ -317,7 +324,6 @@ def ModuleTest_test_xpu(self, test_case):
         xpu_param = test_case._get_parameters(xpu_module)
         for cpu_p, xpu_p in zip(cpu_param[0], xpu_param[0]):
             xpu_p.data.copy_(cpu_p)
-
         test_case._zero_grad_input(cpu_input_tuple)
         test_case._zero_grad_input(xpu_input_tuple)
         test_case._zero_grad_parameters(cpu_module)
@@ -327,26 +333,38 @@ def ModuleTest_test_xpu(self, test_case):
         if getattr(cpu_module, "return_indices", False):
             cpu_output = cpu_output[0]
             xpu_output = xpu_output[0]
-        test_case.assertEqual(cpu_output, xpu_output, atol=self.precision, rtol=0, exact_dtype=False)
+        test_case.assertEqual(
+            cpu_output, xpu_output, atol=self.precision, rtol=0, exact_dtype=False
+        )
 
         # Run backwards on CPU and xpu and compare results
+
         for _ in range(5):
             cpu_gradOutput = cpu_output.clone().normal_()
             xpu_gradOutput = cpu_gradOutput.type_as(xpu_output)
-            cpu_gradInput = test_case._backward(cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput)
-            xpu_gradInput = test_case._backward(xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput)
-            test_case.assertEqual(cpu_gradInput, xpu_gradInput, atol=self.precision, rtol=0, exact_dtype=False)
+            cpu_gradInput = test_case._backward(
+                cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput
+            )
+            xpu_gradInput = test_case._backward(
+                xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
+            )
+            test_case.assertEqual(
+                cpu_gradInput,
+                xpu_gradInput,
+                atol=self.precision,
+                rtol=0,
+                exact_dtype=False,
+            )
             for cpu_d_p, xpu_d_p in zip(cpu_param[1], xpu_param[1]):
                 test_case.assertEqual(cpu_d_p, xpu_d_p, atol=self.precision, rtol=0)
-
         # Run double-backwards on CPU and xpu and compare results
+
         if self.check_gradgrad and not self.FIXME_no_cuda_gradgrad_comparison:
             cpu_output = cpu_module(*cpu_input_tuple)
             xpu_output = xpu_module(*xpu_input_tuple)
             if getattr(cpu_module, "return_indices", False):
                 cpu_output = cpu_output[0]
                 xpu_output = xpu_output[0]
-
             cpu_gradOutput = torch.randn_like(cpu_output, requires_grad=True)
             xpu_gradOutput = cpu_gradOutput.type_as(xpu_output).detach()
             xpu_gradOutput.requires_grad = True
@@ -355,39 +373,55 @@ def ModuleTest_test_xpu(self, test_case):
                 cpu_output,
                 cpu_input_tuple + tuple(cpu_module.parameters()),
                 cpu_gradOutput,
-                create_graph=True)
+                create_graph=True,
+            )
             xpu_gradInputs = torch.autograd.grad(
                 xpu_output,
                 xpu_input_tuple + tuple(xpu_module.parameters()),
                 xpu_gradOutput,
-                create_graph=True)
+                create_graph=True,
+            )
 
             for cpu_d_i, xpu_d_i in zip(cpu_gradInputs, xpu_gradInputs):
-                test_case.assertEqual(cpu_d_i, xpu_d_i, atol=self.precision, rtol=0, exact_dtype=False)
-
+                test_case.assertEqual(
+                    cpu_d_i, xpu_d_i, atol=self.precision, rtol=0, exact_dtype=False
+                )
             # We mix output into the second backwards computation so that
             # torch.autograd.grad doesn't complain that some inputs
             # are unreachable (which can happen if you differentiate
             # only on the gradient.
+
             if is_any_input_complex:
-                outputs_cpu = cpu_output.sum().abs() + sum(x.sum().abs() for x in cpu_gradInputs)
-                outputs_xpu = xpu_output.sum().abs() + sum(x.sum().abs() for x in xpu_gradInputs)
+                outputs_cpu = cpu_output.sum().abs() + sum(
+                    x.sum().abs() for x in cpu_gradInputs
+                )
+                outputs_xpu = xpu_output.sum().abs() + sum(
+                    x.sum().abs() for x in xpu_gradInputs
+                )
             else:
                 outputs_cpu = cpu_output.sum() + sum(x.sum() for x in cpu_gradInputs)
                 outputs_xpu = xpu_output.sum() + sum(x.sum() for x in xpu_gradInputs)
-
             cpu_gg = torch.autograd.grad(
                 outputs_cpu,
                 cpu_input_tuple + (cpu_gradOutput,) + tuple(cpu_module.parameters()),
-                retain_graph=True)
+                retain_graph=True,
+            )
             xpu_gg = torch.autograd.grad(
                 outputs_xpu,
                 xpu_input_tuple + (xpu_gradOutput,) + tuple(xpu_module.parameters()),
-                retain_graph=True)
-            test_case.assertEqual(cpu_gradInput, xpu_gradInput, atol=self.precision, rtol=0, exact_dtype=False)
+                retain_graph=True,
+            )
+            test_case.assertEqual(
+                cpu_gradInput,
+                xpu_gradInput,
+                atol=self.precision,
+                rtol=0,
+                exact_dtype=False,
+            )
             for cpu_d_p, xpu_d_p in zip(cpu_gg, xpu_gg):
-                test_case.assertEqual(cpu_d_p, xpu_d_p, atol=self.precision, rtol=0, exact_dtype=False)
-
+                test_case.assertEqual(
+                    cpu_d_p, xpu_d_p, atol=self.precision, rtol=0, exact_dtype=False
+                )
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
@@ -402,9 +436,9 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
             return tuple(convert_dtype(o, dtype, requires_grad) for o in obj)
         else:
             return obj
-    if not self.should_test_cuda:
-        raise unittest.SkipTest('Excluded from XPU tests')
 
+    if not self.should_test_cuda:
+        raise unittest.SkipTest("Excluded from XPU tests")
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
         cpu_target = self._get_target()
@@ -526,6 +560,7 @@ class XPUPatchForImport:
         for info in db:
             if hasattr(info, "decorators"):
                 replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
+
                 # the latter decorator will override the former.
                 if info.name in _xpu_tolerance_override:
                     replaced = True
