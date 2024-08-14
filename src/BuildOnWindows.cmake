@@ -6,7 +6,8 @@ set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 add_library(
   torch_xpu_ops
   STATIC
-  ${ATen_XPU_CPP_SRCS})
+  ${ATen_XPU_CPP_SRCS}
+  ${ATen_XPU_MKL_SRCS})
 set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
 target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
