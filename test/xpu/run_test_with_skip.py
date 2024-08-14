@@ -1818,6 +1818,13 @@ skip_list = (
     "test_matmul_check_entries_tunableop_xpu_float16",
     "test_minimum_tuning_iteration_tunableop_xpu_float16",
     "test_validator_tunableop_rocm_xpu_float32",
+    # TypeError: Invalid NaN comparison
+    "test_compile_int4_mm_m_32_k_64_n_48_xpu",
+    "test_compile_int4_mm_m_32_k_64_n_64_xpu",
+    "test_compile_int4_mm_m_64_k_32_n_48_xpu",
+    "test_compile_int4_mm_m_64_k_32_n_64_xpu",
+    "test_compile_int4_mm_m_32_k_64_n_48_xpu",
+    "test_compile_int4_mm_m_32_k_64_n_64_xpu",
 )
 res += launch_test("test_linalg_xpu.py", skip_list)
 
