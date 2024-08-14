@@ -25,9 +25,10 @@ void index_add_kernel(
     const Tensor& out);
 
 void index_fill_kernel(
-    Tensor& self,
-    int64_t dim,
-    const Tensor& index,
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride,
     const Scalar& source);
 
 void index_put_kernel(
