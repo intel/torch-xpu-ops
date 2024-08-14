@@ -679,6 +679,26 @@ skip_dict = {
         # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
         # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
         "test_dtypes__refs_nn_functional_pdist_xpu",
+
+        # The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}.
+        "test_dtypes_fft_fft2_xpu",
+        "test_dtypes_fft_fft_xpu",
+        "test_dtypes_fft_fftn_xpu",
+        "test_dtypes_fft_hfft2_xpu",
+        "test_dtypes_fft_hfft_xpu",
+        "test_dtypes_fft_hfftn_xpu",
+        "test_dtypes_fft_ifft2_xpu",
+        "test_dtypes_fft_ifft_xpu",
+        "test_dtypes_fft_ifftn_xpu",
+        "test_dtypes_fft_ihfft2_xpu",
+        "test_dtypes_fft_ihfft_xpu",
+        "test_dtypes_fft_ihfftn_xpu",
+        "test_dtypes_fft_irfft2_xpu",
+        "test_dtypes_fft_irfft_xpu",
+        "test_dtypes_fft_irfftn_xpu",
+        "test_dtypes_fft_rfft2_xpu",
+        "test_dtypes_fft_rfft_xpu",
+        "test_dtypes_fft_rfftn_xpu",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -3384,6 +3404,10 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
+
+    "test_spectral_ops_xpu.py": (
+        # CUDA specific case
+        "test_cufft_plan_cache_xpu_float64",
     ),
     "test_sparse_xpu.py": (
         "test_bmm_deterministic_xpu_float64", # - AssertionError: Torch not compiled with CUDA enabled

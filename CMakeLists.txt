@@ -36,6 +36,7 @@ set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
 list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
+include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
 if(BUILD_TEST)
