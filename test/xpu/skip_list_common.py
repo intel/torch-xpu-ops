@@ -749,13 +749,15 @@ skip_dict = {
     ),
 
     "test_scatter_gather_ops_xpu.py": (
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+        # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
+        # https://github.com/intel/torch-xpu-ops/issues/484
+        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
+        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
     ),
 
     "test_autograd_fallback.py": None,
 
-    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu"),  # Hard code CUDA
+    "test_sort_and_select_xpu.py": ("test_sort_large_slice_xpu",),  # Hard code CUDA
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
@@ -821,6 +823,7 @@ skip_dict = {
     ),
 
     "test_transformers_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/761
         # AssertionError: False is not true
         # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
         "test_disable_fastpath_xpu",
@@ -829,6 +832,7 @@ skip_dict = {
         # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
         "test_with_nested_tensor_input_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
+        # https://github.com/intel/torch-xpu-ops/issues/253
         "test_sdp_math_gradcheck_contiguous_inputs_False_xpu",
         "test_sdp_math_gradcheck_contiguous_inputs_True_xpu",
         "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_True_xpu",
@@ -871,13 +875,7 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
     ),
 
-    "test_complex_xpu.py": (
-        # Skip CPU case
-        "test_eq_xpu_complex128",
-        "test_eq_xpu_complex64",
-        "test_ne_xpu_complex128",
-        "test_ne_xpu_complex64",
-    ),
+    "test_complex_xpu.py": None,
 
     "test_modules_xpu.py": (
         # oneDNN issues
@@ -1217,8 +1215,11 @@ skip_dict = {
 
     "test_dataloader_xpu.py": (
         # Skip for XPU didn't support
-        "test_nested_tensor_multiprocessing",
+        # https://github.com/intel/torch-xpu-ops/issues/613
+        "test_nested_tensor_multiprocessing_context_forkserver_xpu",
+        "test_nested_tensor_multiprocessing_context_spawn_xpu",
         # pinned memory issue
+        # https://github.com/intel/torch-xpu-ops/issues/296
         "test_custom_batch_pin",
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
@@ -1236,14 +1237,10 @@ skip_dict = {
         "test_kaiser_window_xpu",
     ),
 
-    "test_autocast_xpu.py": (
-        # Frontend API support
-        # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
-        # https://github.com/intel/torch-xpu-ops/issues/223
-        "test_cache_disabled",
-    ),
+    "test_autocast_xpu.py": None,
 
     "test_autograd_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/618
         # c10::NotImplementedError
         "test_autograd_composite_implicit_and_dispatch_registration_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
@@ -1258,23 +1255,11 @@ skip_dict = {
         "test_checkpointing_without_reentrant_memory_savings",
         "test_flops_and_mem",
         "test_profiler_emit_nvtx_xpu",
-        # RuntimeError: grad can be implicitly created only for scalar outputs
-        "test_reentrant_parent_error_on_cpu_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
         "test_mv_grad_stride_0_xpu",
         # module 'torch._C' has no attribute '_scatter'
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
-        # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
-        "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
-        # Skip device count < 2
-        "test_backward_device_xpu",
-        "test_inputbuffer_add_multidevice_xpu",
-        "test_unused_output_device_xpu",
-        # Skip CPU case
-        "test_copy__xpu",
-        "test_checkpointing_non_reentrant_autocast_cpu",
-        "test_per_dispatch_key_input_saving_xpu",
         # Runtime error after enabling PTI
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         # https://github.com/intel/torch-xpu-ops/issues/731
@@ -1286,14 +1271,9 @@ skip_dict = {
         # CPU/CUDA bias code in aten::mode_out
         # https://github.com/intel/torch-xpu-ops/issues/327
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
-        "test_dim_reduction",
-        "test_mode",
+        "test_mode_xpu",
+        "test_mode_wrong_dtype_xpu",
         "test_dim_reduction_fns_fn_name_mode",
-        # CUDA skips the case in opdb.
-        # https://github.com/intel/torch-xpu-ops/issues/222
-        "test_ref_extremal_values_mean_xpu_complex64",
-        # CPU fallback fails (CPU vs Numpy).
-        "test_ref_small_input_masked_prod_xpu_float16",
     ),
 
     "test_unary_ufuncs_xpu.py": (
@@ -2778,6 +2758,7 @@ skip_dict = {
 
     "nn/test_convolution_xpu.py": (
         # XPU unsupport ops, skip.
+        # https://github.com/intel/torch-xpu-ops/issues/348
         "test_cudnn_convolution_relu_xpu_float16",
         "test_cudnn_convolution_relu_xpu_float32",
         "test_cudnn_convolution_add_relu_xpu_float16",
@@ -2787,12 +2768,7 @@ skip_dict = {
         "test_Conv2d_groups_nobias",
     ),
 
-    "test_dynamic_shapes_xpu.py": (
-        # issue 746, new ut failures introduced by new pytorch
-        "test_method_fn_add_first_type_int_second_type_float",
-        "test_method_fn_mul_first_type_int_second_type_float",
-        "test_method_fn_sub_first_type_int_second_type_float",
-    ),
+    "test_dynamic_shapes_xpu.py": None,
 
     "nn/test_load_state_dict_xpu.py": None,
 
