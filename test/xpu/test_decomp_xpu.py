@@ -56,8 +56,8 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
         (torch.float16, torch.ops.aten.mv.default): 1e-5,
         (torch.bfloat16, torch.ops.aten.mv.default): 1e-5,
         (torch.float16, torch.ops.aten.log_sigmoid_backward.default): 2e-5,
-        (torch.float16, torch.ops.aten._batch_norm_with_update.default): 2e-7,
-        (torch.bfloat16, torch.ops.aten._batch_norm_with_update.default): 2e-7,
+        (torch.float16, torch.ops.aten._batch_norm_with_update.default): 2e-7, # adjust tolerance for xpu, so hook this func
+        (torch.bfloat16, torch.ops.aten._batch_norm_with_update.default): 2e-7, # adjust tolerance for xpu, so hook this func
     }
     if ref.is_floating_point():
         orig_diff = (orig - ref).abs().max()

@@ -517,22 +517,23 @@ class XPUPatchForImport:
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
                     replaced = True
-            if op_name in _xpu_tolerance_override:
-                replaced = True
-                for case, tolerance in _xpu_tolerance_override[op_name].items():
-                    wrapper_xpu.append(
-                        DecorateInfo(
-                            toleranceOverride(tolerance),
-                            case[0],  # cls_name
-                            case[1],  # test_name
-                            device_type="xpu",
-                        )
-                    )
             return replaced, wrapper_xpu
 
         for info in db:
             if hasattr(info, "decorators"):
                 replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
+                # the latter decorator will override the former.
+                if info.name in _xpu_tolerance_override:
+                    replaced = True
+                    for case, tolerance in _xpu_tolerance_override[info.name].items():
+                        decorator_xpu.append(
+                            DecorateInfo(
+                                toleranceOverride(tolerance),
+                                case[0],  # cls_name
+                                case[1],  # test_name
+                                device_type="xpu",
+                            )
+                        )
                 if replaced:
                     info.decorators = tuple(decorator_xpu)
             if hasattr(info, "skips"):
