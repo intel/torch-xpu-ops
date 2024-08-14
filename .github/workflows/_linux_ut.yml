@@ -33,7 +33,11 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-
+      test_type:
+        required: false
+        type: string
+        default: 'lts'
+        description: test type, lts/rolling/whl
 permissions: read-all
 
 jobs:
@@ -79,10 +83,13 @@ jobs:
           else
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
-          # WERROR=1 python setup.py bdist_wheel
-          # pip install --force-reinstall dist/*.whl
-          # git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          pip install torch torchvision torchaudio pytorch-triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          if [ ${{ inputs.test_type }} != "whl" ]; then
+            WERROR=1 python setup.py bdist_wheel
+            pip install --force-reinstall dist/*.whl
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio pytorch-triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
