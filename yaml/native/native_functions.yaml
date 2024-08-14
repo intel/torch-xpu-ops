@@ -8575,3 +8575,14 @@
   dispatch:
     SparseXPU: copy_sparse_
   autogen: copy_sparse_to_sparse, copy_sparse_to_sparse.out
+
+# Standard complex to complex FFT (forward or backward)
+- func: _fft_c2c(Tensor self, SymInt[] dim, int normalization, bool forward) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_c2c_xpu
+
+- func: _fft_c2c.out(Tensor self, SymInt[] dim, int normalization, bool forward, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_c2c_xpu_out
