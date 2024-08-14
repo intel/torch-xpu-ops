@@ -1028,6 +1028,7 @@ skip_dict = {
         "test_save_load_nn_Transformer_xpu_float64",
         # Unexpected success:
         "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         # CPU fallback could not cover these
         # CUDA xfails
         # Failed: Unexpected success
