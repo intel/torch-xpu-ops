@@ -299,6 +299,8 @@ def to_xpu(obj, type_map=None):
 
 
 def ModuleTest_test_xpu(self, test_case):
+    if not self.should_test_cuda:
+        raise unittest.SkipTest('Excluded from XPU tests')
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
 
@@ -400,6 +402,8 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
             return tuple(convert_dtype(o, dtype, requires_grad) for o in obj)
         else:
             return obj
+    if not self.should_test_cuda:
+        raise unittest.SkipTest('Excluded from XPU tests')
 
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
