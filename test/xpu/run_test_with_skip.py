@@ -1261,7 +1261,6 @@ res += launch_test("test_nn_xpu.py", skip_list)
 
 # test_indexing
 
-
 skip_list = (
     # CPU bias cases
     # It is kernel assert on XPU implementation not exception on host.
@@ -1274,10 +1273,6 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/461
     "test_index_put_src_datatype_xpu_float8_e5m2",
     "test_index_put_src_datatype_xpu_float8_e4m3fn",
-    # Regression after PyTorch update
-    # http://github.com/intel/torch-xpu-ops/issues/549
-    # IndexError: tensors used as indices must be long, byte or bool tensors.
-    "test_index_ind_dtype_xpu",
 )
 res += launch_test("test_indexing_xpu.py", skip_list)
 
@@ -2899,7 +2894,6 @@ res += launch_test("test_foreach_xpu.py", skip_list)
 
 # test_convolution
 
-
 skip_list = (
     # XPU unsupport ops, skip.
     "test_cudnn_convolution_relu_xpu_float16",
@@ -2938,6 +2932,8 @@ res += launch_test("nn/test_module_hooks_xpu.py", skip_list)
 
 
 res += launch_test("nn/test_parametrization_xpu.py")
+
+res += launch_test("test_segment_reductions_xpu.py")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
