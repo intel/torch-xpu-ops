@@ -79,9 +79,10 @@ jobs:
           else
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
-          WERROR=1 python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
-          git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          # WERROR=1 python setup.py bdist_wheel
+          # pip install --force-reinstall dist/*.whl
+          # git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          pip install torch torchvision torchaudio pytorch-triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
