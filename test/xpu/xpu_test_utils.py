@@ -238,6 +238,10 @@ _xpu_computation_op_list = [
     "nanmean",
 ]
 
+_ops_without_cuda_support=[
+    "histogram",
+]
+
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
 # but xpu can pass these case, and assert 'unexpected success'
 # the list will pass these case.
@@ -564,7 +568,7 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list:
+            if opinfo.name not in _xpu_computation_op_list or opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
