@@ -2779,4 +2779,6 @@ skip_dict = {
     ),
 
     "nn/test_parametrization_xpu.py": None,
+
+    "test_segment_reductions_xpu.py": None,
 }
