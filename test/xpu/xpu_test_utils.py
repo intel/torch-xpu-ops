@@ -255,6 +255,9 @@ _cuda_xfail_xpu_pass = [
     ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
+    ("narrow_copy","test_meta_outplace"),
+    ("narrow_copy","test_dispatch_meta_outplace"),
+    ("narrow_copy","test_dispatch_symbolic_meta_outplace"),
 ]
 
 
