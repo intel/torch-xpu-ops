@@ -197,7 +197,7 @@ std::vector<Tensor> foreach_norm_kernel(
   std::vector<at::Tensor> ret_per_tensor;
   ret_per_tensor.reserve(ntensors);
   const auto res_option = options.dtype(output_dtype);
-  for (const int i; i < ntensors; i++) {
+  for (int i = 0; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
   sycl::queue q{sycl::property::queue::in_order()};
