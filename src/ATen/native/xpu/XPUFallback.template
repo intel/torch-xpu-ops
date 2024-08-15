@@ -160,8 +160,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "angle",
     "avg_pool3d_backward.grad_input",
     "avg_pool3d.out",
-    "bitwise_left_shift.Tensor_out",
-    "bitwise_right_shift.Tensor_out",
     "cauchy_",
     "_cdist_backward",
     "channel_shuffle",
