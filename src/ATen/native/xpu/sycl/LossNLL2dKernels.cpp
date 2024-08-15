@@ -251,7 +251,7 @@ void nll_loss2d_forward_kernel(
       at::ScalarType::BFloat16,
       input.scalar_type(),
       "nll_loss2d_forward_kernel",
-      [&] {
+      [&input_, &weight_, &target_, &output, &total_weight, &input, &target, &reduction, &ignore_index] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         AT_DISPATCH_INDEX_TYPES(
             at::native::canUse32BitIndexMath(input_, INT_MAX)
