@@ -15,6 +15,7 @@ from torch.testing._internal.common_methods_invocations import ops_and_refs
 from torch.testing._internal.common_utils import (
     IS_FBCODE,
     IS_SANDCASTLE,
+    IS_WINDOWS,
     NoTest,
     run_tests,
     suppress_warnings,
@@ -78,6 +79,8 @@ class TestCommon(TestCase):
     def test_compare_cpu(self, device, dtype, op):
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
+            if op.name=="pow" and dtype==torch.bfloat16 and IS_WINDOWS:
+                raise unittest.SkipTest(f"CPU compare test of Pow bfloat16 is disabled on Windows.")
             self.proxy = Namespace.TestCommonProxy()
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
