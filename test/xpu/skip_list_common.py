@@ -1,6 +1,7 @@
 skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
+        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect!
         "test_dtypes___rmod___xpu",
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
@@ -10,63 +11,90 @@ skip_dict = {
         "test_dtypes_nn_functional_conv_transpose3d_xpu",
         "test_dtypes_nn_functional_softsign_xpu",
         "test_dtypes_sparse_sampled_addmm_xpu",
+
+        # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
-        "test_compare_cpu_to_sparse_xpu_float32",
-        "test_errors_dot_xpu",
-        "test_errors_kthvalue_xpu",
-        "test_errors_sparse_mul_layout0_xpu",
+         "test_errors_sparse_mul_layout0_xpu",
         "test_errors_sparse_mul_layout1_xpu",
         "test_errors_sparse_mul_layout2_xpu",
         "test_errors_sparse_mul_layout3_xpu",
+        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
+        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
+        
+
+        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+        "test_compare_cpu_to_sparse_xpu_float32",
+        "test_variant_consistency_eager_to_sparse_xpu_float32",
+
+        # AssertionError: RuntimeError not raised
+        "test_errors_dot_xpu",
+        "test_errors_kthvalue_xpu",       
         "test_errors_take_xpu",
         "test_errors_vdot_xpu",
+
+        #RuntimeError: sparse_dim expected sparse or strided tensor layout but got Sparse
+        "test_variant_consistency_eager_to_sparse_xpu_complex64",
         "test_non_standard_bool_values_to_sparse_xpu_bool",
+
+        # AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
         "test_noncontiguous_samples_linalg_slogdet_xpu_float32",
         "test_noncontiguous_samples_linalg_solve_ex_xpu_float32",
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_conv1d_xpu_int64",
-        "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
-        "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
+        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
+        
+        # OneDNN issues
+        # RuntimeError: Long is not supported in oneDNN! 
+        # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
+        # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",        
+        "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",        # 
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_int64",
-        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
+        "test_noncontiguous_samples_nn_functional_conv1d_xpu_int64",
+        "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
+        
+        # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
         "test_out_mode_xpu_float32",
+
+        # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
         "test_out_nanmean_xpu_float32",
-        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
-        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
-        "test_out_warning_nanmean_xpu",
-        "test_python_ref__refs_linspace_tensor_overload_xpu_int16",
-        "test_python_ref__refs_linspace_tensor_overload_xpu_int32",
-        "test_python_ref__refs_linspace_tensor_overload_xpu_int64",
-        "test_python_ref__refs_linspace_tensor_overload_xpu_int8",
-        "test_python_ref__refs_linspace_tensor_overload_xpu_uint8",
-        "test_python_ref__refs_linspace_xpu_int16",
-        "test_python_ref__refs_linspace_xpu_int32",
-        "test_python_ref__refs_linspace_xpu_int64",
-        "test_python_ref__refs_linspace_xpu_int8",
-        "test_python_ref__refs_linspace_xpu_uint8",
-        "test_python_ref__refs_logaddexp_xpu_complex128",
-        "test_python_ref__refs_logaddexp_xpu_complex64",
-        "test_python_ref__refs_native_layer_norm_xpu_bfloat16",
-        "test_python_ref__refs_native_layer_norm_xpu_float16",
-        "test_python_ref__refs_native_layer_norm_xpu_float32",
-        "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
-        "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_float16",
-        "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_bfloat16",
-        "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_float16",
-        "test_python_ref__refs_nn_functional_triplet_margin_loss_xpu_uint8",
-        "test_python_ref__refs_square_xpu_bool",
-        "test_python_ref__refs_trunc_xpu_float64",
+        "test_out_warning_nanmean_xpu",  
+
+        # No this case anymore
+        # "test_python_ref__refs_linspace_tensor_overload_xpu_int16",
+        # "test_python_ref__refs_linspace_tensor_overload_xpu_int32",
+        # "test_python_ref__refs_linspace_tensor_overload_xpu_int64",
+        # "test_python_ref__refs_linspace_tensor_overload_xpu_int8",
+        # "test_python_ref__refs_linspace_tensor_overload_xpu_uint8",
+        # "test_python_ref__refs_linspace_xpu_int16",
+        # "test_python_ref__refs_linspace_xpu_int32",
+        # "test_python_ref__refs_linspace_xpu_int64",
+        # "test_python_ref__refs_linspace_xpu_int8",
+        # "test_python_ref__refs_linspace_xpu_uint8",
+        # "test_python_ref__refs_logaddexp_xpu_complex128",
+        # "test_python_ref__refs_logaddexp_xpu_complex64",
+        # "test_python_ref__refs_native_layer_norm_xpu_bfloat16",
+        # "test_python_ref__refs_native_layer_norm_xpu_float16",
+        # "test_python_ref__refs_native_layer_norm_xpu_float32",
+        # "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
+        # "test_python_ref__refs_nn_functional_hinge_embedding_loss_xpu_float16",
+        # "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_bfloat16",
+        # "test_python_ref__refs_nn_functional_margin_ranking_loss_xpu_float16",
+        # "test_python_ref__refs_nn_functional_triplet_margin_loss_xpu_uint8",
+        # "test_python_ref__refs_square_xpu_bool",
+        # "test_python_ref__refs_trunc_xpu_float64",
+        
+        # skipped 
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_geometric_executor_aten_xpu_float32",
@@ -90,23 +118,39 @@ skip_dict = {
         "test_python_ref_executor__refs_log_normal_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_log_normal_executor_aten_xpu_float32",
         "test_python_ref_executor__refs_log_normal_executor_aten_xpu_float64",
+
+        # NameError: name 'nanj' is not defined. Did you mean: 'nan'?
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex64",
+        
+        # skipped
         "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_float16",
+
+        # skipped? why?
         "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_float32",
+
+        # skipped
         "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float32",
         "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_float64",
+
+        # skipped
         "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_nn_functional_hinge_embedding_loss_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_nn_functional_triplet_margin_loss_executor_aten_xpu_uint8",
+
+        # skipped ? 
         "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
+
+        # skipped
         "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
+
+        # skipped
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int16",
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int32",
         "test_python_ref_torch_fallback__refs_linspace_tensor_overload_xpu_int64",
@@ -116,40 +160,60 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_linspace_xpu_int32",
         "test_python_ref_torch_fallback__refs_linspace_xpu_int64",
         "test_python_ref_torch_fallback__refs_linspace_xpu_int8",
-        "test_python_ref_torch_fallback__refs_linspace_xpu_uint8",
+        "test_python_ref_torch_fallback__refs_linspace_xpu_uint8",        
         "test_python_ref_torch_fallback__refs_logaddexp_xpu_complex128",
         "test_python_ref_torch_fallback__refs_logaddexp_xpu_complex64",
         "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_bfloat16",
         "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float16",
+
+        # skipped?
         "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float32",
+
+        # skipped
         "test_python_ref_torch_fallback__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
         "test_python_ref_torch_fallback__refs_nn_functional_hinge_embedding_loss_xpu_float16",
         "test_python_ref_torch_fallback__refs_nn_functional_margin_ranking_loss_xpu_bfloat16",
         "test_python_ref_torch_fallback__refs_nn_functional_margin_ranking_loss_xpu_float16",
-        "test_python_ref_torch_fallback__refs_sinh_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_sinh_xpu_complex128",        
         "test_python_ref_torch_fallback__refs_special_multigammaln_mvlgamma_p_5_xpu_int32",
+
+        # skipped?
         "test_python_ref_torch_fallback__refs_square_xpu_bool",
+
+        # skipped
         "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
         "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
+
+        # skipped?
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
         "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_float32",
-        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
-        "test_variant_consistency_eager_to_sparse_xpu_complex64",
-        "test_variant_consistency_eager_to_sparse_xpu_float32",
+        
+        
+        # skipped 
         "test_compare_cpu__refs_special_zeta_xpu_float32",
+
+        # skipped?
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
+
+        # Unexpected success
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_zeta_xpu_float32",
+        "test_compare_cpu_special_zeta_xpu_float32",      
         "test_out_cholesky_inverse_xpu_float32",
         "test_out_geqrf_xpu_float32",
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+
+        # skipped
         "test_out_triangular_solve_xpu_float32",
+
+        # skipped ?
         "test_python_ref__refs_heaviside_xpu_int64",
+
+        # skipped
         "test_python_ref__refs_special_bessel_j0_xpu_int64",
         "test_python_ref_errors__refs_dstack_xpu",
         "test_python_ref_errors__refs_hstack_xpu",
@@ -164,6 +228,8 @@ skip_dict = {
         "test_python_ref_executor__refs_square_executor_aten_xpu_complex128",
         "test_python_ref_torch_fallback__refs_square_xpu_complex128",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+
+
         # Skip list of new added when porting XPU operators.
         # See: https://github.com/intel/torch-xpu-ops/issues/128
         "test_dtypes_view_as_complex_xpu",  # Didn't align with CUDA, The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}
