@@ -1,7 +1,9 @@
 skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
-        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect!
+        
+        # Need to revisit when the ops are enabled
+        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect! 
         "test_dtypes___rmod___xpu",
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
@@ -11,32 +13,12 @@ skip_dict = {
         "test_dtypes_nn_functional_conv_transpose3d_xpu",
         "test_dtypes_nn_functional_softsign_xpu",
         "test_dtypes_sparse_sampled_addmm_xpu",
-
-        # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
-        "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
-         "test_errors_sparse_mul_layout0_xpu",
-        "test_errors_sparse_mul_layout1_xpu",
-        "test_errors_sparse_mul_layout2_xpu",
-        "test_errors_sparse_mul_layout3_xpu",
-        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
-        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
-        
-
-        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
-        "test_compare_cpu_to_sparse_xpu_float32",
-        "test_variant_consistency_eager_to_sparse_xpu_float32",
-
         # AssertionError: RuntimeError not raised
         "test_errors_dot_xpu",
         "test_errors_kthvalue_xpu",       
         "test_errors_take_xpu",
         "test_errors_vdot_xpu",
-
-        #RuntimeError: sparse_dim expected sparse or strided tensor layout but got Sparse
-        "test_variant_consistency_eager_to_sparse_xpu_complex64",
-        "test_non_standard_bool_values_to_sparse_xpu_bool",
-
-        # AssertionError: Tensor-likes are not close!
+        # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
         "test_noncontiguous_samples_linalg_slogdet_xpu_float32",
         "test_noncontiguous_samples_linalg_solve_ex_xpu_float32",
@@ -46,8 +28,28 @@ skip_dict = {
         "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
+
+        # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+        # https://github.com/intel/torch-xpu-ops/issues/357
+        "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
+        "test_errors_sparse_mul_layout0_xpu",
+        "test_errors_sparse_mul_layout1_xpu",
+        "test_errors_sparse_mul_layout2_xpu",
+        "test_errors_sparse_mul_layout3_xpu",
+        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
+        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",      
+
+        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+        # https://github.com/intel/torch-xpu-ops/issues/357
+        "test_compare_cpu_to_sparse_xpu_float32",
+        "test_variant_consistency_eager_to_sparse_xpu_float32",
+
+        # RuntimeError: sparse_dim expected sparse or strided tensor layout but got Sparse
+        # Issue https://github.com/intel/torch-xpu-ops/issues/357
+        "test_variant_consistency_eager_to_sparse_xpu_complex64",
+        "test_non_standard_bool_values_to_sparse_xpu_bool",        
         
-        # OneDNN issues
+        # OneDNN issues, https://github.com/intel/torch-xpu-ops/issues/253
         # RuntimeError: Long is not supported in oneDNN! 
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
@@ -63,6 +65,7 @@ skip_dict = {
         "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
         
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
+        # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
         "test_out_mode_xpu_float32",
 
@@ -120,6 +123,7 @@ skip_dict = {
         "test_python_ref_executor__refs_log_normal_executor_aten_xpu_float64",
 
         # NameError: name 'nanj' is not defined. Did you mean: 'nan'?
+        # https://github.com/intel/torch-xpu-ops/issues/768
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex64",
         
@@ -127,8 +131,8 @@ skip_dict = {
         "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_bfloat16",
         "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_float16",
 
-        # skipped? why?
-        "test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_float32",
+        # need to add native_layer_norm to list
+        #"test_python_ref_executor__refs_native_layer_norm_executor_aten_xpu_float32",
 
         # skipped
         "test_python_ref_executor__refs_nn_functional_alpha_dropout_executor_aten_xpu_bfloat16",
@@ -143,7 +147,7 @@ skip_dict = {
         "test_python_ref_executor__refs_nn_functional_margin_ranking_loss_executor_aten_xpu_float16",
         "test_python_ref_executor__refs_nn_functional_triplet_margin_loss_executor_aten_xpu_uint8",
 
-        # skipped ? 
+        # add square in op list, this op is defined in aten, no need backend.
         "test_python_ref_executor__refs_square_executor_aten_xpu_bool",
 
         # skipped
@@ -166,8 +170,8 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_bfloat16",
         "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float16",
 
-        # skipped?
-        "test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float32",
+        # skipped? added native_layer_norm in op list
+        #"test_python_ref_torch_fallback__refs_native_layer_norm_xpu_float32",
 
         # skipped
         "test_python_ref_torch_fallback__refs_nn_functional_hinge_embedding_loss_xpu_bfloat16",
@@ -178,13 +182,14 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_special_multigammaln_mvlgamma_p_5_xpu_int32",
 
         # skipped?
-        "test_python_ref_torch_fallback__refs_square_xpu_bool",
+        #"test_python_ref_torch_fallback__refs_square_xpu_bool",
 
         # skipped
         "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
         "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
 
-        # skipped?
+        # RuntimeError: could not create a primitive descriptor for a deconvolution 
+        # https://github.com/intel/torch-xpu-ops/issues/253
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
         "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
@@ -194,18 +199,18 @@ skip_dict = {
         # skipped 
         "test_compare_cpu__refs_special_zeta_xpu_float32",
 
-        # skipped?
+        # Unexpected success, xpu passed because it compares to cpu
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
-
-        # Unexpected success
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_zeta_xpu_float32",      
-        "test_out_cholesky_inverse_xpu_float32",
-        "test_out_geqrf_xpu_float32",
-        "test_out_narrow_copy_xpu_float32",
-        "test_out_ormqr_xpu_float32",
+        "test_compare_cpu_special_zeta_xpu_float32",     
+
+         # XFAIL
+        # "test_out_cholesky_inverse_xpu_float32",
+        # "test_out_geqrf_xpu_float32",
+        # "test_out_narrow_copy_xpu_float32",
+        # "test_out_ormqr_xpu_float32",
 
         # skipped
         "test_out_triangular_solve_xpu_float32",
@@ -229,6 +234,8 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_square_xpu_complex128",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
 
+
+        # Newly added:
 
         # Skip list of new added when porting XPU operators.
         # See: https://github.com/intel/torch-xpu-ops/issues/128

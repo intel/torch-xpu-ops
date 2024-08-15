@@ -236,6 +236,10 @@ _xpu_computation_op_list = [
     "nan_to_num",
     "scatter_reduce",
     "nanmean",
+    "native_layer_norm",
+    "native_layer_norm_backward",
+    "square",
+    "heaviside",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -345,6 +349,8 @@ def ModuleTest_test_xpu(self, test_case):
             xpu_gradInput = test_case._backward(
                 xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
             )
+            print(cpu_gradInput, xpu_gradInput)
+            
             test_case.assertEqual(
                 cpu_gradInput,
                 xpu_gradInput,
@@ -564,7 +570,7 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list:
+            if opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list if db == common_methods_invocations.python_ref_db else True):
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
