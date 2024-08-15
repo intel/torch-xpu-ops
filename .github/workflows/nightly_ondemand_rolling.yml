@@ -352,9 +352,6 @@ jobs:
           echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.triton }}" != "" ];then
-              test_scope+="; triton=${{ inputs.triton }}"
-            fi
             if [ "${{ inputs.model }}" != "" ];then
               test_scope+="; model=${{ inputs.model }}"
             fi
