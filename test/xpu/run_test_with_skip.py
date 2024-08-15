@@ -13,8 +13,8 @@ for key in skip_dict:
     res += fail
     if fail:
         fail_test.append(key)
-
-print(",".join(fail_test)+" have failures")
+if fail_test:
+    print(",".join(fail_test) + " have failures")
 
 exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
