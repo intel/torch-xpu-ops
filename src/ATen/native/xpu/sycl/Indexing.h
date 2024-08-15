@@ -804,7 +804,7 @@ struct IndexPutDeterministicKernelFunctor {
     if (accumulate_)
       acc = self_[s_gid];
     for (int64_t inner_idx = id.glb_batch;
-         sorted_indices_[inner_idx] == idx && inner_idx < cfg_.problem_batch_;
+         inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
          inner_idx++) {
       int64_t idx_orig = indices_[inner_idx];
       int64_t v_gid = idx_orig * stride_ + v_stride;
@@ -866,21 +866,17 @@ void launch_index_put_deterministic_kernel(
     return;
   }
   int64_t v_stride_before = numel * stride;
-  BatchKernelConfig cfg = {
+  // align with precision of CPU backend.
+  using accscalar_t = scalar_t; /* acc_type<scalar_t>; */
+  using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
+  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       /* num of indices */ numel,
       /* num of elements to put per indices */ outer_dim * stride,
       1,
       numel,
       true,
       {BatchKernelConfig::Policy::pSegment,
-       BatchKernelConfig::Policy::pAggressiveSplit}};
-
-  // align with precision of CPU backend.
-  using accscalar_t = scalar_t; /* acc_type<scalar_t>; */
-  using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
-
-  cfg.template build<KernelClass>();
-
+       BatchKernelConfig::Policy::pAggressiveSplit});
   KernelClass kfn(
       sorted_indices,
       indices,

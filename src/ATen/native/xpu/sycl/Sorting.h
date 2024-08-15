@@ -12,4 +12,11 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
     int dim,
     bool descending);
 
+void launch_median_kernel(
+    const TensorBase& vals,
+    const TensorBase& inds,
+    const TensorBase& self,
+    int64_t dim,
+    bool ignore_nan);
+
 } // namespace at::native::xpu

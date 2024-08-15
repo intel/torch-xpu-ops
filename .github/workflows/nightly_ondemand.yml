@@ -2,8 +2,10 @@ name: Nightly-OnDemand Tests
 
 on:
   schedule:
-    # GMT+8 21:00 every day
-    - cron: '0 13 * * *'
+    # GMT+8 21:00 every workday
+    - cron: '0 13 * * 0-4'
+    # GMT+8 0:00 Saturday
+    - cron: '0 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -60,7 +62,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}-${{ github.event_name == 'schedule' }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.triton }}-${{ inputs.model }}
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: true
 
 jobs:
@@ -73,12 +75,20 @@ jobs:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: linux.idc.xpu
+  
+  Linux-Weekly-UT-Tests-ABI-0:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+    uses: ./.github/workflows/_linux_ut.yml
+    with: 
+      abi: 0
+      ut: op_example,op_extended,op_ut,torch_xpu
+      runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 900
+    timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -97,6 +107,7 @@ jobs:
       TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
       TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
+      TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -106,7 +117,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          conda install -c intel mkl-static mkl-include -y
+          pip install mkl-static mkl-include
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
@@ -161,11 +172,10 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           source activate e2e_ci
+          source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          export USE_XPU=1
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
-          export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
@@ -173,18 +183,20 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+
+      # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -194,7 +206,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -203,6 +215,38 @@ jobs:
           scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # Weekly launch
+      - name: Weekly Huggingface Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly Torchbench Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly Timm_models Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          env_prepare: true
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: github.event_name != 'schedule'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -214,25 +258,36 @@ jobs:
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
-        if: always()
+        id: summary
+        if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
-          failed_case=$(grep "Real failed: models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          if [ ${failed_case} -ne 0 ];then
-            grep -E "Real failed: models: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+          mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
+          find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
+          tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
+          failed_models=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          if [ ${timeout_models} -ne 0 ];then
+            TIMEOUT_MODELS="$(
+              grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
+            )"
+            echo "TIMEOUT_MODELS=${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
+          fi
+          if [ ${failed_models} -ne 0 ];then
+            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-      
+
   Tests-Failure-And-Report:
-    if: always()
-    runs-on: pvc_e2e
+    if: ${{ ! cancelled() }}
+    runs-on: [ self-hosted, Linux ]
     permissions:
       issues: write
     env:
@@ -259,6 +314,7 @@ jobs:
           TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
           TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
           TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
+          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
           # Test status
           if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "success" ];then
             test_status=Success
@@ -274,6 +330,9 @@ jobs:
             test_type="On-demand"
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
+          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
+            test_type="Weekly"
+            test_issue_id=432
           else
             test_type="Nightly"
             test_issue_id=432
@@ -301,6 +360,7 @@ jobs:
             fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
+          echo "$TIMEOUT_MODELS" >> ${{ github.workspace }}/report.txt
           echo "$cc_comment" >> ${{ github.workspace }}/report.txt
           # Report
           report_txt=$(cat ${{ github.workspace }}/report.txt)

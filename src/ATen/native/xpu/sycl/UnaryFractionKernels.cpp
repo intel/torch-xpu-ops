@@ -56,6 +56,20 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
+struct FracFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return a - std::trunc(a);
+  }
+};
+
+void frac_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "frac_xpu", [&]() {
+        gpu_kernel(iter, FracFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
 struct CeilFunctor {
   scalar_t operator()(const scalar_t a) const {
     return std::ceil(a);
@@ -73,6 +87,94 @@ void ceil_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "ceil_xpu", [&]() {
         gpu_kernel(iter, CeilFunctor<scalar_t>());
+      });
+}
+
+template <typename scalar_t>
+inline scalar_t nearbyint_wrapper(scalar_t a) {
+  return static_cast<scalar_t>(std::nearbyintf(static_cast<float>(a)));
+}
+
+inline double nearbyint_wrapper(double a) {
+  return std::nearbyint(a);
+}
+
+#pragma push
+inline c10::complex<float> nearbyint_wrapper(c10::complex<float> a) {
+  return c10::complex<float>(
+      std::nearbyintf(static_cast<float>(a.real())),
+      std::nearbyintf(static_cast<float>(a.imag())));
+}
+
+inline c10::complex<double> nearbyint_wrapper(c10::complex<double> a) {
+  return c10::complex<double>(
+      std::nearbyint(static_cast<double>(a.real())),
+      std::nearbyint(static_cast<double>(a.imag())));
+}
+#pragma pop
+
+template <typename scalar_t>
+struct RoundFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return nearbyint_wrapper(a);
+  }
+};
+
+template <typename scalar_t>
+struct RoundDecimalsFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return neg_flag_
+        ? std::nearbyint(a / ten_pow_decimals_) * ten_pow_decimals_
+        : std::nearbyint(a * ten_pow_decimals_) / ten_pow_decimals_;
+  }
+  RoundDecimalsFunctor(scalar_t ten_pow_decimals, bool neg_flag)
+      : ten_pow_decimals_(ten_pow_decimals), neg_flag_(neg_flag) {}
+
+ private:
+  scalar_t ten_pow_decimals_;
+  bool neg_flag_;
+};
+
+void round_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "round_xpu", [&]() {
+        gpu_kernel(iter, RoundFunctor<scalar_t>());
+      });
+}
+
+void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "round_xpu", [&]() {
+        bool neg_flag = false;
+        scalar_t ten_pow_decimals;
+        if (decimals < 0) {
+          decimals = -decimals;
+          neg_flag = true;
+        }
+        ten_pow_decimals = static_cast<scalar_t>(std::pow(10, decimals));
+        gpu_kernel(
+            iter, RoundDecimalsFunctor<scalar_t>(ten_pow_decimals, neg_flag));
+      });
+}
+
+template <typename scalar_t>
+struct FloorFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return std::floor(a);
+  }
+};
+
+template <typename T>
+struct FloorFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> v) const {
+    return c10::complex<T>(std::floor(v.real()), std::floor(v.imag()));
+  }
+};
+
+void floor_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "floor_xpu", [&]() {
+        gpu_kernel(iter, FloorFunctor<scalar_t>());
       });
 }
 

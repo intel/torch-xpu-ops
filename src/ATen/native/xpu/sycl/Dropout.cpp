@@ -271,7 +271,7 @@ inline void launcher(
       self.scalar_type(),
       "fused_dropout",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         accscalar_t pa = (accscalar_t)(p);
         auto self_info = getTensorInfo<scalar_t, index_type>(self);
         auto ret_info = getTensorInfo<scalar_t, index_type>(ret);
@@ -446,7 +446,7 @@ Tensor dropout_backward(const Tensor& grad, const Tensor& mask, double scale) {
       ret.scalar_type(),
       "masked_scale",
       [&] {
-        using accscalar_t = acc_type<scalar_t, true>;
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
         masked_scale_kernel<mask_t, scalar_t>(
             ret, grad, mask, (accscalar_t)scale);
       });

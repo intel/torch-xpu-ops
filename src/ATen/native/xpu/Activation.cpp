@@ -9,14 +9,15 @@
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
+#include <ATen/native/xpu/sycl/ActivationLogSigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationMishKernels.h>
+#include <ATen/native/xpu/sycl/ActivationPreluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
 namespace at {
-
 Tensor XPUNativeFunctions::relu(const Tensor& self) {
   TORCH_CHECK(
       self.scalar_type() != at::kBool, "Boolean inputs not supported for relu");
@@ -630,6 +631,87 @@ Tensor& XPUNativeFunctions::softshrink_backward_out(
     Tensor& grad_input) {
   auto iter = softshrink_backward_meta(grad_output, self, lambd, grad_input);
   native::xpu::softshrink_backward_kernel(iter, lambd);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::_prelu_kernel(
+    const Tensor& self,
+    const Tensor& weight) {
+  // Weight broadcasts over self and they have the same dtype
+  auto result = at::empty_like(self);
+  auto iter = TensorIteratorConfig()
+                  .add_output(result)
+                  .add_const_input(self)
+                  .add_const_input(weight)
+                  .build();
+  native::xpu::prelu_kernel(iter);
+  return result;
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::_prelu_kernel_backward(
+    const Tensor& grad_out,
+    const Tensor& self,
+    const Tensor& weight) {
+  Tensor grad_self = at::empty({0}, self.options());
+  Tensor grad_weight = at::empty({0}, weight.options());
+  auto iter = TensorIteratorConfig()
+                  .add_output(grad_self)
+                  .add_output(grad_weight)
+                  .add_const_input(self)
+                  .add_const_input(weight)
+                  .add_const_input(grad_out)
+                  .build();
+  native::xpu::prelu_backward_kernel(iter);
+  return {grad_self, grad_weight};
+}
+
+std::tuple<Tensor&, Tensor&> XPUNativeFunctions::log_sigmoid_forward_out(
+    const Tensor& input,
+    Tensor& result,
+    Tensor& buffer) {
+  auto iter =
+      TensorIteratorConfig().add_output(result).add_const_input(input).build();
+  native::xpu::log_sigmoid_forward_kernel(iter);
+  return std::forward_as_tuple(result, buffer);
+}
+
+std::tuple<Tensor, Tensor> XPUNativeFunctions::log_sigmoid_forward(
+    const Tensor& input) {
+  auto result = at::empty_like(input);
+  auto buffer = at::empty({0}, input.options());
+  log_sigmoid_forward_out(input, result, buffer);
+  return std::forward_as_tuple(result, buffer);
+}
+
+TensorIterator log_sigmoid_backward_meta(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& grad_input) {
+  TensorIterator iter;
+  iter.build(TensorIteratorConfig()
+                 .add_output(grad_input)
+                 .add_const_input(input)
+                 .add_const_input(grad_output));
+  return iter;
+}
+
+Tensor XPUNativeFunctions::log_sigmoid_backward(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& buffer) {
+  auto grad_input = at::empty_like(grad_output);
+  auto iter = log_sigmoid_backward_meta(grad_output, input, grad_input);
+  native::xpu::log_sigmoid_backward_kernel(iter);
+  return iter.output();
+}
+
+Tensor& XPUNativeFunctions::log_sigmoid_backward_out(
+    const Tensor& grad_output,
+    const Tensor& input,
+    const Tensor& buffer,
+    Tensor& grad_input) {
+  auto iter = log_sigmoid_backward_meta(grad_output, input, grad_input);
+  native::xpu::log_sigmoid_backward_kernel(iter);
   return grad_input;
 }
 

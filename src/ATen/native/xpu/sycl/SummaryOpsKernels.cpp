@@ -17,8 +17,8 @@ using namespace at::xpu::detail;
 template <typename input_t, typename IndexType>
 static IndexType get_bin(
     input_t b_val,
-    at::acc_type<input_t, true> min_value,
-    at::acc_type<input_t, true> max_value,
+    at::acc_type_device<input_t, kXPU> min_value,
+    at::acc_type_device<input_t, kXPU> max_value,
     int nbins) {
   IndexType bin = (int)((b_val - min_value) * nbins / (max_value - min_value));
   // (only applicable for histc)
@@ -68,8 +68,8 @@ struct Histogram1DKernelFunctor {
       TensorInfo<input_t, IndexType> b,
       TensorInfo<output_t, IndexType> c,
       int nbins,
-      at::acc_type<input_t, true> minvalue,
-      at::acc_type<input_t, true> maxvalue,
+      at::acc_type_device<input_t, kXPU> minvalue,
+      at::acc_type_device<input_t, kXPU> maxvalue,
       IndexType totalElements,
       Op get_op)
       : a_(a),
@@ -86,8 +86,8 @@ struct Histogram1DKernelFunctor {
   TensorInfo<input_t, IndexType> b_;
   TensorInfo<output_t, IndexType> c_;
   int nbins_;
-  at::acc_type<input_t, true> min_value_;
-  at::acc_type<input_t, true> max_value_;
+  at::acc_type_device<input_t, kXPU> min_value_;
+  at::acc_type_device<input_t, kXPU> max_value_;
   IndexType total_elements_;
   Op get_op_;
 };
@@ -107,8 +107,8 @@ void histogram_1d_kernel(
     TensorInfo<input_t, IndexType> b, /* input */
     TensorInfo<output_t, IndexType> c, /* weight */
     int nbins,
-    at::acc_type<input_t, true> min_value,
-    at::acc_type<input_t, true> max_value,
+    at::acc_type_device<input_t, kXPU> min_value,
+    at::acc_type_device<input_t, kXPU> max_value,
     IndexType total_elements,
     Op get_op) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
@@ -156,8 +156,8 @@ void tensor_histogram(
     at::Tensor b, /* input */
     at::Tensor c, /* weights(optional) */
     int64_t nbins,
-    at::acc_type<input_t, true> min_value,
-    at::acc_type<input_t, true> max_value) {
+    at::acc_type_device<input_t, kXPU> min_value,
+    at::acc_type_device<input_t, kXPU> max_value) {
   checkBackend("tensor_histogram", {a, b}, Backend::XPU);
   if (has_weights) {
     checkBackend("tensor_histogram", {c}, Backend::XPU);
@@ -209,7 +209,7 @@ Tensor bincount_template(
 
   const int64_t nbins =
       std::max(self.max().item<input_t>() + (int64_t)1, minlength);
-  using bounds_t = at::acc_type<input_t, true>;
+  using bounds_t = at::acc_type_device<input_t, kXPU>;
   const bounds_t min_value = 0;
   const bounds_t max_value = nbins;
   // alloc output counter on GPU
