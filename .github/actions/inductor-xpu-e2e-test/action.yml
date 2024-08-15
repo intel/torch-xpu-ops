@@ -32,11 +32,11 @@ inputs:
   hf_token:
     required: false
     description: HUGGING_FACE_HUB_TOKEN for torchbench test
-  test_type:
+  torch_build_type:
     required: false
     type: string
-    default: 'lts'
-    description: test type, lts/rolling/whl
+    default: 'source'
+    description: torch installation type, source or wheel
 
 runs:
   using: composite
@@ -48,14 +48,12 @@ runs:
         source activate e2e_ci
         source .github/scripts/env.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-          cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-          if [ ${{ inputs.test_type }} != "whl" ]; then
+          if [ ${{ inputs.torch_build_type }} != "wheel" ]; then
+            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
+            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-          fi
-          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-          cd vision && git checkout $TORCHVISION_COMMIT_ID
-          if [ ${{ inputs.test_type }} != "whl" ]; then
+            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            cd vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
@@ -72,9 +70,9 @@ runs:
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-          cd vision && git checkout $TORCHVISION_COMMIT_ID
-          if [ ${{ inputs.test_type }} != "whl" ]; then
+          if [ ${{ inputs.torch_build_type }} != "wheel" ]; then
+            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            cd vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           fi
           # install timm without dependencies

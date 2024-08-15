@@ -63,7 +63,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      test_type: whl
+      torch_build_type: wheel
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
@@ -103,18 +103,22 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          cd ../ && rm -rf pytorch
           source activate e2e_ci
+          source .github/scripts/env.sh
+          cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ env.pytorch }} 
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
+          cd ../
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
       - name: Identify pinned versions
         id: pinned
         run: |
           source activate e2e_ci
+          source .github/scripts/env.sh
           cd ../pytorch
           echo "TRITON_COMMIT_ID=$(pip list |grep -w pytorch-triton-xpu |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_BRANCH_ID=nightly" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -125,23 +129,12 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
-      - name: Build Pytorch XPU
-        run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-          # python setup.py bdist_wheel
-          # pip install --force-reinstall dist/*.whl
-          pip install torch torchvision torchaudio pytorch-triton-xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
@@ -158,7 +151,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
-          test_type: whl
+          torch_build_type: wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
@@ -168,7 +161,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          test_type: whl
+          torch_build_type: wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
@@ -179,7 +172,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          test_type: whl
+          torch_build_type: wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
@@ -192,7 +185,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          test_type: whl
+          torch_build_type: wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
@@ -203,7 +196,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          test_type: whl
+          torch_build_type: wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
@@ -214,7 +207,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          test_type: whl
+          torch_build_type: wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
@@ -226,8 +219,9 @@ jobs:
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-          test_type: whl
+          torch_build_type: wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       - name: Summarize archieve files
         id: summary
         if: ${{ ! cancelled() }}
