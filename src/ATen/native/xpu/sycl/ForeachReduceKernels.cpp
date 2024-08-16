@@ -201,13 +201,16 @@ std::vector<Tensor> foreach_norm_kernel(
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
   auto addressStorage =
-      at::empty({(int)(sizeof(void*) * n_tensors)}, options.dtype(at::kByte));
+      at::empty({(int)(sizeof(void*) * ntensors)}, options.dtype(at::kByte));
   auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
   void** tlAddrtensor_list_addressesess = nullptr;
 
   auto tensor_list_addresses_dptr =
-      at::xpu::HostAlloc(sizeof(void*) * n_tensors);
+      at::xpu::HostAlloc(sizeof(void*) * ntensors);
   tensor_list_addresses = (void**)tlAddress_dptr.get();
+
+  sycl::queue q{sycl::property::queue::in_order()};
+  void** tensor_list_addresses = sycl::malloc_shared<void*>((ntensors), q);
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
@@ -248,7 +251,7 @@ std::vector<Tensor> foreach_norm_kernel(
                 q.memcpy(
                     (void*)metaAddress,
                     (void*)tensor_list_addresses,
-                    sizeof(void*) * n_tensors);
+                    sizeof(void*) * ntensors);
 
                 at::xpu::CachingHostAllocator_recordEvent(
                     (void*)tensor_list_addresses,
@@ -298,7 +301,7 @@ std::vector<Tensor> foreach_norm_kernel(
                 q.memcpy(
                     (void*)metaAddress,
                     (void*)tensor_list_addresses,
-                    sizeof(void*) * n_tensors);
+                    sizeof(void*) * ntensors);
 
                 at::xpu::CachingHostAllocator_recordEvent(
                     (void*)tensor_list_addresses,
@@ -324,6 +327,7 @@ std::vector<Tensor> foreach_norm_kernel(
   for (const auto& i : c10::irange(ntensors)) {
     result.emplace_back(ret_per_tensor[i]);
   }
+  free(tensor_list_addresses, q.get_context());
   return result;
 }
 
