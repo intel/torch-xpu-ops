@@ -299,7 +299,7 @@ void aminmax_impl(
     Tensor& max) {
   auto dtype = self.scalar_type();
   TensorIterator iter = make_reduction(
-      "aminmax_xpu", min, max, self.contiguous(), dim_opt, keepdim, dtype);
+      "aminmax_xpu", min, max, self, dim_opt, keepdim, dtype);
   if (iter.numel() != 0) {
     native::xpu::aminmax_kernel(iter);
   }
