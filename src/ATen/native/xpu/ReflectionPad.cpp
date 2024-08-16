@@ -6,14 +6,30 @@
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/zeros_like.h>
+#include <xpu/ATen/ops/reflection_pad1d_backward_native.h>
+#include <xpu/ATen/ops/reflection_pad1d_native.h>
 #include <xpu/ATen/ops/reflection_pad2d_backward_native.h>
 #include <xpu/ATen/ops/reflection_pad2d_native.h>
 #include <xpu/ATen/ops/reflection_pad3d_backward_native.h>
 #include <xpu/ATen/ops/reflection_pad3d_native.h>
+#include "ATen/TensorMeta.h"
 
 namespace at {
-
 namespace native {
+
+TORCH_IMPL_FUNC(reflection_pad1d_out_xpu)
+(const Tensor& input_, IntArrayRef padding, const Tensor& output) {
+  xpu::reflection_pad1d_kernel(output, input_, padding);
+}
+
+TORCH_IMPL_FUNC(reflection_pad1d_backward_out_xpu)
+(const Tensor& grad_output,
+ const Tensor& input,
+ IntArrayRef padding,
+ const Tensor& grad_input) {
+  xpu::reflection_pad1d_backward_kernel(
+      grad_input, grad_output, input, padding);
+}
 
 Tensor& reflection_pad2d_out_xpu(
     const Tensor& input,

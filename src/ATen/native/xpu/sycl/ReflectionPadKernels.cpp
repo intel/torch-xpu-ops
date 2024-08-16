@@ -511,7 +511,7 @@ void reflection_pad3d_backward_template(
 }
 
 void reflection_pad1d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -556,7 +556,7 @@ void reflection_pad1d_kernel(
 }
 
 void reflection_pad1d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     const Tensor& input,
     IntArrayRef padding) {
