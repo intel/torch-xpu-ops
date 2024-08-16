@@ -14,7 +14,7 @@ on:
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
       ut:
-        required: true
+        required: false
         type: string
         default: ''
         description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
