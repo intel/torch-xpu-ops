@@ -56,9 +56,8 @@ jobs:
       - name: Prepare Stock Pytorch
         shell: cmd
         run: |
-          pwd
           call C:\ProgramData\miniforge3\Scripts\activate.bat
-          which conda && conda clean -ay
+          conda clean -ay
           conda remove --all -y -n windows_ci
           conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
           call activate windows_ci
