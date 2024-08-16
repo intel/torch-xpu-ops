@@ -324,7 +324,6 @@ std::vector<Tensor> foreach_norm_kernel(
   for (const auto& i : c10::irange(ntensors)) {
     result.emplace_back(ret_per_tensor[i]);
   }
-  free(tensor_list_addresses, q.get_context());
   return result;
 }
 
