@@ -209,9 +209,6 @@ std::vector<Tensor> foreach_norm_kernel(
       at::xpu::HostAlloc(sizeof(void*) * ntensors);
   tensor_list_addresses = (void**)tlAddress_dptr.get();
 
-  sycl::queue q{sycl::property::queue::in_order()};
-  void** tensor_list_addresses = sycl::malloc_shared<void*>((ntensors), q);
-
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   int64_t wg_size;
@@ -327,7 +324,6 @@ std::vector<Tensor> foreach_norm_kernel(
   for (const auto& i : c10::irange(ntensors)) {
     result.emplace_back(ret_per_tensor[i]);
   }
-  free(tensor_list_addresses, q.get_context());
   return result;
 }
 
