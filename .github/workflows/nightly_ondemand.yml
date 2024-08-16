@@ -271,9 +271,9 @@ jobs:
           timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
           if [ ${timeout_models} -ne 0 ];then
             TIMEOUT_MODELS="$(
-              grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
+              grep -B 1 "timeout models: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log
             )"
-            echo "TIMEOUT_MODELS=${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
+            echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
             grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
@@ -358,7 +358,7 @@ jobs:
             fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
-          echo "$TIMEOUT_MODELS" >> ${{ github.workspace }}/report.txt
+          echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
           echo "$cc_comment" >> ${{ github.workspace }}/report.txt
           # Report
           report_txt=$(cat ${{ github.workspace }}/report.txt)
