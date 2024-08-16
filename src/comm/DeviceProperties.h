@@ -16,8 +16,8 @@ static int64_t syclMaxWorkGroupSize(
   auto dev = q.get_device();
 
   auto kid = ::sycl::get_kernel_id<KernelClass>();
-  auto kbundle =
-      ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(ctx, {kid});
+  auto kbundle = ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(
+      ctx, {dev} {kid});
 
   ::sycl::kernel k = kbundle.get_kernel(kid);
   return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);
