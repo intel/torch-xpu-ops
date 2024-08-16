@@ -26,6 +26,7 @@
 #include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
+namespace at {
 namespace native {
 REGISTER_XPU_DISPATCH(threshold_stub, &xpu::threshold_kernel);
 REGISTER_XPU_DISPATCH(elu_stub, &xpu::elu_kernel);
