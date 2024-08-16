@@ -200,14 +200,15 @@ std::vector<Tensor> foreach_norm_kernel(
   for (int i = 0; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
+  auto& q = getCurrentSYCLQueue();
   auto addressStorage =
       at::empty({(int)(sizeof(void*) * ntensors)}, options.dtype(at::kByte));
   auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
-  void** tlAddrtensor_list_addressesess = nullptr;
+  void** tensor_list_addresses = nullptr;
 
   auto tensor_list_addresses_dptr =
       at::xpu::HostAlloc(sizeof(void*) * ntensors);
-  tensor_list_addresses = (void**)tlAddress_dptr.get();
+  tensor_list_addresses = (void**)tensor_list_addresses_dptr.get();
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
