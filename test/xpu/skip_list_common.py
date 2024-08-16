@@ -2783,6 +2783,7 @@ skip_dict = {
     "test_segment_reductions_xpu.py": None,
 
     "test_meta_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/774
         "_jiterator_",
         # segment fault
         "test_dispatch_meta_outplace_nn_functional_linear_xpu_int16",
