@@ -56,7 +56,7 @@ jobs:
       - name: Prepare Stock Pytorch
         shell: cmd
         run: |
-          call C:\ProgramData\miniforge3\Scripts\activate.bat
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           conda clean -ay
           conda remove --all -y -n windows_ci
           conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
@@ -79,7 +79,7 @@ jobs:
       - name: Build Pytorch XPU
         shell: cmd
         run: |
-          call C:\ProgramData\miniforge3\Scripts\activate.bat
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call activate windows_ci
           set VS2022INSTALLDIR="C:\Program Files\Microsoft Visual Studio\2022\BuildTools"
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
@@ -110,7 +110,7 @@ jobs:
       - name: Torch Config
         shell: cmd
         run: |
-          call C:\ProgramData\miniforge3\Scripts\activate.bat
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           python -c "import torch; print(torch.__config__.show())"
