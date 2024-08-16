@@ -200,6 +200,15 @@ std::vector<Tensor> foreach_norm_kernel(
   for (int i = 0; i < ntensors; i++) {
     ret_per_tensor.push_back(at::empty({}, res_option));
   }
+  auto addressStorage =
+      at::empty({(int)(sizeof(void*) * n_tensors)}, options.dtype(at::kByte));
+  auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
+  void** tlAddrtensor_list_addressesess = nullptr;
+
+  auto tensor_list_addresses_dptr =
+      at::xpu::HostAlloc(sizeof(void*) * n_tensors);
+  tensor_list_addresses = (void**)tlAddress_dptr.get();
+
   sycl::queue q{sycl::property::queue::in_order()};
   void** tensor_list_addresses = sycl::malloc_shared<void*>((ntensors), q);
 
@@ -239,12 +248,21 @@ std::vector<Tensor> foreach_norm_kernel(
                   tensor_list_addresses[i] =
                       ret_per_tensor[i].mutable_data_ptr<out_t>();
                 }
+                q.memcpy(
+                    (void*)metaAddress,
+                    (void*)tensor_list_addresses,
+                    sizeof(void*) * n_tensors);
+
+                at::xpu::CachingHostAllocator_recordEvent(
+                    (void*)tensor_list_addresses,
+                    tensor_list_addresses_dptr.get_context(),
+                    at::xpu::getCurrentXPUStream());
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L1,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    (out_t**)(tensor_list_addresses),
+                    (out_t**)(metaAddress),
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
@@ -280,12 +298,21 @@ std::vector<Tensor> foreach_norm_kernel(
                   tensor_list_addresses[i] =
                       ret_per_tensor[i].mutable_data_ptr<out_t>();
                 }
+                q.memcpy(
+                    (void*)metaAddress,
+                    (void*)tensor_list_addresses,
+                    sizeof(void*) * n_tensors);
+
+                at::xpu::CachingHostAllocator_recordEvent(
+                    (void*)tensor_list_addresses,
+                    tensor_list_addresses_dptr.get_context(),
+                    at::xpu::getCurrentXPUStream());
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    (out_t**)(tensor_list_addresses),
+                    (out_t**)(metaAddress),
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
@@ -300,7 +327,7 @@ std::vector<Tensor> foreach_norm_kernel(
   for (const auto& i : c10::irange(ntensors)) {
     result.emplace_back(ret_per_tensor[i]);
   }
-  free(tensor_list_addresses,q.get_context()); 
+  free(tensor_list_addresses, q.get_context());
   return result;
 }
 
