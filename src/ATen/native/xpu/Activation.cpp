@@ -19,12 +19,12 @@
 #include <ATen/native/xpu/sycl/ActivationLeakyReluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationLogSigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationMishKernels.h>
+#include <ATen/native/xpu/sycl/ActivationPreluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSiluKernels.h>
 
 #include <ATen/native/xpu/sycl/ActivationSoftplusKernels.h>
 #include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
-namespace at {
 
 namespace native {
 REGISTER_XPU_DISPATCH(threshold_stub, &xpu::threshold_kernel);
@@ -52,6 +52,8 @@ REGISTER_XPU_DISPATCH(mish_backward_stub, &xpu::mish_backward_kernel);
 REGISTER_XPU_DISPATCH(
     log_sigmoid_backward_stub,
     &xpu::log_sigmoid_backward_kernel);
+REGISTER_XPU_DISPATCH(prelu_stub, &xpu::prelu_kernel);
+REGISTER_XPU_DISPATCH(prelu_backward_stub, &xpu::prelu_backward_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,

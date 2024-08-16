@@ -263,9 +263,13 @@ def checkpointing_non_reentrant_autocast(self, device_type):
             self.assertEqual(expected_dtype, z.dtype)
             return z
 
-        x = torch.randn(3, 3, requires_grad=True, device="xpu")
-        y = torch.randn(3, 3, requires_grad=True, device="xpu")
-        z = torch.randn(3, 3, requires_grad=True, device="xpu")
+        x = torch.randn(3, 3, requires_grad=True)
+        y = torch.randn(3, 3, requires_grad=True)
+        z = torch.randn(3, 3, requires_grad=True)
+        if device_type == "xpu":
+            x = x.xpu()
+            y = y.xpu()
+            z = z.xpu()
 
         with torch.autocast(
             enabled=enabled, device_type=device_type, dtype=torch.bfloat16

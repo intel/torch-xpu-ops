@@ -118,6 +118,18 @@ supported:
   - relu
   - relu_
   - relu.out
+  - _prelu_kernel
+  - _prelu_kernel_backward
+  - __lshift__.Scalar
+  - __lshift__.Tensor
+  - __ilshift__.Scalar
+  - __ilshift__.Tensor
+  - __rshift__.Scalar
+  - __rshift__.Tensor
+  - __irshift__.Scalar
+  - __irshift__.Tensor
+  - bitwise_left_shift.Tensor_out
+  - bitwise_right_shift.Tensor_out
   - threshold
   - threshold_
   - threshold.out

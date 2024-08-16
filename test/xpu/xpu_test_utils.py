@@ -54,6 +54,8 @@ _xpu_computation_op_list = [
     "bitwise_not",
     "bitwise_or",
     "bitwise_xor",
+    "bitwise_left_shift",
+    "bitwise_right_shift",
     "addcmul",
     "addcdiv",
     "clamp",
@@ -112,6 +114,7 @@ _xpu_computation_op_list = [
     "nn.functional.glu",
     "nn.functional.pad",
     "nn.functional.leaky_relu",
+    "nn.functional.prelu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
@@ -233,6 +236,10 @@ _xpu_computation_op_list = [
     "nan_to_num",
     "scatter_reduce",
     "nanmean",
+]
+
+_ops_without_cuda_support=[
+    "histogram",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -561,7 +568,7 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list:
+            if opinfo.name not in _xpu_computation_op_list or opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
@@ -732,3 +739,36 @@ def copy_tests(
         else:  # Ports non-test member
             nontest = getattr(generic_base_class, name)
             setattr(generic_test_class, name, nontest)
+
+
+def launch_test(test_case, skip_list=None, exe_list=None):
+    if skip_list != None:
+        skip_options = " -k 'not " + skip_list[0]
+        for skip_case in skip_list[1:]:
+            skip_option = " and not " + skip_case
+            skip_options += skip_option
+        skip_options += "'"
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
+        test_command += skip_options
+        return os.system(test_command)
+    elif exe_list != None:
+        exe_options = " -k '" + exe_list[0]
+        for exe_case in exe_list[1:]:
+            exe_option = " or " + exe_case
+            exe_options += exe_option
+        exe_options += "'"
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
+        test_command += exe_options
+        return os.system(test_command)
+    else:
+        test_command = (
+            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            + test_case
+        )
+        return os.system(test_command)
