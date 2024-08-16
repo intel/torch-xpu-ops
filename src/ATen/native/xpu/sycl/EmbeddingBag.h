@@ -186,4 +186,145 @@ struct EmbeddingBagKernelFunctor {
   index_t fixing_bag_size_;
 };
 
+template <typename index_t>
+struct EmbeddingBagBackwardSumAvgFunctor {
+  auto operator()(index_t a, index_t b) const {
+    return a == b;
+  }
+};
+
+template <typename scalar_t, typename index_t>
+struct EmbeddingBagAccGradParametersKernelMaxFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto max_indices_ptr = max_indices_data_;
+    auto gradOutput_ptr = gradOutput_data_;
+    auto gradWeight_ptr = gradWeight_data_;
+
+    auto chunkOffset = item.get_group()[0] * item.get_local_range()[1] +
+        item.get_local_id()[1];
+
+    for (auto chunk = chunkOffset; chunk < numChunks_;
+         chunk += item.get_group_range()[0] * item.get_global_range()[1]) {
+      auto featureDim = (chunk % chunksPerBag_) * item.get_local_range(0) +
+          item.get_local_id(0);
+      if (featureDim < stride_) {
+        auto bag = chunk / chunksPerBag_;
+
+        auto word_idx = max_indices_ptr[bag * stride_ + featureDim];
+        if (word_idx >= 0) {
+          // If bag is empty, we have max_indices[idx] set to -1 in forward.
+          atomicAdd(
+              (sycl_global_ptr<scalar_t>)&(
+                  gradWeight_ptr[word_idx * stride_ + featureDim]),
+              gradOutput_ptr[bag * stride_ + featureDim]);
+        }
+      }
+    }
+  }
+  EmbeddingBagAccGradParametersKernelMaxFunctor(
+      index_t* max_indices_data,
+      scalar_t* gradOutput_data,
+      scalar_t* gradWeight_data,
+      int64_t stride,
+      int64_t chunksPerBag,
+      int64_t numChunks)
+      : max_indices_data_(max_indices_data),
+        gradOutput_data_(gradOutput_data),
+        gradWeight_data_(gradWeight_data),
+        stride_(stride),
+        chunksPerBag_(chunksPerBag),
+        numChunks_(numChunks) {}
+
+ private:
+  index_t* max_indices_data_;
+  scalar_t* gradOutput_data_;
+  scalar_t* gradWeight_data_;
+  int64_t stride_;
+  int64_t chunksPerBag_;
+  int64_t numChunks_;
+};
+
+template <typename scalar_t, typename index_t, typename accscalar_t>
+struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item_id) const {
+    int idx = item_id.get_global_linear_id();
+    auto sg = item_id.get_sub_group();
+    int sgSize = static_cast<int>(
+        sg.get_local_range()[0]); // number of work-items in this sub-group
+    int sgId = idx / sgSize; // subgroup index
+    int sglid = static_cast<int>(
+        sg.get_local_id()[0]); // index of the work-item in this sub-group
+
+    int num_sg = num_group_ * max_group_size_ / sgSize; // number of sub-groups
+    for (int sample_idx = sgId; sample_idx < num_samples_;
+         sample_idx += num_sg) {
+      accscalar_t result = 0.;
+      const int bag_idx = (int)offset2bag_[sample_idx];
+      const int embedding_idx = (int)indices_[sample_idx];
+      if (embedding_idx != padding_idx_) {
+        for (int feature_idx = sglid; feature_idx < embedding_features_;
+             feature_idx += sgSize) {
+          result +=
+              grad_[grad_stride0_ * bag_idx + grad_stride1_ * feature_idx] *
+              weight_
+                  [weight_stride0_ * embedding_idx +
+                   weight_stride1_ * feature_idx];
+        }
+      }
+      // subgroup reduce sum
+      for (int offset = sgSize / 2; offset > 0; offset /= 2) {
+        result += sycl::shift_group_left(sg, result, offset);
+      };
+      if (sglid == 0) {
+        output_[sample_idx] = result;
+      }
+    }
+  }
+  EmbeddingBagPerSampleWeightsBackwardKernelFunctor(
+      const scalar_t* grad,
+      int64_t grad_stride0,
+      int64_t grad_stride1,
+      const scalar_t* weight,
+      int64_t weight_stride0,
+      int64_t weight_stride1,
+      const index_t* indices,
+      const index_t* offset2bag,
+      int64_t num_samples,
+      int64_t embedding_features,
+      scalar_t* output,
+      index_t padding_idx,
+      int64_t num_group,
+      int64_t max_group_size)
+      : grad_(grad),
+        grad_stride0_(grad_stride0),
+        grad_stride1_(grad_stride1),
+        weight_(weight),
+        weight_stride0_(weight_stride0),
+        weight_stride1_(weight_stride1),
+        indices_(indices),
+        offset2bag_(offset2bag),
+        num_samples_(num_samples),
+        embedding_features_(embedding_features),
+        output_(output),
+        padding_idx_(padding_idx),
+        num_group_(num_group),
+        max_group_size_(max_group_size) {}
+
+ private:
+  const scalar_t* grad_;
+  int64_t grad_stride0_;
+  int64_t grad_stride1_;
+  const scalar_t* weight_;
+  int64_t weight_stride0_;
+  int64_t weight_stride1_;
+  const index_t* indices_;
+  const index_t* offset2bag_;
+  int64_t num_samples_;
+  int64_t embedding_features_;
+  scalar_t* output_;
+  index_t padding_idx_;
+  int64_t num_group_;
+  int64_t max_group_size_;
+};
+
 } // namespace at::native::xpu
