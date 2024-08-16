@@ -35,6 +35,13 @@ jobs:
       abi: 0
       ut: op_extended
       runner: linux.idc.xpu
+  
+  preci-windows:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    uses: ./.github/workflows/windows.yml
+    with: 
+      runner: win_build
 
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
