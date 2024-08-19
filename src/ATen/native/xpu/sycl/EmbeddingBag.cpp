@@ -1,7 +1,14 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
 #include <ATen/native/xpu/sycl/EmbeddingBag.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
@@ -421,6 +428,57 @@ Tensor embedding_bag_backward_xpu_sum_avg(
 }
 
 template <typename scalar_t, typename index_t>
+struct EmbeddingBagAccGradParametersKernelMaxFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto max_indices_ptr = max_indices_data_;
+    auto gradOutput_ptr = gradOutput_data_;
+    auto gradWeight_ptr = gradWeight_data_;
+
+    auto chunkOffset = item.get_group()[0] * item.get_local_range()[1] +
+        item.get_local_id()[1];
+
+    for (auto chunk = chunkOffset; chunk < numChunks_;
+         chunk += item.get_group_range()[0] * item.get_global_range()[1]) {
+      auto featureDim = (chunk % chunksPerBag_) * item.get_local_range(0) +
+          item.get_local_id(0);
+      if (featureDim < stride_) {
+        auto bag = chunk / chunksPerBag_;
+
+        auto word_idx = max_indices_ptr[bag * stride_ + featureDim];
+        if (word_idx >= 0) {
+          // If bag is empty, we have max_indices[idx] set to -1 in forward.
+          atomicAdd(
+              (sycl_global_ptr<
+                  scalar_t>)(&gradWeight_ptr[word_idx * stride_ + featureDim]),
+              gradOutput_ptr[bag * stride_ + featureDim]);
+        }
+      }
+    }
+  }
+  EmbeddingBagAccGradParametersKernelMaxFunctor(
+      index_t* max_indices_data,
+      scalar_t* gradOutput_data,
+      scalar_t* gradWeight_data,
+      int64_t stride,
+      int64_t chunksPerBag,
+      int64_t numChunks)
+      : max_indices_data_(max_indices_data),
+        gradOutput_data_(gradOutput_data),
+        gradWeight_data_(gradWeight_data),
+        stride_(stride),
+        chunksPerBag_(chunksPerBag),
+        numChunks_(numChunks) {}
+
+ private:
+  index_t* max_indices_data_;
+  scalar_t* gradOutput_data_;
+  scalar_t* gradWeight_data_;
+  int64_t stride_;
+  int64_t chunksPerBag_;
+  int64_t numChunks_;
+};
+
+template <typename scalar_t, typename index_t>
 void EmbeddingBag_accGradParametersKernel_max(
     index_t* max_indices,
     scalar_t* gradOutput,
@@ -614,6 +672,10 @@ Tensor _embedding_bag_dense_backward_kernel(
     const Tensor& per_sample_weights,
     int64_t padding_idx) {
   Tensor grad = grad_t.contiguous();
+  auto indices_arg = TensorArg(indices, "indices", 1);
+  auto grad_arg = TensorArg(grad, "grad", 1);
+  checkSameGPU("embedding_bag_cuda", grad_arg, indices_arg);
+
   Tensor result;
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -718,3 +780,6 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
