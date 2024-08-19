@@ -193,57 +193,6 @@ struct EmbeddingBagBackwardSumAvgFunctor {
   }
 };
 
-template <typename scalar_t, typename index_t>
-struct EmbeddingBagAccGradParametersKernelMaxFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto max_indices_ptr = max_indices_data_;
-    auto gradOutput_ptr = gradOutput_data_;
-    auto gradWeight_ptr = gradWeight_data_;
-
-    auto chunkOffset = item.get_group()[0] * item.get_local_range()[1] +
-        item.get_local_id()[1];
-
-    for (auto chunk = chunkOffset; chunk < numChunks_;
-         chunk += item.get_group_range()[0] * item.get_global_range()[1]) {
-      auto featureDim = (chunk % chunksPerBag_) * item.get_local_range(0) +
-          item.get_local_id(0);
-      if (featureDim < stride_) {
-        auto bag = chunk / chunksPerBag_;
-
-        auto word_idx = max_indices_ptr[bag * stride_ + featureDim];
-        if (word_idx >= 0) {
-          // If bag is empty, we have max_indices[idx] set to -1 in forward.
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)&(
-                  gradWeight_ptr[word_idx * stride_ + featureDim]),
-              gradOutput_ptr[bag * stride_ + featureDim]);
-        }
-      }
-    }
-  }
-  EmbeddingBagAccGradParametersKernelMaxFunctor(
-      index_t* max_indices_data,
-      scalar_t* gradOutput_data,
-      scalar_t* gradWeight_data,
-      int64_t stride,
-      int64_t chunksPerBag,
-      int64_t numChunks)
-      : max_indices_data_(max_indices_data),
-        gradOutput_data_(gradOutput_data),
-        gradWeight_data_(gradWeight_data),
-        stride_(stride),
-        chunksPerBag_(chunksPerBag),
-        numChunks_(numChunks) {}
-
- private:
-  index_t* max_indices_data_;
-  scalar_t* gradOutput_data_;
-  scalar_t* gradWeight_data_;
-  int64_t stride_;
-  int64_t chunksPerBag_;
-  int64_t numChunks_;
-};
-
 template <typename scalar_t, typename index_t, typename accscalar_t>
 struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
