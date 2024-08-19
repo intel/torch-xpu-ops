@@ -111,6 +111,7 @@ jobs:
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
+          pip install -r requirements.txt
           cd ../
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
       - name: Identify pinned versions
