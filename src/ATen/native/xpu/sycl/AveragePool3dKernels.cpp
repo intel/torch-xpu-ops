@@ -147,8 +147,6 @@ void avg_pool3d_out_frame(
     const int offsetZ,
     const int totalZ,
     const int divisor_override) {
-  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
-  // width_size
   auto input_acc = work_input.packed_accessor64<const scalar_t, 4>();
   auto output_acc = work_output.packed_accessor64<scalar_t, 4>();
   AvgPool3dOutFrameKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
@@ -166,7 +164,9 @@ void avg_pool3d_out_frame(
       divisor_override,
       input_acc,
       output_acc);
-
+  
+  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
+  // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
