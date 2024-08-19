@@ -630,6 +630,10 @@ supported:
   - avg_pool2d.out
   - avg_pool2d_backward
   - avg_pool2d_backward.grad_input
+  - avg_pool3d
+  - avg_pool3d.out
+  - avg_pool3d_backward
+  - avg_pool3d_backward.grad_input
   - addcdiv.out
   - addcdiv
   - addcdiv_
