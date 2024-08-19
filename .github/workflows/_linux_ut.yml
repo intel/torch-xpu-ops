@@ -17,7 +17,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_regression,op_extended,op_ut,torch_xpu` Delimiter is comma
       abi:
         required: false
         type: string
@@ -95,14 +95,14 @@ jobs:
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
       - name: Run XPU OP Examples
-        if: contains(inputs.ut, 'op_example') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
         run: |
           cd ${{ github.workspace }}
           xpu-smi discovery
           source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
-          cd examples
+          cd test/regressions
           pip install pytest
           timeout 8000 pytest -v 
       - name: Run XPU OP Extended UT
