@@ -241,6 +241,8 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "native_layer_norm",
+    "square",
 ]
 
 _ops_without_cuda_support=[
@@ -547,7 +549,7 @@ class XPUPatchForImport:
             replaced = False
             for wrapper in wrappers:
                 if type(wrapper) == DecorateInfo:
-                    if wrapper.device_type == "" or wrapper.device_type == "cuda":
+                    if wrapper.device_type == "cuda":
                         if (
                             unittest.expectedFailure in wrapper.decorators
                             and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
