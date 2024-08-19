@@ -52,6 +52,10 @@ skip_list = (
     "test_compare_cpu_nextafter_xpu_bfloat16",
     # CUDA does not support the data type either
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
+    # TestCompositeCompliance
+    # CPU fallback fails
+    # Require implementing aten::embedding_renorm_
+    "test_view_replay_nn_functional_embedding_xpu_float32",
     # Need FP64 golden ref for more accurate comparison
     "test_compare_cpu_log_softmax_xpu_bfloat16",
     # TestCompositeCompliance::test_cow_input
@@ -70,6 +74,11 @@ skip_list = (
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float16",
+    # Not implemented operators, aten::embedding_renorm_.
+    # To retrieve cases when the operators are supported.
+    # https://github.com/intel/torch-xpu-ops/issues/380
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
+    "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
@@ -108,6 +117,10 @@ skip_list = (
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float16",
+    # Not all operators are implemented for XPU tested in the case.
+    # Retrieve it once the operator is implemented.
+    # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
+    "test_forward_ad_nn_functional_glu_xpu_float32",
     # Precision error.
     # Mismatched elements: 1 / 812 (0.1%)
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
@@ -116,6 +129,11 @@ skip_list = (
     # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
     # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
     "test_compare_cpu_polar_xpu_bfloat16",
+    # Precision error.
+    # Mismatched elements: 1 / 25 (4.0%)
+    # Greatest absolute difference: 0.00146484375 at index (0, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0163116455078125 at index (0, 0) (up to 0.001 allowed)
+    "test_compare_cpu_sub_xpu_float16",
     # different results for value index due to unstable sort.
     # XPU and CUDA have the same result.
     "test_compare_cpu_median_xpu_int16",

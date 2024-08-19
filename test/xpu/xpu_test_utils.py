@@ -270,7 +270,7 @@ _xpu_tolerance_override = {
             torch.bfloat16: tol(atol=1e-02, rtol=1.6e-02),
         }
     },
-    "aten2": {
+    "atan2": {
         ("TestCommon", "test_compare_cpu"): {
             torch.bfloat16: tol(atol=0.008, rtol=0.005),
         }
@@ -305,11 +305,6 @@ _xpu_tolerance_override = {
             torch.float16: tol(atol=0.002, rtol=0.006),
         }
     },
-    "nn.functional.interpolate": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.float16: tol(atol=0.003, rtol=0.002),
-        }
-    },
     "prod": {
         ("TestCommon", "test_compare_cpu"): {
             torch.bfloat16: tol(atol=0.002, rtol=0.005),
@@ -328,11 +323,6 @@ _xpu_tolerance_override = {
     "var_mean": {
         ("TestCommon", "test_compare_cpu"): {
             torch.bfloat16: tol(atol=0.008, rtol=0.005),
-        }
-    },
-    "nn.functional.nll_loss": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.008, rtol=0.009),
         }
     },
 }
