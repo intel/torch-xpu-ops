@@ -79,6 +79,7 @@ skip_list = (
     # https://github.com/intel/torch-xpu-ops/issues/380
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
     "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
+    "test_view_replay_nn_functional_embedding_bag_xpu_float32",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
