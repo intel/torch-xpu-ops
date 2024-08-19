@@ -17,7 +17,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_regression,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
       abi:
         required: false
         type: string
@@ -94,7 +94,7 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-      - name: Run XPU OP Examples
+      - name: Run XPU OP Regressions test
         if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
         run: |
           cd ${{ github.workspace }}
@@ -104,7 +104,18 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
-          timeout 8000 pytest -v 
+          timeout 8000 pytest -v
+      - name: Run XPU OP Regressions test on device 1
+        if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
+        run: |
+          cd ${{ github.workspace }}
+          xpu-smi discovery
+          source .github/scripts/env.sh
+          # source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ${{ github.workspace }}
+          cd test/regressions
+          pip install pytest
+          timeout 8000 pytest -v test_operation_on_device_1.py
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
@@ -112,7 +123,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          timeout 10000 python run_test_with_skip.py 
+          timeout 10000 python run_test_with_skip.py
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
