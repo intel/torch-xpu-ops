@@ -52,12 +52,12 @@ skip_list = (
     "test_compare_cpu_nextafter_xpu_bfloat16",
     # CUDA does not support the data type either
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
+    # Need FP64 golden ref for more accurate comparison
+    "test_compare_cpu_log_softmax_xpu_bfloat16",
     # TestCompositeCompliance
     # CPU fallback fails
     # Require implementing aten::embedding_renorm_
     "test_view_replay_nn_functional_embedding_xpu_float32",
-    # Need FP64 golden ref for more accurate comparison
-    "test_compare_cpu_log_softmax_xpu_bfloat16",
     # TestCompositeCompliance::test_cow_input
     # XPU Tensor fails in copy-on-write cases
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
