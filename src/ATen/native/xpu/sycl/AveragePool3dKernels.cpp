@@ -35,7 +35,7 @@ struct AvgPool3dOutFrameKernelFunctor {
     index_t oFrame = (item.get_group(0) + offsetZ_) % output_.size(1);
     index_t slice = (item.get_group(0) + offsetZ_) / output_.size(1);
     auto out_data = output_;
-    if (oRow < output_.size(2) && oCol < output_.size(3)) {
+    if (oRow < out_data.size(2) && oCol < out_data.size(3)) {
       accscalar_t sum = 0.0;
 
       index_t tstart = oFrame * dT_ - padT_;
@@ -79,6 +79,7 @@ struct AvgPool3dOutFrameKernelFunctor {
           }
         }
       }
+
       out_data[slice][oFrame][oRow][oCol] =
           static_cast<scalar_t>(sum / divide_factor);
     }
@@ -164,7 +165,7 @@ void avg_pool3d_out_frame(
       divisor_override,
       input_acc,
       output_acc);
-  
+
   // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
   // width_size
   index_t width_group_size = 32;
@@ -244,6 +245,7 @@ void avg_pool3d_kernel(
 
   Tensor work_input = input.contiguous();
   Tensor work_output = output;
+
   if (input.ndimension() == 5) {
     // Collapse batch and feature dimensions.
     work_input = work_input.reshape({nbatch * nslices, itime, iheight, iwidth});
@@ -295,12 +297,10 @@ void avg_pool3d_kernel(
           offsetZ += 65535;
         }
       });
-  auto work_output1 = work_output.resize_as_(output);
-  output.copy_(work_output1);
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardOutFrameStride1KernelFunctor {
+struct AvgPool3dBackwardOutStride1KernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     index_t iCol = item.get_global_id()[2];
     index_t iRow = item.get_global_id()[1];
@@ -310,7 +310,7 @@ struct AvgPool3dBackwardOutFrameStride1KernelFunctor {
     auto grad_input_data = grad_input_;
     if (iRow < grad_input_.size(2) && iCol < grad_input_.size(3)) {
       accscalar_t sum = 0.0;
-      scalar_t* gOut = &grad_input_data[slice][max(0, iFrame - kT_ + 1)][max(
+      const scalar_t* gOut = &grad_output_[slice][max(0, iFrame - kT_ + 1)][max(
           0, iRow - kH_ + 1)][max(0, iCol - kW_ + 1)];
       index_t frameOffset = 0;
       for (index_t oFrame = max(0, iFrame - kT_ + 1);
@@ -335,7 +335,7 @@ struct AvgPool3dBackwardOutFrameStride1KernelFunctor {
           static_cast<scalar_t>(sum * normFactor_);
     }
   }
-  AvgPool3dBackwardOutFrameStride1KernelFunctor(
+  AvgPool3dBackwardOutStride1KernelFunctor(
       int kT,
       int kH,
       int kW,
@@ -373,18 +373,16 @@ void avg_pool3d_backward_out_frame_stride1(
     int totalZ) {
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
-
-  AvgPool3dBackwardOutFrameStride1KernelFunctor<scalar_t, accscalar_t, index_t>
-      kfn(kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
-
+  AvgPool3dBackwardOutStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+      kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
   // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
   // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
-      ceil_div<index_t>(grad_output.size(-1), width_group_size);
+      ceil_div<index_t>(grad_input.size(-1), width_group_size);
   index_t height_group_range =
-      ceil_div<index_t>(grad_output.size(-2), height_group_size);
+      ceil_div<index_t>(grad_input.size(-2), height_group_size);
 
   index_t z_group_range = totalZ > 65535 ? 65535 : totalZ;
 
@@ -724,7 +722,6 @@ void avg_pool3d_backward_kernel(
     bool count_include_pad,
     c10::optional<int64_t> divisor_override,
     Tensor& gradInput) {
-  printf("avg_pool3d_backward_kernel\n");
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage
   globalContext().alertNotDeterministic("avg_pool3d_backward_xpu");
