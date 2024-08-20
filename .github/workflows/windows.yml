@@ -93,6 +93,7 @@ jobs:
           pip install mkl-static mkl-include
           cd ../pytorch
           pip install -r requirements.txt
+          set USE_XPU=1
           set CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           if ${{ inputs.abi }} == '0' (
             set _GLIBCXX_USE_CXX11_ABI=0
