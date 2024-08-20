@@ -8,6 +8,7 @@
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/TensorCompareKernels.h>
+#include <ATen/native/xpu/sycl/TensorModeKernel.h>
 #include <comm/ReduceOpsUtils.h>
 
 #include <ATen/ops/result_type_native.h>
