@@ -748,10 +748,11 @@ skip_dict = {
 
     "test_autograd_fallback.py": None,
 
-    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu",),  # Hard code CUDA
+    "test_sort_and_select_xpu.py": None,
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
+        # https://github.com/intel/torch-xpu-ops/issues/484
         "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float16",
         "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
         "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
@@ -784,33 +785,6 @@ skip_dict = {
         "test_embedding_bag_half_xpu_int32_int64",
         "test_embedding_bag_half_xpu_int64_int32",
         "test_embedding_bag_half_xpu_int64_int64",
-        # CUDA implementation has no such functionality due to performance consideration.
-        # skipped by CUDA for performance
-        # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_max_xpu_float64_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_mean_xpu_float64_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx0_mode_sum_xpu_float64_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_max_xpu_float64_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_mean_xpu_float64_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float32_int64",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int32",
-        "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
     ),
 
     "test_transformers_xpu.py": (
@@ -875,6 +849,7 @@ skip_dict = {
     "test_modules_xpu.py": (
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        # https://github.com/intel/torch-xpu-ops/issues/253
         "test_cpu_gpu_parity_nn_Bilinear_xpu_float64",
         "test_cpu_gpu_parity_nn_GRUCell_xpu_float64",
         "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float64",
@@ -1008,6 +983,7 @@ skip_dict = {
         "test_non_contiguous_tensors_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_non_contiguous_tensors_nn_Transformer_xpu_float64",
         "test_save_load_nn_Bilinear_xpu_float64",
+        "test_save_load_nn_GRUCell_xpu_float32",
         "test_save_load_nn_GRUCell_xpu_float64",
         "test_save_load_nn_GRU_eval_mode_xpu_float64",
         "test_save_load_nn_GRU_train_mode_xpu_float64",
@@ -1026,6 +1002,7 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
+        "test_save_load_nn_GRU_eval_mode_xpu_float32",
         # Unexpected success:
         "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
         "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
@@ -1035,12 +1012,9 @@ skip_dict = {
         "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
         "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
         # CPU fallback fails
-        # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
-        "test_save_load_nn_GRU_eval_mode_xpu_float32",
-        "test_save_load_nn_GRUCell_xpu_float32",
-        "test_save_load_nn_GRU_train_mode_xpu_float32",
-        # CPU fallback fails
         # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
+        # https://github.com/intel/torch-xpu-ops/issues/584
+        "test_save_load_nn_GRU_train_mode_xpu_float32",
         "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
         "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
         "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
@@ -1060,43 +1034,6 @@ skip_dict = {
         "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
         "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
         "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
-        # AssertionError: False is not true
-        "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_BatchNorm2d_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_BatchNorm2d_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_BatchNorm3d_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_BatchNorm3d_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Bilinear_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Conv1d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Conv2d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Conv3d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_ConvTranspose1d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_ConvTranspose2d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_ConvTranspose3d_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Embedding_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_GRUCell_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_GRU_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_GRU_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_GroupNorm_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_LSTMCell_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_LSTM_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_LSTM_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_LayerNorm_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Linear_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_MultiheadAttention_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_MultiheadAttention_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_PReLU_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_RMSNorm_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_RNNCell_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_RNN_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_RNN_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_TransformerDecoderLayer_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_TransformerEncoderLayer_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_TransformerEncoderLayer_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
-        "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
     ),
 
     "test_nn_xpu.py": (
@@ -1171,35 +1108,43 @@ skip_dict = {
     ),
 
     "nn/test_pooling_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/771
         # CPU fallback fails
-        "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
-        "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
+        # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
+        "test_pooling_bfloat16_xpu",
+        "test_pool_large_size_xpu_bfloat16",
+        # "adaptive_max_pool3d_cpu" not implemented for 'Half'
+        "test_AdaptiveMaxPool3d_indices_xpu_float16",
+        "test_max_pool_nan_inf_xpu_float16",
+        "test_maxpool_indices_no_batch_dim_xpu_float16",
+        "test_pool_large_size_xpu_float16",
+        "test_adaptive_pooling_empty_output_size_xpu_float16",
     ),
 
     "nn/test_dropout_xpu.py": None,
 
     "test_dataloader_xpu.py": (
         # Skip for XPU didn't support
-        "test_nested_tensor_multiprocessing",
+        # https://github.com/intel/torch-xpu-ops/issues/613
+        "test_nested_tensor_multiprocessing_context_forkserver_xpu",
+        "test_nested_tensor_multiprocessing_context_spawn_xpu",
         # pinned memory issue
+        # https://github.com/intel/torch-xpu-ops/issues/296
         "test_custom_batch_pin",
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
-        "test_pin_memory",
+        "test_pin_memory or test_pin_memory_device or test_pin_memory_with_only_device",
     ),
 
     "test_tensor_creation_ops_xpu.py": (
-        # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
+        # The output of float.min casting to int8 or int16 is different on XPU and cuda.
+        # https://github.com/intel/torch-xpu-ops/issues/776
         "test_float_to_int_conversion_finite_xpu_int8",
         "test_float_to_int_conversion_finite_xpu_int16",
         # Dispatch issue. It is a composite operator. But it is implemented by
         # DispatchStub. XPU doesn't support DispatchStub.
-        "test_kaiser_window_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/264
+        "test_kaiser_window_xpu or test_kaiser_window_xpu_int64",
     ),
 
     "test_autocast_xpu.py": None,
@@ -1428,6 +1373,7 @@ skip_dict = {
     ),
 
     "test_view_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/772
         # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
         "test_flatten_xpu",
         "test_ravel_xpu",
@@ -2145,11 +2091,13 @@ skip_dict = {
     ),
 
     "nn/test_packed_sequence_xpu.py": (
-        # test case porting issue
-        "test_to and not test_to_memory and not test_total",
+        # https://github.com/intel/torch-xpu-ops/issues/745
+        # RuntimeError: Native API failed. Native API returns: -36 (PI_ERROR_INVALID_QUEUE) -36 (PI_ERROR_INVALID_QUEUE)
+        "test_to or test_to_memory or test_total",
     ),
 
     "test_ops_gradients_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/271
         ### Error #0 in TestBwdGradientsXPU , totally 271 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_fn_grad___rmatmul___xpu_complex128",
         "test_fn_grad___rmatmul___xpu_float64",
@@ -2426,6 +2374,7 @@ skip_dict = {
         "test_fn_gradgrad_svd_lowrank_xpu_complex128",
         "test_fn_grad_linalg_norm_xpu_complex128",
         ### Error #1 in TestBwdGradientsXPU , totally 4 , RuntimeError: value cannot be converted to type float without overflow
+        # https://github.com/intel/torch-xpu-ops/issues/683
         "test_fn_grad_addbmm_xpu_complex128",
         "test_fn_gradgrad_addbmm_xpu_complex128",
         "test_inplace_grad_addbmm_xpu_complex128",
@@ -2436,6 +2385,7 @@ skip_dict = {
         "test_inplace_grad_nn_functional_rrelu_xpu_float64",
         "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
+        # https://github.com/intel/torch-xpu-ops/issues/253
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
         "test_fn_grad_nn_functional_conv_transpose3d_xpu_complex128",
@@ -2449,22 +2399,13 @@ skip_dict = {
         "test_inplace_gradgrad_index_reduce_mean_xpu_float64",
         "test_inplace_gradgrad_index_reduce_prod_xpu_float64",
         ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+        # https://github.com/intel/torch-xpu-ops/issues/357
         "test_fn_grad_to_sparse_xpu_float64",
         "test_fn_gradgrad_to_sparse_xpu_float64",
     ),
 
     "test_torch_xpu.py": (
-        # issue 302
-        ### Error #0 in TestTorchDeviceTypeXPU , totally 11 , RuntimeError: expected scalar type Long but found Int
-        "test_index_reduce_reduce_mean_xpu_bfloat16",
-        "test_index_reduce_reduce_mean_xpu_float16",
-        "test_index_reduce_reduce_mean_xpu_float32",
-        "test_index_reduce_reduce_mean_xpu_float64",
-        "test_index_reduce_reduce_mean_xpu_int16",
-        "test_index_reduce_reduce_mean_xpu_int32",
-        "test_index_reduce_reduce_mean_xpu_int64",
-        "test_index_reduce_reduce_mean_xpu_int8",
-        "test_index_reduce_reduce_mean_xpu_uint8",
+        # https://github.com/intel/torch-xpu-ops/issues/302
         ### Error #1 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_grad_scaling_state_dict_xpu",
         ### Error #2 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'torch.storage.TypedStorage' object has no attribute 'is_xpu'
@@ -2474,69 +2415,38 @@ skip_dict = {
         ### Error #4 in TestTorchDeviceTypeXPU , totally 4 , AttributeError: module 'torch.xpu' has no attribute 'FloatStorage'
         "test_storage_setitem_xpu_float32",
         "test_tensor_storage_type_xpu_float32",
-        ### Error #5 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Scalars are not equal!
-        "test_strides_propagation_xpu",
         ### Error #7 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map2_ is only implemented on CPU tensors
         "test_broadcast_fn_map2_xpu",
         ### Error #8 in TestTorchDeviceTypeXPU , totally 1 , TypeError: map_ is only implemented on CPU tensors
         "test_broadcast_fn_map_xpu",
         ### Error #9 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_corrcoef_xpu_complex64",
-        ### Error #10 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: True is not false
-        "test_discontiguous_out_cumsum_xpu",
         ### Error #12 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'amp'
         "test_grad_scaler_pass_itself_xpu",
         "test_pickle_gradscaler_xpu",
-        ### Error #13 in TestTorchDeviceTypeXPU , totally 3 , NotImplementedError: Could not run 'aten::_copy_from_and_resize' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_copy_from_and_resize' is only available for these backends: [XPU, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
-        "test_grad_scaling_autocast_foreach2_fused_True_AdamW_xpu_float32",
-        "test_grad_scaling_autocast_foreach2_fused_True_Adam_xpu_float32",
-        "test_grad_scaling_autocast_foreach2_fused_True_SGD_xpu_float32",
         ### Error #14 in TestTorchDeviceTypeXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
         "test_grad_scaling_unscale_sparse_xpu_float32",
-        "test_memory_format_empty_like_xpu",
         ### Error #15 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Tensor-likes are not close!
-        "test_gradient_all_xpu_float32",
         "test_index_put_non_accumulate_deterministic_xpu",
-        ### Error #16 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: unsupported operation: more than one element of the written-to tensor refers to a single memory location. Please clone() the tensor before performing the operation.
-        "test_index_fill_mem_overlap_xpu",
         ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
-        "test_is_set_to_xpu",
-        "test_pin_memory_from_constructor_xpu",
         "test_sync_warning_xpu",
         ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
-        ### Error #20 in TestTorchDeviceTypeXPU , totally 3 , RuntimeError: Expected a 'cpu' device type for generator but found 'xpu'
-        "test_multinomial_deterministic_xpu_float16",
-        "test_multinomial_deterministic_xpu_float32",
-        "test_multinomial_deterministic_xpu_float64",
-        ### Error #21 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: multinomial expects Long tensor out, got: Float
-        "test_multinomial_device_constrain_xpu",
-        ### Error #22 in TestTorchDeviceTypeXPU , totally 1 , AssertionError: "Expected all tensors to be on the same device" does not match "multinomial expects Long tensor out, got: Float"
-        "test_multinomial_device_constrain_xpu",
         ### Error #23 in TestTorchDeviceTypeXPU , totally 26 , AssertionError: RuntimeError not raised : expected a non-deterministic error, but it was not raised
         "test_nondeterministic_alert_AdaptiveAvgPool2d_xpu",
         "test_nondeterministic_alert_AdaptiveAvgPool3d_xpu",
-        "test_nondeterministic_alert_AdaptiveMaxPool2d_xpu",
         "test_nondeterministic_alert_CTCLoss_xpu",
         "test_nondeterministic_alert_EmbeddingBag_max_xpu",
         "test_nondeterministic_alert_FractionalMaxPool2d_xpu",
         "test_nondeterministic_alert_FractionalMaxPool3d_xpu",
         "test_nondeterministic_alert_MaxPool3d_xpu",
         "test_nondeterministic_alert_NLLLoss_xpu",
-        "test_nondeterministic_alert_ReflectionPad1d_xpu",
-        "test_nondeterministic_alert_ReflectionPad2d_xpu",
-        "test_nondeterministic_alert_ReflectionPad3d_xpu",
-        "test_nondeterministic_alert_ReplicationPad1d_xpu",
-        "test_nondeterministic_alert_ReplicationPad2d_xpu",
-        "test_nondeterministic_alert_ReplicationPad3d_xpu",
-        "test_nondeterministic_alert_grid_sample_2d_xpu",
         "test_nondeterministic_alert_grid_sample_3d_xpu",
         "test_nondeterministic_alert_histc_xpu",
         "test_nondeterministic_alert_interpolate_bicubic_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
         "test_nondeterministic_alert_interpolate_trilinear_xpu",
         "test_nondeterministic_alert_kthvalue_xpu_float64",
-        "test_nondeterministic_alert_median_xpu_float64",
         "test_nondeterministic_alert_put_accumulate_xpu",
         ### Error #24 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'TestTorchDeviceTypeXPU' object has no attribute 'check_device_nondeterministic_alert'
         "test_nondeterministic_alert_AvgPool3d_xpu",
@@ -2597,16 +2507,10 @@ skip_dict = {
         "test_cuda_vitals_gpu_only_xpu",
         # torch.utils.swap_tensors AssertionError: RuntimeError not raised
         "test_swap_basic",
-        # Precision error
-        # Fail in high probability in preci.
-        # Mismatched elements: 1 / 262144 (0.0%)
-        # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
-        # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
-        "test_index_add_correctness",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
-        # known oneDNN issue
+        # known oneDNN issue, https://github.com/intel/torch-xpu-ops/issues/253
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
@@ -2719,4 +2623,6 @@ skip_dict = {
     ),
 
     "nn/test_parametrization_xpu.py": None,
+
+    "test_segment_reductions_xpu.py": None,
 }

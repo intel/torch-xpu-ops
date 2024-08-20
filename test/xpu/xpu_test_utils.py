@@ -7,6 +7,7 @@ import sys
 import unittest
 
 import torch
+from functools import wraps
 from torch import bfloat16, cuda
 from torch.testing._internal import (
     common_cuda,
@@ -535,6 +536,8 @@ class XPUPatchForImport:
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+        self.skipCUDAIf = common_device_type.skipCUDAIf
+        self.onlyCUDAAndPRIVATEUSE1 = common_device_type.onlyCUDAAndPRIVATEUSE1
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -598,7 +601,24 @@ class XPUPatchForImport:
             def __init__(self, *args):
                 super().__init__(*args, device_type="xpu")
 
+        class skipXPUIf(common_device_type.skipIf):
+            def __init__(self, dep, reason):
+                super().__init__(dep, reason, device_type="xpu")
+
+        def onlyXPUAndPRIVATEUSE1(fn):
+            @wraps(fn)
+            def only_fn(self, *args, **kwargs):
+                if self.device_type not in ("xpu", torch._C._get_privateuse1_backend_name()):
+                    reason = f"onlyXPUAndPRIVATEUSE1: doesn't run on {self.device_type}"
+                    raise unittest.SkipTest(reason)
+
+                return fn(self, *args, **kwargs)
+
+            return only_fn
+
         common_device_type.dtypesIfCUDA = dtypesIfXPU
+        common_device_type.skipCUDAIf = skipXPUIf
+        common_device_type.onlyCUDAAndPRIVATEUSE1 = onlyXPUAndPRIVATEUSE1
         common_device_type.onlyNativeDeviceTypes = common_device_type.onlyXPU
         if self.patch_test_case:
             common_utils.TestCase = common_utils.NoTest
@@ -699,6 +719,8 @@ class XPUPatchForImport:
         sys.path = self.original_path
         common_device_type.onlyCUDA = self.only_cuda_fn
         common_device_type.dtypesIfCUDA = self.dtypes_if_cuda_fn
+        common_device_type.skipCUDAIf = self.skipCUDAIf
+        common_device_type.onlyCUDAAndPRIVATEUSE1 = self.onlyCUDAAndPRIVATEUSE1
         common_device_type.onlyNativeDeviceTypes = self.only_native_device_types_fn
         common_device_type.instantiate_device_type_tests = (
             self.instantiate_device_type_tests_fn
