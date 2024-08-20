@@ -1,12 +1,4 @@
 skip_dict = {
-    # L0 4 GB memory allocation limitation
-    "test_indexing_xpu.py": (
-        "test_index_put_accumulate_large_tensor_xpu",
-    ),
-    # client memory limitation
-    "test_nn_xpu.py": (
-        "test_grid_sample_large_xpu",
-    ),
     # SYCL default context is not supported on Windows
     "test_tensor_creation_ops_xpu.py": (
         "test_alias_from_dlpack_xpu_bfloat16",
