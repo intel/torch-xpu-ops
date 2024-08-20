@@ -74,7 +74,12 @@ jobs:
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
-            rmdir /s /q third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+            cd third_party
+            if exist "torch-xpu-ops" (
+              rmdir /s /q torch-xpu-ops 
+            )
+            cd ..
+            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
           )
       - name: Build Pytorch XPU
         shell: cmd
