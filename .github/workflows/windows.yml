@@ -67,7 +67,9 @@ jobs:
           )
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
-          pip install requests
+          call pip install pyyaml requests
+          call conda install conda-forge::rust -y
+          call conda install typing_extensions -y
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
