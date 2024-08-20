@@ -61,7 +61,10 @@ jobs:
           call conda remove --all -y -n windows_ci
           call conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
           call conda activate windows_ci
-          cd ../ && rm -rf pytorch
+          cd ..
+          if exist "pytorch" (
+            rmdir /s /q pytorch
+          )
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install requests
