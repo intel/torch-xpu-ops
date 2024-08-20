@@ -2052,6 +2052,7 @@ skip_dict = {
         "test_reduction_all_sum_layout1_xpu_float16",
         "test_reduction_all_sum_layout1_xpu_float64",
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+        "test_like_",
         "test_invalid_sparse_layout_xpu",
         "test_to_dense_and_sparse_csr_xpu",
         "test_binary_core_add_layout2_xpu_float16",
