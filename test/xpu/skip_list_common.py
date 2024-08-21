@@ -1153,9 +1153,6 @@ skip_dict = {
         # index boundary should be checked. 
         # https://github.com/intel/torch-xpu-ops/issues/783
         "test_advancedindex_xpu_float64",
-        # Added xpu hook
-        # CUDA bias case
-        #"test_index_put_accumulate_with_optional_tensors_xpu",
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
@@ -2708,6 +2705,7 @@ skip_dict = {
         "test_autodiff__foreach_sigmoid_outplace_xpu_complex128",
         "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
         # AssertionError: RuntimeError not raised
+        # https://github.com/intel/torch-xpu-ops/issues/784 
         "test_0dim_tensor_overload_exception_xpu",
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float32",
