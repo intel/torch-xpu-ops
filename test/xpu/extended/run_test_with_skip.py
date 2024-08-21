@@ -1,8 +1,6 @@
 import os
 import sys
 
-IS_WINDOWS = sys.platform == "win32"
-
 skip_list = (
     # Calculation error between XPU implementation and CPU implementation,
     # 1. Compiler optimization causes failing to promote data type to higher precision.
@@ -153,16 +151,15 @@ skip_list = (
 )
 
 
-skip_options = " -k \"not " + skip_list[0]
+skip_options = " -k 'not " + skip_list[0]
 for skip_case in skip_list[1:]:
     skip_option = " and not " + skip_case
     skip_options += skip_option
-skip_options += "\""
+skip_options += "'"
 
-if IS_WINDOWS: os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-test_command = "pytest -v test_ops_xpu.py" if IS_WINDOWS else "PYTORCH_TEST_WITH_SLOW=1 pytest -v test_ops_xpu.py"
+test_command = "PYTORCH_TEST_WITH_SLOW=1 pytest -v test_ops_xpu.py"
 test_command += skip_options
 
 res = os.system(test_command)
-exit_code = res if IS_WINDOWS else os.WEXITSTATUS(res)
+exit_code = os.WEXITSTATUS(res)
 sys.exit(exit_code)
