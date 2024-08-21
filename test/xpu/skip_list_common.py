@@ -697,11 +697,6 @@ skip_dict = {
         "test_conj_view_to_sparse_xpu_complex64",
         "test_neg_conj_view_to_sparse_xpu_complex128",
         "test_neg_view_to_sparse_xpu_float64",
-        # # CPU fallback error：AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
-        # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float16}.
-        # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
-        "test_dtypes_nn_functional_pad_replicate_negative_xpu",
-        "test_dtypes_nn_functional_pad_replicate_xpu",
         # Op impl aligns with CUDA on the supported dtypes.
         # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
         # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
@@ -711,7 +706,6 @@ skip_dict = {
         #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
         #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
         #XPU supports bfloat16, CUDA doesn't support it.
-        "test_dtypes_unique_consecutive_xpu",
         "test_dtypes_unique_xpu",
         # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
         # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
@@ -1032,10 +1026,8 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
         # Unexpected success:
-        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
-        "test_memory_format_nn_AvgPool2d_xpu_float32",
-        "test_memory_format_nn_AvgPool2d_xpu_float64",
+        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         # CPU fallback could not cover these
         # CUDA xfails
         # Failed: Unexpected success
@@ -1104,31 +1096,12 @@ skip_dict = {
         "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
-        #issue 746, adjust tolerence 
-        "test_non_contiguous_tensors_nn_Conv3d_xpu_float32",
     ),
 
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
         # AssertionError: Tensor-likes are not close!
-        "test_Conv2d_dilated_with_long_tensor_cuda",
-        "test_Conv2d_groups_thnn_with_long_tensor_cuda",
-        "test_Conv2d_groups_with_long_tensor_cuda",
-        "test_Conv2d_no_bias_with_long_tensor_cuda",
-        "test_Conv2d_padding_with_long_tensor_cuda",
-        "test_Conv2d_strided_with_long_tensor_cuda",
-        "test_Conv2d_with_long_tensor_cuda",
-        "test_Conv3d_1x1x1_no_bias_with_long_tensor_cuda",
-        "test_Conv3d_groups_with_long_tensor_cuda",
-        "test_Conv3d_no_bias_with_long_tensor_cuda",
-        "test_Conv3d_stride_padding_with_long_tensor_cuda",
-        "test_Conv3d_stride_with_long_tensor_cuda",
-        "test_Conv3d_with_long_tensor_cuda",
-        "test_ConvTranspose2d_dilated_with_long_tensor_cuda",
-        "test_ConvTranspose2d_groups_with_long_tensor_cuda",
-        "test_ConvTranspose2d_no_bias_with_long_tensor_cuda",
-        "test_ConvTranspose2d_with_long_tensor_cuda",
         "test_RReLU_cuda",
         "test_RReLU_no_batch_dim_cuda",
         "test_RReLU_with_up_down_cuda",
@@ -1176,10 +1149,6 @@ skip_dict = {
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-        # RuntimeError: "smooth_l1_backward_cpu_out" not implemented for 'Half'
-        "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
-        "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
-        "test_SmoothL1Loss_no_batch_dim_sum_cuda_half",
         # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
         "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
         "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
@@ -1230,8 +1199,6 @@ skip_dict = {
         # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
         "test_float_to_int_conversion_finite_xpu_int8",
         "test_float_to_int_conversion_finite_xpu_int16",
-        # sparse
-        "test_tensor_ctor_device_inference_xpu",
         # Dispatch issue. It is a composite operator. But it is implemented by
         # DispatchStub. XPU doesn't support DispatchStub.
         "test_kaiser_window_xpu",
@@ -1316,11 +1283,6 @@ skip_dict = {
         "test_reference_numerics_large_asinh_xpu_complex128",
         "test_reference_numerics_large_asinh_xpu_complex64",
         "test_reference_numerics_large_asinh_xpu_complex32",
-        # Mismatched elements: 1 / 943593 (0.0%)
-        # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
-        # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
-        "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-
         # AssertionError: Tensor-likes are not close!
         # exceeded maximum allowed difference
         # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
@@ -1468,8 +1430,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/275
         # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
         "test_flip_xpu_float32",
-        # RuntimeError: "trace" not implemented for 'Half'
-        "test_trace_xpu_float16",
     ),
 
     "test_content_store_xpu.py": None,
@@ -1731,7 +1691,6 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_linalg_cholesky_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_cond_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_cond_xpu_float64",
-        "test_fn_fwgrad_bwgrad_linalg_det_singular_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_det_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_det_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_eig_xpu_complex128",
@@ -1767,7 +1726,6 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_linalg_norm_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_pinv_hermitian_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_hermitian_xpu_float64",
-        "test_fn_fwgrad_bwgrad_linalg_pinv_singular_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_singular_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_pinv_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_xpu_float64",
@@ -1959,16 +1917,7 @@ skip_dict = {
         # torch.autograd.gradcheck.GradcheckError: While considering the real part of complex inputs only, Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
         "test_fn_fwgrad_bwgrad_linalg_norm_xpu_complex128",
         # torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex inputs only, Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_linalg_vector_norm_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_masked_normalize_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_norm_inf_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_renorm_xpu_complex128",
         "test_forward_mode_AD_linalg_norm_xpu_complex128",
-        "test_forward_mode_AD_linalg_vector_norm_xpu_complex128",
-        "test_forward_mode_AD_masked_normalize_xpu_complex128",
-        "test_forward_mode_AD_norm_inf_xpu_complex128",
-        "test_forward_mode_AD_renorm_xpu_complex128",
-        "test_inplace_forward_mode_AD_renorm_xpu_complex128",
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_fwgrad_bwgrad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_fwgrad_bwgrad_nn_functional_conv_transpose2d_xpu_float64",
@@ -1978,9 +1927,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-        "test_fn_fwgrad_bwgrad_nn_functional_group_norm_xpu_float64",
-        "test_forward_mode_AD_nn_functional_group_norm_xpu_float64",
         # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
         "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
         "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
@@ -2012,11 +1958,6 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_float16_xpu",
         "test_scaled_mm_vs_emulated_float32_xpu",
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
-        # https://github.com/intel/torch-xpu-ops/issues/676
-        # Mismatched elements: 9 / 1003002 (0.0%)
-        # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
-        # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
-        "test_cublas_addmm_size_1000_xpu_float32",
     ),
 
     "test_maskedtensor_xpu.py": (
@@ -2112,6 +2053,7 @@ skip_dict = {
         "test_reduction_all_sum_layout1_xpu_float16",
         "test_reduction_all_sum_layout1_xpu_float64",
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+        "test_like_",
         "test_invalid_sparse_layout_xpu",
         "test_to_dense_and_sparse_csr_xpu",
         "test_binary_core_add_layout2_xpu_float16",
@@ -2361,7 +2303,6 @@ skip_dict = {
         "test_fn_gradgrad_linalg_cholesky_xpu_float64",
         "test_fn_gradgrad_linalg_cond_xpu_complex128",
         "test_fn_gradgrad_linalg_cond_xpu_float64",
-        "test_fn_gradgrad_linalg_det_singular_xpu_float64",
         "test_fn_gradgrad_linalg_det_xpu_complex128",
         "test_fn_gradgrad_linalg_det_xpu_float64",
         "test_fn_gradgrad_linalg_eig_xpu_complex128",
@@ -2396,7 +2337,6 @@ skip_dict = {
         "test_fn_gradgrad_linalg_multi_dot_xpu_float64",
         "test_fn_gradgrad_linalg_pinv_hermitian_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_hermitian_xpu_float64",
-        "test_fn_gradgrad_linalg_pinv_singular_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_singular_xpu_float64",
         "test_fn_gradgrad_linalg_pinv_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_xpu_float64",
@@ -2488,14 +2428,6 @@ skip_dict = {
         "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
         "test_inplace_grad_nn_functional_rrelu_xpu_float64",
         "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
-        ### Error #3 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex outputs only, Jacobian mismatch for output 0 with respect to input 0,
-        "test_fn_grad_masked_normalize_xpu_complex128",
-        "test_fn_grad_renorm_xpu_complex128",
-        "test_fn_gradgrad_linalg_vector_norm_xpu_complex128",
-        "test_fn_gradgrad_masked_normalize_xpu_complex128",
-        "test_fn_gradgrad_renorm_xpu_complex128",
-        "test_inplace_grad_renorm_xpu_complex128",
-        "test_inplace_gradgrad_renorm_xpu_complex128",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
@@ -2505,8 +2437,6 @@ skip_dict = {
         "test_fn_gradgrad_nn_functional_conv_transpose2d_xpu_float64",
         "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_complex128",
         "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_float64",
-        ### Error #6 in TestBwdGradientsXPU , totally 5 , torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
-        "test_fn_grad_nn_functional_max_pool2d_xpu_float64",
         "test_fn_gradgrad_index_reduce_mean_xpu_float64",
         "test_fn_gradgrad_index_reduce_prod_xpu_float64",
         "test_inplace_gradgrad_index_reduce_mean_xpu_float64",
@@ -2674,7 +2604,6 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
-        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
     ),
