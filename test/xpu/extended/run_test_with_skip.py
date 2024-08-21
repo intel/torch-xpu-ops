@@ -189,16 +189,10 @@ for skip_case in skip_list[1:]:
     skip_options += skip_option
 skip_options += "\""
 
-if os.name == "nt":
-    test_command = "pytest -v test_ops_xpu.py"
-    test_command += skip_options
-    print("running", test_command)
-    res = os.system(test_command)
-    # fixme: exit code does not match 
-    sys.exit(res)
-else: 
-    test_command = "PYTORCH_TEST_WITH_SLOW=1 && pytest -v test_ops_xpu.py"
-    test_command += skip_options
-    res = os.system(test_command)
-    exit_code = os.WEXITSTATUS(res)
-    sys.exit(exit_code)
+os.environ["PYTORCH_ENABLE_XPU_FALLBACK"]= 1
+os.environ["PYTORCH_TEST_WITH_SLOW"]=1
+
+test_command = "pytest -v test_ops_xpu.py"
+test_command += skip_options
+res = os.system(test_command)
+sys.exit(res)
