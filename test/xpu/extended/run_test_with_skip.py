@@ -183,15 +183,22 @@ skip_list = (
 )
 
 
-skip_options = " -k 'not " + skip_list[0]
+skip_options = " -k \"not " + skip_list[0]
 for skip_case in skip_list[1:]:
     skip_option = " and not " + skip_case
     skip_options += skip_option
-skip_options += "'"
+skip_options += "\""
 
-test_command = "PYTORCH_TEST_WITH_SLOW=1 pytest -v test_ops_xpu.py"
-test_command += skip_options
-
-res = os.system(test_command)
-exit_code = os.WEXITSTATUS(res)
-sys.exit(exit_code)
+if os.name == "nt":
+    test_command = "pytest -v test_ops_xpu.py"
+    test_command += skip_options
+    print("running", test_command)
+    res = os.system(test_command)
+    # fixme: exit code does not match 
+    sys.exit(res)
+else: 
+    test_command = "PYTORCH_TEST_WITH_SLOW=1 && pytest -v test_ops_xpu.py"
+    test_command += skip_options
+    res = os.system(test_command)
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
