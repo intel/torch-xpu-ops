@@ -756,6 +756,107 @@ void masked_scatter_kernel(
       });
 }
 
+template <typename ValType>
+class IndexCopyScalarFunctor {
+ public:
+  void operator()(
+      ValType* dst,
+      ValType* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      ValType alpha) const {
+    dst[dst_off] = src[src_off];
+  }
+};
+
+template <class SrcInfo, class DstInfo, class IdxInfo>
+static inline void _index_copy_kernel(
+    SrcInfo& src_info,
+    DstInfo& dst_info,
+    IdxInfo& index_info,
+    int64_t dim) {
+  using scalar_t = typename SrcInfo::scalar_t;
+  using IdxConfig = IndexKernelConfig<
+      SrcInfo,
+      DstInfo,
+      IdxInfo,
+      IndexCopyScalarFunctor<scalar_t>>;
+  using KernelClass = IndexKernel<IdxConfig, false, false>;
+  auto cfg = IdxConfig::template make_config<KernelClass>(
+      src_info,
+      dst_info,
+      index_info,
+      scalar_t{},
+      dim,
+      true,
+      IndexCopyScalarFunctor<scalar_t>());
+  launch_index_kernel(cfg);
+}
+
+template <typename scalar_t>
+static inline void index_copy_impl(
+    Tensor& dst,
+    int64_t dim,
+    const Tensor& indices,
+    const Tensor& source) {
+  static constexpr string_view DIM_WARNING =
+      "Tensor too large or too many (> 12) dimensions";
+
+  TORCH_CHECK(dst.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(indices.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(source.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+
+  // The `src` is partitioned into two parts:
+  // -the size of each slice we are indexing, which is the
+  // total size of the tensor ignoring dimension `dim`;
+  // -the number of indices we are choosing, which is the total size
+  // of the tensor `indices`.
+  int64_t dstDims = dst.dim() == 0 ? 1 : dst.dim();
+
+  TORCH_CHECK(dim >= 0 && dim < dstDims, "Indexing dim is out of bounds");
+
+  ptrdiff_t sliceSize = 1;
+  for (int d = 0; d < dstDims; d++) {
+    if (d != dim) {
+      sliceSize *= dst.dim() == 0 ? 1 : dst.size(d);
+    }
+  }
+  if (sliceSize == 0) {
+    return;
+  }
+
+  TensorInfo<int64_t, int64_t> indices_info =
+      getTensorInfo<int64_t, int64_t>(indices);
+  indices_info.collapseDims();
+
+  TensorInfo<scalar_t, int64_t> src_info =
+      getTensorInfo<scalar_t, int64_t>(source);
+
+  TensorInfo<scalar_t, int64_t> dst_info =
+      getTensorInfo<scalar_t, int64_t>(dst);
+  auto collapse_dim = (dst.dim() == 0) ? -1 : dim;
+  int new_indexing_dim = dst_info.collapseDims(collapse_dim);
+  _index_copy_kernel(src_info, dst_info, indices_info, new_indexing_dim);
+}
+
+void index_copy_kernel(
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    Tensor& out) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND6(
+      at::ScalarType::ComplexHalf,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      at::ScalarType::Float8_e4m3fn,
+      at::ScalarType::Float8_e5m2,
+      out.scalar_type(),
+      "index_copy_xpu",
+      [&]() { index_copy_impl<scalar_t>(out, dim, index, source); });
+}
+
 } // namespace at::native::xpu
 
 #pragma GCC diagnostic pop
