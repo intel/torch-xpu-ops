@@ -120,10 +120,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
   else()
     set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,xe-lpg,ats-m150")
-    message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for a full AOT build." 
-              "Try specifying from 'pvc,xe-lpg,ats-m150' if you don't need.")
+    message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for AOT build: ${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}." 
+              "Try specifying 'export TORCH_XPU_ARCH_LIST=' from 'pvc,xe-lpg,ats-m150' for current device to accelerate build process.")
   endif()
-  message(STATUS "    SYCL_OFFLINE_COMPILER_AOT_OPTIONS: ${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}")
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 else()
