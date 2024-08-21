@@ -122,8 +122,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   endif()
 
   set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
-  message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")  
+  message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
 
+  set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
+else()
   message("Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
   return()
 endif()
