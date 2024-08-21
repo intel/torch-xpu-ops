@@ -130,7 +130,8 @@ void pow_tensor_tensor_kernel(TensorIteratorBase& iter) {
       pow_chalf_tensor_scalar_impl(iter, exp);
     } else {
       TORCH_INTERNAL_ASSERT(!iter.is_cpu_scalar(1) && !iter.is_cpu_scalar(2));
-      auto f = PowTensorTensorCastFunctor<scalar_t>();
+      using opmath_t = at::opmath_type<scalar_t>;
+      auto f = PowTensorTensorFunctor<opmath_t>();
       gpu_kernel(iter, f);
     }
   } else {
