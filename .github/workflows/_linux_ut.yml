@@ -53,7 +53,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ inputs.pytorch }} |awk '{print $1}') 
+          cd pytorch && git checkout $(echo "${{ inputs.pytorch }}" |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -66,6 +66,14 @@ jobs:
             # Workaround for torch-xpu-ops ci test
             sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
           fi
+      - name: Triton Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -77,7 +85,7 @@ jobs:
           else
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
-          if [[ ${{ inputs.pytorch }} != *" wheel"* ]]; then
+          if [[ "${{ inputs.pytorch }}" != *" wheel"* ]]; then
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             WERROR=1 python setup.py bdist_wheel
