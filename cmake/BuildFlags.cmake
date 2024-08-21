@@ -116,16 +116,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
 
+  set(AOT_TARGETS "pvc,xe-lpg,ats-m150")
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
-  else()
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,xe-lpg,ats-m150")
-    message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for AOT build: ${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}." 
-              "Try specifying 'export TORCH_XPU_ARCH_LIST=' from 'pvc,xe-lpg,ats-m150' for current device to accelerate build process.")
+    set(AOT_TARGETS "$ENV{TORCH_XPU_ARCH_LIST}")
   endif()
 
-  set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
-else()
+  set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
+  message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")  
+
   message("Not compiling with XPU. Currently only support GCC compiler on Linux and MSVC compiler on Windows as CXX compiler.")
   return()
 endif()
