@@ -28,7 +28,7 @@ inline int max(int a, int b) {
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dOutFrameKernelFunctor {
+struct AvgPool3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     index_t oCol = item.get_global_id()[2];
     index_t oRow = item.get_global_id()[1];
@@ -84,7 +84,7 @@ struct AvgPool3dOutFrameKernelFunctor {
           static_cast<scalar_t>(sum / divide_factor);
     }
   }
-  AvgPool3dOutFrameKernelFunctor(
+  AvgPool3dKernelFunctor(
       int kT,
       int kH,
       int kW,
@@ -150,7 +150,7 @@ void avg_pool3d_out_frame(
     const int divisor_override) {
   auto input_acc = work_input.packed_accessor64<const scalar_t, 4>();
   auto output_acc = work_output.packed_accessor64<scalar_t, 4>();
-  AvgPool3dOutFrameKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+  AvgPool3dKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT,
       kH,
       kW,
@@ -300,7 +300,7 @@ void avg_pool3d_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardOutStride1KernelFunctor {
+struct AvgPool3dBackwardStride1KernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     index_t iCol = item.get_global_id()[2];
     index_t iRow = item.get_global_id()[1];
@@ -335,7 +335,7 @@ struct AvgPool3dBackwardOutStride1KernelFunctor {
           static_cast<scalar_t>(sum * normFactor_);
     }
   }
-  AvgPool3dBackwardOutStride1KernelFunctor(
+  AvgPool3dBackwardStride1KernelFunctor(
       int kT,
       int kH,
       int kW,
@@ -373,7 +373,7 @@ void avg_pool3d_backward_out_frame_stride1(
     int totalZ) {
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
-  AvgPool3dBackwardOutStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+  AvgPool3dBackwardStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
   // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
   // width_size
@@ -399,7 +399,7 @@ void avg_pool3d_backward_out_frame_stride1(
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardOutFrameAtomicKernelFunctor {
+struct AvgPool3dBackwardAtomicKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     index_t oCol = item.get_global_id()[2];
     index_t oRow = item.get_global_id()[1];
@@ -451,7 +451,7 @@ struct AvgPool3dBackwardOutFrameAtomicKernelFunctor {
       }
     }
   }
-  AvgPool3dBackwardOutFrameAtomicKernelFunctor(
+  AvgPool3dBackwardAtomicKernelFunctor(
       int kT,
       int kH,
       int kW,
@@ -518,7 +518,7 @@ void avg_pool3d_backward_out_frame_atomic(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
-  AvgPool3dBackwardOutFrameAtomicKernelFunctor<scalar_t, accscalar_t, index_t>
+  AvgPool3dBackwardAtomicKernelFunctor<scalar_t, accscalar_t, index_t>
       kfn(kT,
           kH,
           kW,
@@ -558,7 +558,7 @@ void avg_pool3d_backward_out_frame_atomic(
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-struct AvgPool3dBackwardOutFrameKernelFunctor {
+struct AvgPool3dBackwardKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     index_t oCol = item.get_global_id()[2];
     index_t oRow = item.get_global_id()[1];
@@ -606,7 +606,7 @@ struct AvgPool3dBackwardOutFrameKernelFunctor {
       }
     }
   }
-  AvgPool3dBackwardOutFrameKernelFunctor(
+  AvgPool3dBackwardKernelFunctor(
       int kT,
       int kH,
       int kW,
@@ -673,7 +673,7 @@ void avg_pool3d_backward_out_frame(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
-  AvgPool3dBackwardOutFrameKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+  AvgPool3dBackwardKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT,
       kH,
       kW,
