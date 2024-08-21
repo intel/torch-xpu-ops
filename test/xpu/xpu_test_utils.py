@@ -257,6 +257,9 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("narrow_copy","test_meta_outplace"),
+    ("narrow_copy","test_dispatch_meta_outplace"),
+    ("narrow_copy","test_dispatch_symbolic_meta_outplace"),
 ]
 
 # some case should adjust tolerance to pass.
