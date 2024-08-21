@@ -1150,9 +1150,12 @@ skip_dict = {
         # It is kernel assert on XPU implementation not exception on host.
         # We are same as CUDA implementation. And CUDA skips these cases.
         "test_trivial_fancy_out_of_bounds_xpu",
-        "test_advancedindex",
+        # index boundary should be checked. 
+        # https://github.com/intel/torch-xpu-ops/issues/783
+        "test_advancedindex_xpu_float64",
+        # Added xpu hook
         # CUDA bias case
-        "test_index_put_accumulate_with_optional_tensors_xpu",
+        #"test_index_put_accumulate_with_optional_tensors_xpu",
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
