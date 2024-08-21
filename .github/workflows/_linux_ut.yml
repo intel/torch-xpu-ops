@@ -66,19 +66,11 @@ jobs:
             # Workaround for torch-xpu-ops ci test
             sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
           fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh
-          pip install mkl-static mkl-include
+          pip install mkl-static mkl-include pytorch-triton-xpu
           cd ../pytorch
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
