@@ -239,7 +239,7 @@ _xpu_computation_op_list = [
     "nanmean",
 ]
 
-_ops_without_cuda_support=[
+_ops_without_cuda_support = [
     "histogram",
 ]
 
@@ -256,6 +256,9 @@ _cuda_xfail_xpu_pass = [
     ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
+    ("narrow_copy","test_meta_outplace"),
+    ("narrow_copy","test_dispatch_meta_outplace"),
+    ("narrow_copy","test_dispatch_symbolic_meta_outplace"),
 ]
 
 
@@ -569,7 +572,10 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list or opinfo.name in _ops_without_cuda_support:
+            if (
+                opinfo.name not in _xpu_computation_op_list
+                or opinfo.name in _ops_without_cuda_support
+            ):
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
