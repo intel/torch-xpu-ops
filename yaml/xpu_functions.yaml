@@ -727,3 +727,6 @@ supported:
   - take.out
   - _embedding_bag_dense_backward
   - _embedding_bag_per_sample_weights_backward
+  - index_copy
+  - index_copy.out
+  - index_copy_

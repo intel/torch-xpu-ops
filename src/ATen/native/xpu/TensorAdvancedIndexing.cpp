@@ -27,6 +27,7 @@ REGISTER_XPU_DISPATCH(index_put_stub, &xpu::index_put_kernel);
 REGISTER_XPU_DISPATCH(
     index_put_with_sort_stub,
     &xpu::index_put_deterministic_kernel);
+REGISTER_XPU_DISPATCH(index_copy_stub, &xpu::index_copy_kernel);
 // REGISTER_XPU_DISPATCH(index_stub, &xpu::index_kernel);
 REGISTER_XPU_DISPATCH(scatter_stub, &xpu::scatter_kernel);
 REGISTER_XPU_DISPATCH(scatter_fill_stub, &xpu::scatter_fill_kernel);

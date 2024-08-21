@@ -52,11 +52,17 @@ TORCH_XPU_API void masked_scatter_kernel(
     const TensorBase& maskPrefixSum,
     const TensorBase& source);
 
-void put_kernel(
+TORCH_XPU_API void put_kernel(
     TensorIterator& iter,
     const TensorBase& output,
     const bool accumulate);
 
-void take_kernel(TensorIterator& iter, const TensorBase& input);
+TORCH_XPU_API void take_kernel(TensorIterator& iter, const TensorBase& input);
+
+TORCH_XPU_API void index_copy_kernel(
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride);
 
 } // namespace at::native::xpu
