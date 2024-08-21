@@ -114,8 +114,8 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
         "test_reference_numerics_large__refs_tanh_xpu_complex32",
 
-        # skipped
-        #"test_out_triangular_solve_xpu_float32",
+        # unexpected success because of cpu fallback 
+        "test_out_triangular_solve_xpu_float32",
 
         # Newly added:
 
