@@ -53,6 +53,7 @@ endif()
 
 # Only for debugging. Save building time by shrinking translation unit scope.
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
+set(BUILD_WITH_PER_KERNEL $ENV{BUILD_WITH_PER_KERNEL})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)
