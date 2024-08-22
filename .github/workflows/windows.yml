@@ -36,6 +36,10 @@ on:
 
 permissions: read-all
 
+env: 
+    USE_XPU: 1
+    VS2022INSTALLDIR: 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat'
+
 jobs:
   Torch-XPU-Windows-Tests:
     runs-on: ${{ inputs.runner }} 
@@ -88,7 +92,6 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          set VS2022INSTALLDIR="C:\Program Files\Microsoft Visual Studio\2022\BuildTools"
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           pip install mkl-static mkl-include
           cd ../pytorch
