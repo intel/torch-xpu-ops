@@ -13,6 +13,11 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
       ut:
         required: true
         type: string
@@ -71,9 +76,15 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          if [[ "${{ inputs.pytorch }}" != *" wheel"* ]]; then
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          fi
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
