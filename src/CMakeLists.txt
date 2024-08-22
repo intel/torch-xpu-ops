@@ -46,6 +46,13 @@ else()
     endif()
   endforeach()
 
+  #Fix missing kernels in split binaries dependency
+  list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/CopyKernel.cpp")
+
+  list(APPEND ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS 
+      "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/UnaryFractionKernels.cpp" 
+      "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/UnaryKernels.cpp")
+
   set(sycl_unary_binary_lib torch_xpu_ops_sycl_unary_binary_kernels)
   sycl_add_library(
     ${sycl_unary_binary_lib}
