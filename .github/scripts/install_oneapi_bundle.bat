@@ -1,9 +1,27 @@
+REM Description: Install Intel Support Packages on Windows
+REM BKM reference: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-5.html
+REM To-do: Add driver installation in this file.
+
 set ONEAPI_PARENT_DIR=C:\Program Files (x86)\Intel
 set INTEL_ONEAPI_PYTORCH_BUNDLE_URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/5ca2021d-dd1a-4ab1-bd52-758fe63cf827/w_intel-for-pytorch-gpu-dev_p_0.5.2.19_offline.exe
+set ONEAPI_VERSION="0.5.2+16"
 set INTEL_ONEAPI_PYTORCH_BUNDLE_DISPLAY_NAME=intel.oneapi.win.intel-for-pytorch-gpu-dev.product
-set INSTALL_FRESH_ONEAPI=1
+set INSTALL_FRESH_ONEAPI=0
 
-if not exist "%ONEAPI_PARENT_DIR%\oneAPI" (
+REM Check if oneAPI is already installed
+if not exist "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat" (
+    set INSTALL_FRESH_ONEAPI=1
+)
+
+REM Check if oneAPI is latest version
+"%ONEAPI_PARENT_DIR%\oneAPI\Installer\installer.exe" --list-products > tmp_oneapi_uninstall_version.log
+for /f "tokens=1,2" %%a in (tmp_oneapi_uninstall_version.log) do (
+    if "%%a"=="%INTEL_ONEAPI_PYTORCH_BUNDLE_DISPLAY_NAME%" (
+        set "CURRENT_VERSION=%%b"
+    )
+)
+
+if not "%CURRENT_VERSION%"=="%ONEAPI_VERSION%" (
     set INSTALL_FRESH_ONEAPI=1
 )
 
@@ -34,4 +52,5 @@ if "%INSTALL_FRESH_ONEAPI%"=="1" (
     start /wait "Intel Pytorch Bundle Installer" "oneapi_bundle.exe" --action=install --eula=accept --silent --log-dir install_bundle
     if errorlevel 1 exit /b
     if not errorlevel 0 exit /b
+    rm oneapi_bundle.exe
 )
