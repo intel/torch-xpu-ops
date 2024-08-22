@@ -257,76 +257,7 @@ _cuda_xfail_xpu_pass = [
     ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
-    ("nn.AvgPool2d", "test_memory_format"),
 ]
-
-# some case should adjust tolerance to pass.
-# The new threshold is at the same order of magnitude as cuda's or cpu's.
-# format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
-
-_xpu_tolerance_override = {
-    "nn.functional.tanhshrink": {
-        ("TestUnaryUfuncs", "test_reference_numerics_normal"): {
-            torch.complex64: tol(atol=2e-05, rtol=9e-06),
-            torch.bfloat16: tol(atol=1e-02, rtol=1.6e-02),
-        }
-    },
-    "atan2": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.008, rtol=0.005),
-        }
-    },
-    "cumprod": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.002, rtol=0.008),
-        }
-    },
-    "nanmean": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.002, rtol=0.008),
-        }
-    },
-    "nansum": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.008, rtol=0.006),
-        }
-    },
-    "nn.functional.batch_norm": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.float16: tol(atol=0.003, rtol=0.004),
-        }
-    },
-    "nn.functional.embedding_bag": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.float16: tol(atol=0.005, rtol=0.007),
-        }
-    },
-    "nn.functional.group_norm": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.float16: tol(atol=0.002, rtol=0.006),
-        }
-    },
-    "prod": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.002, rtol=0.005),
-        }
-    },
-    "rsqrt": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.004, rtol=0.007),
-        }
-    },
-    "std_mean": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.008, rtol=0.005),
-        }
-    },
-    "var_mean": {
-        ("TestCommon", "test_compare_cpu"): {
-            torch.bfloat16: tol(atol=0.008, rtol=0.005),
-        }
-    },
-}
 
 
 def get_wrapped_fn(fn):
