@@ -108,11 +108,7 @@ skip_dict = {
         "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
         "test_python_ref_torch_fallback__refs_div_no_rounding_mode_xpu_complex32",
         "test_python_ref_torch_fallback__refs_pow_xpu_complex32",
-        "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
 
-        # Compiler issue in handling tanh with real or imag inf. 
-        # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
-        "test_reference_numerics_large__refs_tanh_xpu_complex32",
 
         # unexpected success because of cpu fallback 
         "test_out_triangular_solve_xpu_float32",
@@ -1302,10 +1298,18 @@ skip_dict = {
         "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16",
         "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16",
         "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16",
+
+        # CUDA XFAIL
+        "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
+
+        # Compiler issue in handling tanh with real or imag inf.
+        # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
+        "test_reference_numerics_large__refs_tanh_xpu_complex32",
     ),
 
     "test_masked_xpu.py": (
         # RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse.
+        # https://github.com/intel/torch-xpu-ops/issues/357
         "test_mask_layout_sparse_coo_masked_amax_xpu_bfloat16",
         "test_mask_layout_sparse_coo_masked_amax_xpu_float16",
         "test_mask_layout_sparse_coo_masked_amax_xpu_float32",
@@ -1978,6 +1982,7 @@ skip_dict = {
 
     "test_maskedtensor_xpu.py": (
         # RuntimeError: is_coalesced expected sparse coordinate tensor layout but got Sparse
+        # https://github.com/intel/torch-xpu-ops/issues/357
         "test_contiguous_xpu",
         "test_invalid_sparse_coo_values_xpu",
         "test_to_dense_and_sparse_coo_xpu",
