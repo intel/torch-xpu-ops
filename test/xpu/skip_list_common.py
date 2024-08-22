@@ -181,14 +181,15 @@ skip_dict = {
         "test_errors_histogramdd_xpu",
         # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
-        # https://github.com/intel/torch-xpu-ops/issues/157
         # Segfault:
-        "test_dtypes_nn_functional_multi_head_attention_forward_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-        "test_dtypes_pca_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-        "test_dtypes_svd_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
-        "test_noncontiguous_samples_nn_functional_linear_xpu_int64",  # https://github.com/intel/torch-xpu-ops/issues/157
         # https://github.com/intel/torch-xpu-ops/issues/157
+        "test_dtypes_nn_functional_linear_xpu",
+        "test_dtypes_nn_functional_multi_head_attention_forward_xpu",
+        "test_dtypes_pca_lowrank_xpu",
+        "test_dtypes_svd_lowrank_xpu",
+        "test_noncontiguous_samples_nn_functional_linear_xpu_int64",
         # Failures:
+        # https://github.com/intel/torch-xpu-ops/issues/157
         "test_compare_cpu_addmm_xpu_float32",
         "test_compare_cpu_addmv_xpu_float32",
         "test_dtypes_addmm_decomposed_xpu",
