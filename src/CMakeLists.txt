@@ -2,6 +2,7 @@
 include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
 set(ATen_XPU_CPP_SRCS)
+set(ATen_XPU_NATIVE_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Include directory")
@@ -19,6 +20,7 @@ set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 add_library(
   torch_xpu_ops
   STATIC
+  ${ATen_XPU_CPP_SRCS}
   "bridge.cpp")
 
 target_compile_options(torch_xpu_ops PRIVATE "-D PATH_TO_TORCH_XPU_OPS_ATEN_LIB=\"libtorch_xpu_ops_aten.so\"")
@@ -26,9 +28,10 @@ target_compile_options(torch_xpu_ops PRIVATE "-D PATH_TO_TORCH_XPU_OPS_ATEN_LIB=
 add_library(
   torch_xpu_ops_aten
   SHARED
-  ${ATen_XPU_CPP_SRCS}
+  ${ATen_XPU_NATIVE_CPP_SRCS}
   ${ATen_XPU_GEN_SRCS})
 install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
 
 if(BUILD_SEPARATE_OPS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
