@@ -697,11 +697,6 @@ skip_dict = {
         "test_conj_view_to_sparse_xpu_complex64",
         "test_neg_conj_view_to_sparse_xpu_complex128",
         "test_neg_view_to_sparse_xpu_float64",
-        # # CPU fallback error：AssertionError: The supported dtypes for nn.functional.pad on device type xpu are incorrect!
-        # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float16}.
-        # The following dtypes did not work in backward but are listed by the OpInfo: {torch.float16}.
-        "test_dtypes_nn_functional_pad_replicate_negative_xpu",
-        "test_dtypes_nn_functional_pad_replicate_xpu",
         # Op impl aligns with CUDA on the supported dtypes.
         # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
         # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
@@ -711,7 +706,6 @@ skip_dict = {
         #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
         #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
         #XPU supports bfloat16, CUDA doesn't support it.
-        "test_dtypes_unique_consecutive_xpu",
         "test_dtypes_unique_xpu",
         # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
         # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
@@ -749,13 +743,15 @@ skip_dict = {
     ),
 
     "test_scatter_gather_ops_xpu.py": (
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",  # Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
+        # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
+        # https://github.com/intel/torch-xpu-ops/issues/484
+        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
+        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
     ),
 
     "test_autograd_fallback.py": None,
 
-    "test_sort_and_select_xpu.py":("test_sort_large_slice_xpu",),  # Hard code CUDA
+    "test_sort_and_select_xpu.py": ("test_sort_large_slice_xpu",),  # Hard code CUDA
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
@@ -821,6 +817,7 @@ skip_dict = {
     ),
 
     "test_transformers_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/761
         # AssertionError: False is not true
         # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
         "test_disable_fastpath_xpu",
@@ -829,6 +826,7 @@ skip_dict = {
         # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
         "test_with_nested_tensor_input_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
+        # https://github.com/intel/torch-xpu-ops/issues/253
         "test_sdp_math_gradcheck_contiguous_inputs_False_xpu",
         "test_sdp_math_gradcheck_contiguous_inputs_True_xpu",
         "test_transformerencoder_batch_first_True_training_True_enable_nested_tensor_True_xpu",
@@ -871,13 +869,7 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
     ),
 
-    "test_complex_xpu.py": (
-        # Skip CPU case
-        "test_eq_xpu_complex128",
-        "test_eq_xpu_complex64",
-        "test_ne_xpu_complex128",
-        "test_ne_xpu_complex64",
-    ),
+    "test_complex_xpu.py": None,
 
     "test_modules_xpu.py": (
         # oneDNN issues
@@ -1034,10 +1026,8 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
         # Unexpected success:
-        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
-        "test_memory_format_nn_AvgPool2d_xpu_float32",
-        "test_memory_format_nn_AvgPool2d_xpu_float64",
+        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         # CPU fallback could not cover these
         # CUDA xfails
         # Failed: Unexpected success
@@ -1106,31 +1096,12 @@ skip_dict = {
         "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
-        #issue 746, adjust tolerence 
-        "test_non_contiguous_tensors_nn_Conv3d_xpu_float32",
     ),
 
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
         # AssertionError: Tensor-likes are not close!
-        "test_Conv2d_dilated_with_long_tensor_cuda",
-        "test_Conv2d_groups_thnn_with_long_tensor_cuda",
-        "test_Conv2d_groups_with_long_tensor_cuda",
-        "test_Conv2d_no_bias_with_long_tensor_cuda",
-        "test_Conv2d_padding_with_long_tensor_cuda",
-        "test_Conv2d_strided_with_long_tensor_cuda",
-        "test_Conv2d_with_long_tensor_cuda",
-        "test_Conv3d_1x1x1_no_bias_with_long_tensor_cuda",
-        "test_Conv3d_groups_with_long_tensor_cuda",
-        "test_Conv3d_no_bias_with_long_tensor_cuda",
-        "test_Conv3d_stride_padding_with_long_tensor_cuda",
-        "test_Conv3d_stride_with_long_tensor_cuda",
-        "test_Conv3d_with_long_tensor_cuda",
-        "test_ConvTranspose2d_dilated_with_long_tensor_cuda",
-        "test_ConvTranspose2d_groups_with_long_tensor_cuda",
-        "test_ConvTranspose2d_no_bias_with_long_tensor_cuda",
-        "test_ConvTranspose2d_with_long_tensor_cuda",
         "test_RReLU_cuda",
         "test_RReLU_no_batch_dim_cuda",
         "test_RReLU_with_up_down_cuda",
@@ -1178,10 +1149,6 @@ skip_dict = {
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-        # RuntimeError: "smooth_l1_backward_cpu_out" not implemented for 'Half'
-        "test_SmoothL1Loss_no_batch_dim_mean_cuda_half",
-        "test_SmoothL1Loss_no_batch_dim_none_cuda_half",
-        "test_SmoothL1Loss_no_batch_dim_sum_cuda_half",
         # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
         "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
         "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
@@ -1217,8 +1184,11 @@ skip_dict = {
 
     "test_dataloader_xpu.py": (
         # Skip for XPU didn't support
-        "test_nested_tensor_multiprocessing",
+        # https://github.com/intel/torch-xpu-ops/issues/613
+        "test_nested_tensor_multiprocessing_context_forkserver_xpu",
+        "test_nested_tensor_multiprocessing_context_spawn_xpu",
         # pinned memory issue
+        # https://github.com/intel/torch-xpu-ops/issues/296
         "test_custom_batch_pin",
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
@@ -1229,21 +1199,15 @@ skip_dict = {
         # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
         "test_float_to_int_conversion_finite_xpu_int8",
         "test_float_to_int_conversion_finite_xpu_int16",
-        # sparse
-        "test_tensor_ctor_device_inference_xpu",
         # Dispatch issue. It is a composite operator. But it is implemented by
         # DispatchStub. XPU doesn't support DispatchStub.
         "test_kaiser_window_xpu",
     ),
 
-    "test_autocast_xpu.py": (
-        # Frontend API support
-        # Unsupported XPU runtime functionality, '_set_cached_tensors_enabled'
-        # https://github.com/intel/torch-xpu-ops/issues/223
-        "test_cache_disabled",
-    ),
+    "test_autocast_xpu.py": None,
 
     "test_autograd_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/618
         # c10::NotImplementedError
         "test_autograd_composite_implicit_and_dispatch_registration_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
@@ -1258,23 +1222,11 @@ skip_dict = {
         "test_checkpointing_without_reentrant_memory_savings",
         "test_flops_and_mem",
         "test_profiler_emit_nvtx_xpu",
-        # RuntimeError: grad can be implicitly created only for scalar outputs
-        "test_reentrant_parent_error_on_cpu_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
         "test_mv_grad_stride_0_xpu",
         # module 'torch._C' has no attribute '_scatter'
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
-        # AssertionError: "none of output has requires_grad=True" does not match "PyTorch was compiled without CUDA support"
-        "test_checkpointing_without_reentrant_detached_tensor_use_reentrant_True",
-        # Skip device count < 2
-        "test_backward_device_xpu",
-        "test_inputbuffer_add_multidevice_xpu",
-        "test_unused_output_device_xpu",
-        # Skip CPU case
-        "test_copy__xpu",
-        "test_checkpointing_non_reentrant_autocast_cpu",
-        "test_per_dispatch_key_input_saving_xpu",
         # Runtime error after enabling PTI
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         # https://github.com/intel/torch-xpu-ops/issues/731
@@ -1286,14 +1238,9 @@ skip_dict = {
         # CPU/CUDA bias code in aten::mode_out
         # https://github.com/intel/torch-xpu-ops/issues/327
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
-        "test_dim_reduction",
-        "test_mode",
+        "test_mode_xpu",
+        "test_mode_wrong_dtype_xpu",
         "test_dim_reduction_fns_fn_name_mode",
-        # CUDA skips the case in opdb.
-        # https://github.com/intel/torch-xpu-ops/issues/222
-        "test_ref_extremal_values_mean_xpu_complex64",
-        # CPU fallback fails (CPU vs Numpy).
-        "test_ref_small_input_masked_prod_xpu_float16",
     ),
 
     "test_unary_ufuncs_xpu.py": (
@@ -1336,11 +1283,6 @@ skip_dict = {
         "test_reference_numerics_large_asinh_xpu_complex128",
         "test_reference_numerics_large_asinh_xpu_complex64",
         "test_reference_numerics_large_asinh_xpu_complex32",
-        # Mismatched elements: 1 / 943593 (0.0%)
-        # Greatest absolute difference: 1.3363442121772096e-05 at index (742, 249) (up to 1e-05 allowed)
-        # Greatest relative difference: 8.852276550896931e-06 at index (742, 249) (up to 1.3e-06 allowed)
-        "test_reference_numerics_normal_nn_functional_tanhshrink_xpu_complex64",
-
         # AssertionError: Tensor-likes are not close!
         # exceeded maximum allowed difference
         # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
@@ -1488,8 +1430,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/275
         # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
         "test_flip_xpu_float32",
-        # RuntimeError: "trace" not implemented for 'Half'
-        "test_trace_xpu_float16",
     ),
 
     "test_content_store_xpu.py": None,
@@ -1751,7 +1691,6 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_linalg_cholesky_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_cond_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_cond_xpu_float64",
-        "test_fn_fwgrad_bwgrad_linalg_det_singular_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_det_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_det_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_eig_xpu_complex128",
@@ -1787,7 +1726,6 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_linalg_norm_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_pinv_hermitian_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_hermitian_xpu_float64",
-        "test_fn_fwgrad_bwgrad_linalg_pinv_singular_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_singular_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_pinv_xpu_complex128",
         "test_fn_fwgrad_bwgrad_linalg_pinv_xpu_float64",
@@ -1979,16 +1917,7 @@ skip_dict = {
         # torch.autograd.gradcheck.GradcheckError: While considering the real part of complex inputs only, Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
         "test_fn_fwgrad_bwgrad_linalg_norm_xpu_complex128",
         # torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex inputs only, Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_linalg_vector_norm_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_masked_normalize_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_norm_inf_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_renorm_xpu_complex128",
         "test_forward_mode_AD_linalg_norm_xpu_complex128",
-        "test_forward_mode_AD_linalg_vector_norm_xpu_complex128",
-        "test_forward_mode_AD_masked_normalize_xpu_complex128",
-        "test_forward_mode_AD_norm_inf_xpu_complex128",
-        "test_forward_mode_AD_renorm_xpu_complex128",
-        "test_inplace_forward_mode_AD_renorm_xpu_complex128",
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_fwgrad_bwgrad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_fwgrad_bwgrad_nn_functional_conv_transpose2d_xpu_float64",
@@ -1998,9 +1927,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # RuntimeError: input tensor must have at least one element, but got input_sizes = [1, 0, 1]
-        "test_fn_fwgrad_bwgrad_nn_functional_group_norm_xpu_float64",
-        "test_forward_mode_AD_nn_functional_group_norm_xpu_float64",
         # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
         "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
         "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
@@ -2032,11 +1958,6 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_float16_xpu",
         "test_scaled_mm_vs_emulated_float32_xpu",
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
-        # https://github.com/intel/torch-xpu-ops/issues/676
-        # Mismatched elements: 9 / 1003002 (0.0%)
-        # Greatest absolute difference: 711.126220703125 at index (472, 999) (up to 0.1 allowed)
-        # Greatest relative difference: 2.7107455730438232 at index (472, 997) (up to 0.1 allowed)
-        "test_cublas_addmm_size_1000_xpu_float32",
     ),
 
     "test_maskedtensor_xpu.py": (
@@ -2132,6 +2053,7 @@ skip_dict = {
         "test_reduction_all_sum_layout1_xpu_float16",
         "test_reduction_all_sum_layout1_xpu_float64",
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
+        "test_like_",
         "test_invalid_sparse_layout_xpu",
         "test_to_dense_and_sparse_csr_xpu",
         "test_binary_core_add_layout2_xpu_float16",
@@ -2381,7 +2303,6 @@ skip_dict = {
         "test_fn_gradgrad_linalg_cholesky_xpu_float64",
         "test_fn_gradgrad_linalg_cond_xpu_complex128",
         "test_fn_gradgrad_linalg_cond_xpu_float64",
-        "test_fn_gradgrad_linalg_det_singular_xpu_float64",
         "test_fn_gradgrad_linalg_det_xpu_complex128",
         "test_fn_gradgrad_linalg_det_xpu_float64",
         "test_fn_gradgrad_linalg_eig_xpu_complex128",
@@ -2416,7 +2337,6 @@ skip_dict = {
         "test_fn_gradgrad_linalg_multi_dot_xpu_float64",
         "test_fn_gradgrad_linalg_pinv_hermitian_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_hermitian_xpu_float64",
-        "test_fn_gradgrad_linalg_pinv_singular_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_singular_xpu_float64",
         "test_fn_gradgrad_linalg_pinv_xpu_complex128",
         "test_fn_gradgrad_linalg_pinv_xpu_float64",
@@ -2508,14 +2428,6 @@ skip_dict = {
         "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
         "test_inplace_grad_nn_functional_rrelu_xpu_float64",
         "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
-        ### Error #3 in TestBwdGradientsXPU , totally 8 , torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex outputs only, Jacobian mismatch for output 0 with respect to input 0,
-        "test_fn_grad_masked_normalize_xpu_complex128",
-        "test_fn_grad_renorm_xpu_complex128",
-        "test_fn_gradgrad_linalg_vector_norm_xpu_complex128",
-        "test_fn_gradgrad_masked_normalize_xpu_complex128",
-        "test_fn_gradgrad_renorm_xpu_complex128",
-        "test_inplace_grad_renorm_xpu_complex128",
-        "test_inplace_gradgrad_renorm_xpu_complex128",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
@@ -2525,8 +2437,6 @@ skip_dict = {
         "test_fn_gradgrad_nn_functional_conv_transpose2d_xpu_float64",
         "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_complex128",
         "test_fn_gradgrad_nn_functional_conv_transpose3d_xpu_float64",
-        ### Error #6 in TestBwdGradientsXPU , totally 5 , torch.autograd.gradcheck.GradcheckError: Backward is not reentrant, i.e., running backward with same input and grad_output multiple times gives different values, although analytical gradient matches numerical gradient.The tolerance for nondeterminism was 0.0.
-        "test_fn_grad_nn_functional_max_pool2d_xpu_float64",
         "test_fn_gradgrad_index_reduce_mean_xpu_float64",
         "test_fn_gradgrad_index_reduce_prod_xpu_float64",
         "test_inplace_gradgrad_index_reduce_mean_xpu_float64",
@@ -2694,7 +2604,6 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
-        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
     ),
@@ -2778,6 +2687,7 @@ skip_dict = {
 
     "nn/test_convolution_xpu.py": (
         # XPU unsupport ops, skip.
+        # https://github.com/intel/torch-xpu-ops/issues/348
         "test_cudnn_convolution_relu_xpu_float16",
         "test_cudnn_convolution_relu_xpu_float32",
         "test_cudnn_convolution_add_relu_xpu_float16",
@@ -2787,12 +2697,7 @@ skip_dict = {
         "test_Conv2d_groups_nobias",
     ),
 
-    "test_dynamic_shapes_xpu.py": (
-        # issue 746, new ut failures introduced by new pytorch
-        "test_method_fn_add_first_type_int_second_type_float",
-        "test_method_fn_mul_first_type_int_second_type_float",
-        "test_method_fn_sub_first_type_int_second_type_float",
-    ),
+    "test_dynamic_shapes_xpu.py": None,
 
     "nn/test_load_state_dict_xpu.py": None,
 
@@ -2803,4 +2708,6 @@ skip_dict = {
     ),
 
     "nn/test_parametrization_xpu.py": None,
+
+    "test_segment_reductions_xpu.py": None,
 }
