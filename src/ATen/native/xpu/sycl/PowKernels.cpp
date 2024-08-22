@@ -38,9 +38,9 @@ static inline c10::complex<T> pow_(c10::complex<T> base, c10::complex<T> exp) {
 
 template <typename scalar_t>
 struct PowTensorTensorCastFunctor {
-  scalar_t operator()(scalar_t base, scalar_t exp) const {
-    using opmath_t = at::opmath_type<scalar_t>;
-    return impl::pow_(opmath_t{base}, opmath_t{exp});
+  using opmath_t = at::opmath_type<scalar_t>;
+  opmath_t operator()(opmath_t base, opmath_t exp) const {
+    return impl::pow_(base, exp);
   }
 };
 
@@ -130,8 +130,7 @@ void pow_tensor_tensor_kernel(TensorIteratorBase& iter) {
       pow_chalf_tensor_scalar_impl(iter, exp);
     } else {
       TORCH_INTERNAL_ASSERT(!iter.is_cpu_scalar(1) && !iter.is_cpu_scalar(2));
-      using opmath_t = at::opmath_type<scalar_t>;
-      auto f = PowTensorTensorFunctor<opmath_t>();
+      auto f = PowTensorTensorCastFunctor<scalar_t>();
       gpu_kernel(iter, f);
     }
   } else {
