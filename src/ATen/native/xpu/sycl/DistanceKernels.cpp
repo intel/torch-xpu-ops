@@ -520,7 +520,7 @@ struct CdistBackwardKernelImplFunctor {
     const scalar_t grad_k = grad_ptr[y];
     const scalar_t dist_k = dist_ptr[y];
 
-    const scalar_t* const start = x1_ptr + l * l_size + i * m_;
+    const scalar_t* const start = x1_ptr + l * l1_size_ + i * m_;
     const scalar_t* const end = start + m_;
     const scalar_t* self_i = start + init;
     const scalar_t* self_j = x2_ptr + l * l2_size_ + j * m_ + init;
