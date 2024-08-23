@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void group_norm_kernel(
+TORCH_XPU_API void group_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
@@ -18,7 +18,7 @@ void group_norm_kernel(
     Tensor& rstd,
     ScalarType dtype);
 
-void group_norm_backward_kernel(
+TORCH_XPU_API void group_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,
