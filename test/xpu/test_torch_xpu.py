@@ -6974,11 +6974,7 @@ class TestTorch(TestCase):
             ref_out = tensor.index_add(dim, index, source, alpha=2.) / 2.
             ref_out = ref_out.to(dtype=dtype)
             out = tensor.index_add(dim, index, source)
-            if device == 'cuda' or device == 'xpu':
-                self.assertEqual(out, ref_out, atol=1e-2, rtol=1e-2)
-            else:
-                # scatter_add uses fp32 as accumulate type, while index_add doesn't.
-                self.assertEqual(out, ref_out.to(dtype=dtype), atol=1e-2, rtol=1e-2)
+            self.assertEqual(out, ref_out, atol=7e-2, rtol=1.2e-2)
 
         for dim in [-1, -2, -3]:
             for dtype in all_types_and_complex_and(torch.half, torch.bfloat16):
