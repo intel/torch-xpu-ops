@@ -12,7 +12,6 @@
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
-
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
@@ -218,8 +217,6 @@ static void max_pool3d_with_indices_out_frame(
     int dilationW,
     bool channels_last) {
   int offsetZ = 0;
-  auto ptr2 = indices.mutable_data_ptr<int64_t>();
-  auto ptr = output.mutable_data_ptr<scalar_t>();
   while (totalZ > 0) {
     MaxPool3dWithIndicesOutFrameImplKernelFunctor<scalar_t> kfn(
         inputData,
@@ -364,7 +361,7 @@ void max_pool3d_with_indices_kernel(
       otime,
       oheight,
       owidth,
-      "max_pool3d_with_indices_out_cuda_template()");
+      "max_pool3d_with_indices_kernel()");
 
   bool channels_last = input.ndimension() == 5 &&
       input.suggest_memory_format() == at::MemoryFormat::ChannelsLast3d;
@@ -678,9 +675,6 @@ void max_pool3d_with_indices_backward_kernel(
   Tensor _input = input;
   if (input.ndimension() == 4) {
     Tensor input_channels_last_check = input.unsqueeze(0);
-    // work around buggy behavior of suggest_memory_format here where
-    // suggested format of unsqueezed tensor is contiguous while it is
-    // really only contiguous in ChannelsLast3d
     channels_last = (!input_channels_last_check.is_contiguous()) &&
         input_channels_last_check.is_contiguous(
             at::MemoryFormat::ChannelsLast3d);
@@ -705,7 +699,30 @@ void max_pool3d_with_indices_backward_kernel(
   const int64_t itime = gradInput.size(-3);
   const int64_t iheight = gradInput.size(-2);
   const int64_t iwidth = gradInput.size(-1);
-
+  max_pool3d_backward_shape_check(
+      input,
+      gradOutput,
+      indices,
+      nslices,
+      kT,
+      kH,
+      kW,
+      dT,
+      dH,
+      dW,
+      pT,
+      pH,
+      pW,
+      dilationT,
+      dilationH,
+      dilationW,
+      itime,
+      iheight,
+      iwidth,
+      otime,
+      oheight,
+      owidth,
+      "max_pool3d_with_indices_backward_kernel()");
   if (gradOutput.numel() == 0) {
     return;
   }
