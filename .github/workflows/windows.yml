@@ -133,4 +133,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/../pytorch/dist
+          path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
