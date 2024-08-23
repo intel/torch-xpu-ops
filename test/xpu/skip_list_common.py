@@ -1638,12 +1638,12 @@ skip_dict = {
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
         # TypeError: Invalid NaN comparison.
-        "test_compile_int4_mm_m_32_k_32_n_48_xpu",
-        "test_compile_int4_mm_m_32_k_32_n_64_xpu",
-        "test_compile_int4_mm_m_32_k_64_n_48_xpu",
-        "test_compile_int4_mm_m_32_k_64_n_64_xpu",
-        "test_compile_int4_mm_m_64_k_32_n_48_xpu",
-        "test_compile_int4_mm_m_64_k_32_n_64_xpu",
+        # "test_compile_int4_mm_m_32_k_32_n_48_xpu",
+        # "test_compile_int4_mm_m_32_k_32_n_64_xpu",
+        # "test_compile_int4_mm_m_32_k_64_n_48_xpu",
+        # "test_compile_int4_mm_m_32_k_64_n_64_xpu",
+        # "test_compile_int4_mm_m_64_k_32_n_48_xpu",
+        # "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
