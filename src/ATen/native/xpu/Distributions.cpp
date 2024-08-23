@@ -22,6 +22,7 @@ REGISTER_XPU_DISPATCH(bernoulli_tensor_stub, &xpu::bernoulli_tensor_kernel);
 REGISTER_XPU_DISPATCH(random_stub, &xpu::random_kernel);
 REGISTER_XPU_DISPATCH(random_from_to_stub, &xpu::random_from_to_kernel);
 REGISTER_XPU_DISPATCH(exponential_stub, &xpu::exponential_kernel);
+REGISTER_XPU_DISPATCH(cauchy_stub, &xpu::cauchy_kernel);
 REGISTER_XPU_DISPATCH(
     random_full_64_bits_range_stub,
     &xpu::random_full_64_bits_range_kernel);

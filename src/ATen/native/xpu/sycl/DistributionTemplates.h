@@ -698,6 +698,46 @@ void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
       });
 }
 
+// ====================== Cauchy ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct CauchyFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(
+        transformation::cauchy<accscalar_t>(rand, median_, sigma_));
+  }
+
+  CauchyFunctor(accscalar_t median, accscalar_t sigma)
+      : median_(median), sigma_(sigma) {}
+
+ private:
+  accscalar_t median_;
+  accscalar_t sigma_;
+};
+
+template <typename RNG>
+void cauchy_kernel(
+    TensorIteratorBase& iter,
+    double median,
+    double sigma,
+    RNG gen) {
+  TORCH_CHECK(
+      sigma > 0.0, "cauchy_ expects sigma > 0.0, but found sigma=", sigma);
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "cauchy__xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto median_ = static_cast<accscalar_t>(median);
+        auto sigma_ = static_cast<accscalar_t>(sigma);
+        CauchyFunctor<scalar_t, accscalar_t> cauchy_func(median_, sigma_);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, cauchy_func);
+      });
+}
+
 } // namespace xpu
 } // namespace templates
 } // namespace native
