@@ -1652,6 +1652,8 @@ skip_dict = {
         "test_matmul_check_entries_tunableop_xpu_float16",
         "test_minimum_tuning_iteration_tunableop_xpu_float16",
         "test_validator_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float64",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
