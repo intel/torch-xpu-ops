@@ -41,7 +41,7 @@ env:
     VS2022INSTALLDIR: 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat'
 
 jobs:
-  Torch-XPU-Windows-Tests:
+  Torch-XPU-Windows-Build:
     runs-on: ${{ inputs.runner }} 
     timeout-minutes: 900
     steps:
@@ -54,7 +54,7 @@ jobs:
             echo "oneAPI bundle already installed"
           ) else (
             echo "setvars.bat not found, installing oneAPI bundle"
-            call .github\scripts\install_oneapi_bundle.bat
+            call .github\scripts\install_xpu.bat
             echo "oneAPI bundle installed"
           )      
       - name: Prepare Stock Pytorch
@@ -117,7 +117,6 @@ jobs:
             exit /b 1
           )
           pip install --force-reinstall dist/*.whl
-          git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         shell: cmd
@@ -133,6 +132,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/../pytorch/dist
-      

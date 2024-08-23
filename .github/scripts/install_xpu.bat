@@ -3,8 +3,8 @@ REM BKM reference: https://www.intel.com/content/www/us/en/developer/articles/to
 REM To-do: Add driver installation in this file.
 
 set ONEAPI_PARENT_DIR=C:\Program Files (x86)\Intel
-set INTEL_ONEAPI_PYTORCH_BUNDLE_URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/5ca2021d-dd1a-4ab1-bd52-758fe63cf827/w_intel-for-pytorch-gpu-dev_p_0.5.2.19_offline.exe
-set ONEAPI_VERSION="0.5.2+16"
+set INTEL_ONEAPI_PYTORCH_BUNDLE_URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9d1a91e2-e8b8-40a5-8c7f-5db768a6a60c/w_intel-for-pytorch-gpu-dev_p_0.5.3.37_offline.exe
+set ONEAPI_VERSION="0.5.3+37"
 set INTEL_ONEAPI_PYTORCH_BUNDLE_DISPLAY_NAME=intel.oneapi.win.intel-for-pytorch-gpu-dev.product
 set INSTALL_FRESH_ONEAPI=0
 
