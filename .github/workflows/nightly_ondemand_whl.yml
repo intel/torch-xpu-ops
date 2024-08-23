@@ -63,7 +63,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      pytorch: nightly wheel
+      pytorch: nightly_wheel
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
@@ -151,7 +151,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
@@ -161,7 +161,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
@@ -172,7 +172,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
@@ -185,7 +185,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
@@ -196,7 +196,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
@@ -207,7 +207,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
@@ -219,7 +219,7 @@ jobs:
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-          pytorch: nightly wheel
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       - name: Summarize archieve files
