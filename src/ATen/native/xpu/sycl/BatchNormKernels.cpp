@@ -13,11 +13,11 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 
- #ifdef _WIN32 
- #define RESTRICT __restrict 
- #else 
- #define RESTRICT __restrict__ 
- #endif 
+#ifdef _WIN32
+#define RESTRICT __restrict
+#else
+#define RESTRICT __restrict__
+#endif
 
 namespace at {
 namespace native {

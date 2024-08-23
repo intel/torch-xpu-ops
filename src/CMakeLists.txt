@@ -69,6 +69,7 @@ else()
     ${sycl_unary_binary_lib}
     SHARED
     SYCL_SOURCES ${ATen_XPU_SYCL_UNARY_BINARY_SRCS})
+  target_compile_definitions(${sycl_unary_binary_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_unary_binary_lib})
   target_link_libraries(${sycl_unary_binary_lib} PUBLIC torch_xpu)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_unary_binary_lib})
@@ -81,6 +82,7 @@ else()
     ${sycl_lib}
     SHARED
     SYCL_SOURCES ${ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS})
+  target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
   target_link_libraries(${sycl_lib} PUBLIC torch_xpu)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
