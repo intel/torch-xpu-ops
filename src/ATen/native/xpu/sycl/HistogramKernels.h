@@ -9,15 +9,14 @@ void histogramdd_kernel(
     const std::optional<Tensor>& weight,
     bool density,
     Tensor& hist,
-    const Tensor& bin_edges);
+    const TensorList& bin_edges_);
 
 void histogramdd_linear_kernel(
     const Tensor& self,
-    int64_t bin_ct,
-    std::optional<c10::ArrayRef<double>> range,
     const std::optional<Tensor>& weight,
     bool density,
     Tensor& hist,
-    Tensor& out_bin_edges);
+    const TensorList& bin_edges_,
+    bool local_search);
 
 } // namespace at::native::xpu
