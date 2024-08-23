@@ -104,7 +104,7 @@ jobs:
           ) else (
             set _GLIBCXX_USE_CXX11_ABI=1
           )
-          python setup.py bdist_wheel
+          python setup.py bdist_wheel > build_torch_wheel_log.log
           for %%f in (${{ github.workspace }}\..\pytorch\dist\torch-*.whl) do (
             set "TORCH_WHL=%%f"
             echo "INFO - torch whl found"
@@ -127,6 +127,13 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+
+      - name: Upload Windows build log
+        f: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
+          path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
 
       - name: Upload Windows binary
         if: ${{ ! cancelled() }}
