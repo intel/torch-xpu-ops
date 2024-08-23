@@ -145,8 +145,6 @@ Tensor cdist_backward_impl(
   const int64_t r1 = x1.size(-2);
   const int64_t r2 = x2.size(-2);
   const int64_t m = x1.size(-1);
-  const int64_t count = cdist.numel();
-  const int64_t gs = 1;
   const int64_t batch = (x1.dim() > 2) ? x1.size(0) : 1;
   Tensor result =
       at::empty_like(x1, x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
@@ -189,7 +187,6 @@ Tensor XPUNativeFunctions::_cdist_backward(
 
 Tensor XPUNativeFunctions::_pdist_forward(const Tensor& self, const double p) {
   TORCH_CHECK(self.is_contiguous(), "_pdist_forward requires contiguous input");
-  auto device = self.device().type();
   Tensor result = at::empty({0}, self.options());
   if (self.size(0) <= 1) {
     result.resize_({0});
@@ -215,7 +212,7 @@ Tensor XPUNativeFunctions::_pdist_backward(
       self.is_contiguous(), "_pdist_backward requires self to be contiguous");
   TORCH_CHECK(
       pdist.is_contiguous(), "_pdist_backward requires pdist to be contiguous");
-  auto device = self.device().type();
+
   Tensor result = at::empty_like(self);
   native::xpu::pdist_backward_kernel(result, grad, self, p, pdist);
   return result;
