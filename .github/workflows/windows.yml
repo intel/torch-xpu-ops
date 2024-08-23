@@ -129,7 +129,7 @@ jobs:
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
 
       - name: Upload Windows build log
-        f: ${{ ! cancelled() }}
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
