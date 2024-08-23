@@ -120,4 +120,105 @@ Tensor XPUNativeFunctions::_cdist_forward(
   return cdist_impl(x1, x2, p, compute_mode);
 }
 
+std::tuple<Tensor, Tensor> _euclidean_dist_backward(
+    const Tensor& grad,
+    const Tensor& x1,
+    const Tensor& x2,
+    const Tensor& res) {
+  if (!grad.defined()) {
+    return std::tuple<Tensor, Tensor>(Tensor(), Tensor());
+  }
+  // handle case at 0 where we return a subgradient containing 0
+  Tensor ratio = grad / res;
+  ratio.masked_fill_(res == 0, 0);
+  return std::tuple<Tensor, Tensor>{
+      x1 * ratio.sum(-1, true) - ratio.matmul(x2),
+      x2 * ratio.sum(-2, false).unsqueeze(-1) - ratio.mT().matmul(x1)};
+}
+
+Tensor cdist_backward_impl(
+    const Tensor& grad,
+    const Tensor& x1,
+    const Tensor& x2,
+    const double p,
+    const Tensor& cdist) {
+  const int64_t r1 = x1.size(-2);
+  const int64_t r2 = x2.size(-2);
+  const int64_t m = x1.size(-1);
+  const int64_t count = cdist.numel();
+  const int64_t gs = 1;
+  const int64_t batch = (x1.dim() > 2) ? x1.size(0) : 1;
+  Tensor result =
+      at::empty_like(x1, x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  if (p == 0.0 || grad.numel() == 0 || x1.numel() == 0 || x2.numel() == 0) {
+    result.fill_(0);
+    return result;
+  }
+
+  if (2.0 == p && (r1 > 25 || r2 > 25)) {
+    std::tuple<Tensor, Tensor> edist_tuple;
+    edist_tuple = _euclidean_dist_backward(grad, x1, x2, cdist);
+    result = std::get<0>(edist_tuple);
+    return result;
+  }
+
+  Tensor buffer = (x1.dim() > 2)
+      ? at::empty({batch, r2, r1, m}, result.options())
+      : at::empty({r2, r1, m}, result.options());
+  native::xpu::cdist_backward_kernel(grad, x1, x2, p, cdist);
+  if (x1.dim() > 2) {
+    at::sum_out(result, buffer, 1);
+  } else {
+    at::sum_out(result, buffer, 0);
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::_cdist_backward(
+    const Tensor& grad,
+    const Tensor& x1,
+    const Tensor& x2,
+    double p,
+    const Tensor& cdist) {
+  auto grad_ = grad.contiguous();
+  auto x1_ = x1.contiguous();
+  auto x2_ = x2.contiguous();
+  auto cdist_ = cdist.contiguous();
+  return cdist_backward_impl(grad_, x1_, x2_, p, cdist_);
+}
+
+Tensor XPUNativeFunctions::_pdist_forward(const Tensor& self, const double p) {
+  TORCH_CHECK(self.is_contiguous(), "_pdist_forward requires contiguous input");
+  auto device = self.device().type();
+  Tensor result = at::empty({0}, self.options());
+  if (self.size(0) <= 1) {
+    result.resize_({0});
+  } else {
+    int64_t n = self.size(0);
+    int64_t c = n * (n - 1) / 2;
+    result.resize_({c});
+    if (self.size(1) == 0) {
+      result.fill_(0);
+    } else {
+      native::xpu::pdist_forward_kernel(result, self, p);
+    }
+  }
+  return result;
+}
+
+Tensor XPUNativeFunctions::_pdist_backward(
+    const Tensor& grad,
+    const Tensor& self,
+    const double p,
+    const Tensor& pdist) {
+  TORCH_CHECK(
+      self.is_contiguous(), "_pdist_backward requires self to be contiguous");
+  TORCH_CHECK(
+      pdist.is_contiguous(), "_pdist_backward requires pdist to be contiguous");
+  auto device = self.device().type();
+  Tensor result = at::empty_like(self);
+  native::xpu::pdist_backward_kernel(result, grad, self, p, pdist);
+  return result;
+}
+
 } // namespace at

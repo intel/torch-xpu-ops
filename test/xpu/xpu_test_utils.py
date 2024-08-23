@@ -202,6 +202,9 @@ _xpu_computation_op_list = [
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "addr",
     "cdist",
+    "cdist_backward",
+    "pdist",
+    "pdist_backward",
     "nn.functional.group_norm",
     "nn.functional.batch_norm",
     "native_batch_norm",

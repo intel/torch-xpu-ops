@@ -551,6 +551,9 @@ supported:
   - sgn.out
   - sgn_
   - _cdist_forward
+  - _cdist_backward
+  - _pdist_forward
+  - _pdist_backward
   - is_set_to
   - bucketize.Tensor
   - bucketize.Tensor_out
