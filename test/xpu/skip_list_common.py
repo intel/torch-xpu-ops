@@ -1629,21 +1629,16 @@ skip_dict = {
         "test_linalg_lstsq_input_checks_xpu_complex64",
         "test_linalg_lstsq_input_checks_xpu_float32",
         "test_linalg_lstsq_input_checks_xpu_float64",
-        "test_norm_fused_type_promotion_xpu_bfloat16",
-        "test_norm_fused_type_promotion_xpu_float16",
         "test_dot_invalid_args_xpu",
         "test_vdot_invalid_args_xpu",
+        # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+        "test_norm_fused_type_promotion_xpu_bfloat16",
+        # AssertionError: True is not false
+        "test_norm_fused_type_promotion_xpu_float16",
         # xpu does not have '_cuda_tunableop_is_enabled' API
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
-        # TypeError: Invalid NaN comparison.
-        # "test_compile_int4_mm_m_32_k_32_n_48_xpu",
-        # "test_compile_int4_mm_m_32_k_32_n_64_xpu",
-        # "test_compile_int4_mm_m_32_k_64_n_48_xpu",
-        # "test_compile_int4_mm_m_32_k_64_n_64_xpu",
-        # "test_compile_int4_mm_m_64_k_32_n_48_xpu",
-        # "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
