@@ -62,9 +62,9 @@ struct DistsLtTwo {
       const scalar_t p) {
     return (dist == 0.0f || (diff == 0.0f && p < 1.f))
         ? static_cast<scalar_t>(0)
-        : (Dists<scalar_t>::sign(diff) *
-           static_cast<scalar_t>(std::pow(std::abs(diff), p - 1)) * grad /
-           static_cast<scalar_t>(std::pow(dist, p - 1)));
+        : static_cast<scalar_t>(
+              Dists<scalar_t>::sign(diff) * std::pow(std::abs(diff), p - 1) *
+              grad / std::pow(dist, p - 1));
   }
 };
 
@@ -109,10 +109,9 @@ struct DistsP {
       const scalar_t dist,
       const scalar_t p) {
     return dist == 0.0f ? static_cast<scalar_t>(0)
-                        : diff *
-            static_cast<scalar_t>(std::pow(
-                static_cast<scalar_t>(std::abs(diff)), p - 2)) *
-            grad / static_cast<scalar_t>(std::pow(dist, p - 1));
+                        : static_cast<scalar_t>(
+                              diff * std::pow(std::abs(diff), p - 2) * grad /
+                              std::pow(dist, p - 1));
   }
 };
 
@@ -608,14 +607,11 @@ static void cdist_backward_kernel_impl(
     const int64_t r_size,
     const int64_t l1_size,
     const int64_t l2_size) {
-  using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using KernelClass =
-      CdistBackwardKernelImplFunctor<scalar_t, F, p_type, accscalar_t>;
-  const auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
+  const auto wgroup_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
   const int group_size_x = 256 > wgroup_size ? wgroup_size : 256;
   const int group_size_y = wgroup_size / group_size_x;
   const int group_num_x = (m + group_size_x * 32 - 1) / (group_size_x * 32);
-
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   auto p_val = static_cast<accscalar_t>(p);
 
   const int64_t group_num_temp = (count + group_size_y - 1) / group_size_y;
@@ -634,7 +630,7 @@ static void cdist_backward_kernel_impl(
   auto x1_data = x1.data_ptr<scalar_t>();
   auto x2_data = x2.data_ptr<scalar_t>();
 
-  KernelClass kfn(
+  CdistBackwardKernelImplFunctor<scalar_t, F, p_type, accscalar_t> kfn(
       r1,
       r2,
       m,
@@ -652,8 +648,7 @@ static void cdist_backward_kernel_impl(
       dist_data,
       x1_data,
       x2_data);
-  auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(global_range, local_range, queue, kfn);
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 Tensor cdist_backward_kernel(
@@ -788,8 +783,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (; a < end; a += stride, b += stride) {
       F::inc(
           agg,
-          static_cast<scalar_t>(
-              std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b))),
+          std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
 
