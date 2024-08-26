@@ -39,19 +39,14 @@ else()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
     string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
-    if(IS_BINARY STREQUAL "" AND IS_UNARY STREQUAL "")
+    string(REGEX MATCH "Pow" IS_POW ${sycl_src})
+    string(REGEX MATCH "Copy" IS_COPY ${sycl_src})
+    if(IS_BINARY STREQUAL "" AND IS_UNARY STREQUAL "" AND IS_POW STREQUAL "" AND IS_COPY STREQUAL "")
       list(APPEND ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS ${sycl_src})
     else()
       list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
     endif()
   endforeach()
-
-  #Fix missing kernels in split binaries dependency
-  list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/CopyKernel.cpp")
-
-  list(APPEND ATen_XPU_SYCL_NON_UNARY_BINARY_SRCS 
-      "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/UnaryFractionKernels.cpp" 
-      "${CMAKE_CURRENT_SOURCE_DIR}/ATen/native/xpu/sycl/UnaryKernels.cpp")
 
   set(sycl_unary_binary_lib torch_xpu_ops_sycl_unary_binary_kernels)
   sycl_add_library(
