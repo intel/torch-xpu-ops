@@ -1620,7 +1620,7 @@ skip_dict = {
         "test_triangular_solve_xpu_complex64",
         "test_triangular_solve_xpu_float64",
         # https://github.com/intel/torch-xpu-ops/issues/317
-        # addmm.out, addmv.out, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU
+        # addmm.out, addmv.out, linalg_lstsq, vdot&dot lack XPU support and fallback to CPU
         "test_addmm_sizes_xpu_complex128",
         "test_addmm_sizes_xpu_complex64",
         "test_blas_alpha_beta_empty_xpu_complex128",
@@ -1631,10 +1631,12 @@ skip_dict = {
         "test_linalg_lstsq_input_checks_xpu_float64",
         "test_dot_invalid_args_xpu",
         "test_vdot_invalid_args_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/821
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         "test_norm_fused_type_promotion_xpu_bfloat16",
         # AssertionError: True is not false
         "test_norm_fused_type_promotion_xpu_float16",
+        # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
