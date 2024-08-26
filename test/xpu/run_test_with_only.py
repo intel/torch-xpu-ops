@@ -25,9 +25,8 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command   = "pytest -v "  + test_case  + exe_options
         return os.system(test_command)
     else:
-        test_command   = "pytest -v "  
-        return os.system(test_command)
-        
+        test_command   = "pytest -v " + test_case  
+        return os.system(test_command)     
 
 res = 0
 
