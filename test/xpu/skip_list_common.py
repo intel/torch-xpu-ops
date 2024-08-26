@@ -1595,6 +1595,8 @@ skip_dict = {
         "test_matmul_check_entries_tunableop_xpu_float16",
         "test_minimum_tuning_iteration_tunableop_xpu_float16",
         "test_validator_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float64",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
@@ -1874,6 +1876,10 @@ skip_dict = {
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
+
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809 
+        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
+        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_float64",
     ),
 
     "test_matmul_cuda_xpu.py": (
@@ -2390,6 +2396,10 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/357
         "test_fn_grad_to_sparse_xpu_float64",
         "test_fn_gradgrad_to_sparse_xpu_float64",
+
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809
+        "test_fn_gradgrad_nn_functional_conv3d_xpu_complex128",
+        "test_fn_gradgrad_nn_functional_conv3d_xpu_float64",
     ),
 
     "test_torch_xpu.py": (
@@ -2594,6 +2604,8 @@ skip_dict = {
         # accuracy issue, TODO
         "test_Conv2d_naive_groups_xpu_float16",
         "test_Conv2d_groups_nobias",
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809
+        "test_thnn_conv_strided_padded_dilated",
     ),
 
     "test_dynamic_shapes_xpu.py": None,
