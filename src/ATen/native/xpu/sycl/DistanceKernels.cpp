@@ -227,83 +227,6 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   return agg;
 }
 
-template <int SG_SIZE, typename scalar_t, typename F, typename nd_item>
-scalar_t subgroup_reduce_agg_impl(nd_item item, scalar_t value) {
-  const auto sg = item.get_sub_group();
-
-#pragma unroll
-  for (int offset = (SG_SIZE >> 1); offset > 0; offset >>= 1) {
-    F::agg(value, sycl::shift_group_left(sg, value, offset));
-  }
-  return value;
-}
-
-template <typename scalar_t, typename F, typename nd_item>
-scalar_t subgroup_reduce_agg(nd_item item, scalar_t value, const int sg_size) {
-  scalar_t ret;
-  switch (sg_size) {
-    case 8:
-      ret = subgroup_reduce_agg_impl<8, scalar_t, F, nd_item>(item, value);
-      break;
-    case 16:
-      ret = subgroup_reduce_agg_impl<16, scalar_t, F, nd_item>(item, value);
-      break;
-    case 32:
-      ret = subgroup_reduce_agg_impl<32, scalar_t, F, nd_item>(item, value);
-      break;
-    case 64:
-      ret = subgroup_reduce_agg_impl<64, scalar_t, F, nd_item>(item, value);
-      break;
-    default:
-      SYCL_KERNEL_ASSERT(false);
-  }
-  return ret;
-}
-
-template <
-    typename scalar_t,
-    typename F,
-    typename nd_item,
-    typename local_shared>
-static inline scalar_t reduce_agg(
-    scalar_t agg,
-    nd_item item,
-    const local_shared& local_shared_mem) {
-  const auto sg = item.get_sub_group();
-  const int sg_size = sg.get_local_range()[0];
-
-  const int group_size = item.get_local_range(0);
-  const int sg_num = group_size / sg_size;
-
-  const int local_id = item.get_local_id(0);
-  const int lane_id = local_id % sg_size;
-  const int sg_id = local_id / sg_size;
-  int reduce_num;
-  agg = subgroup_reduce_agg<scalar_t, F, nd_item>(item, agg, sg_size);
-  item.barrier(sycl_local_fence);
-  if (0 == lane_id) {
-    local_shared_mem[sg_id] = agg;
-  }
-  item.barrier(sycl_local_fence);
-
-  for (reduce_num = sg_num; reduce_num > sg_size;
-       reduce_num = (reduce_num + sg_size - 1) / sg_size) {
-    agg = (local_id < reduce_num) ? local_shared_mem[local_id] : (scalar_t)0.0f;
-    agg = subgroup_reduce_agg<scalar_t, F, nd_item>(item, agg, sg_size);
-    item.barrier(sycl_local_fence);
-    if (0 == lane_id && local_id < reduce_num) {
-      local_shared_mem[sg_id] = agg;
-    }
-    item.barrier(sycl_local_fence);
-  }
-
-  agg = (local_id < reduce_num) ? local_shared_mem[lane_id] : (scalar_t)0.0f;
-  if (0 == sg_id) {
-    agg = subgroup_reduce_agg<scalar_t, F, nd_item>(item, agg, sg_size);
-  }
-  return agg;
-}
-
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
 struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
@@ -787,7 +710,8 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           p_val_);
     }
 
-    agg = reduce_agg<scalar_t, F>(agg, item_id, shared_);
+    agg =
+        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
     if (item_id.get_local_linear_id() == 0) {
       out_ptr[k] = F::finish(agg, p_val_);
     }
