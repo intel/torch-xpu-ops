@@ -111,11 +111,14 @@ jobs:
           cd ${{ github.workspace }}
           xpu-smi discovery
           source .github/scripts/env.sh
-          # source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
+          unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
           timeout 8000 pytest -v test_operation_on_device_1.py
+          export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
