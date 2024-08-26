@@ -12,10 +12,8 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
-#include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
-#include <comm/SYCLHelpers.h>
-#include "c10/core/DeviceType.h"
+
 
 namespace at::native::xpu {
 
@@ -166,7 +164,7 @@ void avg_pool3d_out_frame(
       input_acc,
       output_acc);
 
-  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
   // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
@@ -375,7 +373,7 @@ void avg_pool3d_backward_out_frame_stride1(
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
   AvgPool3dBackwardStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
-  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
   // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
@@ -534,7 +532,7 @@ void avg_pool3d_backward_out_frame_atomic(
           grad_output_acc,
           grad_input_acc);
 
-  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
   // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
@@ -689,7 +687,7 @@ void avg_pool3d_backward_out_frame(
       grad_output_acc,
       grad_input_acc);
 
-  // width size is fixed size = 32, height dim equals = dpcppMaxWorkGroupSize /
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
   // width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
