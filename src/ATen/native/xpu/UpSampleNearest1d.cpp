@@ -31,6 +31,7 @@ TORCH_IMPL_FUNC(_upsample_nearest_exact1d_backward_out_xpu)
  IntArrayRef input_size,
  std::optional<double> scales,
  const Tensor& grad_input) {
+  grad_input.zero_();
   xpu::upsample_nearest1d_backward_kernel(
       grad_input, grad_output, output_size, input_size, scales, true);
 }
@@ -41,8 +42,9 @@ TORCH_IMPL_FUNC(upsample_nearest1d_backward_out_xpu)
  IntArrayRef input_size,
  std::optional<double> scales,
  const Tensor& grad_input) {
+  grad_input.zero_();
   xpu::upsample_nearest1d_backward_kernel(
-      grad_input, grad_output, output_size, input_size, scales, true);
+      grad_input, grad_output, output_size, input_size, scales, false);
 }
 
 } // namespace native
