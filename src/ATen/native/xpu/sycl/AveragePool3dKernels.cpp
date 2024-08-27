@@ -360,7 +360,7 @@ struct AvgPool3dBackwardStride1KernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_backward_stride1_xpu(
+void avg_pool3d_backward_stride1_template(
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -497,7 +497,7 @@ struct AvgPool3dBackwardAtomicKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_backward_atomic_xpu(
+void avg_pool3d_backward_atomic_template(
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -652,7 +652,7 @@ struct AvgPool3dBackwardKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_backward_out_frame(
+void (
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -806,7 +806,7 @@ void avg_pool3d_backward_kernel(
             }
 
             while (totalZ > 0) {
-              avg_pool3d_backward_stride1_xpu<
+              avg_pool3d_backward_stride1_template<
                   scalar_t,
                   accscalar_t,
                   int32_t>(
@@ -834,7 +834,7 @@ void avg_pool3d_backward_kernel(
             int64_t offsetZ = 0;
             while (totalZ > 0) {
               if (kernelsOverlap) {
-                avg_pool3d_backward_atomic_xpu<
+                avg_pool3d_backward_atomic_template<
                     scalar_t,
                     accscalar_t,
                     int32_t>(
@@ -854,7 +854,7 @@ void avg_pool3d_backward_kernel(
                     totalZ,
                     divisor);
               } else {
-                avg_pool3d_backward_out_frame<scalar_t, accscalar_t, int32_t>(
+                <scalar_t, accscalar_t, int32_t>(
                     work_grad_output,
                     work_grad_input,
                     kT,
@@ -897,7 +897,7 @@ void avg_pool3d_backward_kernel(
             }
 
             while (totalZ > 0) {
-              avg_pool3d_backward_stride1_xpu<
+              avg_pool3d_backward_stride1_template<
                   scalar_t,
                   accscalar_t,
                   int64_t>(
@@ -925,7 +925,7 @@ void avg_pool3d_backward_kernel(
             int64_t offsetZ = 0;
             while (totalZ > 0) {
               if (kernelsOverlap) {
-                avg_pool3d_backward_atomic_xpu<
+                avg_pool3d_backward_atomic_template<
                     scalar_t,
                     accscalar_t,
                     int64_t>(
@@ -945,7 +945,7 @@ void avg_pool3d_backward_kernel(
                     totalZ,
                     divisor);
               } else {
-                avg_pool3d_backward_out_frame<scalar_t, accscalar_t, int64_t>(
+                <scalar_t, accscalar_t, int64_t>(
                     work_grad_output,
                     work_grad_input,
                     kT,
