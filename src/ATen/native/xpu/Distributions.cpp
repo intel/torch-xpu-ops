@@ -9,6 +9,7 @@
 #include <ATen/native/UnaryOps.h>
 
 #include <ATen/native/xpu/sycl/DistributionKernels.h>
+#include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/MultinomialKernel.h>
 #include <ATen/ops/div.h>
 #include <comm/xpu_aten.h>

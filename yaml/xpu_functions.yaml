@@ -723,3 +723,4 @@ supported:
   - _weight_norm_interface_backward
   - range.out
   - cauchy_
+  - binomial

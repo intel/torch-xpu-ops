@@ -221,6 +221,132 @@ void distribution_nullary_kernel(
   }
 }
 
+// Binary kernel
+template <
+    typename func_t,
+    typename inp_offset_calc_t,
+    typename out_offset_calc_t>
+struct DistributionBinaryElementwiseKernelFunctor {
+  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
+  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
+  using output_t = typename function_traits<func_t>::result_type;
+  void operator()(sycl::nd_item<1> item) const {
+    int group_size = item.get_local_range(0);
+    int global_size = item.get_global_range(0);
+    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+
+    auto seeds = philox_unpack(philox_args_);
+
+    randStatePhilox4_32_10_t state;
+    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+    for (int i = global_idx; i < numel_; i += global_size) {
+      auto in_offsets = inp_calc_.get(i);
+      auto out_offsets = out_calc_.get(i);
+      out_data_[out_offsets[0]] =
+          f_(state, inp_data_1_[in_offsets[0]], inp_data_2_[in_offsets[1]]);
+    }
+  }
+
+  DistributionBinaryElementwiseKernelFunctor(
+      int numel,
+      func_t f,
+      PhiloxState philox_args,
+      output_t* output_data,
+      const input_t_1* input_data_1,
+      const input_t_2* input_data_2,
+      inp_offset_calc_t inp_calc,
+      out_offset_calc_t out_calc)
+      : numel_(numel),
+        f_(f),
+        philox_args_(philox_args),
+        out_data_(output_data),
+        inp_data_1_(input_data_1),
+        inp_data_2_(input_data_2),
+        inp_calc_(inp_calc),
+        out_calc_(out_calc) {}
+
+ private:
+  int64_t numel_;
+  func_t f_;
+  PhiloxState philox_args_;
+  output_t* out_data_;
+  const input_t_1* inp_data_1_;
+  const input_t_2* inp_data_2_;
+  inp_offset_calc_t inp_calc_;
+  out_offset_calc_t out_calc_;
+};
+
+template <typename func_t>
+void distribution_binary_kernel(
+    TensorIteratorBase& iter,
+    PhiloxState philox_args,
+    const func_t& f) {
+  static_assert(
+      std::is_same<
+          typename function_traits<func_t>::template arg<0>::type,
+          randStatePhilox4_32_10_t&>::value,
+      "the first argument of functor must be randStatePhilox4_32_10_t");
+  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
+  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
+  using output_t = typename function_traits<func_t>::result_type;
+
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_binary_kernel(sub_iter, philox_args, f);
+    }
+    return;
+  }
+
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(iter.can_use_32bit_indexing());
+
+  int64_t numel = iter.numel();
+  if (numel == 0) {
+    return;
+  }
+
+  int group_size = syclMaxWorkItemsPerEU() * syclMaxSubGroupSize();
+  int num_groups = (numel + group_size - 1) / group_size;
+  int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
+  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
+
+  output_t* output_data = static_cast<output_t*>(iter.data_ptr(0));
+  const input_t_1* input_data_1 =
+      static_cast<const input_t_1*>(iter.data_ptr(1));
+  const input_t_2* input_data_2 =
+      static_cast<const input_t_2*>(iter.data_ptr(2));
+
+  if (iter.is_contiguous()) {
+    auto input_offset_calculator = TrivialOffsetCalculator<2>();
+    auto output_offset_calculator = TrivialOffsetCalculator<1>();
+    auto caller = DistributionBinaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data_1,
+        input_data_2,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  } else {
+    auto input_offset_calculator = make_input_offset_calculator<2>(iter);
+    auto output_offset_calculator = make_output_offset_calculator(iter);
+    auto caller = DistributionBinaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data_1,
+        input_data_2,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  }
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
