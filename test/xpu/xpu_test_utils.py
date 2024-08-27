@@ -251,6 +251,7 @@ _xpu_computation_op_list = [
     "argsort",
     "take",
     "put",
+    "mode",
 ]
 
 _ops_without_cuda_support = [
