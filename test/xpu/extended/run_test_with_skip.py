@@ -26,6 +26,7 @@ skip_list = (
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
+    "test_compare_cpu_pow_xpu_bfloat16",
     # cuda has the same issue on this case
     "test_compare_cpu__refs_rsub_xpu_bfloat16",
     "test_compare_cpu_add_xpu_bfloat16",

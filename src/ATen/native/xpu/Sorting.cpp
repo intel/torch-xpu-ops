@@ -1,12 +1,12 @@
 #include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Sorting.h>
-#include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
-#include <comm/TensorInfo.h>
 #include <comm/RegisterUtils.h>
+#include <comm/TensorInfo.h>
 
 namespace at {
 
