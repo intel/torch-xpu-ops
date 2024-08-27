@@ -826,7 +826,7 @@ void avg_pool3d_backward_kernel(
           kHalf,
           kBFloat16,
           input.scalar_type(),
-          "avg_pool3d_backward_out_frame",
+          "avg_pool3d_backward_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
             int64_t totalZ = otime * nslices * nbatch;
@@ -917,7 +917,7 @@ void avg_pool3d_backward_kernel(
           kHalf,
           kBFloat16,
           input.scalar_type(),
-          "avg_pool3d_backward_out_frame",
+          "avg_pool3d_backward_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
             int64_t totalZ = otime * nslices * nbatch;
