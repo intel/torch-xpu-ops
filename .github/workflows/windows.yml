@@ -47,23 +47,11 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Install oneAPI bundle
+      - name: Install oneAPI bundle and pti
         shell: cmd
         run: |
-          if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
-            if exist "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat" (
-              echo "oneAPI bundle and pti already installed"
-            )
-            else (
-              echo "oneAPI bundle already installed and pti not installed"
-              call .github\scripts\install_xpu.bat
-              echo "pti installed"
-            )
-          ) else (
-            echo "setvars.bat not found, installing oneAPI bundle"
-            call .github\scripts\install_xpu.bat
-            echo "oneAPI bundle installed"
-          )      
+          call .github\scripts\install_xpu.bat
+          if errorlevel 1 exit /b 1
       - name: Prepare Stock Pytorch
         shell: cmd
         run: |
@@ -99,7 +87,8 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           pip install mkl-static mkl-include
           cd ../pytorch
           pip install -r requirements.txt
@@ -129,7 +118,8 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
