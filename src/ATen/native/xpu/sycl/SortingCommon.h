@@ -433,4 +433,3 @@ void run_launcher(
 }
 
 } // namespace at::native::xpu
-

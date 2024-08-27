@@ -1,11 +1,11 @@
-name: Nightly-OnDemand Tests Rolling
+name: Torch Nightly WHL Tests
 
 on:
   schedule:
-    # GMT+8 21:30 every workday
-    - cron: '30 13 * * 0-4'
-    # GMT+8 0:30 Saturday
-    - cron: '30 16 * * 5'
+    # GMT+8 21:00 every workday
+    - cron: '0 14 * * 0-4'
+    # GMT+8 0:00 Saturday
+    - cron: '0 17 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -13,21 +13,11 @@ on:
         type: string
         default: 'main'
         description: Pytorch branch/commit
-      keep_torch_xpu_ops:
-        required: false
-        type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
       ut:
         required: false
         type: string
         default: 'torch_xpu'
         description: UT scope. `op_example,op_extended,op_ut,torch_xpu`. Delimiter is comma
-      triton:
-        required: false
-        type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
       suite:
         required: true
         type: string
@@ -62,36 +52,26 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: true
 
 jobs:
-  Linux-Nightly-Ondemand-UT-Tests-Rolling:
+  Linux-Nightly-Ondemand-UT-WHL-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
     with: 
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_rolling
-  
-  Linux-Weekly-UT-Tests-ABI-0-Rolling:
-    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
-    uses: ./.github/workflows/_linux_ut.yml
-    with: 
-      abi: 0
-      ut: op_example,op_extended,op_ut,torch_xpu
-      runner: pvc_rolling
+      pytorch: nightly_wheel
+      runner: linux.idc.xpu
 
-  Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pvc_rolling
+  Linux-Nightly-Ondemand-E2E-WHL-Tests:
+    runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
@@ -122,37 +102,30 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          cd ../ && rm -rf pytorch
           source activate e2e_ci
+          source .github/scripts/env.sh
+          cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
-          git submodule sync && git submodule update --init --recursive
-          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+          pip install -r requirements.txt
+          cd ../
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
       - name: Identify pinned versions
         id: pinned
         run: |
+          source activate e2e_ci
           source .github/scripts/env.sh
           cd ../pytorch
-          if [ -z ${{ inputs.triton }} ]; then
-            echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          else
-            echo "TRITON_COMMIT_ID=${{ inputs.triton }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          fi
-          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TRITON_COMMIT_ID=$(pip list |grep -w pytorch-triton-xpu |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_BRANCH_ID=nightly" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(pip list |grep -w torch |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(pip list |grep -w torchvision |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(pip list |grep -w torchaudio |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -162,22 +135,6 @@ jobs:
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-      - name: Build Pytorch XPU
-        run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-          python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
@@ -186,38 +143,41 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
           dt: bfloat16
           mode: training
           scenario: accuracy
+          pytorch: nightly_wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
           dt: float16
           mode: training
           scenario: accuracy
+          pytorch: nightly_wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -225,9 +185,10 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -235,9 +196,10 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -245,6 +207,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
@@ -256,6 +219,7 @@ jobs:
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       - name: Summarize archieve files
@@ -294,7 +258,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-Tests-Rolling
+    needs: Linux-Nightly-Ondemand-E2E-WHL-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
         if: github.repository_owner == 'intel'
@@ -303,23 +267,23 @@ jobs:
           # Test env
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_COMMIT_ID }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.DRIVER_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TIMEOUT_MODELS }}"
+          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_BRANCH_ID }}"
+          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_COMMIT_ID }}"
+          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.DRIVER_VERSION }}"
+          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.BUNDLE_VERSION }}"
+          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.OS_PRETTY_NAME }}"
+          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.GCC_VERSION }}"
+          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
+          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHVISION_COMMIT_ID }}"
+          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
+          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TRANSFORMERS_VERSION }}"
+          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TIMM_COMMIT_ID }}"
+          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TRITON_COMMIT_ID }}"
+          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TIMEOUT_MODELS }}"
           # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.result }}" == "success" ];then
+          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.result }}" == "success" ];then
             test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.result }}" == "failure" ];then
+          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.result }}" == "failure" ];then
             test_status=Failure
             cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
           else
@@ -331,7 +295,7 @@ jobs:
             test_type="On-demand"
             test_issue_id=426
             cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
+          elif [ "${{ github.event.schedule }}" == "0 17 * * 5" ];then
             test_type="Weekly"
             test_issue_id=432
           else
@@ -339,7 +303,7 @@ jobs:
             test_issue_id=432
           fi
           # Test report
-          echo -e "**${test_status}** $test_type Rolling Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
+          echo -e "**${test_status}** $test_type WHL Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
           printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
@@ -350,7 +314,7 @@ jobs:
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.model }}" != "" ];then
