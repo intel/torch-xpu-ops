@@ -54,4 +54,40 @@ inline c10::BFloat16 div<c10::BFloat16>(
   return res;
 }
 
+template <>
+inline c10::complex<float> div<c10::complex<float>>(
+    const c10::complex<float>& lhs,
+    const c10::complex<float>& rhs) __ubsan_ignore_float_divide_by_zero__ {
+  float a = lhs.real();
+  float b = lhs.imag();
+  float c = rhs.real();
+  float d = rhs.imag();
+
+  float real_;
+  float imag_;
+
+  auto abs_c = std::abs(c);
+  auto abs_d = std::abs(d);
+
+  if (abs_c >= abs_d) {
+    if (abs_c == 0.f && abs_d == 0.f) {
+      /* divide by zeros should yield a complex inf or nan */
+      real_ = a / abs_c;
+      imag_ = b / abs_d;
+    } else {
+      float rat = d / c;
+      float scl = 1.0f / (c + d * rat);
+      real_ = (a + b * rat) * scl;
+      imag_ = (b - a * rat) * scl;
+    }
+  } else {
+    float rat = c / d;
+    float scl = 1.0f / (d + c * rat);
+    real_ = (a * rat + b) * scl;
+    imag_ = (b * rat - a) * scl;
+  }
+
+  return c10::complex<float>(real_, imag_);
+}
+
 } // namespace c10::xpu::compat
