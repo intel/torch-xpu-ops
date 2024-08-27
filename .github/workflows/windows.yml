@@ -51,7 +51,14 @@ jobs:
         shell: cmd
         run: |
           if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
-            echo "oneAPI bundle already installed"
+            if exist "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat" (
+              echo "oneAPI bundle and pti already installed"
+            )
+            else (
+              echo "oneAPI bundle already installed and pti not installed"
+              call .github\scripts\install_xpu.bat
+              echo "pti installed"
+            )
           ) else (
             echo "setvars.bat not found, installing oneAPI bundle"
             call .github\scripts\install_xpu.bat
@@ -97,7 +104,6 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           set USE_XPU=1
-          set USE_KINETO=0
           set CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           if ${{ inputs.abi }} == '0' (
             set _GLIBCXX_USE_CXX11_ABI=0
