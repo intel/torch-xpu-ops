@@ -1,14 +1,9 @@
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
-#include <ATen/native/Resize.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/ops/sort.h>
-#include <ATen/ops/zeros_like.h>
-#include <comm/xpu_aten.h>
 
-#include <comm/TensorInfo.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 

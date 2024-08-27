@@ -1,9 +1,6 @@
 #pragma once
-#include <cstdint>
 
-namespace at {
-class Tensor;
-}
+#include <ATen/ATen.h>
 
 namespace at::native::xpu {
 
