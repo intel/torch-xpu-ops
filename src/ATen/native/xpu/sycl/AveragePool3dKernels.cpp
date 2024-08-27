@@ -14,7 +14,6 @@
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
 #include <comm/SYCLContext.h>
 
-
 namespace at::native::xpu {
 
 inline int min(int a, int b) {
@@ -164,8 +163,8 @@ void avg_pool3d_out_template(
       input_acc,
       output_acc);
 
-  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
-  // width_size
+  // width size is fixed size = 32, height dim equals =
+  // syclMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
@@ -373,8 +372,8 @@ void avg_pool3d_backward_stride1_template(
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
   AvgPool3dBackwardStride1KernelFunctor<scalar_t, accscalar_t, index_t> kfn(
       kT, kH, kW, normFactor, offsetZ, grad_output_acc, grad_input_acc);
-  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
-  // width_size
+  // width size is fixed size = 32, height dim equals =
+  // syclMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
@@ -516,24 +515,24 @@ void avg_pool3d_backward_atomic_template(
   auto grad_output_acc = grad_output.packed_accessor64<const scalar_t, 4>();
   auto grad_input_acc = grad_input.packed_accessor64<scalar_t, 4>();
 
-  AvgPool3dBackwardAtomicKernelFunctor<scalar_t, accscalar_t, index_t>
-      kfn(kT,
-          kH,
-          kW,
-          dT,
-          dH,
-          dW,
-          padT,
-          padH,
-          padW,
-          count_include_pad,
-          offsetZ,
-          divisor_override,
-          grad_output_acc,
-          grad_input_acc);
+  AvgPool3dBackwardAtomicKernelFunctor<scalar_t, accscalar_t, index_t> kfn(
+      kT,
+      kH,
+      kW,
+      dT,
+      dH,
+      dW,
+      padT,
+      padH,
+      padW,
+      count_include_pad,
+      offsetZ,
+      divisor_override,
+      grad_output_acc,
+      grad_input_acc);
 
-  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
-  // width_size
+  // width size is fixed size = 32, height dim equals =
+  // syclMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
@@ -652,7 +651,7 @@ struct AvgPool3dBackwardKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void (
+void avg_pool3d_backward_template(
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -687,8 +686,8 @@ void (
       grad_output_acc,
       grad_input_acc);
 
-  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize(kfn) /
-  // width_size
+  // width size is fixed size = 32, height dim equals =
+  // syclMaxWorkGroupSize(kfn) / width_size
   index_t width_group_size = 32;
   index_t height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
   index_t width_group_range =
@@ -854,7 +853,7 @@ void avg_pool3d_backward_kernel(
                     totalZ,
                     divisor);
               } else {
-                <scalar_t, accscalar_t, int32_t>(
+                avg_pool3d_backward_template<scalar_t, accscalar_t, int32_t>(
                     work_grad_output,
                     work_grad_input,
                     kT,
@@ -945,7 +944,7 @@ void avg_pool3d_backward_kernel(
                     totalZ,
                     divisor);
               } else {
-                <scalar_t, accscalar_t, int64_t>(
+                avg_pool3d_backward_template<scalar_t, accscalar_t, int64_t>(
                     work_grad_output,
                     work_grad_input,
                     kT,
