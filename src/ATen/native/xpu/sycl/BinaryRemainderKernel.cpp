@@ -41,7 +41,7 @@ template <typename scalar_t>
 struct FmodFloatingFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const
       __ubsan_ignore_float_divide_by_zero__ {
-    return ::fmod(a, b);
+    return std::fmod(a, b);
   }
 };
 
