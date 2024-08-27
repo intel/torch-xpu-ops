@@ -74,6 +74,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
   
   Linux-Weekly-UT-Tests-ABI-0:
@@ -125,7 +126,7 @@ jobs:
           cd ../ && rm -rf pytorch
           source activate e2e_ci
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ env.pytorch }} 
+          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -141,6 +142,7 @@ jobs:
       - name: Identify pinned versions
         id: pinned
         run: |
+          source .github/scripts/env.sh
           cd ../pytorch
           if [ -z ${{ inputs.triton }} ]; then
             echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -155,7 +157,6 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          source /opt/intel/oneapi/pytorch-gpu-dev-0.5/oneapi-vars.sh
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
@@ -257,6 +258,7 @@ jobs:
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       - name: Summarize archieve files
         id: summary
         if: ${{ ! cancelled() }}
@@ -270,9 +272,9 @@ jobs:
           timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
           if [ ${timeout_models} -ne 0 ];then
             TIMEOUT_MODELS="$(
-              grep -E "timeout models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "timeout" -B 1
+              grep -B 1 "timeout models: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log
             )"
-            echo "TIMEOUT_MODELS=${TIMEOUT_MODELS}" |sed 's/Summary/\\nSummary/g;s/Timeout/\\nTimeout/g' |tee -a "${GITHUB_OUTPUT}"
+            echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
             grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
@@ -352,15 +354,12 @@ jobs:
           echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.triton }}" != "" ];then
-              test_scope+="; triton=${{ inputs.triton }}"
-            fi
             if [ "${{ inputs.model }}" != "" ];then
               test_scope+="; model=${{ inputs.model }}"
             fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
-          echo "$TIMEOUT_MODELS" >> ${{ github.workspace }}/report.txt
+          echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
           echo "$cc_comment" >> ${{ github.workspace }}/report.txt
           # Report
           report_txt=$(cat ${{ github.workspace }}/report.txt)

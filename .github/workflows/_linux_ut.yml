@@ -13,6 +13,11 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
       ut:
         required: true
         type: string
@@ -53,7 +58,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ inputs.pytorch }} 
+          cd pytorch && git checkout $(echo "${{ inputs.pytorch }}" |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -66,22 +71,40 @@ jobs:
             # Workaround for torch-xpu-ops ci test
             sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
           fi
+      - name: Triton Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          fi
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh
           pip install mkl-static mkl-include
           cd ../pytorch
-          pip install -r requirements.txt
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
           else
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
-          WERROR=1 python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
-          git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+            pip install -r requirements.txt
+            WERROR=1 python setup.py bdist_wheel
+            pip install --force-reinstall dist/*.whl
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |

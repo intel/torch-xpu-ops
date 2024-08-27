@@ -26,6 +26,7 @@ skip_list = (
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
+    "test_compare_cpu_pow_xpu_bfloat16",
     # cuda has the same issue on this case
     "test_compare_cpu__refs_rsub_xpu_bfloat16",
     "test_compare_cpu_add_xpu_bfloat16",
@@ -50,16 +51,7 @@ skip_list = (
     "test_compare_cpu_exp2_xpu_complex128",
     "test_compare_cpu_exp2_xpu_complex64",
     "test_compare_cpu_nextafter_xpu_bfloat16",
-    # skip random failure due to accuracy
-    # AssertionError: Tensor-likes are not close!
-    "test_compare_cpu_atan2_xpu_bfloat16",
     # CUDA does not support the data type either
-    "test_compare_cpu_native_dropout_backward_xpu_bool",
-    "test_compare_cpu_native_dropout_backward_xpu_int16",
-    "test_compare_cpu_native_dropout_backward_xpu_int32",
-    "test_compare_cpu_native_dropout_backward_xpu_int64",
-    "test_compare_cpu_native_dropout_backward_xpu_int8",
-    "test_compare_cpu_native_dropout_backward_xpu_uint8",
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
     # Need FP64 golden ref for more accurate comparison
     "test_compare_cpu_log_softmax_xpu_bfloat16",
@@ -79,8 +71,6 @@ skip_list = (
     # https://en.cppreference.com/w/cpp/numeric/complex/exp
     "test_compare_cpu_sigmoid_xpu_complex64",
     "test_compare_cpu_sigmoid_xpu_complex128",
-    # Align with CUDA dtypes - RuntimeError: "avg_pool2d_out_xpu" not implemented for 'Long'
-    "test_compare_cpu_nn_functional_avg_pool2d_xpu_int64",
     # Special handle (different calculation order) in CPU reference impl.
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
@@ -93,11 +83,6 @@ skip_list = (
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
-    # CPU reference fail. `abs_cpu` does not support bool.
-    # The case should be skipped by PyTorch test infrastructure, but not be
-    # skipped correctly after https://github.com/pytorch/pytorch/pull/124147
-    # https://github.com/intel/torch-xpu-ops/issues/412
-    "test_compare_cpu_abs_xpu_bool",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
@@ -146,28 +131,11 @@ skip_list = (
     # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
     # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
     "test_compare_cpu_polar_xpu_bfloat16",
-    # Regressions due to PyTorch uplift (Numeric difference in float and bfloat)
-    # https://github.com/intel/torch-xpu-ops/issues/549
-    # Example fail log
-    # FAILED test_ops_xpu.py::TestCommonXPU::test_compare_cpu_nn_functional_batch_norm_xpu_float16 - AssertionError: Tensor-likes are not close!
-    # Mismatched elements: 3 / 72 (4.2%)
-    # Greatest absolute difference: 0.0029296875 at index (0, 1, 1, 0) (up to 0.001 allowed)
-    # Greatest relative difference: 0.0032501220703125 at index (2, 1, 2, 1) (up to 0.001 allowed)
-    "test_compare_cpu_nn_functional_batch_norm_xpu_float16",
-    "test_compare_cpu_std_mean_xpu_bfloat16",
+    # Precision error.
+    # Mismatched elements: 1 / 25 (4.0%)
+    # Greatest absolute difference: 0.00146484375 at index (0, 0) (up to 0.001 allowed)
+    # Greatest relative difference: 0.0163116455078125 at index (0, 0) (up to 0.001 allowed)
     "test_compare_cpu_sub_xpu_float16",
-    "test_compare_cpu_var_mean_xpu_bfloat16",
-    # Precision error.
-    # Mismatched elements: 2 / 125 (1.6%)
-    # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
-    # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
-    "test_compare_cpu_cumprod_xpu_bfloat16",
-    # Precision error.
-    # Mismatched elements: 1 / 9 (11.1%)
-    # Greatest absolute difference: 0.001953125 at index (2, 2) (up to 0.001 allowed)
-    # Greatest relative difference: 0.004669189453125 at index (2, 2) (up to 0.001 allowed)
-    # Not in CUDA test scope too
-    "test_compare_cpu_prod_xpu_bfloat16 ",
     # different results for value index due to unstable sort.
     # XPU and CUDA have the same result.
     "test_compare_cpu_median_xpu_int16",

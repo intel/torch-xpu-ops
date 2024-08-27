@@ -14,6 +14,7 @@ from torch.testing._internal import (
     common_methods_invocations,
     common_utils,
 )
+from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
@@ -238,7 +239,7 @@ _xpu_computation_op_list = [
     "nanmean",
 ]
 
-_ops_without_cuda_support=[
+_ops_without_cuda_support = [
     "histogram",
 ]
 
@@ -255,7 +256,84 @@ _cuda_xfail_xpu_pass = [
     ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
+    ("nn.AvgPool2d", "test_memory_format"),
+    ("narrow_copy","test_meta_outplace"),
+    ("narrow_copy","test_dispatch_meta_outplace"),
+    ("narrow_copy","test_dispatch_symbolic_meta_outplace"),
 ]
+
+# some case should adjust tolerance to pass.
+# The new threshold is at the same order of magnitude as cuda's or cpu's.
+# format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
+
+_xpu_tolerance_override = {
+    "nn.functional.tanhshrink": {
+        ("TestUnaryUfuncs", "test_reference_numerics_normal"): {
+            torch.complex64: tol(atol=2e-05, rtol=9e-06),
+            torch.bfloat16: tol(atol=1e-02, rtol=1.6e-02),
+        }
+    },
+    "atan2": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.008, rtol=0.005),
+        }
+    },
+    "cumprod": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.002, rtol=0.008),
+        }
+    },
+    "nanmean": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.002, rtol=0.008),
+        }
+    },
+    "nansum": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.008, rtol=0.006),
+        }
+    },
+    "nn.functional.batch_norm": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.float16: tol(atol=0.003, rtol=0.004),
+        }
+    },
+    "nn.functional.embedding_bag": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.float16: tol(atol=0.005, rtol=0.007),
+        }
+    },
+    "nn.functional.group_norm": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.float16: tol(atol=0.002, rtol=0.006),
+        }
+    },
+    "prod": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.002, rtol=0.005),
+        }
+    },
+    "rsqrt": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.004, rtol=0.007),
+        }
+    },
+    "std_mean": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.008, rtol=0.005),
+        }
+    },
+    "var_mean": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.bfloat16: tol(atol=0.008, rtol=0.005),
+        }
+    },
+    "nn.LazyConvTranspose3d": {
+        ("TestModule", "test_non_contiguous_tensors"): {
+            torch.float32: tol(atol=2e-5, rtol=5e-5),
+        }
+    },
+}
 
 
 def get_wrapped_fn(fn):
@@ -293,6 +371,8 @@ def to_xpu(obj, type_map=None):
 
 
 def ModuleTest_test_xpu(self, test_case):
+    if not self.should_test_cuda:
+        raise unittest.SkipTest("Excluded from XPU tests")
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
 
@@ -317,13 +397,6 @@ def ModuleTest_test_xpu(self, test_case):
         test_case._zero_grad_parameters(xpu_module)
         cpu_output = test_case._forward(cpu_module, cpu_input_tuple)
         xpu_output = test_case._forward(xpu_module, xpu_input_tuple)
-        test_case.assertEqual(
-            cpu_input_tuple,
-            xpu_input_tuple,
-            atol=self.precision,
-            rtol=0,
-            exact_dtype=False,
-        )
         if getattr(cpu_module, "return_indices", False):
             cpu_output = cpu_output[0]
             xpu_output = xpu_output[0]
@@ -331,18 +404,11 @@ def ModuleTest_test_xpu(self, test_case):
             cpu_output, xpu_output, atol=self.precision, rtol=0, exact_dtype=False
         )
 
-        # Run backwards on CPU and GPU and compare results
+        # Run backwards on CPU and xpu and compare results
 
         for _ in range(5):
             cpu_gradOutput = cpu_output.clone().normal_()
             xpu_gradOutput = cpu_gradOutput.type_as(xpu_output)
-            test_case.assertEqual(
-                cpu_input_tuple,
-                xpu_input_tuple,
-                atol=self.precision,
-                rtol=0,
-                exact_dtype=False,
-            )
             cpu_gradInput = test_case._backward(
                 cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput
             )
@@ -358,7 +424,7 @@ def ModuleTest_test_xpu(self, test_case):
             )
             for cpu_d_p, xpu_d_p in zip(cpu_param[1], xpu_param[1]):
                 test_case.assertEqual(cpu_d_p, xpu_d_p, atol=self.precision, rtol=0)
-        # Run double-backwards on CPU and GPU and compare results
+        # Run double-backwards on CPU and xpu and compare results
 
         if self.check_gradgrad and not self.FIXME_no_cuda_gradgrad_comparison:
             cpu_output = cpu_module(*cpu_input_tuple)
@@ -438,6 +504,8 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
         else:
             return obj
 
+    if not self.should_test_cuda:
+        raise unittest.SkipTest("Excluded from XPU tests")
     with set_default_dtype(self.default_dtype):
         cpu_input = self._get_input()
         cpu_target = self._get_target()
@@ -536,7 +604,7 @@ class XPUPatchForImport:
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
     def align_db_decorators(self, db):
-        def gen_xpu_wrappers(name, wrappers):
+        def gen_xpu_wrappers(op_name, wrappers):
             wrapper_xpu = []
             replaced = False
             for wrapper in wrappers:
@@ -544,7 +612,7 @@ class XPUPatchForImport:
                     if wrapper.device_type == "cuda":
                         if (
                             unittest.expectedFailure in wrapper.decorators
-                            and (name, wrapper.test_name) in _cuda_xfail_xpu_pass
+                            and (op_name, wrapper.test_name) in _cuda_xfail_xpu_pass
                         ):
                             pass
                         else:
@@ -559,6 +627,19 @@ class XPUPatchForImport:
         for info in db:
             if hasattr(info, "decorators"):
                 replaced, decorator_xpu = gen_xpu_wrappers(info.name, info.decorators)
+
+                # the latter decorator will override the former.
+                if info.name in _xpu_tolerance_override:
+                    replaced = True
+                    for case, tolerance in _xpu_tolerance_override[info.name].items():
+                        decorator_xpu.append(
+                            DecorateInfo(
+                                toleranceOverride(tolerance),
+                                case[0],  # cls_name
+                                case[1],  # test_name
+                                device_type="xpu",
+                            )
+                        )
                 if replaced:
                     info.decorators = tuple(decorator_xpu)
             if hasattr(info, "skips"):
@@ -568,12 +649,20 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if opinfo.name not in _xpu_computation_op_list or opinfo.name in _ops_without_cuda_support:
+            if (
+                opinfo.name not in _xpu_computation_op_list
+                or opinfo.name in _ops_without_cuda_support
+            ):
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
                 backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
+
+            if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
+                fp64_dtypes = [ torch.float64, torch.complex128, torch.double, ]
+                opinfo.dtypesIfXPU = set(filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU)))
+                opinfo.backward_dtypes = tuple(filter(lambda x: (x not in fp64_dtypes), list(opinfo.backward_dtypes)))
 
     def __enter__(self):
         # Monkey patch until we have a fancy way

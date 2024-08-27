@@ -106,13 +106,13 @@ struct lpnormChunkReduceKernelFunctor {
     auto sum_val = sycl::reduce_over_group(
         item_id.get_group(), val, sycl::plus<opmath_t>());
     if (lid == 0) {
-      ret_per_tensor_[group_id] =
+      *(ret_per_tensor_[group_id]) =
           norm_type == NormType::L1 ? sum_val : std::sqrt((opmath_t)sum_val);
     }
   }
   lpnormChunkReduceKernelFunctor(
       const opmath_t* output_per_tensor,
-      out_t* ret_per_tensor,
+      out_t** ret_per_tensor,
       int max_chunks_per_tensor,
       int wg_size)
       : output_per_tensor_(output_per_tensor),
@@ -122,7 +122,7 @@ struct lpnormChunkReduceKernelFunctor {
 
  private:
   const opmath_t* output_per_tensor_;
-  out_t* ret_per_tensor_;
+  out_t** ret_per_tensor_;
   int max_chunks_per_tensor_;
   int wg_size_;
 };
@@ -130,7 +130,7 @@ struct lpnormChunkReduceKernelFunctor {
 template <typename out_t, NormType norm_type, typename out_opmath_t>
 void launch_lpnorm_chunk_reduce_kernel(
     const out_opmath_t* output_per_tensor,
-    out_t* ret_per_tensor,
+    out_t** ret_per_tensor,
     int wg_size,
     int max_chunks_per_tensor,
     int n_tensor) {
@@ -194,8 +194,22 @@ std::vector<Tensor> foreach_norm_kernel(
       dtype.has_value() ? dtype.value() : tensors[0].scalar_type();
   const auto options = tensors[0].options();
   auto output_per_tensor_option = options.dtype(toOpMathType(output_dtype));
-  auto res_option = options.dtype(output_dtype);
-  auto ret_per_tensor = at::empty({ntensors}, res_option);
+  std::vector<at::Tensor> ret_per_tensor;
+  ret_per_tensor.reserve(ntensors);
+  const auto res_option = options.dtype(output_dtype);
+  for (int i = 0; i < ntensors; i++) {
+    ret_per_tensor.push_back(at::empty({}, res_option));
+  }
+  auto& q = getCurrentSYCLQueue();
+  auto addressStorage =
+      at::empty({(int)(sizeof(void*) * ntensors)}, options.dtype(at::kByte));
+  auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
+  void** tensor_list_addresses = nullptr;
+
+  auto tensor_list_addresses_dptr =
+      at::xpu::HostAlloc(sizeof(void*) * ntensors);
+  tensor_list_addresses = (void**)tensor_list_addresses_dptr.get();
+
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   int64_t wg_size;
@@ -228,14 +242,25 @@ std::vector<Tensor> foreach_norm_kernel(
                     LpNormFunctor<scalar_t, NormType::L1, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
+                q.memcpy(
+                    (void*)metaAddress,
+                    (void*)tensor_list_addresses,
+                    sizeof(void*) * ntensors);
 
-                // sum final val for all chunks
+                at::xpu::CachingHostAllocator_recordEvent(
+                    (void*)tensor_list_addresses,
+                    tensor_list_addresses_dptr.get_context(),
+                    at::xpu::getCurrentXPUStream());
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L1,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    ret_per_tensor.mutable_data_ptr<out_t>(),
+                    (out_t**)(metaAddress),
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
@@ -267,13 +292,25 @@ std::vector<Tensor> foreach_norm_kernel(
                     LpNormFunctor<scalar_t, NormType::L2, out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     max_chunks_per_tensor);
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
+                q.memcpy(
+                    (void*)metaAddress,
+                    (void*)tensor_list_addresses,
+                    sizeof(void*) * ntensors);
 
+                at::xpu::CachingHostAllocator_recordEvent(
+                    (void*)tensor_list_addresses,
+                    tensor_list_addresses_dptr.get_context(),
+                    at::xpu::getCurrentXPUStream());
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    ret_per_tensor.mutable_data_ptr<out_t>(),
+                    (out_t**)(metaAddress),
                     wg_size,
                     max_chunks_per_tensor,
                     ntensors);
@@ -288,7 +325,6 @@ std::vector<Tensor> foreach_norm_kernel(
   for (const auto& i : c10::irange(ntensors)) {
     result.emplace_back(ret_per_tensor[i]);
   }
-
   return result;
 }
 
