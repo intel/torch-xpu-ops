@@ -672,7 +672,7 @@ class XPUPatchForImport:
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
         if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            self.sample_inputs_cat_concat = common_methods_invocations.sample_inputs_cat_concat
+            self.sample_inputs_softmax_variant = common_methods_invocations.sample_inputs_softmax_variant
             self.index_variable = common_methods_invocations.index_variable
             self.reference_inputs_cat = common_methods_invocations.reference_inputs_cat
 
@@ -870,7 +870,7 @@ class XPUPatchForImport:
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
 
         if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            common_methods_invocations.sample_inputs_cat_concat = self.sample_inputs_cat_concat
+            common_methods_invocations.sample_inputs_softmax_variant = self.sample_inputs_softmax_variant
             common_methods_invocations.index_variable = self.index_variable
             common_methods_invocations.reference_inputs_cat = self.reference_inputs_cat
 
