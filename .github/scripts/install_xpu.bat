@@ -28,6 +28,7 @@ for /f "tokens=1,2" %%a in (xpu_bundle_installed_ver.log) do (
         echo %%a Installed Version: %%b
 	    set XPU_BUNDLE_INSTALLED=1
         if not "%XPU_BUNDLE_VERSION%"=="%%b" (
+            echo "Old XPU Bundle uninstalling..."
             start /wait "Installer Title" "%XPU_BUNDLE_PARENT_DIR%\Installer\installer.exe" --action=remove --eula=accept --silent --product-id %XPU_BUNDLE_PRODUCT_NAME% --product-ver %%b --log-dir uninstall_bundle
             set XPU_BUNDLE_UNINSTALL=1
         )
@@ -36,6 +37,7 @@ for /f "tokens=1,2" %%a in (xpu_bundle_installed_ver.log) do (
         echo %%a Installed Version: %%b
 	    set XPU_PTI_INSTALLED=1
         if not "%XPU_PTI_VERSION%"=="%%b" (
+            echo "Old PTI uninstalling..."
             start /wait "Installer Title" "%XPU_BUNDLE_PARENT_DIR%\Installer\installer.exe" --action=remove --eula=accept --silent --product-id %XPU_PTI_PRODUCT_NAME% --product-ver %%b --log-dir uninstall_bundle
             set XPU_PTI_UNINSTALL=1
         )
