@@ -33,7 +33,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
     return std::copysign(static_cast<scalar_t>(INFINITY), -x);
   }
 
-  bool x_is_integer = x == ::trunc(x);
+  bool x_is_integer = x == std::trunc(x);
   accscalar_t result = 0;
   if (x < 0) {
     if (x_is_integer) {
@@ -47,8 +47,8 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
     // a periodicity of pi, in practice the computation of pi * x is a source of
     // error (when |x| > 1).
     double q, r;
-    r = ::modf(static_cast<double>(x), &q);
-    result = static_cast<accscalar_t>(-PI_f64 / ::tan(PI_f64 * r));
+    r = std::modf(static_cast<double>(x), &q);
+    result = static_cast<accscalar_t>(-PI_f64 / std::tan(PI_f64 * r));
     x = 1 - x;
   }
 
@@ -72,7 +72,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   }
 
   return static_cast<scalar_t>(
-      ::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
+      std::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
 }
 
 template <typename scalar_t>
@@ -84,7 +84,7 @@ static inline C10_HOST_DEVICE scalar_t calc_trigamma(scalar_t in) {
   accscalar_t result = 0;
   if (x < 0.5f) {
     sign = -1;
-    accscalar_t sin_pi_x = ::sin(PI * x);
+    accscalar_t sin_pi_x = std::sin(PI * x);
     result -= (PI * PI) / (sin_pi_x * sin_pi_x);
     x = 1 - x;
   }
@@ -190,22 +190,22 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
       "don't instantiate with low precision type");
   // Upcast input for numerical accuracy purposes
   // Needed for accurate results if input is bfloat16 or float16
-  scalar_t x = ::abs(_x);
+  scalar_t x = std::abs(_x);
 
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i0e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = (x / scalar_t{2.0}) - scalar_t{2.0};
-    return (::exp(x) * chbevl(y, A, len));
+    return (std::exp(x) * chbevl(y, A, len));
   }
 
   auto coeff_pair = chebyshev_coefficients_i0e_B<scalar_t>();
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   return (
-      ::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
-      ::sqrt(x));
+      std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
+      std::sqrt(x));
 }
 
 template <typename T>
@@ -319,13 +319,13 @@ C10_HOST_DEVICE inline typename std::
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
-  const auto x = ::abs(_x);
+  const auto x = std::abs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = x / scalar_t{2.0} - scalar_t{2.0};
-    const scalar_t out = ::exp(x) * x * chbevl(y, A, len);
+    const scalar_t out = std::exp(x) * x * chbevl(y, A, len);
     return (_x < scalar_t{0.0}) ? -out : out;
   }
 
@@ -333,14 +333,14 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      (::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
-      ::sqrt(x);
+      (std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
+      std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
-  const auto x = ::abs(_x);
+  const auto x = std::abs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -354,7 +354,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / ::sqrt(x);
+      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
