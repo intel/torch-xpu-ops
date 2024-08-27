@@ -130,7 +130,7 @@ struct AvgPool3dKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_out_frame(
+void avg_pool3d_out_template(
     Tensor& work_input,
     Tensor& work_output,
     const int kT,
@@ -251,13 +251,13 @@ void avg_pool3d_kernel(
         work_output.reshape({nbatch * nslices, otime, oheight, owidth});
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "avg_pool3d_out_xpu", [&] {
+      kHalf, kBFloat16, input.scalar_type(), "avg_pool3d_xpu", [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         int64_t totalZ = otime * nslices * nbatch;
         int64_t offsetZ = 0;
         while (totalZ > 0) {
           if (canUse32BitIndexMath(input)) {
-            avg_pool3d_out_frame<scalar_t, accscalar_t, int32_t>(
+            avg_pool3d_out_template<scalar_t, accscalar_t, int32_t>(
                 work_input,
                 work_output,
                 kT,
@@ -274,7 +274,7 @@ void avg_pool3d_kernel(
                 totalZ,
                 divisor);
           } else {
-            avg_pool3d_out_frame<scalar_t, accscalar_t, int64_t>(
+            avg_pool3d_out_template<scalar_t, accscalar_t, int64_t>(
                 work_input,
                 work_output,
                 kT,
@@ -360,7 +360,7 @@ struct AvgPool3dBackwardStride1KernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_backward_out_frame_stride1(
+void avg_pool3d_backward_stride1_xpu(
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -497,7 +497,7 @@ struct AvgPool3dBackwardAtomicKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t, typename index_t>
-void avg_pool3d_backward_out_frame_atomic(
+void avg_pool3d_backward_atomic_xpu(
     const Tensor& grad_output,
     Tensor& grad_input,
     int kT,
@@ -792,7 +792,7 @@ void avg_pool3d_backward_kernel(
           kHalf,
           kBFloat16,
           input.scalar_type(),
-          "avg_pool3d_backward_out_frame_stride1",
+          "avg_pool3d_backward_stride1_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
             int64_t totalZ = itime * nslices * nbatch;
@@ -806,7 +806,7 @@ void avg_pool3d_backward_kernel(
             }
 
             while (totalZ > 0) {
-              avg_pool3d_backward_out_frame_stride1<
+              avg_pool3d_backward_stride1_xpu<
                   scalar_t,
                   accscalar_t,
                   int32_t>(
@@ -834,7 +834,7 @@ void avg_pool3d_backward_kernel(
             int64_t offsetZ = 0;
             while (totalZ > 0) {
               if (kernelsOverlap) {
-                avg_pool3d_backward_out_frame_atomic<
+                avg_pool3d_backward_atomic_xpu<
                     scalar_t,
                     accscalar_t,
                     int32_t>(
@@ -883,7 +883,7 @@ void avg_pool3d_backward_kernel(
           kHalf,
           kBFloat16,
           input.scalar_type(),
-          "avg_pool3d_backward_out_frame_stride1",
+          "avg_pool3d_backward_stride1_xpu",
           [&] {
             using accscalar_t = acc_type_device<scalar_t, kXPU>;
             int64_t totalZ = itime * nslices * nbatch;
@@ -897,7 +897,7 @@ void avg_pool3d_backward_kernel(
             }
 
             while (totalZ > 0) {
-              avg_pool3d_backward_out_frame_stride1<
+              avg_pool3d_backward_stride1_xpu<
                   scalar_t,
                   accscalar_t,
                   int64_t>(
@@ -925,7 +925,7 @@ void avg_pool3d_backward_kernel(
             int64_t offsetZ = 0;
             while (totalZ > 0) {
               if (kernelsOverlap) {
-                avg_pool3d_backward_out_frame_atomic<
+                avg_pool3d_backward_atomic_xpu<
                     scalar_t,
                     accscalar_t,
                     int64_t>(
