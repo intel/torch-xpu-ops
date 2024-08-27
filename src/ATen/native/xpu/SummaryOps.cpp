@@ -27,9 +27,6 @@ Tensor XPUNativeFunctions::histc(
     int64_t nbins,
     const Scalar& min,
     const Scalar& max) {
-  if (self.scalar_type() == ScalarType::Half) {
-    AT_ERROR("HalfTensor is not supported");
-  }
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage
   globalContext().alertNotDeterministic("_histc_xpu");
