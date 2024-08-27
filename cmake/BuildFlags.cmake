@@ -84,6 +84,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     # Equivalent to build option -fpreview-breaking-changes for SYCL compiler.
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D__INTEL_PREVIEW_BREAKING_CHANGES)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_USE_CXX11_ABI})
+    if(BUILD_WITH_PER_KERNEL AND (NOT DEFINED ENV{TORCH_XPU_ARCH_LIST}))
+      message("Build libtorch_xpu.so with spliting device code kernel by kernel (-fsycl-device-code-split=per_kernel).")
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-device-code-split=per_kernel)
+    endif()
+
   endif()
 
   CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
@@ -110,6 +115,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   endif()
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-max-parallel-link-jobs=${SYCL_MAX_PARALLEL_LINK_JOBS})
   set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
+  if(BUILD_WITH_PER_KERNEL AND (NOT DEFINED ENV{TORCH_XPU_ARCH_LIST}))
+    set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} -fsycl-device-code-split=per_kernel)
+  endif()
 
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-poison-unsupported-fp64-kernels")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-intel-enable-auto-large-GRF-mode")
@@ -119,9 +127,13 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
     set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
   else()
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,xe-lpg,ats-m150")
-    message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for a full AOT build." 
+    if(BUILD_WITH_PER_KERNEL)
+      message("AOT is disabled due to turning on BUILD_WITH_PER_KERNEL ...")
+    else()
+      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,xe-lpg,ats-m150")
+      message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for a full AOT build."
               "Try specifying from 'pvc,xe-lpg,ats-m150' if you don't need.")
+    endif()
   endif()
   message(STATUS "    SYCL_OFFLINE_COMPILER_AOT_OPTIONS: ${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}")
 
