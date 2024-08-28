@@ -140,6 +140,8 @@ void adaptive_max_pool3d_backward_meta(
     const Tensor& input,
     const Tensor& indices,
     Tensor& grad_input) {
+  at::native::adaptive_pool_empty_output_check(
+      grad_output, "adaptive_max_pool3d_backward");
   if (grad_input.defined()) {
     at::xpu::resize_out(grad_input, input.sizes(), {}, input.options());
   } else {

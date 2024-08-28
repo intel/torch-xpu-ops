@@ -1174,7 +1174,6 @@ skip_dict = {
         "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
         "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
         "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
-        "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
     ),
 
     "nn/test_dropout_xpu.py": None,
