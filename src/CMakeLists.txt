@@ -23,7 +23,7 @@ add_library(
   ${ATen_XPU_CPP_SRCS}
   "bridge.cpp")
 
-target_compile_options(torch_xpu_ops PRIVATE "-D PATH_TO_TORCH_XPU_OPS_ATEN_LIB=\"libtorch_xpu_ops_aten.so\"")
+target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=\"libtorch_xpu_ops_aten.so\")
 
 add_library(
   torch_xpu_ops_aten

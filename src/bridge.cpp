@@ -1,4 +1,4 @@
-#include <dlfcn.h>
+#include <windows.h>
 #include <iostream>
 
 // The implementation helps walk around cyclic dependence, when we separate
@@ -17,11 +17,10 @@ namespace {
 class LoadTorchXPUOps {
  public:
   LoadTorchXPUOps() {
-    void* fd = dlopen(PATH_TO_TORCH_XPU_OPS_ATEN_LIB, RTLD_NOW);
-    if (!fd) {
-      std::cout
-          << "Could not load ATen XPU backend: " << dlerror()
-          << ". PyTorch operators could not work on XPU device ... Please check if libraries of PyTorch XPU backend are installed correctly or file an issue on https://github.com/intel/torch-xpu-ops/issues"
+    if (!LoadLibrary(PATH_TO_TORCH_XPU_OPS_ATEN_LIB)) {
+      std::cout << "PyTorch XPU operators library is not loaded ... "
+          << "Please check if PyTorch is installed correctly. "
+          << "Or file an issue on https://github.com/intel/torch-xpu-ops/issues."
           << std::endl;
     }
   }
