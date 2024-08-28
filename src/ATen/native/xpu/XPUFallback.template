@@ -174,7 +174,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_efficient_attention_forward",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
-    "_fft_c2c",
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",

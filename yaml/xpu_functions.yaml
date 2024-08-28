@@ -722,3 +722,5 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - _fft_c2c
+  - _fft_c2c.out
