@@ -3,6 +3,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
+#include <ATen/native/xpu/sycl/ResizeKernel.h>
+
 namespace at::native::xpu {
 
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {

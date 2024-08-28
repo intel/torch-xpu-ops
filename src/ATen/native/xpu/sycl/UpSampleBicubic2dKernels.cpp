@@ -6,6 +6,8 @@
 #include <ATen/native/xpu/UpSample.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>

@@ -6,6 +6,8 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
+
 #ifdef _WIN32
 #define RESTRICT __restrict
 #else

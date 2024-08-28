@@ -11,6 +11,8 @@
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/LossNLL2dKernels.h>
+
 namespace at::native::xpu {
 inline Tensor optional_contiguous(const Tensor& source) {
   return source.defined() ? source.contiguous() : source;
