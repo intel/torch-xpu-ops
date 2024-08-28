@@ -66,7 +66,8 @@ Tensor _copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
 // For test infrastructure
 Tensor _copy_from(const Tensor& self, const Tensor& dst, bool non_blocking) {
   dst.resize_as_(self);
-  return at::XPUNativeFunctions::copy_(const_cast<Tensor&>(dst), self, non_blocking);
+  return at::XPUNativeFunctions::copy_(
+      const_cast<Tensor&>(dst), self, non_blocking);
 }
 
 // Should not register the operator. Desc of

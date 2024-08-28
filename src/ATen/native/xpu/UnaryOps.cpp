@@ -1037,7 +1037,6 @@ Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
   return out;
 }
 
-
 Tensor XPUNativeFunctions::round(const Tensor& self) {
   if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
     return self.clone();
