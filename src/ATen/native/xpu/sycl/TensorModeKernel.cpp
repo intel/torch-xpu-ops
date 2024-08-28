@@ -278,8 +278,9 @@ void mode_impl(
           } else {
             judgeEqual = bool(slm_ptr[item_id - 1] == slm_ptr[item_id]);
           }
-          scratch_status_ptr[global_index] = (judgeEqual) ? (1) : (0);
-          scratch_value_ptr[global_index] = scratch_status_ptr[global_index];
+          auto status = (judgeEqual) ? (1) : (0);
+          scratch_status_ptr[global_index] = status;
+          scratch_value_ptr[global_index] = status;
         }
       }
       item.barrier(sycl_global_fence);
