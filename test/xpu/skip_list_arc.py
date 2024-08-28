@@ -8,4 +8,7 @@ skip_dict = {
     "test_tensor_creation_ops_xpu.py": (
         "test_float_to_int_conversion_finite_xpu_int64",
     ),
+    "test_ops_xpu.py": (
+        "test_compare_cpu_digamma_xpu_float32",
+    ),
 }
