@@ -86,7 +86,7 @@ jobs:
         shell: cmd
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
-          call 'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat' x64
+          call "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
           set VS2022INSTALLDIR=C:\Program Files\Microsoft Visual Studio\2022\BuildTools\
           call conda activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
