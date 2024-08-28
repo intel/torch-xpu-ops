@@ -3,6 +3,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

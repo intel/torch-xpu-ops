@@ -4,6 +4,8 @@
 #include <ATen/core/Reduction.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/LossNLLKernel.h>
+
 namespace at::native::xpu {
 
 using namespace at::xpu;

@@ -4,6 +4,8 @@
 #include <c10/core/WrapDimMinimal.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/CrossKernel.h>
+
 namespace at::native::xpu {
 template <typename scalar_t>
 struct CrossKernelFunctor {

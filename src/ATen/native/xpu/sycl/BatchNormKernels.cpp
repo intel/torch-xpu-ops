@@ -13,6 +13,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 
+#include <ATen/native/xpu/sycl/BatchNormKernels.h>
+
 #ifdef _WIN32
 #define RESTRICT __restrict
 #else

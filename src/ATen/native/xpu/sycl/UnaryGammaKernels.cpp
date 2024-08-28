@@ -9,6 +9,8 @@
 #include <c10/core/ScalarType.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UnaryGammaKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
