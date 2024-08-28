@@ -544,16 +544,18 @@ void _embedding_bag_per_sample_weights_backward_impl(
     index_t padding_idx) {
   using accscalar_t = at::acc_type<scalar_t, true>;
 
-  int64_t max_group_size = 64;
+  using Kernel = EmbeddingBagPerSampleWeightsBackwardKernelFunctor<
+      scalar_t,
+      index_t,
+      accscalar_t>;
+
+  int64_t max_group_size = syclMaxWorkGroupSize<Kernel>();
 
   int64_t num_group = (num_samples + max_group_size - 1) / max_group_size;
   auto global_range{num_group * max_group_size};
   auto local_range{max_group_size};
 
-  auto caller = EmbeddingBagPerSampleWeightsBackwardKernelFunctor<
-      scalar_t,
-      index_t,
-      accscalar_t>(
+  auto caller = Kernel(
       grad,
       grad_stride0,
       grad_stride1,
