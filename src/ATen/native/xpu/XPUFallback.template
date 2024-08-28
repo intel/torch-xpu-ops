@@ -155,8 +155,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
     "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
-    "adaptive_max_pool3d_backward.grad_input",
-    "adaptive_max_pool3d.out",
     "angle",
     "avg_pool3d_backward.grad_input",
     "avg_pool3d.out",
