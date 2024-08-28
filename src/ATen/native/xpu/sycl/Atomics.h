@@ -325,9 +325,7 @@ static inline void atomicAdd(
   target.fetch_add(val);
 }
 
-static inline void atomicAdd(
-    const sycl_local_ptr<int>& address,
-    int val) {
+static inline void atomicAdd(const sycl_local_ptr<int>& address, int val) {
   sycl_atomic_ref_rlx_wg_local_t<int> target(*address);
   target.fetch_add(val);
 }

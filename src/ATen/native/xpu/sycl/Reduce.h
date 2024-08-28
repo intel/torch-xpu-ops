@@ -246,9 +246,8 @@ struct ReduceConfig {
     // in side of SG. It is functional WA. We got case failures on some
     // platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8
-        ? syclMinSubGroupSize()
-        : syclMaxSubGroupSize();
+    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
+                                                : syclMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
