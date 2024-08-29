@@ -36,6 +36,15 @@ static inline c10::complex<T> pow_(c10::complex<T> base, c10::complex<T> exp) {
 
 } // namespace impl
 
+#ifdef _MSC_VER
+template <typename scalar_t>
+struct PowTensorTensorCastFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
+  opmath_t operator()(opmath_t base, opmath_t exp) const {
+    return impl::pow_(base, exp);
+  }
+};
+#else
 template <typename scalar_t>
 struct PowTensorTensorCastFunctor {
   scalar_t operator()(scalar_t base, scalar_t exp) const {
@@ -43,6 +52,7 @@ struct PowTensorTensorCastFunctor {
     return impl::pow_(opmath_t{base}, opmath_t{exp});
   }
 };
+#endif
 
 template <typename scalar_t>
 struct PowTensorTensorFunctor {
