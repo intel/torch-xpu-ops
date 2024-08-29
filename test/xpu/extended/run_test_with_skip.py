@@ -157,7 +157,6 @@ for skip_case in skip_list[1:]:
     skip_options += skip_option
 skip_options += "\""
 
-os.environ["PYTORCH_ENABLE_XPU_FALLBACK"]="1"
 os.environ["PYTORCH_TEST_WITH_SLOW"]="1"
 
 test_command = "pytest -v test_ops_xpu.py"
