@@ -13,8 +13,8 @@ add_library(
   STATIC
   ${ATen_XPU_CPP_SRCS}
   "bridge.cpp")
-
-target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=\"torch_xpu_ops_aten.dll\")
+set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
+target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
 add_library(
   torch_xpu_ops_aten
@@ -46,6 +46,11 @@ else()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
     string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
+    # Resolve cyclic dependences between
+    # torch_xpu_ops_sycl_unary_binary_kernels.dll and
+    # torch_xpu_ops_sycl_kernels.dll. Move definition and invoke of kernels
+    # into a same kernel library. Here we move elementwise kernel pow and copy
+    # into torch_xpu_ops_sycl_unary_binary_kernels.dll.
     string(REGEX MATCH "Pow" IS_POW ${sycl_src})
     string(REGEX MATCH "Copy" IS_COPY ${sycl_src})
     if(IS_BINARY STREQUAL "" AND IS_UNARY STREQUAL "" AND IS_POW STREQUAL "" AND IS_COPY STREQUAL "")
