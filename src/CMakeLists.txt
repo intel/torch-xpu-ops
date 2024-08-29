@@ -9,6 +9,12 @@ set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Inclu
 
 add_subdirectory(ATen)
 
+# With the increasement of bin size, we have to split libtorch_xpu.so into
+# multiple libraries. Because of strict linkage requirements on Windows,
+# we add extra logics to resolve, 1) Cyclic dependence, 2) Make symbols visible.
+# To isolate impact and keep both maintainable, there are separate code pieces
+# to setup CMAKE targets. Will revert splitting library and unify these once
+# compression of device code is supported by SYCL/backend compiler.
 if(WIN32)
   include(BuildOnWindows.cmake)
 else()

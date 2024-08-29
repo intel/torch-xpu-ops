@@ -1,5 +1,6 @@
 #include <windows.h>
-#include <iostream>
+#include <sstream>
+#include <stdexcept>
 
 // The implementation helps walk around cyclic dependence, when we separate
 // kernels into multiple dll/so to avoid a large bin (>2GB).
@@ -17,11 +18,13 @@ namespace {
 class LoadTorchXPUOps {
  public:
   LoadTorchXPUOps() {
-    if (!LoadLibrary(PATH_TO_TORCH_XPU_OPS_ATEN_LIB)) {
-      std::cout << "PyTorch XPU operators library is not loaded ... "
-          << "Please check if PyTorch is installed correctly. "
-          << "Or file an issue on https://github.com/intel/torch-xpu-ops/issues."
-          << std::endl;
+    if (NULL == LoadLibrary(PATH_TO_TORCH_XPU_OPS_ATEN_LIB)) {
+      std::ostringstream error;
+      error << "PyTorch XPU operators library is not loaded (ERROR: "
+            << GetLastError()
+            << "). Please check if PyTorch is installed correctly."
+            << " Or please file an issue on https://github.com/intel/torch-xpu-ops/issues.";
+      throw std::runtime_error(error.str());
     }
   }
 };
