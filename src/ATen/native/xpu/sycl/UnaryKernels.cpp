@@ -234,8 +234,8 @@ struct Expm1Functor {
 template <typename T>
 struct Expm1Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
-    auto a = std::sin(.5 * x.imag());
-    auto re = std::expm1(x.real()) * std::cos(x.imag()) - 2 * a * a;
+    auto a = std::sin(T(.5) * x.imag());
+    auto re = std::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
     auto im = std::exp(x.real()) * std::sin(x.imag());
     return c10::complex<T>(re, im);
   }
