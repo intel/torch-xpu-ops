@@ -171,5 +171,9 @@ skip_dict = {
     "test_compare_cpu_isin_xpu_bfloat16",
     "test_compare_cpu_unique_consecutive_xpu_bfloat16",
 
+    # returned index is dependent on input data and implementation detail, and no
+    # specification is given to uniquely identify the correct index 
+    # (e.g. index with maximal / minimal value)
+    "test_compare_cpu_mode",
     ),
 }
