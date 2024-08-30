@@ -2,9 +2,7 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 Tensor& arange_kernel(
     const Scalar& start,
@@ -18,6 +16,10 @@ Tensor& range_kernel(
     const Scalar& step,
     Tensor& result);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+Tensor& linspace_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    Tensor& result);
+
+} // namespace at::native::xpu

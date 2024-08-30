@@ -217,7 +217,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_solve_ex.result",
     "linalg_solve_triangular",
     "_linalg_svd.U",
-    "linspace.out",
     "_logcumsumexp",
     "log_normal_",
     "logspace.out",
