@@ -800,6 +800,10 @@ static inline void index_copy_impl(
     int64_t dim,
     const Tensor& indices,
     const Tensor& source) {
+  if (indices.numel() == 0) {
+    return;
+  }
+
   static constexpr string_view DIM_WARNING =
       "Tensor too large or too many (> 12) dimensions";
 
