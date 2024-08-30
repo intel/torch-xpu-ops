@@ -570,7 +570,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
 CriterionTest.test_cuda = CriterionTest_test_xpu
 
 from torch.testing._internal.common_methods_invocations import sample_inputs_cat_concat, S, M
-from torch.testing._internal.common_methods_invocations import make_tensor
+from torch.testing._internal.common_methods_invocations import make_tensor, mask_not_all_zeros
 from functools import partial
 from torch.testing._internal.opinfo.core import SampleInput
 
@@ -604,6 +604,21 @@ def index_variable_nofp64(shape, max_indices, device=torch.device('cpu')):
     index = torch.rand(*shape, dtype=torch.float32, device=device).mul_(max_indices).floor_().long()
     return index
 
+def sample_inputs_index_put_nofp64(op_info, device, dtype, requires_grad, **kwargs):
+    make_arg = partial(make_tensor, dtype=dtype, device=device, requires_grad=requires_grad)
+
+    for accumulate in [False, True]:
+        # Test with indices arg
+        yield SampleInput(
+            make_arg((S, S,)),
+            (index_variable_nofp64(2, S, device=device),),
+            make_arg((2, S)),
+            accumulate=accumulate)
+
+        # Test with mask arg
+        mask = torch.zeros(S, dtype=torch.bool) if accumulate else mask_not_all_zeros((S,))
+        yield SampleInput(
+            make_arg((S, S)), (mask, ), make_arg((S,)), accumulate=accumulate)
 
 def sample_inputs_softmax_variant_nofp64(
     op_info,
@@ -638,6 +653,30 @@ def sample_inputs_softmax_variant_nofp64(
         SampleInput(make_arg(shape), args=dim, kwargs=kwargs) for shape, dim in cases
     )
 
+def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
+
+    inputs = [
+        ((), {}),
+        ((S, S), {}),
+        ((0, S, 0), {}),
+        ((S,), {'dtype': dtype, 'device': device}),
+        # Hard-code some dtypes/devices. We want to test cases where the
+        # (dtype, device) is different from the input's (dtype, device)
+        # disabled for ARC
+        # ((S,), {'dtype': torch.double}),
+        ((S,), {'device': 'cpu'}),
+        # disabled for ARC
+        #((S,), {'dtype': torch.double, 'device': 'cpu'}),
+    ]
+    if torch.cuda.is_available():
+        inputs.append(((S,), {'device': 'cuda'}))
+
+    for shape, kwargs in inputs:
+        t = make_tensor(shape, dtype=dtype, device=device,
+                        low=None, high=None,
+                        requires_grad=requires_grad)
+        yield SampleInput(t, **kwargs)
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         self.test_package = (
@@ -671,10 +710,6 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            self.sample_inputs_softmax_variant = common_methods_invocations.sample_inputs_softmax_variant
-            self.index_variable = common_methods_invocations.index_variable
-            self.reference_inputs_cat = common_methods_invocations.reference_inputs_cat
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -737,15 +772,30 @@ class XPUPatchForImport:
                 opinfo.dtypesIfXPU = set(filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU)))
                 opinfo.backward_dtypes = tuple(filter(lambda x: (x not in fp64_dtypes), list(opinfo.backward_dtypes)))
 
+    def filter_fp64_sample_input(self, db):
+        # Only for platform without fp64 support
+        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
+            for opinfo in db:
+                if opinfo.name in _xpu_computation_op_list:
+                    if opinfo.variant_test_name == "with_dtype" and \
+                        opinfo.name in ["log_softmax", "softmax", "nn.functional.softmin", ] and \
+                        get_wrapped_fn(opinfo.sample_inputs_func) != opinfo.sample_inputs_func and \
+                        get_wrapped_fn(opinfo.sample_inputs_func).func.__name__ == common_methods_invocations.sample_inputs_softmax_variant.__name__:
+                            opinfo.sample_inputs_func = torch.no_grad()(partial(sample_inputs_softmax_variant_nofp64, with_dtype=True))
+                    elif opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_softmax_variant.__name__:
+                        opinfo.sample_inputs_func = sample_inputs_softmax_variant_nofp64
+                    elif opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_like_fns.__name__:
+                        opinfo.sample_inputs_func = sample_inputs_like_fns_nofp64
+                    elif opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_index_put.__name__:
+                        opinfo.sample_inputs_func = sample_inputs_index_put_nofp64
+
+                    if opinfo.reference_inputs_func != None and opinfo.reference_inputs_func.__name__ == common_methods_invocations.reference_inputs_cat.__name__:
+                        opinfo.reference_inputs_func = reference_inputs_cat_nofp64
+
     def __enter__(self):
         # Monkey patch until we have a fancy way
 
         common_device_type.onlyCUDA = common_device_type.onlyXPU
-
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            common_methods_invocations.sample_inputs_softmax_variant = sample_inputs_softmax_variant_nofp64
-            common_methods_invocations.index_variable = index_variable_nofp64
-            common_methods_invocations.reference_inputs_cat = reference_inputs_cat_nofp64
 
         class dtypesIfXPU(common_device_type.dtypes):
             def __init__(self, *args):
@@ -773,6 +823,7 @@ class XPUPatchForImport:
         ]:
             self.align_supported_dtypes(db)
             self.align_db_decorators(db)
+            self.filter_fp64_sample_input(db)
         self.align_db_decorators(module_db)
         common_methods_invocations.python_ref_db = [
             op
@@ -868,11 +919,6 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
         cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
-
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            common_methods_invocations.sample_inputs_softmax_variant = self.sample_inputs_softmax_variant
-            common_methods_invocations.index_variable = self.index_variable
-            common_methods_invocations.reference_inputs_cat = self.reference_inputs_cat
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
