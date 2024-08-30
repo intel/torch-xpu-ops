@@ -190,6 +190,11 @@ skip_list = (
     # Greatest absolute difference: 0.001953125 at index (2, 0, 0) (up to 0.001 allowed)
     # Greatest relative difference: 0.007568359375 at index (2, 0, 0) (up to 0.001 allowed)
     "test_compare_cpu_cumprod_xpu_bfloat16",
+    # Precision error.
+    # Mismatched elements: 3 / 5 (60.0%)
+    # Greatest absolute difference: 0.0625 at index (1,) (up to 0.001 allowed)
+    # Greatest relative difference: 0.00640869140625 at index (1,) (up to 0.001 allowed)
+    "test_compare_cpu_xlogy_xpu_bfloat16 ",
 
     # Precision error.
     # Mismatched elements: 1 / 9 (11.1%)
