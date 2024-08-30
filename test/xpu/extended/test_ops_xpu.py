@@ -26,9 +26,9 @@ from torch.testing._internal.common_utils import (
 )
 
 try:
-    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
+    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
 except Exception as e:
-    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list
+    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
 
 with XPUPatchForImport():
     from test_ops import TestCommon as TestCommonBase
@@ -63,10 +63,20 @@ class Namespace:
     # Therefore, we build TestCommonProxy by inheriting the TestCommon and TestCase to ensure
     # the same feature set as the TestCommon.
     class TestCommonProxy(TestCase, TestCommonBase):
-        pass
+        def __init__(self, test_case = None):
+            if test_case:
+                # copy custom accuracy setting
+                self.maxDiff = test_case.maxDiff
+                self.precision = test_case.precision
+                self.rel_tol = test_case.rel_tol
 
     class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
-        pass
+        def __init__(self, test_case = None):
+            if test_case:
+                # copy custom accuracy setting
+                self.maxDiff = test_case.maxDiff
+                self.precision = test_case.precision
+                self.rel_tol = test_case.rel_tol
 
 
 class TestCommon(TestCase):
@@ -78,13 +88,13 @@ class TestCommon(TestCase):
     def test_compare_cpu(self, device, dtype, op):
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
-            self.proxy = Namespace.TestCommonProxy()
+            self.proxy = Namespace.TestCommonProxy(self)
             test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
             test_common_test_fn(self.proxy, device, dtype, op)
         # for CUDA doesn't support operators
-        elif (op.name in ["histogram",]):
+        elif (op.name in _ops_without_cuda_support):
             if dtype in op.dtypes:
-                self.proxy = Namespace.TestCommonProxy()
+                self.proxy = Namespace.TestCommonProxy(self)
                 test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
                 test_common_test_fn(self.proxy, device, dtype, op)
         else:
