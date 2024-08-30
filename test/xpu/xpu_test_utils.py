@@ -193,6 +193,8 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "max_unpool2d",
+    "max_unpool3d",
     "sigmoid",
     "logsigmoid",
     "sgn",
