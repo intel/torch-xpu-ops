@@ -749,7 +749,7 @@ skip_dict = {
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
     ),
 
-    "test_autograd_fallback.py": None,
+    "test_autograd_fallback_xpu.py": None,
 
     "test_sort_and_select_xpu.py": ("test_sort_large_slice_xpu",),  # Hard code CUDA
 
