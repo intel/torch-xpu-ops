@@ -17,5 +17,9 @@ for key in skip_dict:
 if fail_test:
     print(",".join(fail_test) + " have failures")
 
-exit_code = os.WEXITSTATUS(res)
-sys.exit(exit_code)
+
+if os.name == "nt":
+    sys.exit(res)
+else:    
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
