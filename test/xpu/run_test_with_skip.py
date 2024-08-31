@@ -1,5 +1,6 @@
 import os
 import sys
+
 from skip_list_common import skip_dict
 from xpu_test_utils import launch_test
 

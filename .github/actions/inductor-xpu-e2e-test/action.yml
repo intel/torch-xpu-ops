@@ -48,7 +48,7 @@ runs:
         source activate e2e_ci
         source .github/scripts/env.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          if [[ ${{ inputs.pytorch }} != *" wheel"* ]]; then
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
             cd audio && git checkout $TORCHAUDIO_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
@@ -70,7 +70,7 @@ runs:
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          if [[ ${{ inputs.pytorch }} != *" wheel"* ]]; then
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
             cd vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
