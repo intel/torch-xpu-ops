@@ -13,10 +13,15 @@
 
 namespace at::native::xpu {
 
-template <typename scalar_t>
+template <typename scalar_t, bool USE_FP64_PI>
 struct DigammaFunctor {
   scalar_t operator()(scalar_t a) const {
-    return calc_digamma(a);
+    if constexpr (USE_FP64_PI) {
+      return calc_digamma<scalar_t, double>(a);
+    } else {
+      using pi_t = at::acc_type_device<scalar_t, kXPU>;
+      return calc_digamma<scalar_t, pi_t>(a);
+    }
   }
 };
 
@@ -26,7 +31,13 @@ void digamma_kernel(TensorIteratorBase& iter) {
       at::ScalarType::BFloat16,
       iter.common_dtype(),
       "digamma_xpu",
-      [&]() { gpu_kernel(iter, DigammaFunctor<scalar_t>()); });
+      [&]() {
+        if (syclHasFloat64()) {
+          gpu_kernel(iter, DigammaFunctor<scalar_t, true>());
+        } else {
+          gpu_kernel(iter, DigammaFunctor<scalar_t, false>());
+        }
+      });
 }
 
 template <typename scalar_t>

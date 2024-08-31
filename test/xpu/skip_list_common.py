@@ -749,7 +749,7 @@ skip_dict = {
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
     ),
 
-    "test_autograd_fallback.py": None,
+    "test_autograd_fallback_xpu.py": None,
 
     "test_sort_and_select_xpu.py": ("test_sort_large_slice_xpu",),  # Hard code CUDA
 
@@ -1637,15 +1637,13 @@ skip_dict = {
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
-        # these case passed in a env with triton, but triton did not install in pre-ci.
+        # TypeError: Invalid NaN comparison.
         "test_compile_int4_mm_m_32_k_32_n_48_xpu",
         "test_compile_int4_mm_m_32_k_32_n_64_xpu",
         "test_compile_int4_mm_m_32_k_64_n_48_xpu",
         "test_compile_int4_mm_m_32_k_64_n_64_xpu",
         "test_compile_int4_mm_m_64_k_32_n_48_xpu",
         "test_compile_int4_mm_m_64_k_32_n_64_xpu",
-        "test_compile_int4_mm_m_64_k_64_n_48_xpu",
-        "test_compile_int4_mm_m_64_k_64_n_64_xpu",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
