@@ -17,5 +17,8 @@ for key in skip_dict:
         skip_list += skip_dict_win[key]
     res += launch_test(key, skip_list)
 
-exit_code = os.WEXITSTATUS(res)
-sys.exit(exit_code)
+if os.name == "nt":
+    sys.exit(res)
+else:    
+    exit_code = os.WEXITSTATUS(res)
+    sys.exit(exit_code)
