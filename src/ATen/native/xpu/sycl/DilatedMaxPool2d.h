@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void max_pool2d_with_indices_kernel(
+TORCH_XPU_API void max_pool2d_with_indices_kernel(
     const Tensor& input,
     IntArrayRef kernel_size,
     IntArrayRef stride,
@@ -14,7 +14,7 @@ void max_pool2d_with_indices_kernel(
     Tensor& output,
     Tensor& indices);
 
-Tensor& max_pool2d_with_indices_backward_kernel(
+TORCH_XPU_API Tensor& max_pool2d_with_indices_backward_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,

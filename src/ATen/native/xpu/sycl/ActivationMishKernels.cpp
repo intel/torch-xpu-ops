@@ -8,6 +8,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
 
+#include <ATen/native/xpu/sycl/ActivationMishKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

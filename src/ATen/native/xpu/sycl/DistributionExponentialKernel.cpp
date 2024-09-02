@@ -7,6 +7,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/Runtime.h>
 
+#include <ATen/native/xpu/sycl/DistributionKernels.h>
+
 namespace at::native::xpu {
 
 void exponential_kernel(

@@ -10,6 +10,8 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/TensorInfo.h>
 
+#include <ATen/native/xpu/sycl/DropoutKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

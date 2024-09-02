@@ -14,6 +14,8 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename accscalar_t>

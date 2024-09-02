@@ -3,7 +3,10 @@
 #include <ATen/TensorIterator.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/ActivationGluKernels.h>
 
 namespace at::native::xpu {
 
