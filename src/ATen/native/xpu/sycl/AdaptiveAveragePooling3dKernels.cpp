@@ -386,8 +386,8 @@ struct AdaptiveAvgPool3dBackwardKernelFunctor {
 
     // select output plane
     int64_t i_plane = item.get_group(1) + offsetZ_;
-    it = i_plane % osizeT_; // output frame/time
-    int d = i_plane / osizeT_;
+    it = i_plane % isizeT_; // output frame/time
+    int d = i_plane / isizeT_;
 
     int ostartT = start_index(it, isizeT_, osizeT_);
     int oendT = end_index(it, isizeT_, osizeT_);
