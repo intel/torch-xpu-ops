@@ -4,13 +4,13 @@
 
 namespace at::native::xpu {
 
-void elu_kernel(
+TORCH_XPU_API void elu_kernel(
     TensorIteratorBase& iter,
     const Scalar& alpha,
     const Scalar& scale,
     const Scalar& input_scale);
 
-void elu_backward_kernel(
+TORCH_XPU_API void elu_backward_kernel(
     TensorIteratorBase& iter,
     const Scalar& alpha,
     const Scalar& scale,

@@ -15,6 +15,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
+#include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
+
 namespace at::native::xpu {
 
 static inline int p_start(

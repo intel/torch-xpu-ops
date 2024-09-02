@@ -14,6 +14,8 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {
