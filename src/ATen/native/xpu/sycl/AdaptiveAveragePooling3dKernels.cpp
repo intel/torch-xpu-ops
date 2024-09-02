@@ -252,7 +252,7 @@ void adaptive_avg_pool3d_kernel(
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input_.scalar_type(), "adaptive_avg_pool3d_xpu", [&] {
-        using accscalar_t = at::acc_type<scalar_t, false>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         const scalar_t* input_data = input.const_data_ptr<scalar_t>();
         scalar_t* output_data = output.mutable_data_ptr<scalar_t>();
 
