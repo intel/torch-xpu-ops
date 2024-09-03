@@ -2595,6 +2595,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
         "test_scatter_add_one_dim_deterministic_xpu",
+        # internally uses index_put deterministic implementation
+        # dependent on "test_index_put_non_accumulate_deterministic"
+        "test_index_copy_deterministic",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
