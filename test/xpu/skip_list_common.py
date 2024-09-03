@@ -1060,19 +1060,23 @@ skip_dict = {
 
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
+        # https://github.com/intel/torch-xpu-ops/issues/264
         "test_type",
         # AssertionError: Tensor-likes are not close!
-        "test_RReLU_cuda",
-        "test_RReLU_no_batch_dim_cuda",
-        "test_RReLU_with_up_down_cuda",
+        # skipped by CUDA
+        #"test_RReLU_cuda",
+        #"test_RReLU_no_batch_dim_cuda",
+        #"test_RReLU_with_up_down_cuda",
         # AssertionError: Scalars are not close!
-        "test_RReLU_with_up_down_scalar_cuda",
+        #"test_RReLU_with_up_down_scalar_cuda",
         # rnn fallback to cpu
-        "test_cudnn_weight_format",
+        #"test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
+        # https://github.com/intel/torch-xpu-ops/issues/357
         "test_EmbeddingBag_sparse_cuda",
         "test_Embedding_sparse_cuda",
         # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
+        # Revisit when the op is supported
         "test_TransformerEncoderLayer_empty_xpu",
         "test_transformerencoderlayer_xpu_float16",
         "test_transformerencoderlayer_xpu_float32",
