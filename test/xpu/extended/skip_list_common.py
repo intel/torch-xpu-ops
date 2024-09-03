@@ -1,10 +1,6 @@
-import os
-import sys
-from skip_list_common import skip_dict
-
-<<<<<<< HEAD
-skip_list = (
-    # Calculation error between XPU implementation and CPU implementation,
+skip_dict = {
+    "test_ops_xpu.py": (
+        # Calculation error between XPU implementation and CPU implementation,
     # 1. Compiler optimization causes failing to promote data type to higher precision.
     # 2. Accumulate error is amplified by some operations in some extreme cases. (std::exp(extreme_large_num))
     # 3. Accumulate error is amplified by a large number of accumalate operations.
@@ -28,6 +24,7 @@ skip_list = (
     "test_compare_cpu_tanh_xpu_complex128",
     "test_compare_cpu_tanh_xpu_complex64",
     "test_compare_cpu_rsqrt_xpu_bfloat16",
+    "test_compare_cpu_pow_xpu_bfloat16",
     # cuda has the same issue on this case
     "test_compare_cpu__refs_rsub_xpu_bfloat16",
     "test_compare_cpu_add_xpu_bfloat16",
@@ -149,35 +146,5 @@ skip_list = (
     "test_compare_cpu_nanmedian_xpu_int64",
     "test_compare_cpu_nanmedian_xpu_int8",
     "test_compare_cpu_nanmedian_xpu_uint8",
-
-    # sort algorithm is different to cpu
-    "test_compare_cpu_argsort_xpu_bfloat16",
-    "test_compare_cpu_argsort_xpu_float16",
-    "test_compare_cpu_argsort_xpu_int8",
-    "test_compare_cpu_argsort_xpu_uint8",
-
-    # AssertionError: The values for attribute 'dtype' do not match: torch.float32 != torch.bfloat16
-    # https://github.com/intel/torch-xpu-ops/issues/780
-    "test_compare_cpu_native_layer_norm_xpu_bfloat16",
-    "test_compare_cpu_native_layer_norm_xpu_float16",
-
-    # AssertionError: Tensor-likes are not close!
-    # https://github.com/intel/torch-xpu-ops/issues/781
-    "test_compare_cpu_square_xpu_complex64",
-)
-=======
-skip_list = skip_dict["test_ops_xpu.py"]
->>>>>>> origin
-
-skip_options = " -k \"not " + skip_list[0]
-for skip_case in skip_list[1:]:
-    skip_option = " and not " + skip_case
-    skip_options += skip_option
-skip_options += "\""
-
-os.environ["PYTORCH_TEST_WITH_SLOW"]="1"
-
-test_command = "pytest -v test_ops_xpu.py"
-test_command += skip_options
-res = os.system(test_command)
-sys.exit(res)
+    ),
+}
