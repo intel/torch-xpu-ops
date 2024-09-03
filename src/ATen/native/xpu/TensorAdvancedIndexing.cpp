@@ -1593,6 +1593,10 @@ Tensor& XPUNativeFunctions::index_copy_out(
   if (!out.is_same(self))
     out.copy_(self);
 
+  if (index.numel() == 0) {
+    return out;
+  }
+
   // See Note [Enabling Deterministic Operations]
   if (globalContext().deterministicAlgorithms()) {
     torch::List<std::optional<Tensor>> indices;
