@@ -44,7 +44,11 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
-cpu_xpu_all = (torch.bfloat16, torch.complex128, torch.complex64, torch.float16, torch.float32, torch.float64, torch.int16, torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool)
+cpu_xpu_all = (torch.bfloat16, torch.complex64, torch.float16, torch.float32, torch.int16,
+               torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool) \
+               if "has_fp64=0" in str(torch.xpu.get_device_properties(0)) else \
+               (torch.bfloat16, torch.complex128, torch.complex64, torch.float16, torch.float32,
+                torch.float64, torch.int16, torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool)
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
 _xpu_computation_ops = [
