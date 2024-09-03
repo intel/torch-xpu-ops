@@ -242,7 +242,6 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
-    "native_layer_norm",
 ]
 
 _ops_without_cuda_support = [
