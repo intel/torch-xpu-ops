@@ -154,5 +154,21 @@ skip_dict = {
     "test_compare_cpu_nanmedian_xpu_int64",
     "test_compare_cpu_nanmedian_xpu_int8",
     "test_compare_cpu_nanmedian_xpu_uint8",
+
+    # sort algorithm is different to cpu
+    "test_compare_cpu_argsort_xpu_bfloat16",
+    "test_compare_cpu_argsort_xpu_float16",
+    "test_compare_cpu_argsort_xpu_int8",
+    "test_compare_cpu_argsort_xpu_uint8",
+
+    # AssertionError: The values for attribute 'dtype' do not match: torch.float32 != torch.bfloat16
+    # https://github.com/intel/torch-xpu-ops/issues/780
+    "test_compare_cpu_native_layer_norm_xpu_bfloat16",
+    "test_compare_cpu_native_layer_norm_xpu_float16",
+
+    # AssertionError: Tensor-likes are not close!
+    # https://github.com/intel/torch-xpu-ops/issues/781
+    "test_compare_cpu_square_xpu_complex64",
+
     ),
 }
