@@ -227,6 +227,22 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   return agg;
 }
 
+std::tuple<Tensor, Tensor> _euclidean_dist_backward(
+    const Tensor& grad,
+    const Tensor& x1,
+    const Tensor& x2,
+    const Tensor& res) {
+  if (!grad.defined()) {
+    return std::tuple<Tensor, Tensor>(Tensor(), Tensor());
+  }
+  // handle case at 0 where we return a subgradient containing 0
+  Tensor ratio = grad / res;
+  ratio.masked_fill_(res == 0, 0);
+  return std::tuple<Tensor, Tensor>{
+      x1 * ratio.sum(-1, true) - ratio.matmul(x2),
+      x2 * ratio.sum(-2, false).unsqueeze(-1) - ratio.mT().matmul(x1)};
+}
+
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
 struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
@@ -530,10 +546,11 @@ static void cdist_backward_kernel_impl(
     const int64_t r_size,
     const int64_t l1_size,
     const int64_t l2_size) {
-  const auto wgroup_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
+  auto wgroup_size = syclGpuHWThreadsPerEU() * syclMaxSubGroupSize();
   const int group_size_x = 256 > wgroup_size ? wgroup_size : 256;
   const int group_size_y = wgroup_size / group_size_x;
   const int group_num_x = (m + group_size_x * 32 - 1) / (group_size_x * 32);
+
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   auto p_val = static_cast<accscalar_t>(p);
 
@@ -575,6 +592,7 @@ static void cdist_backward_kernel_impl(
 }
 
 Tensor cdist_backward_kernel(
+    Tensor& grad_x1,
     const Tensor& grad,
     const Tensor& x1,
     const Tensor& x2,
@@ -585,9 +603,22 @@ Tensor cdist_backward_kernel(
   const int64_t m = x1.size(-1);
   const int64_t count = cdist.numel();
   const int64_t gs = 1;
-  const int64_t batch = (x1.dim() > 2) ? x1.size(0) : 1;
-  Tensor result =
-      at::empty_like(x1, x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
+  Tensor result = at::empty_like(
+      grad_x1, grad_x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  int64_t batch = result.size(0);
+
+  if (p == 0.0 || grad.numel() == 0 || x1.numel() == 0 || x2.numel() == 0) {
+    result.fill_(0);
+    return result;
+  }
+
+  if (2.0 == p && (r1 > 25 || r2 > 25)) {
+    std::tuple<Tensor, Tensor> edist_tuple;
+    edist_tuple = _euclidean_dist_backward(grad, x1, x2, cdist);
+    result = std::get<0>(edist_tuple);
+    return result;
+  }
 
   Tensor buffer = (x1.dim() > 2)
       ? at::empty({batch, r2, r1, m}, result.options())

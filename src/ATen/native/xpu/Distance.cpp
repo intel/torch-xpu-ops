@@ -120,69 +120,67 @@ Tensor XPUNativeFunctions::_cdist_forward(
   return cdist_impl(x1, x2, p, compute_mode);
 }
 
-std::tuple<Tensor, Tensor> _euclidean_dist_backward(
-    const Tensor& grad,
-    const Tensor& x1,
-    const Tensor& x2,
-    const Tensor& res) {
-  if (!grad.defined()) {
-    return std::tuple<Tensor, Tensor>(Tensor(), Tensor());
-  }
-  // handle case at 0 where we return a subgradient containing 0
-  Tensor ratio = grad / res;
-  ratio.masked_fill_(res == 0, 0);
-  return std::tuple<Tensor, Tensor>{
-      x1 * ratio.sum(-1, true) - ratio.matmul(x2),
-      x2 * ratio.sum(-2, false).unsqueeze(-1) - ratio.mT().matmul(x1)};
-}
-
-Tensor cdist_backward_impl(
-    const Tensor& grad,
-    const Tensor& x1,
-    const Tensor& x2,
-    const double p,
-    const Tensor& cdist) {
-  const int64_t r1 = x1.size(-2);
-  const int64_t r2 = x2.size(-2);
-  const int64_t m = x1.size(-1);
-  const int64_t batch = (x1.dim() > 2) ? x1.size(0) : 1;
-  Tensor result =
-      at::empty_like(x1, x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  if (p == 0.0 || grad.numel() == 0 || x1.numel() == 0 || x2.numel() == 0) {
-    result.fill_(0);
-    return result;
-  }
-
-  if (2.0 == p && (r1 > 25 || r2 > 25)) {
-    std::tuple<Tensor, Tensor> edist_tuple;
-    edist_tuple = _euclidean_dist_backward(grad, x1, x2, cdist);
-    result = std::get<0>(edist_tuple);
-    return result;
-  }
-
-  Tensor buffer = (x1.dim() > 2)
-      ? at::empty({batch, r2, r1, m}, result.options())
-      : at::empty({r2, r1, m}, result.options());
-  native::xpu::cdist_backward_kernel(grad, x1, x2, p, cdist);
-  if (x1.dim() > 2) {
-    at::sum_out(result, buffer, 1);
-  } else {
-    at::sum_out(result, buffer, 0);
-  }
-  return result;
-}
-
 Tensor XPUNativeFunctions::_cdist_backward(
-    const Tensor& grad,
-    const Tensor& x1,
-    const Tensor& x2,
-    double p,
-    const Tensor& cdist) {
-  auto grad_ = grad.contiguous();
-  auto x1_ = x1.contiguous();
-  auto x2_ = x2.contiguous();
-  auto cdist_ = cdist.contiguous();
-  return cdist_backward_impl(grad_, x1_, x2_, p, cdist_);
+    const Tensor& _grad,
+    const Tensor& _x1,
+    const Tensor& _x2,
+    const double p,
+    const Tensor& _cdist) {
+  // Broadcasting might generate non-contiguous Tensors, so handle it before
+  // doing checks
+  int64_t c1 = _x1.size(-1);
+  int64_t c2 = _x2.size(-1);
+  int64_t r1 = _x1.size(-2);
+  int64_t r2 = _x2.size(-2);
+  auto dim1 = _x1.dim();
+  auto dim2 = _x2.dim();
+  IntArrayRef batch_tensor1(_x1.sizes().data(), dim1 - 2);
+  IntArrayRef batch_tensor2(_x2.sizes().data(), dim2 - 2);
+  std::vector<int64_t> expand_batch_portion =
+      infer_size(batch_tensor1, batch_tensor2);
+  std::vector<int64_t> tensor1_expand_size(expand_batch_portion);
+  tensor1_expand_size.insert(tensor1_expand_size.end(), {r1, c1});
+  std::vector<int64_t> tensor2_expand_size(expand_batch_portion);
+  tensor2_expand_size.insert(tensor2_expand_size.end(), {r2, c2});
+
+  // Compute the linearized batch size
+  const int64_t batch_product = c10::multiply_integers(expand_batch_portion);
+
+  // Gracefully handle empty Tensors
+  if (r1 == 0 || r2 == 0 || c1 == 0 || batch_product == 0) {
+    return at::zeros_like(_x1, _x1.options());
+  }
+
+  Tensor x1 = _x1;
+  if (tensor1_expand_size != x1.sizes()) {
+    x1 = x1.expand(tensor1_expand_size);
+  }
+  Tensor x2 = _x2;
+  if (tensor2_expand_size != x2.sizes()) {
+    x2 = x2.expand(tensor2_expand_size);
+  }
+
+  x1 = x1.contiguous();
+  x2 = x2.contiguous();
+  auto cdist = _cdist.contiguous();
+  auto grad = _grad.contiguous();
+  int64_t n = x1.size(-2);
+  int64_t m = x1.size(-1);
+  auto device1 = x1.device().type();
+  TORCH_CHECK(
+      device1 == kCPU || device1 == kXPU,
+      "_cdist_backward only supports CPU and XPU devices, X1 got: ",
+      device1);
+  auto device2 = x2.device().type();
+  TORCH_CHECK(
+      device2 == kCPU || device2 == kXPU,
+      "_cdist_backward only supports CPU and XPU devices, X2 got: ",
+      device2);
+
+  Tensor grad_x1 = at::empty(
+      {batch_product, n, m}, x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  grad_x1 = native::xpu::cdist_backward_kernel(grad_x1, grad, x1, x2, p, cdist);
+  return grad_x1.view(x1.sizes());
 }
 
 Tensor XPUNativeFunctions::_pdist_forward(const Tensor& self, const double p) {

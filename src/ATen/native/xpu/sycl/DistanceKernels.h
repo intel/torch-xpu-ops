@@ -9,6 +9,7 @@ void cdist_kernel(
     double p);
 
 Tensor cdist_backward_kernel(
+    Tensor& grad_x1,
     const Tensor& grad,
     const Tensor& x1,
     const Tensor& x2,
