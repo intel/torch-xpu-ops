@@ -83,6 +83,11 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
+  if(LINUX)
+    target_link_options(${lib} PRIVATE "-Wl,-rpath,$ORIGIN")
+    target_link_options(${lib} PRIVATE "-Wl,-rpath,$ORIGIN/../../../../")
+    target_link_options(${lib} PRIVATE "-Wl,--disable-new-dtags")
+  endif()
 endforeach()
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/ClangFormat.cmake)
