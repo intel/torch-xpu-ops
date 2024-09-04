@@ -709,7 +709,7 @@ skip_dict = {
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
     ),
 
-    "test_autograd_fallback.py": None,
+    "test_autograd_fallback_xpu.py": None,
 
     "test_sort_and_select_xpu.py": ("test_sort_large_slice_xpu",),  # Hard code CUDA
 
@@ -1592,7 +1592,7 @@ skip_dict = {
         "test_triangular_solve_xpu_complex64",
         "test_triangular_solve_xpu_float64",
         # https://github.com/intel/torch-xpu-ops/issues/317
-        # addmm.out, addmv.out, linalg_lstsq, linalg_vector_norm.out, norm.out, vdot&dot lack XPU support and fallback to CPU
+        # addmm.out, addmv.out, linalg_lstsq, vdot&dot lack XPU support and fallback to CPU
         "test_addmm_sizes_xpu_complex128",
         "test_addmm_sizes_xpu_complex64",
         "test_blas_alpha_beta_empty_xpu_complex128",
@@ -1601,21 +1601,18 @@ skip_dict = {
         "test_linalg_lstsq_input_checks_xpu_complex64",
         "test_linalg_lstsq_input_checks_xpu_float32",
         "test_linalg_lstsq_input_checks_xpu_float64",
-        "test_norm_fused_type_promotion_xpu_bfloat16",
-        "test_norm_fused_type_promotion_xpu_float16",
         "test_dot_invalid_args_xpu",
         "test_vdot_invalid_args_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/821
+        # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+        "test_norm_fused_type_promotion_xpu_bfloat16",
+        # AssertionError: True is not false
+        "test_norm_fused_type_promotion_xpu_float16",
+        # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
-        # TypeError: Invalid NaN comparison.
-        "test_compile_int4_mm_m_32_k_32_n_48_xpu",
-        "test_compile_int4_mm_m_32_k_32_n_64_xpu",
-        "test_compile_int4_mm_m_32_k_64_n_48_xpu",
-        "test_compile_int4_mm_m_32_k_64_n_64_xpu",
-        "test_compile_int4_mm_m_64_k_32_n_48_xpu",
-        "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
@@ -1624,6 +1621,8 @@ skip_dict = {
         "test_matmul_check_entries_tunableop_xpu_float16",
         "test_minimum_tuning_iteration_tunableop_xpu_float16",
         "test_validator_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float32",
+        "test_addmm_relu_tunableop_rocm_xpu_float64",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
@@ -1903,6 +1902,10 @@ skip_dict = {
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
+
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809 
+        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
+        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_float64",
     ),
 
     "test_matmul_cuda_xpu.py": (
@@ -2415,6 +2418,10 @@ skip_dict = {
         ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
         "test_fn_grad_to_sparse_xpu_float64",
         "test_fn_gradgrad_to_sparse_xpu_float64",
+
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809
+        "test_fn_gradgrad_nn_functional_conv3d_xpu_complex128",
+        "test_fn_gradgrad_nn_functional_conv3d_xpu_float64",
     ),
 
     "test_torch_xpu.py": (
@@ -2667,6 +2674,8 @@ skip_dict = {
         # accuracy issue, TODO
         "test_Conv2d_naive_groups_xpu_float16",
         "test_Conv2d_groups_nobias",
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809
+        "test_thnn_conv_strided_padded_dilated",
     ),
 
     "test_dynamic_shapes_xpu.py": None,
