@@ -1,5 +1,5 @@
 skip_dict = {
-    "test_torch_xpu":(
+    "test_torch_xpu.py":(
         # segment fault
         "test_to",
         "test_to_with_tensor",
@@ -9,7 +9,7 @@ skip_dict = {
         # Greatest relative difference: 0.2167036384344101 at index (2, 0, 21) (up to 0 allowed)
         "test_cdist_cuda_backward_xpu",
     ),
-    "test_ops_xpu.py":(
+    "test_ops_xpu.py.py":(
         # AssertionError: Tensor-likes are not close!
         # Mismatched elements: 14 / 176 (8.0%)
         # Greatest absolute difference: 1.1348890364718799e-05 at index (0, 1, 7) (up to 1e-07 allowed)
@@ -21,7 +21,7 @@ skip_dict = {
         # Greatest relative difference: 4.5110217125666474e-07 at index (0, 1, 2) (up to 1e-07 allowed)
         "test_numpy_ref_nn_functional_conv_transpose1d_xpu_float64",
     ),
-    "test_modules_xpu":(
+    "test_modules_xpu.py":(
         # torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
         # numerical:tensor(0.0484, device='xpu:0', dtype=torch.float64)
         # analytical:tensor(-0.0020, device='xpu:0', dtype=torch.float64)
@@ -80,11 +80,11 @@ skip_dict = {
     "test_tensor_creation_ops_xpu.py": (
         "test_float_to_int_conversion_finite_xpu_int64",
     ),
-    "test_autograd_xpu": (
+    "test_autograd_xpu.py": (
         # AssertionError: RuntimeError not raised
         "test_increment_version",
     ),
-    "test_linalg_xpu": (
+    "test_linalg_xpu.py": (
         # AssertionError: tensor(False, device='xpu:0') is not true
         "test_addmm_baddbmm_overflow_xpu_float16",
         # Mismatched elements: 50 / 50 (100.0%)
@@ -98,7 +98,7 @@ skip_dict = {
         # Greatest relative difference: 0.005680084228515625 at index (56096, 0, 3) (up to 0.001 allowed)
         "test_matmul_45724_xpu",
     ),
-    "test_ops_fwd_gradients_xpu":(
+    "test_ops_fwd_gradients_xpu.py":(
         # torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex inputs only, Jacobian computed with forward mode mismatch for output 0 with respect to input 1,
         # The max per-element difference (slow mode) is: 0.7384582141529449.
         "test_fn_fwgrad_bwgrad_nn_functional_conv1d_xpu_complex128",
@@ -118,7 +118,7 @@ skip_dict = {
         # The max per-element difference (slow mode) is: 2.635165214538574.
         "test_forward_mode_AD_nn_functional_conv_transpose1d_xpu_float64",
     ),
-    "test_ops_gradients_xpu": (
+    "test_ops_gradients_xpu.py": (
         # torch.autograd.gradcheck.GradcheckError: While considering the imaginary part of complex outputs only, Jacobian mismatch for output 0 with respect to input 0,
         # numerical:tensor(0.0295-9.1728j, device='xpu:0', dtype=torch.complex128)
         # analytical:tensor(2.4351-9.0580j, device='xpu:0', dtype=torch.complex128)
@@ -144,8 +144,159 @@ skip_dict = {
         # analytical:tensor(-0.0408, device='xpu:0', dtype=torch.float64)
         "test_fn_gradgrad_nn_functional_conv2d_xpu_float64",
     ),
-    "test_dynamic_shapes_xpu": (
+    "test_dynamic_shapes_xpu.py": (
         # AttributeError: 'DimConstraints' object has no attribute 'remove_redundant_dynamic_results'
         "test_dim_constraints_solve_full",
+    ),
+    "nn/test_convolution_xpu.py": (
+        "test_Conv2d_deterministic_cudnn_xpu_complex64",
+        "test_Conv2d_deterministic_cudnn_xpu_float32",
+        "test_conv3d_same_padding_backward_xpu_complex128",
+        "test_conv3d_same_padding_backward_xpu_float64",
+        "test_conv3d_valid_padding_backward_xpu_complex128",
+        "test_conv3d_valid_padding_backward_xpu_float64",
+        "test_conv_backend_slow1d_dilated_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_dilated_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow1d_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_dilated_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow2d_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow3d_dilated_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_slow3d_xpu_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu1d_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu2d_transposed_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu3d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu3d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu3d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu3d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu3d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu3d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu3d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu3d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise1d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise2d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_False_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_False_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_False_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_False_strided_True_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_True_strided_False_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_True_strided_False_contiguous_True_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_True_strided_True_contiguous_False_xpu",
+        "test_conv_backend_xpu_depthwise3d_has_bias_True_strided_True_contiguous_True_xpu",
+        "test_conv_double_backward_xpu_float64",
     )
 }
