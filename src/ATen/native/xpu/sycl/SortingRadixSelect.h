@@ -297,8 +297,8 @@ scalar_t findPattern(
   for (index_t i = local_id; i < numIterations;
        i += item_id.get_local_range(0)) {
     bool inRange = (i < sliceSize);
-    scalar_t v = inRange ? data[i * withinSliceStride]
-                         : static_cast<scalar_t>(0);
+    scalar_t v =
+        inRange ? data[i * withinSliceStride] : static_cast<scalar_t>(0);
 
     if (inRange &&
         ((TopKTypeConfig<scalar_t>::convert(v) & desiredMask) == desired)) {
