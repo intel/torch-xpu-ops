@@ -7,16 +7,14 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/NativeFunctions.h>
-#include <ATen/native/mkldnn/xpu/detail/Utils.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
+#include <c10/core/Scalar.h>
+#include <c10/util/Exception.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLHelpers.h>
-
-using namespace dnnl;
-using namespace at::native;
-using namespace at::native::onednn;
+#include <torch/library.h>
 
 namespace at::native::xpu {
 
@@ -572,4 +570,5 @@ Tensor& max_unpooling3d_forward_template(
       }));
   return output;
 }
+
 } // namespace at::native::xpu
