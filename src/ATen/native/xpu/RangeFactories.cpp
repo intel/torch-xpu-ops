@@ -29,7 +29,7 @@ Tensor& XPUNativeFunctions::arange_out(
 
         TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
         TORCH_CHECK(
-            std::isfinite(xstart) && std::isfinite(xend),
+            std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
             "unsupported range: ",
             xstart,
             " -> ",
@@ -97,7 +97,7 @@ Tensor& XPUNativeFunctions::range_out(
 
   TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
   TORCH_CHECK(
-      std::isfinite(xstart) && std::isfinite(xend),
+      std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
       "unsupported range: ",
       xstart,
       " -> ",

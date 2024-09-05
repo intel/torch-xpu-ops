@@ -7,6 +7,8 @@
 #include <comm/TensorOptions.h>
 #include "comm/Runtime.h"
 
+#include <ATen/native/xpu/sycl/WeightNormKernels.h>
+
 namespace at::native::xpu {
 
 template <typename T>

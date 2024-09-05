@@ -7,6 +7,8 @@
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 #include <comm/SYCLHelpers.h>
 
+#include <ATen/native/xpu/sycl/AmpKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

@@ -3,6 +3,8 @@
 
 namespace at::native::xpu {
 
-void renorm_scale_factor_kernel(TensorIteratorBase& iter, double maxnorm);
+TORCH_XPU_API void renorm_scale_factor_kernel(
+    TensorIteratorBase& iter,
+    double maxnorm);
 
 }

@@ -7,6 +7,8 @@
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
+#include <ATen/native/xpu/sycl/PowKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

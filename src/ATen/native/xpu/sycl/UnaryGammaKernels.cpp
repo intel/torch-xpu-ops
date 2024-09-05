@@ -5,9 +5,11 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/Math.h>
+#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/ScalarType.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/UnaryGammaKernels.h>
 
 namespace at::native::xpu {
 
