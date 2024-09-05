@@ -15,6 +15,8 @@
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <c10/macros/Macros.h>
 
+#include <ATen/native/xpu/sycl/Sorting.h>
+
 namespace at::native::xpu {
 
 template <typename key_t, typename value_t, typename func_t>

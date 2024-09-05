@@ -14,6 +14,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
+
 namespace at::native::xpu {
 
 inline std::pair<int64_t, int64_t> get_index_mapping1d(

@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-TensorImpl* resize_impl_xpu_(
+TORCH_XPU_API TensorImpl* resize_impl_xpu_(
     TensorImpl* self,
     IntArrayRef size,
     at::OptionalIntArrayRef stride,

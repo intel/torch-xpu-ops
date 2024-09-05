@@ -5,6 +5,8 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/CompareKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {
