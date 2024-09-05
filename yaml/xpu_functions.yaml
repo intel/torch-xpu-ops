@@ -722,3 +722,8 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - put
+  - put_
+  - put.out
+  - take
+  - take.out
