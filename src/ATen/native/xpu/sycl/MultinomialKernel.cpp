@@ -15,6 +15,9 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
+
+#include <ATen/native/xpu/sycl/MultinomialKernel.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename item_t>

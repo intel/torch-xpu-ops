@@ -7,6 +7,8 @@
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/RandpermKernel.h>
+
 namespace at::native::xpu {
 
 template <typename T, typename scalar_t>

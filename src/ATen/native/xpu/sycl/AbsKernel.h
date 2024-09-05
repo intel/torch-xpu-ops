@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void abs_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void abs_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

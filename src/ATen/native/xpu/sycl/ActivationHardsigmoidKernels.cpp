@@ -4,6 +4,8 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename opmath_t>

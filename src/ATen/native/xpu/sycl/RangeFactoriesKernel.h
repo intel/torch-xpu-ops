@@ -6,13 +6,13 @@ namespace at {
 namespace native {
 namespace xpu {
 
-Tensor& arange_kernel(
+TORCH_XPU_API Tensor& arange_kernel(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
     Tensor& result);
 
-Tensor& range_kernel(
+TORCH_XPU_API Tensor& range_kernel(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
