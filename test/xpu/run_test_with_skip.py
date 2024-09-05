@@ -6,16 +6,22 @@ from xpu_test_utils import launch_test
 
 
 res = 0
-fail_test = []
+fails = []
+count = ""
 
 for key in skip_dict:
     skip_list = skip_dict[key]
-    fail = launch_test(key, skip_list)
-    res += fail
-    if fail:
-        fail_test.append(key)
-if fail_test:
-    print(",".join(fail_test) + " have failures")
+    return_code, count_buf, fail = launch_test(key, skip_list)
+    res += return_code
+    count=count+count_buf+"\n"
+    if return_code:
+        fails.extend(fail)
+if fails:
+    print("="*10," failures list ","="*10)
+    for fail in fails:
+        print(fail)
+print("="*10," case count ","="*10)
+print(count)
 
 
 if os.name == "nt":

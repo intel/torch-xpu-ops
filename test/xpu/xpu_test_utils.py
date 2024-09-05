@@ -5,6 +5,8 @@ import copy
 import os
 import sys
 import unittest
+import subprocess
+import re
 
 import torch
 from torch import bfloat16, cuda
@@ -966,33 +968,72 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"]="1"
-    os.environ["PYTORCH_TEST_WITH_SLOW"]="1"
     if skip_list != None:
-        skip_options = " -k \"not " + skip_list[0]
+        skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
             skip_options += skip_option
-        skip_options += "\""
-        test_command = (
-            "pytest -v "
-            + test_case
-        )
+        skip_options += '"'
+        test_command = "pytest -v " + test_case
         test_command += skip_options
     elif exe_list != None:
-        exe_options = " -k \"" + exe_list[0]
+        exe_options = ' -k "' + exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
             exe_options += exe_option
-        exe_options += "\""
-        test_command = (
-            "pytest -v "
-            + test_case
-        )
+        exe_options += '"'
+        test_command = "pytest -v " + test_case
         test_command += exe_options
     else:
-        test_command = (
-            "pytest -v "
-            + test_case
-        )
-    return os.system(test_command)
+        test_command = "pytest -v " + test_case
+        env = os.environ.copy()
+    env["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
+    env["PYTORCH_TEST_WITH_SLOW"] = "1"
+    test_process = subprocess.run(
+        test_command, capture_output=True, shell=True, env=env
+    )
+    outputs = test_process.stdout.decode().split("\n")
+    # print(test_process.stdout.decode())
+    # print("="*10)
+    # print(test_process.stderr.decode())
+    # print("="*10)
+    # print(test_process.returncode)
+
+    result_count = {}
+    for line in outputs:
+        if line.find("collected") >= 0:
+            pattern = r"(\d+) items"
+            res = re.search(pattern, line)
+            assert res != None
+            result_count["items"] = int(res.group(1))
+            for key in ["selected", "deselected", "errors"]:
+                pattern = r"(\d+) " + key
+                res = re.search(pattern, line)
+                result_count[key] = int(res.group(1)) if res else 0
+    print(result_count)
+    current = len(outputs) - 1
+    while outputs[current][0] != "=":
+        current -= 1
+    if test_process.returncode == 0 or test_process.returncode == 1:
+        for key in ["passed", "failed", "skipped", "xfailed"]:
+            pattern = r"(\d+) " + key
+            res = re.search(pattern, line)
+            result_count[key] = int(res.group(1)) if res else 0
+        count_buf = test_case + "\t"
+        for key, value in result_count.items():
+            count_buf += f"{key}:{value} "
+        if test_process.returncode == 0:
+            return (0, count_buf, [])
+        else:
+            current -= 1
+            fails = []
+            while outputs[current][0] != "=":
+                if outputs[current].startswith("FAILED "):
+                    tmp = outputs[current][7:]
+                    fails.append(tmp[: tmp.find(" ")])
+                    current -= 1
+                else:
+                    break
+            return (1, count_buf, fails)
+    return (2, count_buf, [test_case + "has error"])
+
