@@ -221,6 +221,112 @@ void distribution_nullary_kernel(
   }
 }
 
+// Unary kernel
+template <
+    typename scalar1_t,
+    typename scalar2_t,
+    typename func_t,
+    typename inp_offset_calc_t,
+    typename out_offset_calc_t>
+struct DistributionUnaryElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int group_size = item.get_local_range(0);
+    int global_size = item.get_global_range(0);
+    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+
+    auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+    for (int i = global_idx; i < numel_; i += global_size) {
+      auto in_offsets = inp_calc_.get(i);
+      auto out_offsets = out_calc_.get(i);
+      f_(state, output_data_[out_offsets[0]], input_data_[in_offsets[0]]);
+    }
+  }
+  DistributionUnaryElementwiseKernelFunctor(
+      int numel,
+      const func_t f,
+      PhiloxState philox_args,
+      scalar1_t* output_data,
+      const scalar2_t* input_data,
+      inp_offset_calc_t input_offset_calculator,
+      out_offset_calc_t output_offset_calculator)
+      : numel_(numel),
+        f_(f),
+        philox_args_(philox_args),
+        output_data_(output_data),
+        input_data_(input_data),
+        inp_calc_(input_offset_calculator),
+        out_calc_(output_offset_calculator) {}
+
+ private:
+  int numel_;
+  const func_t f_;
+  PhiloxState philox_args_;
+  scalar1_t* output_data_;
+  const scalar2_t* input_data_;
+  inp_offset_calc_t inp_calc_;
+  out_offset_calc_t out_calc_;
+};
+
+template <typename scalar1_t, typename scalar2_t, typename func_t>
+void distribution_unary_kernel(
+    TensorIterator& iter,
+    PhiloxState philox_args,
+    func_t f) {
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_unary_kernel<scalar1_t, scalar2_t, decltype(f)>(
+          sub_iter, philox_args, f);
+    }
+    return;
+  }
+
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(iter.can_use_32bit_indexing());
+
+  int64_t numel = iter.numel();
+  if (numel == 0) {
+    return;
+  }
+
+  int group_size = syclMaxWorkItemsPerEU() * syclMaxSubGroupSize();
+  int num_groups = (numel + group_size - 1) / group_size;
+  int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
+  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
+
+  scalar1_t* output_data = static_cast<scalar1_t*>(iter.data_ptr(0));
+  const scalar2_t* input_data = static_cast<const scalar2_t*>(iter.data_ptr(1));
+
+  if (iter.is_contiguous()) {
+    auto input_offset_calculator = TrivialOffsetCalculator<1>();
+    auto output_offset_calculator = TrivialOffsetCalculator<1>();
+    auto caller = DistributionUnaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  } else {
+    auto input_offset_calculator = make_input_offset_calculator<1>(iter);
+    auto output_offset_calculator = make_output_offset_calculator(iter);
+    auto caller = DistributionUnaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  }
+}
+
 // Binary kernel
 template <
     typename func_t,

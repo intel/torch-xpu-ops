@@ -724,3 +724,8 @@ supported:
   - range.out
   - cauchy_
   - binomial
+  - binomial.out
+  - _dirichlet_grad
+  - _dirichlet_grad.out
+  - _sample_dirichlet
+  - _sample_dirichlet.out
