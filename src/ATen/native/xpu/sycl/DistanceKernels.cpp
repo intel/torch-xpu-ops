@@ -190,8 +190,6 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   // num of active sgs < sg_size
   item.barrier(sycl_local_fence);
   if (0 == sg_id) {
-    agg =
-        local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
     agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
         item, agg, sg_size);
   }
