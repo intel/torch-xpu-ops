@@ -203,7 +203,7 @@ static inline scalar_t group_reduce_agg_without_broadcast(
 
 template <typename scalar_t, typename F, int p_type, typename accscalar_t>
 struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
+  [[intel::reqd_sub_group_size(32)]] void operator()(sycl::nd_item<1> item_id) const {
     auto out_ptr = out_data_;
     auto x1_ptr = x1_data_;
     auto x2_ptr = x2_data_;
