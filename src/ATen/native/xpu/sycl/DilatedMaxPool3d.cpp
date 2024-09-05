@@ -23,7 +23,7 @@ inline int min(int a, int b) {
 }
 
 template <typename scalar_t>
-struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
+struct MaxPool3dKerenlFunctor {
   void operator()(sycl::nd_item<3> item) const {
     int oColumn = item.get_global_id()[2];
     int oRow = item.get_global_id()[1];
@@ -35,8 +35,8 @@ struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
     int channel = 0;
     if (!channels_last_) {
       // order: batch, channel, time
-      oFrame = (item.get_global_id()[0] + offsetZ_) % otime_;
-      slice = (item.get_global_id()[0] + offsetZ_) / otime_;
+      oFrame = (item.get_global_id()[0]) % otime_;
+      slice = (item.get_global_id()[0]) / otime_;
     } else {
       // order: batch, time, channel
       channel = item.get_global_id()[0] % features_;
@@ -109,7 +109,7 @@ struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
       indicesData_[out_index] = maxIndex;
     }
   }
-  MaxPool3dWithIndicesOutFrameImplKernelFunctor(
+  MaxPool3dKerenlFunctor(
       const scalar_t* inputData,
       scalar_t* outputData,
       int64_t* indicesData,
@@ -133,7 +133,6 @@ struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
       int dilationT,
       int dilationH,
       int dilationW,
-      int offsetZ,
       bool channels_last)
       : inputData_(inputData),
         outputData_(outputData),
@@ -158,7 +157,6 @@ struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
         dilationT_(dilationT),
         dilationH_(dilationH),
         dilationW_(dilationW),
-        offsetZ_(offsetZ),
         channels_last_(channels_last) {}
 
  private:
@@ -185,12 +183,11 @@ struct MaxPool3dWithIndicesOutFrameImplKernelFunctor {
   int dilationT_;
   int dilationH_;
   int dilationW_;
-  int offsetZ_;
   bool channels_last_;
 };
 
 template <typename scalar_t>
-static void max_pool3d_with_indices_out_frame(
+void max_pool3d_with_indices_out_template(
     const scalar_t* inputData,
     const Tensor& output,
     const Tensor& indices,
@@ -216,56 +213,191 @@ static void max_pool3d_with_indices_out_frame(
     int dilationH,
     int dilationW,
     bool channels_last) {
-  int offsetZ = 0;
-  while (totalZ > 0) {
-    MaxPool3dWithIndicesOutFrameImplKernelFunctor<scalar_t> kfn(
-        inputData,
-        output.mutable_data_ptr<scalar_t>(),
-        indices.mutable_data_ptr<int64_t>(),
-        features,
-        itime,
-        iheight,
-        iwidth,
-        obatch,
-        otime,
-        oheight,
-        owidth,
-        kT,
-        kH,
-        kW,
-        dT,
-        dH,
-        dW,
-        pT,
-        pH,
-        pW,
-        dilationT,
-        dilationH,
-        dilationW,
-        offsetZ,
-        channels_last);
+  MaxPool3dKerenlFunctor<scalar_t> kfn(
+      inputData,
+      output.mutable_data_ptr<scalar_t>(),
+      indices.mutable_data_ptr<int64_t>(),
+      features,
+      itime,
+      iheight,
+      iwidth,
+      obatch,
+      otime,
+      oheight,
+      owidth,
+      kT,
+      kH,
+      kW,
+      dT,
+      dH,
+      dW,
+      pT,
+      pH,
+      pW,
+      dilationT,
+      dilationH,
+      dilationW,
+      channels_last);
 
-    // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize
-    // / width_size
-    int width_group_size = 32;
-    int height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
-    int width_group_range = ceil_div<int>(owidth, width_group_size);
-    int height_group_range = ceil_div<int>(oheight, height_group_size);
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize
+  // / width_size
+  int width_group_size = 32;
+  int height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  int width_group_range = ceil_div<int>(owidth, width_group_size);
+  int height_group_range = ceil_div<int>(oheight, height_group_size);
 
-    int z_group_range = totalZ > 65535 ? 65535 : totalZ;
-    auto& queue = getCurrentSYCLQueue();
-    sycl_kernel_submit(
-        sycl::range<3>{
-            size_t(z_group_range),
-            size_t(height_group_range * height_group_size),
-            size_t(width_group_range * width_group_size),
-        },
-        sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
-        queue,
-        kfn);
-    totalZ -= 65535;
-    offsetZ += 65535;
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(
+      sycl::range<3>{
+          size_t(totalZ),
+          size_t(height_group_range * height_group_size),
+          size_t(width_group_range * width_group_size),
+      },
+      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
+      queue,
+      kfn);
+}
+
+template <typename scalar_t>
+struct MaxPool3dBackwardKernelFunctor {
+  void operator()(sycl::nd_item<3> item) const {
+    int oColumn = item.get_global_id()[2];
+    int oRow = item.get_global_id()[1];
+    int oFrame = 0;
+    // used only for channels-first
+    int64_t slice = 0;
+    // used only for channels-last
+    int batch = 0;
+    int channel = 0;
+    if (!channels_last_) {
+      // order: batch, channel, time
+      oFrame = (item.get_global_id()[0]) % otime_;
+      slice = (item.get_global_id()[0]) / otime_;
+    } else {
+      // order: batch, time, channel
+      channel = item.get_global_id()[0] % features_;
+      slice = item.get_global_id()[0] / features_;
+      batch = slice / otime_;
+      oFrame = slice % otime_;
+    }
+
+    if (oRow < oheight_ && oColumn < owidth_ && oFrame < otime_ &&
+        batch < obatch_ && channel < features_) {
+      int64_t out_index;
+      if (!channels_last_) {
+        out_index = (int64_t)slice * otime_ * oheight_ * owidth_ +
+            oFrame * oheight_ * owidth_ + oRow * owidth_ + oColumn;
+      } else {
+        out_index = ((int64_t)batch * otime_ * oheight_ * owidth_ +
+                     oFrame * oheight_ * owidth_ + oRow * owidth_ + oColumn) *
+                features_ +
+            channel;
+      }
+      int64_t maxIndex = indicesData_[out_index];
+      if (maxIndex != -1) {
+        if (!channels_last_) {
+          atomicAdd(
+              (sycl_global_ptr<scalar_t>)&gradInputData_
+                  [(int64_t)slice * itime_ * iheight_ * iwidth_ + maxIndex],
+              gradOutputData_[out_index]);
+        } else {
+          atomicAdd(
+              (sycl_global_ptr<scalar_t>)&gradInputData_
+                  [((int64_t)batch * itime_ * iheight_ * iwidth_ + maxIndex) *
+                       features_ +
+                   channel],
+              gradOutputData_[out_index]);
+        }
+      }
+    }
   }
+  MaxPool3dBackwardKernelFunctor(
+      scalar_t* gradInputData,
+      const scalar_t* gradOutputData,
+      const int64_t* indicesData,
+      int features,
+      int itime,
+      int iheight,
+      int iwidth,
+      int obatch,
+      int otime,
+      int oheight,
+      int owidth,
+      bool channels_last)
+      : gradInputData_(gradInputData),
+        gradOutputData_(gradOutputData),
+        indicesData_(indicesData),
+        features_(features),
+        itime_(itime),
+        iheight_(iheight),
+        iwidth_(iwidth),
+        obatch_(obatch),
+        otime_(otime),
+        oheight_(oheight),
+        owidth_(owidth),
+        channels_last_(channels_last) {}
+
+ private:
+  scalar_t* gradInputData_;
+  const scalar_t* gradOutputData_;
+  const int64_t* indicesData_;
+  int features_;
+  int itime_;
+  int iheight_;
+  int iwidth_;
+  int obatch_;
+  int otime_;
+  int oheight_;
+  int owidth_;
+  bool channels_last_;
+};
+
+template <typename scalar_t>
+void max_pool3d_with_indices_backward_template(
+    scalar_t* gradInputData,
+    const Tensor& gradOutput,
+    const Tensor& indices,
+    int features,
+    int64_t totalZ,
+    int itime,
+    int iheight,
+    int iwidth,
+    int obatch,
+    int otime,
+    int oheight,
+    int owidth,
+    bool channels_last) {
+  MaxPool3dBackwardKernelFunctor<scalar_t> kfn(
+      gradInputData,
+      gradOutput.const_data_ptr<scalar_t>(),
+      indices.const_data_ptr<int64_t>(),
+      features,
+      itime,
+      iheight,
+      iwidth,
+      obatch,
+      otime,
+      oheight,
+      owidth,
+      channels_last);
+
+  // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize
+  // / width_size
+  int width_group_size = 32;
+  int height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
+  int width_group_range = ceil_div<int>(owidth, width_group_size);
+  int height_group_range = ceil_div<int>(oheight, height_group_size);
+
+  auto& queue = getCurrentSYCLQueue();
+  sycl_kernel_submit(
+      sycl::range<3>{
+          size_t(totalZ),
+          size_t(height_group_range * height_group_size),
+          size_t(width_group_range * width_group_size),
+      },
+      sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
+      queue,
+      kfn);
 }
 
 void max_pool3d_with_indices_kernel(
@@ -416,7 +548,7 @@ void max_pool3d_with_indices_kernel(
         const scalar_t* input_data = work_input.const_data_ptr<scalar_t>();
         const int64_t totalZ = otime * nslices * nbatch;
 
-        max_pool3d_with_indices_out_frame(
+        max_pool3d_with_indices_out_template(
             input_data,
             work_output,
             work_indices,
@@ -443,158 +575,6 @@ void max_pool3d_with_indices_kernel(
             dilationW,
             channels_last);
       });
-}
-
-template <typename scalar_t>
-struct MaxPool3dWithIndicesBackwardOutFrameImplKernelFunctor {
-  void operator()(sycl::nd_item<3> item) const {
-    int oColumn = item.get_global_id()[2];
-    int oRow = item.get_global_id()[1];
-    int oFrame = 0;
-    // used only for channels-first
-    int64_t slice = 0;
-    // used only for channels-last
-    int batch = 0;
-    int channel = 0;
-    if (!channels_last_) {
-      // order: batch, channel, time
-      oFrame = (item.get_global_id()[0] + offsetZ_) % otime_;
-      slice = (item.get_global_id()[0] + offsetZ_) / otime_;
-    } else {
-      // order: batch, time, channel
-      channel = item.get_global_id()[0] % features_;
-      slice = item.get_global_id()[0] / features_;
-      batch = slice / otime_;
-      oFrame = slice % otime_;
-    }
-
-    if (oRow < oheight_ && oColumn < owidth_ && oFrame < otime_ &&
-        batch < obatch_ && channel < features_) {
-      int64_t out_index;
-      if (!channels_last_) {
-        out_index = (int64_t)slice * otime_ * oheight_ * owidth_ +
-            oFrame * oheight_ * owidth_ + oRow * owidth_ + oColumn;
-      } else {
-        out_index = ((int64_t)batch * otime_ * oheight_ * owidth_ +
-                     oFrame * oheight_ * owidth_ + oRow * owidth_ + oColumn) *
-                features_ +
-            channel;
-      }
-      int64_t maxIndex = indicesData_[out_index];
-      if (maxIndex != -1) {
-        if (!channels_last_) {
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)&gradInputData_
-                  [(int64_t)slice * itime_ * iheight_ * iwidth_ + maxIndex],
-              gradOutputData_[out_index]);
-        } else {
-          atomicAdd(
-              (sycl_global_ptr<scalar_t>)&gradInputData_
-                  [((int64_t)batch * itime_ * iheight_ * iwidth_ + maxIndex) *
-                       features_ +
-                   channel],
-              gradOutputData_[out_index]);
-        }
-      }
-    }
-  }
-  MaxPool3dWithIndicesBackwardOutFrameImplKernelFunctor(
-      scalar_t* gradInputData,
-      const scalar_t* gradOutputData,
-      const int64_t* indicesData,
-      int features,
-      int itime,
-      int iheight,
-      int iwidth,
-      int obatch,
-      int otime,
-      int oheight,
-      int owidth,
-      int offsetZ,
-      bool channels_last)
-      : gradInputData_(gradInputData),
-        gradOutputData_(gradOutputData),
-        indicesData_(indicesData),
-        features_(features),
-        itime_(itime),
-        iheight_(iheight),
-        iwidth_(iwidth),
-        obatch_(obatch),
-        otime_(otime),
-        oheight_(oheight),
-        owidth_(owidth),
-        offsetZ_(offsetZ),
-        channels_last_(channels_last) {}
-
- private:
-  scalar_t* gradInputData_;
-  const scalar_t* gradOutputData_;
-  const int64_t* indicesData_;
-  int features_;
-  int itime_;
-  int iheight_;
-  int iwidth_;
-  int obatch_;
-  int otime_;
-  int oheight_;
-  int owidth_;
-  int offsetZ_;
-  bool channels_last_;
-};
-
-template <typename scalar_t>
-void max_pool3d_with_indices_backward_out_frame(
-    scalar_t* gradInputData,
-    const Tensor& gradOutput,
-    const Tensor& indices,
-    int features,
-    int64_t totalZ,
-    int itime,
-    int iheight,
-    int iwidth,
-    int obatch,
-    int otime,
-    int oheight,
-    int owidth,
-    bool channels_last) {
-  int offsetZ = 0;
-  while (totalZ > 0) {
-    MaxPool3dWithIndicesBackwardOutFrameImplKernelFunctor<scalar_t> kfn(
-        gradInputData,
-        gradOutput.const_data_ptr<scalar_t>(),
-        indices.const_data_ptr<int64_t>(),
-        features,
-        itime,
-        iheight,
-        iwidth,
-        obatch,
-        otime,
-        oheight,
-        owidth,
-        offsetZ,
-        channels_last);
-
-    // width size is fixed size = 32, height dim equals = syclMaxWorkGroupSize
-    // / width_size
-    int width_group_size = 32;
-    int height_group_size = syclMaxWorkGroupSize(kfn) / width_group_size;
-    int width_group_range = ceil_div<int>(owidth, width_group_size);
-    int height_group_range = ceil_div<int>(oheight, height_group_size);
-
-    int z_group_range = totalZ > 65535 ? 65535 : totalZ;
-    auto& queue = getCurrentSYCLQueue();
-    sycl_kernel_submit(
-        sycl::range<3>{
-            size_t(z_group_range),
-            size_t(height_group_range * height_group_size),
-            size_t(width_group_range * width_group_size),
-        },
-        sycl::range<3>{1, size_t(height_group_size), size_t(width_group_size)},
-        queue,
-        kfn);
-    totalZ -= 65535;
-    offsetZ += 65535;
-  }
 }
 
 void max_pool3d_with_indices_backward_kernel(
@@ -659,13 +639,13 @@ void max_pool3d_with_indices_backward_kernel(
 
   TORCH_CHECK(
       (input.ndimension() == 4 || input.ndimension() == 5),
-      "max_pool2d_with_indices_backward_out_cuda_template(): ",
+      "max_pool3d_with_indices_backward_kernel(): ",
       "Expected 4D or 5D input tensor, but got ",
       input.sizes());
 
   TORCH_CHECK(
       (gradOutput.ndimension() == 4 || gradOutput.ndimension() == 5),
-      "max_pool2d_with_indices_backward_out_cuda_template(): ",
+      "max_pool3d_with_indices_backward_kernel(): ",
       "Expected 4D or 5D gradOutput tensor, but got ",
       gradOutput.sizes());
 
@@ -756,7 +736,7 @@ void max_pool3d_with_indices_backward_kernel(
         scalar_t* grad_input_data =
             work_grad_input.mutable_data_ptr<scalar_t>();
 
-        max_pool3d_with_indices_backward_out_frame(
+        max_pool3d_with_indices_backward_template(
             grad_input_data,
             work_grad_output,
             work_indices,
