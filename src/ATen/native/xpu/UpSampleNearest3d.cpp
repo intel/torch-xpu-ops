@@ -76,7 +76,6 @@ Tensor XPUNativeFunctions::_upsample_nearest_exact3d(
     c10::optional<double> scales_d,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  printf("_upsample_nearest_exact3d\n");
   Tensor output;
   output = upsample_nearest3d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest3d_kernel(
@@ -91,7 +90,6 @@ Tensor& XPUNativeFunctions::_upsample_nearest_exact3d_out(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w,
     Tensor& output) {
-  printf("_upsample_nearest_exact3d_out\n");
   upsample_nearest3d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest3d_kernel(
       output, input, output_size, scales_d, scales_h, scales_w, true);
@@ -104,45 +102,7 @@ Tensor XPUNativeFunctions::upsample_nearest3d(
     c10::optional<double> scales_d,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  printf("upsample_nearest_3d\n");
   Tensor output;
-  printf("upsample_nearest3d\n");
-  if (input.ndimension() == 5) {
-    printf("[");
-    for (int i = 0; i < input.size(0); i++) {
-      printf("[");
-      for (int j = 0; j < input.size(1); j++) {
-        printf("[");
-        for (int k = 0; k < input.size(2); k++) {
-          printf("[");
-          for (int t = 0; t < input.size(3); t++) {
-            printf("[");
-            for (int f = 0; f < input.size(4); f++) {
-              printf("%f ", input[i][j][k][t][f].item().toFloat());
-            }
-            printf("]");
-            if (t != input.size(3) - 1) {
-              printf("\n");
-            }
-          }
-          printf("]");
-          if (k != input.size(2) - 1) {
-            printf("\n");
-          }
-        }
-        printf("]");
-        if (j != input.size(1) - 1) {
-          printf("\n");
-        }
-      }
-      printf("]");
-      if (i != input.size(0) - 1) {
-        printf("\n");
-      }
-    }
-    printf("]\n");
-  }
-  printf("******************\n");
   output = upsample_nearest3d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest3d_kernel(
       output, input, output_size, scales_d, scales_h, scales_w, false);
@@ -156,199 +116,11 @@ Tensor& XPUNativeFunctions::upsample_nearest3d_out(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w,
     Tensor& output) {
-  printf("upsample_nearest_3d_out\n");
-  printf("upsample_nearest3d\n");
-  if (input.ndimension() == 5) {
-    printf("[");
-    for (int i = 0; i < input.size(0); i++) {
-      printf("[");
-      for (int j = 0; j < input.size(1); j++) {
-        printf("[");
-        for (int k = 0; k < input.size(2); k++) {
-          printf("[");
-          for (int t = 0; t < input.size(3); t++) {
-            printf("[");
-            for (int f = 0; f < input.size(4); f++) {
-              printf("%f ", input[i][j][k][t][f].item().toFloat());
-            }
-            printf("]");
-            if (t != input.size(3) - 1) {
-              printf("\n");
-            }
-          }
-          printf("]");
-          if (k != input.size(2) - 1) {
-            printf("\n");
-          }
-        }
-        printf("]");
-        if (j != input.size(1) - 1) {
-          printf("\n");
-        }
-      }
-      printf("]");
-      if (i != input.size(0) - 1) {
-        printf("\n");
-      }
-    }
-    printf("]\n");
-  }
-  printf("******************\n");
   upsample_nearest3d_meta(input, output, output_size);
   at::native::xpu::upsample_nearest3d_kernel(
       output, input, output_size, scales_d, scales_h, scales_w, false);
   return output;
 }
-
-// at::Tensor XPUNativeFunctions::upsample_nearest3d(
-//     const at::Tensor& input,
-//     at::IntArrayRef output_size,
-//     ::std::optional<double> scales_d,
-//     ::std::optional<double> scales_h,
-//     ::std::optional<double> scales_w) {
-//   printf("upsample_nearest3d\n");
-//   if (input.ndimension() == 5) {
-//     printf("[");
-//     for (int i = 0; i < input.size(0); i++) {
-//       printf("[");
-//       for (int j = 0; j < input.size(1); j++) {
-//         printf("[");
-//         for (int k = 0; k < input.size(2); k++) {
-//           printf("[");
-//           for (int t = 0; t < input.size(3); t++) {
-//             printf("[");
-//             for (int f = 0; f < input.size(4); f++) {
-//               printf("%f ", input[i][j][k][t][f].item().toFloat());
-//             }
-//             printf("]");
-//             if (t != input.size(3) - 1) {
-//               printf("\n");
-//             }
-//           }
-//           printf("]");
-//           if (k != input.size(2) - 1) {
-//             printf("\n");
-//           }
-//         }
-//         printf("]");
-//         if (j != input.size(1) - 1) {
-//           printf("\n");
-//         }
-//       }
-//       printf("]");
-//       if (i != input.size(0) - 1) {
-//         printf("\n");
-//       }
-//     }
-//     printf("]\n");
-//   }
-//   printf("******************\n");
-//   Tensor output;
-//   output = upsample_nearest3d_meta(input, output, output_size);
-//   at::native::xpu::upsample_nearest3d_kernel(
-//       output, input, output_size, scales_d, scales_h, scales_w, false);
-//   return output;
-// }
-
-// Tensor XPUNativeFunctions::upsample_nearest3d(
-//     const Tensor& input,
-//     IntArrayRef output_size,
-//     c10::optional<double> scales_d,
-//     c10::optional<double> scales_h,
-//     c10::optional<double> scales_w) {
-//   printf("upsample_nearest3d\n");
-//   if (input.ndimension() == 5) {
-//     printf("[");
-//     for (int i = 0; i < input.size(0); i++) {
-//       printf("[");
-//       for (int j = 0; j < input.size(1); j++) {
-//         printf("[");
-//         for (int k = 0; k < input.size(2); k++) {
-//           printf("[");
-//           for (int t = 0; t < input.size(3); t++) {
-//             printf("[");
-//             for (int f = 0; f < input.size(4); f++) {
-//               printf("%f ", input[i][j][k][t][f].item().toFloat());
-//             }
-//             printf("]");
-//             if (t != input.size(3) - 1) {
-//               printf("\n");
-//             }
-//           }
-//           printf("]");
-//           if (k != input.size(2) - 1) {
-//             printf("\n");
-//           }
-//         }
-//         printf("]");
-//         if (j != input.size(1) - 1) {
-//           printf("\n");
-//         }
-//       }
-//       printf("]");
-//       if (i != input.size(0) - 1) {
-//         printf("\n");
-//       }
-//     }
-//     printf("]\n");
-//   }
-//   printf("******************\n");
-//   Tensor output;
-//   output = upsample_nearest3d_meta(input, output, output_size);
-//   at::native::xpu::upsample_nearest3d_kernel(
-//       output, input, output_size, scales_d, scales_h, scales_w, false);
-//   return output;
-// }
-
-// Tensor& XPUNativeFunctions::upsample_nearest3d_out(
-//     const Tensor& input,
-//     IntArrayRef output_size,
-//     c10::optional<double> scales_d,
-//     c10::optional<double> scales_h,
-//     c10::optional<double> scales_w,
-//     Tensor& output) {
-//   printf("upsample_nearest3d_out\n");
-//   if (input.ndimension() == 5) {
-//     printf("[");
-//     for (int i = 0; i < input.size(0); i++) {
-//       printf("[");
-//       for (int j = 0; j < input.size(1); j++) {
-//         printf("[");
-//         for (int k = 0; k < input.size(2); k++) {
-//           printf("[");
-//           for (int t = 0; t < input.size(3); t++) {
-//             printf("[");
-//             for (int f = 0; f < input.size(4); f++) {
-//               printf("%f ", input[i][j][k][t][f].item().toFloat());
-//             }
-//             printf("]");
-//             if (t != input.size(3) - 1) {
-//               printf("\n");
-//             }
-//           }
-//           printf("]");
-//           if (k != input.size(2) - 1) {
-//             printf("\n");
-//           }
-//         }
-//         printf("]");
-//         if (j != input.size(1) - 1) {
-//           printf("\n");
-//         }
-//       }
-//       printf("]");
-//       if (i != input.size(0) - 1) {
-//         printf("\n");
-//       }
-//     }
-//     printf("]\n");
-//   }
-//   printf("******************\n");
-//   upsample_nearest3d_meta(input, output, output_size);
-//   at::native::xpu::upsample_nearest3d_kernel(
-//       output, input, output_size, scales_d, scales_h, scales_w, false);
-//   return output;
-// }
 
 Tensor XPUNativeFunctions::_upsample_nearest_exact3d_backward(
     const Tensor& grad_output,
@@ -357,7 +129,6 @@ Tensor XPUNativeFunctions::_upsample_nearest_exact3d_backward(
     c10::optional<double> scales_d,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  printf("_upsample_nearest_exact3d_backward\n");
   Tensor grad_input;
   grad_input = upsample_nearest3d_backward_meta(
       grad_output, grad_input, input_size, output_size);
@@ -381,7 +152,6 @@ Tensor& XPUNativeFunctions::_upsample_nearest_exact3d_backward_out(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w,
     Tensor& grad_input) {
-  printf("_upsample_nearest_exact3d_backward_out\n");
   upsample_nearest3d_backward_meta(
       grad_output, grad_input, input_size, output_size);
   at::native::xpu::upsample_nearest3d_backward_kernel(
@@ -403,7 +173,6 @@ Tensor XPUNativeFunctions::upsample_nearest3d_backward(
     c10::optional<double> scales_d,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  printf("upsample_nearest3d_backward 2222\n");
   Tensor grad_input;
   grad_input = upsample_nearest3d_backward_meta(
       grad_output, grad_input, input_size, output_size);
@@ -427,7 +196,6 @@ Tensor& XPUNativeFunctions::upsample_nearest3d_backward_out(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w,
     Tensor& grad_input) {
-  printf("upsample_nearest3d_backward_out 2222\n");
   upsample_nearest3d_backward_meta(
       grad_output, grad_input, input_size, output_size);
   at::native::xpu::upsample_nearest3d_backward_kernel(

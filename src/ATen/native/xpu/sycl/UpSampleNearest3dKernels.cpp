@@ -156,9 +156,6 @@ void upsample_nearest3d_kernel(
   int input_width = input_.size(4);
 
   Tensor input = input_.contiguous();
-  printf("is contiguous %d %d", output.is_contiguous(), input.is_contiguous());
-  output.print();
-  input.print();
   unsigned int n = output.numel() / nbatch;
   TORCH_CHECK(output.numel() <= std::numeric_limits<int32_t>::max());
   AT_DISPATCH_FLOATING_TYPES_AND3(
@@ -178,7 +175,6 @@ void upsample_nearest3d_kernel(
         const float width_scale =
             compute_scales_value<float>(scales_w, input_width, output_width);
         if (is_exact) {
-          printf("is_exact\n");
           upsample_nearest3d_out_template<scalar_t>(
               idata,
               n,
@@ -196,11 +192,10 @@ void upsample_nearest3d_kernel(
               width_scale,
               NearestExactIndexOp());
         } else {
-          printf(" not is_exact\n");
           upsample_nearest3d_out_template<scalar_t>(
               idata,
-              nbatch,
               n,
+              nbatch,
               channels,
               input_depth,
               input_height,
@@ -218,77 +213,6 @@ void upsample_nearest3d_kernel(
   if (!output.is_contiguous()) {
     output.copy_(output_c);
   }
-  // if (input.ndimension() == 5) {
-  //   printf("[");
-  //   for (int i = 0; i < input.size(0); i++) {
-  //     printf("[");
-  //     for (int j = 0; j < input.size(1); j++) {
-  //       printf("[");
-  //       for (int k = 0; k < input.size(2); k++) {
-  //         printf("[");
-  //         for (int t = 0; t < input.size(3); t++) {
-  //           printf("[");
-  //           for (int f = 0; f < input.size(4); f++) {
-  //             printf("%f ", input[i][j][k][t][f].item().toFloat());
-  //           }
-  //           printf("]");
-  //           if (t != input.size(3) - 1) {
-  //             printf("\n");
-  //           }
-  //         }
-  //         printf("]");
-  //         if (k != input.size(2) - 1) {
-  //           printf("\n");
-  //         }
-  //       }
-  //       printf("]");
-  //       if (j != input.size(1) - 1) {
-  //         printf("\n");
-  //       }
-  //     }
-  //     printf("]");
-  //     if (i != input.size(0) - 1) {
-  //       printf("\n");
-  //     }
-  //   }
-  //   printf("]\n");
-  // }
-  // printf("******************\n");
-  // if (output.ndimension() == 5) {
-  //   printf("[");
-  //   for (int i = 0; i < output.size(0); i++) {
-  //     printf("[");
-  //     for (int j = 0; j < output.size(1); j++) {
-  //       printf("[");
-  //       for (int k = 0; k < output.size(2); k++) {
-  //         printf("[");
-  //         for (int t = 0; t < output.size(3); t++) {
-  //           printf("[");
-  //           for (int f = 0; f < output.size(4); f++) {
-  //             printf("%f ", output[i][j][k][t][f].item().toFloat());
-  //           }
-  //           printf("]");
-  //           if (t != output.size(3) - 1) {
-  //             printf("\n");
-  //           }
-  //         }
-  //         printf("]");
-  //         if (k != output.size(2) - 1) {
-  //           printf("\n");
-  //         }
-  //       }
-  //       printf("]");
-  //       if (j != output.size(1) - 1) {
-  //         printf("\n");
-  //       }
-  //     }
-  //     printf("]");
-  //     if (i != output.size(0) - 1) {
-  //       printf("\n");
-  //     }
-  //   }
-  //   printf("]\n");
-  // }
 }
 
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
