@@ -1017,7 +1017,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
                 result_count[key] = int(res.group(1)) if res else 0
     print(result_count)
     current = len(outputs) - 1
-    while outputs[current][0] != "=":
+    while outputs[current]=="" or outputs[current][0] != "=":
         current -= 1
     if test_process.returncode == 0 or test_process.returncode == 1:
         for key in ["passed", "failed", "skipped", "xfailed"]:
