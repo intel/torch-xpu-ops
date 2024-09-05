@@ -722,3 +722,7 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - tril_indices
+  - tril_indices.out
+  - triu_indices
+  - triu_indices.out

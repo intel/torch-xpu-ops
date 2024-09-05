@@ -248,6 +248,8 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "tril_indicies",
+    "triu_indicies",
 ]
 
 _ops_without_cuda_support = [
