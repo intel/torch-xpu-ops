@@ -193,7 +193,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "i0.out",
     "igammac.out",
     "igamma.out",
-    "index_copy.out",
     "index_reduce.out",
     "isneginf.out",
     "isposinf.out",

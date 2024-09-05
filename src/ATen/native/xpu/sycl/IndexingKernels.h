@@ -53,4 +53,10 @@ void masked_scatter_kernel(
     const TensorBase& maskPrefixSum,
     const TensorBase& source);
 
+void index_copy_kernel(
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    Tensor& out);
+
 } // namespace at::native::xpu
