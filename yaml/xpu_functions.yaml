@@ -730,3 +730,7 @@ supported:
   - index_copy
   - index_copy.out
   - index_copy_
+  - tril_indices
+  - tril_indices.out
+  - triu_indices
+  - triu_indices.out
