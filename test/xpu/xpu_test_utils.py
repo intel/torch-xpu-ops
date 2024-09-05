@@ -239,6 +239,11 @@ _xpu_computation_op_list = [
     "nan_to_num",
     "scatter_reduce",
     "nanmean",
+    "native_layer_norm",
+    "native_layer_norm_backward",
+    "square",
+    "heaviside",
+    "argsort",
 ]
 
 _ops_without_cuda_support = [
@@ -417,6 +422,7 @@ def ModuleTest_test_xpu(self, test_case):
             xpu_gradInput = test_case._backward(
                 xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
             )
+            
             test_case.assertEqual(
                 cpu_gradInput,
                 xpu_gradInput,
@@ -572,7 +578,7 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
 CriterionTest.test_cuda = CriterionTest_test_xpu
 
 from torch.testing._internal.common_methods_invocations import sample_inputs_cat_concat, S, M
-from torch.testing._internal.common_methods_invocations import make_tensor
+from torch.testing._internal.common_methods_invocations import make_tensor, mask_not_all_zeros
 from functools import partial
 from torch.testing._internal.opinfo.core import SampleInput
 
@@ -606,6 +612,21 @@ def index_variable_nofp64(shape, max_indices, device=torch.device('cpu')):
     index = torch.rand(*shape, dtype=torch.float32, device=device).mul_(max_indices).floor_().long()
     return index
 
+def sample_inputs_index_put_nofp64(op_info, device, dtype, requires_grad, **kwargs):
+    make_arg = partial(make_tensor, dtype=dtype, device=device, requires_grad=requires_grad)
+
+    for accumulate in [False, True]:
+        # Test with indices arg
+        yield SampleInput(
+            make_arg((S, S,)),
+            (index_variable_nofp64(2, S, device=device),),
+            make_arg((2, S)),
+            accumulate=accumulate)
+
+        # Test with mask arg
+        mask = torch.zeros(S, dtype=torch.bool) if accumulate else mask_not_all_zeros((S,))
+        yield SampleInput(
+            make_arg((S, S)), (mask, ), make_arg((S,)), accumulate=accumulate)
 
 def sample_inputs_softmax_variant_nofp64(
     op_info,
@@ -697,9 +718,6 @@ class XPUPatchForImport:
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
 
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            self.index_variable = common_methods_invocations.index_variable
-            self.reference_inputs_cat = common_methods_invocations.reference_inputs_cat
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -747,14 +765,13 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if (
-                opinfo.name not in _xpu_computation_op_list
-                or opinfo.name in _ops_without_cuda_support
-            ):
+            if ( opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list 
+                if db == common_methods_invocations.python_ref_db else True)) or opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                backward_dtypes.add(bfloat16)
+                if bfloat16 in opinfo.dtypesIfXPU:
+                    backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
@@ -776,17 +793,16 @@ class XPUPatchForImport:
                         opinfo.sample_inputs_func = sample_inputs_softmax_variant_nofp64
                     elif opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_like_fns.__name__:
                         opinfo.sample_inputs_func = sample_inputs_like_fns_nofp64
+                    elif opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_index_put.__name__:
+                        opinfo.sample_inputs_func = sample_inputs_index_put_nofp64
 
-
+                    if opinfo.reference_inputs_func != None and opinfo.reference_inputs_func.__name__ == common_methods_invocations.reference_inputs_cat.__name__:
+                        opinfo.reference_inputs_func = reference_inputs_cat_nofp64
 
     def __enter__(self):
         # Monkey patch until we have a fancy way
 
         common_device_type.onlyCUDA = common_device_type.onlyXPU
-
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            common_methods_invocations.index_variable = index_variable_nofp64
-            common_methods_invocations.reference_inputs_cat = reference_inputs_cat_nofp64
 
         class dtypesIfXPU(common_device_type.dtypes):
             def __init__(self, *args):
@@ -911,10 +927,6 @@ class XPUPatchForImport:
         cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
 
-        if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
-            common_methods_invocations.index_variable = self.index_variable
-            common_methods_invocations.reference_inputs_cat = self.reference_inputs_cat
-
 
 # Copy the test cases from generic_base_class to generic_test_class.
 # It serves to reuse test cases. Regarding some newly added hardware,
@@ -956,33 +968,33 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"]="1"
+    os.environ["PYTORCH_TEST_WITH_SLOW"]="1"
     if skip_list != None:
-        skip_options = " -k 'not " + skip_list[0]
+        skip_options = " -k \"not " + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
             skip_options += skip_option
-        skip_options += "'"
+        skip_options += "\""
         test_command = (
-            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            "pytest -v "
             + test_case
         )
         test_command += skip_options
-        return os.system(test_command)
     elif exe_list != None:
-        exe_options = " -k '" + exe_list[0]
+        exe_options = " -k \"" + exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
             exe_options += exe_option
-        exe_options += "'"
+        exe_options += "\""
         test_command = (
-            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            "pytest -v "
             + test_case
         )
         test_command += exe_options
-        return os.system(test_command)
     else:
         test_command = (
-            "PYTORCH_ENABLE_XPU_FALLBACK=1 PYTORCH_TEST_WITH_SLOW=1 pytest -v "
+            "pytest -v "
             + test_case
         )
-        return os.system(test_command)
+    return os.system(test_command)
