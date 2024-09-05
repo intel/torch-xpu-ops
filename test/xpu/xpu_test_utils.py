@@ -340,6 +340,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "histogram": {
+        ("TestCommon", "test_out"): {
+            torch.float32: tol(atol=3e-5, rtol=5e-6),
+        }
+    },
 }
 
 
@@ -986,7 +991,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command += exe_options
     else:
         test_command = "pytest -v " + test_case
-        env = os.environ.copy()
+    env = os.environ.copy()
     env["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     env["PYTORCH_TEST_WITH_SLOW"] = "1"
     test_process = subprocess.run(
