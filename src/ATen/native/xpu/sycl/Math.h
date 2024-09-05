@@ -9,12 +9,12 @@ namespace at::native::xpu {
  * For licensing information, please refer to the cpu implementation located in
  * "ATen/native/Math.h".
  */
-template <typename scalar_t>
+template <typename scalar_t, typename pi_t = double>
 static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   // [C++ Standard Reference: Gamma Function]
   // https://en.cppreference.com/w/cpp/numeric/math/tgamma
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-  static const double PI_f64 = 3.14159265358979323846;
+  static const pi_t PI_f64 = 3.14159265358979323846;
   const accscalar_t PSI_10 = 2.25175258906672110764;
   const accscalar_t A[] = {
       8.33333333333333333333E-2,
@@ -27,15 +27,15 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   };
 
   accscalar_t x = static_cast<accscalar_t>(in);
-  if (x == 0) {
+  if (x == accscalar_t(0)) {
     // As per C++ standard for gamma related functions and SciPy,
     // If the argument is ±0, ±∞ is returned
     return std::copysign(static_cast<scalar_t>(INFINITY), -x);
   }
 
-  bool x_is_integer = x == ::trunc(x);
+  bool x_is_integer = x == std::trunc(x);
   accscalar_t result = 0;
-  if (x < 0) {
+  if (x < accscalar_t(0)) {
     if (x_is_integer) {
       // As per C++ standard for gamma related functions and SciPy,
       // If the argument is a negative integer, NaN is returned
@@ -46,23 +46,23 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
     // mathematically equivalent since both x and r are in radians and tan() has
     // a periodicity of pi, in practice the computation of pi * x is a source of
     // error (when |x| > 1).
-    double q, r;
-    r = ::modf(static_cast<double>(x), &q);
-    result = static_cast<accscalar_t>(-PI_f64 / ::tan(PI_f64 * r));
+    pi_t q, r;
+    r = std::modf(static_cast<pi_t>(x), &q);
+    result = static_cast<accscalar_t>(-PI_f64 / std::tan(PI_f64 * r));
     x = 1 - x;
   }
 
-  while (x < 10) {
+  while (x < accscalar_t(10)) {
     result -= 1 / x;
     x += 1;
   }
-  if (x == 10) {
+  if (x == accscalar_t(10)) {
     return static_cast<scalar_t>(result + PSI_10);
   }
 
   accscalar_t y = 0;
-  if (x < 1.0e17) {
-    accscalar_t z = 1 / (x * x);
+  if (x < accscalar_t(1.0e17)) {
+    accscalar_t z = accscalar_t(1) / (x * x);
 
     accscalar_t polevl_result = 0;
     for (int i = 0; i <= 6; i++) {
@@ -72,7 +72,7 @@ static inline C10_HOST_DEVICE scalar_t calc_digamma(scalar_t in) {
   }
 
   return static_cast<scalar_t>(
-      ::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
+      std::log(x) - (static_cast<accscalar_t>(0.5) / x) - y + result);
 }
 
 template <typename scalar_t>
@@ -82,20 +82,23 @@ static inline C10_HOST_DEVICE scalar_t calc_trigamma(scalar_t in) {
   accscalar_t x = static_cast<accscalar_t>(in);
   accscalar_t sign = +1;
   accscalar_t result = 0;
-  if (x < 0.5f) {
+  if (x < accscalar_t(0.5)) {
     sign = -1;
-    accscalar_t sin_pi_x = ::sin(PI * x);
+    accscalar_t sin_pi_x = std::sin(PI * x);
     result -= (PI * PI) / (sin_pi_x * sin_pi_x);
-    x = 1 - x;
+    x = accscalar_t(1) - x;
   }
   for (int i = 0; i < 6; ++i) {
-    result += 1 / (x * x);
-    x += 1;
+    result += accscalar_t(1) / (x * x);
+    x += accscalar_t(1);
   }
-  const accscalar_t one = static_cast<scalar_t>(1);
-  const accscalar_t ixx = 1 / (x * x);
-  result += (1 + 1 / (2 * x) +
-             ixx * (one / 6 - ixx * (one / 30 - ixx * (one / 42)))) /
+  const accscalar_t one = accscalar_t(1);
+  const accscalar_t ixx = accscalar_t(1) / (x * x);
+  result +=
+      (accscalar_t(1) + accscalar_t(1) / (accscalar_t(2) * x) +
+       ixx *
+           (one / accscalar_t(6) -
+            ixx * (one / accscalar_t(30) - ixx * (one / accscalar_t(42))))) /
       x;
   return static_cast<scalar_t>(sign * result);
 }
@@ -122,7 +125,7 @@ chbevl(scalar_t _x, const scalar_t array[], size_t len) {
     b0 = _x * b1 - b2 + array[i];
   }
 
-  return (0.5 * (b0 - b2));
+  return (scalar_t(0.5) * (b0 - b2));
 }
 
 /*
@@ -190,22 +193,22 @@ static inline C10_HOST_DEVICE scalar_t calc_i0(scalar_t _x) {
       "don't instantiate with low precision type");
   // Upcast input for numerical accuracy purposes
   // Needed for accurate results if input is bfloat16 or float16
-  scalar_t x = ::abs(_x);
+  scalar_t x = std::abs(_x);
 
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i0e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = (x / scalar_t{2.0}) - scalar_t{2.0};
-    return (::exp(x) * chbevl(y, A, len));
+    return (std::exp(x) * chbevl(y, A, len));
   }
 
   auto coeff_pair = chebyshev_coefficients_i0e_B<scalar_t>();
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   return (
-      ::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
-      ::sqrt(x));
+      std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) /
+      std::sqrt(x));
 }
 
 template <typename T>
@@ -319,13 +322,13 @@ C10_HOST_DEVICE inline typename std::
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
-  const auto x = ::abs(_x);
+  const auto x = std::abs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
     auto len = std::get<1>(coeff_pair);
     scalar_t y = x / scalar_t{2.0} - scalar_t{2.0};
-    const scalar_t out = ::exp(x) * x * chbevl(y, A, len);
+    const scalar_t out = std::exp(x) * x * chbevl(y, A, len);
     return (_x < scalar_t{0.0}) ? -out : out;
   }
 
@@ -333,14 +336,14 @@ static inline C10_HOST_DEVICE scalar_t calc_i1(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      (::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
-      ::sqrt(x);
+      (std::exp(x) * chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len)) /
+      std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
 template <typename scalar_t>
 static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
-  const auto x = ::abs(_x);
+  const auto x = std::abs(_x);
   if (x <= scalar_t{8.0}) {
     auto coeff_pair = chebyshev_coefficients_i1e_A<scalar_t>();
     auto A = std::get<0>(coeff_pair);
@@ -354,7 +357,7 @@ static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
   auto B = std::get<0>(coeff_pair);
   auto len = std::get<1>(coeff_pair);
   const scalar_t out =
-      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / ::sqrt(x);
+      chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
 
