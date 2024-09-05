@@ -5,6 +5,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
+#include <ATen/native/xpu/sycl/Im2ColKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

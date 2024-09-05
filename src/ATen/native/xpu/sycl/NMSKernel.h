@@ -6,7 +6,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold);
+TORCH_XPU_API Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold);
 
 }
 } // namespace native

@@ -19,6 +19,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
+
 using namespace at::xpu::detail;
 using namespace at::xpu;
 

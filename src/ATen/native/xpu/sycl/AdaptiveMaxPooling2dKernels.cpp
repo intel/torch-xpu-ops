@@ -12,6 +12,8 @@
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/AdaptiveMaxPooling2dKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t, typename index_t>
