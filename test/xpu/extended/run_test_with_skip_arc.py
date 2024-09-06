@@ -1,5 +1,6 @@
 import os
 import sys
+sys.path.append("..")
 from skip_list_common import skip_dict
 from skip_list_arc import skip_dict as skip_dict_specifical
 from skip_list_win import skip_dict as skip_dict_win
