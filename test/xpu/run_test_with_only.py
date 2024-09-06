@@ -16,6 +16,14 @@ execute_list = (
 )
 return_code, count_buf, fails = launch_test("test_decomp_xpu.py", exe_list=execute_list)
 
+if fails:
+    print("="*10," failures list ","="*10)
+    for fail in fails:
+        print(fail)
+print("="*10," case count ","="*10)
+print(count_buf)
+
+
 if os.name == "nt":
     sys.exit(return_code)
 else:    

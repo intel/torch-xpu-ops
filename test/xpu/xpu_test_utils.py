@@ -998,11 +998,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command, capture_output=True, shell=True, env=env
     )
     outputs = test_process.stdout.decode().split("\n")
-    # print(test_process.stdout.decode())
-    # print("="*10)
-    # print(test_process.stderr.decode())
-    # print("="*10)
-    # print(test_process.returncode)
 
     result_count = {}
     for line in outputs:
@@ -1015,7 +1010,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
                 pattern = r"(\d+) " + key
                 res = re.search(pattern, line)
                 result_count[key] = int(res.group(1)) if res else 0
-    print(result_count)
     current = len(outputs) - 1
     while outputs[current]=="" or outputs[current][0] != "=":
         current -= 1
