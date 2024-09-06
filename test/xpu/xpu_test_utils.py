@@ -997,7 +997,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     test_process = subprocess.run(
         test_command, capture_output=True, shell=True, env=env
     )
-    outputs = test_process.stdout.decode().split("\n")
+    output = test_process.stdout.decode()
+    print(output)
+    outputs = output.split("\n")
 
     result_count = {}
     for line in outputs:
