@@ -1,20 +1,8 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/NativeFunctions.h>
-#include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/BatchKernel.h>
-#include <ATen/native/xpu/sycl/NumericLimits.h>
-#include <c10/core/Scalar.h>
-#include <c10/util/Exception.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLHelpers.h>
-#include <torch/library.h>
 
 namespace at::native::xpu {
 
@@ -26,61 +14,61 @@ inline T CeilDiv(T a, T b) {
 template <typename scalar_t>
 struct MaxUnpooling2dForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto output_ptr = output_data;
-    auto input_ptr = input_data;
-    auto indices_ptr = indices_data;
+    auto output_ptr = output_data_;
+    auto input_ptr = input_data_;
+    auto indices_ptr = indices_data_;
     for (int linearIndex = item.get_global_id(0);
-         linearIndex < numInputElements;
+         linearIndex < numInputElements_;
          linearIndex += item.get_global_range()[0]) {
       int c = is_channels_last
-          ? linearIndex % numChannels
-          : (linearIndex / inputWidth / inputHeight) % numChannels;
-      int n = linearIndex / inputWidth / inputHeight / numChannels;
+          ? linearIndex % numChannels_
+          : (linearIndex / inputWidth_ / inputHeight_) % numChannels_;
+      int n = linearIndex / inputWidth_ / inputHeight_ / numChannels_;
       int maxind = indices_ptr[linearIndex];
       int offset = is_channels_last
-          ? n * numChannels * outputHeight * outputWidth + c
-          : (n * numChannels + c) * outputHeight * outputWidth;
+          ? n * numChannels_ * outputHeight_ * outputWidth_ + c
+          : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
       output_ptr += offset;
-      if (is_channels_last) {
-        output_ptr[maxind * numChannels] = input_ptr[linearIndex];
+      if (is_channels_last_) {
+        output_ptr[maxind * numChannels_] = input_ptr[linearIndex];
       } else {
         output_ptr[maxind] = input_ptr[linearIndex];
       }
     }
   };
   MaxUnpooling2dForwardKernelFunctor(
-      const int64_t numInputElements_,
-      const scalar_t* input_data_,
-      const int64_t* indices_data_,
-      const int64_t numChannels_,
-      const int64_t inputHeight_,
-      const int64_t inputWidth_,
-      const int64_t outputHeight_,
-      const int64_t outputWidth_,
-      scalar_t* output_data_,
-      const bool is_channels_last_)
-      : numInputElements(numInputElements_),
-        input_data(input_data_),
-        indices_data(indices_data_),
-        numChannels(numChannels_),
-        inputHeight(inputHeight_),
-        inputWidth(inputWidth_),
-        outputHeight(outputHeight_),
-        outputWidth(outputWidth_),
-        output_data(output_data_),
-        is_channels_last(is_channels_last_) {}
+      const int64_t numInputElements,
+      const scalar_t* input_data,
+      const int64_t* indices_data,
+      const int64_t numChannels,
+      const int64_t inputHeight,
+      const int64_t inputWidth,
+      const int64_t outputHeight,
+      const int64_t outputWidth,
+      scalar_t* output_data,
+      const bool is_channels_last)
+      : numInputElements_(numInputElements),
+        input_data_(input_data),
+        indices_data_(indices_data),
+        numChannels_(numChannels),
+        inputHeight_(inputHeight),
+        inputWidth_(inputWidth),
+        outputHeight_(outputHeight),
+        outputWidth_(outputWidth),
+        output_data_(output_data),
+        is_channels_last_(is_channels_last) {}
 
  private:
-  const int64_t numInputElements;
-  const scalar_t* input_data;
-  const int64_t* indices_data;
-  const int64_t numChannels;
-  const int64_t inputHeight;
-  const int64_t inputWidth;
-  const int64_t outputHeight;
-  const int64_t outputWidth;
-  scalar_t* output_data;
-  const bool is_channels_last;
+  const int64_t numInputElements_;
+  const scalar_t* input_data_;
+  const int64_t* indices_data_;
+  const int64_t numChannels_;
+  const int64_t inputHeight_;
+  const int64_t inputWidth_;
+  const int64_t outputHeight_;
+  const int64_t outputWidth_;
+  scalar_t* output_data_;
+  const bool is_channels_last_;
 };
 
 template <typename scalar_t>
@@ -117,63 +105,64 @@ void max_unpooling2d_forward_kernel(
 template <typename scalar_t>
 struct MaxUnpooling3dForwardKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto output_ptr = output_data;
-    auto input_ptr = input_data;
-    auto indices_ptr = indices_data;
+    auto output_ptr = output_data_;
+    auto input_ptr = input_data_;
+    auto indices_ptr = indices_data_;
 
     int64_t iColumn = item.get_global_id(0);
     int64_t iRow = item.get_global_id(1);
-    int64_t iFrame = (item.get_group()[2] + offsetZ) % iT; // input frame/time
-    int64_t slice = (item.get_group()[2] + offsetZ) / iT; // input slice/feature
-    if (iRow < iH && iColumn < iW) {
+    int64_t iFrame = (item.get_group()[2] + offsetZ_) % iT_; // input frame/time
+    int64_t slice =
+        (item.get_group()[2] + offsetZ_) / iT_; // input slice/feature
+    if (iRow < iH_ && iColumn < iW_) {
       scalar_t val = input_ptr
-          [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
+          [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
            iColumn] /*[slice][iFrame][iRow][iColumn]*/;
       int64_t index = indices_ptr
-          [slice * iT * iH * iW + iFrame * iH * iW + iRow * iW +
+          [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
            iColumn] /*[slice][iFrame][iRow][iColumn]*/;
-      output_ptr[slice * oT * oH * oW + index] = val;
+      output_ptr[slice * oT_ * oH_ * oW_ + index] = val;
     }
   }
   MaxUnpooling3dForwardKernelFunctor(
-      scalar_t* input_data_,
-      int64_t* indices_data_,
-      scalar_t* output_data_,
-      const int64_t batchSize_,
-      const int64_t inputSlices_,
-      const int64_t iT_,
-      const int64_t iH_,
-      const int64_t iW_,
-      const int64_t oT_,
-      const int64_t oH_,
-      const int64_t oW_,
-      const int64_t offsetZ_)
-      : input_data(input_data_),
-        indices_data(indices_data_),
-        output_data(output_data_),
-        batchSize(batchSize_),
-        inputSlices(inputSlices_),
-        iT(iT_),
-        iH(iH_),
-        iW(iW_),
-        oT(oT_),
-        oH(oH_),
-        oW(oW_),
-        offsetZ(offsetZ_) {}
+      scalar_t* input_data,
+      int64_t* indices_data,
+      scalar_t* output_data,
+      const int64_t batchSize,
+      const int64_t inputSlices,
+      const int64_t iT,
+      const int64_t iH,
+      const int64_t iW,
+      const int64_t oT,
+      const int64_t oH,
+      const int64_t oW,
+      const int64_t offsetZ)
+      : input_data_(input_data),
+        indices_data_(indices_data),
+        output_data_(output_data),
+        batchSize_(batchSize),
+        inputSlices_(inputSlices),
+        iT_(iT),
+        iH_(iH),
+        iW_(iW),
+        oT_(oT),
+        oH_(oH),
+        oW_(oW),
+        offsetZ_(offsetZ) {}
 
  private:
-  scalar_t* input_data;
-  int64_t* indices_data;
-  scalar_t* output_data;
-  const int64_t batchSize;
-  const int64_t inputSlices;
-  const int64_t iT;
-  const int64_t iH;
-  const int64_t iW;
-  const int64_t oT;
-  const int64_t oH;
-  const int64_t oW;
-  const int64_t offsetZ;
+  scalar_t* input_data_;
+  int64_t* indices_data_;
+  scalar_t* output_data_;
+  const int64_t batchSize_;
+  const int64_t inputSlices_;
+  const int64_t iT_;
+  const int64_t iH_;
+  const int64_t iW_;
+  const int64_t oT_;
+  const int64_t oH_;
+  const int64_t oW_;
+  const int64_t offsetZ_;
 };
 
 template <typename scalar_t>
@@ -217,57 +206,58 @@ void max_unpooling3d_forward_kernel(
 template <typename scalar_t>
 struct MaxUnpooling3dClForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto output_ptr = output_data;
-    auto input_ptr = input_data;
-    auto indices_ptr = indices_data;
+    auto output_ptr = output_data_;
+    auto input_ptr = input_data_;
+    auto indices_ptr = indices_data_;
     for (int linearIndex = item.get_global_id(0);
-         linearIndex < numInputElements;
+         linearIndex < numInputElements_;
          linearIndex += item.get_global_range()[0]) {
-      int c = linearIndex % numChannels;
-      int n = linearIndex / inputDepth / inputWidth / inputHeight / numChannels;
+      int c = linearIndex % numChannels_;
+      int n =
+          linearIndex / inputDepth_ / inputWidth_ / inputHeight_ / numChannels_;
       int maxind = indices_ptr[linearIndex];
       int offset =
-          n * numChannels * outputDepth * outputHeight * outputWidth + c;
+          n * numChannels_ * outputDepth_ * outputHeight_ * outputWidth_ + c;
       output_ptr += offset;
-      output_ptr[maxind * numChannels] = input_ptr[linearIndex];
+      output_ptr[maxind * numChannels_] = input_ptr[linearIndex];
     }
   }
   MaxUnpooling3dClForwardKernelFunctor(
-      const int64_t numInputElements_,
-      const scalar_t* input_data_,
-      const int64_t* indices_data_,
-      const int64_t numChannels_,
-      const int64_t inputDepth_,
-      const int64_t inputHeight_,
-      const int64_t inputWidth_,
-      const int64_t outputDepth_,
-      const int64_t outputHeight_,
-      const int64_t outputWidth_,
-      scalar_t* output_data_)
-      : numInputElements(numInputElements_),
-        input_data(input_data_),
-        indices_data(indices_data_),
-        numChannels(numChannels_),
-        inputDepth(inputDepth_),
-        inputHeight(inputHeight_),
-        inputWidth(inputWidth_),
-        outputDepth(outputDepth_),
-        outputHeight(outputHeight_),
-        outputWidth(outputWidth_),
-        output_data(output_data_) {}
+      const int64_t numInputElements,
+      const scalar_t* input_data,
+      const int64_t* indices_data,
+      const int64_t numChannels,
+      const int64_t inputDepth,
+      const int64_t inputHeight,
+      const int64_t inputWidth,
+      const int64_t outputDepth,
+      const int64_t outputHeight,
+      const int64_t outputWidth,
+      scalar_t* output_data)
+      : numInputElements_(numInputElements),
+        input_data_(input_data),
+        indices_data_(indices_data),
+        numChannels_(numChannels),
+        inputDepth_(inputDepth),
+        inputHeight_(inputHeight),
+        inputWidth_(inputWidth),
+        outputDepth_(outputDepth),
+        outputHeight_(outputHeight),
+        outputWidth_(outputWidth),
+        output_data_(output_data) {}
 
  private:
-  const int64_t numInputElements;
-  const scalar_t* input_data;
-  const int64_t* indices_data;
-  const int64_t numChannels;
-  const int64_t inputDepth;
-  const int64_t inputHeight;
-  const int64_t inputWidth;
-  const int64_t outputDepth;
-  const int64_t outputHeight;
-  const int64_t outputWidth;
-  scalar_t* output_data;
+  const int64_t numInputElements_;
+  const scalar_t* input_data_;
+  const int64_t* indices_data_;
+  const int64_t numChannels_;
+  const int64_t inputDepth_;
+  const int64_t inputHeight_;
+  const int64_t inputWidth_;
+  const int64_t outputDepth_;
+  const int64_t outputHeight_;
+  const int64_t outputWidth_;
+  scalar_t* output_data_;
 };
 
 template <typename scalar_t>
@@ -303,7 +293,7 @@ void max_unpooling3d_cl_forward_kernel(
   sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
 }
 
-Tensor& max_unpooling2d_forward_template(
+Tensor& max_unpooling2d_forward_kernel(
     Tensor& output,
     const Tensor& self_,
     const Tensor& indices_,
@@ -459,7 +449,7 @@ static void max_unpooling3d_shape_check(
   }
 }
 
-Tensor& max_unpooling3d_forward_template(
+Tensor& max_unpooling3d_forward_kernel(
     Tensor& output,
     const Tensor& self_,
     const Tensor& indices_,
