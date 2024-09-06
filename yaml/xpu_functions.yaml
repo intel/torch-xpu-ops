@@ -722,3 +722,7 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - _fused_adam_
+  - _fused_adam_.tensor_lr
+  - _fused_adamw_
+  - _fused_adamw_.tensor_lr
