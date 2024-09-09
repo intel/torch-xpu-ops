@@ -3,7 +3,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/layer_norm.h>
-#include <c10/core/SymIntArrayRef.h>
+#include <ATen/native/xpu/sycl/MaxUnpoolingKernels.h>
+#include <ATen/xpu/XPUNativeFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
