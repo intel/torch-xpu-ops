@@ -370,6 +370,8 @@ void upsample_nearest3d_backward_kernel(
 
   Tensor grad_output = grad_output_.contiguous();
   unsigned int n = grad_input.numel() / nbatch;
+  TORCH_CHECK(grad_input.numel() <= std::numeric_limits<int32_t>::max());
+  TORCH_CHECK(grad_output.numel() <= std::numeric_limits<int32_t>::max());
   AT_DISPATCH_FLOATING_TYPES_AND3(
       ScalarType::Half,
       ScalarType::BFloat16,
