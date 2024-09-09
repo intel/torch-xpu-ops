@@ -25,4 +25,13 @@ Tensor XPUNativeFunctions::embedding_dense_backward(
   ;
 }
 
+Tensor& XPUNativeFunctions::embedding_renorm_(
+    Tensor& self,
+    const Tensor& indices,
+    double max_norm,
+    double norm_type) {
+  return native::xpu::embedding_renorm_kernel(
+      self, indices, max_norm, norm_type);
+}
+
 } // namespace at
