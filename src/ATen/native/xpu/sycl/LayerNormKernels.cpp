@@ -593,6 +593,29 @@ void _layer_norm_backward_kernel(
       dY, X, mean_data, var_data, dgamma, dbeta, config_w);
 }
 
+template <typename x_t>
+void bridge_layer_norm_kernel(
+    const Tensor& X,
+    const Tensor& gamma,
+    const Tensor& beta,
+    int64_t M,
+    int64_t N,
+    double eps,
+    Tensor& Y,
+    Tensor& mean,
+    Tensor& rstd) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      gamma.scalar_type(),
+      "layer_norm_xpu",
+      [&]() {
+        using acc_t = acc_type_device<x_t, kXPU>;
+        _layer_norm_kernel<x_t, acc_t, scalar_t>(
+            X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
+      });
+}
+
 std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
@@ -608,11 +631,10 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
         X.scalar_type(),
-        "layer_norm_xpu",
+        "bridge_layer_norm_xpu",
         [&]() {
-          using acc_t = acc_type_device<scalar_t, kXPU>;
-          _layer_norm_kernel<scalar_t, acc_t, scalar_t>(
-              X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
+          bridge_layer_norm_kernel<scalar_t>(
+              X, gamma, beta, M, N, eps, Y, mean, rstd);
         });
   }
 
