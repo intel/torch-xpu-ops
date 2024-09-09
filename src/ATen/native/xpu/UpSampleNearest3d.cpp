@@ -206,7 +206,7 @@ Tensor& XPUNativeFunctions::upsample_nearest3d_backward_out(
       scales_d,
       scales_h,
       scales_w,
-      true);
+      false);
   return grad_input;
 }
 
