@@ -1062,6 +1062,8 @@ skip_dict = {
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         # https://github.com/intel/torch-xpu-ops/issues/264
         "test_type",
+        # rnn fallback to cpu
+        "test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
         # https://github.com/intel/torch-xpu-ops/issues/357
         "test_EmbeddingBag_sparse_cuda",
