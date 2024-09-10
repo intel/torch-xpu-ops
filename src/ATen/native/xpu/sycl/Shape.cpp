@@ -8,6 +8,8 @@
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ShapeKernels.h>
+
 namespace at::native::xpu {
 
 // The best performance is achieved for parallel computing with 1024 batch sizes

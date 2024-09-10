@@ -5,6 +5,8 @@
 #include <ATen/detail/FunctionTraits.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

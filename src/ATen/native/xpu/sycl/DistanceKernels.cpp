@@ -3,6 +3,8 @@
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/DistanceKernels.h>
+
 namespace at::native::xpu {
 template <typename scalar_t>
 static double device_sqrt(scalar_t val) {
@@ -205,6 +207,8 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   do {
     agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
         item, agg, sg_size);
+    if (num_active_sg == 1)
+      return agg;
     item.barrier(sycl_local_fence);
     if (0 == lane_id) {
       local_shared_mem[sg_id] = agg;
@@ -212,14 +216,13 @@ static inline scalar_t group_reduce_agg_without_broadcast(
     item.barrier(sycl_local_fence);
     agg =
         local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
-    num_active_sg = (num_active_sg + sg_size - 1) / sg_size;
+    if (num_active_sg > sg_size)
+      num_active_sg = (num_active_sg + sg_size - 1) / sg_size;
   } while (num_active_sg > sg_size);
 
   // num of active sgs < sg_size
   item.barrier(sycl_local_fence);
   if (0 == sg_id) {
-    agg =
-        local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
     agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
         item, agg, sg_size);
   }
