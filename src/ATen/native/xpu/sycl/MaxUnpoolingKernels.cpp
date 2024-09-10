@@ -109,12 +109,6 @@ struct MaxUnpooling3dForwardKernelFunctor {
     auto input_ptr = input_data_;
     auto indices_ptr = indices_data_;
 
-    // int64_t iColumn = item.get_global_id(0);
-    // int64_t iRow = item.get_global_id(1);
-    // int64_t iFrame = (item.get_group()[2] + offsetZ_) % iT_; // input
-    // frame/time int64_t slice =
-    //     (item.get_group()[2] + offsetZ_) / iT_; // input slice/feature
-
     int64_t iColumn = item.get_global_id(2);
     int64_t iRow = item.get_global_id(1);
     int64_t iFrame = (item.get_group()[0] + offsetZ_) % iT_; // input frame/time
