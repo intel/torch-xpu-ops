@@ -13,6 +13,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ReplicationPaddingKernels.h>
+
 namespace at::native::xpu {
 
 inline int imin(int a, int b) {

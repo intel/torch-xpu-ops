@@ -8,6 +8,8 @@
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/SoftMaxKernels.h>
+
 using namespace xpu::sycl;
 
 namespace at {
