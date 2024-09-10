@@ -109,11 +109,17 @@ struct MaxUnpooling3dForwardKernelFunctor {
     auto input_ptr = input_data_;
     auto indices_ptr = indices_data_;
 
-    int64_t iColumn = item.get_global_id(0);
+    // int64_t iColumn = item.get_global_id(0);
+    // int64_t iRow = item.get_global_id(1);
+    // int64_t iFrame = (item.get_group()[2] + offsetZ_) % iT_; // input
+    // frame/time int64_t slice =
+    //     (item.get_group()[2] + offsetZ_) / iT_; // input slice/feature
+
+    int64_t iColumn = item.get_global_id(2);
     int64_t iRow = item.get_global_id(1);
-    int64_t iFrame = (item.get_group()[2] + offsetZ_) % iT_; // input frame/time
+    int64_t iFrame = (item.get_group()[0] + offsetZ_) % iT_; // input frame/time
     int64_t slice =
-        (item.get_group()[2] + offsetZ_) / iT_; // input slice/feature
+        (item.get_group()[0] + offsetZ_) / iT_; // input slice/feature
     if (iRow < iH_ && iColumn < iW_) {
       scalar_t val = input_ptr
           [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
@@ -193,13 +199,18 @@ void max_unpooling3d_forward_kernel(
       oW,
       offsetZ);
 
-  int64_t totalZ = batchSize * inputSlices * iT;
-  int64_t num_groups_0 = CeilDiv(iW, (int64_t)32);
-  int64_t num_groups_1 = CeilDiv(iH, (int64_t)8);
-  sycl::range<3> global_range{
-      (size_t)(32 * num_groups_0), (size_t)(8 * num_groups_1), (size_t)totalZ};
-  sycl::range<3> local_range{(size_t)32, (size_t)8, (size_t)1};
+  int64_t work_group_size_w = 32;
+  int64_t work_group_size_h = syclMaxWorkGroupSize(kfn) / 32;
+  int64_t total_t = batchSize * inputSlices * iT;
+  int64_t num_groups_w = CeilDiv(iW, work_group_size_w);
+  int64_t num_groups_h = CeilDiv(iH, work_group_size_h);
 
+  sycl::range<3> local_range{
+      (size_t)1, (size_t)work_group_size_h, (size_t)work_group_size_w};
+  sycl::range<3> global_range{
+      (size_t)total_t,
+      (size_t)(work_group_size_h * num_groups_h),
+      (size_t)(work_group_size_w * num_groups_w)};
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
@@ -532,31 +543,26 @@ Tensor& max_unpooling3d_forward_kernel(
          indices.size(4)});
   }
 
-  int totalZ = inputTime * inputSlices * batchSize;
-  int offsetZ = 0;
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
       "max_unpooling3d_forward_xpu",
       ([&] {
-        while (totalZ > 0) {
-          max_unpooling3d_forward_kernel(
-              self.data_ptr<scalar_t>(),
-              indices.data_ptr<int64_t>(),
-              output.data_ptr<scalar_t>(),
-              batchSize,
-              inputSlices,
-              inputTime,
-              inputHeight,
-              inputWidth,
-              oT,
-              oH,
-              oW,
-              offsetZ);
-          totalZ -= 65535;
-          offsetZ += 65535;
-        }
+        // while (totalZ > 0) {
+        max_unpooling3d_forward_kernel(
+            self.data_ptr<scalar_t>(),
+            indices.data_ptr<int64_t>(),
+            output.data_ptr<scalar_t>(),
+            batchSize,
+            inputSlices,
+            inputTime,
+            inputHeight,
+            inputWidth,
+            oT,
+            oH,
+            oW,
+            offsetZ);
       }));
   return output;
 }
