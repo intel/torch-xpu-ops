@@ -719,6 +719,12 @@ skip_dict = {
         # 2. Half dtype is a common dtype in workloads.
         # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
         "test_dtypes_nextafter_xpu",
+        # Bool is involved in latest PyTorch. XPU impl of unfold doesn't support it.
+        # https://github.com/intel/torch-xpu-ops/issues/887
+        "test_dtypes_nn_functional_unfold_xpu",
+        "test_non_standard_bool_values_nn_functional_unfold_xpu_bool",
+        "test_compare_cpu_nn_functional_unfold_xpu_bool",
+        "test_non_standard_bool_values_nn_functional_unfold_xpu_bool",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -2136,6 +2142,10 @@ skip_dict = {
         "test_reduction_all_prod_layout2_xpu_float64",
         "test_reduction_all_sum_layout2_xpu_float16",
         "test_reduction_all_sum_layout2_xpu_float64",
+
+        # Bool is involved in latest PyTorch. XPU impl of unfold doesn't support it.
+        # https://github.com/intel/torch-xpu-ops/issues/887
+        "test_nn_unfold_xpu",
     ),
 
     "nn/test_packed_sequence_xpu.py": (
