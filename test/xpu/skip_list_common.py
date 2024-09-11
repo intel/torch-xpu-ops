@@ -3494,5 +3494,8 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_bfloat16",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",        
+        "test_meta_outplace_nn_functional_unfold_xpu_bool",
+        "test_dispatch_meta_outplace_nn_functional_unfold_xpu_bool",
+        "test_dispatch_symbolic_meta_outplace_nn_functional_unfold_xpu_bool",
     ),
 }
