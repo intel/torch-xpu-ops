@@ -3,7 +3,7 @@
 file(GLOB xpu_h "xpu/*.h")
 file(GLOB xpu_cpp "xpu/*.cpp")
 file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/transformers/xpu/*.cpp")
-file(GLOB xpu_sycl "native/xpu/sycl/*.cpp")
+file(GLOB xpu_sycl "native/xpu/sycl/*.cpp" "native/transformers/xpu/sycl/*.cpp")
 
 list(APPEND ATen_XPU_CPP_SRCS ${xpu_cpp})
 list(APPEND ATen_XPU_NATIVE_CPP_SRCS ${xpu_native_cpp})
