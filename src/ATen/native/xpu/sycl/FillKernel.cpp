@@ -4,6 +4,8 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/FillKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

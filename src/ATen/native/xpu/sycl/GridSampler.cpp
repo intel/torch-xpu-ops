@@ -14,6 +14,8 @@
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/GridSampler.h>
 
+#include <ATen/native/xpu/sycl/GridSamplerKernels.h>
+
 namespace at::native::xpu {
 
 using namespace at::xpu::detail;

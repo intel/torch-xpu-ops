@@ -5148,3 +5148,20 @@
   dispatch:
     XPU: sign_out
   tags: pointwise
+
+- func: range.step(Scalar start, Scalar end, Scalar step=1, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: range
+
+- func: range(Scalar start, Scalar end, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: range
+
+- func: range.out_(Scalar start, Scalar end, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: range_out_no_step
+
+- func: range.out(Scalar start, Scalar end, Scalar step=1, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: range_xpu_out
+  cpp_no_default_args: ['step']

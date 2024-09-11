@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void im2col_kernel(
+TORCH_XPU_API void im2col_kernel(
     Tensor& output,
     const Tensor& input_,
     IntArrayRef kernel_size,

@@ -4,6 +4,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

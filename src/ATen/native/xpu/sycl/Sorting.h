@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void sort_stable_kernel(
+TORCH_XPU_API void sort_stable_kernel(
     const TensorBase& self_base,
     const TensorBase& values_base,
     const TensorBase& indices_base,
@@ -12,7 +12,7 @@ void sort_stable_kernel(
     bool descending,
     bool stable);
 
-void launch_median_kernel(
+TORCH_XPU_API void launch_median_kernel(
     const TensorBase& vals,
     const TensorBase& inds,
     const TensorBase& self,

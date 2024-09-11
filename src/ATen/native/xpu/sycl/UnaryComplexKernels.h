@@ -4,12 +4,12 @@
 
 namespace at::native::xpu {
 
-void conj_kernel(TensorIterator& iter);
+TORCH_XPU_API void conj_kernel(TensorIterator& iter);
 
-void conj_physical_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void conj_physical_kernel(TensorIteratorBase& iter);
 
-void neg_conj_kernel(TensorIterator& iter);
+TORCH_XPU_API void neg_conj_kernel(TensorIterator& iter);
 
-void neg_kernel(TensorIterator& iter);
+TORCH_XPU_API void neg_kernel(TensorIterator& iter);
 
 } // namespace at::native::xpu

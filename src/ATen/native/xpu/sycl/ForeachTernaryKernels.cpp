@@ -5,6 +5,9 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

@@ -13,6 +13,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
+
 namespace at::native::xpu {
 
 inline std::pair<int64_t, int64_t> get_index_mapping1d(
@@ -613,7 +615,7 @@ void reflection_pad1d_backward_kernel(
 }
 
 void reflection_pad2d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -710,7 +712,7 @@ void reflection_pad2d_kernel(
 }
 
 void reflection_pad2d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     const Tensor& input,
     IntArrayRef padding) {

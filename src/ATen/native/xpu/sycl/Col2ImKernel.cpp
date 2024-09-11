@@ -5,6 +5,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
+#include <ATen/native/xpu/sycl/Col2ImKernel.h>
+
 namespace at::native::xpu {
 
 template <typename T>

@@ -10,6 +10,8 @@
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/GroupNormKernels.h>
+
 namespace at::native::xpu {
 
 template <

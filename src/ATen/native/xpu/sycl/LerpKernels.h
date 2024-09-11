@@ -4,8 +4,10 @@
 
 namespace at::native::xpu {
 
-void lerp_tensor_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void lerp_tensor_kernel(TensorIteratorBase& iter);
 
-void lerp_scalar_kernel(TensorIteratorBase& iter, const c10::Scalar& weight);
+TORCH_XPU_API void lerp_scalar_kernel(
+    TensorIteratorBase& iter,
+    const c10::Scalar& weight);
 
 } // namespace at::native::xpu

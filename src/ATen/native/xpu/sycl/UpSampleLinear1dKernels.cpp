@@ -14,6 +14,8 @@
 #include "ATen/Context.h"
 #include "ATen/core/TensorBase.h"
 
+#include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
+
 namespace at::native::xpu {
 template <typename scalar_t, typename accscalar_t>
 struct UpsampleLinear1dKernelFunctor {

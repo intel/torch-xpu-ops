@@ -9,6 +9,8 @@
 #include <comm/Runtime.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/sycl/DistributionKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

@@ -4,16 +4,18 @@
 
 namespace at::native::xpu {
 
-void sigmoid_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void sigmoid_kernel(TensorIteratorBase& iter);
 
-void erf_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void erf_kernel(TensorIteratorBase& iter);
 
-void erfc_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void erfc_kernel(TensorIteratorBase& iter);
 
-void erfinv_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void erfinv_kernel(TensorIteratorBase& iter);
 
-void exp2_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void exp2_kernel(TensorIteratorBase& iter);
 
-void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar);
+TORCH_XPU_API void logit_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& eps_scalar);
 
 } // namespace at::native::xpu

@@ -13,6 +13,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ReplicationPaddingKernels.h>
+
 namespace at::native::xpu {
 
 inline int imin(int a, int b) {
@@ -517,7 +519,7 @@ void replication_pad2d_kernel(
 }
 
 void replication_pad2d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {

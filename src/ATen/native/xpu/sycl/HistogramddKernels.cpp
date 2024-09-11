@@ -17,6 +17,8 @@
 #include <ATen/ops/linspace.h>
 #endif
 
+#include <ATen/native/xpu/sycl/HistogramKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

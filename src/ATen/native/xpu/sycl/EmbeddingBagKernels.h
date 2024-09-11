@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
+TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     const Tensor& weight_t,
     const Tensor& indices_t,
     const Tensor& offsets_t,

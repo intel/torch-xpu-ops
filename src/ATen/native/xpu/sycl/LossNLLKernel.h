@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-void nll_loss_forward_kernel(
+TORCH_XPU_API void nll_loss_forward_kernel(
     const Tensor& self,
     const Tensor& target,
     const OptionalTensorRef weight_opt,
@@ -12,7 +12,7 @@ void nll_loss_forward_kernel(
     const Tensor& output,
     const Tensor& total_weight);
 
-void nll_loss_backward_kernel(
+TORCH_XPU_API void nll_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,

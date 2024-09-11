@@ -6,7 +6,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void topk_kernel(
+TORCH_XPU_API void topk_kernel(
     const at::Tensor& input,
     int64_t k,
     int64_t dim,

@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void complex_kernel(TensorIterator& iter);
+TORCH_XPU_API void complex_kernel(TensorIterator& iter);
 
-void polar_kernel(TensorIterator& iter);
+TORCH_XPU_API void polar_kernel(TensorIterator& iter);
 
 } // namespace at::native::xpu

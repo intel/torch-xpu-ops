@@ -9,6 +9,8 @@
 #include <ATen/native/xpu/sycl/Norm.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/LayerNormKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

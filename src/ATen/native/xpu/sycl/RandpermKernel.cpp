@@ -9,6 +9,8 @@
 
 #include <ATen/ops/arange.h>
 
+#include <ATen/native/xpu/sycl/RandpermKernel.h>
+
 namespace at::native::xpu {
 
 template <typename T, typename scalar_t>

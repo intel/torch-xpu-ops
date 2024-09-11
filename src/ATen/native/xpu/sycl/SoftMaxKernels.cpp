@@ -10,6 +10,8 @@
 
 #include <ATen/ops/empty_like_native.h>
 
+#include <ATen/native/xpu/sycl/SoftMaxKernels.h>
+
 using namespace xpu::sycl;
 
 namespace at {

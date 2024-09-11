@@ -8,6 +8,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UnfoldBackwardKernels.h>
+
 namespace at::native::xpu {
 
 constexpr int n_elems_per_work_item = 4; // UNROLLED_ELEM_PER_WORK_ITEM;

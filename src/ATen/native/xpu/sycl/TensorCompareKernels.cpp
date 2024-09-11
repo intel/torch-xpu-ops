@@ -6,6 +6,8 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/TensorCompareKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

@@ -11,6 +11,8 @@
 #include <ATen/ops/narrow.h>
 #include <ATen/ops/size_native.h>
 
+#include <ATen/native/xpu/sycl/ShapeKernels.h>
+
 namespace at::native::xpu {
 
 // The best performance is achieved for parallel computing with 1024 batch sizes

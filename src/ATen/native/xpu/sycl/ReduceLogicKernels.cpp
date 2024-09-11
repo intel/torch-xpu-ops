@@ -2,6 +2,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 
+#include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
+
 namespace at::native::xpu {
 template <typename scalar_t>
 struct AndFunctor {

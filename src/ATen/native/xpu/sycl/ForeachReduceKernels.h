@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-std::vector<Tensor> foreach_norm_kernel(
+TORCH_XPU_API std::vector<Tensor> foreach_norm_kernel(
     TensorList tensors,
     const Scalar& ord,
     double p,

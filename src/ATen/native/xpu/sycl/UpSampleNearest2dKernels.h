@@ -5,7 +5,7 @@
 
 namespace at::native::xpu {
 
-void upsample_nearest2d_kernel(
+TORCH_XPU_API void upsample_nearest2d_kernel(
     const Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
@@ -13,7 +13,7 @@ void upsample_nearest2d_kernel(
     c10::optional<double> scales_w,
     bool is_exact);
 
-void upsample_nearest2d_backward_kernel(
+TORCH_XPU_API void upsample_nearest2d_backward_kernel(
     const Tensor& grad_input,
     const Tensor& grad_output_,
     IntArrayRef output_size,

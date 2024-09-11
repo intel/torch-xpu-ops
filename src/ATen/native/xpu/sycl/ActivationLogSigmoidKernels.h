@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void log_sigmoid_forward_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void log_sigmoid_forward_kernel(TensorIteratorBase& iter);
 
-void log_sigmoid_backward_kernel(TensorIterator& iter);
+TORCH_XPU_API void log_sigmoid_backward_kernel(TensorIterator& iter);
 
 } // namespace at::native::xpu
