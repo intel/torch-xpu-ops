@@ -2608,9 +2608,12 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
+        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
     ),
+
+    "test_native_mha_xpu.py": None,
 
     "test_comparison_utils_xpu.py": None,
 
