@@ -215,6 +215,7 @@ void col2im_kernel(
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
+      at::ScalarType::Bool,
       input.scalar_type(),
       "col2im_xpu",
       [&] {
