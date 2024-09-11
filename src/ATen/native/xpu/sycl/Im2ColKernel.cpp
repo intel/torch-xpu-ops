@@ -211,7 +211,7 @@ void im2col_kernel(
   output.resize_({batch_size, n_output_plane, output_length});
   output.zero_();
 
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       kHalf, kBFloat16, kBool, input.scalar_type(), "im2col_xpu", [&] {
         Tensor input_n;
         Tensor output_n;
