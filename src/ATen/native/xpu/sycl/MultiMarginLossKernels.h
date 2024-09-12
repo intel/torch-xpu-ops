@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-Tensor& multi_margin_loss_kernel(
+TORCH_XPU_API Tensor& multi_margin_loss_kernel(
     const Tensor& input,
     const Tensor& target,
     const Scalar& p,
@@ -12,7 +12,7 @@ Tensor& multi_margin_loss_kernel(
     int64_t reduction,
     Tensor& out);
 
-Tensor& multi_margin_loss_backward_kernel(
+TORCH_XPU_API Tensor& multi_margin_loss_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     const Tensor& target,
