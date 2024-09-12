@@ -113,6 +113,10 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+
+          cd ../pytorch
+          python torch/utils/collect_env.py
       - name: Run XPU OP Examples
         if: contains(inputs.ut, 'op_example') || github.event_name == 'schedule'
         run: |
