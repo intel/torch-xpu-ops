@@ -283,6 +283,7 @@ _xpu_computation_op_list = [
     "log_normal",
     "take",
     "put",
+    "_segment_reduce",
 ]
 
 _ops_without_cuda_support = [
