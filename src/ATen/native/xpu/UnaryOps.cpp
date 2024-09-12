@@ -1028,11 +1028,12 @@ Tensor& XPUNativeFunctions::ceil_(Tensor& self) {
 }
 
 Tensor& XPUNativeFunctions::ceil_out(const Tensor& self, Tensor& out) {
+  auto iter = ceil_meta(self, out);
+
   if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
     out.copy_(self);
     return out;
   }
-  auto iter = ceil_meta(self, out);
   native::xpu::ceil_kernel(iter);
   return out;
 }
@@ -1134,11 +1135,12 @@ Tensor& XPUNativeFunctions::floor_(Tensor& self) {
 }
 
 Tensor& XPUNativeFunctions::floor_out(const Tensor& self, Tensor& out) {
+  auto iter = meta_floor(self, out);
   if (c10::isIntegralType(self.scalar_type(), /*includeBool=*/false)) {
     out.copy_(self);
     return out;
   }
-  auto iter = meta_floor(self, out);
+
   native::xpu::floor_kernel(iter);
   return out;
 }
