@@ -16,7 +16,7 @@ TORCH_XPU_API Tensor& range_kernel(
     const Scalar& step,
     Tensor& result);
 
-Tensor& linspace_kernel(
+TORCH_XPU_API Tensor& linspace_kernel(
     const Scalar& start,
     const Scalar& end,
     int64_t steps,
