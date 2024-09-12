@@ -6,6 +6,8 @@
 #include <comm/MemoryFormat.h>
 #include <vector>
 
+#include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.h>
+
 namespace at::native::xpu {
 
 using namespace at::xpu;

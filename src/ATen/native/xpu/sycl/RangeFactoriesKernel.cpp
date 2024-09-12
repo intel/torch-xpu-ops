@@ -4,6 +4,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <comm/SYCLContext.h>
+#include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
 
 namespace at::native::xpu {
 

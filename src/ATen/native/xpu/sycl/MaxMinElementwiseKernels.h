@@ -4,12 +4,12 @@
 
 namespace at::native::xpu {
 
-void maximum_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void maximum_kernel(TensorIteratorBase& iter);
 
-void minimum_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void minimum_kernel(TensorIteratorBase& iter);
 
-void fmax_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void fmax_kernel(TensorIteratorBase& iter);
 
-void fmin_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void fmin_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

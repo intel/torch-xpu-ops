@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void upsample_bicubic2d_kernel(
+TORCH_XPU_API void upsample_bicubic2d_kernel(
     Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,

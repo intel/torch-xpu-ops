@@ -4,6 +4,6 @@
 
 namespace at::native::xpu {
 
-void atan_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void atan_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu
