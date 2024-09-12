@@ -537,13 +537,13 @@ Tensor& max_unpooling3d_forward_kernel(
          indices.size(4)});
   }
 
+  int offsetZ = 0;
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
       "max_unpooling3d_forward_xpu",
       ([&] {
-        // while (totalZ > 0) {
         max_unpooling3d_forward_kernel(
             self.data_ptr<scalar_t>(),
             indices.data_ptr<int64_t>(),
