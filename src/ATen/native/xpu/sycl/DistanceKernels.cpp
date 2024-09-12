@@ -811,7 +811,7 @@ static void pdist_kernel_impl(
   auto out_data = result.data_ptr<scalar_t>();
   auto in_data = self.data_ptr<scalar_t>();
 
-  PdistKernelFunctor<scalar_t, F, p_type, accscalar_t> kfn(
+  auto kfn = KernelClass(
       n,
       m,
       p_val,

@@ -9,7 +9,6 @@ TORCH_XPU_API void cdist_kernel(
     const Tensor& x2_expanded,
     double p);
 
-
 TORCH_XPU_API Tensor cdist_backward_kernel(
     Tensor& grad_x1,
     const Tensor& grad,
@@ -18,7 +17,10 @@ TORCH_XPU_API Tensor cdist_backward_kernel(
     const double p,
     const Tensor& cdist);
 
-TORCH_XPU_API void pdist_forward_kernel(Tensor& result, const Tensor& self, double p);
+TORCH_XPU_API void pdist_forward_kernel(
+    Tensor& result,
+    const Tensor& self,
+    double p);
 
 TORCH_XPU_API void pdist_backward_kernel(
     Tensor& result,
