@@ -11,6 +11,7 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 // #include <ATen/native/xpu/sycl/FractionalMaxPool3Kernels.h>
+#include <ATen/core/TensorAccessor.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLContext.h>
 
@@ -464,9 +465,10 @@ struct FractionalMaxPool3dBackwardOutFrameKernelFunctor {
       int64_t inputH = (index / gradInputSizeW % gradInputSizeH);
       int64_t inputT = index / (gradInputSizeH * gradInputSizeW);
       assert(inputT < gradInput.size(2));
+      PackedTensorAccessor64<scalar_t, 5> gradInput_ptr = gradInput;
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)&gradInput[batch][plane][inputT][inputH]
-                                               [inputW],
+          (sycl_global_ptr<scalar_t>)&gradInput_ptr[batch][plane][inputT]
+                                                   [inputH][inputW],
           gradOutput[batch][plane][outputT][outputH][outputW]);
     }
   }
