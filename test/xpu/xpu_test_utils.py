@@ -253,6 +253,7 @@ _xpu_computation_op_list = [
     "heaviside",
     "argsort",
     "log_normal",
+    "_segment_reduce",
 ]
 
 _ops_without_cuda_support = [
