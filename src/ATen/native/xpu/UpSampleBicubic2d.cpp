@@ -37,6 +37,42 @@ void upsample_bicubic2d_meta(
   }
 }
 
+void upsample_bicubic2d_backward_meta(
+    const Tensor& grad_output,
+    Tensor& grad_input,
+    IntArrayRef output_size,
+    IntArrayRef input_size,
+    bool align_corners,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
+  auto full_output_size =
+      native::xpu::upsample_2d_common_check(input_size, output_size);
+
+  TORCH_CHECK(
+      grad_output.dim() == 4,
+      "Expected grad_output to be a tensor of dimension 4 but got: dimension ",
+      grad_output.dim());
+
+  for (const auto i : c10::irange(4)) {
+    TORCH_CHECK(
+        grad_output.size(i) == full_output_size[i],
+        "Expected grad_output to have the same shape as output;",
+        " output.size(",
+        i,
+        ") = ",
+        full_output_size[i],
+        " but got grad_output.size(",
+        i,
+        ") = ",
+        grad_output.size(i));
+  }
+  if (grad_input.defined()) {
+    xpu::resize_out(grad_input, input_size, {}, grad_output.options());
+  } else {
+    grad_input = at::xpu::create_out(input_size, {}, grad_output.options());
+  }
+}
+
 Tensor& XPUNativeFunctions::upsample_bicubic2d_out(
     const Tensor& self,
     IntArrayRef output_size,
@@ -63,5 +99,50 @@ Tensor XPUNativeFunctions::upsample_bicubic2d(
 
   return output;
 }
+Tensor& XPUNativeFunctions::upsample_bicubic2d_backward_out(
+    const Tensor& grad_output,
+    IntArrayRef output_size,
+    IntArrayRef input_size,
+    bool align_corners,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w,
+    Tensor& grad_input) {
+  upsample_bicubic2d_backward_meta(
+      grad_output,
+      grad_input,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
 
+  native::xpu::upsample_bicubic2d_backward_kernel(
+      grad_input,
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
+  return grad_input;
+}
+
+Tensor XPUNativeFunctions::upsample_bicubic2d_backward(
+    const Tensor& grad_output,
+    IntArrayRef output_size,
+    IntArrayRef input_size,
+    bool align_corners,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
+  Tensor grad_input;
+  upsample_bicubic2d_backward_out(
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w,
+      grad_input);
+  return grad_input;
+}
 } // namespace at
