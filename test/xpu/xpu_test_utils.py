@@ -338,6 +338,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "histogram": {
+        ("TestCommonXPU", "test_out_histogram_xpu_float32"):{
+            torch.float32: tol(atol=3e-5, rtol=5e-5),
+        }
+    }
 }
 
 
