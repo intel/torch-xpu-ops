@@ -265,6 +265,8 @@ _cuda_xfail_xpu_pass = [
     ("narrow_copy","test_meta_outplace"),
     ("narrow_copy","test_dispatch_meta_outplace"),
     ("narrow_copy","test_dispatch_symbolic_meta_outplace"),
+    ("logspace","test_quick"),
+    ("logspace","test_comprehensive"),
 ]
 
 # some case should adjust tolerance to pass.

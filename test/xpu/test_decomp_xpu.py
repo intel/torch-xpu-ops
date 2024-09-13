@@ -2,7 +2,7 @@
 
 import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import run_tests, skipIfCrossRef
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -76,6 +76,45 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
             orig, decomp, msg=f"{op.__name__}\nargs = {args}\nkwargs = {kwargs}"
         )
 test_decomp.op_assert_ref=_op_assert_ref
+
+@skipIfCrossRef
+def _test_amp_batch_norm_backward(self):
+    device = "xpu"
+    grad_out = torch.randn((1, 2, 16, 16), dtype=torch.float16, device=device)
+    x = torch.randn((1, 2, 16, 16), dtype=torch.float16, device=device)
+    weight = torch.randn((2,), dtype=torch.float32, device=device)
+    rmean = torch.randn((2,), dtype=torch.float32, device=device)
+    rvar = torch.randn((2,), dtype=torch.float32, device=device)
+    mean = torch.randn((0,), dtype=torch.float32, device=device)
+
+    ref = torch.ops.aten.native_batch_norm_backward(
+        grad_out,
+        x,
+        weight,
+        rmean,
+        rvar,
+        mean,
+        mean,
+        False,
+        1e-05,
+        [True, True, True],
+    )
+    res = torch._decomp.decompositions.native_batch_norm_backward(
+        grad_out,
+        x,
+        weight,
+        rmean,
+        rvar,
+        mean,
+        mean,
+        False,
+        1e-05,
+        [True, True, True],
+    )
+    for a, b in zip(ref, res):
+        self.assertEqual(a.stride(), b.stride())
+        self.assertEqual(a.dtype, b.dtype)
+DecompOneOffTests.test_amp_batch_norm_backward=_test_amp_batch_norm_backward
 
 instantiate_device_type_tests(TestDecomp, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(DecompOneOffTests, globals(), only_for="xpu", allow_xpu=True)
