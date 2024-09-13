@@ -758,6 +758,163 @@ void masked_scatter_kernel(
       });
 }
 
+template <typename scalar_t>
+struct PutAtomicKernelFuncFunctor {
+  void operator()(char* out_data, char* in_data, uint64_t offset) const {
+    sycl_global_ptr<scalar_t> out_ptr =
+        sycl_global_ptr<scalar_t>((scalar_t*)(out_data + offset));
+    auto in = *(scalar_t*)in_data;
+    atomicAdd(out_ptr, in);
+  }
+};
+
+template <typename dtype>
+struct PutKernelFuncFunctor {
+  void operator()(char* out_data, char* in_data, uint64_t offset) const {
+    *(dtype*)(out_data + offset) = *(dtype*)in_data;
+  }
+};
+
+template <typename scalar_t, typename Func>
+void put_kernel_template(
+    Tensor& self,
+    const Tensor& index,
+    const Tensor& source,
+    Func f) {
+  auto numel = index.numel();
+  if (numel == 0)
+    return;
+
+  auto out_numel = self.numel();
+  size_t scalar_bytes = sizeof(scalar_t);
+
+  TensorInfo<scalar_t, uint64_t> out_info =
+      getTensorInfo<scalar_t, uint64_t>(self);
+  out_info.collapseDims();
+
+  TensorInfo<int64_t, uint64_t> indices_info =
+      getTensorInfo<int64_t, uint64_t>(index);
+  indices_info.collapseDims();
+
+  TensorInfo<scalar_t, uint64_t> source_info =
+      getTensorInfo<scalar_t, uint64_t>(source);
+  source_info.collapseDims();
+
+  auto out_data = self.data_ptr<scalar_t>();
+  auto indices_data = index.data_ptr<int64_t>();
+  auto source_data = source.data_ptr<scalar_t>();
+
+  PutKernelFunctor<scalar_t, Func> kfn(
+      f,
+      out_numel,
+      scalar_bytes,
+      out_info,
+      indices_info,
+      source_info,
+      out_data,
+      indices_data,
+      source_data);
+
+  sycl_kernel_submit(sycl::range</*dim=*/1>(numel), getCurrentSYCLQueue(), kfn);
+}
+
+void put_kernel(
+    Tensor& self,
+    const Tensor& index,
+    const Tensor& source,
+    const bool accumulate) {
+  if (accumulate) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+        at::ScalarType::ComplexHalf,
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        self.scalar_type(),
+        "put__xpu",
+        [&] {
+          PutAtomicKernelFuncFunctor<scalar_t> f;
+          put_kernel_template<scalar_t>(self, index, source, f);
+        });
+  } else {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+        at::ScalarType::ComplexHalf,
+        at::ScalarType::BFloat16,
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        self.scalar_type(),
+        "put__xpu",
+        [&] {
+          using dtype = OpaqueType<sizeof(scalar_t)>;
+          PutKernelFuncFunctor<dtype> f;
+          put_kernel_template<scalar_t>(self, index, source, f);
+        });
+  }
+}
+
+template <typename scalar_t>
+void take_kernel_template(Tensor& dst, const Tensor& src, const Tensor& index) {
+  ptrdiff_t src_num_elem = src.numel();
+  ptrdiff_t index_num_elem = index.numel();
+  static constexpr string_view DIM_WARNING =
+      "Tensor too large or too many (> 12) dimensions";
+  TORCH_CHECK(src.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(dst.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(index.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(
+      !(src_num_elem == 0 && index_num_elem != 0),
+      "tried to take from an empty tensor");
+
+  dst = dst.resize_as_(index);
+
+  ptrdiff_t dst_num_elem = dst.numel();
+  if (dst_num_elem == 0) {
+    return;
+  }
+
+  TensorInfo<scalar_t, int64_t> src_info =
+      getTensorInfo<scalar_t, int64_t>(src);
+  src_info.collapseDims();
+
+  TensorInfo<scalar_t, int64_t> dst_info =
+      getTensorInfo<scalar_t, int64_t>(dst);
+  dst_info.collapseDims();
+
+  TensorInfo<int64_t, int64_t> idx_info =
+      getTensorInfo<int64_t, int64_t>(index);
+  idx_info.collapseDims();
+
+  using Kernel = TakeKernelFunctor<scalar_t>;
+  auto wgroup_size = syclMaxWorkGroupSize<Kernel>();
+  auto wgroup_range = (dst_num_elem + wgroup_size - 1) / wgroup_size;
+
+  auto src_data = src.data_ptr<scalar_t>();
+  auto dst_data = dst.data_ptr<scalar_t>();
+  auto idx_data = index.data_ptr<int64_t>();
+
+  Kernel kfn(
+      src_num_elem,
+      dst_num_elem,
+      src_info,
+      dst_info,
+      idx_info,
+      src_data,
+      dst_data,
+      idx_data);
+
+  sycl_kernel_submit(
+      {wgroup_range * wgroup_size}, {wgroup_size}, getCurrentSYCLQueue(), kfn);
+}
+
+void take_kernel(const Tensor& self, const Tensor& index, Tensor& out) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      self.scalar_type(),
+      "take_xpu",
+      [&]() { take_kernel_template<scalar_t>(out, self, index); });
+}
+
 } // namespace at::native::xpu
 
 #pragma GCC diagnostic pop

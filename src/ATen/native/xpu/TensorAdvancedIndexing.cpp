@@ -1456,4 +1456,119 @@ Tensor XPUNativeFunctions::count_nonzero(const Tensor& self, IntArrayRef dims) {
   return (self != 0).sum(dims);
 }
 
+Tensor& XPUNativeFunctions::put_(
+    Tensor& self,
+    const Tensor& index,
+    const Tensor& source,
+    bool accumulate) {
+  // See note [Writing Nondeterministic Operations]
+  // Nondeterministic when index contains duplicate entries and we do not
+  // accumulate If we accumulate on GPU, we use atomicGPUAdd, which is
+  // non-deterministic
+  if (!accumulate || (accumulate && self.device().type() == DeviceType::XPU)) {
+    at::globalContext().alertNotDeterministic("put_");
+  }
+
+  // Type and device checks
+  TORCH_CHECK(
+      index.scalar_type() == ScalarType::Long,
+      "put_(): Expected a long tensor for index, but got ",
+      index.scalar_type())
+  TORCH_CHECK(
+      self.scalar_type() == source.scalar_type(),
+      "put_(): self and source expected to have the same dtype, but got self.dtype = ",
+      self.scalar_type(),
+      " and source.dtype = ",
+      source.scalar_type());
+  TORCH_CHECK(
+      self.device() == source.device() && self.device() == index.device(),
+      "put_(): self, index and source expected to be in the same device, but got self.device = ",
+      self.device(),
+      ", index.device = ",
+      index.device(),
+      ", and source.device = ",
+      source.device());
+
+  // index checks
+  TORCH_CHECK_INDEX(
+      source.numel() == index.numel(),
+      "put_(): Expected source and index to have the same number of elements, but got source.numel() = ",
+      source.numel(),
+      ", index.numel() = ",
+      index.numel());
+  TORCH_CHECK_INDEX(
+      !(self.numel() == 0 && index.numel() != 0),
+      "put_(): Tried to put elements into an empty tensor");
+
+  at::assert_no_internal_overlap(self);
+  at::assert_no_overlap(self, index);
+  at::assert_no_overlap(self, source);
+
+  // Early return
+  if (index.numel() == 0) {
+    return self;
+  }
+
+  native::xpu::put_kernel(self, index, source, accumulate);
+
+  return self;
+}
+
+Tensor& XPUNativeFunctions::take_out(
+    const Tensor& self,
+    const Tensor& index,
+    Tensor& out) {
+  // Type and device checks
+  TORCH_CHECK(
+      index.scalar_type() == ScalarType::Long,
+      "take(): Expected a long tensor for index, but got ",
+      index.scalar_type())
+  TORCH_CHECK(
+      self.scalar_type() == out.scalar_type(),
+      "take(): self and out expected to have the same dtype, but got self.dtype = ",
+      self.scalar_type(),
+      " and out.dtype = ",
+      out.scalar_type());
+  TORCH_CHECK(
+      self.device() == out.device() && self.device() == index.device(),
+      "take(): self, index and out expected to be in the same device, but got self.device = ",
+      self.device(),
+      ", index.device = ",
+      index.device(),
+      ", and out.device = ",
+      out.device());
+
+  // index checks
+  TORCH_CHECK_INDEX(
+      !(self.numel() == 0 && index.numel() != 0),
+      "take(): tried to take from an empty tensor");
+
+  at::assert_no_internal_overlap(out);
+  at::assert_no_overlap(out, index);
+  at::assert_no_overlap(out, self);
+
+  // Do not iterate over self, we will compute the offsets manually
+  // out is resized inside tensor_iterator
+  auto iter = TensorIteratorConfig()
+                  .set_check_mem_overlap(false)
+                  .check_all_same_dtype(false)
+                  .add_output(out)
+                  .add_const_input(index)
+                  .build();
+
+  // Early return after out has been resized
+  if (index.numel() == 0) {
+    return out;
+  }
+
+  native::xpu::take_kernel(self, index, out);
+
+  return out;
+}
+
+Tensor XPUNativeFunctions::take(const Tensor& self, const Tensor& index) {
+  auto out = at::empty(index.sizes(), self.options());
+  XPUNativeFunctions::take_out(self, index, out);
+  return out;
+}
 } // namespace at

@@ -15,8 +15,7 @@ skip_dict = {
         "test_dtypes_sparse_sampled_addmm_xpu",
         # AssertionError: RuntimeError not raised
         "test_errors_dot_xpu",
-        "test_errors_kthvalue_xpu",     
-        "test_errors_take_xpu",
+        "test_errors_kthvalue_xpu",
         "test_errors_vdot_xpu",
         # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
