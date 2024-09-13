@@ -2585,6 +2585,10 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+        # scatter_add needs handle XPU deterministic
+        # https://github.com/intel/torch-xpu-ops/issues/906
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
