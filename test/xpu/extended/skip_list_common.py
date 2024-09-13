@@ -81,6 +81,7 @@ skip_dict = {
     "test_view_replay_nn_functional_embedding_bag_xpu_float32",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
+    "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
