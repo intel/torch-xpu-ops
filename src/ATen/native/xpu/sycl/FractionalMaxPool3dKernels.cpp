@@ -37,64 +37,64 @@ inline int64_t get_intervals(
 template <typename scalar_t, typename accscalar_t>
 struct FractionalMaxPool3dOutFrameCfFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto input_ptr = input_data;
-    auto output_ptr = output_data;
-    auto indices_ptr = indices_data;
-    auto samples_ptr = samples_data;
+    auto input_ptr = input_data_;
+    auto output_ptr = output_data_;
+    auto indices_ptr = indices_data_;
+    auto samples_ptr = samples_data_;
 
     int ourOutputPoint = item.get_global_id()[2];
     int batch = item.get_group()[0];
     int plane = item.get_group()[1];
 
-    if (ourOutputPoint < outputPlaneSize) {
-      int64_t outputT = ourOutputPoint / (outputSizeH * outputSizeW);
-      int64_t outputH = (ourOutputPoint / outputSizeW) % outputSizeH;
-      int64_t outputW = ourOutputPoint % outputSizeW;
+    if (ourOutputPoint < outputPlaneSize_) {
+      int64_t outputT = ourOutputPoint / (outputSizeH_ * outputSizeW_);
+      int64_t outputH = (ourOutputPoint / outputSizeW_) % outputSizeH_;
+      int64_t outputW = ourOutputPoint % outputSizeW_;
 
       int64_t poolT = get_intervals<scalar_t, accscalar_t>(
           static_cast<accscalar_t>(
               samples_ptr
-                  [batch * numPlane * 3 + plane * 3] /*[batch][plane][0]*/),
+                  [batch * numPlane_ * 3 + plane * 3] /*[batch][plane][0]*/),
           outputT,
-          inputSizeT,
-          outputSizeT,
-          poolSizeT);
+          inputSizeT_,
+          outputSizeT_,
+          poolSizeT_);
       int64_t poolH = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(
-              samples_ptr
-                  [batch * numPlane * 3 + plane * 3 + 1] /*[batch][plane][1]*/),
+          static_cast<accscalar_t>(samples_ptr
+                                       [batch * numPlane_ * 3 + plane * 3 +
+                                        1] /*[batch][plane][1]*/),
           outputH,
-          inputSizeH,
-          outputSizeH,
-          poolSizeH);
+          inputSizeH_,
+          outputSizeH_,
+          poolSizeH_);
       int64_t poolW = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(
-              samples_ptr
-                  [batch * numPlane * 3 + plane * 3 + 2] /*[batch][plane][2]*/),
+          static_cast<accscalar_t>(samples_ptr
+                                       [batch * numPlane_ * 3 + plane * 3 +
+                                        2] /*[batch][plane][2]*/),
           outputW,
-          inputSizeW,
-          outputSizeW,
-          poolSizeW);
+          inputSizeW_,
+          outputSizeW_,
+          poolSizeW_);
 
       scalar_t maxVal = std::numeric_limits<scalar_t>::lowest();
       int64_t maxIndex = -1;
 
-      for (int64_t t = poolT; t < poolT + poolSizeT; ++t) {
-        for (int64_t h = poolH; h < poolH + poolSizeH; ++h) {
-          for (int64_t w = poolW; w < poolW + poolSizeW; ++w) {
-            int64_t load_offset = batch * ibatch_stride +
-                plane * iplane_stride + t * iT_stride + h * inputSizeW + w;
+      for (int64_t t = poolT; t < poolT + poolSizeT_; ++t) {
+        for (int64_t h = poolH; h < poolH + poolSizeH_; ++h) {
+          for (int64_t w = poolW; w < poolW + poolSizeW_; ++w) {
+            int64_t load_offset = batch * ibatch_stride_ +
+                plane * iplane_stride_ + t * iT_stride_ + h * inputSizeW_ + w;
             scalar_t val = input_ptr[load_offset] /*[batch][plane][t][h][w]*/;
             if (val > maxVal) {
-              maxIndex = t * inputSizeH * inputSizeW + h * inputSizeW + w;
+              maxIndex = t * inputSizeH_ * inputSizeW_ + h * inputSizeW_ + w;
               maxVal = val;
             }
           }
         }
       }
 
-      int64_t store_offset = batch * obatch_stride + plane * oplane_stride +
-          outputT * oT_stride + outputH * outputSizeW + outputW;
+      int64_t store_offset = batch * obatch_stride_ + plane * oplane_stride_ +
+          outputT * oT_stride_ + outputH * outputSizeW_ + outputW;
       indices_ptr[store_offset] /*[batch][plane][outputT][outputH][outputW]*/
           = maxIndex;
       output_ptr[store_offset] /*[batch][plane][outputT][outputH][outputW]*/
@@ -102,74 +102,74 @@ struct FractionalMaxPool3dOutFrameCfFunctor {
     }
   }
   FractionalMaxPool3dOutFrameCfFunctor(
-      scalar_t* output_data_,
-      int64_t* indices_data_,
-      scalar_t* input_data_,
-      scalar_t* samples_data_,
-      int numBatch_,
-      int numPlane_,
-      int inputSizeT_,
-      int inputSizeH_,
-      int inputSizeW_,
-      int outputSizeT_,
-      int outputSizeH_,
-      int outputSizeW_,
-      int poolSizeT_,
-      int poolSizeH_,
-      int poolSizeW_,
-      int outputPlaneSize_,
-      int64_t iT_stride_,
-      int64_t iplane_stride_,
-      int64_t ibatch_stride_,
-      int64_t oT_stride_,
-      int64_t oplane_stride_,
-      int64_t obatch_stride_)
-      : output_data(output_data_),
-        indices_data(indices_data_),
-        input_data(input_data_),
-        samples_data(samples_data_),
-        numBatch(numBatch_),
-        numPlane(numPlane_),
-        inputSizeT(inputSizeT_),
-        inputSizeH(inputSizeH_),
-        inputSizeW(inputSizeW_),
-        outputSizeT(outputSizeT_),
-        outputSizeH(outputSizeH_),
-        outputSizeW(outputSizeW_),
-        poolSizeT(poolSizeT_),
-        poolSizeH(poolSizeH_),
-        poolSizeW(poolSizeW_),
-        outputPlaneSize(outputPlaneSize_),
-        iT_stride(iT_stride_),
-        iplane_stride(iplane_stride_),
-        ibatch_stride(ibatch_stride_),
-        oT_stride(oT_stride_),
-        oplane_stride(oplane_stride_),
-        obatch_stride(obatch_stride_) {}
+      scalar_t* output_data,
+      int64_t* indices_data,
+      scalar_t* input_data,
+      scalar_t* samples_data,
+      int numBatch,
+      int numPlane,
+      int inputSizeT,
+      int inputSizeH,
+      int inputSizeW,
+      int outputSizeT,
+      int outputSizeH,
+      int outputSizeW,
+      int poolSizeT,
+      int poolSizeH,
+      int poolSizeW,
+      int outputPlaneSize,
+      int64_t iT_stride,
+      int64_t iplane_stride,
+      int64_t ibatch_stride,
+      int64_t oT_stride,
+      int64_t oplane_stride,
+      int64_t obatch_stride)
+      : output_data_(output_data),
+        indices_data_(indices_data),
+        input_data_(input_data),
+        samples_data_(samples_data),
+        numBatch_(numBatch),
+        numPlane_(numPlane),
+        inputSizeT_(inputSizeT),
+        inputSizeH_(inputSizeH),
+        inputSizeW_(inputSizeW),
+        outputSizeT_(outputSizeT),
+        outputSizeH_(outputSizeH),
+        outputSizeW_(outputSizeW),
+        poolSizeT_(poolSizeT),
+        poolSizeH_(poolSizeH),
+        poolSizeW_(poolSizeW),
+        outputPlaneSize_(outputPlaneSize),
+        iT_stride_(iT_stride),
+        iplane_stride_(iplane_stride),
+        ibatch_stride_(ibatch_stride),
+        oT_stride_(oT_stride),
+        oplane_stride_(oplane_stride),
+        obatch_stride_(obatch_stride) {}
 
  private:
-  scalar_t* output_data;
-  int64_t* indices_data;
-  scalar_t* input_data;
-  scalar_t* samples_data;
-  int numBatch;
-  int numPlane;
-  int inputSizeT;
-  int inputSizeH;
-  int inputSizeW;
-  int outputSizeT;
-  int outputSizeH;
-  int outputSizeW;
-  int poolSizeT;
-  int poolSizeH;
-  int poolSizeW;
-  int outputPlaneSize;
-  int64_t iT_stride;
-  int64_t iplane_stride;
-  int64_t ibatch_stride;
-  int64_t oT_stride;
-  int64_t oplane_stride;
-  int64_t obatch_stride;
+  scalar_t* output_data_;
+  int64_t* indices_data_;
+  scalar_t* input_data_;
+  scalar_t* samples_data_;
+  int numBatch_;
+  int numPlane_;
+  int inputSizeT_;
+  int inputSizeH_;
+  int inputSizeW_;
+  int outputSizeT_;
+  int outputSizeH_;
+  int outputSizeW_;
+  int poolSizeT_;
+  int poolSizeH_;
+  int poolSizeW_;
+  int outputPlaneSize_;
+  int64_t iT_stride_;
+  int64_t iplane_stride_;
+  int64_t ibatch_stride_;
+  int64_t oT_stride_;
+  int64_t oplane_stride_;
+  int64_t obatch_stride_;
 };
 
 template <typename scalar_t>
@@ -242,62 +242,62 @@ void fractional_max_pool3d_out_frame_cf(
 template <typename scalar_t, typename accscalar_t>
 struct FractionalMaxPool3dOutFrameClFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto input_ptr = input_data;
-    auto output_ptr = output_data;
-    auto indices_ptr = indices_data;
-    auto samples_ptr = samples_data;
+    auto input_ptr = input_data_;
+    auto output_ptr = output_data_;
+    auto indices_ptr = indices_data_;
+    auto samples_ptr = samples_data_;
 
     int outputIndex = item.get_global_id()[2];
 
-    if (outputIndex < outputSize) {
+    if (outputIndex < outputSize_) {
       int batch = item.get_group()[0];
       int outputT = item.get_group()[1];
-      int outputH = outputIndex / numPlane / outputSizeW % outputSizeH;
-      int outputW = outputIndex / numPlane % outputSizeW;
-      int plane = outputIndex % numPlane;
+      int outputH = outputIndex / numPlane_ / outputSizeW_ % outputSizeH_;
+      int outputW = outputIndex / numPlane_ % outputSizeW_;
+      int plane = outputIndex % numPlane_;
       int64_t poolT = get_intervals<scalar_t, accscalar_t>(
           static_cast<accscalar_t>(
               samples_ptr
-                  [batch * numPlane * 3 + plane * 3] /*[batch][plane][0]*/),
+                  [batch * numPlane_ * 3 + plane * 3] /*[batch][plane][0]*/),
           outputT,
-          inputSizeT,
-          outputSizeT,
-          poolSizeT);
+          inputSizeT_,
+          outputSizeT_,
+          poolSizeT_);
       int64_t poolH = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(
-              samples_ptr
-                  [batch * numPlane * 3 + plane * 3 + 1] /*[batch][plane][1]*/),
+          static_cast<accscalar_t>(samples_ptr
+                                       [batch * numPlane_ * 3 + plane * 3 +
+                                        1] /*[batch][plane][1]*/),
           outputH,
-          inputSizeH,
-          outputSizeH,
-          poolSizeH);
+          inputSizeH_,
+          outputSizeH_,
+          poolSizeH_);
       int64_t poolW = get_intervals<scalar_t, accscalar_t>(
-          static_cast<accscalar_t>(
-              samples_ptr
-                  [batch * numPlane * 3 + plane * 3 + 2] /*[batch][plane][2]*/),
+          static_cast<accscalar_t>(samples_ptr
+                                       [batch * numPlane_ * 3 + plane * 3 +
+                                        2] /*[batch][plane][2]*/),
           outputW,
-          inputSizeW,
-          outputSizeW,
-          poolSizeW);
+          inputSizeW_,
+          outputSizeW_,
+          poolSizeW_);
 
       scalar_t maxVal = std::numeric_limits<scalar_t>::lowest();
       int64_t maxIndex = -1;
 
-      for (int64_t t = poolT; t < poolT + poolSizeT; ++t) {
-        for (int64_t h = poolH; h < poolH + poolSizeH; ++h) {
-          for (int64_t w = poolW; w < poolW + poolSizeW; ++w) {
-            int64_t load_offset = batch * iBatch_stride + t * iT_stride +
-                h * iH_stride + w * numPlane + plane;
+      for (int64_t t = poolT; t < poolT + poolSizeT_; ++t) {
+        for (int64_t h = poolH; h < poolH + poolSizeH_; ++h) {
+          for (int64_t w = poolW; w < poolW + poolSizeW_; ++w) {
+            int64_t load_offset = batch * iBatch_stride_ + t * iT_stride_ +
+                h * iH_stride_ + w * numPlane_ + plane;
             scalar_t val = input_ptr[load_offset] /*[batch][plane][t][h][w]*/;
             if (val > maxVal) {
-              maxIndex = t * inputSizeH * inputSizeW + h * inputSizeW + w;
+              maxIndex = t * inputSizeH_ * inputSizeW_ + h * inputSizeW_ + w;
               maxVal = val;
             }
           }
         }
       }
-      int64_t store_offset = batch * oBatch_stride + outputT * oT_stride +
-          outputH * oH_stride + outputW * numPlane + plane;
+      int64_t store_offset = batch * oBatch_stride_ + outputT * oT_stride_ +
+          outputH * oH_stride_ + outputW * numPlane_ + plane;
       indices_ptr[store_offset] /*[batch][plane][outputT][outputH][outputW]*/
           = maxIndex;
       output_ptr[store_offset] /*[batch][plane][outputT][outputH][outputW]*/
@@ -305,74 +305,74 @@ struct FractionalMaxPool3dOutFrameClFunctor {
     }
   }
   FractionalMaxPool3dOutFrameClFunctor(
-      scalar_t* output_data_,
-      int64_t* indices_data_,
-      scalar_t* input_data_,
-      scalar_t* samples_data_,
-      int numBatch_,
-      int numPlane_,
-      int inputSizeT_,
-      int inputSizeH_,
-      int inputSizeW_,
-      int outputSizeT_,
-      int outputSizeH_,
-      int outputSizeW_,
-      int poolSizeT_,
-      int poolSizeH_,
-      int poolSizeW_,
-      int outputSize_,
-      int64_t iH_stride_,
-      int64_t iT_stride_,
-      int64_t iBatch_stride_,
-      int64_t oH_stride_,
-      int64_t oT_stride_,
-      int64_t oBatch_stride_)
-      : output_data(output_data_),
-        indices_data(indices_data_),
-        input_data(input_data_),
-        samples_data(samples_data_),
-        numBatch(numBatch_),
-        numPlane(numPlane_),
-        inputSizeT(inputSizeT_),
-        inputSizeH(inputSizeH_),
-        inputSizeW(inputSizeW_),
-        outputSizeT(outputSizeT_),
-        outputSizeH(outputSizeH_),
-        outputSizeW(outputSizeW_),
-        poolSizeT(poolSizeT_),
-        poolSizeH(poolSizeH_),
-        poolSizeW(poolSizeW_),
-        outputSize(outputSize_),
-        iH_stride(iH_stride_),
-        iT_stride(iT_stride_),
-        iBatch_stride(iBatch_stride_),
-        oH_stride(oH_stride_),
-        oT_stride(oT_stride_),
-        oBatch_stride(oBatch_stride_) {}
+      scalar_t* output_data,
+      int64_t* indices_data,
+      scalar_t* input_data,
+      scalar_t* samples_data,
+      int numBatch,
+      int numPlane,
+      int inputSizeT,
+      int inputSizeH,
+      int inputSizeW,
+      int outputSizeT,
+      int outputSizeH,
+      int outputSizeW,
+      int poolSizeT,
+      int poolSizeH,
+      int poolSizeW,
+      int outputSize,
+      int64_t iH_stride,
+      int64_t iT_stride,
+      int64_t iBatch_stride,
+      int64_t oH_stride,
+      int64_t oT_stride,
+      int64_t oBatch_stride)
+      : output_data_(output_data),
+        indices_data_(indices_data),
+        input_data_(input_data),
+        samples_data_(samples_data),
+        numBatch_(numBatch),
+        numPlane_(numPlane),
+        inputSizeT_(inputSizeT),
+        inputSizeH_(inputSizeH),
+        inputSizeW_(inputSizeW),
+        outputSizeT_(outputSizeT),
+        outputSizeH_(outputSizeH),
+        outputSizeW_(outputSizeW),
+        poolSizeT_(poolSizeT),
+        poolSizeH_(poolSizeH),
+        poolSizeW_(poolSizeW),
+        outputSize_(outputSize),
+        iH_stride_(iH_stride),
+        iT_stride_(iT_stride),
+        iBatch_stride_(iBatch_stride),
+        oH_stride_(oH_stride),
+        oT_stride_(oT_stride),
+        oBatch_stride_(oBatch_stride) {}
 
  private:
-  scalar_t* output_data;
-  int64_t* indices_data;
-  scalar_t* input_data;
-  scalar_t* samples_data;
-  int numBatch;
-  int numPlane;
-  int inputSizeT;
-  int inputSizeH;
-  int inputSizeW;
-  int outputSizeT;
-  int outputSizeH;
-  int outputSizeW;
-  int poolSizeT;
-  int poolSizeH;
-  int poolSizeW;
-  int outputSize;
-  int64_t iH_stride;
-  int64_t iT_stride;
-  int64_t iBatch_stride;
-  int64_t oH_stride;
-  int64_t oT_stride;
-  int64_t oBatch_stride;
+  scalar_t* output_data_;
+  int64_t* indices_data_;
+  scalar_t* input_data_;
+  scalar_t* samples_data_;
+  int numBatch_;
+  int numPlane_;
+  int inputSizeT_;
+  int inputSizeH_;
+  int inputSizeW_;
+  int outputSizeT_;
+  int outputSizeH_;
+  int outputSizeW_;
+  int poolSizeT_;
+  int poolSizeH_;
+  int poolSizeW_;
+  int outputSize_;
+  int64_t iH_stride_;
+  int64_t iT_stride_;
+  int64_t iBatch_stride_;
+  int64_t oH_stride_;
+  int64_t oT_stride_;
+  int64_t oBatch_stride_;
 };
 
 template <typename scalar_t>
@@ -454,51 +454,51 @@ struct FractionalMaxPool3dBackwardOutFrameKernelFunctor {
     int plane = item.get_group()[1];
     int batch = item.get_group()[0];
 
-    if (ourOutputPoint < gradOutputPlaneSize) {
-      int64_t outputT = ourOutputPoint / gradOutputSizeH / gradOutputSizeW;
-      int64_t outputH = ourOutputPoint / gradOutputSizeW % gradOutputSizeH;
-      int64_t outputW = ourOutputPoint % gradOutputSizeW;
+    if (ourOutputPoint < gradOutputPlaneSize_) {
+      int64_t outputT = ourOutputPoint / gradOutputSizeH_ / gradOutputSizeW_;
+      int64_t outputH = ourOutputPoint / gradOutputSizeW_ % gradOutputSizeH_;
+      int64_t outputW = ourOutputPoint % gradOutputSizeW_;
 
-      int64_t index = indices[batch][plane][outputT][outputH][outputW];
-      assert(index >= 0);
-      int64_t inputW = index % gradInputSizeW;
-      int64_t inputH = (index / gradInputSizeW % gradInputSizeH);
-      int64_t inputT = index / (gradInputSizeH * gradInputSizeW);
-      assert(inputT < gradInput.size(2));
-      PackedTensorAccessor64<scalar_t, 5> gradInput_ptr = gradInput;
+      int64_t index = indices_[batch][plane][outputT][outputH][outputW];
+      SYCL_KERNEL_ASSERT(index >= 0);
+      int64_t inputW = index % gradInputSizeW_;
+      int64_t inputH = (index / gradInputSizeW_ % gradInputSizeH_);
+      int64_t inputT = index / (gradInputSizeH_ * gradInputSizeW_);
+      SYCL_KERNEL_ASSERT(inputT < gradInput_.size(2));
+      PackedTensorAccessor64<scalar_t, 5> gradInput_ptr = gradInput_;
       atomicAdd(
           (sycl_global_ptr<scalar_t>)&gradInput_ptr[batch][plane][inputT]
                                                    [inputH][inputW],
-          gradOutput[batch][plane][outputT][outputH][outputW]);
+          gradOutput_[batch][plane][outputT][outputH][outputW]);
     }
   }
   FractionalMaxPool3dBackwardOutFrameKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 5> gradInput_,
-      PackedTensorAccessor64<scalar_t, 5> gradOutput_,
-      PackedTensorAccessor64<int64_t, 5> indices_,
-      int gradOutputSizeH_,
-      int gradOutputSizeW_,
-      int gradInputSizeH_,
-      int gradInputSizeW_,
-      int gradOutputPlaneSize_)
-      : gradInput(gradInput_),
-        gradOutput(gradOutput_),
-        indices(indices_),
-        gradOutputSizeH(gradOutputSizeH_),
-        gradOutputSizeW(gradOutputSizeW_),
-        gradInputSizeH(gradInputSizeH_),
-        gradInputSizeW(gradInputSizeW_),
-        gradOutputPlaneSize(gradOutputPlaneSize_) {}
+      PackedTensorAccessor64<scalar_t, 5> gradInput,
+      PackedTensorAccessor64<scalar_t, 5> gradOutput,
+      PackedTensorAccessor64<int64_t, 5> indices,
+      int gradOutputSizeH,
+      int gradOutputSizeW,
+      int gradInputSizeH,
+      int gradInputSizeW,
+      int gradOutputPlaneSize)
+      : gradInput_(gradInput),
+        gradOutput_(gradOutput),
+        indices_(indices),
+        gradOutputSizeH_(gradOutputSizeH),
+        gradOutputSizeW_(gradOutputSizeW),
+        gradInputSizeH_(gradInputSizeH),
+        gradInputSizeW_(gradInputSizeW),
+        gradOutputPlaneSize_(gradOutputPlaneSize) {}
 
  private:
-  PackedTensorAccessor64<scalar_t, 5> gradInput;
-  PackedTensorAccessor64<scalar_t, 5> gradOutput;
-  PackedTensorAccessor64<int64_t, 5> indices;
-  int gradOutputSizeH;
-  int gradOutputSizeW;
-  int gradInputSizeH;
-  int gradInputSizeW;
-  int gradOutputPlaneSize;
+  PackedTensorAccessor64<scalar_t, 5> gradInput_;
+  PackedTensorAccessor64<scalar_t, 5> gradOutput_;
+  PackedTensorAccessor64<int64_t, 5> indices_;
+  int gradOutputSizeH_;
+  int gradOutputSizeW_;
+  int gradInputSizeH_;
+  int gradInputSizeW_;
+  int gradOutputPlaneSize_;
 };
 
 template <typename scalar_t>
@@ -511,7 +511,6 @@ void fractional_max_pool3d_backward_out_frame(
   auto gradOutputSizeT = gradOutput.size(2);
   auto gradOutputSizeH = gradOutput.size(3);
   auto gradOutputSizeW = gradOutput.size(4);
-  auto gradInputSizeT = gradInput.size(2);
   auto gradInputSizeH = gradInput.size(3);
   auto gradInputSizeW = gradInput.size(4);
 
