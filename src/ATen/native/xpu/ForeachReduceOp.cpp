@@ -60,7 +60,8 @@ std::vector<Tensor> XPUNativeFunctions::_foreach_norm(
             at::isComplexType(scalar_type);
       });
   if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
-      !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
+      !(p == static_cast<double>(1) || p == static_cast<double>(2) ||
+        p == std::numeric_limits<double>::infinity())) {
     return at::native::foreach_tensor_norm_slow(tensors, ord, dtype);
   }
   check_foreach_norm_dtype(

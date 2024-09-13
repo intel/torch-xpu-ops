@@ -5,11 +5,12 @@
 
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
 
-enum class NormType { L1, L2 };
+enum class NormType { L1, L2, LInf };
 
 namespace at::native::xpu {
 template <
@@ -20,9 +21,6 @@ template <
     int r_args_depth = 1,
     int res_arg_index = 0>
 struct LpNormFunctor {
-  static_assert(
-      norm_type == NormType::L1 || norm_type == NormType::L2,
-      "foreach_norm supports only L1 and L2 norm");
   template <typename TLA, typename TLW>
   void operator()(
       const int64_t chunk_size,
@@ -57,9 +55,13 @@ struct LpNormFunctor {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
-          vals[ii] += norm_type == NormType::L1
-              ? static_cast<opmath_t>(std::fabs((opmath_t)next))
-              : static_cast<opmath_t>(next * next);
+          if constexpr (norm_type == NormType::LInf) {
+            vals[ii] = max_impl(vals[ii], std::fabs((opmath_t)next));
+          } else {
+            vals[ii] += norm_type == NormType::L1
+                ? static_cast<opmath_t>(std::fabs((opmath_t)next))
+                : static_cast<opmath_t>(next * next);
+          }
         }
       }
     } else {
@@ -70,9 +72,13 @@ struct LpNormFunctor {
           int i = i_start + item_idx + ii * item_range;
           if (i < n && i < chunk_size) {
             opmath_t next = static_cast<opmath_t>(x[i]);
-            vals[ii] += norm_type == NormType::L1
-                ? static_cast<opmath_t>(std::fabs((opmath_t)next))
-                : static_cast<opmath_t>(next * next);
+            if constexpr (norm_type == NormType::LInf) {
+              vals[ii] = max_impl(vals[ii], ::abs(std::fabs((opmath_t)next)));
+            } else {
+              vals[ii] += norm_type == NormType::L1
+                  ? static_cast<opmath_t>(std::fabs((opmath_t)next))
+                  : static_cast<opmath_t>(next * next);
+            }
           }
         }
       }
@@ -80,11 +86,18 @@ struct LpNormFunctor {
 
     auto val = opmath_t(0);
     for (int i = 0; i < kILP; i++) {
-      val += vals[i];
+      if constexpr (norm_type == NormType::LInf) {
+        val = max_impl(val, vals[i]);
+      } else {
+        val += vals[i];
+      }
     }
 
-    auto sum_val = sycl::reduce_over_group(
-        item_id.get_group(), val, sycl::plus<opmath_t>());
+    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
+        ? sycl::reduce_over_group(
+              item_id.get_group(), val, sycl::plus<opmath_t>())
+        : sycl::reduce_over_group(
+              item_id.get_group(), val, sycl::maximum<opmath_t>());
 
     if (item_idx == 0) {
       output_per_tensor[tensor_loc * max_chunks_per_tensor + chunk_idx] =
@@ -103,13 +116,22 @@ struct lpnormChunkReduceKernelFunctor {
         output_per_tensor_ + group_id * max_chunks_per_tensor_;
     opmath_t val = 0;
     for (int i = lid; i < max_chunks_per_tensor_; i += wg_size_) {
-      val += output_this_tensor[i];
+      if constexpr (norm_type == NormType::LInf) {
+        val = max_impl(val, output_this_tensor[i]);
+      } else {
+        val += output_this_tensor[i];
+      }
     }
-    auto sum_val = sycl::reduce_over_group(
-        item_id.get_group(), val, sycl::plus<opmath_t>());
+    auto sum_val = norm_type == NormType::L1 || norm_type == NormType::L2
+        ? sycl::reduce_over_group(
+              item_id.get_group(), val, sycl::plus<opmath_t>())
+        : sycl::reduce_over_group(
+              item_id.get_group(), val, sycl::maximum<opmath_t>());
     if (lid == 0) {
       *(ret_per_tensor_[group_id]) =
-          norm_type == NormType::L1 ? sum_val : std::sqrt((opmath_t)sum_val);
+          norm_type == NormType::L1 || norm_type == NormType::LInf
+          ? sum_val
+          : std::sqrt((opmath_t)sum_val);
     }
   }
   lpnormChunkReduceKernelFunctor(
@@ -191,7 +213,6 @@ std::vector<Tensor> foreach_norm_kernel(
     double p,
     c10::optional<ScalarType> dtype) {
   const int ntensors = tensors.size();
-
   const ScalarType output_dtype = // tensors[0].scalar_type();
       dtype.has_value() ? dtype.value() : tensors[0].scalar_type();
   const auto options = tensors[0].options();
@@ -310,6 +331,56 @@ std::vector<Tensor> foreach_norm_kernel(
                 launch_lpnorm_chunk_reduce_kernel<
                     out_t,
                     NormType::L2,
+                    out_opmath_t>(
+                    output_per_tensor.mutable_data_ptr<out_opmath_t>(),
+                    (out_t**)(metaAddress),
+                    wg_size,
+                    max_chunks_per_tensor,
+                    ntensors);
+              });
+        });
+  } else if (p == std::numeric_limits<double>::infinity()) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf,
+        kBFloat16,
+        tensor_lists[0][0].scalar_type(),
+        "foreach_norm",
+        [&]() {
+          AT_DISPATCH_OUT_DTYPES(
+              output_dtype, "foreach_norm_out_dtype_xpu", [&]() {
+                using out_opmath_t = typename at::opmath_type<out_t>;
+                using KernelClass = lpnormChunkReduceKernelFunctor<
+                    out_t,
+                    NormType::LInf,
+                    out_opmath_t>;
+                foreach_norn_kernel_config<KernelClass>(
+                    tensors,
+                    output_per_tensor_option,
+                    wg_size,
+                    max_chunks_per_tensor,
+                    output_per_tensor);
+
+                multi_tensor_apply<1>(
+                    tensor_lists,
+                    LpNormFunctor<scalar_t, NormType::LInf, out_opmath_t>(),
+                    output_per_tensor.mutable_data_ptr<out_opmath_t>(),
+                    max_chunks_per_tensor);
+                for (int i = 0; i < ntensors; i++) {
+                  tensor_list_addresses[i] =
+                      ret_per_tensor[i].mutable_data_ptr<out_t>();
+                }
+                q.memcpy(
+                    (void*)metaAddress,
+                    (void*)tensor_list_addresses,
+                    sizeof(void*) * ntensors);
+
+                at::xpu::CachingHostAllocator_recordEvent(
+                    (void*)tensor_list_addresses,
+                    tensor_list_addresses_dptr.get_context(),
+                    at::xpu::getCurrentXPUStream());
+                launch_lpnorm_chunk_reduce_kernel<
+                    out_t,
+                    NormType::LInf,
                     out_opmath_t>(
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
                     (out_t**)(metaAddress),
