@@ -88,7 +88,8 @@ void multi_margin_loss_shape_check(
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct MultilabelMarginLossForwardKernelFunctor {
+struct MultilabelMarginLossForwardKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
   operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
@@ -139,7 +140,7 @@ struct MultilabelMarginLossForwardKernelFunctor {
     accscalar_t total_sum = 0.0f;
     total_sum = GroupReduceSumSGSizeEqualstoNumSG(
         item,
-        sum,
+        static_cast<accscalar_t>(sum),
         static_cast<accscalar_t*>(
             smem_.template get_multi_ptr<sycl::access::decorated::no>().get()));
     if (item.get_local_linear_id() == 0) {
@@ -185,7 +186,8 @@ struct MultilabelMarginLossForwardKernelFunctor {
 };
 
 template <typename scalar_t, typename accscalar_t>
-struct MultilabelMarginLossBackwardKernelFunctor {
+struct MultilabelMarginLossBackwardKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
   operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
@@ -239,7 +241,7 @@ struct MultilabelMarginLossBackwardKernelFunctor {
       accscalar_t total_sum = 0.0f;
       total_sum = GroupReduceSumSGSizeEqualstoNumSG(
           item,
-          sum,
+          static_cast<accscalar_t>(sum),
           static_cast<accscalar_t*>(
               smem_.template get_multi_ptr<sycl::access::decorated::no>()
                   .get()));
