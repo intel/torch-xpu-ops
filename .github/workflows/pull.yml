@@ -23,15 +23,15 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/_linux_ut.yml
-    with: 
-      ut: op_example,op_extended,op_ut
+    with:
+      ut: op_regression,op_regression_dev1,op_extended,op_ut
       runner: linux.idc.xpu
 
   preci-ut-abi-0:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/_linux_ut.yml
-    with: 
+    with:
       abi: 0
       ut: op_extended
       runner: linux.idc.xpu
