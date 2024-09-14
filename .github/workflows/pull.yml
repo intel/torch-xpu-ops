@@ -100,6 +100,7 @@ jobs:
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
 
+          cd ..
           python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
       - name: Huggingface BF16 Training Accuracy Test
