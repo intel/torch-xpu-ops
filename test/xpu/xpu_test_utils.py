@@ -203,7 +203,7 @@ _xpu_computation_op_list = [
     "bucketize",
     "searchsorted",
     "grid_sampler_2d",
-    # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
+    "nn.functional.grid_sample",
     "addr",
     "cdist",
     "nn.functional.group_norm",
