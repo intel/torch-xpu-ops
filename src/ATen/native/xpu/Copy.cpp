@@ -300,7 +300,9 @@ Tensor& XPUNativeFunctions::copy_(
     const Tensor& src,
     bool non_blocking) {
   if (self._is_zerotensor()) {
-    TORCH_CHECK(false, "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
+    TORCH_CHECK(
+        false,
+        "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
   }
   if (src._is_zerotensor()) {
     return self.zero_();
@@ -316,15 +318,12 @@ Tensor& XPUNativeFunctions::copy_(
   // TODO: Support quantization
 
   // Exit early if self and src are views of the same data
-  const bool is_same_data = (
-      self.is_alias_of(src) &&
-      self.storage_offset() == src.storage_offset() &&
-      self.strides().equals(src.strides()) &&
-      self.sizes().equals(src.sizes()) &&
-      self.scalar_type() == src.scalar_type() &&
-      self.is_conj() == src.is_conj() &&
-      self.is_neg() == src.is_neg()
-    );
+  const bool is_same_data =
+      (self.is_alias_of(src) && self.storage_offset() == src.storage_offset() &&
+       self.strides().equals(src.strides()) &&
+       self.sizes().equals(src.sizes()) &&
+       self.scalar_type() == src.scalar_type() &&
+       self.is_conj() == src.is_conj() && self.is_neg() == src.is_neg());
   if (is_same_data) {
     return self;
   }

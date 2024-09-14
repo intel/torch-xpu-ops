@@ -5,6 +5,8 @@
 #include <ATen/native/xpu/sycl/EmbeddingBag.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 
+#include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
+
 namespace at::native::xpu {
 
 std::pair<Tensor, Tensor> promoteIndicesAndOffsets(

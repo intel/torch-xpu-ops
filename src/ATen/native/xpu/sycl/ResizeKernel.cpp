@@ -3,6 +3,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
+#include <ATen/native/xpu/sycl/ResizeKernel.h>
+
 namespace at::native::xpu {
 
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
@@ -58,7 +60,7 @@ TensorImpl* resize_impl_xpu_(
     TensorImpl* self,
     IntArrayRef size,
     at::OptionalIntArrayRef stride,
-    bool device_guard = true) {
+    bool device_guard) {
   if (self->sizes() == size && (!stride || self->strides() == stride)) {
     return self;
   }

@@ -2,6 +2,8 @@
 #include <ATen/AccumulateType.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/NMSKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

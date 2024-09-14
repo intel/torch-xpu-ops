@@ -8,12 +8,14 @@
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/core/TensorBase.h>
-#include <ATen/native/TensorIterator.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/SortingCommon.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <c10/macros/Macros.h>
+
+#include <ATen/native/xpu/sycl/Sorting.h>
 
 namespace at::native::xpu {
 
@@ -205,8 +207,7 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
 }
 
 template <typename scalar_t, typename index_t, int Dim>
-struct GatherMedianKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     index_t slice = item.get_group_linear_id();
 
@@ -239,9 +240,9 @@ struct GatherMedianKernelFunctor
     if (nan_count > 0) {
       atomicAdd(
           (sycl_local_ptr<index_t>)(num_nan_
-                                            .template get_multi_ptr<
-                                                sycl::access::decorated::no>()
-                                            .get()),
+                                        .template get_multi_ptr<
+                                            sycl::access::decorated::no>()
+                                        .get()),
           nan_count);
     }
     item.barrier(sycl_local_fence);
@@ -352,8 +353,8 @@ void gatherMedian(
       values_data,
       indices_data);
   int64_t local_size = syclMaxWorkGroupSize(kfn);
-  sycl_kernel_submit(numInputSlices * local_size, local_size,
-      getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(
+      numInputSlices * local_size, local_size, getCurrentSYCLQueue(), kfn);
 }
 
 struct MedianLauncher {

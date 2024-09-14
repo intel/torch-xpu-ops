@@ -190,5 +190,11 @@ uint32_t syclNativeVectorWidth(
       "Invalid data type to fetch native vector width!");
 }
 
+static inline bool syclHasFloat64(
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  return dev_prop->has_fp64;
+}
+
 } // namespace sycl
 } // namespace xpu
