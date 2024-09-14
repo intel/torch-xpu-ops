@@ -690,9 +690,11 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
 
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
+        test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            test_dir,
+            os.path.join(test_dir, "nn"),
+            os.path.join(test_dir, "quantization/core"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()

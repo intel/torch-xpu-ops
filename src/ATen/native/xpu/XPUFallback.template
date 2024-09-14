@@ -183,7 +183,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "fractional_max_pool3d_backward",
     "fractional_max_pool3d.output",
     "frexp.Tensor_out",
-    "_fused_moving_avg_obs_fq_helper",
     "geometric_",
     "geqrf",
     "hardshrink_backward.grad_input",
