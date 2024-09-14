@@ -2128,6 +2128,10 @@ skip_dict = {
         "test_reduction_all_sum_layout2_xpu_float64",
     ),
 
+    "quantization/core/test_workflow_ops_xpu.py": None,
+
+    "quantization/core/test_workflow_module_xpu.py": None,
+
     "nn/test_packed_sequence_xpu.py": (
         # test case porting issue
         "test_to and not test_to_memory and not test_total",
