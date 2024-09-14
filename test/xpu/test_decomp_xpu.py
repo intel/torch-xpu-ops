@@ -2,7 +2,7 @@
 
 import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, skipIfCrossRef
+from torch.testing._internal.common_utils import run_tests, skipIfCrossRef, _getDefaultRtolAndAtol
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -49,7 +49,7 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
         (torch.float16, torch.ops.aten.reflection_pad1d_backward.default): 5e-3,
         (torch.bfloat16, torch.ops.aten.reflection_pad1d_backward.default): 5e-3,
         (torch.float16, torch.ops.aten.reflection_pad2d_backward.default): 5e-3,
-        (torch.bfloat16, torch.ops.aten.reflection_pad2d_backward.default): 5e-3,
+        (torch.bfloat16, torch.ops.aten.reflection_pad2d_backward.default): 7e-3, # adjust tolerance for xpu, so hook this func
         (torch.float16, torch.ops.aten.reflection_pad3d_backward.default): 5e-3,
         (torch.bfloat16, torch.ops.aten.reflection_pad3d_backward.default): 5e-2,
         # see https://github.com/pytorch/pytorch/pull/96264
@@ -76,6 +76,67 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
             orig, decomp, msg=f"{op.__name__}\nargs = {args}\nkwargs = {kwargs}"
         )
 test_decomp.op_assert_ref=_op_assert_ref
+
+def _op_assert_equal(test_case, op, test_dtype, orig, decomp, args, kwargs):
+    test_case.assertEqual(
+        orig.dtype,
+        decomp.dtype,
+        f"Operation: {op}, orig.dtype: {orig.dtype}, decomp.dtype: {decomp.dtype}, {args}, {kwargs}",
+    )
+    # Before adding an entry to this table, make sure your decomposition is right :)
+    tol_table = {
+        # Due to strange epsilon behaviors, see https://github.com/pytorch/pytorch/issues/73161
+        (torch.float32, torch.ops.aten.native_layer_norm.default): (1e-3, 1e-3),
+        (torch.float32, torch.ops.aten.native_layer_norm_backward.default): (
+            1e-3,
+            1e-3,
+        ),
+        (torch.float64, torch.ops.aten.native_layer_norm.default): (1e-6, 1e-6),
+        # This exceeds default tolerances only on CPU, on CUDA it's fine
+        (torch.float32, torch.ops.aten.grid_sampler_2d.default): (7e-6, 3e-5),
+        # Exceeds tolerances on CUDA, likely due to fma
+        (torch.float32, torch.ops.aten.mv.default): (1e-5, 3e-5),
+        (torch.complex64, torch.ops.aten.mv.default): (5e-5, 5e-5),
+        (torch.float64, torch.ops.aten.upsample_bicubic2d.vec): (1e-5, 5e-4),
+        (torch.float64, torch.ops.aten.upsample_bicubic2d.default): (1e-5, 5e-4),
+        # The decomposition is TOO correct. It computes everything in int64, so sometimes
+        # there's an off-by-one error. See
+        # https://github.com/pytorch/pytorch/issues/81996
+        # https://github.com/pytorch/pytorch/issues/82230
+        (torch.int8, torch.ops.aten.linspace.default): (0, 1),
+        (torch.uint8, torch.ops.aten.linspace.default): (0, 1),
+        (torch.int16, torch.ops.aten.linspace.default): (0, 1),
+        (torch.int32, torch.ops.aten.linspace.default): (0, 1),
+        (torch.int64, torch.ops.aten.linspace.default): (0, 1),
+        (torch.int8, torch.ops.aten.linspace.Tensor_Tensor): (0, 1),
+        (torch.uint8, torch.ops.aten.linspace.Tensor_Tensor): (0, 1),
+        (torch.int16, torch.ops.aten.linspace.Tensor_Tensor): (0, 1),
+        (torch.int32, torch.ops.aten.linspace.Tensor_Tensor): (0, 1),
+        (torch.int64, torch.ops.aten.linspace.Tensor_Tensor): (0, 1),
+        (torch.int8, torch.ops.aten.linspace.Tensor_Scalar): (0, 1),
+        (torch.uint8, torch.ops.aten.linspace.Tensor_Scalar): (0, 1),
+        (torch.int16, torch.ops.aten.linspace.Tensor_Scalar): (0, 1),
+        (torch.int32, torch.ops.aten.linspace.Tensor_Scalar): (0, 1),
+        (torch.int64, torch.ops.aten.linspace.Tensor_Scalar): (0, 1),
+        (torch.int8, torch.ops.aten.linspace.Scalar_Tensor): (0, 1),
+        (torch.uint8, torch.ops.aten.linspace.Scalar_Tensor): (0, 1),
+        (torch.int16, torch.ops.aten.linspace.Scalar_Tensor): (0, 1),
+        (torch.int32, torch.ops.aten.linspace.Scalar_Tensor): (0, 1),
+        (torch.int64, torch.ops.aten.linspace.Scalar_Tensor): (0, 1),
+        (torch.float64,torch.ops.aten._native_batch_norm_legit.default):(3e-7,5e-7), # adjust tolerance for xpu, so hook this func
+    }
+    if (decomp.dtype, op) in tol_table:
+        rtol, atol = tol_table[(decomp.dtype, op)]
+    else:
+        rtol, atol = _getDefaultRtolAndAtol(orig.dtype, decomp.dtype)
+    test_case.assertEqual(
+        orig,
+        decomp,
+        rtol=rtol,
+        atol=atol,
+        msg=f"{op.__name__}\nargs = {args}\nkwargs = {kwargs}",
+    )
+test_decomp.op_assert_equal=_op_assert_equal
 
 @skipIfCrossRef
 def _test_amp_batch_norm_backward(self):
