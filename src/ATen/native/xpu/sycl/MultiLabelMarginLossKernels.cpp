@@ -11,6 +11,8 @@
 #include <ATen/native/xpu/sycl/SYCLGroupAlgorithm.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/MultiLabelMarginLossKernels.h>
+
 namespace at::native::xpu {
 const int MULTILABELMARGIN_SUB_GROUP_SIZE = 32;
 const int MULTILABELMARGIN_THREADS =
