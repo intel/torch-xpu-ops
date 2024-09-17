@@ -98,6 +98,7 @@ jobs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
       DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
       BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
       OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
@@ -157,6 +158,7 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "KERNEL_VERSION=$(uname -rv 2>&1 |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -305,6 +307,7 @@ jobs:
           repo="${{ github.repository }}"
           TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_BRANCH_ID }}"
           TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_COMMIT_ID }}"
+          KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.KERNEL_VERSION }}"
           DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.DRIVER_VERSION }}"
           BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.BUNDLE_VERSION }}"
           OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.OS_PRETTY_NAME }}"
@@ -349,8 +352,8 @@ jobs:
           printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION |$KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.model }}" != "" ];then
