@@ -94,11 +94,16 @@ jobs:
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
-      - name: Show GITHUB_ENV
+      - name: Torch Config
         run: |
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+
+          cd ..
+          source activate e2e_ci
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
