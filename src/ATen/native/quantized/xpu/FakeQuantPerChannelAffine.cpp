@@ -6,6 +6,7 @@
 #include <ATen/Functions.h>
 #else
 #include <ATen/ops/empty_like.h>
+#include <ATen/ops/fake_quantize_per_channel_affine.h>
 #endif
 
 #include <ATen/native/quantized/xpu/sycl/FakeQuantizeCoreKernels.h>
