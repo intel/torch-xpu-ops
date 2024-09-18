@@ -26,28 +26,28 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::multilabel_margin_loss_forward(
   return std::tuple<Tensor&, Tensor&>(output, is_target);
 }
 
-Tensor& XPUNativeFunctions::multilabel_margin_loss_backward_out(
-    const Tensor& grad_output,
-    const Tensor& self,
-    const Tensor& target,
-    int64_t reduction,
-    const Tensor& is_target,
-    Tensor& grad_input) {
-  at::native::xpu::multilabel_margin_loss_backward_kernel(
-      grad_output, self, target, reduction, is_target, grad_input);
-  return grad_input;
-}
+// Tensor& XPUNativeFunctions::multilabel_margin_loss_backward_out(
+//     const Tensor& grad_output,
+//     const Tensor& self,
+//     const Tensor& target,
+//     int64_t reduction,
+//     const Tensor& is_target,
+//     Tensor& grad_input) {
+//   at::native::xpu::multilabel_margin_loss_backward_kernel(
+//       grad_output, self, target, reduction, is_target, grad_input);
+//   return grad_input;
+// }
 
-Tensor XPUNativeFunctions::multilabel_margin_loss_backward(
-    const Tensor& grad_output,
-    const Tensor& self,
-    const Tensor& target,
-    int64_t reduction,
-    const Tensor& is_target) {
-  auto grad_input = zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  at::native::xpu::multilabel_margin_loss_backward_kernel(
-      grad_output, self, target, reduction, is_target, grad_input);
-  return grad_input;
-}
+// Tensor XPUNativeFunctions::multilabel_margin_loss_backward(
+//     const Tensor& grad_output,
+//     const Tensor& self,
+//     const Tensor& target,
+//     int64_t reduction,
+//     const Tensor& is_target) {
+//   auto grad_input = zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+//   at::native::xpu::multilabel_margin_loss_backward_kernel(
+//       grad_output, self, target, reduction, is_target, grad_input);
+//   return grad_input;
+// }
 
 } // namespace at

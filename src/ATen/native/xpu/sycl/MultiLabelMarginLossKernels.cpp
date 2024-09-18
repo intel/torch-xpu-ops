@@ -185,113 +185,113 @@ struct MultilabelMarginLossForwardKernelFunctor
   sycl_local_acc_t<accscalar_t> smem_;
 };
 
-template <typename scalar_t, typename accscalar_t>
-struct MultilabelMarginLossBackwardKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
-  operator()(sycl::nd_item<1> item) const {
-    int k = item.get_group(0);
-    const scalar_t* input_k = input_ + k * dim_;
-    scalar_t* grad_input_k = grad_input_ + k * dim_;
-    const int64_t* target_k = target_ + k * dim_;
-    const scalar_t* is_target_k = is_target_ + k * dim_;
+// template <typename scalar_t, typename accscalar_t>
+// struct MultilabelMarginLossBackwardKernelFunctor
+//     : public __SYCL_KER_CONFIG_CONVENTION__ {
+//   [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
+//   operator()(sycl::nd_item<1> item) const {
+//     int k = item.get_group(0);
+//     const scalar_t* input_k = input_ + k * dim_;
+//     scalar_t* grad_input_k = grad_input_ + k * dim_;
+//     const int64_t* target_k = target_ + k * dim_;
+//     const scalar_t* is_target_k = is_target_ + k * dim_;
 
-    const scalar_t* grad_output_k = grad_output_;
-    if (!reduce_) {
-      grad_output_k += k;
-    }
+//     const scalar_t* grad_output_k = grad_output_;
+//     if (!reduce_) {
+//       grad_output_k += k;
+//     }
 
-    // gain:
-    scalar_t g = static_cast<scalar_t>(
-        size_average_ && reduce_ ? 1. / static_cast<accscalar_t>(nframe_ * dim_)
-                                 : 1. / static_cast<accscalar_t>(dim_));
+//     // gain:
+//     scalar_t g = static_cast<scalar_t>(
+//         size_average_ && reduce_ ? 1. / static_cast<accscalar_t>(nframe_ * dim_)
+//                                  : 1. / static_cast<accscalar_t>(dim_));
 
-    // zero gradients:
-    for (int d = item.get_local_linear_id(); d < dim_;
-         d += item.get_local_range(0)) {
-      grad_input_k[d] = static_cast<scalar_t>(0);
-    }
+//     // zero gradients:
+//     for (int d = item.get_local_linear_id(); d < dim_;
+//          d += item.get_local_range(0)) {
+//       grad_input_k[d] = static_cast<scalar_t>(0);
+//     }
 
-    item.barrier(sycl_local_fence);
-    // iterate over targets
-    for (int dt = 0; dt < dim_; dt++) {
-      // next target:
-      int target_idx = static_cast<int>(target_k[dt]);
-      if (target_idx < 0) {
-        break;
-      }
+//     item.barrier(sycl_local_fence);
+//     // iterate over targets
+//     for (int dt = 0; dt < dim_; dt++) {
+//       // next target:
+//       int target_idx = static_cast<int>(target_k[dt]);
+//       if (target_idx < 0) {
+//         break;
+//       }
 
-      // current value for target
-      scalar_t input_target_k = input_k[target_idx];
+//       // current value for target
+//       scalar_t input_target_k = input_k[target_idx];
 
-      // compare to all inputs (multithreaded):
-      accscalar_t sum = 0;
-      for (int d = item.get_local_linear_id(); d < dim_;
-           d += item.get_local_range(0)) {
-        // contribute to loss only if not a target
-        if (!static_cast<int>(is_target_k[d])) {
-          scalar_t z = 1 - input_target_k + input_k[d];
-          if (z > 0) {
-            sum -= g;
-            grad_input_k[d] += g;
-          }
-        }
-      }
-      item.barrier(sycl_local_fence);
-      accscalar_t total_sum = 0.0f;
-      total_sum = GroupReduceSumSGSizeEqualstoNumSG(
-          item,
-          static_cast<accscalar_t>(sum),
-          static_cast<accscalar_t*>(
-              smem_.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()));
+//       // compare to all inputs (multithreaded):
+//       accscalar_t sum = 0;
+//       for (int d = item.get_local_linear_id(); d < dim_;
+//            d += item.get_local_range(0)) {
+//         // contribute to loss only if not a target
+//         if (!static_cast<int>(is_target_k[d])) {
+//           scalar_t z = 1 - input_target_k + input_k[d];
+//           if (z > 0) {
+//             sum -= g;
+//             grad_input_k[d] += g;
+//           }
+//         }
+//       }
+//       item.barrier(sycl_local_fence);
+//       accscalar_t total_sum = 0.0f;
+//       total_sum = GroupReduceSumSGSizeEqualstoNumSG(
+//           item,
+//           static_cast<accscalar_t>(sum),
+//           static_cast<accscalar_t*>(
+//               smem_.template get_multi_ptr<sycl::access::decorated::no>()
+//                   .get()));
 
-      if (item.get_local_linear_id() == 0) {
-        grad_input_k[target_idx] += static_cast<scalar_t>(total_sum);
-      }
-      for (int d = item.get_local_linear_id(); d < dim_;
-           d += item.get_local_range(0)) {
-        grad_input_k[d] *= *grad_output_k;
-      }
-    }
-  }
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
-  }
-  MultilabelMarginLossBackwardKernelFunctor(
-      scalar_t* grad_input,
-      const scalar_t* grad_output,
-      const scalar_t* input,
-      const int64_t* target,
-      const scalar_t* is_target,
-      int nframe,
-      int dim,
-      bool size_average,
-      bool reduce,
-      int64_t smem_size)
-      : grad_input_(grad_input),
-        grad_output_(grad_output),
-        input_(input),
-        is_target_(is_target),
-        nframe_(nframe),
-        dim_(dim),
-        size_average_(size_average),
-        reduce_(reduce),
-        smem_size_(smem_size) {}
+//       if (item.get_local_linear_id() == 0) {
+//         grad_input_k[target_idx] += static_cast<scalar_t>(total_sum);
+//       }
+//       for (int d = item.get_local_linear_id(); d < dim_;
+//            d += item.get_local_range(0)) {
+//         grad_input_k[d] *= *grad_output_k;
+//       }
+//     }
+//   }
+//   void sycl_ker_config_convention(sycl::handler& cgh) {
+//     smem_ = sycl_local_acc_t<accscalar_t>(smem_size_, cgh);
+//   }
+//   MultilabelMarginLossBackwardKernelFunctor(
+//       scalar_t* grad_input,
+//       const scalar_t* grad_output,
+//       const scalar_t* input,
+//       const int64_t* target,
+//       const scalar_t* is_target,
+//       int nframe,
+//       int dim,
+//       bool size_average,
+//       bool reduce,
+//       int64_t smem_size)
+//       : grad_input_(grad_input),
+//         grad_output_(grad_output),
+//         input_(input),
+//         is_target_(is_target),
+//         nframe_(nframe),
+//         dim_(dim),
+//         size_average_(size_average),
+//         reduce_(reduce),
+//         smem_size_(smem_size) {}
 
- private:
-  scalar_t* grad_input_;
-  const scalar_t* grad_output_;
-  const scalar_t* input_;
-  const int64_t* target_;
-  const scalar_t* is_target_;
-  int nframe_;
-  int dim_;
-  bool size_average_;
-  bool reduce_;
-  int64_t smem_size_;
-  sycl_local_acc_t<accscalar_t> smem_;
-};
+//  private:
+//   scalar_t* grad_input_;
+//   const scalar_t* grad_output_;
+//   const scalar_t* input_;
+//   const int64_t* target_;
+//   const scalar_t* is_target_;
+//   int nframe_;
+//   int dim_;
+//   bool size_average_;
+//   bool reduce_;
+//   int64_t smem_size_;
+//   sycl_local_acc_t<accscalar_t> smem_;
+// };
 
 void multilabel_margin_loss_kernel(
     const Tensor& input,
@@ -409,99 +409,99 @@ void multilabel_margin_loss_kernel(
   }
 }
 
-void multilabel_margin_loss_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& input,
-    const Tensor& target,
-    int64_t reduction,
-    const Tensor& is_target,
-    Tensor& grad_input) {
-  int64_t nframe, dim;
-  const int64_t ndims = input.dim();
-  multilabel_margin_loss_shape_check(nframe, dim, ndims, input, target);
+// void multilabel_margin_loss_backward_kernel(
+//     const Tensor& grad_output,
+//     const Tensor& input,
+//     const Tensor& target,
+//     int64_t reduction,
+//     const Tensor& is_target,
+//     Tensor& grad_input) {
+//   int64_t nframe, dim;
+//   const int64_t ndims = input.dim();
+//   multilabel_margin_loss_shape_check(nframe, dim, ndims, input, target);
 
-  if (input.numel() == 0) {
-    return;
-  }
+//   if (input.numel() == 0) {
+//     return;
+//   }
 
-  auto input_ = input.contiguous();
-  auto target_ = target.contiguous();
-  auto is_target_ = is_target.contiguous();
-  auto grad_output_ = grad_output.contiguous();
-  grad_input.resize_as_(input_);
+//   auto input_ = input.contiguous();
+//   auto target_ = target.contiguous();
+//   auto is_target_ = is_target.contiguous();
+//   auto grad_output_ = grad_output.contiguous();
+//   grad_input.resize_as_(input_);
 
-  if (grad_input.dim() <= 1) {
-    int target_size = target_.dim() == 0 ? 1 : target_.size(0);
-    TORCH_CHECK(
-        (target_.numel() != 0) && (target_.dim() <= 1) && (target_size == dim),
-        "inconsistent target size");
-    TORCH_CHECK(
-        target_.sizes() == is_target_.sizes(), "inconsistent is_target size");
+//   if (grad_input.dim() <= 1) {
+//     int target_size = target_.dim() == 0 ? 1 : target_.size(0);
+//     TORCH_CHECK(
+//         (target_.numel() != 0) && (target_.dim() <= 1) && (target_size == dim),
+//         "inconsistent target size");
+//     TORCH_CHECK(
+//         target_.sizes() == is_target_.sizes(), "inconsistent is_target size");
 
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        input.scalar_type(),
-        "multilabel_margin_loss_backward_kernel",
-        [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
-          int64_t local_size = MULTILABELMARGIN_THREADS;
-          auto kfn =
-              MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
-                  grad_input.mutable_data_ptr<scalar_t>(),
-                  grad_output_.const_data_ptr<scalar_t>(),
-                  input_.const_data_ptr<scalar_t>(),
-                  target_.const_data_ptr<int64_t>(),
-                  is_target_.const_data_ptr<scalar_t>(),
-                  1,
-                  dim,
-                  reduction == at::Reduction::Mean,
-                  reduction != at::Reduction::None,
-                  local_size);
-          sycl_kernel_submit(
-              local_size, local_size, getCurrentSYCLQueue(), kfn);
-        });
-  } else if (grad_input.dim() == 2) {
-    TORCH_CHECK(
-        (input_.size(1) != 0) && (target_.dim() == 2) &&
-            (target_.size(0) == nframe) && (target_.size(1) == dim),
-        "inconsistent target size");
-    TORCH_CHECK(
-        target_.sizes() == is_target_.sizes(), "inconsistent is_target size");
+//     AT_DISPATCH_FLOATING_TYPES_AND2(
+//         at::ScalarType::Half,
+//         at::ScalarType::BFloat16,
+//         input.scalar_type(),
+//         "multilabel_margin_loss_backward_kernel",
+//         [&] {
+//           using accscalar_t = at::acc_type<scalar_t, true>;
+//           int64_t local_size = MULTILABELMARGIN_THREADS;
+//           auto kfn =
+//               MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
+//                   grad_input.mutable_data_ptr<scalar_t>(),
+//                   grad_output_.const_data_ptr<scalar_t>(),
+//                   input_.const_data_ptr<scalar_t>(),
+//                   target_.const_data_ptr<int64_t>(),
+//                   is_target_.const_data_ptr<scalar_t>(),
+//                   1,
+//                   dim,
+//                   reduction == at::Reduction::Mean,
+//                   reduction != at::Reduction::None,
+//                   local_size);
+//           sycl_kernel_submit(
+//               local_size, local_size, getCurrentSYCLQueue(), kfn);
+//         });
+//   } else if (grad_input.dim() == 2) {
+//     TORCH_CHECK(
+//         (input_.size(1) != 0) && (target_.dim() == 2) &&
+//             (target_.size(0) == nframe) && (target_.size(1) == dim),
+//         "inconsistent target size");
+//     TORCH_CHECK(
+//         target_.sizes() == is_target_.sizes(), "inconsistent is_target size");
 
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        input.scalar_type(),
-        "multilabel_margin_loss_backward_kernel",
-        [&] {
-          using accscalar_t = at::acc_type<scalar_t, true>;
-          int64_t local_size = MULTILABELMARGIN_THREADS;
-          auto kfn =
-              MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
-                  grad_input.mutable_data_ptr<scalar_t>(),
-                  grad_output_.const_data_ptr<scalar_t>(),
-                  input_.const_data_ptr<scalar_t>(),
-                  target_.const_data_ptr<int64_t>(),
-                  is_target_.const_data_ptr<scalar_t>(),
-                  grad_input.size(0),
-                  grad_input.size(1),
-                  reduction == at::Reduction::Mean,
-                  reduction != at::Reduction::None,
-                  local_size);
-          sycl_kernel_submit(
-              grad_input.size(0) * local_size,
-              local_size,
-              getCurrentSYCLQueue(),
-              kfn);
-        });
-  } else {
-    TORCH_CHECK(
-        false,
-        "Expected 2D input with optional zero batch dim, or 1D input with non-zero dims, but got sizes: ",
-        grad_input.sizes());
-  }
-}
+//     AT_DISPATCH_FLOATING_TYPES_AND2(
+//         at::ScalarType::Half,
+//         at::ScalarType::BFloat16,
+//         input.scalar_type(),
+//         "multilabel_margin_loss_backward_kernel",
+//         [&] {
+//           using accscalar_t = at::acc_type<scalar_t, true>;
+//           int64_t local_size = MULTILABELMARGIN_THREADS;
+//           auto kfn =
+//               MultilabelMarginLossBackwardKernelFunctor<scalar_t, accscalar_t>(
+//                   grad_input.mutable_data_ptr<scalar_t>(),
+//                   grad_output_.const_data_ptr<scalar_t>(),
+//                   input_.const_data_ptr<scalar_t>(),
+//                   target_.const_data_ptr<int64_t>(),
+//                   is_target_.const_data_ptr<scalar_t>(),
+//                   grad_input.size(0),
+//                   grad_input.size(1),
+//                   reduction == at::Reduction::Mean,
+//                   reduction != at::Reduction::None,
+//                   local_size);
+//           sycl_kernel_submit(
+//               grad_input.size(0) * local_size,
+//               local_size,
+//               getCurrentSYCLQueue(),
+//               kfn);
+//         });
+//   } else {
+//     TORCH_CHECK(
+//         false,
+//         "Expected 2D input with optional zero batch dim, or 1D input with non-zero dims, but got sizes: ",
+//         grad_input.sizes());
+//   }
+// }
 
 } // namespace at::native::xpu
 #pragma clang diagnostic pop
