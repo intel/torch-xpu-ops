@@ -56,6 +56,12 @@ endforeach()
 # Choose host flags in FindSYCL.cmake
 @SYCL_host_flags@
 
+# Adding permissive flag for MSVC build to overcome ambiguous symbol error.
+if(WIN32)
+  string(APPEND SYCL_host_compiler_flags "/permissive- ")
+endif()
+
+
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
   # Extra quotes are added around each flag to help SYCL parse out flags with spaces.

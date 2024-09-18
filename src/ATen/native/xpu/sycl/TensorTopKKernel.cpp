@@ -5,6 +5,8 @@
 #include <ATen/native/xpu/sycl/Sorting.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 
+#include <ATen/native/xpu/sycl/TensorTopKKernel.h>
+
 namespace at {
 namespace native {
 namespace xpu {

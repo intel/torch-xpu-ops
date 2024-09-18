@@ -3,6 +3,8 @@
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UniqueKernels.h>
+
 namespace at::native::xpu {
 
 struct UniqueNotEqualFunctor {

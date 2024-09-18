@@ -10,6 +10,8 @@
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
 
+#include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

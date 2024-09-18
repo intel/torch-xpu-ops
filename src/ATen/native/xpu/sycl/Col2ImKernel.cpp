@@ -5,6 +5,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
+#include <ATen/native/xpu/sycl/Col2ImKernel.h>
+
 namespace at::native::xpu {
 
 template <typename T>
@@ -210,9 +212,10 @@ void col2im_kernel(
   output.resize_({batch_size, n_output_plane, output_height, output_width});
   output.zero_();
 
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
+      at::ScalarType::Bool,
       input.scalar_type(),
       "col2im_xpu",
       [&] {

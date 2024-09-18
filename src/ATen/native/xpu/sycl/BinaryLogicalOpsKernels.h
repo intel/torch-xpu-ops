@@ -4,10 +4,10 @@
 
 namespace at::native::xpu {
 
-void logical_and_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logical_and_kernel(TensorIteratorBase& iter);
 
-void logical_or_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logical_or_kernel(TensorIteratorBase& iter);
 
-void logical_xor_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logical_xor_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu
