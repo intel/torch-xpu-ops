@@ -11,6 +11,10 @@ from hypothesis import strategies as st
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests, TestCase
 
+from torch.testing._internal.common_quantized import (
+    to_tensor
+)
+
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
@@ -139,6 +143,7 @@ TestFakeQuantizeOps.test_forward_per_channel_cachemask_cuda = _test_forward_per_
 TestFakeQuantizeOps.test_learnable_forward_per_channel_cuda = _test_learnable_forward_per_channel_cuda
 TestFakeQuantizeOps.test_backward_per_channel_cachemask_cuda = _test_backward_per_channel_cachemask_cuda
 TestFakeQuantizeOps.test_learnable_backward_per_channel_cuda = _test_learnable_backward_per_channel_cuda
+TestFakeQuantizeOps.test_fixed_qparams_fq_module = rewrap_hypothesis_test(TestFakeQuantizeOps.test_fixed_qparams_fq_module, extra_given_kwargs=given_kwargs_dict1)
 
 TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg = rewrap_hypothesis_test(TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg, extra_given_kwargs=given_kwargs_dict3)
 TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel = rewrap_hypothesis_test(TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel, extra_given_kwargs=given_kwargs_dict3)
