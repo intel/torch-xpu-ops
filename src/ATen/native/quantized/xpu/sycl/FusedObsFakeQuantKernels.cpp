@@ -88,7 +88,7 @@ void _calculate_moving_average(
     const int64_t size,
     bool per_row_fake_quant) {
   auto execution_policy = calc_execution_policy(size);
-  auto counter_offset = std::get<0>(execution_policy);
+  // auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
 
@@ -267,7 +267,7 @@ void _calc_moving_avg_qparams_helper(
     const int64_t size,
     bool per_row_fq = false) {
   auto execution_policy = calc_execution_policy(size);
-  auto counter_offset = std::get<0>(execution_policy);
+  // auto counter_offset = std::get<0>(execution_policy);
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
 
