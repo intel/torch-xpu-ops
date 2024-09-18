@@ -1,308 +1,197 @@
-#include <ATen/core/Tensor.h>
+#include <ATen/Dispatch.h>
+#include <ATen/TensorIterator.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#else
-#include <ATen/ops/aminmax.h>
-#endif
-
-#include <ATen/native/xpu/sycl/DistributionTemplates.h>
-#include <comm/SYCLContext.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
 
-void MovingAverageMinMax(
-    const int64_t* observer_on,
-    const float* x_min,
-    const float* x_max,
-    float* running_min,
-    float* running_max,
-    const float averaging_const,
-    const int size,
-    sycl::nd_item<1>& item) {
-  int i = item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-
-  if (*observer_on == 1) {
-    if (i < size) {
-      float curr_min = x_min[i];
-      float curr_max = x_max[i];
-
-      float adjusted_min = std::isinf(running_min[i])
-          ? curr_min
-          : (running_min[i]) + averaging_const * (curr_min - (running_min[i]));
-
-      float adjusted_max = std::isinf(running_max[i])
-          ? curr_max
-          : (running_max[i]) + averaging_const * (curr_max - (running_max[i]));
-
-      running_min[i] = adjusted_min;
-      running_max[i] = adjusted_max;
+struct FakeQuantizeGradLearnableChannelFunctor {
+  std::tuple<float, float, float> operator()(
+      float x_input,
+      float dy_input,
+      float scale_input,
+      float zero_point_input) const {
+    float dx_output, dscale_output, dzero_point_output;
+    float inv_scale = 1.0f / scale_input;
+    float dscale_small = quant_min_ - zero_point_input;
+    float dscale_big = quant_max_ - zero_point_input;
+    // Calculate gradients for X.
+    int64_t xqi = std::nearbyint(x_input * inv_scale) +
+        static_cast<int64_t>(zero_point_input);
+    dx_output = dy_input * (xqi >= quant_min_ && xqi <= quant_max_);
+    // Calculate gradients for scale and zero point.
+    float xfqi = static_cast<float>(
+        (std::max(std::min(xqi, quant_max_), quant_min_) - zero_point_input) *
+        scale_input);
+    if (xqi < quant_min_ || xqi > quant_max_) {
+      dzero_point_output = dy_input * (-1) * scale_input * grad_factor_;
+      dscale_output = ((xqi < quant_min_) ? (dy_input * dscale_small)
+                                          : (dy_input * dscale_big)) *
+          grad_factor_;
+    } else {
+      dzero_point_output = 0;
+      dscale_output = dy_input * (xfqi - x_input) * inv_scale * grad_factor_;
     }
+    return {dx_output, dscale_output, dzero_point_output};
   }
-}
-
-struct CalculateMovingAverageKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    MovingAverageMinMax(
-        observer_on_data_,
-        x_min_data_,
-        x_max_data_,
-        running_min_data_,
-        running_max_data_,
-        averaging_const_,
-        size_,
-        item);
-  }
-  CalculateMovingAverageKernelFunctor(
-      const int64_t* observer_on_data,
-      const float* x_min_data,
-      const float* x_max_data,
-      float* running_min_data,
-      float* running_max_data,
-      const float averaging_const,
-      const int64_t size)
-      : observer_on_data_(observer_on_data),
-        x_min_data_(x_min_data),
-        x_max_data_(x_max_data),
-        running_min_data_(running_min_data),
-        running_max_data_(running_max_data),
-        averaging_const_(averaging_const),
-        size_(size) {}
+  FakeQuantizeGradLearnableChannelFunctor(
+      int64_t quant_min,
+      int64_t quant_max,
+      float grad_factor)
+      : quant_min_(quant_min),
+        quant_max_(quant_max),
+        grad_factor_(grad_factor) {}
 
  private:
-  const int64_t* observer_on_data_;
-  const float* x_min_data_;
-  const float* x_max_data_;
-  float* running_min_data_;
-  float* running_max_data_;
-  const float averaging_const_;
-  const int64_t size_;
+  int64_t quant_min_;
+  int64_t quant_max_;
+  float grad_factor_;
 };
 
-void _calculate_moving_average(
-    const at::Tensor& x,
-    const at::Tensor& observer_on,
-    at::Tensor& running_min,
-    at::Tensor& running_max,
-    const float averaging_const,
-    const int64_t size,
-    bool per_row_fake_quant) {
-  auto execution_policy = calc_execution_policy(size);
-  auto counter_offset = std::get<0>(execution_policy);
-  auto num_groups = std::get<1>(execution_policy);
-  auto group_size = std::get<2>(execution_policy);
-
-  at::Tensor x_min, x_max;
-
-  int64_t* observer_on_data = observer_on.data_ptr<int64_t>();
-  float* running_min_data = running_min.data_ptr<float>();
-  float* running_max_data = running_max.data_ptr<float>();
-
-  if (per_row_fake_quant) {
-    std::tie(x_min, x_max) = at::_aminmax(x, 1);
-    float* x_min_data = x_min.data_ptr<float>();
-    float* x_max_data = x_max.data_ptr<float>();
-
-    // Moving Average Min/Max observer for activations
-    CalculateMovingAverageKernelFunctor kfn(
-        observer_on_data,
-        x_min_data,
-        x_max_data,
-        running_min_data,
-        running_max_data,
-        averaging_const,
-        size);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
-  } else {
-    std::tie(x_min, x_max) = at::_aminmax(x);
-    float* x_min_data = x_min.data_ptr<float>();
-    float* x_max_data = x_max.data_ptr<float>();
-
-    // Moving Average Min/Max observer for activations
-    CalculateMovingAverageKernelFunctor kfn(
-        observer_on_data,
-        x_min_data,
-        x_max_data,
-        running_min_data,
-        running_max_data,
-        averaging_const,
-        size);
-    sycl_kernel_submit(num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
-  }
+void _fake_quantize_grad_learnable_channel_kernel(
+    TensorIterator& iter,
+    int64_t quant_min,
+    int64_t quant_max,
+    float grad_factor) {
+  FakeQuantizeGradLearnableChannelFunctor f(quant_min, quant_max, grad_factor);
+  gpu_kernel_multiple_outputs(iter, f);
 }
 
-void ChooseQuantizationParamsKernelImpl(
-    const int64_t* fake_quant_on,
-    const float* x_min,
-    const float* x_max,
-    int32_t qmin,
-    int32_t qmax,
-    int size,
-    bool preserve_sparsity,
-    float* scale,
-    int32_t* zero_point,
-    sycl::nd_item<1>& item) {
-  int i = item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-
-  if (i < size && *fake_quant_on == 1) {
-    float min_val = x_min[i];
-    float max_val = x_max[i];
-
-    if (min_val < 0 && max_val > 0 && preserve_sparsity) {
-      int symmetric_qmin = -((qmax - qmin) / 2 + 1);
-      int symmetric_qmax = (qmax - qmin) / 2;
-
-      float max_scale = std::max(
-          std::fabs(min_val / symmetric_qmin),
-          std::fabs(max_val / symmetric_qmax));
-      min_val = max_scale * symmetric_qmin;
-      max_val = max_scale * symmetric_qmax;
-    }
-
-    // We extend the [min, max] interval to ensure that it contains 0.
-    // Otherwise, we would not meet the requirement that 0 be an exactly
-    // representable value.
-    min_val = std::min(min_val, 0.f);
-    max_val = std::max(max_val, 0.f);
-    scale[i] = (max_val - min_val) / (qmax - qmin);
-
-    // Moving this check outside this function would result in extra Device to
-    // Host copy of the min and max val which would result in a perf hit.
-    if (scale[i] == 0.0f || std::isinf(1.0f / scale[i])) {
-      scale[i] = 0.1;
-    }
-
-    float zero_point_from_min = qmin - min_val / scale[i];
-    float zero_point_from_max = qmax - max_val / scale[i];
-    float zero_point_from_min_error =
-        std::abs(qmin) + std::abs(min_val / scale[i]);
-    float zero_point_from_max_error =
-        std::abs(qmax) + std::abs(max_val / scale[i]);
-    float initial_zero_point =
-        zero_point_from_min_error < zero_point_from_max_error
-        ? zero_point_from_min
-        : zero_point_from_max;
-
-    // Note: preserve_sparsity here means symmetric quantization.
-    // for symmetric quantization, we force zero_point
-    // to be a middle value between qmin and qmax.
-    // If either min or max is 0, then we just use 0 as zero_point.
-    if (min_val < 0 && max_val > 0 && preserve_sparsity) {
-      initial_zero_point = static_cast<float>(qmin + qmax) / 2;
-    }
-    // Now we need to nudge the zero point to be an integer
-    // (our zero points are integer, and this is motivated by the
-    // requirement to be able to represent the real value "0" exactly as a
-    // quantized value, which is required in multiple places, for example in
-    // Im2col with zero padding).
-    int32_t nudged_zero_point = 0;
-    if (initial_zero_point < qmin) {
-      nudged_zero_point = qmin;
-    } else if (initial_zero_point > qmax) {
-      nudged_zero_point = qmax;
+struct FakeQuantizeGradLearnableTensorFunctor {
+  std::tuple<float, float, float> operator()(float XInput, float dYInput)
+      const {
+    float dXOutput, dZeroPointOutput, dScaleOutput;
+    int64_t xq = std::nearbyint(XInput * inv_scale_) + zero_point_;
+    dXOutput = dYInput * (xq >= quant_min_ && xq <= quant_max_);
+    float xfq = static_cast<float>(
+        (std::max(std::min(xq, quant_max_), quant_min_) - zero_point_) *
+        scale_);
+    if (xq < quant_min_ || xq > quant_max_) {
+      dZeroPointOutput = (dYInput) * (-1) * scale_ * grad_factor_;
+      dScaleOutput = ((xq < quant_min_) ? (dYInput * dscale_small_)
+                                        : (dYInput * dscale_big_)) *
+          grad_factor_;
     } else {
-      nudged_zero_point = std::nearbyint(initial_zero_point);
+      dZeroPointOutput = 0;
+      dScaleOutput = (dYInput) * (xfq - (XInput)) * inv_scale_ * grad_factor_;
     }
-    zero_point[i] = nudged_zero_point;
+    return {dXOutput, dScaleOutput, dZeroPointOutput};
   }
-}
 
-struct CalcMovingAvgQparamsHelperKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    ChooseQuantizationParamsKernelImpl(
-        fake_quant_on_data_,
-        running_min_data_,
-        running_max_data_,
-        qmin_,
-        qmax_,
-        size_,
-        symmetric_quant_, // preserve_sparsity
-        scale_ptr_,
-        zp_ptr_,
-        item);
-  }
-  CalcMovingAvgQparamsHelperKernelFunctor(
-      const int64_t* fake_quant_on_data,
-      const float* running_min_data,
-      const float* running_max_data,
-      int32_t qmin,
-      int32_t qmax,
-      int size,
-      bool symmetric_quant,
-      float* scale_ptr,
-      int32_t* zp_ptr)
-      : fake_quant_on_data_(fake_quant_on_data),
-        running_min_data_(running_min_data),
-        running_max_data_(running_max_data),
-        qmin_(qmin),
-        qmax_(qmax),
-        size_(size),
-        symmetric_quant_(symmetric_quant),
-        scale_ptr_(scale_ptr),
-        zp_ptr_(zp_ptr) {}
+  FakeQuantizeGradLearnableTensorFunctor(
+      float inv_scale,
+      int64_t zero_point,
+      int64_t quant_min,
+      int64_t quant_max,
+      float scale,
+      float grad_factor,
+      float dscale_small,
+      float dscale_big)
+      : inv_scale_(inv_scale),
+        zero_point_(zero_point),
+        quant_min_(quant_min),
+        quant_max_(quant_max),
+        scale_(scale),
+        grad_factor_(grad_factor),
+        dscale_small_(dscale_small),
+        dscale_big_(dscale_big) {}
 
  private:
-  const int64_t* fake_quant_on_data_;
-  const float* running_min_data_;
-  const float* running_max_data_;
-  int32_t qmin_;
-  int32_t qmax_;
-  int size_;
-  bool symmetric_quant_;
+  float inv_scale_;
+  int64_t zero_point_;
+  int64_t quant_min_;
+  int64_t quant_max_;
+  float scale_;
+  float grad_factor_;
+  float dscale_small_;
+  float dscale_big_;
+};
+
+void _fake_quantize_grad_learnable_tensor_kernel(
+    TensorIterator& iter,
+    float scale,
+    float inv_scale,
+    int64_t zero_point,
+    int64_t quant_min,
+    int64_t quant_max,
+    float grad_factor) {
+  float dscale_small = quant_min - zero_point;
+  float dscale_big = quant_max - zero_point;
+  FakeQuantizeGradLearnableTensorFunctor f(
+      inv_scale,
+      zero_point,
+      quant_min,
+      quant_max,
+      scale,
+      grad_factor,
+      dscale_small,
+      dscale_big);
+  gpu_kernel_multiple_outputs(iter, f);
+}
+
+template <typename scalar_t>
+struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
+  std::tuple<scalar_t, bool> operator()(scalar_t input_val) const {
+    if (*fake_quant_on_ == 0) {
+      return {input_val, 1};
+    }
+    float inv_scale = 1.0f / (*scale_ptr_);
+    const auto qval = static_cast<int64_t>(
+        std::nearbyint(input_val * inv_scale) + (*zp_ptr_));
+    return {// fake_quantized value
+            (std::min(quant_max_, std::max(quant_min_, qval)) - (*zp_ptr_)) *
+                (*scale_ptr_),
+            // mask for grad
+            ((quant_min_ <= qval) && (qval <= quant_max_))};
+  }
+  FakeQuantizeTensorCachemaskTensorQparamsFunctor(
+      int64_t quant_min,
+      int64_t quant_max,
+      float* scale_ptr,
+      int32_t* zp_ptr,
+      int64_t* fake_quant_on)
+      : quant_min_(quant_min),
+        quant_max_(quant_max),
+        scale_ptr_(scale_ptr),
+        zp_ptr_(zp_ptr),
+        fake_quant_on_(fake_quant_on) {}
+
+ private:
+  int64_t quant_min_;
+  int64_t quant_max_;
   float* scale_ptr_;
   int32_t* zp_ptr_;
+  int64_t* fake_quant_on_;
 };
 
-void _calc_moving_avg_qparams_helper(
-    const at::Tensor& x,
-    const at::Tensor fake_quant_on,
-    at::Tensor& running_min,
-    at::Tensor& running_max,
-    float* scale_ptr,
-    int32_t* zp_ptr,
-    int32_t qmin,
-    int32_t qmax,
-    bool symmetric_quant,
-    const int64_t size,
-    bool per_row_fq = false) {
-  auto execution_policy = calc_execution_policy(size);
-  auto counter_offset = std::get<0>(execution_policy);
-  auto num_groups = std::get<1>(execution_policy);
-  auto group_size = std::get<2>(execution_policy);
-
-  int64_t* fake_quant_on_data = fake_quant_on.data_ptr<int64_t>();
-  if (per_row_fq) {
-    float* running_min_data = running_min.data_ptr<float>();
-    float* running_max_data = running_max.data_ptr<float>();
-
-    CalcMovingAvgQparamsHelperKernelFunctor kfn(
-        fake_quant_on_data,
-        running_min_data,
-        running_max_data,
-        qmin,
-        qmax,
-        size,
-        symmetric_quant,
-        scale_ptr,
-        zp_ptr);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
-  } else {
-    float* running_min_data = running_min.data_ptr<float>();
-    float* running_max_data = running_max.data_ptr<float>();
-    CalcMovingAvgQparamsHelperKernelFunctor kfn(
-        fake_quant_on_data,
-        running_min_data,
-        running_max_data,
-        qmin,
-        qmax,
-        1, // size
-        symmetric_quant, // preserve_sparsity
-        scale_ptr,
-        zp_ptr);
-    sycl_kernel_submit(num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
-  }
+void _fake_quantize_tensor_cachemask_tensor_qparams_kernel(
+    Tensor& output,
+    Tensor& mask,
+    const Tensor& input,
+    const Tensor& scale,
+    const Tensor& zero_point,
+    const Tensor& fake_quant_enabled,
+    int64_t quant_min,
+    int64_t quant_max) {
+  float* scale_ptr = scale.data_ptr<float>();
+  int32_t* zp_ptr = zero_point.data_ptr<int32_t>();
+  int64_t* fake_quant_on = fake_quant_enabled.data_ptr<int64_t>();
+  auto iter = TensorIteratorConfig()
+                  .check_all_same_dtype(false)
+                  .add_output(output)
+                  .add_output(mask)
+                  .add_input(input)
+                  .build();
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      input.scalar_type(),
+      "fake_quantize_tensor_cachemask_tensor_qparams_xpu",
+      [&] {
+        FakeQuantizeTensorCachemaskTensorQparamsFunctor<scalar_t> f(
+            quant_min, quant_max, scale_ptr, zp_ptr, fake_quant_on);
+        gpu_kernel_multiple_outputs(iter, f);
+      });
 }
 
 } // namespace at::native::xpu
