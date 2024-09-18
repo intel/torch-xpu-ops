@@ -672,7 +672,7 @@ skip_dict = {
         # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
         # https://github.com/intel/torch-xpu-ops/issues/623
         "test_dtypes_nextafter_xpu",
-
+        
         # AssertionError: The supported dtypes for argsort on device type xpu are incorrect!
         # The following dtypes worked in forward but are not listed by the OpInfo: {torch.bool}.
         # CUDA does not have torch.bool support on argsort.
@@ -3482,6 +3482,6 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_bfloat16",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",        
+        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",
     ),
 }
