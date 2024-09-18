@@ -1,30 +1,32 @@
 #pragma once
 
-#include <ATen/core/Tensor.h>
+#include <ATen/TensorIterator.h>
 
 namespace at::native::xpu {
 
-TORCH_XPU_API void _calculate_moving_average(
-    const at::Tensor& x,
-    const at::Tensor& observer_on,
-    at::Tensor& running_min,
-    at::Tensor& running_max,
-    const float averaging_const,
-    const int64_t size,
-    bool per_row_fake_quant);
+TORCH_XPU_API void _fake_quantize_grad_learnable_channel_kernel(
+    TensorIterator& iter,
+    int64_t quant_min,
+    int64_t quant_max,
+    float grad_factor);
 
-TORCH_XPU_API
-void _calc_moving_avg_qparams_helper(
-    const at::Tensor& x,
-    const at::Tensor fake_quant_on,
-    at::Tensor& running_min,
-    at::Tensor& running_max,
-    float* scale_ptr,
-    int32_t* zp_ptr,
-    int32_t qmin,
-    int32_t qmax,
-    bool symmetric_quant,
-    const int64_t size,
-    bool per_row_fq);
+TORCH_XPU_API void _fake_quantize_grad_learnable_tensor_kernel(
+    TensorIterator& iter,
+    float scale,
+    float inv_scale,
+    int64_t zero_point,
+    int64_t quant_min,
+    int64_t quant_max,
+    float grad_factor);
+
+TORCH_XPU_API void _fake_quantize_tensor_cachemask_tensor_qparams_kernel(
+    Tensor& output,
+    Tensor& mask,
+    const Tensor& input,
+    const Tensor& scale,
+    const Tensor& zero_point,
+    const Tensor& fake_quant_enabled,
+    int64_t quant_min,
+    int64_t quant_max);
 
 } // namespace at::native::xpu

@@ -723,3 +723,8 @@ supported:
   - _weight_norm_interface_backward
   - range.out
   - _fused_moving_avg_obs_fq_helper
+  - _fake_quantize_learnable_per_channel_affine
+  - _fake_quantize_learnable_per_channel_affine_backward
+  - _fake_quantize_learnable_per_tensor_affine
+  - _fake_quantize_learnable_per_tensor_affine_backward
+  - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
