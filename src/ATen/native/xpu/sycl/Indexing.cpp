@@ -128,8 +128,6 @@ void index_select_kernel(
     int64_t dim,
     const Tensor& indices,
     const Tensor& dst) {
-  std::cout << "src " << src.sizes() << src.strides() << std::endl;
-  std::cout << "indices " << indices.sizes() << indices.strides() << std::endl;
   at::assert_no_internal_overlap(dst);
   at::assert_no_overlap(dst, src);
   at::assert_no_overlap(dst, indices);
@@ -167,8 +165,8 @@ void index_select_kernel(
       "index_select(): Source and result must have the same scalar type");
 
   AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "index_select", [&] {
-    TensorInfo<index_t, unsigned int> index_info =
-        tensorInfoIfScalar(getTensorInfo<index_t, unsigned int>(indices));
+    TensorInfo<index_t, int64_t> index_info =
+        tensorInfoIfScalar(getTensorInfo<index_t, int64_t>(indices));
     index_info.collapseDims();
 
     auto new_size = src.sizes().vec();
@@ -188,15 +186,15 @@ void index_select_kernel(
         dst.scalar_type(),
         "index_select_xpu",
         AT_WRAP([&] {
-          TensorInfo<scalar_t, unsigned int> dst_info =
-              tensorInfoIfScalar(getTensorInfo<scalar_t, unsigned int>(dst));
-          TensorInfo<scalar_t, unsigned int> src_info = tensorInfoIfScalar(
-              getTensorInfo<scalar_t, unsigned int>(src.contiguous()));
+          TensorInfo<scalar_t, int64_t> dst_info =
+              tensorInfoIfScalar(getTensorInfo<scalar_t, int64_t>(dst));
+          TensorInfo<scalar_t, int64_t> src_info = tensorInfoIfScalar(
+              getTensorInfo<scalar_t, int64_t>(src.contiguous()));
           int new_indexing_dim = src_info.collapseDims(dim);
 
-          using SrcInfo = TensorInfo<scalar_t, unsigned int>;
-          using DstInfo = TensorInfo<scalar_t, unsigned int>;
-          using IdxInfo = TensorInfo<index_t, unsigned int>;
+          using SrcInfo = TensorInfo<scalar_t, int64_t>;
+          using DstInfo = TensorInfo<scalar_t, int64_t>;
+          using IdxInfo = TensorInfo<index_t, int64_t>;
 
           // Improve efficiency of generated native instructions for contiguous.
           // See comm/TensorInfo.h
@@ -402,15 +400,15 @@ void index_add_kernel(
       "index_add_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
-          TensorInfo<index_t, unsigned int> index_info =
-              getTensorInfo<index_t, unsigned int>(index);
+          TensorInfo<index_t, int64_t> index_info =
+              getTensorInfo<index_t, int64_t>(index);
           index_info.collapseDims();
 
-          TensorInfo<scalar_t, unsigned int> src_info =
-              getTensorInfo<scalar_t, unsigned int>(source_);
+          TensorInfo<scalar_t, int64_t> src_info =
+              getTensorInfo<scalar_t, int64_t>(source_);
 
-          TensorInfo<scalar_t, unsigned int> dst_info =
-              getTensorInfo<scalar_t, unsigned int>(self_);
+          TensorInfo<scalar_t, int64_t> dst_info =
+              getTensorInfo<scalar_t, int64_t>(self_);
           int new_indexing_dim = dst_info.collapseDims(dim);
 
           using IdxConfig = IndexKernelConfig<
@@ -474,16 +472,16 @@ void index_fill_kernel(
       self.scalar_type(),
       "index_fill_xpu",
       [&] {
-        TensorInfo<int64_t, unsigned int> index_info =
-            getTensorInfo<int64_t, unsigned int>(index);
+        TensorInfo<int64_t, int64_t> index_info =
+            getTensorInfo<int64_t, int64_t>(index);
         index_info.collapseDims();
 
-        TensorInfo<scalar_t, unsigned int> dst_info =
-            getTensorInfo<scalar_t, unsigned int>(self);
+        TensorInfo<scalar_t, int64_t> dst_info =
+            getTensorInfo<scalar_t, int64_t>(self);
         int new_indexing_dim = dst_info.collapseDims(dim);
 
         // No used in index kernel frame for index_fill.
-        auto src_info = TensorInfo<scalar_t, unsigned int>();
+        auto src_info = TensorInfo<scalar_t, int64_t>();
 
         using IdxConfig = IndexKernelConfig<
             decltype(src_info),
