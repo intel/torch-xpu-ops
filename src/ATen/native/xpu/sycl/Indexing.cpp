@@ -128,6 +128,8 @@ void index_select_kernel(
     int64_t dim,
     const Tensor& indices,
     const Tensor& dst) {
+  std::cout << "src " << src.sizes() << src.strides() << std::endl;
+  std::cout << "indices " << indices.sizes() << indices.strides() << std::endl;
   at::assert_no_internal_overlap(dst);
   at::assert_no_overlap(dst, src);
   at::assert_no_overlap(dst, indices);
