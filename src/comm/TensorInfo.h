@@ -138,15 +138,15 @@ struct IndexToOffset {
     }
 
 #pragma unroll
-    for (int dim = XPU_MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
+    for (int dim = XPU_MAX_TENSORINFO_DIMS - 1; dim > 0; --dim) {
       if (dim < info.dims) {
-        auto divider = at::detail::IntDivider<IndexType>(info.sizes[dim]);
-        auto divmod = divider.divmod(linearId);
-        linearId = divmod.div;
-        offset += divmod.mod * info.strides[dim];
+        IndexType curDimIndex = linearId % info.sizes[dim];
+        IndexType curDimOffset = curDimIndex * info.strides[dim];
+        offset += curDimOffset;
+        linearId /= info.sizes[dim];
       }
     }
-    return offset;
+    return offset + linearId * info.strides[0];
   }
 };
 

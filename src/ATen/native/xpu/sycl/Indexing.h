@@ -6,7 +6,20 @@
 
 using namespace at::xpu::detail;
 using namespace at::xpu;
+#if defined(__SYCL_DEVICE_ONLY__)
+#define DPCPP_CONSTANT __attribute__((opencl_constant))
+#else
+#define DPCPP_CONSTANT
+#endif
 
+#define DPCPP_KER_STRING(var, str) static const DPCPP_CONSTANT char var[] = str;
+#define DPCPP_KER_PRINTF sycl::ext::oneapi::experimental::printf
+
+#define DPCPP_K_PRINT(fmt_str, ...)           \
+  {                                           \
+    DPCPP_KER_STRING(fmt_var, fmt_str);       \
+    DPCPP_KER_PRINTF(fmt_var, ##__VA_ARGS__); \
+  }
 namespace at::native::xpu {
 
 template <int N>
@@ -209,10 +222,10 @@ class IndexKernel {
     if constexpr (TrivialOffCal) {
       idx_off = idx_logical_off;
     } else {
-      idx_off = IndexToOffset<IdxType, int64_t>::get(
+      idx_off = IndexToOffset<IdxType, unsigned int>::get(
           idx_logical_off,
           cfg_.iinfo_,
-          IndexToOffset<IdxType, int64_t>::NON_STRICT_CONTIGUOUS);
+          IndexToOffset<IdxType, unsigned int>::NON_STRICT_CONTIGUOUS);
     }
     glb_batch_group = id.glb_batch / cfg_.index_num_;
     glb_batch_group_loc_off = cfg_.iinfo_.data[idx_off];
@@ -320,26 +333,26 @@ class IndexKernel {
     } else {
       if (cfg_.indexing_dst_) {
         // index_copy, index_add, index_fill
-        dst_off = IndexToOffset<ValType, int64_t>::get(
+        dst_off = IndexToOffset<ValType, unsigned int>::get(
             glb_indexing_logical_off,
             cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+            IndexToOffset<ValType, unsigned int>::NON_STRICT_CONTIGUOUS);
         if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<ValType, int64_t>::get(
+          src_off = IndexToOffset<ValType, unsigned int>::get(
               glb_fixing_logical_off,
               cfg_.sinfo_,
-              IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+              IndexToOffset<ValType, unsigned int>::NON_STRICT_CONTIGUOUS);
         }
       } else {
         // index_select
-        src_off = IndexToOffset<ValType, int64_t>::get(
+        src_off = IndexToOffset<ValType, unsigned int>::get(
             glb_indexing_logical_off,
             cfg_.sinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
-        dst_off = IndexToOffset<ValType, int64_t>::get(
+            IndexToOffset<ValType, unsigned int>::NON_STRICT_CONTIGUOUS);
+        dst_off = IndexToOffset<ValType, unsigned int>::get(
             glb_fixing_logical_off,
             cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+            IndexToOffset<ValType, unsigned int>::NON_STRICT_CONTIGUOUS);
       }
     }
     cfg_.func_(
@@ -616,6 +629,13 @@ struct IndexKernelFunctor {
         offset += index * strides_[i];
       } else {
         int64_t index = *(int64_t*)(index_ptrs_[i] + offsets[2]);
+        if (linear_idx == 960) {
+          DPCPP_K_PRINT(
+              "2, index is %d, size is, offset is %d\n",
+              index,
+              sizes_[i],
+              offsets[2]);
+        }
         SYCL_KERNEL_ASSERT(
             index >= -sizes_[i] && index < sizes_[i] && "index out of bounds");
         if (index < 0) {
@@ -665,11 +685,15 @@ void index_kernel_impl(
     IntArrayRef index_stride,
     const func_t f) {
   size_t num_indices = index_size.size();
+  std::cout << "num_indices = " << num_indices << std::endl;
   auto numel = iter.numel();
   at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> sizes(0);
   at::detail::Array<int64_t, XPU_MAX_TENSORINFO_DIMS> strides(0);
+  std::cout << "input size" << iter.tensor(1).sizes() << std::endl;
+  std::cout << "output size" << iter.tensor(0).sizes() << std::endl;
   for (size_t i = 0; i < num_indices; i++) {
     sizes[i] = index_size[i];
+    std::cout << sizes[i] << std::endl;
     strides[i] = index_stride[i];
   }
 
@@ -682,6 +706,8 @@ void index_kernel_impl(
   at::detail::Array<index_buf_type, XPU_MAX_TENSORINFO_DIMS> index_ptrs;
   for (size_t i = 0; i < num_indices; i++) {
     index_ptrs[i] = (char*)iter.data_ptr(i + 2);
+    std::cout << "index tensor " << iter.tensor(i + 2).sizes()
+              << iter.tensor(i + 2).strides() << std::endl;
   }
 
   auto offset_calc = make_offset_calculator<3>(iter);
