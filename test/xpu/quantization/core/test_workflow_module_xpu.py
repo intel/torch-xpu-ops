@@ -12,7 +12,11 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    import sys
+    import os
+    script_path = os.path.split(__file__)[0]
+    sys.path.insert(0, os.path.realpath(os.path.join(script_path, "../..")))
+    from xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
     from test_workflow_module import TestDistributed, TestFakeQuantize, TestFusedObsFakeQuantModule, TestHistogramObserver, TestObserver, TestRecordHistogramObserver
