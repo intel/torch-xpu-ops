@@ -1,17 +1,11 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
-// #include <ATen/RegistrationDeclarations.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-// #include <ATen/native/xpu/sycl/GRUFusedCellKernels.h>
+#include <ATen/native/xpu/sycl/GRUFusedCellKernels.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
-// #include <stdlib.h>
-// #include "comm/ATDispatch.h"
-// #include "comm/RegistrationDeclarations.h" // important
-// using namespace torch_ipex::xpu::dpcpp::detail;
-// using namespace torch_ipex::xpu::dpcpp;
 
 static constexpr int64_t GRU_WORKSPACE_MULTIPLIER = 5;
 
@@ -32,111 +26,111 @@ struct FuseOpsKernelFunctor {
     // parallel as the sequential dependence. The igates or hgates here
     // are blocks of 3 three tensors after matmul. So one can access them
     // respectively by the pointer with constant shift of COL.
-    int64_t gate0_index = gid * COL * 3;
-    int64_t gate1_index = gate0_index + COL;
-    int64_t gate2_index = gate1_index + COL;
-    int64_t workspace0_index = gid * COL * 5;
-    int64_t workspace1_index = workspace0_index + COL;
-    int64_t workspace2_index = workspace1_index + COL;
-    int64_t workspace3_index = workspace2_index + COL;
-    int64_t workspace4_index = workspace3_index + COL;
-    for (int64_t loc = lid; loc < COL; loc += GROUP_SIZE) {
-      int64_t index = gid * COL + loc;
-      if (has_bias) {
+    int64_t gate0_index = gid * COL_ * 3;
+    int64_t gate1_index = gate0_index + COL_;
+    int64_t gate2_index = gate1_index + COL_;
+    int64_t workspace0_index = gid * COL_ * 5;
+    int64_t workspace1_index = workspace0_index + COL_;
+    int64_t workspace2_index = workspace1_index + COL_;
+    int64_t workspace3_index = workspace2_index + COL_;
+    int64_t workspace4_index = workspace3_index + COL_;
+    for (int64_t loc = lid; loc < COL_; loc += GROUP_SIZE_) {
+      int64_t index = gid * COL_ + loc;
+      if (has_bias_) {
         T reset_gate = 1.0f /
             (1.0f +
              std::exp(
-                 -(igates[gate0_index + loc] + hgates[gate0_index + loc] +
-                   ibias[loc] + hbias[loc])));
+                 -(igates_[gate0_index + loc] + hgates_[gate0_index + loc] +
+                   ibias_[loc] + hbias_[loc])));
 
         T input_gate = 1.0f /
             (1.0f +
              std::exp(
-                 -(igates[gate1_index + loc] + hgates[loc + gate1_index] +
-                   ibias[loc + COL] + hbias[loc + COL])));
+                 -(igates_[gate1_index + loc] + hgates_[loc + gate1_index] +
+                   ibias_[loc + COL_] + hbias_[loc + COL_])));
 
-        T hn_bn = hgates[loc + gate2_index] + hbias[loc + 2 * COL];
+        T hn_bn = hgates_[loc + gate2_index] + hbias_[loc + 2 * COL_];
 
         T new_gate = std::tanh(
-            igates[gate2_index + loc] + ibias[loc + 2 * COL] +
+            igates_[gate2_index + loc] + ibias_[loc + 2 * COL_] +
             reset_gate * hn_bn);
 
-        output[index] =
-            (1.0f - input_gate) * new_gate + input_gate * hidden[index];
+        output_[index] =
+            (1.0f - input_gate) * new_gate + input_gate * hidden_[index];
         // save for the backward computation
-        workspace[loc + workspace0_index] = reset_gate;
-        workspace[workspace1_index + loc] = input_gate;
-        workspace[workspace2_index + loc] = new_gate;
-        workspace[workspace3_index + loc] = hidden[index];
-        workspace[workspace4_index + loc] = hn_bn;
+        workspace_[loc + workspace0_index] = reset_gate;
+        workspace_[workspace1_index + loc] = input_gate;
+        workspace_[workspace2_index + loc] = new_gate;
+        workspace_[workspace3_index + loc] = hidden_[index];
+        workspace_[workspace4_index + loc] = hn_bn;
       } else {
         T reset_gate = 1.0f /
             (1.0f +
              std::exp(
-                 -(igates[gate0_index + loc] + hgates[gate0_index + loc])));
+                 -(igates_[gate0_index + loc] + hgates_[gate0_index + loc])));
 
         T input_gate = 1.0f /
             (1.0f +
              std::exp(
-                 -(igates[gate1_index + loc] + hgates[loc + gate1_index])));
+                 -(igates_[gate1_index + loc] + hgates_[loc + gate1_index])));
 
-        T hn_bn = hgates[loc + gate2_index];
+        T hn_bn = hgates_[loc + gate2_index];
 
-        T new_gate = std::tanh(igates[gate2_index + loc] + reset_gate * hn_bn);
+        T new_gate = std::tanh(igates_[gate2_index + loc] + reset_gate * hn_bn);
 
-        output[index] =
-            (1.0f - input_gate) * new_gate + input_gate * hidden[index];
+        output_[index] =
+            (1.0f - input_gate) * new_gate + input_gate * hidden_[index];
         // save for the backward computation
-        workspace[loc + workspace0_index] = reset_gate;
-        workspace[workspace1_index + loc] = input_gate;
-        workspace[workspace2_index + loc] = new_gate;
-        workspace[workspace3_index + loc] = hidden[index];
-        workspace[workspace4_index + loc] = hn_bn;
+        workspace_[loc + workspace0_index] = reset_gate;
+        workspace_[workspace1_index + loc] = input_gate;
+        workspace_[workspace2_index + loc] = new_gate;
+        workspace_[workspace3_index + loc] = hidden_[index];
+        workspace_[workspace4_index + loc] = hn_bn;
       }
     }
   }
   FuseOpsKernelFunctor(
-      const T* igates_,
-      const T* hgates_,
-      const T* ibias_,
-      const T* hbias_,
-      const T* hidden_,
-      T* output_,
-      T* workspace_,
-      const int64_t feature_size_,
-      const int64_t batch_size_,
-      bool has_bias_,
-      const int64_t COL_,
-      const int64_t ROW_,
-      int64_t GROUP_SIZE_)
-      : igates(igates_),
-        hgates(hgates_),
-        ibias(ibias_),
-        hbias(hbias_),
-        hidden(hidden_),
-        output(output_),
-        workspace(workspace_),
-        feature_size(feature_size_),
-        batch_size(batch_size_),
-        has_bias(has_bias_),
-        COL(COL_),
-        ROW(ROW_),
-        GROUP_SIZE(GROUP_SIZE_) {}
+      const T* igates,
+      const T* hgates,
+      const T* ibias,
+      const T* hbias,
+      const T* hidden,
+      T* output,
+      T* workspace,
+      const int64_t feature_size,
+      const int64_t batch_size,
+      bool has_bias,
+      const int64_t COL,
+      const int64_t ROW,
+      int64_t GROUP_SIZE)
+      : igates_(igates),
+        hgates_(hgates),
+        ibias_(ibias),
+        hbias_(hbias),
+        hidden_(hidden),
+        output_(output),
+        workspace_(workspace),
+        feature_size_(feature_size),
+        batch_size_(batch_size),
+        has_bias_(has_bias),
+        COL_(COL),
+        ROW_(ROW),
+        GROUP_SIZE_(GROUP_SIZE) {}
 
  private:
-  const T* igates;
-  const T* hgates;
-  const T* ibias;
-  const T* hbias;
-  const T* hidden;
-  T* output;
-  T* workspace;
-  const int64_t feature_size;
-  const int64_t batch_size;
-  bool has_bias;
-  const int64_t COL;
-  const int64_t ROW;
-  int64_t GROUP_SIZE;
+  const T* igates_;
+  const T* hgates_;
+  const T* ibias_;
+  const T* hbias_;
+  const T* hidden_;
+  T* output_;
+  T* workspace_;
+  const int64_t feature_size_;
+  const int64_t batch_size_;
+  bool has_bias_;
+  const int64_t COL_;
+  const int64_t ROW_;
+  int64_t GROUP_SIZE_;
 };
 
 // forward sycl implementation
@@ -184,101 +178,101 @@ struct FuseOpsKernelBackwardFunctor {
   void operator()(sycl::nd_item<1> itemId) const {
     int64_t lid = itemId.get_local_id(0);
     int64_t gid = itemId.get_group(0);
-    int64_t grad_0 = gid * COL * 3;
-    int64_t grad_1 = grad_0 + COL;
-    int64_t grad_2 = grad_1 + COL;
+    int64_t grad_0 = gid * COL_ * 3;
+    int64_t grad_1 = grad_0 + COL_;
+    int64_t grad_2 = grad_1 + COL_;
     // the bwd process is accomplished with elementwise operation
     // the storage order of the workspace is vital and one can according
     // to their name to access different blocks of a whole tensor. For
     // example, workspacer_index denotes the reset_gates cache in fwd and
     // vice versa.
-    int64_t workspacer_index = gid * COL * 5; // r
-    int64_t workspacez_index = workspacer_index + COL; // z
-    int64_t workspacen_index = workspacez_index + COL; // n
-    int64_t workspaceh_index = workspacen_index + COL; // h
-    int64_t workspacehbn_index = workspaceh_index + COL; // hbn
-    for (int64_t loc = lid; loc < COL; loc += GROUP_SIZE) {
-      int64_t index_ = gid * COL + loc;
+    int64_t workspacer_index = gid * COL_ * 5; // r
+    int64_t workspacez_index = workspacer_index + COL_; // z
+    int64_t workspacen_index = workspacez_index + COL_; // n
+    int64_t workspaceh_index = workspacen_index + COL_; // h
+    int64_t workspacehbn_index = workspaceh_index + COL_; // hbn
+    for (int64_t loc = lid; loc < COL_; loc += GROUP_SIZE_) {
+      int64_t index_ = gid * COL_ + loc;
 
       // grad_input_1 = A*(1-z)*(1-n^2)*hn*(1-r)*r
-      grad_input_gates[grad_0 + loc] = grad_hy[index_] *
-          (1.0f - workspace[workspacez_index + loc]) *
+      grad_input_gates_[grad_0 + loc] = grad_hy_[index_] *
+          (1.0f - workspace_[workspacez_index + loc]) *
           (1.0f -
-           workspace[workspacen_index + loc] *
-               workspace[workspacen_index + loc]) *
-          workspace[workspacehbn_index + loc] *
-          (1.0f - workspace[workspacer_index + loc]) *
-          workspace[workspacer_index + loc];
+           workspace_[workspacen_index + loc] *
+               workspace_[workspacen_index + loc]) *
+          workspace_[workspacehbn_index + loc] *
+          (1.0f - workspace_[workspacer_index + loc]) *
+          workspace_[workspacer_index + loc];
       // grad_input_2 = A*(h-n)*(1-z)*z
-      grad_input_gates[grad_1 + loc] = grad_hy[index_] *
-          (workspace[workspaceh_index + loc] -
-           workspace[workspacen_index + loc]) *
-          (1.0f - workspace[workspacez_index + loc]) *
-          workspace[workspacez_index + loc];
+      grad_input_gates_[grad_1 + loc] = grad_hy_[index_] *
+          (workspace_[workspaceh_index + loc] -
+           workspace_[workspacen_index + loc]) *
+          (1.0f - workspace_[workspacez_index + loc]) *
+          workspace_[workspacez_index + loc];
       // grad_input_3 = A*(1-z)*(1-n^2)
-      grad_input_gates[grad_2 + loc] = grad_hy[index_] *
-          (1 - workspace[workspacez_index + loc]) *
+      grad_input_gates_[grad_2 + loc] = grad_hy_[index_] *
+          (1 - workspace_[workspacez_index + loc]) *
           (1 -
-           workspace[workspacen_index + loc] *
-               workspace[workspacen_index + loc]);
+           workspace_[workspacen_index + loc] *
+               workspace_[workspacen_index + loc]);
       // grad_hidden_1 = A*(1-z)*(1-n^2)*hn*(1-r)*r
-      grad_hidden_gates[grad_0 + loc] = grad_hy[index_] *
-          (1.0f - workspace[workspacez_index + loc]) *
+      grad_hidden_gates_[grad_0 + loc] = grad_hy_[index_] *
+          (1.0f - workspace_[workspacez_index + loc]) *
           (1.0f -
-           workspace[workspacen_index + loc] *
-               workspace[workspacen_index + loc]) *
-          workspace[workspacehbn_index + loc] *
-          (1.0f - workspace[workspacer_index + loc]) *
-          workspace[workspacer_index + loc];
+           workspace_[workspacen_index + loc] *
+               workspace_[workspacen_index + loc]) *
+          workspace_[workspacehbn_index + loc] *
+          (1.0f - workspace_[workspacer_index + loc]) *
+          workspace_[workspacer_index + loc];
       // grad_hidden_2 = A*(h-n)*(1-z)*z
-      grad_hidden_gates[grad_1 + loc] = grad_hy[index_] *
-          (workspace[workspaceh_index + loc] -
-           workspace[workspacen_index + loc]) *
-          (1 - workspace[workspacez_index + loc]) *
-          workspace[workspacez_index + loc];
+      grad_hidden_gates_[grad_1 + loc] = grad_hy_[index_] *
+          (workspace_[workspaceh_index + loc] -
+           workspace_[workspacen_index + loc]) *
+          (1 - workspace_[workspacez_index + loc]) *
+          workspace_[workspacez_index + loc];
       // grad_hidden_3 = A*(1-z)*(1-n^2)*r
-      grad_hidden_gates[grad_2 + loc] = grad_hy[index_] *
-          (1.0f - workspace[workspacez_index + loc]) *
+      grad_hidden_gates_[grad_2 + loc] = grad_hy_[index_] *
+          (1.0f - workspace_[workspacez_index + loc]) *
           (1.0f -
-           workspace[workspacen_index + loc] *
-               workspace[workspacen_index + loc]) *
-          workspace[workspacer_index + loc];
-      grad_hx[index_] = grad_hy[index_] * workspace[workspacez_index + loc];
+           workspace_[workspacen_index + loc] *
+               workspace_[workspacen_index + loc]) *
+          workspace_[workspacer_index + loc];
+      grad_hx_[index_] = grad_hy_[index_] * workspace_[workspacez_index + loc];
     }
   }
   FuseOpsKernelBackwardFunctor(
-      const T* grad_hy_,
-      const T* workspace_,
-      T* grad_input_gates_,
-      T* grad_hidden_gates_,
-      T* grad_hx_,
-      const int64_t feature_size_,
-      const int64_t batch_size_,
-      const int64_t COL_,
-      const int64_t ROW_,
-      int64_t GROUP_SIZE_)
-      : grad_hy(grad_hy_),
-        workspace(workspace_),
-        grad_input_gates(grad_input_gates_),
-        grad_hidden_gates(grad_hidden_gates_),
-        grad_hx(grad_hx_),
-        feature_size(feature_size_),
-        batch_size(batch_size_),
-        COL(COL_),
-        ROW(ROW_),
-        GROUP_SIZE(GROUP_SIZE_) {}
+      const T* grad_hy,
+      const T* workspace,
+      T* grad_input_gates,
+      T* grad_hidden_gates,
+      T* grad_hx,
+      const int64_t feature_size,
+      const int64_t batch_size,
+      const int64_t COL,
+      const int64_t ROW,
+      int64_t GROUP_SIZE)
+      : grad_hy_(grad_hy),
+        workspace_(workspace),
+        grad_input_gates_(grad_input_gates),
+        grad_hidden_gates_(grad_hidden_gates),
+        grad_hx_(grad_hx),
+        feature_size_(feature_size),
+        batch_size_(batch_size),
+        COL_(COL),
+        ROW_(ROW),
+        GROUP_SIZE_(GROUP_SIZE) {}
 
  private:
-  const T* grad_hy;
-  const T* workspace;
-  T* grad_input_gates;
-  T* grad_hidden_gates;
-  T* grad_hx;
-  const int64_t feature_size;
-  const int64_t batch_size;
-  const int64_t COL;
-  const int64_t ROW;
-  int64_t GROUP_SIZE;
+  const T* grad_hy_;
+  const T* workspace_;
+  T* grad_input_gates_;
+  T* grad_hidden_gates_;
+  T* grad_hx_;
+  const int64_t feature_size_;
+  const int64_t batch_size_;
+  const int64_t COL_;
+  const int64_t ROW_;
+  int64_t GROUP_SIZE_;
 };
 
 // backward sycl implementation
@@ -335,10 +329,7 @@ std::tuple<Tensor, Tensor> _thnn_fused_gru_cell_kernel(
 
   if (hx.dim() == 1) {
     // no batch input
-    auto batched_input = false;
-    auto feature_size = hx.size(0);
     hx.resize_({1, hx.size(0)});
-    auto batch_size = 1;
   }
 
   at::Tensor workspace = at::empty(
