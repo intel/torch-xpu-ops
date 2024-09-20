@@ -1,13 +1,11 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Dropout.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
 
 #include <xpu/ATen/ops/native_dropout_backward_native.h>
 #include <xpu/ATen/ops/native_dropout_native.h>
 
-#include <ATen/native/xpu/sycl/Dropout.h>
 #include <comm/xpu_aten.h>
 
 namespace at {

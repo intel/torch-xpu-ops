@@ -13,7 +13,7 @@
 namespace at {
 
 namespace native {
-Tensor& arange_out(
+Tensor& arange_out_xpu(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,

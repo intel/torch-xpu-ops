@@ -43,6 +43,7 @@ function(GEN_BACKEND file_yaml)
     )
 endfunction(GEN_BACKEND)
 
+
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_XPU file_yaml)
@@ -54,7 +55,15 @@ function(GEN_XPU file_yaml)
   set(CODEGEN_TEMPLATE ${TORCH_XPU_OPS_ROOT}/yaml/)
 
   # Codegen prepare process
-  execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE}) # soft link to pytorch templates
+  if(WIN32)
+    execute_process(COMMAND mklink /d ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE})
+    string(REPLACE "/" "\\" RegisterXPU_PATH_BACKSLASH "${RegisterXPU_PATH}")
+    string(REPLACE "/" "\\" XPUFallback_PATH_BACKSLASH "${XPUFallback_PATH}")
+    set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH_BACKSLASH} ">>" ${RegisterXPU_PATH_BACKSLASH})
+  else()
+    execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE}) # soft link to pytorch templates
+    set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH} ">>" ${RegisterXPU_PATH})
+  endif()
 
   add_custom_command(
     OUTPUT ${generated_files}
@@ -66,7 +75,7 @@ function(GEN_XPU file_yaml)
     --static-dispatch-backend
     --backend-whitelist=XPU
     COMMAND
-    cat ${XPUFallback_PATH} >> ${RegisterXPU_PATH}
+    ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
     ${SIMPLE_TRACE} 

@@ -771,7 +771,7 @@
 
 - func: arange.start_out(Scalar start, Scalar end, Scalar step=1, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
-    XPU: arange_out
+    XPU: arange_out_xpu
   cpp_no_default_args: ['step']
 
 - func: abs.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
