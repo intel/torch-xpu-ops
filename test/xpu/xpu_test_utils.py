@@ -211,6 +211,7 @@ _xpu_computation_op_list = [
     "native_batch_norm",
     "_native_batch_norm_legit",
     "_batch_norm_with_update",
+    "_thnn_fused_gru_cell",
     "bincount",
     "cross",
     "renorm",
