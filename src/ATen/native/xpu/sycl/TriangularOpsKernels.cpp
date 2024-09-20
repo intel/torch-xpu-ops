@@ -7,6 +7,8 @@
 #include <ATen/native/Resize.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/TriangularOpsKernels.h>
+
 namespace at::native::xpu {
 
 using namespace at::xpu;

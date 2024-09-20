@@ -6,7 +6,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-Tensor embedding_dense_backward_kernel(
+TORCH_XPU_API Tensor embedding_dense_backward_kernel(
     const Tensor& grad_,
     const Tensor& indices_,
     int64_t num_weights,

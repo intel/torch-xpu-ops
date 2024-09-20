@@ -238,6 +238,11 @@ _xpu_computation_op_list = [
     "nan_to_num",
     "scatter_reduce",
     "nanmean",
+    "native_layer_norm",
+    "native_layer_norm_backward",
+    "square",
+    "heaviside",
+    "argsort",
 ]
 
 _ops_without_cuda_support = [
@@ -335,6 +340,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "histogram": {
+        ("TestCommonXPU", "test_out_histogram_xpu_float32"):{
+            torch.float32: tol(atol=3e-5, rtol=5e-5),
+        }
+    }
 }
 
 
@@ -417,6 +427,7 @@ def ModuleTest_test_xpu(self, test_case):
             xpu_gradInput = test_case._backward(
                 xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
             )
+            
             test_case.assertEqual(
                 cpu_gradInput,
                 xpu_gradInput,
@@ -761,14 +772,13 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if (
-                opinfo.name not in _xpu_computation_op_list
-                or opinfo.name in _ops_without_cuda_support
-            ):
+            if ( opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list 
+                if db == common_methods_invocations.python_ref_db else True)) or opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                backward_dtypes.add(bfloat16)
+                if bfloat16 in opinfo.dtypesIfXPU:
+                    backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
