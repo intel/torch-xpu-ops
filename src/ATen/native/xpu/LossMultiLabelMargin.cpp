@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycl/MultiLabelMarginLossKernels.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
+#include <comm/RegisterUtils.h>
 namespace at {
 
 std::tuple<Tensor&, Tensor&> XPUNativeFunctions::
@@ -44,7 +45,11 @@ Tensor XPUNativeFunctions::multilabel_margin_loss_backward(
     const Tensor& target,
     int64_t reduction,
     const Tensor& is_target) {
-  auto grad_input = zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto grad_input = at::xpu::create_out(
+      self.sizes(),
+      {},
+      self.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT));
+  grad_input.zero_();
   at::native::xpu::multilabel_margin_loss_backward_kernel(
       grad_output, self, target, reduction, is_target, grad_input);
   return grad_input;
