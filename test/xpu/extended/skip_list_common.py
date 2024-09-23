@@ -162,5 +162,8 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/781
     "test_compare_cpu_square_xpu_complex64",
 
+    # https://github.com/intel/torch-xpu-ops/issues/922
+    "test_compare_cpu_isin_xpu_bfloat16",
+    "test_compare_cpu_unique_consecutive_xpu_bfloat16",
     ),
 }
