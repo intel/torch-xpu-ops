@@ -11,7 +11,7 @@ on:
       pytorch:
         required: false
         type: string
-        default: 'main'
+        default: 'nightly'
         description: Pytorch branch/commit
       ut:
         required: false
@@ -71,7 +71,7 @@ jobs:
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
     env:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
@@ -107,7 +107,7 @@ jobs:
           source .github/scripts/env.sh
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
+          cd pytorch && git checkout $(echo ${{ env.pytorch }} |sed 's/^nightly_wheel$/nightly/')
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
