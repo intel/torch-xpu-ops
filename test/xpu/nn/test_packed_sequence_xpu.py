@@ -15,12 +15,15 @@ with XPUPatchForImport(False):
 
     def myxpu(self, *args, **kwargs):
 
-        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(*args, **kwargs)
-        if ex.device.type == 'xpu':
+        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(
+            *args, **kwargs
+        )
+        if ex.is_xpu:
             return self.to(*args, **kwargs)
-        return self.to(*args, device='xpu', **kwargs)
+        kwargs["device"] = "xpu"
+        return self.to(*args, **kwargs)
 
-    rnn_utils.PackedSequence.xpu = types.MethodType(rnn_utils.PackedSequence, myxpu)
+    rnn_utils.PackedSequence.xpu = myxpu
 
     def my_test_to(self):
         for enforce_sorted in (True, False):
@@ -53,7 +56,7 @@ with XPUPatchForImport(False):
                     "xpu",
                     "xpu:0" if torch.xpu.device_count() == 1 else "xpu:1",
                 ]:
-                    b = a.xpu()
+                    b = a.xpu(device=xpu)
                     self.assertIs(b, b.to(xpu))
                     self.assertIs(b, b.xpu())
                     self.assertEqual(a, b.to("cpu"))

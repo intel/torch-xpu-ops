@@ -90,7 +90,7 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
 @wrapSwapTensorsTest()
 def _test_to(self, device, dtype, module_info, training, swap, set_grad):
     module_cls = module_info.module_cls
-    devices = ['xpu']
+    devices = ['cpu', 'xpu']
     dtypes = module_info.dtypes
     module_inputs = module_info.module_inputs_func(module_info, device=device, dtype=dtype,
                                                    requires_grad=False, training=training)
