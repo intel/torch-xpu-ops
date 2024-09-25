@@ -56,7 +56,7 @@ function(GEN_XPU file_yaml)
 
   # Codegen prepare process
   if(WIN32)
-    execute_process(COMMAND mklink /d ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE})
+    execute_process(COMMAND mklink /d ${CODEGEN_TEMPLATE}/templates ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates)
     string(REPLACE "/" "\\" RegisterXPU_PATH_BACKSLASH "${RegisterXPU_PATH}")
     string(REPLACE "/" "\\" XPUFallback_PATH_BACKSLASH "${XPUFallback_PATH}")
     set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH_BACKSLASH} ">>" ${RegisterXPU_PATH_BACKSLASH})
