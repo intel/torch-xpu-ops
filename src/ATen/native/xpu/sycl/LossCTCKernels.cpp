@@ -384,8 +384,8 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
   size_t ngroups_x = 1;
   size_t ngroups_y = (batch_size + threads_batch - 1) / threads_batch;
 
-  sycl::range<2> global_range{group_size_y, group_size_x};
-  sycl::range<2> local_range{
+  sycl::range<2> local_range{group_size_y, group_size_x};
+  sycl::range<2> global_range{
       ngroups_y * group_size_y, ngroups_x * group_size_x};
 
   auto caller = CTCLossLogAlphaKernelFunctor<scalar_t, target_t>(
@@ -1017,11 +1017,12 @@ Tensor ctc_loss_backward_kernel_template(
   auto queue = at::xpu::getCurrentSYCLQueue();
 
   {
-    sycl::range<2> local_range(threads_batch, threads_target);
+    auto group_size_x = threads_target;
+    auto group_size_y = threads_batch;
+    sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(
-        threads_batch * (batch_size + threads_batch - 1) / threads_batch,
-        threads_target);
-
+        group_size_y * ((batch_size + threads_batch - 1) / threads_batch),
+        group_size_x);
     auto caller = CTCLossBackwardLogBetaKernelFunctor<scalar_t, target_t>(
         log_beta.mutable_data_ptr<scalar_t>(),
         log_probs.const_data_ptr<scalar_t>(),
