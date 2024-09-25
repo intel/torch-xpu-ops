@@ -730,3 +730,7 @@ supported:
   - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
   - _empty_affine_quantized
   - _empty_per_channel_affine_quantized
+  - quantize_per_channel
+  - quantize_per_tensor
+  - quantize_per_tensor_dynamic
+  - quantize_per_tensor.tensor_qparams
