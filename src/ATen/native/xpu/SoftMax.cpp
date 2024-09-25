@@ -211,4 +211,21 @@ Tensor& XPUNativeFunctions::_log_softmax_backward_data_out(
       grad_output, output, dim, false, grad_input);
 }
 
+Tensor XPUNativeFunctions::_masked_softmax(
+    const Tensor& self,
+    const Tensor& mask,
+    std::optional<int64_t> dim,
+    std::optional<int64_t> mask_type) {
+  return native::xpu::masked_softmax_kernel(self, mask, dim, mask_type);
+}
+
+Tensor XPUNativeFunctions::_masked_softmax_backward(
+    const Tensor& grad_output,
+    const Tensor& output,
+    const Tensor& mask,
+    std::optional<int64_t> dim) {
+  return native::xpu::masked_softmax_backward_kernel(
+      grad_output, output, mask, dim);
+}
+
 } // namespace at

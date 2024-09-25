@@ -1707,6 +1707,221 @@ void spatial_softmax_backward(
 #undef SPATIAL_SOFTMAX_BACKWARD_IMPL
 }
 
+template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
+Tensor& masked_softmax_forward(
+    Tensor& output,
+    Tensor& input,
+    int dim,
+    const Tensor mask) {
+  auto inner_size = input.stride(dim);
+  auto dim_size = input.size(dim);
+  auto outer_size = input.numel() / (inner_size * dim_size);
+
+  constexpr int float4_size = sizeof(float) * 4;
+  constexpr int max_vec_size = float4_size / sizeof(scalar_t);
+  constexpr int INNER_LOOP = max_vec_size * 2;
+
+  // decide vec_size: max_vec_size or 1
+  using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
+  constexpr int align_bytes = alignof(vec_t);
+  int input_start =
+      ((uint64_t)input.data_ptr()) % align_bytes / sizeof(scalar_t);
+  int output_start =
+      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+
+  // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
+  bool can_use_32bit_index =
+      canUse32BitIndexMath(input) && canUse32BitIndexMath(output);
+
+  // decide SIMD: SIMD32 or SIMD16
+  auto* dev_prop =
+      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto sub_group_size = dev_prop->sub_group_sizes;
+  int SIMD = sub_group_size[1];
+  if (SIMD == SIMD32) {
+    if (dim_size < SIMD16 * INNER_LOOP)
+      SIMD = SIMD16;
+  }
+
+#define DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(vec_size, SIMD, outer_loop) \
+  {                                                                    \
+    dispatch_softmax_forward_kernel<                                   \
+        INNER_LOOP,                                                    \
+        vec_size,                                                      \
+        SIMD,                                                          \
+        scalar_t,                                                      \
+        accscalar_t,                                                   \
+        uint32_t,                                                      \
+        LogSoftMax,                                                    \
+        outer_loop,                                                    \
+        true,                                                          \
+        decltype(input_calc)>(                                         \
+        input.data_ptr<scalar_t>(),                                    \
+        output.data_ptr<scalar_t>(),                                   \
+        dim_size,                                                      \
+        outer_size,                                                    \
+        mask.data_ptr<bool>(),                                         \
+        input_calc);                                                   \
+  }
+
+  int max_group_size = 512;
+  if (inner_size == 1 && can_use_32bit_index &&
+      max_group_size * INNER_LOOP >= dim_size) {
+    // if the element number is smaller than max_work_group_size * INNER_LOOP,
+    // the fast path (dispatch_softmax_forward) will be selected.
+    // otherwise, the general path (softmax_forward_kernel) will be selected.
+    // it assumes vec_size * outer_loop * work_group_size >= dim_size
+    auto iter = TensorIterator::binary_op(output, input, mask);
+    auto input_calc = make_input_offset_calculator<2>(iter);
+
+    if (SIMD == SIMD32) {
+      // Ensure input/output tensor are aligned with max_vec_size
+      if (input_start == 0 && output_start == 0 &&
+          dim_size % max_vec_size == 0) {
+        constexpr int outer_loop = INNER_LOOP / max_vec_size;
+        DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*SIMD*/ SIMD32, outer_loop);
+      } else {
+        constexpr int outer_loop = INNER_LOOP;
+        DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ 1, /*SIMD*/ SIMD32, outer_loop);
+      }
+    } else {
+      if (input_start == 0 && output_start == 0 &&
+          dim_size % max_vec_size == 0) {
+        if (max_vec_size >= 4 && dim_size <= 4 * SIMD) {
+          // if vec_size >= 4 and dim_size <= 4 * SIMD, take smaller vec_size
+          // and 1 outer_loop
+          constexpr int outer_loop = 1;
+          DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+              /*vec_size*/ 4, /*SIMD*/ SIMD16, outer_loop);
+        } else if (dim_size <= max_vec_size * SIMD) {
+          // if dim_size <= max_vec_size * SIMD , take 1 outer_loop
+          constexpr int outer_loop = 1;
+          DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+              /*vec_size*/ max_vec_size, /*SIMD*/ SIMD16, outer_loop);
+        } else {
+          // SIMD16 will use less register numbers than SIMD32
+          // if the SIMD = SIMD16, then outer_loop will be enlarged 2x
+          constexpr int outer_loop = INNER_LOOP / max_vec_size * 2;
+          DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+              /*vec_size*/ max_vec_size, /*SIMD*/ SIMD16, outer_loop);
+        }
+      } else {
+        constexpr int outer_loop = INNER_LOOP * 2;
+        DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(
+            /*vec_size*/ 1, /*SIMD*/ SIMD16, outer_loop);
+      }
+    }
+  } else {
+    auto mask_expand = mask.expand(input.sizes());
+    output = at::softmax_out(
+        output,
+        input.masked_fill(
+            mask_expand, -std::numeric_limits<scalar_t>::infinity()),
+        dim);
+  }
+  return output;
+#undef DISPATCH_MASK_SOFTMAX_FORWARD_IMPL
+}
+
+template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
+void masked_softmax_backward(
+    Tensor& gradInput,
+    Tensor& output,
+    Tensor& gradOutput,
+    Tensor& mask,
+    int dim) {
+  auto inner_size = output.stride(dim);
+  auto dim_size = output.size(dim);
+  auto outer_size = output.numel() / (dim_size * inner_size);
+
+  constexpr int float4_size = sizeof(float) * 4;
+  constexpr int max_vec_size = float4_size / sizeof(scalar_t);
+  constexpr int INNER_LOOP = max_vec_size;
+
+  // decide vec_size: max_vec_size or 1
+  using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
+  constexpr int align_bytes = alignof(vec_t);
+  int gradin_start =
+      ((uint64_t)gradInput.data_ptr()) % align_bytes / sizeof(scalar_t);
+  int output_start =
+      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+  int gradoutput_start =
+      ((uint64_t)gradOutput.data_ptr()) % align_bytes / sizeof(scalar_t);
+
+  // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
+  bool can_use_32bit_index = canUse32BitIndexMath(gradInput) &&
+      canUse32BitIndexMath(output) && canUse32BitIndexMath(gradOutput);
+
+  // decide SIMD: SIMD32 or SIMD16
+  auto* dev_prop =
+      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto sub_group_size = dev_prop->sub_group_sizes;
+  int SIMD = sub_group_size[1];
+  if (SIMD == SIMD32) {
+    if (dim_size < SIMD16 * max_vec_size)
+      SIMD = SIMD16;
+  }
+
+#define DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(vec_size, SIMD) \
+  {                                                         \
+    dispatch_softmax_backward_kernel<                       \
+        INNER_LOOP,                                         \
+        vec_size,                                           \
+        SIMD,                                               \
+        scalar_t,                                           \
+        accscalar_t,                                        \
+        uint32_t,                                           \
+        LogSoftMax,                                         \
+        true,                                               \
+        decltype(input_calc)>(                              \
+        gradInput.data_ptr<scalar_t>(),                     \
+        output.data_ptr<scalar_t>(),                        \
+        gradOutput.data_ptr<scalar_t>(),                    \
+        dim_size,                                           \
+        outer_size,                                         \
+        mask.data_ptr<bool>(),                              \
+        input_calc);                                        \
+  }
+
+  int max_group_size = 512;
+  if (inner_size == 1 && can_use_32bit_index &&
+      max_group_size * INNER_LOOP >= dim_size) {
+    auto iter = TensorIterator::binary_op(gradInput, gradOutput, mask);
+    auto input_calc = make_input_offset_calculator<2>(iter);
+    // if the element number is smaller than max_work_group_size * INNER_LOOP
+    // / 2, (2 indicates reading two tensors: output and gradOutput) the fast
+    // path (dispatch_softmax_backward) will be selected. otherwise, the
+    // general path (softmax_backward_kernel) will be selected.
+    if (SIMD == SIMD32) {
+      if (gradin_start == 0 && output_start == 0 && gradoutput_start == 0 &&
+          dim_size % max_vec_size == 0) {
+        DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*SIMD*/ SIMD32);
+      } else {
+        DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(/*vec_size*/ 1, /*SIMD*/ SIMD32);
+      }
+    } else {
+      if (gradin_start == 0 && output_start == 0 && gradoutput_start == 0 &&
+          dim_size % max_vec_size == 0) {
+        DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(
+            /*vec_size*/ max_vec_size, /*SIMD*/ SIMD16);
+      } else {
+        DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(/*vec_size*/ 1, /*SIMD*/ SIMD16);
+      }
+    }
+  } else {
+    gradInput = at::_softmax_backward_data_out(
+        gradInput,
+        gradOutput,
+        output.masked_fill(mask, 0),
+        dim,
+        gradOutput.scalar_type());
+  }
+#undef DISPATCH_SOFTMAX_BACKWARD_IMPL
+}
+
 #undef MIN_WG_NUM
 #undef SIMD16
 #undef SIMD32
@@ -1832,6 +2047,108 @@ Tensor& _log_softmax_backward_kernel(
     Tensor& grad_input) {
   return host_softmax_backward<true>(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
+}
+
+Tensor masked_softmax_kernel(
+    const Tensor& input_,
+    const Tensor& mask_,
+    const c10::optional<int64_t> dim_,
+    const c10::optional<int64_t> mask_type_) {
+  Tensor output = at::empty_like(input_, input_.options());
+  TORCH_CHECK(
+      mask_.scalar_type() == ScalarType::Bool,
+      "Mask should be a boolean tensor");
+
+  TORCH_CHECK(mask_type_.has_value(), "Mask Type should be defined");
+  int64_t mask_type = mask_type_.value();
+  TORCH_CHECK(
+      (mask_type == 0) || (mask_type == 1) || (mask_type == 2),
+      "Mask Type should be 0 (src_mask), 1 (src_key_padding_mask), or 2 (default_mask)");
+
+  // If input is [B, H, T, T] and mask is [B, T]
+  // we have special fast kernel
+  // mask_type == 1 => mask_ is a src_key_padding_mask
+  bool is_BxT_mask = (mask_type == 1) &&
+      (input_.dim() == 4 && mask_.dim() == 2 &&
+       input_.size(0) == mask_.size(0) && input_.size(2) == mask_.size(1) &&
+       input_.size(3) == mask_.size(1));
+
+  // If input is [B, H, T, T] and mask is [T, T]
+  // expand mask to [B, H, T, T] and treat it like regular mask
+  // TODO We should have special fast kernel for TxT mask as well
+  // mask_type == 0 => mask_ is a src_mask
+  bool is_TxT_mask = (mask_type == 0) && input_.dim() == 4 &&
+      mask_.dim() == 2 && input_.size(3) == mask_.size(1) &&
+      input_.size(2) == mask_.size(0) && mask_.size(0) == mask_.size(1);
+  // If mask_type == 2, then mask_.sizes() must equal input_.sizes()
+  TORCH_CHECK(
+      mask_.sizes() == input_.sizes() || is_BxT_mask || is_TxT_mask,
+      "Mask shape should match input. mask: ",
+      mask_.sizes(),
+      " input: ",
+      input_.sizes());
+
+  auto input = input_.dim() == 0 ? input_.view(1) : input_;
+  auto mask = mask_.dim() == 0 ? mask_.view(1) : mask_;
+  int64_t dim = dim_.has_value() ? dim_.value() : input.dim() - 1;
+
+  if (is_BxT_mask) {
+    mask = mask.view({mask_.size(0), 1, 1, mask_.size(1)});
+  }
+  // Here assumes that the mask is broadcastable for input
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      input.scalar_type(),
+      "masked_softmax",
+      [&] {
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        impl::masked_softmax_forward<scalar_t, accscalar_t, false>(
+            output, input, dim, mask);
+      });
+  return output;
+}
+
+Tensor masked_softmax_backward_kernel(
+    const Tensor& grad_,
+    const Tensor& output_,
+    const Tensor& mask_,
+    const c10::optional<int64_t> dim_) {
+  Tensor grad_input = at::empty_like(grad_, grad_.options());
+  if (grad_.numel() == 0) {
+    return grad_input;
+  }
+
+  auto grad = grad_.contiguous();
+  auto output = output_.contiguous();
+  auto mask = mask_.contiguous();
+  int64_t dim = dim_.has_value() ? maybe_wrap_dim(dim_.value(), output.dim())
+                                 : output.dim() - 1;
+
+  grad = grad.dim() == 0 ? grad.view(1) : grad;
+  mask = mask.dim() == 0 ? mask.view(1) : mask;
+  output = output.dim() == 0 ? output.view(1) : output;
+
+  TORCH_CHECK(
+      dim >= 0 && dim < grad.dim(),
+      "dim must be non-negative and less than input dimensions");
+  TORCH_CHECK(
+      grad.sizes() == mask.sizes(), "Mask shape should match grad shape");
+  TORCH_CHECK(
+      mask.scalar_type() == ScalarType::Bool,
+      "Mask should be a boolean tensor");
+
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      grad_input.scalar_type(),
+      "masked_softmax_backward",
+      [&] {
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        impl::masked_softmax_backward<scalar_t, accscalar_t, false>(
+            grad_input, output, grad, mask, dim);
+      });
+  return grad_input;
 }
 
 } // namespace xpu
