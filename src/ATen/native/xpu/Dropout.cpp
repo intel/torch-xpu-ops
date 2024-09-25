@@ -36,4 +36,11 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::_fused_dropout(
   return native::xpu::fused_dropout_kernel(self, p, generator);
 }
 
+Tensor XPUNativeFunctions::_masked_scale(
+    const Tensor& self,
+    const Tensor& mask,
+    double scale) {
+  return native::xpu::masked_scale_kernel(self, mask, scale);
+}
+
 } // namespace at

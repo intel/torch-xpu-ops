@@ -19,6 +19,9 @@ TORCH_XPU_API std::tuple<Tensor, Tensor> fused_dropout_kernel(
     double p,
     c10::optional<Generator> gen_);
 
+TORCH_XPU_API Tensor
+masked_scale_kernel(const Tensor& self, const Tensor& mask, double scale);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
