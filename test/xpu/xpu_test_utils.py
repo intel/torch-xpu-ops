@@ -109,6 +109,7 @@ _xpu_computation_op_list = [
     "median",
     "nanmedian",
     "native_dropout_backward",
+    "nn.functional.dropout",
     "ne",
     "neg",
     "nn.functional.elu",

@@ -430,7 +430,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
   return dropout<bool>(gen, self, p1m);
 }
 
-std::tuple<Tensor, Tensor> fused_dropout(
+std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
     c10::optional<Generator> gen_) {

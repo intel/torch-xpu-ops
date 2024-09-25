@@ -297,6 +297,7 @@ supported:
   - bernoulli_.float
   - native_dropout
   - native_dropout_backward
+  - _fused_dropout
   - copy_
   - _to_copy
   - view

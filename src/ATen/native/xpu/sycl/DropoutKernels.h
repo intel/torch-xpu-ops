@@ -14,6 +14,11 @@ TORCH_XPU_API std::tuple<Tensor, Tensor> dropout_kernel(
 TORCH_XPU_API Tensor
 dropout_backward_kernel(const Tensor& grad, const Tensor& mask, double scale);
 
+TORCH_XPU_API std::tuple<Tensor, Tensor> fused_dropout_kernel(
+    const Tensor& self,
+    double p,
+    c10::optional<Generator> gen_);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
