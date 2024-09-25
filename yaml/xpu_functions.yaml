@@ -728,3 +728,5 @@ supported:
   - _fake_quantize_learnable_per_tensor_affine
   - _fake_quantize_learnable_per_tensor_affine_backward
   - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  - _empty_affine_quantized
+  - _empty_per_channel_affine_quantized
