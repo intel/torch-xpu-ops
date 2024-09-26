@@ -1154,6 +1154,9 @@ skip_dict = {
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
         "test_pin_memory",
+        # failed in preci
+        # https://github.com/intel/torch-xpu-ops/issues/928
+        "test_segfault",
     ),
 
     "test_tensor_creation_ops_xpu.py": (
