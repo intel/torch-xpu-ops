@@ -1653,7 +1653,7 @@ struct BatchNormBackwardReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)wg_size_}, cgh);
+        sycl::range<1>{(size_t)wg_size_/SIMD}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
