@@ -70,6 +70,27 @@ TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
     double epsilon,
     std::array<bool, 3> grad_input_mask);
 
+TORCH_XPU_API std::tuple<Tensor, Tensor>
+batch_norm_gather_stats_with_counts_kernel(
+    const Tensor& self,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const std::optional<Tensor>& running_mean_opt /* optional */,
+    const std::optional<Tensor>& running_var_opt /* optional */,
+    double momentum,
+    double epsilon,
+    const Tensor& counts);
+
+TORCH_XPU_API std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
+    const Tensor& self,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
+    double momentum,
+    double epsilon,
+    int64_t count);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
