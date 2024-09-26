@@ -170,6 +170,7 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   torch_compile_options(${lib})
   target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
   target_compile_options(${lib} PRIVATE ${TORCH_XPU_OPS_FLAGS})
+  target_compile_options(${lib} PRIVATE /permissive-)
 
   target_include_directories(${lib} PUBLIC ${TORCH_XPU_OPS_INCLUDE_DIRS})
   target_include_directories(${lib} PUBLIC ${ATen_XPU_INCLUDE_DIRS})
