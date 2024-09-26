@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
@@ -15,8 +15,7 @@ TORCH_XPU_API void group_norm_kernel(
     double eps,
     Tensor& Y,
     Tensor& mean,
-    Tensor& rstd,
-    ScalarType dtype);
+    Tensor& rstd);
 
 TORCH_XPU_API void group_norm_backward_kernel(
     const Tensor& dY,
