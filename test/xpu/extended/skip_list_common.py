@@ -53,10 +53,6 @@ skip_dict = {
     "test_non_standard_bool_values_native_dropout_backward_xpu_bool",
     # Need FP64 golden ref for more accurate comparison
     "test_compare_cpu_log_softmax_xpu_bfloat16",
-    # TestCompositeCompliance
-    # CPU fallback fails
-    # Require implementing aten::embedding_renorm_
-    "test_view_replay_nn_functional_embedding_xpu_float32",
     # TestCompositeCompliance::test_cow_input
     # XPU Tensor fails in copy-on-write cases
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
@@ -72,13 +68,6 @@ skip_dict = {
     # Special handle (different calculation order) in CPU reference impl.
     # https://github.com/pytorch/pytorch/blob/c97e3ebb96d7457075b019b94411e8c2d058e68b/aten/src/ATen/native/EmbeddingBag.cpp#L300
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
-    "test_compare_cpu_nn_functional_embedding_bag_xpu_float16",
-    # Not implemented operators, aten::embedding_renorm_.
-    # To retrieve cases when the operators are supported.
-    # https://github.com/intel/torch-xpu-ops/issues/380
-    "test_compare_cpu_nn_functional_embedding_bag_xpu_float32",
-    "test_compare_cpu_nn_functional_embedding_bag_xpu_float64",
-    "test_view_replay_nn_functional_embedding_bag_xpu_float32",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
