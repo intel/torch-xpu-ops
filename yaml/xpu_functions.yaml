@@ -735,3 +735,5 @@ supported:
   - quantize_per_tensor_dynamic
   - quantize_per_tensor.tensor_qparams
   - dequantize.self
+  - _make_per_tensor_quantized_tensor
+  - _make_per_channel_quantized_tensor
