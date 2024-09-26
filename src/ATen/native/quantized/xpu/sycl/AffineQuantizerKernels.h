@@ -7,14 +7,28 @@ TORCH_XPU_API void quantize_tensor_per_channel_affine_kernel(
     const Tensor& rtensor,
     Tensor& qtensor,
     const Tensor& scales,
-    Tensor zero_points,
+    const Tensor& zero_points,
     int64_t axis);
 
 TORCH_XPU_API void dequantize_tensor_per_channel_affine_kernel(
     const Tensor& qtensor,
     Tensor& rtensor,
     const Tensor& scales,
-    Tensor zero_points,
+    const Tensor& zero_points,
+    int64_t axis);
+
+TORCH_XPU_API void quantize_tensor_per_channel_float_qparams_kernel(
+    const Tensor& rtensor,
+    Tensor& qtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
+    int64_t axis);
+
+TORCH_XPU_API void dequantize_tensor_per_channel_float_qparams_kernel(
+    const Tensor& qtensor,
+    Tensor& rtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
     int64_t axis);
 
 TORCH_XPU_API void quantize_tensor_per_tensor_affine_kernel(

@@ -1,7 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
-#include <ATen/native/quantized/xpu/MakePerTensorQuantizedTensor.h>
 #include <ATen/native/quantized/xpu/Quantizer.h>
 
 namespace at {
@@ -30,7 +29,7 @@ Tensor XPUNativeFunctions::_empty_affine_quantized(
   return native::xpu::new_qtensor(
       size,
       options,
-      native::make_per_tensor_affine_quantizer_xpu(
+      native::xpu::make_per_tensor_affine_quantizer(
           scale, zero_point, typeMetaToScalarType(options.dtype())));
 }
 
@@ -62,7 +61,7 @@ Tensor XPUNativeFunctions::_empty_per_channel_affine_quantized(
   return native::xpu::new_qtensor(
       size,
       options,
-      native::make_per_channel_affine_quantizer_xpu(
+      native::xpu::make_per_channel_affine_quantizer(
           scales, zero_points, axis, typeMetaToScalarType(options.dtype())));
 }
 

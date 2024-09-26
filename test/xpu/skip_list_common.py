@@ -2132,6 +2132,29 @@ skip_dict = {
 
     "quantization/core/test_workflow_module_xpu.py": None,
 
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend
+        "test_compare_per_channel_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend.
+        "test_compare_per_tensor_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_cuda_quantization_does_not_pin_memory_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_per_channel_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_tensor_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::q_scale' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_index_put_impl_' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_put_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::index_select' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_select_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_masked_fill_cuda_xpu",
+    ),
+
     "nn/test_packed_sequence_xpu.py": (
         # test case porting issue
         "test_to and not test_to_memory and not test_total",

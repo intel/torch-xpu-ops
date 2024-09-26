@@ -1,9 +1,10 @@
 #include <ATen/core/ScalarType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/quantized/cpu/QuantUtils.h>
+#include <ATen/quantized/QTensorImpl.h>
 #include <ATen/xpu/XPUNativeFunctions.h>
 
-#include <ATen/native/quantized/xpu/MakePerTensorQuantizedTensor.h>
+#include <ATen/native/quantized/xpu/Quantizer.h>
 
 namespace at {
 
@@ -16,7 +17,7 @@ Tensor XPUNativeFunctions::quantize_per_channel(
   if (self.is_quantized()) {
     return self;
   }
-  auto quantizer = native::make_per_channel_affine_quantizer_xpu(
+  auto quantizer = native::xpu::make_per_channel_affine_quantizer(
       scales, zero_points, axis, dtype);
   return quantizer->quantize(self);
 }
@@ -30,7 +31,7 @@ Tensor XPUNativeFunctions::quantize_per_tensor(
     return self;
   }
   auto quantizer =
-      native::make_per_tensor_affine_quantizer_xpu(scale, zero_point, dtype);
+      native::xpu::make_per_tensor_affine_quantizer(scale, zero_point, dtype);
   return quantizer->quantize(self);
 }
 
@@ -42,7 +43,7 @@ Tensor XPUNativeFunctions::quantize_per_tensor(
   if (self.is_quantized()) {
     return self;
   }
-  auto quantizer = native::make_per_tensor_affine_quantizer_xpu(
+  auto quantizer = native::xpu::make_per_tensor_affine_quantizer(
       scale.item().toDouble(), zero_point.item().toLong(), dtype);
   return quantizer->quantize(self);
 }
@@ -93,6 +94,14 @@ Tensor XPUNativeFunctions::quantize_per_tensor_dynamic(
 
   return XPUNativeFunctions::quantize_per_tensor(
       self, q_params.scale, q_params.zero_point, dtype);
+}
+
+Tensor XPUNativeFunctions::dequantize(const Tensor& self) {
+  if (!self.is_quantized()) {
+    return self.to(at::kFloat);
+  }
+  auto qtensor = static_cast<QTensorImpl*>(self.unsafeGetTensorImpl());
+  return qtensor->quantizer()->dequantize(self);
 }
 
 } // namespace at
