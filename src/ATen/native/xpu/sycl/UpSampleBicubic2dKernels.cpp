@@ -1,3 +1,8 @@
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -178,4 +183,155 @@ void upsample_bicubic2d_kernel(
       });
 }
 
+template <typename scalar_t, typename accscalar_t>
+struct UpsampleBicubic2dBackwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto idata = in_data_;
+    auto odata = out_data_;
+    int index = item.get_global_linear_id();
+    const int batchsize = idata.size(0);
+    const int channels = idata.size(1);
+    const int input_height = idata.size(2);
+    const int input_width = idata.size(3);
+    const int output_height = odata.size(2);
+    const int output_width = odata.size(3);
+    if (index >= num_elements_) {
+      return;
+    }
+    const int output_x = index % output_width;
+    const int output_y = index / output_width;
+    // special case: output_xust copy
+    if (input_height == output_height && input_width == output_width) {
+      for (int n = 0; n < batchsize; n++) {
+        for (int c = 0; c < channels; ++c) {
+          const scalar_t val = odata[n][c][output_y][output_x];
+          idata[n][c][output_y][output_x] = val;
+        }
+      }
+      return;
+    }
+
+    accscalar_t real_x = area_pixel_compute_source_index(
+        width_scale_, output_x, align_corners_, /*cubic=*/true);
+    int input_x = floorf(real_x);
+    accscalar_t t_x = real_x - input_x;
+
+    accscalar_t real_y = area_pixel_compute_source_index(
+        height_scale_, output_y, align_corners_, /*cubic=*/true);
+    int input_y = floorf(real_y);
+    accscalar_t t_y = real_y - input_y;
+
+    accscalar_t x_coeffs[4];
+    accscalar_t y_coeffs[4];
+
+    get_cubic_upsampling_coefficients(x_coeffs, t_x);
+    get_cubic_upsampling_coefficients(y_coeffs, t_y);
+
+    for (int n = 0; n < batchsize; n++) {
+      for (int c = 0; c < channels; ++c) {
+        scalar_t out_value = odata[n][c][output_y][output_x];
+        for (int i = 0; i < 4; i++) {
+          for (int j = 0; j < 4; j++) {
+            upsample_increment_value_bounded<scalar_t, accscalar_t>(
+                idata,
+                n,
+                c,
+                input_height,
+                input_width,
+                input_y - 1 + i,
+                input_x - 1 + j,
+                out_value * y_coeffs[i] * x_coeffs[j]);
+          }
+        }
+      }
+    }
+  }
+  UpsampleBicubic2dBackwardKernelFunctor(
+      const int num_elements,
+      const accscalar_t height_scale,
+      const accscalar_t width_scale,
+      const bool align_corners,
+      PackedTensorAccessor64<scalar_t, 4> in_data,
+      const PackedTensorAccessor64<const scalar_t, 4> out_data)
+      : num_elements_(num_elements),
+        height_scale_(height_scale),
+        width_scale_(width_scale),
+        align_corners_(align_corners),
+        in_data_(in_data),
+        out_data_(out_data) {}
+
+ private:
+  const int num_elements_;
+  const accscalar_t height_scale_;
+  const accscalar_t width_scale_;
+  const bool align_corners_;
+  PackedTensorAccessor64<scalar_t, 4> in_data_;
+  const PackedTensorAccessor64<const scalar_t, 4> out_data_;
+};
+
+template <typename scalar_t, typename accscalar_t>
+static void upsample_bicubic2d_backward_out_template(
+    int64_t num_elements,
+    const accscalar_t height_scale,
+    const accscalar_t width_scale,
+    const bool align_corners,
+    PackedTensorAccessor64<scalar_t, 4> idata,
+    const PackedTensorAccessor64<const scalar_t, 4> odata) {
+  UpsampleBicubic2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+      num_elements, height_scale, width_scale, align_corners, idata, odata);
+
+  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+  int64_t num_wg = at::ceil_div(num_elements, wg_size);
+  auto queue = getCurrentSYCLQueue();
+
+  sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);
+}
+
+void upsample_bicubic2d_backward_kernel(
+    const Tensor& grad_input,
+    const Tensor& grad_output_,
+    IntArrayRef output_size,
+    IntArrayRef input_size,
+    bool align_corners,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
+  globalContext().alertNotDeterministic("upsample_bicubic2d_backward_out_cuda");
+  TensorArg grad_input_arg{grad_input, "grad_input", 1},
+      grad_output_arg{grad_output_, "grad_output_", 2};
+  checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
+
+  int output_height = output_size[0];
+  int output_width = output_size[1];
+
+  int input_height = input_size[2];
+  int input_width = input_size[3];
+
+  Tensor grad_output = grad_output_.contiguous();
+
+  grad_input.zero_();
+  const int num_elements = output_height * output_width;
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      grad_output.scalar_type(),
+      "upsample_bicubic2d_backward_out_frame",
+      [&] {
+        using accscalar_t = at::acc_type<scalar_t, true>;
+
+        auto idata = grad_input.packed_accessor64<scalar_t, 4>();
+        auto odata = grad_output.packed_accessor64<const scalar_t, 4>();
+
+        const accscalar_t rheight = area_pixel_compute_scale<accscalar_t>(
+            input_height, output_height, align_corners, scales_h);
+        const accscalar_t rwidth = area_pixel_compute_scale<accscalar_t>(
+            input_width, output_width, align_corners, scales_w);
+
+        upsample_bicubic2d_backward_out_template<scalar_t, accscalar_t>(
+            num_elements, rheight, rwidth, align_corners, idata, odata);
+      });
+}
+
 } // namespace at::native::xpu
+
+#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
