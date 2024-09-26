@@ -96,9 +96,9 @@ static void checkPerChannelParamsSize(
       zero_points.numel());
 }
 
-Tensor quantize_tensor_per_channel_affine_xpu(
-    Tensor& qtensor,
+Tensor& quantize_tensor_per_channel_affine_xpu(
     const Tensor& rtensor,
+    Tensor& qtensor,
     const Tensor& scales,
     const Tensor& zero_points,
     int64_t axis) {
@@ -127,9 +127,9 @@ Tensor quantize_tensor_per_channel_affine_xpu(
   return qtensor;
 }
 
-Tensor dequantize_tensor_per_channel_affine_xpu(
-    Tensor& rtensor,
+Tensor& dequantize_tensor_per_channel_affine_xpu(
     const Tensor& qtensor,
+    Tensor& rtensor,
     const Tensor& scales,
     const Tensor& zero_points,
     int64_t axis) {
@@ -157,9 +157,71 @@ Tensor dequantize_tensor_per_channel_affine_xpu(
   return rtensor;
 }
 
-Tensor quantize_tensor_per_tensor_affine_xpu(
-    Tensor& qtensor,
+Tensor& quantize_tensor_per_channel_float_qparams_xpu(
     const Tensor& rtensor,
+    Tensor& qtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
+    int64_t axis) {
+  static constexpr auto fn_name =
+      "quantize_tensor_per_channel_float_qparams_xpu";
+
+  checkRoundingMode(fn_name);
+  checkFloatTensor(fn_name, rtensor);
+  checkSameDevice(fn_name, rtensor, qtensor);
+  checkSameSize(fn_name, qtensor, rtensor);
+
+  AT_DISPATCH_QINT_AND_SUB_BYTE_TYPES(qtensor.scalar_type(), fn_name, [&]() {
+    checkQuantizedTensor<scalar_t>(fn_name, qtensor);
+  });
+
+  TORCH_CHECK(
+      0 <= axis && axis < rtensor.dim(),
+      "Channel axis out of range in per channel float qparams quantization. Got: ",
+      axis,
+      "Expected: [0, ",
+      rtensor.dim(),
+      ")");
+  checkPerChannelParamsSize(rtensor, axis, scales, zero_points);
+
+  native::xpu::quantize_tensor_per_channel_float_qparams_kernel(
+      rtensor, qtensor, scales, zero_points, axis);
+  return qtensor;
+}
+
+Tensor& dequantize_tensor_per_channel_float_qparams_xpu(
+    const Tensor& qtensor,
+    Tensor& rtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
+    int64_t axis) {
+  static constexpr auto fn_name = "dequantize_tensor_per_channel_affine_xpu";
+
+  checkFloatTensor(fn_name, rtensor);
+  checkSameDevice(fn_name, rtensor, qtensor);
+  checkSameSize(fn_name, qtensor, rtensor);
+
+  AT_DISPATCH_QINT_AND_SUB_BYTE_TYPES(qtensor.scalar_type(), fn_name, [&]() {
+    checkQuantizedTensor<scalar_t>(fn_name, qtensor);
+  });
+
+  TORCH_CHECK(
+      0 <= axis && axis < qtensor.dim(),
+      "Channel axis out of range in per channel float qparams dequantization. Got:",
+      axis,
+      " Expected: [0, ",
+      qtensor.dim(),
+      ")");
+  checkPerChannelParamsSize(rtensor, axis, scales, zero_points);
+
+  native::xpu::dequantize_tensor_per_channel_float_qparams_kernel(
+      qtensor, rtensor, scales, zero_points, axis);
+  return rtensor;
+}
+
+Tensor& quantize_tensor_per_tensor_affine_xpu(
+    const Tensor& rtensor,
+    Tensor& qtensor,
     double scale,
     int64_t zero_point) {
   static constexpr auto fn_name = "quantize_tensor_per_tensor_affine_xpu";
@@ -179,9 +241,9 @@ Tensor quantize_tensor_per_tensor_affine_xpu(
   return qtensor;
 }
 
-Tensor dequantize_tensor_per_tensor_affine_xpu(
-    Tensor& rtensor,
+Tensor& dequantize_tensor_per_tensor_affine_xpu(
     const Tensor& qtensor,
+    Tensor& rtensor,
     double scale,
     int64_t zero_point) {
   static constexpr auto fn_name = "dequantize_tensor_per_tensor_affine_xpu";

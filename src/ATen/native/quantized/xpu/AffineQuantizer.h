@@ -5,30 +5,44 @@
 
 namespace at::native {
 
-TORCH_XPU_API Tensor quantize_tensor_per_channel_affine_xpu(
-    Tensor& qtensor,
+TORCH_XPU_API Tensor& quantize_tensor_per_tensor_affine_xpu(
     const Tensor& rtensor,
+    Tensor& qtensor,
+    double scale,
+    int64_t zero_point);
+
+TORCH_XPU_API Tensor& dequantize_tensor_per_tensor_affine_xpu(
+    const Tensor& qtensor,
+    Tensor& rtensor,
+    double scale,
+    int64_t zero_point);
+
+TORCH_XPU_API Tensor& quantize_tensor_per_channel_affine_xpu(
+    const Tensor& rtensor,
+    Tensor& qtensor,
     const Tensor& scales,
     const Tensor& zero_points,
     int64_t axis);
 
-TORCH_XPU_API Tensor dequantize_tensor_per_channel_affine_xpu(
-    Tensor& rtensor,
+TORCH_XPU_API Tensor& dequantize_tensor_per_channel_affine_xpu(
     const Tensor& qtensor,
+    Tensor& rtensor,
     const Tensor& scales,
     const Tensor& zero_points,
     int64_t axis);
 
-TORCH_XPU_API Tensor quantize_tensor_per_tensor_affine_xpu(
-    Tensor& qtensor,
+TORCH_XPU_API Tensor& quantize_tensor_per_channel_float_qparams_xpu(
     const Tensor& rtensor,
-    double scale,
-    int64_t zero_point);
+    Tensor& qtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
+    int64_t axis);
 
-TORCH_XPU_API Tensor dequantize_tensor_per_tensor_affine_xpu(
-    Tensor& rtensor,
+TORCH_XPU_API Tensor& dequantize_tensor_per_channel_float_qparams_xpu(
     const Tensor& qtensor,
-    double scale,
-    int64_t zero_point);
+    Tensor& rtensor,
+    const Tensor& scales,
+    const Tensor& zero_points,
+    int64_t axis);
 
 } // namespace at::native
