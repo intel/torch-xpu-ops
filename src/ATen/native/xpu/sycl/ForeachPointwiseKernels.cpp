@@ -1,14 +1,15 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
-namespace at::native::xpu {
+#include <ATen/ops/empty_like_native.h>
 
+namespace at::native::xpu {
 template <template <class> class Op>
 std::vector<Tensor> foreach_pointwise_template(
     TensorList input,
