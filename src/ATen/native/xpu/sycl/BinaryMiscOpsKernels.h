@@ -10,6 +10,6 @@ TORCH_XPU_API void smooth_l1_kernel(TensorIteratorBase& iter, double beta);
 
 TORCH_XPU_API void huber_kernel(TensorIterator& iter, double delta);
 
-void xlogy_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void xlogy_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

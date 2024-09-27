@@ -44,7 +44,6 @@ REGISTER_XPU_DISPATCH(cumsum_stub, &xpu::cumsum_kernel);
 REGISTER_XPU_DISPATCH(cumprod_stub, &xpu::cumprod_kernel);
 REGISTER_XPU_DISPATCH(nansum_stub, &xpu::nansum_kernel);
 
-
 static inline void warn_invalid_degrees_of_freedom(
     const char* fname,
     const TensorIterator& iter,
@@ -299,8 +298,8 @@ void aminmax_impl(
     Tensor& min,
     Tensor& max) {
   auto dtype = self.scalar_type();
-  TensorIterator iter = make_reduction(
-      "aminmax_xpu", min, max, self, dim_opt, keepdim, dtype);
+  TensorIterator iter =
+      make_reduction("aminmax_xpu", min, max, self, dim_opt, keepdim, dtype);
   if (iter.numel() != 0) {
     native::xpu::aminmax_kernel(iter);
   }
