@@ -6,6 +6,8 @@ from skip_list_win import skip_dict as skip_dict_win
 from xpu_test_utils import launch_test
 
 res = 0
+fails = []
+count = ""
 IS_WINDOWS = sys.platform == "win32"
 
 for key in skip_dict:
@@ -14,7 +16,17 @@ for key in skip_dict:
         skip_list += skip_dict_specifical[key]
     if IS_WINDOWS and key in skip_dict_win:
         skip_list += skip_dict_win[key]
-    res += launch_test(key, skip_list)
+    return_code, count_buf, fail = launch_test(key, skip_list)
+    res += return_code
+    count = count + count_buf + "\n"
+    if return_code:
+        fails.extend(fail)
+if fails:
+    print("=" * 10, " failures list ", "=" * 10)
+    for fail in fails:
+        print(fail)
+print("=" * 10, " case count ", "=" * 10)
+print(count)
 
 if os.name == "nt":
     sys.exit(res)
