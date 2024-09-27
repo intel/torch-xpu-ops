@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void launch_cumsum_kernel(
+TORCH_XPU_API void launch_cumsum_kernel(
     const Tensor& result,
     const Tensor& self,
     int64_t dim);

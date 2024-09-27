@@ -17,6 +17,8 @@
 #include <ATen/ops/linspace.h>
 #endif
 
+#include <ATen/native/xpu/sycl/HistogramKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
@@ -251,6 +253,19 @@ void histogramdd_linear_kernel(
     hist.div_(hist_sum);
     Tensor bin_lengths = bin_edges.diff();
     hist.div_(bin_lengths);
+  }
+}
+
+void histogram_select_outer_bin_edges_kernel(
+    const Tensor& input,
+    const int64_t N,
+    std::vector<double>& leftmost_edges,
+    std::vector<double>& rightmost_edges) {
+  auto [min, max] = at::aminmax(input, 0);
+
+  for (const auto i : c10::irange(N)) {
+    leftmost_edges[i] = min[i].item().to<double>();
+    rightmost_edges[i] = max[i].item().to<double>();
   }
 }
 

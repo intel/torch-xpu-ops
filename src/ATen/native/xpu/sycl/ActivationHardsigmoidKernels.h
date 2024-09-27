@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void hardsigmoid_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void hardsigmoid_kernel(TensorIteratorBase& iter);
 
-void hardsigmoid_backward_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void hardsigmoid_backward_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

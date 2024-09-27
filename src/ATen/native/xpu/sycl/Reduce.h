@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
 #include <ATen/core/Array.h>
 #include <ATen/detail/FunctionTraits.h>
@@ -14,6 +13,7 @@
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUPair.h>
+#include <comm/xpu_aten.h>
 #include <functional>
 #include <iosfwd>
 #include <type_traits>
@@ -241,14 +241,13 @@ struct ReduceConfig {
   template <typename T, class KernelClass>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
     auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
-    // Bypass reduction on SLM by sparing workload to other SGs. As the result,
-    // reduction of small shape input only requires some shift operations
-    // in side of SG. It is functional WA. We got case failures on some
-    // platforms supporting SIMD8.
+    // Bypass reduction on SLM by sparing workload to other SGs. As the
+    // result, reduction of small shape input only requires some shift
+    // operations in side of SG. It is functional WA. We got case failures on
+    // some platforms supporting SIMD8.
     // https://github.com/intel/torch-xpu-ops/issues/698
-    auto max_sg_sz = syclMinSubGroupSize() == 8
-        ? syclMinSubGroupSize()
-        : syclMaxSubGroupSize();
+    auto max_sg_sz = syclMinSubGroupSize() == 8 ? syclMinSubGroupSize()
+                                                : syclMaxSubGroupSize();
     const int max_num_items = max_wg_sz / output_vec_size;
     int dim0_pow2 = dim0 < max_num_items ? static_cast<int>(last_pow2(dim0))
                                          : max_num_items;
@@ -346,7 +345,8 @@ struct ReduceConfig {
   }
 
   int slm_sz() const {
-    // if (!should_group_y_reduce() && (!should_group_x_reduce() || group_width
+    // if (!should_group_y_reduce() && (!should_group_x_reduce() ||
+    // group_width
     // <= 32)) { return 0; }
     return element_size_bytes * num_items * output_vec_size;
   }
@@ -1317,8 +1317,8 @@ inline void gpu_reduce_kernel(
   }
 
   // XXX: Avoid all WIs in a work group contributes on one output. If so,
-  // It is inefficient to store output, each work group stores only one output.
-  // It is not friendly to collapse memory request in an EU.
+  // It is inefficient to store output, each work group stores only one
+  // output. It is not friendly to collapse memory request in an EU.
   if (config.values_per_item() >= group_height * 16 ||
       config.values_per_item() >= 512) {
     // Divide the input across SGs in a work group, if that leaves at least

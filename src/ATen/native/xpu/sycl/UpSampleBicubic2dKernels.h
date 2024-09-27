@@ -1,11 +1,11 @@
 #pragma once
 
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
-void upsample_bicubic2d_kernel(
-    Tensor& output,
+TORCH_XPU_API void upsample_bicubic2d_kernel(
+    const Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,

@@ -4,8 +4,12 @@
 
 namespace at::native::xpu {
 
-void softshrink_kernel(TensorIteratorBase& iter, const Scalar& value);
+TORCH_XPU_API void softshrink_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& value);
 
-void softshrink_backward_kernel(TensorIteratorBase& iter, const Scalar& value);
+TORCH_XPU_API void softshrink_backward_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& value);
 
 } // namespace at::native::xpu

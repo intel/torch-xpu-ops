@@ -13,6 +13,8 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ReplicationPaddingKernels.h>
+
 namespace at::native::xpu {
 
 inline int imin(int a, int b) {
@@ -412,7 +414,7 @@ void replication_pad3d_backward_template(
 }
 
 void replication_pad1d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -445,7 +447,7 @@ void replication_pad1d_kernel(
 }
 
 void replication_pad1d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
@@ -490,7 +492,7 @@ void replication_pad1d_backward_kernel(
 }
 
 void replication_pad2d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -517,7 +519,7 @@ void replication_pad2d_kernel(
 }
 
 void replication_pad2d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
@@ -589,7 +591,7 @@ void replication_pad2d_backward_kernel(
 }
 
 void replication_pad3d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input,
     IntArrayRef padding) {
   if (input.numel() == 0) {
@@ -705,7 +707,7 @@ static inline void shapeAndGradOutputCheck3d(
 }
 
 void replication_pad3d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {

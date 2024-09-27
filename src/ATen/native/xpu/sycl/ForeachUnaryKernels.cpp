@@ -3,8 +3,12 @@
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/TensorIterator.h>
 
+#include <ATen/ops/empty_like_native.h>
+
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
+
+#include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
 
 namespace at::native::xpu {
 

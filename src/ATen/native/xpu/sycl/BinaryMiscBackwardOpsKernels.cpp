@@ -1,10 +1,11 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
 
 namespace at::native::xpu {
 

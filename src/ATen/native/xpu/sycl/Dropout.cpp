@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Activation.h>
@@ -9,6 +8,12 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/TensorInfo.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/ones_like.h>
+#include <ATen/ops/zeros_like.h>
+
+#include <ATen/native/xpu/sycl/DropoutKernels.h>
 
 namespace at {
 namespace native {
