@@ -21,6 +21,7 @@ add_library(
   SHARED
   ${ATen_XPU_NATIVE_CPP_SRCS}
   ${ATen_XPU_GEN_SRCS})
+target_compile_options(torch_xpu_ops_aten PRIVATE /permissive-)
 install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
 
