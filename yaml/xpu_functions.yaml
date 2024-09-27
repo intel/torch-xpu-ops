@@ -722,7 +722,3 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
-  - _ctc_loss
-  - _ctc_loss.Tensor
-  - _ctc_loss_backward
-  - _ctc_loss_backward.Tensor
