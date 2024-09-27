@@ -510,7 +510,7 @@ constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
 
 template <typename func_t>
 void small_index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
@@ -660,7 +660,7 @@ struct IndexKernelFunctor {
 
 template <typename func_t>
 void index_kernel_impl(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     const func_t f) {
@@ -700,7 +700,7 @@ void index_kernel_impl(
 
 template <typename func_t>
 void _index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,

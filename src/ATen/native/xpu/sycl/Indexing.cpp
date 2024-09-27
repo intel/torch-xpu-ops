@@ -4,7 +4,6 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -19,6 +18,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
+#include <ATen/native/xpu/sycl/IndexingKernels.h>
+
 using namespace at::xpu::detail;
 using namespace at::xpu;
 
@@ -32,11 +33,9 @@ struct IndexFunctor {
 };
 
 void index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
-    IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride) {
+    IntArrayRef index_stride) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::ComplexHalf,
       at::ScalarType::BFloat16,
@@ -48,12 +47,7 @@ void index_kernel(
         using dtype = OpaqueType<sizeof(scalar_t)>;
         IndexFunctor<dtype> f;
         _index_kernel(
-            iter,
-            index_size,
-            index_stride,
-            non_index_size,
-            non_index_stride,
-            f);
+            iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
       });
 }
 
@@ -443,16 +437,30 @@ struct IndexFillScalarFunctor {
 };
 
 void index_fill_kernel(
-    Tensor& self,
-    int64_t dim,
-    const Tensor& index,
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride,
     const Scalar& source) {
-  if (self.numel() == 0 || index.numel() == 0) {
+  Tensor self = iter.tensor(0);
+  Tensor index = iter.tensor(1);
+
+  // index_fill operator generates TensorIterator as kernel input,
+  // self tensor is restrided to meet TensorIterator broadcast requirements. But
+  // xpu kernel doesn't support such restrided shape, so we restride self tensor
+  // back here.
+  auto self_sizes = self.sizes().vec();
+  auto self_strides = self.strides().vec();
+  self_sizes[dim] = self_dim_size;
+  self_strides[dim] = self_dim_stride;
+  auto self_restrided = self.as_strided(self_sizes, self_strides);
+
+  if (self_restrided.numel() == 0 || index.numel() == 0) {
     return;
   }
 
   TORCH_CHECK(
-      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      self_restrided.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "self has too many (>",
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
@@ -467,7 +475,7 @@ void index_fill_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::ComplexHalf,
-      self.scalar_type(),
+      self_restrided.scalar_type(),
       "index_fill_xpu",
       [&] {
         TensorInfo<int64_t, int64_t> index_info =
@@ -475,7 +483,7 @@ void index_fill_kernel(
         index_info.collapseDims();
 
         TensorInfo<scalar_t, int64_t> dst_info =
-            getTensorInfo<scalar_t, int64_t>(self);
+            getTensorInfo<scalar_t, int64_t>(self_restrided);
         int new_indexing_dim = dst_info.collapseDims(dim);
 
         // No used in index kernel frame for index_fill.
@@ -521,8 +529,6 @@ void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride,
     bool accumulate) {
   if (accumulate) {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -535,12 +541,7 @@ void index_put_kernel(
         [&] {
           IndexPutAccumulateFunctor<scalar_t> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -554,12 +555,7 @@ void index_put_kernel(
           using dtype = OpaqueType<sizeof(scalar_t)>;
           IndexPutFunctor<dtype> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   }
 }

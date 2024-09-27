@@ -1,6 +1,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/LinearAlgebraKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

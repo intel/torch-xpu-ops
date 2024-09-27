@@ -3,7 +3,7 @@ if(Codegen_GPU_cmake_included)
 endif()
 set(Codegen_GPU_cmake_included true)
 
-set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen/xpu")
+set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
@@ -43,10 +43,64 @@ function(GEN_BACKEND file_yaml)
     )
 endfunction(GEN_BACKEND)
 
-GEN_BACKEND(
-  xpu_functions.yaml
-  XPUNativeFunctions.h
-  RegisterXPU.cpp)
+
+set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
+set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
+function(GEN_XPU file_yaml)
+  set(generated_files "")
+  foreach(f ${ARGN})
+    list(APPEND generated_files "${BUILD_TORCH_XPU_ATEN_GENERATED}/${f}")
+  endforeach()
+  file(GLOB_RECURSE depend_files ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml})
+  set(CODEGEN_TEMPLATE ${TORCH_XPU_OPS_ROOT}/yaml/)
+
+  # Codegen prepare process
+  if(WIN32)
+    string(REPLACE "/" "\\" LinkPATH "${CODEGEN_TEMPLATE}templates")
+    string(REPLACE "/" "\\" TargetPATH "${CMAKE_SOURCE_DIR}/aten/src/ATen/templates")
+    execute_process(COMMAND cmd /c mklink /D ${LinkPATH} ${TargetPATH})
+    string(REPLACE "/" "\\" RegisterXPU_PATH_BACKSLASH "${RegisterXPU_PATH}")
+    string(REPLACE "/" "\\" XPUFallback_PATH_BACKSLASH "${XPUFallback_PATH}")
+    set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH_BACKSLASH} ">>" ${RegisterXPU_PATH_BACKSLASH})
+  else()
+    execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_TEMPLATE}) # soft link to pytorch templates
+    set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH} ">>" ${RegisterXPU_PATH})
+  endif()
+
+  add_custom_command(
+    OUTPUT ${generated_files}
+    COMMAND
+    "${PYTHON_EXECUTABLE}" -m torchgen.gen
+    --source-path ${TORCH_XPU_OPS_ROOT}/yaml/
+    --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+    --per-operator-headers
+    --static-dispatch-backend
+    --backend-whitelist=XPU
+    COMMAND
+    ${REGISTER_FALLBACK_CMD}
+    # Codegen post-process
+    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
+    ${SIMPLE_TRACE} 
+    WORKING_DIRECTORY ${TORCH_ROOT}
+    DEPENDS
+  ${depended_files}
+    ${TORCH_XPU_OPS_ROOT}/yaml/native/${file_yaml}
+    ${XPUFallback_PATH}
+  )
+endfunction(GEN_XPU)
+
+# GEN_BACKEND(
+#   xpu_functions.yaml
+#   XPUNativeFunctions.h
+#   RegisterXPU.cpp)
+
+GEN_XPU(
+  native_functions.yaml
+  XPUFunctions.h
+  RegisterXPU.cpp
+)
+
+
 
 
 list(APPEND xpu_generated_src ${RegisterXPU_PATH})

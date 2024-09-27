@@ -1,5 +1,5 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
@@ -17,9 +17,9 @@ namespace at::native::xpu {
       TensorList tensors2,                               \
       const Scalar& scalar)
 
-FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcmul);
-FOREACH_POINTWISE_OP_SCALAR_INPLACE_KERNEL(addcmul);
-FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcdiv);
-FOREACH_POINTWISE_OP_SCALAR_INPLACE_KERNEL(addcdiv);
+TORCH_XPU_API FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcmul);
+TORCH_XPU_API FOREACH_POINTWISE_OP_SCALAR_INPLACE_KERNEL(addcmul);
+TORCH_XPU_API FOREACH_POINTWISE_OP_SCALAR_KERNEL(addcdiv);
+TORCH_XPU_API FOREACH_POINTWISE_OP_SCALAR_INPLACE_KERNEL(addcdiv);
 
 } // namespace at::native::xpu

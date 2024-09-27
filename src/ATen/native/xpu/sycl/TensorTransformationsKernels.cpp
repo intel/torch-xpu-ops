@@ -1,10 +1,12 @@
-#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/ATen.h>
+// #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
 
 #ifdef _WIN32
 #define RESTRICT __restrict
@@ -129,7 +131,10 @@ void flip_kernel_impl(TensorIterator& iter) {
   launch_kernel(iter.numel(), loop);
 }
 
-void flip_kernel(TensorIterator& iter) {
+void flip_kernel(TensorIterator& iter, bool quantized) {
+  if (quantized) {
+    TORCH_CHECK(false, "XPU current does not flip for quantized tensor");
+  }
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       at::ScalarType::Half,
       at::ScalarType::Bool,

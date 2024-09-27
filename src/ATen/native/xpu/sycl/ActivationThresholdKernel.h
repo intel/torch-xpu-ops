@@ -6,7 +6,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void threshold_kernel(
+TORCH_XPU_API void threshold_kernel(
     TensorIteratorBase& iter,
     const Scalar& threshold,
     const Scalar& value);

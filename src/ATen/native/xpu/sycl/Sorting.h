@@ -4,15 +4,15 @@
 
 namespace at::native::xpu {
 
-std::tuple<Tensor&, Tensor&> sort_stable_kernel(
-    const Tensor& self,
-    c10::optional<bool> stable,
-    Tensor& values,
-    Tensor& indices,
-    int dim,
-    bool descending);
+TORCH_XPU_API void sort_stable_kernel(
+    const TensorBase& self_base,
+    const TensorBase& values_base,
+    const TensorBase& indices_base,
+    int64_t dim,
+    bool descending,
+    bool stable);
 
-void launch_median_kernel(
+TORCH_XPU_API void launch_median_kernel(
     const TensorBase& vals,
     const TensorBase& inds,
     const TensorBase& self,

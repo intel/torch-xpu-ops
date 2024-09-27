@@ -1,11 +1,9 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
-Tensor bincount_kernel(
-    const Tensor& self,
-    const Tensor& weights,
-    int64_t minlength);
+TORCH_XPU_API Tensor
+bincount_kernel(const Tensor& self, const Tensor& weights, int64_t minlength);
 
 } // namespace at::native::xpu

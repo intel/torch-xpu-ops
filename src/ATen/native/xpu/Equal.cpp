@@ -1,15 +1,16 @@
 #include <ATen/NamedTensorUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/NativeFunctions.h>
-#else
-#include <ATen/ops/equal_native.h>
-#endif
+#include <xpu/ATen/ops/equal_native.h>
 
 namespace at {
-
-bool XPUNativeFunctions::equal(const Tensor& self, const Tensor& src) {
+namespace xpu {
+// Note:
+// Seems {op}_xpu_dispatch.h is not generated in codegen via
+// backendwhitelist mode. We have to manually add a declaration here.
+at::Tensor eq(const at::Tensor& self, const at::Tensor& other);
+} // namespace xpu
+namespace native {
+bool xpu_equal(const Tensor& self, const Tensor& src) {
   if (!at::namedinference::are_names_equal(
           self.unsafeGetTensorImpl(), src.unsafeGetTensorImpl())) {
     return false;
@@ -38,7 +39,7 @@ bool XPUNativeFunctions::equal(const Tensor& self, const Tensor& src) {
     return true;
   }
 
-  return at::XPUNativeFunctions::eq(self, src).all().item().to<bool>();
+  return at::xpu::eq(self, src).all().item().to<bool>();
 }
-
+} // namespace native
 } // namespace at
