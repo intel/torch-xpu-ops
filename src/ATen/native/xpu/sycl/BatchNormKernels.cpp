@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/ReduceOps.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
@@ -12,6 +12,7 @@
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
 
@@ -3060,7 +3061,7 @@ void batch_norm_mean_var(
       }
 
       // For some reason this isn't an actual operator but it exists anyway...
-      var_mean_out(
+      at::native::var_mean_out(
           save_var,
           save_mean,
           self,

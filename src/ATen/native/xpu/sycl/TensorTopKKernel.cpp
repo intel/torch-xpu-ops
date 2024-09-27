@@ -25,16 +25,16 @@ void topk_out_with_sort(
   indices.copy_(sorted_indices.narrow(dim, 0, k));
 }
 
-std::tuple<at::Tensor&, at::Tensor&> topk_kernel(
+void topk_kernel(
     const at::Tensor& input,
     int64_t k,
     int64_t dim,
     bool largest,
     bool sorted,
-    at::Tensor& values,
-    at::Tensor& indices) {
+    const at::Tensor& values,
+    const at::Tensor& indices) {
   if (k == 0) {
-    return std::forward_as_tuple(values, indices);
+    return;
   }
 
   TORCH_CHECK(
@@ -66,7 +66,7 @@ std::tuple<at::Tensor&, at::Tensor&> topk_kernel(
 
   if (k > 256) { // The segmented_group_select_pairs supports k<=256
     topk_out_with_sort(self.contiguous(), k, dim, largest, values, indices);
-    return std::forward_as_tuple(values, indices);
+    return;
   }
 
   Tensor self_;
@@ -135,8 +135,6 @@ std::tuple<at::Tensor&, at::Tensor&> topk_kernel(
       indices_.transpose_(ndim - 1, dim);
     indices.copy_(indices_);
   }
-
-  return std::forward_as_tuple(values, indices);
 }
 
 } // namespace xpu

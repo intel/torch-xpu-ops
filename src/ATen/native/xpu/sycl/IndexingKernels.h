@@ -4,11 +4,9 @@
 namespace at::native::xpu {
 
 TORCH_XPU_API void index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     at::IntArrayRef index_size,
-    at::IntArrayRef index_stride,
-    at::IntArrayRef non_index_size,
-    at::IntArrayRef non_index_stride);
+    at::IntArrayRef index_stride);
 
 TORCH_XPU_API void index_select_kernel(
     const Tensor& self,
@@ -29,17 +27,16 @@ TORCH_XPU_API void index_add_kernel(
     const Tensor& out);
 
 TORCH_XPU_API void index_fill_kernel(
-    Tensor& self,
-    int64_t dim,
-    const Tensor& index,
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride,
     const Scalar& source);
 
 TORCH_XPU_API void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride,
     bool accumulate);
 
 TORCH_XPU_API void index_put_deterministic_kernel(
