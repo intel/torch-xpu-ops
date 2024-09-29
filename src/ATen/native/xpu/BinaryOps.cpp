@@ -52,7 +52,7 @@ REGISTER_XPU_DISPATCH(fmax_stub, &xpu::fmax_kernel);
 REGISTER_XPU_DISPATCH(fmin_stub, &xpu::fmin_kernel);
 REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
-REGISTER_XPU_DISPATCH(xlogy, &xpu::xlogy_kernel);
+REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
 
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,
