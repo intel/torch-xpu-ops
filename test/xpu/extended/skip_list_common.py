@@ -162,5 +162,14 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/781
     "test_compare_cpu_square_xpu_complex64",
 
+
+    # The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
+    "test_operator_multinomial_xpu_float32",
+    "test_view_replay_multinomial_xpu_float32"
+
+    # https://github.com/intel/torch-xpu-ops/issues/922
+    "test_compare_cpu_isin_xpu_bfloat16",
+    "test_compare_cpu_unique_consecutive_xpu_bfloat16",
+
     ),
 }
