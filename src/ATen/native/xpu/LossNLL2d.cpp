@@ -1,9 +1,10 @@
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycl/LossNLL2dKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 namespace at {
+namespace native {
 
+namespace {
 void check_inputs_nll_loss2d(
     const Tensor& input,
     const Tensor& target,
@@ -30,8 +31,9 @@ void check_inputs_nll_loss2d(
       ", input ",
       input.sizes());
 }
+} // namespace
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::nll_loss2d_forward(
+std::tuple<Tensor, Tensor> nll_loss2d_forward_xpu(
     const Tensor& self,
     const Tensor& target,
     const ::std::optional<Tensor>& weight_opt,
@@ -51,7 +53,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::nll_loss2d_forward(
   return std::make_tuple(output, total_weight);
 }
 
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nll_loss2d_forward_out(
+std::tuple<Tensor&, Tensor&> nll_loss2d_forward_out_xpu(
     const Tensor& self,
     const Tensor& target,
     const std::optional<Tensor>& weight_opt,
@@ -70,7 +72,7 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nll_loss2d_forward_out(
   return std::tuple<Tensor&, Tensor&>(output, total_weight);
 }
 
-Tensor XPUNativeFunctions::nll_loss2d_backward(
+Tensor nll_loss2d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -97,7 +99,7 @@ Tensor XPUNativeFunctions::nll_loss2d_backward(
   return grad_input;
 }
 
-Tensor& XPUNativeFunctions::nll_loss2d_backward_out(
+Tensor& nll_loss2d_backward_out_xpu(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -123,4 +125,5 @@ Tensor& XPUNativeFunctions::nll_loss2d_backward_out(
   return grad_input;
 }
 
+} // namespace native
 } // namespace at

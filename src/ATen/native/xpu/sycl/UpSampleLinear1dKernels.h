@@ -9,7 +9,7 @@ TORCH_XPU_API void upsample_linear1d_kernel(
     IntArrayRef output_size,
     bool align_corners,
     std::optional<double> scales,
-    Tensor& output);
+    const Tensor& output);
 
 TORCH_XPU_API void upsample_linear1d_backward_kernel(
     const Tensor& grad_output_,
@@ -17,6 +17,6 @@ TORCH_XPU_API void upsample_linear1d_backward_kernel(
     IntArrayRef input_size,
     bool align_corners,
     std::optional<double> scales,
-    Tensor& grad_input);
+    const Tensor& grad_input);
 
 } // namespace at::native::xpu

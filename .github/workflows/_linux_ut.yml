@@ -22,7 +22,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_example,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
       abi:
         required: false
         type: string
@@ -59,7 +59,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo "${{ inputs.pytorch }}" |awk '{print $1}') 
+          cd pytorch && git checkout $(echo ${{ env.pytorch }} |sed 's/^nightly_wheel$/nightly/')
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -119,17 +119,33 @@ jobs:
           cd ..
           python pytorch/torch/utils/collect_env.py
       - name: Run XPU OP Examples
-        if: contains(inputs.ut, 'op_example') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
         run: |
           cd ${{ github.workspace }}
           xpu-smi discovery
           source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
-          mkdir -p ut_log/op_example
-          cd examples
+          mkdir -p ut_log/op_regression
+          cd test/regressions
           pip install pytest
-          timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/op_example/op_example_test.log
+          timeout 8000 pytest -v 2>&1 | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+      - name: Run XPU OP Regressions test on device 1
+        if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
+        run: |
+          cd ${{ github.workspace }}
+          xpu-smi discovery
+          source .github/scripts/env.sh
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ${{ github.workspace }}
+          mkdir -p ut_log/op_regression_dev1
+          export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
+          unset ZE_AFFINITY_MASK
+          cd ${{ github.workspace }}
+          cd test/regressions
+          pip install pytest
+          timeout 8000 pytest -v test_operation_on_device_1.py 2>&1 | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_dev1_test.log
+          export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |

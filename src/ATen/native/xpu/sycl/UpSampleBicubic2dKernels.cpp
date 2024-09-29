@@ -1,10 +1,10 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/UpSample.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
 
@@ -138,7 +138,7 @@ static void upsample_bicubic2d_out_template(
 }
 
 void upsample_bicubic2d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,

@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>

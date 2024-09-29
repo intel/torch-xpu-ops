@@ -1,9 +1,10 @@
 #include <ATen/native/ForeachUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
+#include <xpu/ATen/ops/_foreach_norm_native.h>
 
 namespace at {
+namespace native {
 
 static inline void check_foreach_norm_dtype(
     optional<ScalarType> opt_dtype,
@@ -39,7 +40,7 @@ static inline void check_foreach_norm_dtype(
   }
 }
 
-std::vector<Tensor> XPUNativeFunctions::_foreach_norm(
+std::vector<Tensor> foreach_tensor_norm_xpu(
     TensorList tensors,
     const Scalar& ord,
     c10::optional<ScalarType> dtype) {
@@ -68,5 +69,5 @@ std::vector<Tensor> XPUNativeFunctions::_foreach_norm(
 
   return native::xpu::foreach_norm_kernel(tensors, ord, p, dtype);
 }
-
+} // namespace native
 } // namespace at
