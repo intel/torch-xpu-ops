@@ -144,7 +144,7 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
-          timeout 8000 pytest -v test_operation_on_device_1.py 2>&1 | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_dev1_test.log
+          timeout 8000 pytest -v test_operation_on_device_1.py 2>&1 | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
           export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'

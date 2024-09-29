@@ -1,6 +1,6 @@
-ut_suite=${1:-op_example}   # op_example / op_extended / op_ut / torch_xpu
+ut_suite=${1:-op_regression}   # op_regression / op_extended / op_ut / torch_xpu
 
-if [[ ${ut_suite} == 'op_example' || ${ut_suite} == 'op_extended' ]]; then
+if [[ ${ut_suite} == 'op_regression' || ${ut_suite} == 'op_regression_dev1' || ${ut_suite} == 'op_extended' ]]; then
     grep "^FAILED" ${ut_suite}_test.log | awk '{print $2}' > ./${ut_suite}_failed.log
     grep "PASSED" ${ut_suite}_test.log | awk '{print $1}' > ./${ut_suite}_passed.log
     num_failed=$(cat ./${ut_suite}_failed.log | wc -l)
