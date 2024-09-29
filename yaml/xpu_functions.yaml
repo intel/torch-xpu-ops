@@ -36,9 +36,6 @@ supported:
   - remainder_.Tensor
   - remainder.Tensor_out
   - remainder.Scalar_Tensor
-  - xlogy.Tensor
-  - xlogy_.Tensor
-  - xlogy.OutTensor
   - fmod.Tensor
   - fmod_.Tensor
   - fmod.Tensor_out
@@ -705,9 +702,6 @@ supported:
   - round.decimals
   - round_.decimals
   - round.decimals_out
-  - trunc
-  - trunc_
-  - trunc.out
   - histogram.bins_tensor
   - histogram.bins_tensor_out
   - histogram.bin_ct
