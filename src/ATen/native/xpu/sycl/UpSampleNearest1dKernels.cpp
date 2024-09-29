@@ -95,7 +95,7 @@ void upsample_nearest1d_backward_frame(
 }
 
 void upsample_nearest1d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     IntArrayRef output_size,
     IntArrayRef input_size,
@@ -244,7 +244,7 @@ void upsample_nearest1d_frame(
 }
 
 void upsample_nearest1d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
     c10::optional<double> scales,

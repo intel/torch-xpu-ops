@@ -708,6 +708,21 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/484
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
+        "test_scatter_add__xpu_complex64",
+        "test_scatter_add__xpu_float16",
+        "test_scatter_add__xpu_float32",
+        "test_scatter_add_mult_index_base_xpu_float32",
+        "test_scatter_reduce_mean_xpu_bfloat16",
+        "test_scatter_reduce_mean_xpu_float16",
+        "test_scatter_reduce_mean_xpu_float32",
+        "test_scatter_reduce_mean_xpu_float64",
+        "test_scatter_reduce_mean_xpu_int16",
+        "test_scatter_reduce_mean_xpu_int32",
+        "test_scatter_reduce_mean_xpu_int64",
+        "test_scatter_reduce_mean_xpu_int8",
+        "test_scatter_reduce_mean_xpu_uint8",
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "test_autograd_fallback_xpu.py": None,
@@ -1154,6 +1169,9 @@ skip_dict = {
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
         "test_pin_memory",
+        # failed in preci
+        # https://github.com/intel/torch-xpu-ops/issues/928
+        "test_segfault",
     ),
 
     "test_tensor_creation_ops_xpu.py": (
@@ -2571,6 +2589,10 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+        # scatter_add needs handle XPU deterministic
+        # https://github.com/intel/torch-xpu-ops/issues/906
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "nn/test_multihead_attention_xpu.py": (

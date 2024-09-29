@@ -1,17 +1,19 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/ScalarOps.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/DispatchStub.h>
+#include <ATen/native/RangeFactories.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 namespace at {
 
-Tensor& XPUNativeFunctions::arange_out(
+namespace native {
+Tensor& arange_out_xpu(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
@@ -83,10 +85,10 @@ Tensor& XPUNativeFunctions::arange_out(
         }
       });
 
-  return at::native::xpu::arange_kernel(start, end, step, out);
+  return xpu::arange_kernel(start, end, step, out);
 }
 
-Tensor& XPUNativeFunctions::range_out(
+Tensor& range_xpu_out(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
@@ -113,4 +115,5 @@ Tensor& XPUNativeFunctions::range_out(
   return at::native::xpu::range_kernel(start, end, step, out);
 }
 
+} // namespace native
 } // namespace at

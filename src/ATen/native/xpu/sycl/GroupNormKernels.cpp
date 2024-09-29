@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
@@ -9,6 +8,7 @@
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
 #include <comm/MemoryFormat.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/GroupNormKernels.h>
 
@@ -328,8 +328,7 @@ void group_norm_kernel(
     double eps,
     Tensor& Y,
     Tensor& mean,
-    Tensor& rstd,
-    ScalarType dtype) {
+    Tensor& rstd) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
