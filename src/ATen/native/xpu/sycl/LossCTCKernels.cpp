@@ -369,11 +369,10 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
       log_probs.options());
   Tensor neg_log_likelihood = at::empty({batch_size}, log_probs.options());
 
-  // Very likely, we could be more clever here, e.g. learning (or generalizing
-  // and reusing) from SoftMax.cu...
-  constexpr int max_threads = std::is_same<scalar_t, float>::value
-      ? 1024
-      : 768; // we need 72 or so 32 bit registers for double
+  using CTCLossLogAlphaKernel =
+      CTCLossLogAlphaKernelFunctor<scalar_t, target_t>;
+  int max_threads = syclMaxWorkGroupSize<CTCLossLogAlphaKernel>();
+
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
     threads_target /= 2;
@@ -388,7 +387,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
   sycl::range<2> global_range{
       ngroups_y * group_size_y, ngroups_x * group_size_x};
 
-  auto caller = CTCLossLogAlphaKernelFunctor<scalar_t, target_t>(
+  auto caller = CTCLossLogAlphaKernel(
       log_alpha.mutable_data_ptr<scalar_t>(),
       log_probs.const_data_ptr<scalar_t>(),
       input_lengths_t.const_data_ptr<int64_t>(),
@@ -1005,10 +1004,9 @@ Tensor ctc_loss_backward_kernel_template(
       LEGACY_CONTIGUOUS_MEMORY_FORMAT); // initialization for log(sum (alpha
                                         // beta))
 
-  // As above, there may be better configurations to use.
-  constexpr int max_threads = std::is_same<scalar_t, float>::value
-      ? 1024
-      : 896; // we need 72 or so 32 bit registers for double
+  using CTCLossBackwardLogBetaKernel =
+      CTCLossBackwardLogBetaKernelFunctor<scalar_t, target_t>;
+  int max_threads = syclMaxWorkGroupSize<CTCLossBackwardLogBetaKernel>();
   int threads_target = max_threads;
   while (threads_target / 2 >= 2 * max_target_length + 1) {
     threads_target /= 2;
@@ -1023,7 +1021,7 @@ Tensor ctc_loss_backward_kernel_template(
     sycl::range<2> global_range(
         group_size_y * ((batch_size + threads_batch - 1) / threads_batch),
         group_size_x);
-    auto caller = CTCLossBackwardLogBetaKernelFunctor<scalar_t, target_t>(
+    auto caller = CTCLossBackwardLogBetaKernel(
         log_beta.mutable_data_ptr<scalar_t>(),
         log_probs.const_data_ptr<scalar_t>(),
         input_lengths_t.const_data_ptr<int64_t>(),
@@ -1084,6 +1082,9 @@ Tensor ctc_loss_backward_kernel_template(
           grad);
     }
 
+    using CTCLossBackwardCollectNonblankKernel =
+        CTCLossBackwardCollectNonblankKernelFunctor<scalar_t, target_t>;
+    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectNonblankKernel>();
     int threads_target = max_threads;
     while (threads_target / 2 >= max_target_length && threads_target > 1) {
       threads_target /= 2;
@@ -1096,36 +1097,38 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller =
-        CTCLossBackwardCollectNonblankKernelFunctor<scalar_t, target_t>(
-            grad.mutable_data_ptr<scalar_t>(),
-            grad_out.const_data_ptr<scalar_t>(),
-            grad_out.stride(0),
-            log_alpha.const_data_ptr<scalar_t>(),
-            log_beta.const_data_ptr<scalar_t>(),
-            log_probs.const_data_ptr<scalar_t>(),
-            input_lengths_t.const_data_ptr<int64_t>(),
-            targets.const_data_ptr<target_t>(),
-            target_lengths_t.const_data_ptr<int64_t>(),
-            neg_log_likelihood.const_data_ptr<scalar_t>(),
-            grad.stride(0),
-            grad.stride(1),
-            grad.stride(2),
-            log_probs.stride(0),
-            log_probs.stride(1),
-            log_probs.stride(2),
-            log_alpha.stride(0),
-            log_alpha.stride(1),
-            log_alpha.stride(2),
-            log_beta.stride(0),
-            log_beta.stride(1),
-            log_beta.stride(2),
-            tg_batch_offsets.const_data_ptr<int64_t>(),
-            tg_target_stride,
-            batch_size,
-            zero_infinity);
+    auto caller = CTCLossBackwardCollectNonblankKernel(
+        grad.mutable_data_ptr<scalar_t>(),
+        grad_out.const_data_ptr<scalar_t>(),
+        grad_out.stride(0),
+        log_alpha.const_data_ptr<scalar_t>(),
+        log_beta.const_data_ptr<scalar_t>(),
+        log_probs.const_data_ptr<scalar_t>(),
+        input_lengths_t.const_data_ptr<int64_t>(),
+        targets.const_data_ptr<target_t>(),
+        target_lengths_t.const_data_ptr<int64_t>(),
+        neg_log_likelihood.const_data_ptr<scalar_t>(),
+        grad.stride(0),
+        grad.stride(1),
+        grad.stride(2),
+        log_probs.stride(0),
+        log_probs.stride(1),
+        log_probs.stride(2),
+        log_alpha.stride(0),
+        log_alpha.stride(1),
+        log_alpha.stride(2),
+        log_beta.stride(0),
+        log_beta.stride(1),
+        log_beta.stride(2),
+        tg_batch_offsets.const_data_ptr<int64_t>(),
+        tg_target_stride,
+        batch_size,
+        zero_infinity);
     sycl_kernel_submit(global_range, local_range, queue, caller);
   } else { // small problem, use naive algorithm
+    using CTCLossBackwardCollectKernel =
+        CTCLossBackwardCollectKernelFunctor<scalar_t, target_t>;
+    max_threads = syclMaxWorkGroupSize<CTCLossBackwardCollectKernel>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0) && threads_input > 1) {
       threads_input /= 2;
@@ -1137,7 +1140,7 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller = CTCLossBackwardCollectKernelFunctor<scalar_t, target_t>(
+    auto caller = CTCLossBackwardCollectKernel(
         grad.mutable_data_ptr<scalar_t>(),
         grad_out.const_data_ptr<scalar_t>(),
         grad_out.stride(0),
@@ -1173,6 +1176,9 @@ Tensor ctc_loss_backward_kernel_template(
 
   // zero those invalid graident elements due to padding
   {
+    using CTCLossZeroPaddedGradientsKernel =
+        CTCLossZeroPaddedGradients<scalar_t>;
+    max_threads = syclMaxWorkGroupSize<CTCLossZeroPaddedGradientsKernel>();
     int threads_input = max_threads;
     while (threads_input / 2 >= log_probs.size(0)) {
       threads_input /= 2;
@@ -1184,7 +1190,7 @@ Tensor ctc_loss_backward_kernel_template(
     auto nwg_y = (batch_size + threads_batch - 1) / threads_batch;
     sycl::range<2> local_range(group_size_y, group_size_x);
     sycl::range<2> global_range(nwg_y * group_size_y, nwg_x * group_size_x);
-    auto caller = CTCLossZeroPaddedGradients<scalar_t>(
+    auto caller = CTCLossZeroPaddedGradientsKernel(
         grad.mutable_data_ptr<scalar_t>(),
         input_lengths_t.const_data_ptr<int64_t>(),
         grad.stride(0),
