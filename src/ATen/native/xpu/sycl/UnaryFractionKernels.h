@@ -18,4 +18,6 @@ TORCH_XPU_API void round_decimals_kernel(
 
 TORCH_XPU_API void frac_kernel(TensorIteratorBase& iter);
 
+TORCH_XPU_API void trunc_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

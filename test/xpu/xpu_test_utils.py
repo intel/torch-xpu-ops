@@ -199,6 +199,8 @@ _xpu_computation_op_list = [
     "sign",
     "signbit",
     "round",
+    "trunc",
+    "xlogy",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
