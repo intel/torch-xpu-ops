@@ -78,5 +78,7 @@ REGISTER_XPU_DISPATCH(nan_to_num_stub, &xpu::nan_to_num_kernel);
 REGISTER_XPU_DISPATCH(round_stub, &xpu::round_kernel);
 REGISTER_XPU_DISPATCH(round_decimals_stub, &xpu::round_decimals_kernel);
 REGISTER_XPU_DISPATCH(floor_stub, &xpu::floor_kernel);
+REGISTER_XPU_DISPATCH(trunc_stub, &xpu::trunc_kernel);
+
 } // namespace native
 } // namespace at
