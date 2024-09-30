@@ -1,5 +1,5 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
 

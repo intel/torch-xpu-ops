@@ -1,19 +1,21 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 #include <ATen/xpu/detail/XPUHooks.h>
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
+
+#include <ATen/ops/empty_like.h>
 
 using namespace at;
 using namespace at::xpu;
@@ -295,72 +297,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
 } // namespace native::xpu
 
-Tensor& XPUNativeFunctions::copy_(
-    Tensor& self,
-    const Tensor& src,
-    bool non_blocking) {
-  if (self._is_zerotensor()) {
-    TORCH_CHECK(
-        false,
-        "ZeroTensors are immutable. Please materialize the tensor using `.clone()`, if you want a mutable zero tensor.");
-  }
-  if (src._is_zerotensor()) {
-    return self.zero_();
-  }
-
-  TORCH_CHECK(self.defined(), "self is undefined");
-  TORCH_CHECK(src.defined(), "src is undefined");
-
-  if (self.is_same(src)) {
-    return self;
-  }
-
-  // TODO: Support quantization
-
-  // Exit early if self and src are views of the same data
-  const bool is_same_data =
-      (self.is_alias_of(src) && self.storage_offset() == src.storage_offset() &&
-       self.strides().equals(src.strides()) &&
-       self.sizes().equals(src.sizes()) &&
-       self.scalar_type() == src.scalar_type() &&
-       self.is_conj() == src.is_conj() && self.is_neg() == src.is_neg());
-  if (is_same_data) {
-    return self;
-  }
-
-  auto iter = TensorIteratorConfig()
-                  .set_check_mem_overlap(true)
-                  .add_output(self)
-                  .add_input(src)
-                  .resize_outputs(false)
-                  .check_all_same_dtype(false)
-                  .check_all_same_device(false)
-                  .build();
-
-  if (iter.numel() == 0) {
-    return self;
-  }
-
-  native::xpu::_copy_xpu(iter, non_blocking);
-
-  return self;
-}
-
-Tensor XPUNativeFunctions::_to_copy(
-    const Tensor& self,
-    c10::optional<ScalarType> dtype,
-    c10::optional<Layout> layout,
-    c10::optional<Device> device,
-    c10::optional<bool> pin_memory,
-    bool non_blocking,
-    c10::optional<c10::MemoryFormat> optional_memory_format) {
-  return at::native::_to_copy(
-      self,
-      dtype,
-      layout,
-      device,
-      pin_memory,
-      non_blocking,
-      optional_memory_format);
+namespace native {
+REGISTER_XPU_DISPATCH(copy_stub, &native::xpu::_copy_xpu);
 }
 } // namespace at
