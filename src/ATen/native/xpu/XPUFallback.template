@@ -279,7 +279,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "triangular_solve.X",
     "tril_indices",
     "triu_indices",
-    "trunc.out",
     "upsample_bicubic2d_backward.grad_input",
     "_upsample_bilinear2d_aa.out",
     "upsample_nearest3d.out",
@@ -290,7 +289,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "upsample_trilinear3d.out",
     "_validate_compressed_sparse_indices",
     "vdot",
-    "xlogy.OutTensor",
     "_upsample_bicubic2d_aa.out",
   };
   for (auto& op_name : fallback_list) {
