@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -7,6 +6,9 @@
 #include <ATen/xpu/XPUContext.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/empty_like_native.h>
 
 #include <ATen/native/xpu/sycl/SoftMaxKernels.h>
 
@@ -1358,7 +1360,10 @@ void spatial_softmax_backward_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
-void spatial_softmax_forward(Tensor& output, Tensor& input, int dim) {
+void spatial_softmax_forward(
+    const Tensor& output,
+    const Tensor& input,
+    int dim) {
   auto inner_size = input.stride(dim);
   auto dim_size = input.size(dim);
   auto outer_size = input.numel() / (inner_size * dim_size);
@@ -1546,7 +1551,7 @@ void spatial_softmax_forward(Tensor& output, Tensor& input, int dim) {
 
 template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
 void spatial_softmax_backward(
-    Tensor& gradInput,
+    const Tensor& gradInput,
     Tensor& output,
     Tensor& gradOutput,
     int dim) {
@@ -1928,20 +1933,20 @@ void masked_softmax_backward(
 } // namespace impl
 
 template <bool LogSoftMax>
-Tensor& host_softmax(
+void host_softmax(
     const Tensor& input_,
     const int64_t dim_,
     const bool half_to_float,
-    Tensor& output) {
+    const Tensor& output) {
   AT_ASSERTM(
       !half_to_float,
       "softmax with half to float conversion is not supported on XPU");
   TORCH_CHECK(
       input_.is_contiguous(),
       "** host_softmax only supports contiguous input tensor");
-  if (!output.defined()) {
-    output = at::native::empty_like(input_);
-  }
+  // if (!output.defined()) {
+  //   output = at::native::empty_like(input_);
+  // }
   Tensor input = input_;
   if (input.dim() == 0)
     input = input.view(1);
@@ -1962,16 +1967,16 @@ Tensor& host_softmax(
               output, input, dim);
         });
   }
-  return output;
+  // return output;
 }
 
 template <bool LogSoftMax>
-Tensor& host_softmax_backward(
+void host_softmax_backward(
     const Tensor& grad_,
     const Tensor& output_,
     int64_t dim_,
     bool half_to_float,
-    Tensor& gI) {
+    const Tensor& gI) {
   AT_ASSERTM(
       !half_to_float,
       "softmax with half to float conversion is not supported on XPU");
@@ -1983,12 +1988,13 @@ Tensor& host_softmax_backward(
       "** host_softmax_backward only supports contiguous output tensor");
 
   int64_t dim = maybe_wrap_dim(dim_, grad_.dim());
-  if (!gI.defined()) {
-    gI = at::empty_like(grad_);
-  }
+  // if (!gI.defined()) {
+  //   gI = at::empty_like(grad_);
+  // }
 
   if (output_.numel() == 0) {
-    return gI;
+    // return gI;
+    return;
   }
 
   Tensor grad = grad_;
@@ -2010,42 +2016,42 @@ Tensor& host_softmax_backward(
         impl::spatial_softmax_backward<scalar_t, accscalar_t, LogSoftMax>(
             gI, output, grad, dim);
       });
-  return gI;
+  // return gI;
 }
 
-Tensor& _softmax_kernel(
+void _softmax_kernel(
     const Tensor& input,
     const int64_t dim,
     const bool half_to_float,
-    Tensor& output) {
+    const Tensor& output) {
   return host_softmax<false>(input.contiguous(), dim, half_to_float, output);
 }
 
-Tensor& _log_softmax_kernel(
+void _log_softmax_kernel(
     const Tensor& input,
     const int64_t dim,
     const bool half_to_float,
-    Tensor& output) {
-  return host_softmax<true>(input.contiguous(), dim, half_to_float, output);
+    const Tensor& output) {
+  host_softmax<true>(input.contiguous(), dim, half_to_float, output);
 }
 
-Tensor& _softmax_backward_kernel(
+void _softmax_backward_kernel(
     const Tensor& grad,
     const Tensor& output,
     int64_t dim,
     bool half_to_float,
-    Tensor& grad_input) {
+    const Tensor& grad_input) {
   return host_softmax_backward<false>(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
 }
 
-Tensor& _log_softmax_backward_kernel(
+void _log_softmax_backward_kernel(
     const Tensor& grad,
     const Tensor& output,
     int64_t dim,
     bool half_to_float,
-    Tensor& grad_input) {
-  return host_softmax_backward<true>(
+    const Tensor& grad_input) {
+  host_softmax_backward<true>(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
 }
 

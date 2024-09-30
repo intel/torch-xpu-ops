@@ -1,7 +1,7 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <ATen/core/Array.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>

@@ -1,4 +1,4 @@
-#include <ATen/ATen.h>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
@@ -9,6 +9,7 @@
 #include <c10/core/Scalar.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/complex.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
 

@@ -5,13 +5,9 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <torch/library.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/ops/_nnz_native.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors_native.h>
-#endif
+#include <ATen/ops/_values_native.h>
 
 namespace at::native::xpu {
 

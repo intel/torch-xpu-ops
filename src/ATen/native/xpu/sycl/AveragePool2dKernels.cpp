@@ -243,7 +243,7 @@ void launch_avg_pool2d_channels_last_kernel(
     const int stride_w,
     const int pad_h,
     const int pad_w,
-    Tensor& output,
+    const Tensor& output,
     const int divisor_override,
     const bool count_include_pad,
     const bool use_divisor) {
@@ -291,7 +291,7 @@ void launch_avg_pool2d_kernel(
     const int stride_w,
     const int pad_h,
     const int pad_w,
-    Tensor& output,
+    const Tensor& output,
     const int divisor_override,
     const bool count_include_pad,
     const bool use_divisor) {
@@ -548,7 +548,7 @@ void launch_avg_pool2d_backward_channels_last_kernel(
     const int stride_w,
     const int pad_h,
     const int pad_w,
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const int divisor_override,
     bool count_include_pad,
     bool use_divisor) {
@@ -599,7 +599,7 @@ void launch_avg_pool2d_backward_kernel(
     const int stride_w,
     const int pad_h,
     const int pad_w,
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const int divisor_override,
     bool count_include_pad,
     bool use_divisor) {
@@ -634,35 +634,24 @@ void launch_avg_pool2d_backward_kernel(
 
 void avg_pool2d_kernel(
     const Tensor& input_,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
+    int64_t kH_,
+    int64_t kW_,
+    int64_t dH_,
+    int64_t dW_,
+    int64_t padH_,
+    int64_t padW_,
     bool ceil_mode,
     bool count_include_pad,
     c10::optional<int64_t> divisor_override,
-    Tensor& output) {
-  const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
-  const int kW = kernel_size.size() == 1
-      ? kH
-      : safe_downcast<int, int64_t>(kernel_size[1]);
-
-  const int dH = stride.empty() ? kH : safe_downcast<int, int64_t>(stride[0]);
-  const int dW = stride.empty() ? kW
-      : stride.size() == 1      ? dH
-                                : safe_downcast<int, int64_t>(stride[1]);
-
-  const int padH = safe_downcast<int, int64_t>(padding[0]);
-  const int padW =
-      padding.size() == 1 ? padH : safe_downcast<int, int64_t>(padding[1]);
-
+    const Tensor& output) {
   const int64_t nInputPlane = input_.size(-3);
   const int64_t inputHeight = input_.size(-2);
   const int64_t inputWidth = input_.size(-1);
 
   int64_t outputWidth =
-      pooling_output_shape<int64_t>(inputWidth, kW, padW, dW, 1, ceil_mode);
+      pooling_output_shape<int64_t>(inputWidth, kW_, padW_, dW_, 1, ceil_mode);
   int64_t outputHeight =
-      pooling_output_shape<int64_t>(inputHeight, kH, padH, dH, 1, ceil_mode);
+      pooling_output_shape<int64_t>(inputHeight, kH_, padH_, dH_, 1, ceil_mode);
   const auto memory_format = input_.suggest_memory_format();
 
   Tensor input = input_.contiguous(memory_format);
@@ -688,12 +677,12 @@ void avg_pool2d_kernel(
                   inputWidth,
                   outputHeight,
                   outputWidth,
-                  kH,
-                  kW,
-                  dH,
-                  dW,
-                  padH,
-                  padW,
+                  kH_,
+                  kW_,
+                  dH_,
+                  dW_,
+                  padH_,
+                  padW_,
                   output,
                   divisor_override_value,
                   count_include_pad,
@@ -709,12 +698,12 @@ void avg_pool2d_kernel(
                   inputWidth,
                   outputHeight,
                   outputWidth,
-                  kH,
-                  kW,
-                  dH,
-                  dW,
-                  padH,
-                  padW,
+                  kH_,
+                  kW_,
+                  dH_,
+                  dW_,
+                  padH_,
+                  padW_,
                   output,
                   divisor_override_value,
                   count_include_pad,
@@ -740,7 +729,7 @@ void avg_pool2d_backward_kernel(
     bool ceil_mode,
     bool count_include_pad,
     c10::optional<int64_t> divisor_override,
-    Tensor& gradInput) {
+    const Tensor& gradInput) {
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
       ? kH

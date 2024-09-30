@@ -153,8 +153,8 @@ void launch_adaptive_max_pool2d_kernel(
 void adaptive_max_pool2d_kernel(
     const Tensor& input,
     IntArrayRef output_size,
-    Tensor& output,
-    Tensor& indices) {
+    const Tensor& output,
+    const Tensor& indices) {
   int64_t osizeH = output_size[0];
   int64_t osizeW = output_size[1];
 
@@ -327,7 +327,7 @@ void adaptive_max_pool2d_backward_kernel(
     const Tensor& grad_output,
     const Tensor& input,
     const Tensor& indices,
-    Tensor& grad_input) {
+    const Tensor& grad_input) {
   globalContext().alertNotDeterministic("adaptive_max_pool2d_backward_xpu");
 
   const at::Tensor grad_output_ = grad_output.contiguous();

@@ -1,6 +1,6 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingBag.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
