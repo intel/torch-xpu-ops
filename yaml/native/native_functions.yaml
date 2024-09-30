@@ -4100,6 +4100,14 @@
     XPU: fmin_out
   tags: pointwise
 
+- func: log_normal_(Tensor(a!) self, float mean=1, float std=2, *, Generator? generator=None) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  tags: nondeterministic_seeded
+  variants: method
+  dispatch:
+    XPU: log_normal_
+  autogen: log_normal, log_normal.out
+
 - func: exponential_(Tensor(a!) self, float lambd=1, *, Generator? generator=None) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   tags: nondeterministic_seeded
