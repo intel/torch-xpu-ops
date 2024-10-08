@@ -37,9 +37,17 @@ inputs:
     type: string
     default: 'main'
     description: Pytorch branch/commit
+  driver:
+    required: false
+    type: string
+    default: 'lts'
+    description: Driver lts/rolling
 
 runs:
   using: composite
+  env:
+    NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+    DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
