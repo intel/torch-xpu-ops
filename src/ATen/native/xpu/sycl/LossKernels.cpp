@@ -114,4 +114,49 @@ Tensor& binary_cross_entropy_backward_kernel(
   return grad_input;
 }
 
+template <typename scalar_t>
+struct soft_margin_kernel_functor {
+  scalar_t operator()(scalar_t input, scalar_t target) const {
+    return std::log(scalar_t(1.) + std::exp(-input * target));
+  }
+};
+
+void soft_margin_kernel(TensorIterator& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "soft_margin_xpu",
+      [&iter]() {
+        soft_margin_kernel_functor<scalar_t> f;
+        gpu_kernel(iter, f);
+      });
+}
+
+template <typename scalar_t>
+struct soft_margin_backward_kernel_functor {
+  scalar_t operator()(scalar_t input, scalar_t target, scalar_t grad_output)
+      const {
+    auto z = std::exp(-target * input);
+    return -norm_val * target * z / (scalar_t(1.) + z) * grad_output;
+  }
+
+  soft_margin_backward_kernel_functor(scalar_t norm_val) : norm_val(norm_val) {}
+
+ private:
+  scalar_t norm_val;
+};
+
+void soft_margin_backward_kernel(TensorIterator& iter, Scalar norm) {
+  AT_DISPATCH_FLOATING_TYPES_AND(
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "soft_margin_backward_xpu",
+      [&iter, &norm] {
+        auto norm_val = norm.to<scalar_t>();
+        soft_margin_backward_kernel_functor<scalar_t> f(norm_val);
+        gpu_kernel(iter, f);
+      });
+}
+
 } // namespace at::native::xpu
