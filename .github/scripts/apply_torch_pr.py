@@ -11,12 +11,10 @@ parser.add_argument('--pr-list', '-n', nargs='+',
     default=[
         # Fallback to CPU for XPU FP64
         "https://github.com/pytorch/pytorch/pull/126516",
-        # Enable deterministic for mkldnn ops
-        "https://github.com/pytorch/pytorch/pull/127277",
-        # [Inductor][Intel GPU] Support reduction split.
-        "https://github.com/pytorch/pytorch/pull/129120",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/129735",
+        # Fix tensor.data_ptr() representation overflow
+        "https://github.com/pytorch/pytorch/pull/135567",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
