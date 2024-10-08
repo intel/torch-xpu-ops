@@ -706,8 +706,6 @@ supported:
   - histogram.bins_tensor_out
   - histogram.bin_ct
   - histogram.bin_ct_out
-  - histc
-  - histc.out
   - repeat_interleave.Tensor
   - norm.ScalarOpt_dim_dtype
   - norm.dtype_out
