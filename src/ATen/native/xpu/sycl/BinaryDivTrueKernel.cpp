@@ -5,6 +5,8 @@
 #include <ATen/native/xpu/sycl/BinaryInternal.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
+#include <ATen/native/xpu/sycl/BinaryKernels.h>
+
 namespace at::native::xpu {
 
 void div_true_kernel(TensorIteratorBase& iter) {

@@ -3,6 +3,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUGuard.h>
 
+#include <ATen/native/xpu/sycl/ResizeKernel.h>
+
 namespace at::native::xpu {
 
 void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
@@ -23,7 +25,6 @@ void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   c10::xpu::XPUGuard guard(device.index());
   at::DataPtr data = allocator->allocate(size_bytes);
   if (storage->data_ptr()) {
-    at::globalContext().lazyInitXPU();
     auto q = at::xpu::getCurrentSYCLQueue();
 
     q.memcpy(
@@ -58,7 +59,7 @@ TensorImpl* resize_impl_xpu_(
     TensorImpl* self,
     IntArrayRef size,
     at::OptionalIntArrayRef stride,
-    bool device_guard = true) {
+    bool device_guard) {
   if (self->sizes() == size && (!stride || self->strides() == stride)) {
     return self;
   }

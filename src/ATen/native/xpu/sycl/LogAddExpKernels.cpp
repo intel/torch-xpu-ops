@@ -5,6 +5,9 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <c10/util/MathConstants.h>
+
+#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

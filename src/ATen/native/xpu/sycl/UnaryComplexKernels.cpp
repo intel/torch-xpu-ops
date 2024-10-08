@@ -1,4 +1,4 @@
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -8,6 +8,10 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/CopyKernel.h>
+#include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 
 namespace at::native::xpu {
 
@@ -44,7 +48,7 @@ struct ConjPhysicalFunctor<c10::complex<TYPE>> {
   }
 };
 
-void conj_physical_kernel(TensorIterator& iter) {
+void conj_physical_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_SWITCH(
       iter.common_dtype(),
       "conj_xpu",

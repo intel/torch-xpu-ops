@@ -7,6 +7,7 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
+#include <ATen/ops/empty_like_native.h>
 namespace at::native::xpu {
 
 template <typename scalar_t, template <class> class Op>

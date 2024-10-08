@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
 #include <comm/TensorInfo.h>
@@ -433,4 +432,3 @@ void run_launcher(
 }
 
 } // namespace at::native::xpu
-

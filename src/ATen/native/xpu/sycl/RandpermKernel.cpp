@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/native/xpu/sycl/Indexing.h>
@@ -6,6 +5,11 @@
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/arange.h>
+
+#include <ATen/native/xpu/sycl/RandpermKernel.h>
 
 namespace at::native::xpu {
 
