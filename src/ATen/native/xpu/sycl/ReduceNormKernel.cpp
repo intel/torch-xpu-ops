@@ -1,7 +1,10 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <ATen/ops/imag.h>
+#include <ATen/native/xpu/sycl/SharedReduceOps.h>
+
+#include <ATen/native/xpu/sycl/ReduceNormKernel.h>
 
 namespace at::native::xpu {
 

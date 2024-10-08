@@ -1,11 +1,12 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
-
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 
 namespace at {
 namespace native {
@@ -55,7 +56,7 @@ struct GeluErfFunctor {
     using opmath_t = at::opmath_type<scalar_t>;
     constexpr opmath_t kAlpha = M_SQRT1_2;
     return static_cast<opmath_t>(x) * opmath_t(0.5) *
-        (opmath_t(1) + ::erf(static_cast<opmath_t>(x) * kAlpha));
+        (opmath_t(1) + std::erf(static_cast<opmath_t>(x) * kAlpha));
   }
 };
 
@@ -66,7 +67,7 @@ struct GeluErfBackwardFunctor {
     constexpr opmath_t kBeta = M_2_SQRTPI * M_SQRT1_2 * opmath_t(0.5);
     constexpr opmath_t kAlpha = M_SQRT1_2;
     const opmath_t cdf = opmath_t(0.5) *
-        (opmath_t(1) + ::erf(static_cast<opmath_t>(x) * kAlpha));
+        (opmath_t(1) + std::erf(static_cast<opmath_t>(x) * kAlpha));
     const opmath_t pdf = c10::xpu::compat::exp(
                              opmath_t(-0.5) * static_cast<opmath_t>(x) *
                              static_cast<opmath_t>(x)) *

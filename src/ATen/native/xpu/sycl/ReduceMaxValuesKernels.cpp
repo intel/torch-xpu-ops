@@ -6,6 +6,8 @@
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 
+#include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
+
 namespace at {
 namespace native {
 namespace xpu {

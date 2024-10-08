@@ -6,9 +6,9 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void remainder_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void remainder_kernel(TensorIteratorBase& iter);
 
-void fmod_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void fmod_kernel(TensorIteratorBase& iter);
 
 } // namespace xpu
 } // namespace native

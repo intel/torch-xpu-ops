@@ -10,6 +10,8 @@
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 
+#include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
+
 namespace at::native::xpu {
 using namespace at::native;
 using namespace at::xpu::detail;

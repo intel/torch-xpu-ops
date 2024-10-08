@@ -1,10 +1,10 @@
 #pragma once
 
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
-void unfold_backward_kernel(
+TORCH_XPU_API void unfold_backward_kernel(
     Tensor& grad_out,
     const Tensor& grad_in,
     int64_t dim,

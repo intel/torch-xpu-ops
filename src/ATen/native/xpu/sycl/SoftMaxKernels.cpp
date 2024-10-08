@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -7,6 +6,11 @@
 #include <ATen/xpu/XPUContext.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/empty_like_native.h>
+
+#include <ATen/native/xpu/sycl/SoftMaxKernels.h>
 
 using namespace xpu::sycl;
 
@@ -271,7 +275,7 @@ struct DispatchSoftmaxForwardKernelFunctor
          ++i) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value += ::exp(reg_in[i][j] - max_value);
+        sum_value += std::exp(reg_in[i][j] - max_value);
       }
     }
     if (local_size_ > 1) {
@@ -285,7 +289,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           [](accscalar_t a, accscalar_t b) { return a + b; });
     }
     if constexpr (LogSoftMax)
-      sum_value = ::log(sum_value);
+      sum_value = std::log(sum_value);
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
@@ -305,7 +309,7 @@ struct DispatchSoftmaxForwardKernelFunctor
           reg_in[i][j] = nan_;
         } else {
           reg_in[i][j] = static_cast<scalar_t>(
-              ::exp(reg_in[i][j] - max_value) * sum_value);
+              std::exp(reg_in[i][j] - max_value) * sum_value);
         }
       }
       *(reinterpret_cast<vec_t*>(out_data_ + group_offset + index)) = reg_in[i];
@@ -520,13 +524,13 @@ struct SoftmaxForwardKernelFunctor {
       for (int j = 0; j < vec_size; ++j) {
         IndexType linear_idx = i * vec_size + j - start;
         if (linear_idx >= 0 && linear_idx < dim_size_)
-          sum_value += ::exp(accscalar_t(in_val[j]) - max_value);
+          sum_value += std::exp(accscalar_t(in_val[j]) - max_value);
       }
     }
     sum_value = sycl::reduce_over_group(
         item.get_group(), sum_value, sycl::plus<accscalar_t>());
     if (LogSoftMax)
-      sum_value = ::log(sum_value);
+      sum_value = std::log(sum_value);
     else
       sum_value = accscalar_t(1) / sum_value;
 
@@ -543,7 +547,7 @@ struct SoftmaxForwardKernelFunctor {
                   in_data_[group_offset + linear_idx] - max_value - sum_value);
             else
               out_data_[group_offset + linear_idx] = static_cast<scalar_t>(
-                  ::exp(in_data_[group_offset + linear_idx] - max_value) *
+                  std::exp(in_data_[group_offset + linear_idx] - max_value) *
                   sum_value);
           }
         }
@@ -556,8 +560,8 @@ struct SoftmaxForwardKernelFunctor {
             in_val[j] =
                 static_cast<scalar_t>(in_val[j] - max_value - sum_value);
           else
-            in_val[j] =
-                static_cast<scalar_t>(::exp(in_val[j] - max_value) * sum_value);
+            in_val[j] = static_cast<scalar_t>(
+                std::exp(in_val[j] - max_value) * sum_value);
         }
         *(reinterpret_cast<vec_t*>(
             out_data_ + group_offset - start + i * vec_size)) = in_val;
@@ -670,14 +674,14 @@ struct SpatialSoftmaxForwardKernelFunctor
     value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
-      sum_value[j] = ::exp(value[j] - max_value[j]);
+      sum_value[j] = std::exp(value[j] - max_value[j]);
     }
     for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
       value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value[j] += ::exp(value[j] - max_value[j]);
+        sum_value[j] += std::exp(value[j] - max_value[j]);
       }
     }
     if (block_row_ > 1) {
@@ -690,7 +694,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax)
-          sum_value[j] = ::log(local_data_[0][local_col_id][j]);
+          sum_value[j] = std::log(local_data_[0][local_col_id][j]);
         else
           sum_value[j] = accscalar_t(1) / local_data_[0][local_col_id][j];
       }
@@ -698,7 +702,7 @@ struct SpatialSoftmaxForwardKernelFunctor
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax)
-          sum_value[j] = ::log(sum_value[j]);
+          sum_value[j] = std::log(sum_value[j]);
         else
           sum_value[j] = accscalar_t(1) / sum_value[j];
       }
@@ -717,7 +721,7 @@ struct SpatialSoftmaxForwardKernelFunctor
                 static_cast<scalar_t>(in_val[j] - max_value[j] - sum_value[j]);
           else
             in_val[j] = static_cast<scalar_t>(
-                ::exp(in_val[j] - max_value[j]) * sum_value[j]);
+                std::exp(in_val[j] - max_value[j]) * sum_value[j]);
         }
         *(reinterpret_cast<vec_t*>(out_data_ + group_offset + offset)) = in_val;
       }
@@ -890,7 +894,7 @@ struct DispatchSoftmaxBackwardKernelFunctor
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax) {
           reg_out[i][j] = static_cast<scalar_t>(
-              reg_gradout[i][j] - ::exp(reg_out[i][j]) * sum_value);
+              reg_gradout[i][j] - std::exp(reg_out[i][j]) * sum_value);
         } else {
           reg_out[i][j] = static_cast<scalar_t>(
               reg_out[i][j] * (reg_gradout[i][j] - sum_value));
@@ -1117,7 +1121,7 @@ struct SoftmaxBackwardKernelFunctor {
             auto offset = group_offset + linear_idx;
             if (LogSoftMax) {
               gradInput_[offset] =
-                  gradOutput_[offset] - ::exp(output_[offset]) * sum_value;
+                  gradOutput_[offset] - std::exp(output_[offset]) * sum_value;
             } else {
               gradInput_[offset] =
                   output_[offset] * (gradOutput_[offset] - sum_value);
@@ -1130,7 +1134,7 @@ struct SoftmaxBackwardKernelFunctor {
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax) {
-            out_val[j] = grad_val[j] - ::exp(out_val[j]) * sum_value;
+            out_val[j] = grad_val[j] - std::exp(out_val[j]) * sum_value;
           } else {
             out_val[j] = out_val[j] * (grad_val[j] - sum_value);
           }
@@ -1259,7 +1263,7 @@ struct SpatialSoftmaxBackwardKernelFunctor
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax) {
             out_val[j] = static_cast<scalar_t>(
-                gradout_val[j] - ::exp(out_val[j]) * sum_value[j]);
+                gradout_val[j] - std::exp(out_val[j]) * sum_value[j]);
           } else {
             out_val[j] = static_cast<scalar_t>(
                 out_val[j] * (gradout_val[j] - sum_value[j]));
@@ -1356,7 +1360,10 @@ void spatial_softmax_backward_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
-void spatial_softmax_forward(Tensor& output, Tensor& input, int dim) {
+void spatial_softmax_forward(
+    const Tensor& output,
+    const Tensor& input,
+    int dim) {
   auto inner_size = input.stride(dim);
   auto dim_size = input.size(dim);
   auto outer_size = input.numel() / (inner_size * dim_size);
@@ -1544,7 +1551,7 @@ void spatial_softmax_forward(Tensor& output, Tensor& input, int dim) {
 
 template <typename scalar_t, typename accscalar_t, bool LogSoftMax>
 void spatial_softmax_backward(
-    Tensor& gradInput,
+    const Tensor& gradInput,
     Tensor& output,
     Tensor& gradOutput,
     int dim) {
@@ -1711,20 +1718,20 @@ void spatial_softmax_backward(
 } // namespace impl
 
 template <bool LogSoftMax>
-Tensor& host_softmax(
+void host_softmax(
     const Tensor& input_,
     const int64_t dim_,
     const bool half_to_float,
-    Tensor& output) {
+    const Tensor& output) {
   AT_ASSERTM(
       !half_to_float,
       "softmax with half to float conversion is not supported on XPU");
   TORCH_CHECK(
       input_.is_contiguous(),
       "** host_softmax only supports contiguous input tensor");
-  if (!output.defined()) {
-    output = at::native::empty_like(input_);
-  }
+  // if (!output.defined()) {
+  //   output = at::native::empty_like(input_);
+  // }
   Tensor input = input_;
   if (input.dim() == 0)
     input = input.view(1);
@@ -1745,16 +1752,16 @@ Tensor& host_softmax(
               output, input, dim);
         });
   }
-  return output;
+  // return output;
 }
 
 template <bool LogSoftMax>
-Tensor& host_softmax_backward(
+void host_softmax_backward(
     const Tensor& grad_,
     const Tensor& output_,
     int64_t dim_,
     bool half_to_float,
-    Tensor& gI) {
+    const Tensor& gI) {
   AT_ASSERTM(
       !half_to_float,
       "softmax with half to float conversion is not supported on XPU");
@@ -1766,12 +1773,13 @@ Tensor& host_softmax_backward(
       "** host_softmax_backward only supports contiguous output tensor");
 
   int64_t dim = maybe_wrap_dim(dim_, grad_.dim());
-  if (!gI.defined()) {
-    gI = at::empty_like(grad_);
-  }
+  // if (!gI.defined()) {
+  //   gI = at::empty_like(grad_);
+  // }
 
   if (output_.numel() == 0) {
-    return gI;
+    // return gI;
+    return;
   }
 
   Tensor grad = grad_;
@@ -1793,42 +1801,42 @@ Tensor& host_softmax_backward(
         impl::spatial_softmax_backward<scalar_t, accscalar_t, LogSoftMax>(
             gI, output, grad, dim);
       });
-  return gI;
+  // return gI;
 }
 
-Tensor& _softmax_kernel(
+void _softmax_kernel(
     const Tensor& input,
     const int64_t dim,
     const bool half_to_float,
-    Tensor& output) {
+    const Tensor& output) {
   return host_softmax<false>(input.contiguous(), dim, half_to_float, output);
 }
 
-Tensor& _log_softmax_kernel(
+void _log_softmax_kernel(
     const Tensor& input,
     const int64_t dim,
     const bool half_to_float,
-    Tensor& output) {
-  return host_softmax<true>(input.contiguous(), dim, half_to_float, output);
+    const Tensor& output) {
+  host_softmax<true>(input.contiguous(), dim, half_to_float, output);
 }
 
-Tensor& _softmax_backward_kernel(
+void _softmax_backward_kernel(
     const Tensor& grad,
     const Tensor& output,
     int64_t dim,
     bool half_to_float,
-    Tensor& grad_input) {
+    const Tensor& grad_input) {
   return host_softmax_backward<false>(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
 }
 
-Tensor& _log_softmax_backward_kernel(
+void _log_softmax_backward_kernel(
     const Tensor& grad,
     const Tensor& output,
     int64_t dim,
     bool half_to_float,
-    Tensor& grad_input) {
-  return host_softmax_backward<true>(
+    const Tensor& grad_input) {
+  host_softmax_backward<true>(
       grad.contiguous(), output.contiguous(), dim, half_to_float, grad_input);
 }
 
