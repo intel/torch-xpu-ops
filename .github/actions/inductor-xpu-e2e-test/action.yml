@@ -45,9 +45,6 @@ inputs:
 
 runs:
   using: composite
-  env:
-    NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-    DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
@@ -93,6 +90,8 @@ runs:
       shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       run: |
         source activate e2e_ci
         source .github/scripts/env.sh
