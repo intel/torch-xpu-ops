@@ -4,11 +4,11 @@
 
 namespace at::native::xpu {
 
-void mode_kernel(
+TORCH_XPU_API void mode_kernel(
+    Tensor& values,
+    Tensor& indices,
     const Tensor& self,
     int64_t dim,
-    bool keepdim,
-    Tensor& values,
-    Tensor& indices);
+    bool keepdim);
 
 } // namespace at::native::xpu
