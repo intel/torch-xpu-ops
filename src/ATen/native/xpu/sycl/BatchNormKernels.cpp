@@ -1653,7 +1653,7 @@ struct BatchNormBackwardReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)wg_size_/SIMD}, cgh);
+        sycl::range<1>{(size_t)wg_size_ / SIMD}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
@@ -1910,17 +1910,13 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
     int m_offset = item.get_global_id(0);
     int c_offset = item.get_global_id(1);
 
-    if (c_offset >= stride_ || m_offset >= reduction_size_) {
-      return;
-    }
-
     int loop_count =
         1 + (reduction_size_ - 1) / (inner_loop_stride * PARALLEL_LOADS);
     int address_base = m_offset * stride_ + c_offset;
     int address_increment = inner_loop_stride * stride_;
 
-    auto r_mean = mean_[c_offset];
-    auto factor = inv_std_[c_offset];
+    auto r_mean = c_offset < stride_ ? mean_[c_offset] : accscalar_t(0);
+    auto factor = c_offset < stride_ ? inv_std_[c_offset] : accscalar_t(0);
 
     for (int i = 0; i < loop_count; i++) {
       accscalar_t x_input[PARALLEL_LOADS];
