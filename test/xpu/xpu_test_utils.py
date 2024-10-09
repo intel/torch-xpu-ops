@@ -178,6 +178,7 @@ _xpu_computation_op_list = [
     "scatter",
     "gather",
     "nn.functional.adaptive_max_pool2d",
+    "nn.functional.adaptive_max_pool3d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
     "nn.functional.adaptive_avg_pool2d",
