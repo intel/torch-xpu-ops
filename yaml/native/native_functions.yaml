@@ -3641,6 +3641,26 @@
   dispatch:
     CompositeExplicitAutograd: huber_loss_backward
 
+- func: soft_margin_loss.out(Tensor self, Tensor target, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: soft_margin_loss_out
+
+- func: soft_margin_loss(Tensor self, Tensor target, int reduction=Mean) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: soft_margin_loss
+
+- func: soft_margin_loss_backward.grad_input(Tensor grad_output, Tensor self, Tensor target, int reduction, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: soft_margin_loss_backward_out
+
+- func: soft_margin_loss_backward(Tensor grad_output, Tensor self, Tensor target, int reduction) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: soft_margin_loss_backward
+
 - func: reflection_pad3d.out(Tensor self, SymInt[6] padding, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
   structured: True

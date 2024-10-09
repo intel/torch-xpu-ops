@@ -18,4 +18,10 @@ TORCH_XPU_API Tensor& binary_cross_entropy_backward_kernel(
     int64_t reduction,
     Tensor& grad_input);
 
+TORCH_XPU_API void soft_margin_kernel(TensorIterator& iter);
+
+TORCH_XPU_API void soft_margin_backward_kernel(
+    TensorIterator& iter,
+    Scalar norm);
+
 } // namespace at::native::xpu
