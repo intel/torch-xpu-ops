@@ -5208,3 +5208,16 @@
   dispatch:
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
+
+- func: _fused_dropout(Tensor self, float p, Generator? generator=None) -> (Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: fused_dropout_xpu
+  tags: nondeterministic_seeded
+  autogen: _fused_dropout.out
+
+- func: _masked_scale(Tensor self, Tensor mask, float scale) -> Tensor
+  variants: function
+  dispatch:
+    XPU: masked_scale_xpu
+  autogen: _masked_scale.out
