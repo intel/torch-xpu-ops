@@ -219,7 +219,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "linspace.out",
     "_logcumsumexp",
-    "log_normal_",
     "logspace.out",
     "lu_unpack.out",
     "max_pool3d_with_indices",
