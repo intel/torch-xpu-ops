@@ -12,4 +12,6 @@ TORCH_XPU_API void neg_conj_kernel(TensorIterator& iter);
 
 TORCH_XPU_API void neg_kernel(TensorIterator& iter);
 
+TORCH_XPU_API void angle_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

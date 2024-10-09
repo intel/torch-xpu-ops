@@ -65,6 +65,7 @@ REGISTER_XPU_DISPATCH(erfinv_stub, &xpu::erfinv_kernel);
 REGISTER_XPU_DISPATCH(exp2_stub, &xpu::exp2_kernel);
 REGISTER_XPU_DISPATCH(expm1_stub, &xpu::expm1_kernel);
 REGISTER_XPU_DISPATCH(frac_stub, &xpu::frac_kernel);
+REGISTER_XPU_DISPATCH(angle_stub, &xpu::angle_kernel);
 REGISTER_XPU_DISPATCH(conj_physical_stub, &xpu::conj_physical_kernel);
 REGISTER_XPU_DISPATCH(ceil_stub, &xpu::ceil_kernel);
 REGISTER_XPU_DISPATCH(sinh_stub, &xpu::sinh_kernel);
