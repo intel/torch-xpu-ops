@@ -606,6 +606,10 @@ supported:
   - erfc
   - erfc_
   - erfc.out
+  - multilabel_margin_loss_forward.output
+  - multilabel_margin_loss_forward
+  - multilabel_margin_loss_backward.grad_input
+  - multilabel_margin_loss_backward
   - multinomial
   - multinomial.out
   - erf

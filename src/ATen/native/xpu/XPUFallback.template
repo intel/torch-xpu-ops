@@ -227,8 +227,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "max_unpool2d",
     "max_unpool3d",
     "mode",
-    "multilabel_margin_loss_backward",
-    "multilabel_margin_loss_forward",
     "multi_margin_loss",
     "multi_margin_loss_backward",
     "ormqr",
