@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.hardshrink",
     "nn.functional.mish",
     "index_add",
     "index_fill",

@@ -5208,3 +5208,25 @@
   dispatch:
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
+
+- func: hardshrink.out(Tensor self, Scalar lambd=0.5, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: hardshrink_out
+
+- func: hardshrink(Tensor self, Scalar lambd=0.5) -> Tensor
+  structured_delegate: hardshrink.out
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: hardshrink_backward.grad_input(Tensor grad_out, Tensor self, Scalar lambd, *, Tensor(a!) grad_input) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: hardshrink_backward_out
+
+- func: hardshrink_backward(Tensor grad_out, Tensor self, Scalar lambd) -> Tensor
+  structured_delegate: hardshrink_backward.grad_input
+  variants: function, method
