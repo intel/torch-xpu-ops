@@ -238,8 +238,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "rrelu_with_noise",
     "_scaled_dot_product_efficient_attention",
     "_scaled_mm",
-    "segment_reduce",
-    "_segment_reduce_backward",
     "sinc.out",
     "special_airy_ai.out",
     "special_bessel_j0.out",

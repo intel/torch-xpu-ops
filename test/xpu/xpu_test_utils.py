@@ -244,6 +244,7 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "_segment_reduce",
 ]
 
 _ops_without_cuda_support = [

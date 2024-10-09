@@ -722,3 +722,5 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - segment_reduce
+  - _segment_reduce_backward
