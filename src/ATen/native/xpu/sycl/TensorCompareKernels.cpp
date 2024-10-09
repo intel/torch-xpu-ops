@@ -2,6 +2,7 @@
 #include <ATen/NumericUtils.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 

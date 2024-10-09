@@ -2,6 +2,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
+#include <ATen/ops/sort.h>
+#include <ATen/ops/zeros_like.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
@@ -666,7 +668,6 @@ struct ModeFusedKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 The answer rule of the cornor condition is:
 1. indice need to be the max indice of the most-appeared value
 2. if values appear same times, the returned value should be the smaller one
-
 The implementation idea overview:
 1. sort the input values
 2. compare the adjecent value and record the status when checking equality
@@ -732,7 +733,7 @@ void mode_kernel_impl(
   auto indices_transposed = indices.transpose(dim, ndim - 1);
 
   // max wg size
-  auto max_WG_Size = syclMaxWorkGroupSize<ModeXpuKernelFunctor<scalar_t>>();
+  auto max_WG_Size = syclMaxWorkGroupSize<ModeKernelFunctor<scalar_t>>();
 
   // one wg is responsible for one problem batch
   auto group_number = problem_time;
@@ -817,11 +818,11 @@ void mode_kernel_impl(
 }
 
 void mode_kernel(
+    Tensor& values,
+    Tensor& indices,
     const Tensor& self,
     int64_t dim,
-    bool keepdim,
-    Tensor& values,
-    Tensor& indices) {
+    bool keepdim) {
   AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::Bool,
       at::ScalarType::Half,
