@@ -4435,6 +4435,29 @@
     XPU: logit_out
   tags: pointwise
 
+- func: xlogy.Tensor(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: xlogy.OutTensor
+  variants: function, method
+  tags: pointwise
+
+# xlogy: inplace variant
+- func: xlogy_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  structured_delegate: xlogy.OutTensor
+  tags: pointwise
+
+# xlogy: out variant
+- func: xlogy.OutTensor(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  variants: function
+  dispatch:
+    XPU: xlogy_out
+  tags: pointwise
+
 - func: erfinv(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: erfinv.out
@@ -4596,6 +4619,26 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: floor_out
+  tags: pointwise
+
+- func: trunc(Tensor self) -> Tensor
+  structured_delegate: trunc.out
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: [core, pointwise]
+
+- func: trunc_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: trunc.out
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  tags: pointwise
+
+- func: trunc.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: trunc_out
   tags: pointwise
 
 - func: replication_pad1d.out(Tensor self, SymInt[2] padding, *, Tensor(a!) out) -> Tensor(a!)
