@@ -5,7 +5,7 @@
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 
 namespace at {
-namespace native{
+namespace native {
 Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       self.numel() < std::numeric_limits<int>::max(),
@@ -38,5 +38,5 @@ Tensor nonzero_xpu(const Tensor& self) {
   nonzero_out_xpu(self, out);
   return out;
 }
-}
+} // namespace native
 } // namespace at

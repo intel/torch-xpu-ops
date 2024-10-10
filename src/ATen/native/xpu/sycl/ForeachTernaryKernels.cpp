@@ -5,8 +5,8 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
-#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 
 namespace at::native::xpu {
 

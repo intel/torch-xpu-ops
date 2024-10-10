@@ -1,4 +1,11 @@
 #include <ATen/native/ForeachUtils.h>
+#include <ATen/ops/_foreach_add_native.h>
+#include <ATen/ops/_foreach_addcdiv_native.h>
+#include <ATen/ops/_foreach_addcmul_native.h>
+#include <ATen/ops/_foreach_div_native.h>
+#include <ATen/ops/_foreach_lerp_native.h>
+#include <ATen/ops/_foreach_mul_native.h>
+
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
@@ -7,29 +14,6 @@
 
 namespace at {
 namespace native {
-
-::std::vector<at::Tensor> foreach_tensor_mul_list_kernel_slow(
-    at::TensorList self,
-    at::TensorList other);
-void foreach_tensor_mul_list_kernel_slow_(
-    at::TensorList self,
-    at::TensorList other);
-
-::std::vector<at::Tensor> foreach_tensor_div_list_kernel_slow(
-    at::TensorList self,
-    at::TensorList other);
-void foreach_tensor_div_list_kernel_slow_(
-    at::TensorList self,
-    at::TensorList other);
-
-::std::vector<at::Tensor> foreach_tensor_add_list_kernel_slow(
-    at::TensorList self,
-    at::TensorList other,
-    const at::Scalar& alpha);
-void foreach_tensor_add_list_kernel_slow_(
-    at::TensorList self,
-    at::TensorList other,
-    const at::Scalar& alpha);
 
 #define FOREACH_BINARY_OP_LIST(NAME, DIVISION_OP)                           \
   void foreach_tensor_##NAME##_list_kernel_xpu_(                            \
@@ -81,28 +65,6 @@ FOREACH_BINARY_OP_LIST_ALPHA(add);
 FOREACH_BINARY_OP_LIST(mul, false);
 FOREACH_BINARY_OP_LIST(div, true);
 
-::std::vector<at::Tensor> foreach_tensor_addcmul_scalarlist_slow(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    at::ArrayRef<at::Scalar> scalars);
-void foreach_tensor_addcmul_scalarlist_slow_(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    at::ArrayRef<at::Scalar> scalars);
-
-::std::vector<at::Tensor> foreach_tensor_addcdiv_scalarlist_slow(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    at::ArrayRef<at::Scalar> scalars);
-void foreach_tensor_addcdiv_scalarlist_slow_(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    at::ArrayRef<at::Scalar> scalars);
-
 #define FOREACH_POINTWISE_OP_TENSOR(NAME)                                  \
   std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_xpu(             \
       TensorList input,                                                    \
@@ -142,11 +104,6 @@ void foreach_tensor_addcdiv_scalarlist_slow_(
 FOREACH_POINTWISE_OP_TENSOR(addcmul)
 FOREACH_POINTWISE_OP_TENSOR(addcdiv)
 
-::std::vector<at::Tensor> foreach_tensor_ternary_lerp_slow(
-    at::TensorList self,
-    at::TensorList tensors1,
-    at::TensorList weights);
-
 std::vector<at::Tensor> foreach_tensor_lerp_ternary_xpu(
     TensorList tensors1,
     TensorList tensors2,
@@ -165,11 +122,6 @@ std::vector<at::Tensor> foreach_tensor_lerp_ternary_xpu(
   xpu::foreach_lerp_list_kernel(tensors1, tensors2, tensors3, vec_res);
   return vec_res;
 }
-
-void foreach_tensor_ternary_lerp_slow_(
-    at::TensorList self,
-    at::TensorList tensors1,
-    at::TensorList weights);
 
 void foreach_tensor_lerp_ternary_xpu_(
     TensorList tensors1,

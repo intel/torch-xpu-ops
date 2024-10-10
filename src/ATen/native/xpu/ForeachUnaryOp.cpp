@@ -1,13 +1,12 @@
 #include <ATen/native/ForeachUtils.h>
+#include <ATen/ops/_foreach_sqrt_native.h>
+
 #include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
 
 namespace at {
 namespace native {
 // given a functor and a "dispatch function", creates the outplace and inplace
 // operations
-
-::std::vector<at::Tensor> foreach_tensor_sqrt_slow(at::TensorList self);
-void foreach_tensor_sqrt_slow_(at::TensorList self);
 
 #define FOREACH_UNARY_OP(op_name)                                          \
   std::vector<Tensor> foreach_tensor_##op_name##_xpu(TensorList tensors) { \
