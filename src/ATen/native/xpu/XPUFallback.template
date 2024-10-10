@@ -198,7 +198,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "isneginf.out",
     "isposinf.out",
     "kthvalue.values",
-    "lcm.out",
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
     "linalg_eig",

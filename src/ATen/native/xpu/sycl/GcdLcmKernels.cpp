@@ -22,4 +22,18 @@ void gcd_kernel(TensorIteratorBase& iter) {
   });
 }
 
+template <typename scalar_t>
+struct LcmFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    scalar_t g = calc_gcd(a, b);
+    return (g == 0) ? 0 : std::abs(a / g * b);
+  }
+};
+
+void lcm_kernel(TensorIterator& iter) {
+  AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "lcm_xpu", [&]() {
+    gpu_kernel(iter, LcmFunctor<scalar_t>());
+  });
+}
+
 } // namespace at::native::xpu
