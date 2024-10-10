@@ -253,6 +253,7 @@ _xpu_computation_op_list = [
     "put",
     "mode",
     "log_normal",
+    "index_copy",
 ]
 
 _ops_without_cuda_support = [
