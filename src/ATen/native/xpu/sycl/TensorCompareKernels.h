@@ -27,4 +27,8 @@ TORCH_XPU_API void isin_kernel(
     bool invert,
     const Tensor& out);
 
+TORCH_XPU_API void _assert_async_msg_kernel(
+    const Tensor& self_tensor,
+    c10::string_view assert_msg);
+
 } // namespace at::native::xpu
