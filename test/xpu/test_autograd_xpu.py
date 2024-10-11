@@ -552,6 +552,48 @@ with XPUPatchForImport(False):
         y = ctors.randn(3)
         self._check_jacobian_vectorize_correctness(f, (x, y))
 
+    def node_ordering_when_none_returned(self):
+        class Matmul(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, x, w):
+                # x: [M, N]
+                # w: [N, K]
+                ctx.save_for_backward(x, w)
+                return x @ w
+
+            @staticmethod
+            def backward(ctx, g_out):
+                # g_out: [M, K]
+                x, w = ctx.saved_tensors
+                g_x = g_out @ w.T
+                g_w = x.T @ g_out
+                w.main_grad = g_w.float()
+                return g_x, None
+
+        executed = []
+
+        class HookFunction(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, x):
+                return x
+
+            @staticmethod
+            def backward(ctx, g):
+                executed.append("A")
+                return g
+
+        def hook(*args, **kwargs):
+            executed.append("B")
+
+        x = torch.randn((3, 3), dtype=torch.bfloat16, device="xpu", requires_grad=True)
+        x = HookFunction.apply(x)
+        w = torch.randn((3, 3), dtype=torch.bfloat16, device="xpu", requires_grad=True)
+        w.register_hook(hook)
+        o = Matmul.apply(x, w)
+        o.sum().backward()
+
+        self.assertEqual(executed, ["B", "A"])
+
     TestAutograd.test_checkpointing_without_reentrant_dataparallel = checkpointing_without_reentrant_dataparallel
     TestAutograd.test_callback_propagates_errors_from_device_thread = callback_propagates_errors_from_device_thread
     TestAutograd._test_checkpointing_non_reentrant_autocast = checkpointing_non_reentrant_autocast
@@ -560,6 +602,7 @@ with XPUPatchForImport(False):
     TestAutograd.test_gradcheck_default_device_placement_context = gradcheck_default_device_placement_context
     TestAutograd.test_graph_save_on_cpu_cuda = graph_save_on_cpu_cuda
     TestAutograd.test_scalar_grad_mixed_device=scalar_grad_mixed_device
+    TestAutograd.test_node_ordering_when_none_returned=node_ordering_when_none_returned
 
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
     TestAutogradDeviceType.test_pin_memory = pin_memory
