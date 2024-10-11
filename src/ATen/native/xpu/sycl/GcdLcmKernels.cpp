@@ -30,7 +30,7 @@ struct LcmFunctor {
   }
 };
 
-void lcm_kernel(TensorIterator& iter) {
+void lcm_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_INTEGRAL_TYPES(iter.common_dtype(), "lcm_xpu", [&]() {
     gpu_kernel(iter, LcmFunctor<scalar_t>());
   });
