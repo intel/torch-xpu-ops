@@ -38,6 +38,11 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
 
 permissions: read-all
 
@@ -45,6 +50,9 @@ jobs:
   Torch-XPU-UT-Tests:
     runs-on: ${{ inputs.runner }} 
     timeout-minutes: 900
+    env:
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
