@@ -1,22 +1,26 @@
-#include <ATen/ATen.h>
-#include <ATen/native/xpu/sycl/MultiLabelMarginLossKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-#include <comm/RegisterUtils.h>
-namespace at {
+#include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
+#include <ATen/core/Tensor.h>
 
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::
-    multilabel_margin_loss_forward_out(
-        const Tensor& self,
-        const Tensor& target,
-        int64_t reduction,
-        Tensor& output,
-        Tensor& is_target) {
+#include <ATen/native/xpu/sycl/MultiLabelMarginLossKernels.h>
+#include <ATen/ops/empty.h>
+#include <ATen/ops/multilabel_margin_loss.h>
+#include <ATen/ops/zeros_like.h>
+
+namespace at {
+namespace native {
+std::tuple<Tensor&, Tensor&> multilabel_margin_loss_forward_out_xpu(
+    const Tensor& self,
+    const Tensor& target,
+    int64_t reduction,
+    Tensor& output,
+    Tensor& is_target) {
   at::native::xpu::multilabel_margin_loss_kernel(
       self, target, reduction, output, is_target);
   return std::tuple<Tensor&, Tensor&>(output, is_target);
 }
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::multilabel_margin_loss_forward(
+std::tuple<Tensor, Tensor> multilabel_margin_loss_forward_xpu(
     const Tensor& self,
     const Tensor& target,
     int64_t reduction) {
@@ -24,10 +28,10 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::multilabel_margin_loss_forward(
   auto is_target = at::empty({0}, self.options());
   at::native::xpu::multilabel_margin_loss_kernel(
       self, target, reduction, output, is_target);
-  return std::tuple<Tensor&, Tensor&>(output, is_target);
+  return std::tuple(output, is_target);
 }
 
-Tensor& XPUNativeFunctions::multilabel_margin_loss_backward_out(
+Tensor& multilabel_margin_loss_backward_xpu_out(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
@@ -39,20 +43,17 @@ Tensor& XPUNativeFunctions::multilabel_margin_loss_backward_out(
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::multilabel_margin_loss_backward(
+Tensor multilabel_margin_loss_backward_xpu(
     const Tensor& grad_output,
     const Tensor& self,
     const Tensor& target,
     int64_t reduction,
     const Tensor& is_target) {
-  auto grad_input = at::xpu::create_out(
-      self.sizes(),
-      {},
-      self.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT));
-  grad_input.zero_();
+  auto grad_input = at::zeros_like(self, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   at::native::xpu::multilabel_margin_loss_backward_kernel(
       grad_output, self, target, reduction, is_target, grad_input);
   return grad_input;
 }
+} // namespace native
 
 } // namespace at
