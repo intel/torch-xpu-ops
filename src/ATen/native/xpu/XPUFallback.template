@@ -157,7 +157,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_adaptive_avg_pool3d_backward",
     "adaptive_max_pool3d_backward.grad_input",
     "adaptive_max_pool3d.out",
-    "angle",
     "cauchy_",
     "_cdist_backward",
     "channel_shuffle",
@@ -196,7 +195,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "isneginf.out",
     "isposinf.out",
     "kthvalue.values",
-    "lcm.out",
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
     "linalg_eig",
@@ -279,7 +277,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "triangular_solve.X",
     "tril_indices",
     "triu_indices",
-    "trunc.out",
     "upsample_bicubic2d_backward.grad_input",
     "_upsample_bilinear2d_aa.out",
     "upsample_nearest3d.out",
@@ -290,7 +287,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "upsample_trilinear3d.out",
     "_validate_compressed_sparse_indices",
     "vdot",
-    "xlogy.OutTensor",
     "_upsample_bicubic2d_aa.out",
   };
   for (auto& op_name : fallback_list) {
