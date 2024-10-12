@@ -679,6 +679,22 @@
   structured_delegate: gcd.out
   variants: function, method
 
+- func: lcm.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: lcm_out
+  tags: pointwise
+
+- func: lcm(Tensor self, Tensor other) -> Tensor
+  structured_delegate: lcm.out
+  variants: function, method
+  tags: pointwise
+
+- func: lcm_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: lcm.out
+  variants: function, method
+
 # - func: relu(Tensor self) -> Tensor
 #   device_check: NoCheck   # TensorIterator
 #   variants: function, method
@@ -5208,3 +5224,16 @@
   dispatch:
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
+
+- func: angle(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: angle
+  tags: pointwise
+
+- func: angle.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: angle_out
+  tags: pointwise
