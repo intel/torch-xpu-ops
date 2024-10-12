@@ -228,6 +228,7 @@ _xpu_computation_op_list = [
     "frac",
     "aminmax",
     "argmin",
+    "angle",
     "conj_physical",
     "histogram",
     "repeat_interleave",
