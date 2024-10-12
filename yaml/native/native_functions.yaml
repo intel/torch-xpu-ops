@@ -5229,3 +5229,17 @@
 - func: _ctc_loss_backward.Tensor(Tensor grad, Tensor log_probs, Tensor targets, Tensor input_lengths, Tensor target_lengths, Tensor neg_log_likelihood, Tensor log_alpha, int blank, bool zero_infinity=False) -> Tensor
   dispatch:
     XPU: ctc_loss_backward_tensor
+
+- func: angle(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: angle
+  tags: pointwise
+
+- func: angle.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: angle_out
+  tags: pointwise
+
