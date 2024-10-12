@@ -13,6 +13,7 @@
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
+#include <ATen/native/xpu/sycl/ActivationHardshrinkKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardswishKernels.h>
 #include <ATen/native/xpu/sycl/ActivationHardtanhKernels.h>
@@ -55,6 +56,7 @@ REGISTER_XPU_DISPATCH(
     &xpu::log_sigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(prelu_stub, &xpu::prelu_kernel);
 REGISTER_XPU_DISPATCH(prelu_backward_stub, &xpu::prelu_backward_kernel);
+REGISTER_XPU_DISPATCH(hardshrink_stub, &xpu::hardshrink_kernel);
 
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,
