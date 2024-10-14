@@ -964,23 +964,19 @@ static inline void index_copy_impl(
   if (iter.numel() == 0) {
     return;
   }
+  const Tensor& indices = iter.input(0);
+  const Tensor& source = iter.input(1);
+  const Tensor& self = iter.output();
 
-  auto indices = iter.tensor(0);
-  auto source = iter.tensor(1);
-  auto dst = iter.output();
-
-  // See Note [Enabling Deterministic Operations]
-  if (globalContext().deterministicAlgorithms()) {
-    torch::List<std::optional<Tensor>> indices_;
-    indices_.reserve(dim + 1);
-    for (const auto i : c10::irange(dim)) {
-      (void)i;
-      indices_.emplace_back();
-    }
-    indices_.emplace_back(indices);
-    out.index_put_(indices_, source, false);
-    return;
-  }
+  // index_fill operator generates TensorIterator as kernel input,
+  // self tensor is restrided to meet TensorIterator broadcast requirements. But
+  // xpu kernel doesn't support such restrided shape, so we restride self tensor
+  // back here.
+  auto self_sizes = self.sizes().vec();
+  auto self_strides = self.strides().vec();
+  self_sizes[dim] = self_dim_size;
+  self_strides[dim] = self_dim_stride;
+  auto dst = self.as_strided(self_sizes, self_strides);
 
   static constexpr string_view DIM_WARNING =
       "Tensor too large or too many (> 12) dimensions";
@@ -1027,13 +1023,11 @@ void index_copy_kernel(
     const int64_t dim,
     const int64_t self_dim_size,
     const int64_t self_dim_stride) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND6(
-      at::ScalarType::ComplexHalf,
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::Half,
-      at::ScalarType::BFloat16,
       at::ScalarType::Bool,
-      at::ScalarType::Float8_e4m3fn,
-      at::ScalarType::Float8_e5m2,
+      at::ScalarType::BFloat16,
+      kComplexHalf,
       iter.dtype(),
       "index_copy_xpu",
       [&]() {
