@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void avg_pool3d_kernel(
+TORCH_XPU_API void avg_pool3d_kernel(
     const Tensor& input_,
     IntArrayRef kernel_size,
     IntArrayRef stride,
@@ -14,7 +14,7 @@ void avg_pool3d_kernel(
     c10::optional<int64_t> divisor_override,
     const Tensor& output);
 
-void avg_pool3d_backward_kernel(
+TORCH_XPU_API void avg_pool3d_backward_kernel(
     const Tensor& gradOutput_,
     const Tensor& input_,
     IntArrayRef kernel_size,
