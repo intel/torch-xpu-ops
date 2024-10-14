@@ -25,7 +25,7 @@ TORCH_IMPL_FUNC(adaptive_max_pool3d_out_xpu)
   native::xpu::adaptive_max_pool3d_kernel(input, output_size, output, indices);
 }
 
-TORCH_IMPL_FUNC(adaptive_max_pool3d_backward_out_cuda)
+TORCH_IMPL_FUNC(adaptive_max_pool3d_backward_out_xpu)
 (const Tensor& gradOutput,
  const Tensor& input,
  const Tensor& indices,
