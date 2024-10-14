@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ATen/ATen.h>
+#include <ATen/core/Tensor.h>
 
 namespace at::native::xpu {
 
@@ -12,7 +12,7 @@ void avg_pool3d_kernel(
     bool ceil_mode,
     bool count_include_pad,
     c10::optional<int64_t> divisor_override,
-    Tensor& output);
+    const Tensor& output);
 
 void avg_pool3d_backward_kernel(
     const Tensor& gradOutput_,
@@ -23,6 +23,6 @@ void avg_pool3d_backward_kernel(
     bool ceil_mode,
     bool count_include_pad,
     c10::optional<int64_t> divisor_override,
-    Tensor& gradInput);
+    const Tensor& gradInput);
 
 } // namespace at::native::xpu
