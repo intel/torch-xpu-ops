@@ -66,7 +66,7 @@ Tensor& max_pool3d_with_indices_backward_out_xpu(
   at::native::xpu::max_pool3d_with_indices_backward_kernel(
       gradInput,
       gradOutput,
-      self,
+      input,
       indices,
       kernel_size,
       stride,
@@ -77,7 +77,7 @@ Tensor& max_pool3d_with_indices_backward_out_xpu(
   return gradInput;
 }
 
-Tensor max_pool3d_with_indices_backward_cuda(
+Tensor max_pool3d_with_indices_backward_xpu(
     const Tensor& gradOutput,
     const Tensor& input,
     IntArrayRef kernel_size,
