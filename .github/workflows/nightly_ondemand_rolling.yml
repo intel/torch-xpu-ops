@@ -98,6 +98,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
+      USE_STATIC_MKL: 1
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
