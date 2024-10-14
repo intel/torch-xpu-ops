@@ -1,12 +1,14 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/UnfoldBackward.h>
 #include <c10/core/ScalarType.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/UnfoldBackwardKernels.h>
 
 namespace at::native::xpu {
 

@@ -4,12 +4,12 @@
 
 namespace at::native::xpu {
 
-void softplus_kernel(
+TORCH_XPU_API void softplus_kernel(
     TensorIteratorBase& iter,
     const Scalar& beta_,
     const Scalar& threshold_);
 
-void softplus_backward_kernel(
+TORCH_XPU_API void softplus_backward_kernel(
     TensorIteratorBase& iter,
     const Scalar& beta_,
     const Scalar& threshold_);

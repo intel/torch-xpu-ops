@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/ReduceOps.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
@@ -12,6 +12,15 @@
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/native/xpu/sycl/BatchNormKernels.h>
+
+#ifdef _WIN32
+#define RESTRICT __restrict
+#else
+#define RESTRICT __restrict__
+#endif
 
 namespace at {
 namespace native {
@@ -1008,9 +1017,9 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
   }
 
   BatchNormCollectStatisticsChannelsLastKernelFunctor(
-      const scalar_t* __restrict__ input,
-      accscalar_t* __restrict__ out_mean,
-      accscalar_t* __restrict__ out_invstd,
+      const scalar_t* RESTRICT input,
+      accscalar_t* RESTRICT out_mean,
+      accscalar_t* RESTRICT out_invstd,
       volatile accscalar_t* staging_data,
       int* semaphores,
       const int reduction_size,
@@ -1028,9 +1037,9 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
         wg_size_(wg_size) {}
 
  private:
-  const scalar_t* __restrict__ input_;
-  accscalar_t* __restrict__ out_mean_;
-  accscalar_t* __restrict__ out_invstd_;
+  const scalar_t* RESTRICT input_;
+  accscalar_t* RESTRICT out_mean_;
+  accscalar_t* RESTRICT out_invstd_;
   volatile accscalar_t* staging_data_;
   int* semaphores_;
   const int reduction_size_;
@@ -1375,13 +1384,13 @@ struct BatchNormTransformInputChannelsLastKernelFunctor {
   }
 
   BatchNormTransformInputChannelsLastKernelFunctor(
-      const scalar_t* __restrict__ input,
-      const scalar_t* __restrict__ z,
-      const accscalar_t* __restrict__ mean,
-      const accscalar_t* __restrict__ inv_std,
-      const layerscalar_t* __restrict__ weight,
-      const layerscalar_t* __restrict__ shift,
-      scalar_t* __restrict__ out,
+      const scalar_t* RESTRICT input,
+      const scalar_t* RESTRICT z,
+      const accscalar_t* RESTRICT mean,
+      const accscalar_t* RESTRICT inv_std,
+      const layerscalar_t* RESTRICT weight,
+      const layerscalar_t* RESTRICT shift,
+      scalar_t* RESTRICT out,
       const int reduction_size,
       const int stride,
       const bool fuse_relu)
@@ -1397,13 +1406,13 @@ struct BatchNormTransformInputChannelsLastKernelFunctor {
         fuse_relu_(fuse_relu) {}
 
  private:
-  const scalar_t* __restrict__ input_;
-  const scalar_t* __restrict__ z_;
-  const accscalar_t* __restrict__ mean_;
-  const accscalar_t* __restrict__ inv_std_;
-  const layerscalar_t* __restrict__ weight_;
-  const layerscalar_t* __restrict__ shift_;
-  scalar_t* __restrict__ out_;
+  const scalar_t* RESTRICT input_;
+  const scalar_t* RESTRICT z_;
+  const accscalar_t* RESTRICT mean_;
+  const accscalar_t* RESTRICT inv_std_;
+  const layerscalar_t* RESTRICT weight_;
+  const layerscalar_t* RESTRICT shift_;
+  scalar_t* RESTRICT out_;
   const int reduction_size_;
   const int stride_;
   const bool fuse_relu_;
@@ -1644,7 +1653,7 @@ struct BatchNormBackwardReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)wg_size_}, cgh);
+        sycl::range<1>{(size_t)wg_size_ / SIMD}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
@@ -1901,17 +1910,13 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
     int m_offset = item.get_global_id(0);
     int c_offset = item.get_global_id(1);
 
-    if (c_offset >= stride_ || m_offset >= reduction_size_) {
-      return;
-    }
-
     int loop_count =
         1 + (reduction_size_ - 1) / (inner_loop_stride * PARALLEL_LOADS);
     int address_base = m_offset * stride_ + c_offset;
     int address_increment = inner_loop_stride * stride_;
 
-    auto r_mean = mean_[c_offset];
-    auto factor = inv_std_[c_offset];
+    auto r_mean = c_offset < stride_ ? mean_[c_offset] : accscalar_t(0);
+    auto factor = c_offset < stride_ ? inv_std_[c_offset] : accscalar_t(0);
 
     for (int i = 0; i < loop_count; i++) {
       accscalar_t x_input[PARALLEL_LOADS];
@@ -2034,14 +2039,14 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
   }
 
   BatchNormBackwardReduceChannelsLastKernelFunctor(
-      const scalar_t* __restrict__ input,
-      const scalar_t* __restrict__ grad_output,
-      const accscalar_t* __restrict__ mean,
-      const accscalar_t* __restrict__ inv_std,
-      accscalar_t* __restrict__ sum_dy_o,
-      accscalar_t* __restrict__ sum_dy_xmu_o,
-      layerscalar_t* __restrict__ grad_weight,
-      layerscalar_t* __restrict__ grad_bias,
+      const scalar_t* RESTRICT input,
+      const scalar_t* RESTRICT grad_output,
+      const accscalar_t* RESTRICT mean,
+      const accscalar_t* RESTRICT inv_std,
+      accscalar_t* RESTRICT sum_dy_o,
+      accscalar_t* RESTRICT sum_dy_xmu_o,
+      layerscalar_t* RESTRICT grad_weight,
+      layerscalar_t* RESTRICT grad_bias,
       volatile accscalar_t* staging_data,
       int* semaphores,
       const int reduction_size,
@@ -2062,14 +2067,14 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
         wg_size_(wg_size) {}
 
  private:
-  const scalar_t* __restrict__ input_;
-  const scalar_t* __restrict__ grad_output_;
-  const accscalar_t* __restrict__ mean_;
-  const accscalar_t* __restrict__ inv_std_;
-  accscalar_t* __restrict__ sum_dy_o_;
-  accscalar_t* __restrict__ sum_dy_xmu_o_;
-  layerscalar_t* __restrict__ grad_weight_;
-  layerscalar_t* __restrict__ grad_bias_;
+  const scalar_t* RESTRICT input_;
+  const scalar_t* RESTRICT grad_output_;
+  const accscalar_t* RESTRICT mean_;
+  const accscalar_t* RESTRICT inv_std_;
+  accscalar_t* RESTRICT sum_dy_o_;
+  accscalar_t* RESTRICT sum_dy_xmu_o_;
+  layerscalar_t* RESTRICT grad_weight_;
+  layerscalar_t* RESTRICT grad_bias_;
   volatile accscalar_t* staging_data_;
   int* semaphores_;
   const int reduction_size_;
@@ -2395,7 +2400,7 @@ struct BatchNormBackwardElemtKernelFunctor {
       GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
           grad_input,
       const stat_accscalar_t norm_fct,
-      const int* __restrict__ numel = nullptr,
+      const int* RESTRICT numel = nullptr,
       const int world_size = 0)
       : input_(input),
         grad_output_(grad_output),
@@ -2451,7 +2456,7 @@ struct BatchNormBackwardElemtKernelFunctor {
   GenericPackedTensorAccessor<input_scalar_t, 3, DefaultPtrTraits, index_t>
       grad_input_;
   const stat_accscalar_t norm_fct_;
-  const int* __restrict__ numel_;
+  const int* RESTRICT numel_;
   const int world_size_;
 };
 
@@ -2680,18 +2685,18 @@ struct BatchNormBackwardElemtChannelsLastKernelFunctor {
   }
 
   BatchNormBackwardElemtChannelsLastKernelFunctor(
-      const scalar_t* __restrict__ grad_output,
-      const scalar_t* __restrict__ input,
-      const accscalar_t* __restrict__ mean,
-      const accscalar_t* __restrict__ inv_std,
-      const layerscalar_t* __restrict__ weight,
-      const accscalar_t* __restrict__ sum_dy,
-      const accscalar_t* __restrict__ sum_dy_xmu,
-      scalar_t* __restrict__ grad_input,
+      const scalar_t* RESTRICT grad_output,
+      const scalar_t* RESTRICT input,
+      const accscalar_t* RESTRICT mean,
+      const accscalar_t* RESTRICT inv_std,
+      const layerscalar_t* RESTRICT weight,
+      const accscalar_t* RESTRICT sum_dy,
+      const accscalar_t* RESTRICT sum_dy_xmu,
+      scalar_t* RESTRICT grad_input,
       const accscalar_t norm_fct,
       const int reduction_size,
       const int stride,
-      const int* __restrict__ numel = nullptr,
+      const int* RESTRICT numel = nullptr,
       const int64_t world_size = 0)
       : grad_output_(grad_output),
         input_(input),
@@ -2708,18 +2713,18 @@ struct BatchNormBackwardElemtChannelsLastKernelFunctor {
         world_size_(world_size) {}
 
  private:
-  const scalar_t* __restrict__ grad_output_;
-  const scalar_t* __restrict__ input_;
-  const accscalar_t* __restrict__ mean_;
-  const accscalar_t* __restrict__ inv_std_;
-  const layerscalar_t* __restrict__ weight_;
-  const accscalar_t* __restrict__ sum_dy_;
-  const accscalar_t* __restrict__ sum_dy_xmu_;
-  scalar_t* __restrict__ grad_input_;
+  const scalar_t* RESTRICT grad_output_;
+  const scalar_t* RESTRICT input_;
+  const accscalar_t* RESTRICT mean_;
+  const accscalar_t* RESTRICT inv_std_;
+  const layerscalar_t* RESTRICT weight_;
+  const accscalar_t* RESTRICT sum_dy_;
+  const accscalar_t* RESTRICT sum_dy_xmu_;
+  scalar_t* RESTRICT grad_input_;
   const accscalar_t norm_fct_;
   const int reduction_size_;
   const int stride_;
-  const int* __restrict__ numel_;
+  const int* RESTRICT numel_;
   const int64_t world_size_;
 };
 
@@ -3052,7 +3057,7 @@ void batch_norm_mean_var(
       }
 
       // For some reason this isn't an actual operator but it exists anyway...
-      var_mean_out(
+      at::native::var_mean_out(
           save_var,
           save_mean,
           self,

@@ -47,6 +47,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     list(APPEND SYCL_HOST_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+  if(USE_PER_OPERATOR_HEADERS)
+    list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
+  endif()
+
   # -- Kernel flags (SYCL_KERNEL_OPTIONS)
   # The fast-math will be enabled by default in SYCL compiler.
   # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
@@ -116,14 +120,18 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
 
-  if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device $ENV{TORCH_XPU_ARCH_LIST}")
+  if(WIN32)
+    set(AOT_TARGETS "ats-m150,lnl-m,mtl-u,mtl-h")
   else()
-    set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,xe-lpg,ats-m150")
-    message(STATUS "'TORCH_XPU_ARCH_LIST' not set. Using default configuration for a full AOT build." 
-              "Try specifying from 'pvc,xe-lpg,ats-m150' if you don't need.")
+    set(AOT_TARGETS "pvc,xe-lpg,ats-m150")
   endif()
-  message(STATUS "    SYCL_OFFLINE_COMPILER_AOT_OPTIONS: ${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}")
+  if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
+    set(AOT_TARGETS "$ENV{TORCH_XPU_ARCH_LIST}")
+  endif()
+  set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
+
+  set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
+  message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
 
   set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS} ${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
 else()

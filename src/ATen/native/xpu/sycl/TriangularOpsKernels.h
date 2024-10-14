@@ -3,8 +3,14 @@
 
 namespace at::native::xpu {
 
-Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k);
+TORCH_XPU_API void tril_kernel(
+    const Tensor& result,
+    const Tensor& self,
+    int64_t k);
 
-Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k);
+TORCH_XPU_API void triu_kernel(
+    const Tensor& result,
+    const Tensor& self,
+    int64_t k);
 
 } // namespace at::native::xpu

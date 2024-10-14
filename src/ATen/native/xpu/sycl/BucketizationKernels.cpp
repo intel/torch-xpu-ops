@@ -2,6 +2,8 @@
 #include <ATen/native/BucketizationUtils.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/BucketizationKernels.h>
+
 namespace at::native::xpu {
 
 // customized lower_bound func to ensure the low bound of 'nan', 'inf' etc. be
