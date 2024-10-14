@@ -9,25 +9,6 @@
 namespace at {
 namespace native {
 
-
-
-std::tuple<Tensor, Tensor> XPUNativeFunctions::adaptive_max_pool3d(
-    const Tensor& input,
-    IntArrayRef output_size) {
-  TensorArg input_arg{input, "input", 1};
-  checkAllSameGPU(__func__, {input_arg});
-
-  Tensor output, indices;
-  adaptive_max_pool3d_meta(input, output_size, output, indices);
-
-  if (input.numel() == 0 || output.numel() == 0) {
-    return {output, indices};
-  }
-
-  native::xpu::adaptive_max_pool3d_kernel(input, output_size, output, indices);
-  return {output, indices};
-}
-
 TORCH_IMPL_FUNC(adaptive_max_pool3d_out_xpu)
 (const Tensor& input,
  IntArrayRef output_size,
