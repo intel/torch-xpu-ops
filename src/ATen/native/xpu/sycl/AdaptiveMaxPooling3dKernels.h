@@ -1,19 +1,19 @@
 #pragma once
 
-#include <ATen/Tensor.h>
+#include <ATen/core/Tensor.h>
 
 namespace at::native::xpu {
 
 void adaptive_max_pool3d_kernel(
     const Tensor& input,
     IntArrayRef output_size,
-    Tensor& output,
-    Tensor& indices);
+    const Tensor& output,
+    const Tensor& indices);
 
 void adaptive_max_pool3d_backward_kernel(
     const Tensor& gradOutput,
     const Tensor& input,
     const Tensor& indices,
-    Tensor& gradInput);
+    const Tensor& gradInput);
 
 } // namespace at::native::xpu
