@@ -88,16 +88,16 @@ Tensor max_pool3d_with_indices_backward_xpu(
     const Tensor& indices) {
   globalContext().alertNotDeterministic("max_pool3d_with_indices_backward_xpu");
   auto gradInput = at::empty(input.sizes(), input.options());
-  max_pool3d_with_indices_backward_out(
+  at::native::xpu::max_pool3d_with_indices_backward_kernel(
+      gradInput,
       gradOutput,
       input,
+      indices,
       kernel_size,
       stride,
       padding,
       dilation,
-      ceil_mode,
-      indices,
-      gradInput);
+      ceil_mode);
 
   return gradInput;
 }
