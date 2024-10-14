@@ -1,15 +1,35 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Pool.h>
-#include <ATen/native/utils/ParamUtils.h>
+
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
+namespace native {
 
-using namespace at::native;
+std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
+    const Tensor& input,
+    IntArrayRef kernel_size,
+    IntArrayRef stride,
+    IntArrayRef padding,
+    IntArrayRef dilation,
+    bool ceil_mode) {
+  Tensor output = at::empty({0}, input.options());
+  Tensor indices = at::empty({0}, input.options().dtype(kLong));
 
-void max_pool3d_with_indices_meta(
+  at::native::xpu::max_pool3d_with_indices_kernel(
+      input,
+      kernel_size,
+      stride,
+      padding,
+      dilation,
+      ceil_mode,
+      output,
+      indices);
+
+  return std::tuple<Tensor, Tensor>(output, indices);
+}
+
+std::tuple<Tensor&, Tensor&> max_pool3d_with_indices_out_xpu(
     const Tensor& input,
     IntArrayRef kernel_size,
     IntArrayRef stride,
@@ -18,21 +38,20 @@ void max_pool3d_with_indices_meta(
     bool ceil_mode,
     Tensor& output,
     Tensor& indices) {
-  if (output.defined()) {
-    at::xpu::resize_out(output, {0}, {}, input.options());
-  } else {
-    output = at::xpu::create_out({0}, {}, input.options());
-  }
+  at::native::xpu::max_pool3d_with_indices_kernel(
+      input,
+      kernel_size,
+      stride,
+      padding,
+      dilation,
+      ceil_mode,
+      output,
+      indices);
 
-  /* indices will contain the locations for each output point */
-  if (indices.defined()) {
-    at::xpu::resize_out(indices, {0}, {}, input.options().dtype(kLong));
-  } else {
-    indices = at::xpu::create_out({0}, {}, input.options().dtype(kLong));
-  }
+  return std::tuple<Tensor&, Tensor&>(output, indices);
 }
 
-Tensor& max_pool3d_with_indices_backward_meta(
+Tensor& max_pool3d_with_indices_backward_out_xpu(
     const Tensor& gradOutput,
     const Tensor& input,
     IntArrayRef kernel_size,
@@ -42,102 +61,11 @@ Tensor& max_pool3d_with_indices_backward_meta(
     bool ceil_mode,
     const Tensor& indices,
     Tensor& gradInput) {
-  if (gradInput.defined()) {
-    at::xpu::resize_out(gradInput, input.sizes(), {}, input.options());
-  } else {
-    gradInput = at::xpu::create_out(input.sizes(), {}, input.options());
-  }
-  return gradInput;
-}
-
-std::tuple<Tensor, Tensor> XPUNativeFunctions::max_pool3d_with_indices(
-    const Tensor& input,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode) {
-  Tensor output;
-  Tensor indices;
-  max_pool3d_with_indices_meta(
-      input,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      output,
-      indices);
-
-  at::native::xpu::max_pool3d_with_indices_kernel(
-      input,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      output,
-      indices);
-
-  return std::tuple<Tensor&, Tensor&>(output, indices);
-}
-
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::max_pool3d_with_indices_out(
-    const Tensor& input,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode,
-    Tensor& output,
-    Tensor& indices) {
-  max_pool3d_with_indices_meta(
-      input,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      output,
-      indices);
-
-  at::native::xpu::max_pool3d_with_indices_kernel(
-      input,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      output,
-      indices);
-
-  return std::tuple<Tensor&, Tensor&>(output, indices);
-}
-
-Tensor& XPUNativeFunctions::max_pool3d_with_indices_backward_out(
-    const Tensor& grad_output,
-    const Tensor& self,
-    IntArrayRef kernel_size,
-    IntArrayRef stride,
-    IntArrayRef padding,
-    IntArrayRef dilation,
-    bool ceil_mode,
-    const Tensor& indices,
-    Tensor& grad_input) {
-  grad_input = max_pool3d_with_indices_backward_meta(
-      grad_output,
-      self,
-      kernel_size,
-      stride,
-      padding,
-      dilation,
-      ceil_mode,
-      indices,
-      grad_input);
-
+  globalContext().alertNotDeterministic(
+      "max_pool3d_with_indices_backward_out_xpu");
   at::native::xpu::max_pool3d_with_indices_backward_kernel(
-      grad_input,
-      grad_output,
+      gradInput,
+      gradOutput,
       self,
       indices,
       kernel_size,
@@ -146,31 +74,32 @@ Tensor& XPUNativeFunctions::max_pool3d_with_indices_backward_out(
       dilation,
       ceil_mode);
 
-  return grad_input;
+  return gradInput;
 }
 
-Tensor XPUNativeFunctions::max_pool3d_with_indices_backward(
-    const Tensor& grad_output,
-    const Tensor& self,
+Tensor max_pool3d_with_indices_backward_cuda(
+    const Tensor& gradOutput,
+    const Tensor& input,
     IntArrayRef kernel_size,
     IntArrayRef stride,
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode,
     const Tensor& indices) {
-  Tensor grad_input;
+  globalContext().alertNotDeterministic("max_pool3d_with_indices_backward_xpu");
+  auto gradInput = at::empty(input.sizes(), input.options());
   max_pool3d_with_indices_backward_out(
-      grad_output,
-      self,
+      gradOutput,
+      input,
       kernel_size,
       stride,
       padding,
       dilation,
       ceil_mode,
       indices,
-      grad_input);
+      gradInput);
 
-  return grad_input;
+  return gradInput;
 }
-
+} // namespace native
 } // namespace at
