@@ -2,7 +2,6 @@
 
 #include <ATen/AccumulateType.h>
 #include <c10/macros/Macros.h>
-#include "Numerics.h"
 
 namespace at::native::xpu {
 
@@ -465,13 +464,13 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
   }
 
   return (pp / pq *
-              Numerics<scalar_t>::cos(
+              std::cos(
                   x - scalar_t(2.356194490192344928846982537459627163)) -
           scalar_t(5.0) / x * (qp / qq) *
-              Numerics<scalar_t>::sin(
+              std::sin(
                   x - scalar_t(2.356194490192344928846982537459627163))) *
       scalar_t(0.797884560802865355879892119868763737) /
-      Numerics<scalar_t>::sqrt(x);
+      std::sqrt(x);
 } // bessel_j1_forward(scalar_t x)
 
 template <typename scalar_t>
@@ -560,7 +559,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
 
     return x * (yp / yq) +
         (scalar_t(0.636619772367581343075535053490057448) *
-         (bessel_j1_forward(x) * Numerics<scalar_t>::log(x) -
+         (bessel_j1_forward(x) * std::log(x) -
           scalar_t(1.0) / x));
   }
 
@@ -589,13 +588,13 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
   }
 
   return (pp / pq *
-              Numerics<scalar_t>::sin(
+              std::sin(
                   x - scalar_t(2.356194490192344928846982537459627163)) +
           scalar_t(5.0) / x * (qp / qq) *
-              Numerics<scalar_t>::cos(
+              std::cos(
                   x - scalar_t(2.356194490192344928846982537459627163))) *
       scalar_t(0.797884560802865355879892119868763737) /
-      Numerics<scalar_t>::sqrt(x);
+      std::sqrt(x);
 } // bessel_y1_forward(scalar_t x)
 
 } // namespace at::native::xpu
