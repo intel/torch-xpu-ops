@@ -1,9 +1,10 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/ActivationThresholdKernel.h>
 
 namespace at {
 namespace native {

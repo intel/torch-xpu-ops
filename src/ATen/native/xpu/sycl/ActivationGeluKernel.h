@@ -6,9 +6,11 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void gelu_kernel(TensorIteratorBase& iter, c10::string_view approximate);
+TORCH_XPU_API void gelu_kernel(
+    TensorIteratorBase& iter,
+    c10::string_view approximate);
 
-void gelu_backward_kernel(
+TORCH_XPU_API void gelu_backward_kernel(
     TensorIteratorBase& iter,
     c10::string_view approximate);
 

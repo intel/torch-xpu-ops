@@ -5,6 +5,8 @@
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
 
+#include <ATen/native/xpu/sycl/NonzeroKernel.h>
+
 namespace at::native::xpu {
 
 struct FlattenIdxtoRealIdxKernelFunctor {

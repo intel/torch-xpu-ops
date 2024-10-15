@@ -4,7 +4,7 @@
 
 namespace at::native::xpu {
 
-void cat_out_kernel(
+TORCH_XPU_API void cat_out_kernel(
     const ITensorListRef& tensors,
     int64_t dim,
     int64_t valid,

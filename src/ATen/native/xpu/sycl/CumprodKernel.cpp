@@ -3,6 +3,9 @@
 
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 
+#include <ATen/native/xpu/sycl/CumprodKernel.h>
+#include <ATen/native/xpu/sycl/ScanKernels.h>
+
 namespace at::native::xpu {
 
 void launch_cumprod_kernel(
