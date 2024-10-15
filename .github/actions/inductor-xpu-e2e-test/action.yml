@@ -131,10 +131,15 @@ runs:
                   do
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
                   done
+                  wait
                 else
-                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
+                  MODEL_ONLY_NAME="$(echo $MODEL_ONLY_NAME |sed 's/,/ /g')"
+                  for model in ${MODEL_ONLY_NAME}
+                  do
+                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${model} &
+                    wait
+                  done
                 fi
-                wait
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
                 LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
