@@ -185,8 +185,8 @@ void adaptive_max_pool3d_template(
 void adaptive_max_pool3d_kernel(
     const Tensor& input,
     IntArrayRef output_size,
-    Tensor& output,
-    Tensor& indices) {
+    const Tensor& output,
+    const Tensor& indices) {
   int64_t osizeT = output_size[0];
   int64_t osizeH = output_size[1];
   int64_t osizeW = output_size[2];
@@ -490,7 +490,7 @@ void adaptive_max_pool3d_backward_kernel(
     const Tensor& gradOutput,
     const Tensor& input,
     const Tensor& indices,
-    Tensor& gradInput) {
+    const Tensor& gradInput) {
   const Tensor gradOutput_ = gradOutput.contiguous();
 
   gradInput.zero_();
