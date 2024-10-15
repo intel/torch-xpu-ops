@@ -1,6 +1,4 @@
-#include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/AveragePool3dKernels.h>
 
 #include <xpu/ATen/ops/avg_pool3d_backward_native.h>
