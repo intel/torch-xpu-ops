@@ -13,6 +13,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
+#include <ATen/ops/from_blob.h>
 
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
 

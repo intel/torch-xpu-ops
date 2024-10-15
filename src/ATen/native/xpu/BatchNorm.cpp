@@ -336,7 +336,7 @@ std::tuple<Tensor, Tensor, Tensor> _new_batch_norm_backward_xpu(
       grad_input_mask);
 }
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_gather_stats(
+std::tuple<Tensor, Tensor> batch_norm_gather_stats_xpu(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
@@ -345,12 +345,11 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::batch_norm_gather_stats(
     double momentum,
     double eps,
     int64_t count) {
-  return native::xpu::batch_norm_gather_stats_kernel(
+  return xpu::batch_norm_gather_stats_kernel(
       input, mean, invstd, running_mean, running_var, momentum, eps, count);
 }
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::
-    batch_norm_gather_stats_with_counts(
+std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_xpu(
         const Tensor& input,
         const Tensor& mean,
         const Tensor& invstd,
@@ -359,7 +358,7 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::
         double momentum,
         double eps,
         const Tensor& counts) {
-  return native::xpu::batch_norm_gather_stats_with_counts_kernel(
+  return xpu::batch_norm_gather_stats_with_counts_kernel(
       input, mean, invstd, running_mean, running_var, momentum, eps, counts);
 }
 
