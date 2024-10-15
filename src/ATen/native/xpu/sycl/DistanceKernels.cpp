@@ -1,6 +1,6 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/DistanceKernels.h>
 
