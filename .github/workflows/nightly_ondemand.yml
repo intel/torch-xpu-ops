@@ -99,6 +99,7 @@ jobs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
       DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
       BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
       OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
