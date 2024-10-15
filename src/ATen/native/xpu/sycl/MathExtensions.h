@@ -2,6 +2,7 @@
 
 #include <ATen/AccumulateType.h>
 #include <c10/macros/Macros.h>
+#include "Numerics.h"
 
 namespace at::native::xpu {
 
@@ -360,5 +361,117 @@ static inline C10_HOST_DEVICE scalar_t calc_i1e(scalar_t _x) {
       chbevl(scalar_t{32.0} / x - scalar_t{2.0}, B, len) / std::sqrt(x);
   return (_x < scalar_t{0.0}) ? -out : out;
 }
+
+template <typename scalar_t>
+static inline scalar_t bessel_j1_forward(scalar_t x) {
+  const scalar_t PP[] = {
+      +7.62125616208173112003e-04,
+      +7.31397056940917570436e-02,
+      +1.12719608129684925192e+00,
+      +5.11207951146807644818e+00,
+      +8.42404590141772420927e+00,
+      +5.21451598682361504063e+00,
+      +1.00000000000000000254e+00,
+  };
+
+  const scalar_t PQ[] = {
+      +5.71323128072548699714e-04,
+      +6.88455908754495404082e-02,
+      +1.10514232634061696926e+00,
+      +5.07386386128601488557e+00,
+      +8.39985554327604159757e+00,
+      +5.20982848682361821619e+00,
+      +9.99999999999999997461e-01,
+  };
+
+  const scalar_t QP[] = {
+      +5.10862594750176621635e-02,
+      +4.98213872951233449420e+00,
+      +7.58238284132545283818e+01,
+      +3.66779609360150777800e+02,
+      +7.10856304998926107277e+02,
+      +5.97489612400613639965e+02,
+      +2.11688757100572135698e+02,
+      +2.52070205858023719784e+01,
+  };
+
+  const scalar_t QQ[] = {
+      +7.42373277035675149943e+01,
+      +1.05644886038262816351e+03,
+      +4.98641058337653607651e+03,
+      +9.56231892404756170795e+03,
+      +7.99704160447350683650e+03,
+      +2.82619278517639096600e+03,
+      +3.36093607810698293419e+02,
+  };
+
+  const scalar_t RP[] = {
+      -8.99971225705559398224e+08,
+      +4.52228297998194034323e+11,
+      -7.27494245221818276015e+13,
+      +3.68295732863852883286e+15,
+  };
+
+  const scalar_t RQ[] = {
+      +6.20836478118054335476e+02,
+      +2.56987256757748830383e+05,
+      +8.35146791431949253037e+07,
+      +2.21511595479792499675e+10,
+      +4.74914122079991414898e+12,
+      +7.84369607876235854894e+14,
+      +8.95222336184627338078e+16,
+      +5.32278620332680085395e+18,
+  };
+
+  if (x <= scalar_t(5.0)) {
+    scalar_t rp = 0.0;
+
+    for (uint8_t index = 0; index <= 3; index++) {
+      rp = rp * (x * x) + RP[index];
+    }
+
+    scalar_t rq = 0.0;
+
+    for (uint8_t index = 0; index <= 7; index++) {
+      rq = rq * (x * x) + RQ[index];
+    }
+
+    return rp / rq * x * (x * x - scalar_t(1.46819706421238932572e+01)) *
+        (x * x - scalar_t(4.92184563216946036703e+01));
+  }
+
+  scalar_t pp = 0.0;
+
+  for (uint8_t index = 0; index <= 6; index++) {
+    pp = pp * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + PP[index];
+  }
+
+  scalar_t pq = 0.0;
+
+  for (uint8_t index = 0; index <= 6; index++) {
+    pq = pq * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + PQ[index];
+  }
+
+  scalar_t qp = 0.0;
+
+  for (uint8_t index = 0; index <= 7; index++) {
+    qp = qp * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QP[index];
+  }
+
+  scalar_t qq = 0.0;
+
+  for (uint8_t index = 0; index <= 6; index++) {
+    qq = qq * (scalar_t(5.0) / x * (scalar_t(5.0) / x)) + QQ[index];
+  }
+
+  return (pp / pq *
+              Numerics<scalar_t>::cos(
+                  x - scalar_t(2.356194490192344928846982537459627163)) -
+          scalar_t(5.0) / x * (qp / qq) *
+              Numerics<scalar_t>::sin(
+                  x - scalar_t(2.356194490192344928846982537459627163))) *
+      scalar_t(0.797884560802865355879892119868763737) /
+      Numerics<scalar_t>::sqrt(x);
+} // bessel_j1_forward(scalar_t x)
 
 } // namespace at::native::xpu
