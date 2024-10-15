@@ -73,7 +73,10 @@ struct ApplyTriuTrilKernelFunctor {
 };
 
 template <typename scalar_t, typename IndexType, bool upper>
-void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
+void apply_triu_tril(
+    const Tensor& result,
+    const Tensor& self,
+    const int64_t k) {
   auto N = self.numel();
   IndexType self_size_0 = (IndexType)self.size(-2);
   IndexType self_size_1 = (IndexType)self.size(-1);
@@ -120,12 +123,13 @@ void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
     }                                                             \
   }
 
-Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k) {
+void tril_kernel(const Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
   if (self.numel() == 0) {
-    return result;
+    // return result;
+    return;
   }
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -137,15 +141,16 @@ Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k) {
       "tril_xpu",
       TRIU_TRIL_LAMBDA(false));
 
-  return result;
+  // return result;
 }
 
-Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k) {
+void triu_kernel(const Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
   if (self.numel() == 0) {
-    return result;
+    // return result;
+    return;
   }
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::Half,
@@ -156,7 +161,7 @@ Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k) {
       "triu_xpu",
       TRIU_TRIL_LAMBDA(true));
 
-  return result;
+  // return result;
 }
 
 } // namespace at::native::xpu

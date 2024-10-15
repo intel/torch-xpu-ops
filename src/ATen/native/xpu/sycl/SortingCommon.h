@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <comm/SYCLContext.h>
 #include <comm/Scalar.h>
 #include <comm/TensorInfo.h>

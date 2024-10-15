@@ -1,4 +1,4 @@
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
@@ -18,7 +18,7 @@ struct CopyScalarFunc {
   }
 };
 
-void copy_kernel(TensorIterator& iter) {
+void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
     AT_DISPATCH_QINT_TYPES(dtype, "copy_xpu", [&] {

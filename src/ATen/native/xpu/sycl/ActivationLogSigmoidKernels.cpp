@@ -45,7 +45,7 @@ struct LogSigmoidBackwardFunctor {
   }
 };
 
-void log_sigmoid_backward_kernel(TensorIteratorBase& iter) {
+void log_sigmoid_backward_kernel(TensorIterator& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

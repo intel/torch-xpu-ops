@@ -1,81 +1,21 @@
-#include <ATen/ATen.h>
+
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <ATen/native/DispatchStub.h>
 #include <ATen/native/ReduceOpsUtils.h>
+#include <ATen/native/Sorting.h>
 #include <ATen/native/TensorIterator.h>
+
 #include <ATen/native/xpu/sycl/Sorting.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
-#include <comm/RegisterUtils.h>
 #include <comm/TensorInfo.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/full.h>
+#include <ATen/ops/where.h>
 
 namespace at {
-
-void sort_stable_meta(
-    const Tensor& self,
-    Tensor& values,
-    Tensor& indices,
-    int64_t dim) {
-  maybe_wrap_dim(dim, self.dim());
-
-  // See issue: https://github.com/pytorch/pytorch/issues/65863
-  // Strides should be dense, so as not to allocate too much memory.
-  // We either use 'self' strides, or infer dense strides from them.
-  std::vector<int64_t> strides = (self.is_non_overlapping_and_dense())
-      ? self.strides().vec()
-      : at::infer_dense_strides(self.sizes(), self.strides());
-  auto sizes = self.sizes();
-  if (values.defined()) {
-    at::xpu::resize_out(values, sizes, strides, self.options());
-  } else {
-    values = at::xpu::create_out(sizes, strides, self.options());
-  }
-  if (indices.defined()) {
-    at::xpu::resize_out(indices, sizes, strides, self.options().dtype(kLong));
-  } else {
-    indices = at::xpu::create_out(sizes, strides, self.options().dtype(kLong));
-  }
-}
-
-::std::tuple<Tensor, Tensor> XPUNativeFunctions::sort(
-    const Tensor& self,
-    ::std::optional<bool> stable,
-    int64_t dim,
-    bool descending) {
-  Tensor values, indices;
-  sort_stable_meta(self, values, indices, dim);
-  return native::xpu::sort_stable_kernel(
-      self, stable, values, indices, dim, descending);
-}
-
-::std::tuple<Tensor&, Tensor&> XPUNativeFunctions::sort_out(
-    const Tensor& self,
-    ::std::optional<bool> stable,
-    int64_t dim,
-    bool descending,
-    Tensor& values,
-    Tensor& indices) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device, values, "xpu::sort_out_values_stable", "values");
-  c10::impl::check_and_update_common_device(
-      common_device, indices, "xpu::sort_out_values_stable", "indices");
-  c10::impl::check_and_update_common_device(
-      common_device, self, "xpu::sort_out_values_stable", "self");
-  sort_stable_meta(self, values, indices, dim);
-  return native::xpu::sort_stable_kernel(
-      self, stable, values, indices, dim, descending);
-}
-
-Tensor XPUNativeFunctions::argsort(
-    const Tensor& self,
-    bool stable,
-    int64_t dim,
-    bool descending) {
-  Tensor values, indices;
-  sort_stable_meta(self, values, indices, dim);
-  return std::get<1>(native::xpu::sort_stable_kernel(
-      self, stable, values, indices, dim, descending));
-}
+namespace native {
+REGISTER_XPU_DISPATCH(sort_stub, xpu::sort_stable_kernel);
 
 std::tuple<Tensor&, Tensor&> median_with_indices_impl(
     Tensor& values,
@@ -161,7 +101,7 @@ Tensor median_impl(const Tensor& self, bool ignore_nan) {
   }
 }
 
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::median_out(
+std::tuple<Tensor&, Tensor&> median_out_xpu(
     const Tensor& self,
     int64_t dim,
     bool keepdim,
@@ -171,11 +111,11 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::median_out(
       values, indices, self, dim, keepdim, /*ignore_nan=*/false);
 }
 
-Tensor XPUNativeFunctions::median(const Tensor& self) {
+Tensor median_xpu(const Tensor& self) {
   return median_impl(self, /*ignore_nan=*/false);
 }
 
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nanmedian_out(
+std::tuple<Tensor&, Tensor&> nanmedian_out_xpu(
     const Tensor& self,
     int64_t dim,
     bool keepdim,
@@ -185,8 +125,9 @@ std::tuple<Tensor&, Tensor&> XPUNativeFunctions::nanmedian_out(
       values, indices, self, dim, keepdim, /*ignore_nan=*/true);
 }
 
-Tensor XPUNativeFunctions::nanmedian(const Tensor& self) {
+Tensor nanmedian_xpu(const Tensor& self) {
   return median_impl(self, /*ignore_nan=*/true);
 }
 
+} // namespace native
 } // namespace at
