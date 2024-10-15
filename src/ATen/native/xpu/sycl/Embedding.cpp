@@ -1,4 +1,3 @@
-
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
@@ -6,6 +5,7 @@
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/DeviceProperties.h>
 
+#include <ATen/native/xpu/sycl/EmbeddingKernels.h>
 namespace at ::native::xpu {
 
 template <typename index_t>
