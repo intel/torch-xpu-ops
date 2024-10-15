@@ -31,7 +31,8 @@ Tensor& arange_out_xpu(
 
         TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
         TORCH_CHECK(
-            std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
+            std::isfinite(static_cast<double>(xstart)) &&
+                std::isfinite(static_cast<double>(xend)),
             "unsupported range: ",
             xstart,
             " -> ",
@@ -99,7 +100,8 @@ Tensor& range_xpu_out(
 
   TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
   TORCH_CHECK(
-      std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
+      std::isfinite(static_cast<double>(xstart)) &&
+          std::isfinite(static_cast<double>(xend)),
       "unsupported range: ",
       xstart,
       " -> ",
