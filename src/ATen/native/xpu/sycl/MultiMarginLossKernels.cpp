@@ -8,6 +8,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Resize.h>
+#include <ATen/ops/sum.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
