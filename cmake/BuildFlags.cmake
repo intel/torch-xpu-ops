@@ -47,6 +47,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     list(APPEND SYCL_HOST_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+  if(USE_PER_OPERATOR_HEADERS)
+    list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
+  endif()
+
   # -- Kernel flags (SYCL_KERNEL_OPTIONS)
   # The fast-math will be enabled by default in SYCL compiler.
   # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
@@ -124,6 +128,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
     set(AOT_TARGETS "$ENV{TORCH_XPU_ARCH_LIST}")
   endif()
+  set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
 
   set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device ${AOT_TARGETS}")
   message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
