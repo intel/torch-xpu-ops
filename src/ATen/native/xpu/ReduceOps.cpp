@@ -291,6 +291,31 @@ std::tuple<Tensor, Tensor> std_mean_xpu(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
 }
 
+void cummax_helper_xpu(
+    const Tensor& self,
+    Tensor& values,
+    Tensor& indices,
+    int64_t dim) {
+  at::native::xpu::cummax_kernel(self, values, indices, dim);
+}
+
+void cummin_helper_xpu(
+    const Tensor& self,
+    Tensor& values,
+    Tensor& indices,
+    int64_t dim) {
+  at::native::xpu::cummin_kernel(self, values, indices, dim);
+}
+
+Tensor& _logcumsumexp_out_xpu(const Tensor& self, int64_t dim, Tensor& result) {
+  return at::native::xpu::logcumsumexp_kernel(self, dim, result);
+}
+
+Tensor _logcumsumexp_xpu(const Tensor& self, int64_t dim) {
+  Tensor result = at::empty_like(self, MemoryFormat::Contiguous);
+  return _logcumsumexp_out_xpu(self, dim, result);
+}
+
 void aminmax_impl(
     const Tensor& self,
     int64_t dim_opt,
