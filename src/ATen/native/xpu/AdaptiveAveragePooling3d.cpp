@@ -1,9 +1,13 @@
-#include <ATen/ATen.h>
+#include <ATen/core/Tensor.h>
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling3dKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
-namespace at {
+#include <ATen/ops/empty.h>
+#include <ATen/ops/empty_like.h>
+#include <xpu/ATen/ops/adaptive_avg_pool3d_backward_native.h>
+#include <xpu/ATen/ops/adaptive_avg_pool3d_native.h>
+
+namespace at::native {
 
 Tensor& adaptive_avg_pool3d_out_xpu(
     const Tensor& input,
@@ -26,7 +30,7 @@ Tensor& adaptive_avg_pool3d_backward_out_xpu(
   globalContext().alertNotDeterministic("adaptive_avg_pool3d_backward_xpu");
   at::native::xpu::adaptive_avg_pool3d_backward_kernel(
       gradInput, gradOutput_, input);
-  return grad_input;
+  return gradInput;
 }
 
 Tensor adaptive_avg_pool3d_backward_xpu(
@@ -39,4 +43,4 @@ Tensor adaptive_avg_pool3d_backward_xpu(
   return gradInput;
 }
 
-} // namespace at
+} // namespace at::native
