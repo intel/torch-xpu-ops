@@ -1,5 +1,4 @@
 #include <ATen/core/Tensor.h>
-#include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 
 #include <ATen/ops/empty.h>
