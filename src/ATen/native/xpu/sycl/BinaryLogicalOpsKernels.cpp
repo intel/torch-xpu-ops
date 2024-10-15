@@ -17,7 +17,7 @@ struct LogicalAndFunctor {
   }
 };
 
-void logical_and_kernel(TensorIteratorBase& iter) {
+void logical_and_kernel(TensorIterator& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_and_xpu", [&]() {
@@ -40,7 +40,7 @@ struct LogicalOrFunctor {
   }
 };
 
-void logical_or_kernel(TensorIteratorBase& iter) {
+void logical_or_kernel(TensorIterator& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_or_xpu", [&]() {
@@ -62,7 +62,7 @@ struct LogicalXorFunctor {
   }
 };
 
-void logical_xor_kernel(TensorIteratorBase& iter) {
+void logical_xor_kernel(TensorIterator& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "logical_xor_xpu", [&]() {

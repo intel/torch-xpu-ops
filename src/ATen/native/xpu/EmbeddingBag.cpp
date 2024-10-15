@@ -1,11 +1,13 @@
-#include <ATen/ATen.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <xpu/ATen/ops/_embedding_bag_forward_only_native.h>
+#include <xpu/ATen/ops/_embedding_bag_native.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
+#include <comm/xpu_aten.h>
 
 namespace at {
+namespace native {
 
-std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::_embedding_bag(
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_xpu(
     const Tensor& weight,
     const Tensor& indices,
     const Tensor& offsets,
@@ -46,18 +48,17 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::_embedding_bag(
       padding_idx);
 }
 
-std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
-    _embedding_bag_forward_only(
-        const Tensor& weight,
-        const Tensor& indices,
-        const Tensor& offsets,
-        bool scale_grad_by_freq,
-        int64_t mode,
-        bool sparse,
-        const c10::optional<Tensor>& per_sample_weights_opt,
-        bool include_last_offset,
-        int64_t padding_idx) {
-  return _embedding_bag(
+std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only_xpu(
+    const Tensor& weight,
+    const Tensor& indices,
+    const Tensor& offsets,
+    bool scale_grad_by_freq,
+    int64_t mode,
+    bool sparse,
+    const c10::optional<Tensor>& per_sample_weights_opt,
+    bool include_last_offset,
+    int64_t padding_idx) {
+  return _embedding_bag_xpu(
       weight,
       indices,
       offsets,
@@ -69,32 +70,5 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> XPUNativeFunctions::
       padding_idx);
 }
 
-Tensor XPUNativeFunctions::_embedding_bag_backward(
-    const Tensor& grad,
-    const Tensor& indices,
-    const Tensor& offsets,
-    const Tensor& offset2bag,
-    const Tensor& bag_size,
-    const Tensor& maximum_indices,
-    int64_t num_weights,
-    bool scale_grad_by_freq,
-    int64_t mode,
-    bool sparse,
-    const c10::optional<Tensor>& per_sample_weights,
-    int64_t padding_idx) {
-  return at::native::_embedding_bag_backward_symint(
-      grad,
-      indices,
-      offsets,
-      offset2bag,
-      bag_size,
-      maximum_indices,
-      num_weights,
-      scale_grad_by_freq,
-      mode,
-      sparse,
-      per_sample_weights,
-      padding_idx);
-}
-
+} // namespace native
 } // namespace at

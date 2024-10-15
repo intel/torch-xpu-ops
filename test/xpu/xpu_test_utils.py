@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.hardshrink",
     "nn.functional.mish",
     "index_add",
     "index_fill",
@@ -89,6 +90,7 @@ _xpu_computation_op_list = [
     "masked_select",
     "isin",
     "isnan",
+    "lcm",
     "le",
     "log",
     "log10",
@@ -193,12 +195,15 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.ctc_loss",
     "sigmoid",
     "logsigmoid",
     "sgn",
     "sign",
     "signbit",
     "round",
+    "trunc",
+    "xlogy",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
@@ -225,6 +230,7 @@ _xpu_computation_op_list = [
     "frac",
     "aminmax",
     "argmin",
+    "angle",
     "conj_physical",
     "histogram",
     "repeat_interleave",
@@ -338,6 +344,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "histogram": {
+        ("TestCommonXPU", "test_out"):{
+            torch.float32: tol(atol=3e-5, rtol=5e-5),
+        }
+    }
 }
 
 
