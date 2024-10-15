@@ -3517,4 +3517,18 @@ skip_dict = {
         "test_meta_outplace_isin_xpu_bfloat16",
         "test_meta_outplace_unique_consecutive_xpu_bfloat16",
     ),
+
+    "test_type_promotion_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/357
+        "test_sparse_add_xpu",
+        "test_sparse_div_promotion_xpu_bool",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int32",
+        "test_sparse_div_promotion_xpu_int64",
+        "test_sparse_div_promotion_xpu_uint8",
+        "test_sparse_div_xpu",
+        "test_sparse_mul_xpu",
+        "test_sparse_sub_xpu",
+    ),
 }
