@@ -5,7 +5,7 @@
 
 namespace at {
 
-Tensor& XPUNativeFunctions::adaptive_avg_pool3d_out(
+Tensor& adaptive_avg_pool3d_out_xpu(
     const Tensor& input,
     IntArrayRef output_size,
     Tensor& output) {
@@ -13,32 +13,30 @@ Tensor& XPUNativeFunctions::adaptive_avg_pool3d_out(
   return output;
 }
 
-Tensor XPUNativeFunctions::_adaptive_avg_pool3d(
-    const Tensor& input,
-    IntArrayRef output_size) {
+Tensor adaptive_avg_pool3d_xpu(const Tensor& input, IntArrayRef output_size) {
   auto output = at::empty({0}, input.options());
-  adaptive_avg_pool3d_out(input, output_size, output);
+  at::native::xpu::adaptive_avg_pool3d_kernel(output, input, output_size);
   return output;
 }
 
-Tensor& XPUNativeFunctions::adaptive_avg_pool3d_backward_out(
-    const Tensor& grad_output,
+Tensor& adaptive_avg_pool3d_backward_out_xpu(
+    const Tensor& gradOutput_,
     const Tensor& input,
-    Tensor& grad_input) {
+    Tensor& gradInput) {
   globalContext().alertNotDeterministic("adaptive_avg_pool3d_backward_xpu");
   at::native::xpu::adaptive_avg_pool3d_backward_kernel(
-      grad_input, grad_output, input);
+      gradInput, gradOutput_, input);
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::_adaptive_avg_pool3d_backward(
-    const Tensor& grad_output,
+Tensor adaptive_avg_pool3d_backward_xpu(
+    const Tensor& gradOutput_,
     const Tensor& input) {
   globalContext().alertNotDeterministic("adaptive_avg_pool3d_backward_xpu");
-  auto grad_input = at::empty_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto gradInput = at::empty_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   at::native::xpu::adaptive_avg_pool3d_backward_kernel(
-      grad_input, grad_output, input);
-  return grad_input;
+      gradInput, gradOutput_, input);
+  return gradInput;
 }
 
 } // namespace at
