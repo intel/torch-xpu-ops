@@ -1,8 +1,8 @@
-#include <ATen/core/Tensor.h>
-#include <ATen/core/TensorBase.h>
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/TensorUtils.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/core/TensorBase.h>
 
 #include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
@@ -136,7 +136,7 @@ void launch_logcumsumexp_kernel(
     const Tensor& result,
     const Tensor& self,
     int64_t dim) {
-  AT_DISPATCH_FLOATING_TYPES_AND2(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
