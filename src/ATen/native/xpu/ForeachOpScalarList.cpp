@@ -15,7 +15,7 @@ namespace at {
 namespace native {
 
 #define FOREACH_BINARY_OP_SCALARLIST(NAME, DIV_OP)                             \
-  void foreach_tensor_##NAME##_scalar_kernel_xpu_(                             \
+  void foreach_tensor_##NAME##_scalarlist_kernel_xpu_(                             \
       TensorList tensors, at::ArrayRef<Scalar> scalars) {                      \
     check_foreach_api_restrictions(tensors, scalars);                          \
     if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                       \
@@ -27,7 +27,7 @@ namespace native {
         tensors, scalars);                                                     \
   }                                                                            \
                                                                                \
-  std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_xpu(               \
+  std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_kernel_xpu(               \
       TensorList tensors, at::ArrayRef<Scalar> scalars) {                      \
     check_foreach_api_restrictions(tensors, scalars);                          \
     if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                       \
