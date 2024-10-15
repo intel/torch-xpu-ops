@@ -700,6 +700,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()

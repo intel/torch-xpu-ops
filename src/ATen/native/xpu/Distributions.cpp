@@ -30,5 +30,54 @@ REGISTER_XPU_DISPATCH(
 REGISTER_XPU_DISPATCH(
     multinomial_with_replacement_stub,
     &xpu::multinomial_kernel);
+
+Tensor _s_binomial_xpu(
+    const Tensor& count,
+    const Tensor& prob,
+    std::optional<Generator> generator) {
+  auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+      generator, at::xpu::detail::getDefaultXPUGenerator());
+  Tensor ret = at::empty(count.sizes(), count.options());
+  at::TensorIterator iter = at::TensorIteratorConfig()
+                                .add_output(ret)
+                                .add_input(count)
+                                .add_input(prob)
+                                .build();
+  at::native::xpu::launch_binomial_xpu_kernel(iter, gen);
+  return ret;
+}
+
+Tensor _sample_dirichlet_xpu(
+    const Tensor& alpha,
+    std::optional<Generator> generator) {
+  auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+      generator, at::xpu::detail::getDefaultXPUGenerator());
+  Tensor ret = at::empty(alpha.sizes(), alpha.options());
+  at::native::xpu::launch_gamma_kernel(ret, alpha, gen);
+  auto gamma_sum = ret.sum(/*dim=*/-1, /*keepdim=*/true);
+  auto iter = at::TensorIteratorConfig()
+                  .add_output(ret)
+                  .add_input(ret)
+                  .add_input(gamma_sum)
+                  .build();
+  at::native::xpu::launch_dirichlet_kernel(iter);
+  return ret;
+}
+
+Tensor _dirichlet_grad_xpu(
+    const Tensor& x,
+    const Tensor& alpha,
+    const Tensor& total) {
+  Tensor ret = at::empty(x.sizes(), x.options());
+  auto iter = at::TensorIteratorConfig()
+                  .add_output(ret)
+                  .add_input(x)
+                  .add_input(alpha)
+                  .add_input(total)
+                  .build();
+  at::native::xpu::launch_dirichlet_grad_kernel(iter);
+  return ret;
+}
+
 } // namespace native
 } // namespace at
