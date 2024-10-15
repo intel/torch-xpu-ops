@@ -51,7 +51,6 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        export USE_STATIC_MKL=1
         source .github/scripts/env.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
@@ -92,7 +91,6 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        USE_STATIC_MKL: 1
       shell: bash
       run: |
         source activate e2e_ci

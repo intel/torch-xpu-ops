@@ -98,7 +98,6 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
-      USE_STATIC_MKL: 1
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
@@ -124,6 +123,7 @@ jobs:
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
           # pip install mkl-static mkl-include
+          pip install /home/sdp/mengfeil/mkl_include-2025.0.0-py2.py3-none-manylinux_2_28_x86_64.whl /home/sdp/mengfeil/mkl_static-2025.0.0-py2.py3-none-manylinux_2_28_x86_64.whl
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
