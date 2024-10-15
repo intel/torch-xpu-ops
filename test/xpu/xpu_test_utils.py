@@ -248,6 +248,10 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "special_bessel_j0",
+    "special_bessel_j1",
+    "special_bessel_y0",
+    "special_bessel_y1",
 ]
 
 _ops_without_cuda_support = [
