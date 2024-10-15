@@ -679,6 +679,22 @@
   structured_delegate: gcd.out
   variants: function, method
 
+- func: lcm.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: lcm_out
+  tags: pointwise
+
+- func: lcm(Tensor self, Tensor other) -> Tensor
+  structured_delegate: lcm.out
+  variants: function, method
+  tags: pointwise
+
+- func: lcm_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: lcm.out
+  variants: function, method
+
 # - func: relu(Tensor self) -> Tensor
 #   device_check: NoCheck   # TensorIterator
 #   variants: function, method
@@ -5208,3 +5224,60 @@
   dispatch:
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
+
+- func: _ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank=0, bool zero_infinity=False) -> (Tensor, Tensor)
+  dispatch:
+    XPU: ctc_loss_xpu
+  autogen: _ctc_loss.out
+  tags: dynamic_output_shape  # the shape of second output is data dependent
+
+- func: _ctc_loss.Tensor(Tensor log_probs, Tensor targets, Tensor input_lengths, Tensor target_lengths, int blank=0, bool zero_infinity=False) -> (Tensor, Tensor)
+  dispatch:
+    XPU: ctc_loss_tensor
+  autogen: _ctc_loss.Tensor_out
+  tags: dynamic_output_shape  # the shape of second output is data dependent
+
+- func: _ctc_loss_backward(Tensor grad, Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, Tensor neg_log_likelihood, Tensor log_alpha, int blank, bool zero_infinity=False) -> Tensor
+  dispatch:
+    XPU: ctc_loss_backward_xpu
+  autogen: _ctc_loss_backward.out
+
+- func: _ctc_loss_backward.Tensor(Tensor grad, Tensor log_probs, Tensor targets, Tensor input_lengths, Tensor target_lengths, Tensor neg_log_likelihood, Tensor log_alpha, int blank, bool zero_infinity=False) -> Tensor
+  dispatch:
+    XPU: ctc_loss_backward_tensor
+
+- func: hardshrink.out(Tensor self, Scalar lambd=0.5, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: hardshrink_out
+
+- func: hardshrink(Tensor self, Scalar lambd=0.5) -> Tensor
+  structured_delegate: hardshrink.out
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: hardshrink_backward.grad_input(Tensor grad_out, Tensor self, Scalar lambd, *, Tensor(a!) grad_input) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: hardshrink_backward_out
+
+- func: hardshrink_backward(Tensor grad_out, Tensor self, Scalar lambd) -> Tensor
+  structured_delegate: hardshrink_backward.grad_input
+  variants: function, method
+
+- func: angle(Tensor self) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    XPU: angle
+  tags: pointwise
+
+- func: angle.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: angle_out
+  tags: pointwise
+
