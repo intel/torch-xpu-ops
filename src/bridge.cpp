@@ -20,10 +20,11 @@ class LoadTorchXPUOps {
   LoadTorchXPUOps() {
     if (NULL == LoadLibrary(PATH_TO_TORCH_XPU_OPS_ATEN_LIB)) {
       std::ostringstream error;
-      error << "PyTorch XPU operators library is not loaded (ERROR: "
-            << GetLastError()
-            << "). Please check if PyTorch is installed correctly."
-            << " Or please file an issue on https://github.com/intel/torch-xpu-ops/issues.";
+      error
+          << "PyTorch XPU operators library is not loaded (ERROR: "
+          << GetLastError()
+          << "). Please check if PyTorch is installed correctly."
+          << " Or please file an issue on https://github.com/intel/torch-xpu-ops/issues.";
       throw std::runtime_error(error.str());
     }
   }
