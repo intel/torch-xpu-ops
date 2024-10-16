@@ -722,3 +722,5 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - _compute_linear_combination
+  - _compute_linear_combination.out
