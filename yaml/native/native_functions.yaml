@@ -3346,6 +3346,16 @@
   dispatch:
     XPU: _new_batch_norm_backward_xpu
 
+- func: batch_norm_gather_stats(Tensor input, Tensor mean, Tensor invstd, Tensor? running_mean, Tensor? running_var, float momentum, float eps, int count) -> (Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_gather_stats_xpu
+  autogen: batch_norm_gather_stats.out
+
+- func: batch_norm_gather_stats_with_counts(Tensor input, Tensor mean, Tensor invstd, Tensor? running_mean, Tensor? running_var, float momentum, float eps, Tensor counts) -> (Tensor, Tensor)
+  dispatch:
+    XPU: batch_norm_gather_stats_with_counts_xpu
+  autogen: batch_norm_gather_stats_with_counts.out
+
 - func: lerp.Scalar_out(Tensor self, Tensor end, Scalar weight, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured: True
@@ -5245,6 +5255,19 @@
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
 
+- func: _fused_dropout(Tensor self, float p, Generator? generator=None) -> (Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: fused_dropout_xpu
+  tags: nondeterministic_seeded
+  autogen: _fused_dropout.out
+
+- func: _masked_scale(Tensor self, Tensor mask, float scale) -> Tensor
+  variants: function
+  dispatch:
+    XPU: masked_scale_xpu
+  autogen: _masked_scale.out
+
 - func: _ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank=0, bool zero_infinity=False) -> (Tensor, Tensor)
   dispatch:
     XPU: ctc_loss_xpu
@@ -5300,4 +5323,3 @@
   dispatch:
     XPU: angle_out
   tags: pointwise
-
