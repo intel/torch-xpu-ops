@@ -47,7 +47,6 @@ bool check_complex(at::TensorList tensors) {
 
 #define FOREACH_UNARY_OP(OP_NAME)                                          \
   std::vector<Tensor> foreach_tensor_##OP_NAME##_xpu(TensorList tensors) { \
-
     check_foreach_api_restrictions(tensors);                               \
     if (!can_use_fast_route(tensors) ||                                    \
         has_integral_tensor(tensors, /*includeBool */ true)) {             \
