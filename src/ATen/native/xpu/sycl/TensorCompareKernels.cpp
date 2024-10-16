@@ -85,17 +85,21 @@ void where_kernel(TensorIterator& iter) {
 }
 
 void isposinf_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "isposinf_xpu", [&] {
-        gpu_kernel(iter, IsposinfFunctor<scalar_t>());
-      });
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(),
+      "isposinf_xpu",
+      [&] { gpu_kernel(iter, IsposinfFunctor<scalar_t>()); });
 }
 
 void isneginf_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "isneginf_xpu", [&] {
-        gpu_kernel(iter, IsneginfFunctor<scalar_t>());
-      });
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(),
+      "isneginf_xpu",
+      [&] { gpu_kernel(iter, IsneginfFunctor<scalar_t>()); });
 }
 
 void clamp_kernel(TensorIteratorBase& iter) {
