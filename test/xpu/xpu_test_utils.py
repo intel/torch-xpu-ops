@@ -249,6 +249,13 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "take",
+    "put",
+    "mode",
+    "log_normal",
+    "index_copy",
+    "tril_indicies",
+    "triu_indicies",
 ]
 
 _ops_without_cuda_support = [

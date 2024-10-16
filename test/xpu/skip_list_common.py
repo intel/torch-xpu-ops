@@ -16,7 +16,6 @@ skip_dict = {
         # AssertionError: RuntimeError not raised
         "test_errors_dot_xpu",
         "test_errors_kthvalue_xpu",
-        "test_errors_take_xpu",
         "test_errors_vdot_xpu",
         # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
@@ -67,7 +66,6 @@ skip_dict = {
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
-        "test_out_mode_xpu_float32",
 
         # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
         "test_out_nanmean_xpu_float32",
@@ -108,6 +106,10 @@ skip_dict = {
         "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
         "test_python_ref_torch_fallback__refs_div_no_rounding_mode_xpu_complex32",
         "test_python_ref_torch_fallback__refs_pow_xpu_complex32",
+        # returned index is dependent on input data and implementation detail, and no
+        # specification is given to uniquely identify the correct index 
+        # (e.g. index with maximal / minimal value)
+        "test_compare_cpu_mode",
 
         # unexpected success because of cpu fallback
         "test_out_triangular_solve_xpu_float32",
@@ -2595,6 +2597,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
         "test_scatter_add_one_dim_deterministic_xpu",
+        # internally uses index_put deterministic implementation
+        # dependent on "test_index_put_non_accumulate_deterministic"
+        "test_index_copy_deterministic",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
