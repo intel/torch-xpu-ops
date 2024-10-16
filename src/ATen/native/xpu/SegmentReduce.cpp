@@ -7,8 +7,9 @@
 #include <ATen/native/xpu/sycl/SegmentReduceKernels.h>
 
 namespace at {
+namespace native {
 
-Tensor XPUNativeFunctions::segment_reduce(
+Tensor segment_reduce_xpu(
     const Tensor& data,
     c10::string_view reduce,
     const std::optional<Tensor>& lengths,
@@ -80,7 +81,7 @@ Tensor XPUNativeFunctions::segment_reduce(
   }
 }
 
-Tensor XPUNativeFunctions::_segment_reduce_backward(
+Tensor _segment_reduce_backward_xpu(
     const Tensor& grad,
     const Tensor& output,
     const Tensor& data,
@@ -130,4 +131,5 @@ Tensor XPUNativeFunctions::_segment_reduce_backward(
   }
 }
 
+} // namespace native
 } // namespace at
