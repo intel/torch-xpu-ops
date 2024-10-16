@@ -41,7 +41,7 @@ namespace native {
 FOREACH_BINARY_OP_SCALARLIST(add, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(div, /*div_op*/ true);
-FOREACH_BINARY_OP_SCALARLIST(clamp_max, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALARLIST(clamp_max, /*div_op*/ true);
 
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME)                                \
   std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_xpu(                \
