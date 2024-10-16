@@ -267,7 +267,6 @@ _cuda_xfail_xpu_pass = [
     ("_batch_norm_with_update", "test_noncontiguous_samples"),
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
     ("histc", "test_out"),
-    ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
