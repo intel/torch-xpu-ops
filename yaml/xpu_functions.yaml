@@ -726,3 +726,5 @@ supported:
   - range.out
   - segment_reduce
   - _segment_reduce_backward
+  - _compute_linear_combination
+  - _compute_linear_combination.out
