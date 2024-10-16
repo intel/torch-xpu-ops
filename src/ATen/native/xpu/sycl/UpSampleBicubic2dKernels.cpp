@@ -327,6 +327,3 @@ void upsample_bicubic2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma clang diagnostic pop
-#pragma GCC diagnostic pop

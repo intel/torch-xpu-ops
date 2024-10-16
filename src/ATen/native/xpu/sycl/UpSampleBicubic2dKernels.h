@@ -12,7 +12,7 @@ TORCH_XPU_API void upsample_bicubic2d_kernel(
     std::optional<double> scales_h,
     std::optional<double> scales_w);
 
-void upsample_bicubic2d_backward_kernel(
+TORCH_XPU_API void upsample_bicubic2d_backward_kernel(
     const Tensor& grad_input,
     const Tensor& grad_output_,
     IntArrayRef output_size,
@@ -20,5 +20,5 @@ void upsample_bicubic2d_backward_kernel(
     bool align_corners,
     std::optional<double> scales_h,
     std::optional<double> scales_w);
-    
+
 } // namespace at::native::xpu
