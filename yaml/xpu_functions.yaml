@@ -722,3 +722,5 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - _embedding_bag_dense_backward
+  - _embedding_bag_per_sample_weights_backward
