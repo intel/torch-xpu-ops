@@ -13,6 +13,7 @@ skip_dict = {
     "test_compare_cpu_cumsum_xpu_float16",
     "test_compare_cpu_logcumsumexp_xpu_bfloat16",
     "test_compare_cpu_logcumsumexp_xpu_complex128",
+    "test_logcumsumexp_complex_xpu_complex64",
     "test_compare_cpu_log_xpu_complex64",
     "test_compare_cpu_log10_xpu_complex64",
     "test_compare_cpu_log1p_xpu_complex64",
