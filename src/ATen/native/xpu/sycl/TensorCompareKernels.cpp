@@ -21,6 +21,20 @@ struct WhereFunctor {
 };
 
 template <typename scalar_t>
+struct IsposinfFunctor {
+  bool operator()(scalar_t a) const {
+    return a == std::numeric_limits<scalar_t>::infinity();
+  }
+};
+
+template <typename scalar_t>
+struct IsneginfFunctor {
+  bool operator()(scalar_t a) const {
+    return a == -std::numeric_limits<scalar_t>::infinity();
+  }
+};
+
+template <typename scalar_t>
 struct ClampFunctor {
   scalar_t operator()(scalar_t v, scalar_t lower, scalar_t upper) const {
     if (at::_isnan(v)) {
@@ -67,6 +81,20 @@ void where_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "where_xpu", [&] {
         gpu_kernel(iter, WhereFunctor<scalar_t>());
+      });
+}
+
+void isposinf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "isposinf_xpu", [&] {
+        gpu_kernel(iter, IsposinfFunctor<scalar_t>());
+      });
+}
+
+void isneginf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "isneginf_xpu", [&] {
+        gpu_kernel(iter, IsneginfFunctor<scalar_t>());
       });
 }
 
