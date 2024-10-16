@@ -720,7 +720,6 @@ void log_normal_kernel(
     double mean,
     double std,
     RNG gen) {
-  TORCH_CHECK(std > 0.0, "log_normal_ expects std > 0.0, but found std=", std);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
