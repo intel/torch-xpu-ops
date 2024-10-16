@@ -43,6 +43,7 @@ REGISTER_XPU_DISPATCH(bitwise_and_stub, &xpu::bitwise_and_kernel);
 REGISTER_XPU_DISPATCH(bitwise_or_stub, &xpu::bitwise_or_kernel);
 REGISTER_XPU_DISPATCH(bitwise_xor_stub, &xpu::bitwise_xor_kernel);
 REGISTER_XPU_DISPATCH(gcd_stub, &xpu::gcd_kernel);
+REGISTER_XPU_DISPATCH(lcm_stub, &xpu::lcm_kernel);
 REGISTER_XPU_DISPATCH(maximum_stub, &xpu::maximum_kernel);
 REGISTER_XPU_DISPATCH(minimum_stub, &xpu::minimum_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);

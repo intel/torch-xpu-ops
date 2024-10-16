@@ -16,8 +16,8 @@
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <c10/macros/Macros.h>
 
-#include <ATen/ops/empty_strided.h>
 #include <ATen/native/xpu/sycl/Sorting.h>
+#include <ATen/ops/empty_strided.h>
 
 namespace at::native::xpu {
 
