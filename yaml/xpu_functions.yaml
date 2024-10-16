@@ -72,7 +72,6 @@ supported:
   - lerp.Scalar
   - lerp.Scalar_out
   - lerp_.Scalar
-  - linspace.out
   - gt.Scalar
   - gt.Scalar_out
   - gt_.Scalar
