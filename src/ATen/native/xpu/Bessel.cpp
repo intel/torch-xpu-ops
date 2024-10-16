@@ -3,6 +3,10 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/native/xpu/sycl/BesselJ0Kernel.h>
+#include <ATen/native/xpu/sycl/BesselJ1Kernel.h>
+#include <ATen/native/xpu/sycl/BesselY0Kernel.h>
+#include <ATen/native/xpu/sycl/BesselY1Kernel.h>
 
 namespace at {
 namespace native {
