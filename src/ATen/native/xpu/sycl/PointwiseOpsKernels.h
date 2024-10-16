@@ -4,9 +4,13 @@
 
 namespace at::native::xpu {
 
-TORCH_XPU_API void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value);
+TORCH_XPU_API void addcmul_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& value);
 
-TORCH_XPU_API void addcdiv_kernel(TensorIteratorBase& iter, const Scalar& value);
+TORCH_XPU_API void addcdiv_kernel(
+    TensorIteratorBase& iter,
+    const Scalar& value);
 
 TORCH_XPU_API void mse_backward_kernel(
     TensorIterator& iter,
