@@ -618,6 +618,8 @@ supported:
   - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
+  - grid_sampler_3d
+  - grid_sampler_3d_backward
   - acos
   - acos_
   - acos.out
