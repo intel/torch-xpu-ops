@@ -37,6 +37,11 @@ inputs:
     type: string
     default: 'main'
     description: Pytorch branch/commit
+  driver:
+    required: false
+    type: string
+    default: 'lts'
+    description: Driver lts/rolling
 
 runs:
   using: composite
@@ -82,9 +87,11 @@ runs:
         fi
         pip install numpy==1.26.4
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      shell: bash
       run: |
         source activate e2e_ci
         source .github/scripts/env.sh
@@ -147,9 +154,9 @@ runs:
         done
 
     - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+      shell: bash
       run: |
         cd ../pytorch
         rm -f inductor_log/summary_accuracy.csv
@@ -170,4 +177,3 @@ runs:
         suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
         scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
         python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}
-        

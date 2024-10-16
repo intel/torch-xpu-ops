@@ -180,4 +180,41 @@ void floor_kernel(TensorIteratorBase& iter) {
       });
 }
 
+// We manually overload trunc because std::trunc does not work with std::complex
+// types and ROCm.
+template <typename scalar_t>
+inline scalar_t trunc_wrapper(scalar_t a) {
+  return static_cast<scalar_t>(std::truncf(static_cast<float>(a)));
+}
+
+inline double trunc_wrapper(double a) {
+  return std::trunc(a);
+}
+
+inline c10::complex<float> trunc_wrapper(c10::complex<float> a) {
+  return c10::complex<float>(
+      std::truncf(static_cast<float>(a.real())),
+      std::truncf(static_cast<float>(a.imag())));
+}
+
+inline c10::complex<double> trunc_wrapper(c10::complex<double> a) {
+  return c10::complex<double>(
+      std::trunc(static_cast<double>(a.real())),
+      std::trunc(static_cast<double>(a.imag())));
+}
+
+template <typename scalar_t>
+struct TruncFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return trunc_wrapper(a);
+  }
+};
+
+void trunc_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half, ScalarType::BFloat16, iter.dtype(), "trunc_xpu", [&]() {
+        gpu_kernel(iter, TruncFunctor<scalar_t>());
+      });
+}
+
 } // namespace at::native::xpu
