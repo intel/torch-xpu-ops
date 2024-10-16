@@ -8,7 +8,9 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/ops/_softmax_backward_data.h>
 #include <ATen/ops/empty_like_native.h>
+#include <ATen/ops/softmax.h>
 
 #include <ATen/native/xpu/sycl/SoftMaxKernels.h>
 

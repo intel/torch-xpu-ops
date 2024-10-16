@@ -405,8 +405,6 @@ supported:
   - _softmax_backward_data.out
   - _log_softmax_backward_data
   - _log_softmax_backward_data.out
-  - _masked_softmax
-  - _masked_softmax_backward
   - scatter.src
   - scatter.src_out
   - scatter_.src
