@@ -9,6 +9,13 @@
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/narrow_native.h>
+#endif
+
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

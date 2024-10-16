@@ -1,5 +1,4 @@
 #include <ATen/native/ForeachUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -91,7 +90,7 @@ void _fused_adamw_xpu(
     const c10::optional<at::Tensor>& grad_scale,
     const c10::optional<at::Tensor>& found_inf) {
   if (lr.is_cpu()) {
-    XPUNativeFunctions::_fused_adamw_(
+    _fused_adamw_xpu(
         params,
         grads,
         exp_avgs,

@@ -3,7 +3,16 @@
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/empty_like.h>
+#include <ATen/ops/linear.h>
+#include <ATen/ops/scaled_dot_product_attention.h>
+#include <ATen/ops/split_native.h>
+#endif
 
 #include <ATen/native/transformers/xpu/sdp_utils.h>
 #include <ATen/native/transformers/xpu/sycl/AttentionKernels.h>
@@ -188,9 +197,8 @@ std::tuple<Tensor, Tensor> _native_multi_head_attention_xpu(
         value.view({value.size(0), -1, num_head, dim_per_head}).transpose(1, 2);
 
     sdp::sdp_params kernel_params{q, k, v, mask, 0.0, false, false};
-    auto backend =
-        static_cast<sdp::SDPBackend>(XPUNativeFunctions::_fused_sdp_choice(
-            q, k, v, mask, 0.0, false, {}, false));
+    auto backend = static_cast<sdp::SDPBackend>(
+        _fused_sdp_choice_xpu(q, k, v, mask, 0.0, false, {}, false));
 
     // strides from packed projection for nested tensors when seq_len is 1 will
     // be and will trigger a contiguous call in the kernel, so we prevent this
@@ -249,8 +257,7 @@ std::tuple<Tensor, Tensor> _native_multi_head_attention_xpu(
   }
 #endif
   // shape: 3 x [B, num_head, T, dim_per_head]
-  auto q_k_v =
-      XPUNativeFunctions::_transform_bias_rescale_qkv(qkv, qkv_bias, num_head);
+  auto q_k_v = _transform_bias_rescale_qkv_xpu(qkv, qkv_bias, num_head);
   qkv = Tensor(); // Not used any more, allow free
   auto& q = std::get<0>(q_k_v);
   const auto& k = std::get<1>(q_k_v);
