@@ -433,7 +433,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
   return dropout<bool>(gen, self, p1m);
 }
 
-std::tuple<Tensor, Tensor> fused_dropout(
+std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
     c10::optional<Generator> gen_) {
@@ -469,7 +469,10 @@ Tensor dropout_backward_kernel(
   return dropout_backward<bool>(grad, mask, scale);
 }
 
-Tensor masked_scale(const Tensor& self, const Tensor& mask, double scale) {
+Tensor masked_scale_kernel(
+    const Tensor& self,
+    const Tensor& mask,
+    double scale) {
   TORCH_CHECK(
       mask.scalar_type() == at::ScalarType::Byte,
       "mask should be torch.uint8 dtype");
