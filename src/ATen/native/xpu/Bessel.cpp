@@ -1,7 +1,6 @@
 #include <ATen/native/UnaryOps.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
-#include <comm/xpu_aten.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/BesselJ0Kernel.h>
 #include <ATen/native/xpu/sycl/BesselJ1Kernel.h>
