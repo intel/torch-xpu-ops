@@ -708,6 +708,21 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/484
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
+        "test_scatter_add__xpu_complex64",
+        "test_scatter_add__xpu_float16",
+        "test_scatter_add__xpu_float32",
+        "test_scatter_add_mult_index_base_xpu_float32",
+        "test_scatter_reduce_mean_xpu_bfloat16",
+        "test_scatter_reduce_mean_xpu_float16",
+        "test_scatter_reduce_mean_xpu_float32",
+        "test_scatter_reduce_mean_xpu_float64",
+        "test_scatter_reduce_mean_xpu_int16",
+        "test_scatter_reduce_mean_xpu_int32",
+        "test_scatter_reduce_mean_xpu_int64",
+        "test_scatter_reduce_mean_xpu_int8",
+        "test_scatter_reduce_mean_xpu_uint8",
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "test_autograd_fallback_xpu.py": None,
@@ -1591,8 +1606,8 @@ skip_dict = {
         "test_triangular_solve_xpu_complex128",
         "test_triangular_solve_xpu_complex64",
         "test_triangular_solve_xpu_float64",
-        # https://github.com/intel/torch-xpu-ops/issues/317
-        # addmm.out, addmv.out, linalg_lstsq, vdot&dot lack XPU support and fallback to CPU
+        # https://github.com/intel/torch-xpu-ops/issues/821
+        # addmm.out, addmv.out, linalg_lstsq, vdot&dot, _int_mm lack XPU support and fallback to CPU
         "test_addmm_sizes_xpu_complex128",
         "test_addmm_sizes_xpu_complex64",
         "test_blas_alpha_beta_empty_xpu_complex128",
@@ -1603,6 +1618,7 @@ skip_dict = {
         "test_linalg_lstsq_input_checks_xpu_float64",
         "test_dot_invalid_args_xpu",
         "test_vdot_invalid_args_xpu",
+        "test__int_mm_errors_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/821
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         "test_norm_fused_type_promotion_xpu_bfloat16",
@@ -1613,6 +1629,7 @@ skip_dict = {
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
+        "test_matmul_offline_tunableop_xpu_float16",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
@@ -2574,6 +2591,10 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+        # scatter_add needs handle XPU deterministic
+        # https://github.com/intel/torch-xpu-ops/issues/906
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "nn/test_multihead_attention_xpu.py": (

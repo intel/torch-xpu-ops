@@ -16,13 +16,21 @@ add_library(
 set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
 target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
+
 add_library(
   torch_xpu_ops_aten
   SHARED
   ${ATen_XPU_NATIVE_CPP_SRCS}
   ${ATen_XPU_GEN_SRCS})
 install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+# target_compile_definitions(torch_xpu_ops_aten PRIVATE CAFFE2_BUILD_MAIN_LIB)
+target_compile_definitions(torch_xpu_ops_aten PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
+target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
+target_link_libraries(torch_xpu_ops_aten PUBLIC c10)
+
+
+
 
 if(BUILD_SEPARATE_OPS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
@@ -177,4 +185,5 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
   target_link_libraries(${lib} PUBLIC c10_xpu)
+  target_link_libraries(${lib} PUBLIC torch_cpu)
 endforeach()
