@@ -680,6 +680,9 @@ skip_dict = {
 
         # https://github.com/intel/torch-xpu-ops/issues/922
         "test_dtypes_isin_xpu",
+
+        # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
+        "test_view_replay_multinomial_xpu_float32",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -1640,6 +1643,7 @@ skip_dict = {
         "test_validator_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float64",
+        "_tuning_tunableop_",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
