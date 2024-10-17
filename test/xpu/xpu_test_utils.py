@@ -223,6 +223,7 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "linspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -237,6 +238,8 @@ _xpu_computation_op_list = [
     "repeat_interleave",
     "fmax",
     "fmin",
+    "max",
+    "min",
     "floor",
     "floor_divide",
     "copysign",
@@ -253,10 +256,12 @@ _xpu_computation_op_list = [
     "special_bessel_j1",
     "special_bessel_y0",
     "special_bessel_y1",
+    "log_normal",
 ]
 
 _ops_without_cuda_support = [
     "histogram",
+    "histogramdd",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
