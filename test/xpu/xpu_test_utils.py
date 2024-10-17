@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.hardshrink",
     "nn.functional.mish",
     "index_add",
     "index_fill",
@@ -89,6 +90,7 @@ _xpu_computation_op_list = [
     "masked_select",
     "isin",
     "isnan",
+    "lcm",
     "le",
     "log",
     "log10",
@@ -109,6 +111,7 @@ _xpu_computation_op_list = [
     "median",
     "nanmedian",
     "native_dropout_backward",
+    "nn.functional.dropout",
     "ne",
     "neg",
     "nn.functional.elu",
@@ -193,6 +196,7 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.ctc_loss",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -227,6 +231,7 @@ _xpu_computation_op_list = [
     "frac",
     "aminmax",
     "argmin",
+    "angle",
     "conj_physical",
     "histogram",
     "repeat_interleave",
@@ -244,10 +249,12 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "log_normal",
 ]
 
 _ops_without_cuda_support = [
     "histogram",
+    "histogramdd",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
