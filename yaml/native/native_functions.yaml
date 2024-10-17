@@ -5713,6 +5713,14 @@
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
 
+- func: _assert_async(Tensor self) -> ()
+  dispatch:
+    XPU: _assert_async_xpu
+
+- func: _assert_async.msg(Tensor self, str assert_msg) -> ()
+  dispatch:
+    XPU: _assert_async_msg_xpu
+
 - func: _fused_dropout(Tensor self, float p, Generator? generator=None) -> (Tensor, Tensor)
   variants: function
   dispatch:
