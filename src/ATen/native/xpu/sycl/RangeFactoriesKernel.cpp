@@ -7,9 +7,7 @@
 
 #include <ATen/native/xpu/sycl/RangeFactoriesKernel.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 constexpr int nitem_per_wg = 256;
 constexpr int item_work_size = 1;
@@ -145,6 +143,89 @@ Tensor& range_kernel(
   return result;
 }
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+
+template <typename scalar_t, typename step_type>
+struct LinspaceFunctor {
+  scalar_t operator()(int64_t ind) const {
+    if (ind < halfway_) {
+      return scalar_start_ + (step_ * ind);
+    }
+
+    return scalar_end_ - step_ * (steps_ - ind - 1);
+  }
+  LinspaceFunctor(
+      scalar_t scalar_start,
+      scalar_t scalar_end,
+      int64_t steps,
+      step_type step,
+      int64_t halfway)
+      : scalar_start_(scalar_start),
+        scalar_end_(scalar_end),
+        steps_(steps),
+        step_(step),
+        halfway_(halfway) {}
+
+ private:
+  scalar_t scalar_start_;
+  scalar_t scalar_end_;
+  int64_t steps_;
+  step_type step_;
+  int64_t halfway_;
+};
+
+Tensor& linspace_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    Tensor& result) {
+  TORCH_CHECK(steps >= 0, "number of steps must be non-negative");
+
+  if (result.numel() != steps) {
+    result.resize_({steps});
+  }
+  bool is_contiguous = result.is_contiguous();
+  Tensor r = !is_contiguous
+      ? at::empty_like(result, LEGACY_CONTIGUOUS_MEMORY_FORMAT)
+      : result;
+
+  if (steps == 0) {
+    // skip
+  } else if (steps == 1) {
+    r.fill_(start);
+  } else if (isIntegralType(r.scalar_type(), 0)) {
+    AT_DISPATCH_INTEGRAL_TYPES(r.scalar_type(), "linspace_xpu", [&]() {
+      scalar_t scalar_start = start.to<scalar_t>();
+      scalar_t scalar_end = end.to<scalar_t>();
+      // Cast `end` and `start` to `float`, since range can be larger than
+      // scalar_t for integral types
+      float step =
+          (static_cast<float>(scalar_end) - static_cast<float>(scalar_start)) /
+          (steps - 1);
+      const int64_t halfway = steps / 2;
+      auto f = LinspaceFunctor<scalar_t, float>(
+          scalar_start, scalar_end, steps, step, halfway);
+
+      gpu_kernel_with_index(r, f);
+    });
+  } else {
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+        kHalf, kBFloat16, r.scalar_type(), "linspace_xpu", [&]() {
+          scalar_t scalar_start = start.to<scalar_t>();
+          scalar_t scalar_end = end.to<scalar_t>();
+          scalar_t step =
+              (scalar_end - scalar_start) / static_cast<scalar_t>(steps - 1);
+          const int64_t halfway = steps / 2;
+          auto f = LinspaceFunctor<scalar_t, scalar_t>(
+              scalar_start, scalar_end, steps, step, halfway);
+
+          gpu_kernel_with_index(r, f);
+        });
+  }
+
+  if (!is_contiguous) {
+    result.copy_(r);
+  }
+
+  return result;
+}
+} // namespace at::native::xpu
