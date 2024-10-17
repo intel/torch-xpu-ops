@@ -254,6 +254,7 @@ _xpu_computation_op_list = [
 
 _ops_without_cuda_support = [
     "histogram",
+    "histogramdd",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
