@@ -365,7 +365,7 @@ struct Sigmoid {
 template <typename T>
 struct Round {
   T operator()(T t) const {
-    return std::nearbyint(static_cast<float>(t));
+    return std::nearbyint(t);
   }
 };
 
