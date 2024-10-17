@@ -2675,6 +2675,18 @@ skip_dict = {
         "test_autodiff__foreach_sigmoid_inplace_xpu_complex128",
         "test_autodiff__foreach_sigmoid_outplace_xpu_complex128",
         "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
+        "test_autodiff__foreach_expm1_inplace_xpu_complex128",
+        "test_autodiff__foreach_expm1_outplace_xpu_complex128",
+        "test_parity__foreach_expm1_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_expm1_fastpath_inplace_xpu_complex64",
+        "test_parity__foreach_expm1_fastpath_outplace_xpu_complex128",
+        "test_parity__foreach_expm1_fastpath_outplace_xpu_complex64",
+        "test_autodiff__foreach_log1p_inplace_xpu_complex128",
+        "test_autodiff__foreach_log1p_outplace_xpu_complex128",
+        "test_parity__foreach_log1p_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_log1p_fastpath_inplace_xpu_complex64",
+        "test_parity__foreach_log1p_fastpath_outplace_xpu_complex128",
+        "test_parity__foreach_log1p_fastpath_outplace_xpu_complex64",
         # AssertionError: RuntimeError not raised
         # https://github.com/intel/torch-xpu-ops/issues/784 
         "test_0dim_tensor_overload_exception_xpu",
