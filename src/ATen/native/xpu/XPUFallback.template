@@ -184,7 +184,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "geometric_",
     "geqrf",
     "heaviside.out",
-    "histc",
     "i0.out",
     "igammac.out",
     "igamma.out",

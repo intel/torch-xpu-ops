@@ -235,6 +235,7 @@ _xpu_computation_op_list = [
     "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
