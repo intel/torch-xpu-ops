@@ -5,6 +5,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
+#include <ATen/ops/_foreach_clamp_min_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarKernels.h>
@@ -37,6 +38,7 @@ namespace native {
 FOREACH_BINARY_OP_SCALAR(add, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(div, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALAR(clamp_min, /*div_op*/ true);
 
 #define FOREACH_POINTWISE_OP_SCALAR(NAME)                                   \
   std::vector<Tensor> foreach_tensor_##NAME##_scalar_xpu(                   \
