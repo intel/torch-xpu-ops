@@ -1823,6 +1823,16 @@
   dispatch:
     XPU: log_softmax_backward_xpu_out
 
+- func: _masked_softmax(Tensor self, Tensor mask, int? dim=None, int? mask_type=None) -> Tensor
+  dispatch:
+    XPU: masked_softmax_xpu
+  autogen: _masked_softmax.out
+
+- func: _masked_softmax_backward(Tensor grad_output, Tensor output, Tensor mask, int? dim=None) -> Tensor
+  dispatch:
+    XPU: masked_softmax_backward_xpu
+  autogen: _masked_softmax_backward.out
+
 - func: exp(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: exp.out

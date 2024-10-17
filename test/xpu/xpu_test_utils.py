@@ -178,6 +178,7 @@ _xpu_computation_op_list = [
     "cat",
     "log_softmax",
     "softmax",
+    "_softmax_backward_data",
     "scatter",
     "gather",
     "nn.functional.adaptive_max_pool2d",
