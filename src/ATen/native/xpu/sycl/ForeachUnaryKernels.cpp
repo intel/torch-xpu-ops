@@ -198,10 +198,10 @@ FOREACH_UNARY_KERNEL(erfc) {
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(expm1) {
-  return floating_half_bfloat16_<Expm1>(tensors);
+  return floating_complex_half_bfloat16_<Expm1>(tensors);
 }
 FOREACH_UNARY_KERNEL(expm1) {
-  return floating_half_bfloat16<Expm1>(tensors);
+  return floating_complex_half_bfloat16<Expm1>(tensors);
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(lgamma) {
@@ -327,10 +327,10 @@ FOREACH_UNARY_KERNEL(log) {
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(log1p) {
-  return floating_half_bfloat16_<Log1p>(tensors);
+  return floating_complex_half_bfloat16_<Log1p>(tensors);
 }
 FOREACH_UNARY_KERNEL(log1p) {
-  return floating_half_bfloat16<Log1p>(tensors);
+  return floating_complex_half_bfloat16<Log1p>(tensors);
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(log2) {
@@ -392,10 +392,10 @@ struct Sign {
 };
 
 FOREACH_UNARY_INPLACE_KERNEL(sigmoid) {
-  return floating_half_bfloat16_<Sigmoid>(tensors);
+  return floating_complex_half_bfloat16_<Sigmoid>(tensors);
 }
 FOREACH_UNARY_KERNEL(sigmoid) {
-  return floating_half_bfloat16<Sigmoid>(tensors);
+  return floating_complex_half_bfloat16<Sigmoid>(tensors);
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(round) {
