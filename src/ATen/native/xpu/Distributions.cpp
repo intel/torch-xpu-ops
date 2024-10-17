@@ -30,6 +30,7 @@ REGISTER_XPU_DISPATCH(
 REGISTER_XPU_DISPATCH(
     multinomial_with_replacement_stub,
     &xpu::multinomial_kernel);
+REGISTER_XPU_DISPATCH(log_normal_stub, &xpu::log_normal_kernel);
 
 Tensor _s_binomial_xpu(
     const Tensor& count,

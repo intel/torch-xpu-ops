@@ -51,4 +51,10 @@ TORCH_XPU_API void cauchy_kernel(
     double sigma,
     c10::optional<Generator> gen);
 
+TORCH_XPU_API void log_normal_kernel(
+    TensorIteratorBase& iter,
+    double mean,
+    double std,
+    std::optional<Generator> gen);
+
 } // namespace at::native::xpu
