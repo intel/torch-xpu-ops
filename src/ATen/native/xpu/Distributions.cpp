@@ -23,7 +23,6 @@ REGISTER_XPU_DISPATCH(bernoulli_tensor_stub, &xpu::bernoulli_tensor_kernel);
 REGISTER_XPU_DISPATCH(random_stub, &xpu::random_kernel);
 REGISTER_XPU_DISPATCH(random_from_to_stub, &xpu::random_from_to_kernel);
 REGISTER_XPU_DISPATCH(exponential_stub, &xpu::exponential_kernel);
-REGISTER_XPU_DISPATCH(cauchy_stub, &xpu::cauchy_kernel);
 REGISTER_XPU_DISPATCH(
     random_full_64_bits_range_stub,
     &xpu::random_full_64_bits_range_kernel);
@@ -31,6 +30,8 @@ REGISTER_XPU_DISPATCH(
     multinomial_with_replacement_stub,
     &xpu::multinomial_kernel);
 REGISTER_XPU_DISPATCH(log_normal_stub, &xpu::log_normal_kernel);
+REGISTER_XPU_DISPATCH(cauchy_stub, &xpu::cauchy_kernel);
+REGISTER_XPU_DISPATCH(geometric_stub, &xpu::geometric_kernel);
 
 Tensor _s_binomial_xpu(
     const Tensor& count,

@@ -252,6 +252,7 @@ _xpu_computation_op_list = [
     "heaviside",
     "argsort",
     "cauchy",
+    "geometric",
     "log_normal",
 ]
 

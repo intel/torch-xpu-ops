@@ -920,7 +920,7 @@ void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.dtype(),
-      "exponential__xpu_",
+      "exponential_xpu",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto lambd = static_cast<accscalar_t>(lambda);
@@ -952,7 +952,11 @@ void log_normal_kernel(
     double mean,
     double std,
     RNG gen) {
-      "log_normal_xpu_",
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "log_normal_xpu",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto mean_ = static_cast<accscalar_t>(mean);
@@ -963,7 +967,7 @@ void log_normal_kernel(
             iter, gen, log_normal_functor);
       });
 }
-  
+
 // ====================== Cauchy ======================
 
 template <typename scalar_t, typename accscalar_t>
@@ -987,13 +991,11 @@ void cauchy_kernel(
     double median,
     double sigma,
     RNG gen) {
-  TORCH_CHECK(
-      sigma > 0.0, "cauchy_ expects sigma > 0.0, but found sigma=", sigma);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.dtype(),
-      "cauchy__xpu",
+      "cauchy_xpu",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto median_ = static_cast<accscalar_t>(median);
@@ -1001,6 +1003,37 @@ void cauchy_kernel(
         CauchyFunctor<scalar_t, accscalar_t> cauchy_func(median_, sigma_);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
             iter, gen, cauchy_func);
+      });
+}
+
+// ====================== Geometric ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct GeometricFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(
+        transformation::geometric<accscalar_t>(rand, p_));
+  }
+
+  GeometricFunctor(accscalar_t p) : p_(p) {}
+
+ private:
+  accscalar_t p_;
+};
+
+template <typename RNG>
+void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "geometric_xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto p_ = static_cast<accscalar_t>(p);
+        GeometricFunctor<scalar_t, accscalar_t> geometric_func(p_);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, geometric_func);
       });
 }
 

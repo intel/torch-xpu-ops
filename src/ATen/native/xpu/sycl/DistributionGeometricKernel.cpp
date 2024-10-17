@@ -4,14 +4,13 @@
 
 namespace at::native::xpu {
 
-void cauchy_kernel(
+void geometric_kernel(
     TensorIteratorBase& iter,
-    double median,
-    double sigma,
+    double p_,
     c10::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
       gen, at::xpu::detail::getDefaultXPUGenerator());
-  at::native::templates::xpu::cauchy_kernel(iter, median, sigma, generator);
+  at::native::templates::xpu::geometric_kernel(iter, p_, generator);
 }
 
 } // namespace at::native::xpu
