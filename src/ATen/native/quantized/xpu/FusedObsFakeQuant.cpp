@@ -1,6 +1,5 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -14,22 +13,22 @@
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 
 namespace at {
+namespace native {
 
-std::tuple<at::Tensor, at::Tensor> XPUNativeFunctions::
-    _fused_moving_avg_obs_fq_helper(
-        const at::Tensor& x,
-        const at::Tensor& observer_on,
-        const at::Tensor& fake_quant_on,
-        at::Tensor& running_min,
-        at::Tensor& running_max,
-        at::Tensor& scale,
-        at::Tensor& zero_point,
-        const double averaging_const,
-        const int64_t quant_min,
-        const int64_t quant_max,
-        const int64_t ch_axis,
-        bool per_row_fq,
-        bool symmetric_quant) {
+std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
+    const at::Tensor& x,
+    const at::Tensor& observer_on,
+    const at::Tensor& fake_quant_on,
+    at::Tensor& running_min,
+    at::Tensor& running_max,
+    at::Tensor& scale,
+    at::Tensor& zero_point,
+    const double averaging_const,
+    const int64_t quant_min,
+    const int64_t quant_max,
+    const int64_t ch_axis,
+    bool per_row_fq,
+    bool symmetric_quant) {
   TORCH_CHECK(
       ch_axis < x.dim(),
       "Error in fused_moving_avg_obs_fq_helper: ch_axis must be < "
@@ -108,4 +107,5 @@ std::tuple<at::Tensor, at::Tensor> XPUNativeFunctions::
   }
 }
 
+} // namespace native
 } // namespace at

@@ -2,8 +2,6 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/core/Tensor.h>
 
-#include <ATen/xpu/XPUNativeFunctions.h>
-
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
@@ -15,8 +13,9 @@
 #include <ATen/native/quantized/xpu/sycl/MakePerTensorQuantizedTensorKernel.h>
 
 namespace at {
+namespace native {
 
-Tensor XPUNativeFunctions::_make_per_tensor_quantized_tensor(
+Tensor make_per_tensor_quantized_tensor_xpu(
     const Tensor& self,
     double scale,
     int64_t zero_point) {
@@ -35,7 +34,7 @@ Tensor XPUNativeFunctions::_make_per_tensor_quantized_tensor(
   return dst;
 }
 
-Tensor XPUNativeFunctions::_make_per_channel_quantized_tensor(
+Tensor make_per_channel_quantized_tensor_xpu(
     const Tensor& self,
     const Tensor& scales,
     const Tensor& zero_points,
@@ -56,4 +55,5 @@ Tensor XPUNativeFunctions::_make_per_channel_quantized_tensor(
   return dst;
 }
 
+} // namespace native
 } // namespace at
