@@ -25,5 +25,16 @@ Tensor embedding_dense_backward_xpu(
       grad_output, indices, num_weights, padding_idx, scale_grad_by_freq);
   ;
 }
+
+Tensor& embedding_renorm_xpu_(
+    Tensor& self,
+    const Tensor& indices,
+    double max_norm,
+    double norm_type) {
+  return native::xpu::embedding_renorm_kernel(
+      self, indices, max_norm, norm_type);
+}
+
+
 } // namespace native
 } // namespace at
