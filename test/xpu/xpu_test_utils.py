@@ -238,6 +238,8 @@ _xpu_computation_op_list = [
     "repeat_interleave",
     "fmax",
     "fmin",
+    "max",
+    "min",
     "floor",
     "floor_divide",
     "copysign",

@@ -2011,6 +2011,452 @@
     XPU: foreach_tensor_addcdiv_scalar_xpu_
   autogen: _foreach_addcdiv.Scalar_out
 
+- func: _foreach_abs(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_abs_slow
+    XPU: foreach_tensor_abs_xpu
+
+- func: _foreach_abs_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_abs_slow_
+    XPU: foreach_tensor_abs_xpu_
+  autogen: _foreach_abs.out
+
+- func: _foreach_acos(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_acos_slow
+    XPU: foreach_tensor_acos_xpu
+
+- func: _foreach_acos_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_acos_slow_
+    XPU: foreach_tensor_acos_xpu_
+  autogen: _foreach_acos.out
+
+- func: _foreach_asin(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_asin_slow
+    XPU: foreach_tensor_asin_xpu
+
+- func: _foreach_asin_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_asin_slow_
+    XPU: foreach_tensor_asin_xpu_
+  autogen: _foreach_asin.out
+
+- func: _foreach_atan(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_atan_slow
+    XPU: foreach_tensor_atan_xpu
+
+- func: _foreach_atan_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_atan_slow_
+    XPU: foreach_tensor_atan_xpu_
+  autogen: _foreach_atan.out
+
+- func: _foreach_ceil(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_ceil_slow
+    XPU: foreach_tensor_ceil_xpu
+
+- func: _foreach_ceil_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_ceil_slow_
+    XPU: foreach_tensor_ceil_xpu_
+  autogen: _foreach_ceil.out
+
+- func: _foreach_cos(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_cos_slow
+    XPU: foreach_tensor_cos_xpu
+
+- func: _foreach_cos_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_cos_slow_
+    XPU: foreach_tensor_cos_xpu_
+  autogen: _foreach_cos.out
+
+- func: _foreach_cosh(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_cosh_slow
+    XPU: foreach_tensor_cosh_xpu
+
+- func: _foreach_cosh_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_cosh_slow_
+    XPU: foreach_tensor_cosh_xpu_
+  autogen: _foreach_cosh.out
+
+- func: _foreach_erf(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_erf_slow
+    XPU: foreach_tensor_erf_xpu
+
+- func: _foreach_erf_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_erf_slow_
+    XPU: foreach_tensor_erf_xpu_
+  autogen: _foreach_erf.out
+
+- func: _foreach_erfc(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_erfc_slow
+    XPU: foreach_tensor_erfc_xpu
+
+- func: _foreach_erfc_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_erfc_slow_
+    XPU: foreach_tensor_erfc_xpu_
+  autogen: _foreach_erfc.out
+
+- func: _foreach_exp(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_exp_slow
+    XPU: foreach_tensor_exp_xpu
+
+- func: _foreach_exp_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_exp_slow_
+    XPU: foreach_tensor_exp_xpu_
+  autogen: _foreach_exp.out
+
+- func: _foreach_expm1(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_expm1_slow
+    XPU: foreach_tensor_expm1_xpu
+
+- func: _foreach_expm1_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_expm1_slow_
+    XPU: foreach_tensor_expm1_xpu_
+  autogen: _foreach_expm1.out
+
+- func: _foreach_floor(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_floor_slow
+    XPU: foreach_tensor_floor_xpu
+
+- func: _foreach_floor_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_floor_slow_
+    XPU: foreach_tensor_floor_xpu_
+  autogen: _foreach_floor.out
+
+- func: _foreach_frac(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_frac_slow
+    XPU: foreach_tensor_frac_xpu
+
+- func: _foreach_frac_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_frac_slow_
+    XPU: foreach_tensor_frac_xpu_
+  autogen: _foreach_frac.out
+
+
+- func: _foreach_lgamma(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lgamma_slow
+    XPU: foreach_tensor_lgamma_xpu
+
+- func: _foreach_lgamma_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lgamma_slow_
+    XPU: foreach_tensor_lgamma_xpu_
+  autogen: _foreach_lgamma.out
+
+- func: _foreach_log(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log_slow
+    XPU: foreach_tensor_log_xpu
+
+- func: _foreach_log_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log_slow_
+    XPU: foreach_tensor_log_xpu_
+  autogen: _foreach_log.out
+
+- func: _foreach_log10(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log10_slow
+    XPU: foreach_tensor_log10_xpu
+
+- func: _foreach_log10_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log10_slow_
+    XPU: foreach_tensor_log10_xpu_
+  autogen: _foreach_log10.out
+
+- func: _foreach_log1p(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log1p_slow
+    XPU: foreach_tensor_log1p_xpu
+
+- func: _foreach_log1p_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log1p_slow_
+    XPU: foreach_tensor_log1p_xpu_
+  autogen: _foreach_log1p.out
+
+- func: _foreach_log2(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log2_slow
+    XPU: foreach_tensor_log2_xpu
+
+- func: _foreach_log2_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_log2_slow_
+    XPU: foreach_tensor_log2_xpu_
+  autogen: _foreach_log2.out
+
+
+- func: _foreach_neg(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_neg_slow
+    XPU: foreach_tensor_neg_xpu
+
+- func: _foreach_neg_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_neg_slow_
+    XPU: foreach_tensor_neg_xpu_
+  autogen: _foreach_neg.out
+
+
+- func: _foreach_reciprocal(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_reciprocal_slow
+    XPU: foreach_tensor_reciprocal_xpu
+
+- func: _foreach_reciprocal_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_reciprocal_slow_
+    XPU: foreach_tensor_reciprocal_xpu_
+  autogen: _foreach_reciprocal.out
+
+- func: _foreach_round(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_round_slow
+    XPU: foreach_tensor_round_xpu
+
+- func: _foreach_round_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_round_slow_
+    XPU: foreach_tensor_round_xpu_
+  autogen: _foreach_round.out
+
+- func: _foreach_sigmoid(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sigmoid_slow
+    XPU: foreach_tensor_sigmoid_xpu
+
+- func: _foreach_sigmoid_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sigmoid_slow_
+    XPU: foreach_tensor_sigmoid_xpu_
+  autogen: _foreach_sigmoid.out
+
+- func: _foreach_sign(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sign_slow
+    XPU: foreach_tensor_sign_xpu
+
+- func: _foreach_sign_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sign_slow_
+    XPU: foreach_tensor_sign_xpu_
+  autogen: _foreach_sign.out
+
+- func: _foreach_sin(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sin_slow
+    XPU: foreach_tensor_sin_xpu
+
+- func: _foreach_sin_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sin_slow_
+    XPU: foreach_tensor_sin_xpu_
+  autogen: _foreach_sin.out
+
+- func: _foreach_sinh(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sinh_slow
+    XPU: foreach_tensor_sinh_xpu
+
+- func: _foreach_sinh_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sinh_slow_
+    XPU: foreach_tensor_sinh_xpu_
+  autogen: _foreach_sinh.out
+
+- func: _foreach_sqrt(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sqrt_slow
+    XPU: foreach_tensor_sqrt_xpu
+
+- func: _foreach_sqrt_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sqrt_slow_
+    XPU: foreach_tensor_sqrt_xpu_
+  autogen: _foreach_sqrt.out
+
+- func: _foreach_tan(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_tan_slow
+    XPU: foreach_tensor_tan_xpu
+
+- func: _foreach_tan_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_tan_slow_
+    XPU: foreach_tensor_tan_xpu_
+  autogen: _foreach_tan.out
+
+- func: _foreach_tanh(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_tanh_slow
+    XPU: foreach_tensor_tanh_xpu
+
+- func: _foreach_tanh_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_tanh_slow_
+    XPU: foreach_tensor_tanh_xpu_
+  autogen: _foreach_tanh.out
+
+- func: _foreach_trunc(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_trunc_slow
+    XPU: foreach_tensor_trunc_xpu
+
+- func: _foreach_trunc_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_trunc_slow_
+    XPU: foreach_tensor_trunc_xpu_
+  autogen: _foreach_trunc.out
+
+- func: _foreach_zero_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_zero_slow_
+    XPU: foreach_tensor_zero_xpu_
+  autogen: _foreach_zero, _foreach_zero.out
+
 - func: native_layer_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight, Tensor? bias, float eps) -> (Tensor, Tensor, Tensor)
   dispatch:
     XPU: layer_norm_xpu
@@ -2404,19 +2850,6 @@
 - func: addr.out(Tensor self, Tensor vec1, Tensor vec2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
   dispatch:
     XPU: addr_out
-
-- func: _foreach_sqrt(Tensor[] self) -> Tensor[]
-  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
-  variants: function
-  dispatch:
-    XPU: foreach_tensor_sqrt_xpu
-
-- func: _foreach_sqrt_(Tensor(a!)[] self) -> ()
-  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
-  variants: function
-  dispatch:
-    XPU: foreach_tensor_sqrt_xpu_
-  autogen: _foreach_sqrt.out
 
 - func: _foreach_lerp.List(Tensor[] self, Tensor[] tensors1, Tensor[] weights) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensors are on different devices
@@ -5280,6 +5713,14 @@
   category_override: factory
   dispatch:
     CompositeExplicitAutograd: linspace_out
+
+- func: _assert_async(Tensor self) -> ()
+  dispatch:
+    XPU: _assert_async_xpu
+
+- func: _assert_async.msg(Tensor self, str assert_msg) -> ()
+  dispatch:
+    XPU: _assert_async_msg_xpu
 
 - func: _fused_dropout(Tensor self, float p, Generator? generator=None) -> (Tensor, Tensor)
   variants: function
