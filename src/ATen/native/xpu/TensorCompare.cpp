@@ -59,6 +59,8 @@ void minmax_out_impl(
 } // namespace xpu
 
 REGISTER_XPU_DISPATCH(where_kernel, &xpu::where_kernel);
+REGISTER_XPU_DISPATCH(isposinf_stub, &xpu::isposinf_kernel);
+REGISTER_XPU_DISPATCH(isneginf_stub, &xpu::isneginf_kernel);
 REGISTER_XPU_DISPATCH(clamp_min_scalar_stub, &xpu::clamp_min_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_max_scalar_stub, &xpu::clamp_max_scalar_kernel);
 REGISTER_XPU_DISPATCH(clamp_scalar_stub, &xpu::clamp_scalar_kernel);
