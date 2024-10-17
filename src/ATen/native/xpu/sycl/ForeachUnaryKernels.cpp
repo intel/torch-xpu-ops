@@ -1,8 +1,8 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
-#include <ATen/native/TensorIterator.h>
 #include <ATen/OpMathType.h>
+#include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -451,8 +451,13 @@ void foreach_tensor_zero_kernel(TensorList& tensors) {
   std::vector<std::vector<at::Tensor>> tensor_lists;
   tensor_lists.emplace_back(tensors.vec());
 
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
-      ScalarType::Half, tensors[0].scalar_type(), "foreach_zero_xpu", [&]() {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      ScalarType::Bool,
+      tensors[0].scalar_type(),
+      "foreach_zero_xpu",
+      [&]() {
         multi_tensor_apply<1>(
             tensor_lists,
             ZeroFunctor<
