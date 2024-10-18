@@ -223,6 +223,7 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "linspace",
     "unique_consecutive",
     "unique",
     "multinomial",
