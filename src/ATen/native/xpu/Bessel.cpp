@@ -6,6 +6,11 @@
 #include <ATen/native/xpu/sycl/BesselJ1Kernel.h>
 #include <ATen/native/xpu/sycl/BesselY0Kernel.h>
 #include <ATen/native/xpu/sycl/BesselY1Kernel.h>
+#include <ATen/native/xpu/sycl/ModifiedBesselI0Kernel.h>
+#include <ATen/native/xpu/sycl/ModifiedBesselI1Kernel.h>
+#include <ATen/native/xpu/sycl/ModifiedBesselK0Kernel.h>
+#include <ATen/native/xpu/sycl/ModifiedBesselK1Kernel.h>
+#include <ATen/native/xpu/sycl/SphericalBesselJ0Kernel.h>
 
 namespace at {
 namespace native {
