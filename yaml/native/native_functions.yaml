@@ -5357,29 +5357,11 @@
   variants: method
   structured_delegate: renorm.out
 
-- func: isposinf(Tensor self) -> Tensor
-  variants: function, method
-  structured_delegate: isposinf.out
-  dispatch:
-    SparseCPU, SparseCUDA: isposinf_sparse
-    SparseCsrCPU, SparseCsrCUDA: isposinf_sparse_csr
-  tags: pointwise
-
 - func: isposinf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: isposinf_out
-    SparseCPU, SparseCUDA: isposinf_sparse_out
-    SparseCsrCPU, SparseCsrCUDA: isposinf_sparse_csr_out
-  tags: pointwise
-
-- func: isneginf(Tensor self) -> Tensor
-  variants: function, method
-  structured_delegate: isneginf.out
-  dispatch:
-    SparseCPU, SparseCUDA: isneginf_sparse
-    SparseCsrCPU, SparseCsrCUDA: isneginf_sparse_csr
   tags: pointwise
 
 - func: isneginf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5387,8 +5369,6 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: isneginf_out
-    SparseCPU, SparseCUDA: isneginf_sparse_out
-    SparseCsrCPU, SparseCsrCUDA: isneginf_sparse_csr_out
   tags: pointwise
 
 - func: topk.values(Tensor self, SymInt k, int dim=-1, bool largest=True, bool sorted=True, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
