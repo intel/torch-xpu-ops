@@ -10,6 +10,8 @@
 
 #include <ATen/native/xpu/sycl/ModifiedBesselI1Kernel.h>
 
+namespace at::native::xpu {
+
 template <typename scalar_t>
 struct ModifiedBesselI1Functor {
   scalar_t operator()(scalar_t a) const {

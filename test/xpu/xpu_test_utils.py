@@ -252,15 +252,6 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
-    "special_bessel_j0",
-    "special_bessel_j1",
-    "special_bessel_y0",
-    "special_bessel_y1",
-    "special_modified_bessel_i0",
-    "special_modified_bessel_i1",
-    "special_modified_bessel_k0",
-    "special_modified_bessel_k1",
-    "special_spherical_bessel_j0",
     "log_normal",
 ]
 
