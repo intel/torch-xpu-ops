@@ -211,7 +211,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "linalg_solve_triangular",
     "_linalg_svd.U",
     "_logcumsumexp",
-    "logspace.out",
     "lu_unpack.out",
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
