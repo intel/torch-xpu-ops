@@ -5,10 +5,12 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
+#include <ATen/ops/_foreach_copy_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachCopyKernels.h>
 
 #include <ATen/ops/empty_like.h>
 
@@ -137,6 +139,25 @@ void foreach_tensor_lerp_ternary_xpu_(
   // TODO: Handle version bump in codegen.
   // increment_version
   for (const auto& t : tensors1) {
+    t.unsafeGetTensorImpl()->bump_version();
+  }
+}
+
+void foreach_tensor_copy_list_kernel_xpu_(
+    at::TensorList self,
+    at::TensorList src,
+    bool non_blocking) {
+      at::native::check_foreach_api_restrictions(self, src);
+      if (!at::native::can_use_fast_route(
+              self, src, /* does_op_promote_integer_inputs_to_float */ false)) {
+        return at::native::foreach_tensor_copy_list_kernel_slow_(
+            self, src, non_blocking);
+    }
+
+  xpu::foreach_copy_list_kernel_(self, src);
+
+  // increment_version
+  for (const auto& t : self) {
     t.unsafeGetTensorImpl()->bump_version();
   }
 }
