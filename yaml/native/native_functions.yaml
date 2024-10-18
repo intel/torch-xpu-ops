@@ -3332,6 +3332,19 @@
     XPU: grid_sampler_2d_backward_xpu
   autogen: grid_sampler_2d_backward.out
 
+- func: grid_sampler_3d(Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners) -> Tensor
+  dispatch:
+    XPU: grid_sampler_3d_xpu
+  autogen: grid_sampler_3d.out
+
+# `grid_sampler_3d_backward` takes in `output_mask` to optimize performance for
+# the case where `input` doesn't require gradient. Gradient for `grid` is always
+# computed (only `output_mask[0]` is checked by the implementations).
+- func: grid_sampler_3d_backward(Tensor grad_output, Tensor input, Tensor grid, int interpolation_mode, int padding_mode, bool align_corners, bool[2] output_mask) -> (Tensor, Tensor)
+  dispatch:
+    XPU: grid_sampler_3d_backward_xpu
+  autogen: grid_sampler_3d_backward.out
+
 - func: _foreach_norm.Scalar(Tensor[] self, Scalar ord=2, ScalarType? dtype=None) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
