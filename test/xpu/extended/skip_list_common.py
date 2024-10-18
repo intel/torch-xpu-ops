@@ -175,5 +175,14 @@ skip_dict = {
     # specification is given to uniquely identify the correct index 
     # (e.g. index with maximal / minimal value)
     "test_compare_cpu_mode",
+
+    # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
+    # https://github.com/intel/torch-xpu-ops/issues/623
+    "test_compare_cpu_nextafter_xpu_float16",
+
+    # AssertionError: Tensor-likes are not close!
+    # Greatest absolute difference: 0.0625 at index (1,) (up to 0.001 allowed)
+    #  Greatest relative difference: 0.00640869140625 at index (1,) (up to 0.001 allowed)
+    "test_compare_cpu_xlogy_xpu_bfloat16",
     ),
 }

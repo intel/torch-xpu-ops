@@ -698,6 +698,44 @@ void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
       });
 }
 
+// ====================== LogNormal ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct LogNormalFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(transformation::log_normal<accscalar_t>(
+        transformation::normal<accscalar_t>(rand, mean_, std_)));
+  }
+  LogNormalFunctor(accscalar_t mean, accscalar_t std)
+      : mean_(mean), std_(std) {}
+
+ private:
+  accscalar_t mean_;
+  accscalar_t std_;
+};
+
+template <typename RNG>
+void log_normal_kernel(
+    TensorIteratorBase& iter,
+    double mean,
+    double std,
+    RNG gen) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "log_normal_xpu_",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto mean_ = static_cast<accscalar_t>(mean);
+        auto std_ = static_cast<accscalar_t>(std);
+        // define functor to multiply std and add mean
+        LogNormalFunctor<scalar_t, accscalar_t> log_normal_functor(mean_, std_);
+        normal_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, log_normal_functor);
+      });
+}
+
 } // namespace xpu
 } // namespace templates
 } // namespace native
