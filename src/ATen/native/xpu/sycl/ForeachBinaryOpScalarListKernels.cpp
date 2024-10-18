@@ -155,6 +155,14 @@ FOREACH_BINARY_SCALARLIST_KERNEL(div) {
   return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalars);
 }
 
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(clamp_max) {
+  return all_types_half_bfloat16_<foreach_internal::minimum>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(clamp_max) {
+  return all_types_half_bfloat16<foreach_internal::minimum>(tensors, scalars);
+}
+
 FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(clamp_min) {
   return all_types_half_bfloat16_<foreach_internal::maximum>(tensors, scalars);
 }

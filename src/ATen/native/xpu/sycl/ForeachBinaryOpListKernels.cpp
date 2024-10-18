@@ -182,6 +182,14 @@ FOREACH_BINARY_LIST_KERNEL(div) {
   return all_types_complex_bool_half_bfloat16<std::divides>(tensor1, tensor2);
 }
 
+FOREACH_BINARY_LIST_INPLACE_KERNEL(clamp_max) {
+  return all_types_half_bfloat16_<foreach_internal::minimum>(tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_KERNEL(clamp_max) {
+  return all_types_half_bfloat16<foreach_internal::minimum>(tensor1, tensor2);
+}
+
 FOREACH_BINARY_LIST_INPLACE_KERNEL(clamp_min) {
   return all_types_half_bfloat16_<foreach_internal::maximum>(tensor1, tensor2);
 }
