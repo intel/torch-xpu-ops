@@ -11,6 +11,7 @@
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachCopyKernels.h>
 
 #include <ATen/ops/empty_like.h>
 
