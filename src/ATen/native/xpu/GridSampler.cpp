@@ -48,7 +48,7 @@ std::tuple<Tensor, Tensor> grid_sampler_2d_backward_xpu(
   return std::make_tuple(grad_input, grad_grid);
 }
 
-Tensor XPUNativeFunctions::grid_sampler_3d(
+Tensor grid_sampler_3d_xpu(
     const Tensor& input,
     const Tensor& grid,
     int64_t interpolation_mode,
@@ -58,7 +58,7 @@ Tensor XPUNativeFunctions::grid_sampler_3d(
       input, grid, interpolation_mode, padding_mode, align_corners);
 }
 
-std::tuple<Tensor, Tensor> XPUNativeFunctions::grid_sampler_3d_backward(
+std::tuple<Tensor, Tensor> grid_sampler_3d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& input,
     const Tensor& grid,
@@ -88,4 +88,5 @@ std::tuple<Tensor, Tensor> XPUNativeFunctions::grid_sampler_3d_backward(
   return std::make_tuple(grad_input, grad_grid);
 }
 
+} // namespace native
 } // namespace at
