@@ -5880,3 +5880,8 @@
   dispatch:
     XPU: angle_out
   tags: pointwise
+
+- func: channel_shuffle(Tensor self, SymInt groups) -> Tensor
+  dispatch:
+    XPU: channel_shuffle
+  autogen: channel_shuffle.out
