@@ -4694,24 +4694,24 @@
   # wrappers for TH functions
   autogen: geometric, geometric.out
 
-# - func: binomial(Tensor count, Tensor prob, Generator? generator=None) -> Tensor
-#   device_check: NoCheck   # TensorIterator
-#   dispatch:
-#     XPU: _s_binomial_xpu
-#   tags: nondeterministic_seeded
-#   autogen: binomial.out
+- func: binomial(Tensor count, Tensor prob, Generator? generator=None) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: _s_binomial_xpu
+  tags: nondeterministic_seeded
+  autogen: binomial.out
 
-# - func: _sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor
-#   tags: nondeterministic_seeded
-#   variants: function
-#   dispatch:
-#     XPU: _sample_dirichlet_xpu
-#   autogen: _sample_dirichlet.out
+- func: _sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor
+  tags: nondeterministic_seeded
+  variants: function
+  dispatch:
+    XPU: _sample_dirichlet_xpu
+  autogen: _sample_dirichlet.out
 
-# - func: _dirichlet_grad(Tensor x, Tensor alpha, Tensor total) -> Tensor
-#   dispatch:
-#     XPU: _dirichlet_grad_xpu
-#   autogen: _dirichlet_grad.out
+- func: _dirichlet_grad(Tensor x, Tensor alpha, Tensor total) -> Tensor
+  dispatch:
+    XPU: _dirichlet_grad_xpu
+  autogen: _dirichlet_grad.out
 
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
   structured_delegate: argmin.out
@@ -5872,3 +5872,10 @@
   dispatch:
     XPU: angle_out
   tags: pointwise
+
+- func: poisson(Tensor self, Generator? generator=None) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: _s_poisson_xpu
+  tags: nondeterministic_seeded
+  autogen: poisson.out

@@ -33,6 +33,14 @@ REGISTER_XPU_DISPATCH(log_normal_stub, &xpu::log_normal_kernel);
 REGISTER_XPU_DISPATCH(cauchy_stub, &xpu::cauchy_kernel);
 REGISTER_XPU_DISPATCH(geometric_stub, &xpu::geometric_kernel);
 
+Tensor _s_poisson_xpu(const Tensor& lambda, std::optional<Generator> gen_) {
+  auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+      gen_, at::xpu::detail::getDefaultXPUGenerator());
+  Tensor ret = at::empty(lambda.sizes(), lambda.options());
+  xpu::launch_poisson_kernel(ret, lambda, gen);
+  return ret;
+}
+
 Tensor _s_binomial_xpu(
     const Tensor& count,
     const Tensor& prob,
@@ -45,7 +53,7 @@ Tensor _s_binomial_xpu(
                                 .add_input(count)
                                 .add_input(prob)
                                 .build();
-  at::native::xpu::launch_binomial_xpu_kernel(iter, gen);
+  xpu::launch_binomial_kernel(iter, gen);
   return ret;
 }
 
@@ -55,14 +63,14 @@ Tensor _sample_dirichlet_xpu(
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       generator, at::xpu::detail::getDefaultXPUGenerator());
   Tensor ret = at::empty(alpha.sizes(), alpha.options());
-  at::native::xpu::launch_gamma_kernel(ret, alpha, gen);
+  xpu::launch_gamma_kernel(ret, alpha, gen);
   auto gamma_sum = ret.sum(/*dim=*/-1, /*keepdim=*/true);
   auto iter = at::TensorIteratorConfig()
                   .add_output(ret)
                   .add_input(ret)
                   .add_input(gamma_sum)
                   .build();
-  at::native::xpu::launch_dirichlet_kernel(iter);
+  xpu::launch_dirichlet_kernel(iter);
   return ret;
 }
 
@@ -77,7 +85,7 @@ Tensor _dirichlet_grad_xpu(
                   .add_input(alpha)
                   .add_input(total)
                   .build();
-  at::native::xpu::launch_dirichlet_grad_kernel(iter);
+  xpu::launch_dirichlet_grad_kernel(iter);
   return ret;
 }
 

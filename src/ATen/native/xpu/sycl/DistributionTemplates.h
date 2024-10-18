@@ -290,10 +290,9 @@ void distribution_unary_kernel(
     return;
   }
 
-  int group_size = syclMaxWorkItemsPerEU() * syclMaxSubGroupSize();
-  int num_groups = (numel + group_size - 1) / group_size;
-  int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
-  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
+  auto execution_policy = calc_execution_policy(numel);
+  auto num_groups = std::get<1>(execution_policy);
+  auto group_size = std::get<2>(execution_policy);
 
   scalar1_t* output_data = static_cast<scalar1_t*>(iter.data_ptr(0));
   const scalar2_t* input_data = static_cast<const scalar2_t*>(iter.data_ptr(1));
@@ -411,10 +410,9 @@ void distribution_binary_kernel(
     return;
   }
 
-  int group_size = syclMaxWorkItemsPerEU() * syclMaxSubGroupSize();
-  int num_groups = (numel + group_size - 1) / group_size;
-  int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
-  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
+  auto execution_policy = calc_execution_policy(numel);
+  auto num_groups = std::get<1>(execution_policy);
+  auto group_size = std::get<2>(execution_policy);
 
   output_t* output_data = static_cast<output_t*>(iter.data_ptr(0));
   const input_t_1* input_data_1 =

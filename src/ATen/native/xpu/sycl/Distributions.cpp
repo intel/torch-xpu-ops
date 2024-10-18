@@ -2,9 +2,71 @@
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
+#include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 
 namespace at::native::xpu {
+
+template <typename scalar_t>
+struct PoissonTensorApplyFunctor {
+  void operator()(
+      sycl::nd_item<1> item,
+      scalar_t& ret_val,
+      const scalar_t& lambda) const {
+    SYCL_KERNEL_ASSERT(
+        lambda >= 0 &&
+        "invalid Poisson rate, expected rate to be non-negative");
+    auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(
+        std::get<0>(seeds),
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
+        std::get<1>(seeds),
+        &state);
+    ret_val = static_cast<scalar_t>(rand_poisson(&state, lambda));
+  }
+  PoissonTensorApplyFunctor(std::pair<uint64_t, uint64_t> rng_engine_inputs)
+      : philox_args_(
+            std::get<0>(rng_engine_inputs),
+            std::get<1>(rng_engine_inputs)) {}
+
+ private:
+  PhiloxState philox_args_;
+};
+
+template <typename scalar_t>
+void poisson_kernel(
+    const at::TensorBase& ret,
+    const at::TensorBase& lambda,
+    std::pair<uint64_t, uint64_t> rng_engine_inputs) {
+  auto functor = PoissonTensorApplyFunctor<scalar_t>(rng_engine_inputs);
+  at::native::xpu::tensor_apply2<
+      scalar_t,
+      scalar_t,
+      decltype(functor),
+      /*max_threads_per_block=*/512>(
+      const_cast<at::TensorBase&>(ret),
+      const_cast<at::TensorBase&>(lambda),
+      functor);
+}
+
+void launch_poisson_kernel(
+    const TensorBase& ret,
+    const TensorBase& lambda,
+    at::XPUGeneratorImpl* gen) {
+  std::pair<uint64_t, uint64_t> rng_engine_inputs;
+  {
+    // See Note [Acquire lock when using random generators]
+    std::lock_guard<std::mutex> lock(gen->mutex_);
+    rng_engine_inputs = gen->philox_engine_inputs(20);
+  }
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      ret.scalar_type(),
+      "poisson_xpu",
+      [&] { poisson_kernel<scalar_t>(ret, lambda, rng_engine_inputs); });
+}
 
 struct rand_uniform_wrapper {
   rand_uniform_wrapper(randStatePhilox4_32_10_t& state) : state_(state) {}
@@ -38,15 +100,13 @@ struct BinomialFunctor {
 };
 
 template <typename scalar_t>
-void binomial_xpu_kernel(TensorIteratorBase& iter, PhiloxState philox_args) {
-  using accscalar_t = at::acc_type<scalar_t, true>;
+void binomial_kernel(TensorIteratorBase& iter, PhiloxState philox_args) {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   BinomialFunctor<scalar_t, accscalar_t> f;
   at::native::xpu::distribution_binary_kernel(iter, philox_args, f);
 }
 
-void launch_binomial_xpu_kernel(
-    TensorIteratorBase& iter,
-    XPUGeneratorImpl* gen) {
+void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
   std::pair<uint64_t, uint64_t> engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
@@ -60,16 +120,22 @@ void launch_binomial_xpu_kernel(
       at::ScalarType::BFloat16,
       iter.input_dtype(),
       "binomial_xpu",
-      [&] { binomial_xpu_kernel<scalar_t>(iter, rng_engine_inputs); });
+      [&] { binomial_kernel<scalar_t>(iter, rng_engine_inputs); });
 }
 
 template <typename scalar_t, typename accscalar_t>
-struct GammaKernelFunctor {
+struct GammaTensorApplyFunctor {
   void operator()(
-      randStatePhilox4_32_10_t& state,
+      sycl::nd_item<1> item,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
     auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(
+        std::get<0>(seeds),
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0),
+        std::get<1>(seeds),
+        &state);
 
     auto uniform_lambda = [&state]() { return rand_uniform(&state); };
     BaseSampler<accscalar_t, decltype(uniform_lambda)> standard_uniform(
@@ -88,25 +154,28 @@ struct GammaKernelFunctor {
     ret_val = (min_value > sample) ? min_value : sample;
   }
 
-  GammaKernelFunctor(PhiloxState philox_args) : philox_args_(philox_args) {}
+  GammaTensorApplyFunctor(PhiloxState philox_args)
+      : philox_args_(philox_args) {}
 
  private:
   PhiloxState philox_args_;
 };
 
 template <typename scalar_t>
-void gamma_xpu_kernel(
-    Tensor& ret,
-    const Tensor& alpha,
+void gamma_kernel(
+    const at::TensorBase& ret,
+    const at::TensorBase& alpha,
     PhiloxState philox_args) {
-  using accscalar_t = at::acc_type<scalar_t, true>;
-  auto iter =
-      at::TensorIteratorConfig().add_output(ret).add_input(alpha).build();
-  GammaKernelFunctor<scalar_t, accscalar_t> functor(philox_args);
-
-  at::native::xpu::
-      distribution_unary_kernel<scalar_t, scalar_t, decltype(functor)>(
-          iter, philox_args, functor);
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+  GammaTensorApplyFunctor<scalar_t, accscalar_t> functor(philox_args);
+  at::native::xpu::tensor_apply2<
+      scalar_t,
+      scalar_t,
+      decltype(functor),
+      /*max_threads_per_block=*/512>(
+      const_cast<at::TensorBase&>(ret),
+      const_cast<at::TensorBase&>(alpha),
+      functor);
 }
 
 void launch_gamma_kernel(
@@ -126,7 +195,7 @@ void launch_gamma_kernel(
       at::ScalarType::BFloat16,
       ret.scalar_type(),
       "gamma_xpu",
-      [&] { gamma_xpu_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
+      [&] { gamma_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
 }
 
 template <typename scalar_t>
@@ -164,7 +233,7 @@ struct DirichletGradKernelFunctor {
 
 void launch_dirichlet_grad_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.input_dtype(), "_dirichlet_grad_xpu", [&] {
-    using accscalar_t = at::acc_type<scalar_t, true>;
+    using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
     DirichletGradKernelFunctor<scalar_t, accscalar_t> f;
     gpu_kernel(iter, f);
   });

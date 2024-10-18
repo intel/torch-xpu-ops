@@ -5,7 +5,12 @@
 
 namespace at::native::xpu {
 
-TORCH_XPU_API void launch_binomial_xpu_kernel(
+TORCH_XPU_API void launch_poisson_kernel(
+    const TensorBase& ret,
+    const TensorBase& lambda,
+    XPUGeneratorImpl* gen);
+
+TORCH_XPU_API void launch_binomial_kernel(
     TensorIteratorBase& iter,
     XPUGeneratorImpl* gen);
 
