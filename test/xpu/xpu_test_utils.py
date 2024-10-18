@@ -252,6 +252,14 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_u",
+    "special_chebyshev_polynomial_v",
+    "special_chebyshev_polynomial_w",
+    "special_shifted_chebyshev_polynomial_t",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_v",
+    "special_shifted_chebyshev_polynomial_w",
     "log_normal",
 ]
 
