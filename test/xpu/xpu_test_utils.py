@@ -225,6 +225,7 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "linspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -239,6 +240,8 @@ _xpu_computation_op_list = [
     "repeat_interleave",
     "fmax",
     "fmin",
+    "max",
+    "min",
     "floor",
     "floor_divide",
     "copysign",
@@ -251,6 +254,7 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "log_normal",
 ]
 
 _ops_without_cuda_support = [
