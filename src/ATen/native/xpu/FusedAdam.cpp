@@ -1,5 +1,4 @@
 #include <ATen/native/ForeachUtils.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -13,8 +12,9 @@
 #include <ATen/native/xpu/sycl/fused_adam_impl.h>
 
 namespace at {
+namespace native {
 
-void XPUNativeFunctions::_fused_adam_(
+void _fused_adam_kernel_xpu_(
     at::TensorList params,
     at::TensorList grads,
     at::TensorList exp_avgs,
@@ -73,7 +73,7 @@ void XPUNativeFunctions::_fused_adam_(
 }
 
 // overload with tensor lr(single element tensor) input
-void XPUNativeFunctions::_fused_adam_(
+void _fused_adam_kernel_xpu_(
     at::TensorList params,
     at::TensorList grads,
     at::TensorList exp_avgs,
@@ -91,7 +91,7 @@ void XPUNativeFunctions::_fused_adam_(
     const c10::optional<at::Tensor>& found_inf) {
   // lr could be cpu tensor, fall back then
   if (lr.is_cpu()) {
-    XPUNativeFunctions::_fused_adam_(
+    _fused_adam_kernel_xpu_(
         params,
         grads,
         exp_avgs,
@@ -161,4 +161,5 @@ void XPUNativeFunctions::_fused_adam_(
   }
 }
 
+} // namespace native
 } // namespace at
