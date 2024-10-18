@@ -117,5 +117,14 @@ Tensor& range_xpu_out(
   return at::native::xpu::range_kernel(start, end, step, out);
 }
 
+
+Tensor& linspace_xpu_out(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    Tensor& out) {
+  return at::native::xpu::linspace_kernel(start, end, steps, out);
+}
+
 } // namespace native
 } // namespace at
