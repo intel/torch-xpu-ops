@@ -197,6 +197,7 @@ _xpu_computation_op_list = [
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "nn.functional.ctc_loss",
+    "nn.functional.channel_shuffle",
     "sigmoid",
     "logsigmoid",
     "sgn",
