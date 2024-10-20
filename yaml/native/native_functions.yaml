@@ -5297,14 +5297,14 @@
   dispatch:
     XPU: replication_pad3d_backward_xpu
 
-# - func: histc.out(Tensor self, int bins=100, Scalar min=0, Scalar max=0, *, Tensor(a!) out) -> Tensor(a!)
-#   dispatch:
-#     XPU: histogram_histc_out
+- func: histc.out(Tensor self, int bins=100, Scalar min=0, Scalar max=0, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: _histc_out_xpu
 
-# - func: histc(Tensor self, int bins=100, Scalar min=0, Scalar max=0) -> Tensor
-#   variants: method, function
-#   dispatch:
-#     XPU: histogram_histc
+- func: histc(Tensor self, int bins=100, Scalar min=0, Scalar max=0) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: _histc_xpu
 
 - func: histogram.bins_tensor_out(Tensor self, Tensor bins, *, Tensor? weight=None, bool density=False, Tensor(a!) hist, Tensor(b!) bin_edges) -> (Tensor(a!) hist, Tensor(b!) bin_edges)
   dispatch:

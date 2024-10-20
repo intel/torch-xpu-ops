@@ -98,6 +98,7 @@ skip_dict = {
         "test_out_geqrf_xpu_float32",
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+        "test_out_histc_cuda_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
@@ -2523,7 +2524,6 @@ skip_dict = {
         "test_nondeterministic_alert_ReplicationPad3d_xpu",
         "test_nondeterministic_alert_grid_sample_2d_xpu",
         "test_nondeterministic_alert_grid_sample_3d_xpu",
-        "test_nondeterministic_alert_histc_xpu",
         "test_nondeterministic_alert_interpolate_bicubic_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
         "test_nondeterministic_alert_interpolate_trilinear_xpu",

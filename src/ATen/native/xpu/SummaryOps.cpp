@@ -3,8 +3,10 @@
 #include <comm/SYCLContext.h>
 
 #include <xpu/ATen/ops/bincount_native.h>
+
 namespace at {
 namespace native {
+
 Tensor _bincount_xpu(
     const Tensor& self,
     const c10::optional<Tensor>& weights_opt,
@@ -22,9 +24,8 @@ Tensor _bincount_xpu(
 
   return native::xpu::bincount_kernel(self, weights, minlength);
 }
-} // namespace native
 
-Tensor XPUNativeFunctions::histc(
+Tensor _histc_xpu(
     const Tensor& self,
     int64_t nbins,
     const Scalar& min,
@@ -35,16 +36,17 @@ Tensor XPUNativeFunctions::histc(
   return native::xpu::_histc_kernel(self, nbins, min, max);
 }
 
-Tensor& XPUNativeFunctions::histc_out(
+Tensor& _histc_out_xpu(
     const Tensor& self,
     int64_t bins,
     const Scalar& min,
     const Scalar& max,
     Tensor& result) {
-  auto ret = histc(self, bins, min, max);
+  auto ret = _histc_xpu(self, bins, min, max);
   at::native::resize_output(result, ret.sizes());
   result.copy_(ret);
   return result;
 }
 
+} // namespace native
 } // namespace at
