@@ -384,6 +384,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_consecutive_kernel(
       AT_EXPAND(AT_ALL_TYPES),
       kBool,
       kHalf,
+      kBFloat16,
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
