@@ -22,4 +22,11 @@ TORCH_XPU_API Tensor& linspace_kernel(
     int64_t steps,
     Tensor& result);
 
+TORCH_XPU_API Tensor& logspace_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    double base,
+    Tensor& result);
+
 } // namespace at::native::xpu
