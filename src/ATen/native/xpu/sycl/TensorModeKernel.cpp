@@ -733,7 +733,9 @@ void mode_kernel_impl(
   auto indices_transposed = indices.transpose(dim, ndim - 1);
 
   // max wg size
-  auto max_WG_Size = syclMaxWorkGroupSize<ModeKernelFunctor<scalar_t>>();
+  auto max_WG_Size = std::min(
+      syclMaxWorkGroupSize<ModeKernelFunctor<scalar_t>>(),
+      syclMaxWorkGroupSize<ModeFusedKernelFunctor<scalar_t>>());
 
   // one wg is responsible for one problem batch
   auto group_number = problem_time;

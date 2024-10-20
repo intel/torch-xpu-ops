@@ -105,10 +105,6 @@ skip_dict = {
         "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
         "test_python_ref_torch_fallback__refs_div_no_rounding_mode_xpu_complex32",
         "test_python_ref_torch_fallback__refs_pow_xpu_complex32",
-        # returned index is dependent on input data and implementation detail, and no
-        # specification is given to uniquely identify the correct index 
-        # (e.g. index with maximal / minimal value)
-        "test_compare_cpu_mode",
 
         # unexpected success because of cpu fallback
         "test_out_triangular_solve_xpu_float32",
