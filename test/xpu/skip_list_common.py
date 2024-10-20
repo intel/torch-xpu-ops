@@ -2596,10 +2596,6 @@ skip_dict = {
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
 
-        # internally uses index_put deterministic implementation
-        # dependent on "test_index_put_non_accumulate_deterministic"
-        "test_index_copy_deterministic",
-
         # scatter_add needs handle XPU deterministic
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",

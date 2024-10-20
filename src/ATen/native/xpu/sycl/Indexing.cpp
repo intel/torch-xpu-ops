@@ -853,6 +853,96 @@ void index_copy_kernel(
       [&]() { index_copy_impl<scalar_t>(out, dim, index, source); });
 }
 
+template <typename scalar_t, typename offset_cal_t>
+struct IndexCopyLoopFunctor {
+  void operator()(int i) const {
+    const auto offsets = offset_calc_.get(i);
+    auto self_data = reinterpret_cast<scalar_t*>(self_ptr_ + offsets[0]);
+    auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
+    auto source_data = reinterpret_cast<scalar_t*>(source_ptr_ + offsets[2]);
+    SYCL_KERNEL_ASSERT(idx >= 0 && idx < self_dim_size_);
+    self_data[idx * self_dim_stride_] = *source_data;
+  }
+  IndexCopyLoopFunctor(
+      offset_cal_t offset_calc,
+      char* self_ptr,
+      char* idx_ptr,
+      char* source_ptr,
+      const int64_t self_dim_size,
+      const int64_t self_dim_stride)
+      : offset_calc_(offset_calc),
+        self_ptr_(self_ptr),
+        idx_ptr_(idx_ptr),
+        source_ptr_(source_ptr),
+        self_dim_size_(self_dim_size),
+        self_dim_stride_(self_dim_stride) {}
+
+ private:
+  offset_cal_t offset_calc_;
+  char* self_ptr_;
+  char* idx_ptr_;
+  char* source_ptr_;
+  const int64_t self_dim_size_;
+  const int64_t self_dim_stride_;
+};
+
+template <typename scalar_t>
+void index_copy_kernel_impl(
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride) {
+  if (iter.numel() == 0) {
+    return;
+  }
+
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      index_copy_kernel_impl<scalar_t>(
+          sub_iter, dim, self_dim_size, self_dim_stride);
+    }
+    return;
+  }
+
+  char* self_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  char* idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
+  char* source_ptr = reinterpret_cast<char*>(iter.data_ptr(2));
+
+  const auto offset_calc = make_offset_calculator<3>(iter);
+
+  auto fn = IndexCopyLoopFunctor<scalar_t, decltype(offset_calc)>(
+      offset_calc,
+      self_ptr,
+      idx_ptr,
+      source_ptr,
+      self_dim_size,
+      self_dim_stride);
+  launch_index_group_stride_kernel<4, decltype(fn)>(iter.numel(), fn);
+}
+
+void index_copy_kernel(
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride) {
+  // See note [Writing Nondeterministic Operations]
+  // Nondeterministic when index contains duplicate entries
+  // this kernel will not be called when
+  // torch.use_deterministic_algorithms(True)
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      at::ScalarType::BFloat16,
+      kComplexHalf,
+      iter.dtype(),
+      "index_copy_xpu",
+      [&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        index_copy_kernel_impl<dtype>(
+            iter, dim, self_dim_size, self_dim_stride);
+      });
+}
+
 } // namespace at::native::xpu
 
 #pragma GCC diagnostic pop
