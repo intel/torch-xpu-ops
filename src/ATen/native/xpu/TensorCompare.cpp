@@ -66,5 +66,16 @@ REGISTER_XPU_DISPATCH(clamp_stub, &xpu::clamp_kernel);
 REGISTER_XPU_DISPATCH(max_stub, &xpu::max_kernel_impl);
 REGISTER_XPU_DISPATCH(min_stub, &xpu::min_kernel_impl)
 REGISTER_XPU_DISPATCH(isin_default_stub, &xpu::isin_kernel);
+
+void _assert_async_msg_xpu(
+    const Tensor& self_tensor,
+    c10::string_view assert_msg) {
+  xpu::_assert_async_msg_kernel(self_tensor, assert_msg);
+}
+
+void _assert_async_xpu(const Tensor& self_tensor) {
+  _assert_async_msg_xpu(self_tensor, "");
+}
+
 } // namespace native
 } // namespace at
