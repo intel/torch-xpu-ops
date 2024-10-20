@@ -1,9 +1,11 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/BinaryInternal.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/BinaryKernels.h>
 
 namespace at::native::xpu {
 

@@ -1,9 +1,12 @@
-#include <ATen/ATen.h>
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
 
 namespace at::native::xpu {
 
@@ -33,7 +36,7 @@ struct AddcmulComplexFunctor {
   scalar_t alpha_;
 };
 
-void addcmul_kernel(TensorIterator& iter, Scalar value) {
+void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {
@@ -79,7 +82,7 @@ struct AddcdivComplexFunctor {
   scalar_t alpha_;
 };
 
-void addcdiv_kernel(TensorIterator& iter, Scalar value) {
+void addcdiv_kernel(TensorIteratorBase& iter, const Scalar& value) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcdiv_xpu", [&]() {
@@ -145,7 +148,10 @@ struct SmoothL1BackwardFunctor {
   scalar_t beta_val;
 };
 
-void smooth_l1_backward_kernel(TensorIterator& iter, Scalar norm, double beta) {
+void smooth_l1_backward_kernel(
+    TensorIterator& iter,
+    const Scalar& norm,
+    double beta) {
   AT_DISPATCH_ALL_TYPES_AND2(
       kHalf,
       kBFloat16,

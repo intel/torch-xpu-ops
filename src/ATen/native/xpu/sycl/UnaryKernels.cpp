@@ -1,4 +1,6 @@
-#include <ATen/ATen.h>
+
+#include <comm/xpu_aten.h>
+
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/core/Tensor.h>
@@ -8,6 +10,8 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/UnaryKernels.h>
 
 namespace at::native::xpu {
 

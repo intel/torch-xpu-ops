@@ -1,7 +1,9 @@
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 
 namespace at::native::xpu {
 

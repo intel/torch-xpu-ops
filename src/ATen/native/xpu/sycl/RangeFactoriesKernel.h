@@ -2,22 +2,31 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
-Tensor& arange_kernel(
+TORCH_XPU_API Tensor& arange_kernel(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
     Tensor& result);
 
-Tensor& range_kernel(
+TORCH_XPU_API Tensor& range_kernel(
     const Scalar& start,
     const Scalar& end,
     const Scalar& step,
     Tensor& result);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+TORCH_XPU_API Tensor& linspace_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    Tensor& result);
+
+TORCH_XPU_API Tensor& logspace_kernel(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    double base,
+    Tensor& result);
+
+} // namespace at::native::xpu

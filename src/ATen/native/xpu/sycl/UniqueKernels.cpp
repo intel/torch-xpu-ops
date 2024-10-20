@@ -3,6 +3,8 @@
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/UniqueKernels.h>
+
 namespace at::native::xpu {
 
 struct UniqueNotEqualFunctor {
@@ -382,6 +384,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_consecutive_kernel(
       AT_EXPAND(AT_ALL_TYPES),
       kBool,
       kHalf,
+      kBFloat16,
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 

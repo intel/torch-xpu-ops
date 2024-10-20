@@ -4,14 +4,14 @@
 
 namespace at::native::xpu {
 
-void logical_not_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logical_not_kernel(TensorIteratorBase& iter);
 
-void neg_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void neg_kernel(TensorIteratorBase& iter);
 
-void sgn_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void sgn_kernel(TensorIteratorBase& iter);
 
-void sign_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void sign_kernel(TensorIteratorBase& iter);
 
-void signbit_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void signbit_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

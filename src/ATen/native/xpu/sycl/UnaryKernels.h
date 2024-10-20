@@ -4,17 +4,17 @@
 
 namespace at::native::xpu {
 
-void sqrt_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void sqrt_kernel(TensorIteratorBase& iter);
 
-void rsqrt_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void rsqrt_kernel(TensorIteratorBase& iter);
 
-void bitwise_not_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void bitwise_not_kernel(TensorIteratorBase& iter);
 
-void exp_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void exp_kernel(TensorIteratorBase& iter);
 
-void expm1_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void expm1_kernel(TensorIteratorBase& iter);
 
-void nan_to_num_kernel(
+TORCH_XPU_API void nan_to_num_kernel(
     TensorIteratorBase& iter,
     std::optional<double> nan,
     std::optional<double> pos_inf,

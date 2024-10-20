@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-void multinomial_kernel(
+TORCH_XPU_API void multinomial_kernel(
     Tensor& result,
     const Tensor& self,
     const int64_t n_sample,

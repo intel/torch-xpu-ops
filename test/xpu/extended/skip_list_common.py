@@ -162,5 +162,22 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/781
     "test_compare_cpu_square_xpu_complex64",
 
+
+    # The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
+    "test_operator_multinomial_xpu_float32",
+    "test_view_replay_multinomial_xpu_float32"
+
+    # https://github.com/intel/torch-xpu-ops/issues/922
+    "test_compare_cpu_isin_xpu_bfloat16",
+    "test_compare_cpu_unique_consecutive_xpu_bfloat16",
+
+    # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
+    # https://github.com/intel/torch-xpu-ops/issues/623
+    "test_compare_cpu_nextafter_xpu_float16",
+
+    # AssertionError: Tensor-likes are not close!
+    # Greatest absolute difference: 0.0625 at index (1,) (up to 0.001 allowed)
+    #  Greatest relative difference: 0.00640869140625 at index (1,) (up to 0.001 allowed)
+    "test_compare_cpu_xlogy_xpu_bfloat16",
     ),
 }

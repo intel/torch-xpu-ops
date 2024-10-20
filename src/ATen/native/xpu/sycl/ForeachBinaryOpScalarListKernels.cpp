@@ -7,6 +7,7 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
+#include <ATen/ops/empty_like_native.h>
 namespace at::native::xpu {
 
 template <typename scalar_t, template <class> class Op>
@@ -152,6 +153,22 @@ FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(div) {
 
 FOREACH_BINARY_SCALARLIST_KERNEL(div) {
   return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(clamp_max) {
+  return all_types_half_bfloat16_<foreach_internal::minimum>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(clamp_max) {
+  return all_types_half_bfloat16<foreach_internal::minimum>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(clamp_min) {
+  return all_types_half_bfloat16_<foreach_internal::maximum>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(clamp_min) {
+  return all_types_half_bfloat16<foreach_internal::maximum>(tensors, scalars);
 }
 
 } // namespace at::native::xpu
