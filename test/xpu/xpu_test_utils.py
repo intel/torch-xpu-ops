@@ -256,6 +256,7 @@ _xpu_computation_op_list = [
     "argsort",
     "cauchy",
     "geometric",
+    "mode",
     "log_normal",
 ]
 
