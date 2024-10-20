@@ -69,7 +69,7 @@ namespace native {
   for (const auto idx : c10::irange(axis)) {
     stat_shape.push_back(input_shape[idx]);
   }
-  for (C10_UNUSED const auto idx : c10::irange(axis, input.dim())) {
+  for (const auto idx : c10::irange(axis, input.dim())) {
     stat_shape.push_back(1);
   }
 
