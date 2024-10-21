@@ -5,15 +5,7 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <torch/library.h>
 
-<<<<<<< Updated upstream
-#include <ATen/ops/_nnz_native.h>
-#include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors_native.h>
 #include <ATen/ops/_values_native.h>
-=======
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/ops/_coalesced_native.h>
 #include <ATen/ops/_indices_native.h>
 #include <ATen/ops/_nnz_native.h>
@@ -23,7 +15,6 @@
 #include <ATen/ops/is_coalesced_native.h>
 #include <ATen/ops/sparse_dim_native.h>
 #endif
->>>>>>> Stashed changes
 
 namespace at::native::xpu {
 
