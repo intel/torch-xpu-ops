@@ -2,7 +2,35 @@
 // will upstream to pytorch when in tree
 #pragma once
 
-#include <ATen/ATen.h>
+// #include <comm/xpu_aten.h>
+#include <ATen/Context.h>
+#include <ATen/Device.h>
+#include <ATen/DeviceGuard.h>
+#include <ATen/DimVector.h>
+#include <ATen/Dispatch.h>
+#include <ATen/Formatting.h>
+// #include <ATen/Functions.h>
+#include <ATen/NamedTensor.h>
+#include <ATen/ScalarOps.h>
+#include <ATen/Tensor.h>
+#include <ATen/TensorGeometry.h>
+#include <ATen/TensorIndexing.h>
+#include <ATen/TensorOperators.h>
+#include <ATen/Version.h>
+#include <ATen/core/ATenGeneral.h>
+#include <ATen/core/Generator.h>
+#include <ATen/core/Reduction.h>
+#include <ATen/core/Scalar.h>
+#include <ATen/core/UnsafeFromTH.h>
+#include <ATen/core/ivalue.h>
+#include <ATen/core/jit_type.h>
+#include <c10/core/Allocator.h>
+#include <c10/core/InferenceMode.h>
+#include <c10/core/Layout.h>
+#include <c10/core/Storage.h>
+#include <c10/core/TensorOptions.h>
+#include <c10/util/Exception.h>
+
 #include <ATen/CPUApplyUtils.h>
 
 #include <ATen/native/xpu/sycl/IntegerDivider.h>
@@ -137,16 +165,13 @@ struct IndexToOffset {
       return linearId;
     }
 
-#pragma unroll
-    for (int dim = XPU_MAX_TENSORINFO_DIMS - 1; dim >= 0; --dim) {
-      if (dim < info.dims) {
-        auto divider = at::detail::IntDivider<IndexType>(info.sizes[dim]);
-        auto divmod = divider.divmod(linearId);
-        linearId = divmod.div;
-        offset += divmod.mod * info.strides[dim];
-      }
+    for (int dim = info.dims - 1; dim > 0; --dim) {
+      IndexType curDimIndex = linearId % info.sizes[dim];
+      IndexType curDimOffset = curDimIndex * info.strides[dim];
+      offset += curDimOffset;
+      linearId /= info.sizes[dim];
     }
-    return offset;
+    return offset + linearId * info.strides[0];
   }
 };
 

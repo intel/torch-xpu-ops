@@ -510,7 +510,7 @@ constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
 
 template <typename func_t>
 void small_index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
@@ -660,7 +660,7 @@ struct IndexKernelFunctor {
 
 template <typename func_t>
 void index_kernel_impl(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     const func_t f) {
@@ -700,7 +700,7 @@ void index_kernel_impl(
 
 template <typename func_t>
 void _index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
@@ -890,6 +890,42 @@ void launch_index_put_deterministic_kernel(
 
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+}
+
+template <int vt, typename func_t>
+struct IndexElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int wg_sz = item.get_local_range(0);
+    auto tid = item.get_local_id(0);
+    auto nv = wg_sz * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += wg_sz;
+      }
+    }
+  }
+
+  IndexElementwiseKernelFunctor(const int64_t N, const func_t f)
+      : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
+
+template <int vt, typename func_t>
+static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+  int wg_sz = syclMaxWorkItemsPerEU();
+  int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
+  auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
 } // namespace at::native::xpu

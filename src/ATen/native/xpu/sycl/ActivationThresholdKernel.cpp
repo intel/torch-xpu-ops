@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>

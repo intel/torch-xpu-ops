@@ -22,7 +22,7 @@ on:
         required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_example,op_extended,op_ut,torch_xpu`. Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu`. Delimiter is comma
       triton:
         required: false
         type: string
@@ -69,19 +69,21 @@ jobs:
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
-    with: 
+    with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      driver: rolling
       runner: pvc_rolling
-  
+
   Linux-Weekly-UT-Tests-ABI-0-Rolling:
     if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
-    with: 
+    with:
       abi: 0
-      ut: op_example,op_extended,op_ut,torch_xpu
+      ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
+      driver: rolling
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
@@ -92,12 +94,15 @@ jobs:
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_example,op_extended,op_ut,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
       DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
       BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
       OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
@@ -157,6 +162,7 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -195,6 +201,7 @@ jobs:
           mode: inference,training
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -205,6 +212,7 @@ jobs:
           scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       - name: Nightly Timm_models FP16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -215,6 +223,7 @@ jobs:
           scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       # Weekly launch
       - name: Weekly Huggingface Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
@@ -226,6 +235,7 @@ jobs:
           mode: inference,training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       - name: Weekly Torchbench Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -236,6 +246,7 @@ jobs:
           mode: inference,training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       - name: Weekly Timm_models Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
@@ -246,6 +257,7 @@ jobs:
           mode: inference,training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: github.event_name != 'schedule'
@@ -257,6 +269,7 @@ jobs:
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
 
       - name: Summarize archieve files
         id: summary
@@ -305,6 +318,7 @@ jobs:
           repo="${{ github.repository }}"
           TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_BRANCH_ID }}"
           TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.TORCH_COMMIT_ID }}"
+          KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.KERNEL_VERSION }}"
           DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.DRIVER_VERSION }}"
           BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.BUNDLE_VERSION }}"
           OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests-Rolling.outputs.OS_PRETTY_NAME }}"
@@ -349,8 +363,8 @@ jobs:
           printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Device | OS | GCC | Python | Driver(DKMS) | Bundle(DPCPP)\n--- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION| $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | rolling-$DRIVER_VERSION |$KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.model }}" != "" ];then
