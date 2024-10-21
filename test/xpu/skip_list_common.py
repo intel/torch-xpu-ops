@@ -1150,12 +1150,8 @@ skip_dict = {
     "nn/test_pooling_xpu.py": (
         # CPU fallback fails
         "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
         "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
         "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
-        "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
     ),
 
     "nn/test_dropout_xpu.py": None,
@@ -1215,14 +1211,7 @@ skip_dict = {
         "test_record_function",
     ),
 
-    "test_reductions_xpu.py": (
-        # CPU/CUDA bias code in aten::mode_out
-        # https://github.com/intel/torch-xpu-ops/issues/327
-        # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
-        "test_mode_xpu",
-        "test_mode_wrong_dtype_xpu",
-        "test_dim_reduction_fns_fn_name_mode",
-    ),
+    "test_reductions_xpu.py": None,
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -3442,8 +3431,6 @@ skip_dict = {
         "test_meta_inplace__foreach_sigmoid_xpu_complex",
         "test_meta_outplace__foreach_lgamma_xpu_bfloat16",
         "test_meta_outplace__foreach_sigmoid_xpu_complex",
-        # RuntimeError: Unsupport memory format. Supports only ChannelsLast3d, Contiguous
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_max_pool3d_xpu_float32",
         # adaptive_max_pool2d: Expected out tensor to have dtype c10::BFloat16/c10::Half/float/double, but got long int instead
         "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_bfloat16",
         "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
