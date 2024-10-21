@@ -198,6 +198,7 @@ _xpu_computation_op_list = [
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "nn.functional.ctc_loss",
+    "nn.functional.channel_shuffle",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -225,6 +226,7 @@ _xpu_computation_op_list = [
     "polygamma",
     "lgamma",
     "linspace",
+    "logspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -253,6 +255,10 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "index_copy",
+    "cauchy",
+    "geometric",
+    "mode",
     "log_normal",
 ]
 
@@ -706,6 +712,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()

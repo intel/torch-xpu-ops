@@ -2,9 +2,11 @@
 #include <ATen/ops/_foreach_add_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>
 #include <ATen/ops/_foreach_addcmul_native.h>
+#include <ATen/ops/_foreach_clamp_max_native.h>
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
+#include <ATen/ops/_foreach_clamp_min_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
@@ -64,6 +66,8 @@ namespace native {
 FOREACH_BINARY_OP_LIST_ALPHA(add);
 FOREACH_BINARY_OP_LIST(mul, false);
 FOREACH_BINARY_OP_LIST(div, true);
+FOREACH_BINARY_OP_LIST(clamp_max, true);
+FOREACH_BINARY_OP_LIST(clamp_min, true);
 
 #define FOREACH_POINTWISE_OP_TENSOR(NAME)                                  \
   std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_xpu(             \
