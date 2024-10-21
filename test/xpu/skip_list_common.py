@@ -1148,13 +1148,7 @@ skip_dict = {
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
     ),
 
-    "nn/test_pooling_xpu.py": (
-        # CPU fallback fails
-        "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-    ),
+    "nn/test_pooling_xpu.py": None,
 
     "nn/test_dropout_xpu.py": None,
 
