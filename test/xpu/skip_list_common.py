@@ -67,7 +67,6 @@ skip_dict = {
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
-        "test_out_mode_xpu_float32",
 
         # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
         "test_out_nanmean_xpu_float32",
@@ -98,6 +97,7 @@ skip_dict = {
         "test_out_geqrf_xpu_float32",
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+        "test_out_histc_xpu_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
@@ -680,6 +680,9 @@ skip_dict = {
 
         # https://github.com/intel/torch-xpu-ops/issues/922
         "test_dtypes_isin_xpu",
+
+        # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
+        "test_view_replay_multinomial_xpu_float32",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -1147,12 +1150,9 @@ skip_dict = {
 
     "nn/test_pooling_xpu.py": (
         # CPU fallback fails
-        "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
         "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
         "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
         "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
         "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
     ),
 
@@ -1640,6 +1640,7 @@ skip_dict = {
         "test_validator_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float64",
+        "_tuning_tunableop_",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
@@ -2519,7 +2520,6 @@ skip_dict = {
         "test_nondeterministic_alert_ReplicationPad3d_xpu",
         "test_nondeterministic_alert_grid_sample_2d_xpu",
         "test_nondeterministic_alert_grid_sample_3d_xpu",
-        "test_nondeterministic_alert_histc_xpu",
         "test_nondeterministic_alert_interpolate_bicubic_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
         "test_nondeterministic_alert_interpolate_trilinear_xpu",
@@ -2591,6 +2591,11 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+
+        # internally uses index_put deterministic implementation
+        # dependent on "test_index_put_non_accumulate_deterministic"
+        "test_index_copy_deterministic",
+
         # scatter_add needs handle XPU deterministic
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
@@ -2613,67 +2618,6 @@ skip_dict = {
 
     "test_foreach_xpu.py": (
         # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
-        # Unexpected success
-        "test_parity__foreach_ceil_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_ceil_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_ceil_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_ceil_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_clamp_max_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_clamp_max_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_clamp_max_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_clamp_max_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_clamp_min_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_clamp_min_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_clamp_min_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_clamp_min_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_erf_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_erf_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_erf_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_erf_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_erfc_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_erfc_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_erfc_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_erfc_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_floor_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_floor_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_floor_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_floor_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_frac_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_frac_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_frac_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_frac_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_bfloat16",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_bfloat16",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_maximum_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_maximum_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_maximum_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_maximum_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_minimum_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_minimum_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_minimum_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_minimum_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_round_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_round_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_round_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_round_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_sigmoid_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_sigmoid_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_sigmoid_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_sigmoid_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_sign_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_sign_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_sign_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_sign_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_trunc_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_trunc_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_trunc_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_trunc_fastpath_outplace_xpu_complex64",
-        "test_autodiff__foreach_sigmoid_inplace_xpu_complex128",
-        "test_autodiff__foreach_sigmoid_outplace_xpu_complex128",
         "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
         # AssertionError: RuntimeError not raised
         # https://github.com/intel/torch-xpu-ops/issues/784 
@@ -3516,5 +3460,19 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_unique_consecutive_xpu_bfloat16",
         "test_meta_outplace_isin_xpu_bfloat16",
         "test_meta_outplace_unique_consecutive_xpu_bfloat16",
+    ),
+
+    "test_type_promotion_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/357
+        "test_sparse_add_xpu",
+        "test_sparse_div_promotion_xpu_bool",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int32",
+        "test_sparse_div_promotion_xpu_int64",
+        "test_sparse_div_promotion_xpu_uint8",
+        "test_sparse_div_xpu",
+        "test_sparse_mul_xpu",
+        "test_sparse_sub_xpu",
     ),
 }
