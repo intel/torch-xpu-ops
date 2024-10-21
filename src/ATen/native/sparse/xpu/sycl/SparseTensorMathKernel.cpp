@@ -3,6 +3,9 @@
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
+#include <ATen/ops/cat.h>
+#include <ATen/ops/copy_sparse_to_sparse.h>
+#include <ATen/ops/result_type.h>
 #include <c10/core/ScalarType.h>
 
 #include <comm/Runtime.h>
@@ -153,21 +156,6 @@ void sparseElementwiseKernelScalar(
   sycl_kernel_submit(total_items, group_size, queue, kfn);
 }
 } // namespace apply
-
-template <typename T>
-struct TensorCAddOp {
-  TensorCAddOp(T v) : val(v) {}
-
-  void operator()(T* out, T* in) const {
-    *out += val * *in;
-  }
-
-  void operator()(T* out, T* in1, T* in2) const {
-    *out = *in1 + val * *in2;
-  }
-
-  T val;
-};
 
 TORCH_XPU_API void add_out_dense_sparse_kernel(
     Tensor& r_,

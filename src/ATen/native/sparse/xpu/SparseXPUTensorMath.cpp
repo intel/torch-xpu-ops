@@ -1,14 +1,8 @@
 // Basic Math functions on sparse tensors
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/ATen.h>
 #include <ATen/native/SparseTensorUtils.h>
-#include <torch/library.h>
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
 #include <ATen/ops/add_native.h>
-#endif
+#include <torch/library.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernel.h>
 
