@@ -114,7 +114,7 @@ std::vector<Tensor> all_types_complex_half_bfloat16(
 }
 
 template <template <class> class Op>
-std::vector<Tensor> all_types_complex_half_bfloat16_(
+void all_types_complex_half_bfloat16_(
     TensorList tensors,
     const Scalar& scalar) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
