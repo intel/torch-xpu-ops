@@ -125,4 +125,12 @@ FOREACH_BINARY_TENSOR_KERNEL(mul) {
   return all_types_complex_bool_half_bfloat16<std::multiplies>(tensors, scalar);
 }
 
+FOREACH_BINARY_TENSOR_INPLACE_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16_<std::divides>(tensors, scalar);
+}
+
+FOREACH_BINARY_TENSOR_KERNEL(div) {
+  return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalar);
+}
+
 } // namespace at::native::xpu
