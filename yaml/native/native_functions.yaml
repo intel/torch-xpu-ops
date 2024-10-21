@@ -2048,6 +2048,54 @@
     XPU: foreach_tensor_clamp_max_scalarlist_kernel_xpu_
   autogen: _foreach_clamp_max.ScalarList_out
 
+# foreach_minimum dispatches to clamp_max
+- func: _foreach_minimum.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_scalar_kernel_slow
+    XPU: foreach_tensor_clamp_max_scalar_kernel_xpu
+
+- func: _foreach_minimum_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_scalar_kernel_slow_
+    XPU: foreach_tensor_clamp_max_scalar_kernel_xpu_
+  autogen: _foreach_minimum.Scalar_out
+
+# foreach_minimum dispatches to clamp_max
+- func: _foreach_minimum.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_list_kernel_slow
+    XPU: foreach_tensor_clamp_max_list_kernel_xpu
+
+- func: _foreach_minimum_.List(Tensor(a!)[] self, Tensor[] other) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_list_kernel_slow_
+    XPU: foreach_tensor_clamp_max_list_kernel_xpu_
+  autogen: _foreach_minimum.List_out
+
+# foreach_minimum dispatches to clamp_max
+- func: _foreach_minimum.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_scalarlist_kernel_slow
+    XPU: foreach_tensor_clamp_max_scalarlist_kernel_xpu
+
+- func: _foreach_minimum_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_clamp_max_scalarlist_kernel_slow_
+    XPU: foreach_tensor_clamp_max_scalarlist_kernel_xpu_
+  autogen: _foreach_minimum.ScalarList_out
+
 - func: _foreach_addcmul.Scalar(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
