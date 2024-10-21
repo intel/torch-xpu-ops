@@ -97,6 +97,7 @@ skip_dict = {
         "test_out_geqrf_xpu_float32",
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+        "test_out_histc_xpu_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
@@ -1149,12 +1150,9 @@ skip_dict = {
 
     "nn/test_pooling_xpu.py": (
         # CPU fallback fails
-        "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
         "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
         "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
         "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
         "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
     ),
 
@@ -2522,7 +2520,6 @@ skip_dict = {
         "test_nondeterministic_alert_ReplicationPad3d_xpu",
         "test_nondeterministic_alert_grid_sample_2d_xpu",
         "test_nondeterministic_alert_grid_sample_3d_xpu",
-        "test_nondeterministic_alert_histc_xpu",
         "test_nondeterministic_alert_interpolate_bicubic_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
         "test_nondeterministic_alert_interpolate_trilinear_xpu",
