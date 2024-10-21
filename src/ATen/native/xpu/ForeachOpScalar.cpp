@@ -2,6 +2,7 @@
 #include <ATen/ops/_foreach_add_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>
 #include <ATen/ops/_foreach_addcmul_native.h>
+#include <ATen/ops/_foreach_clamp_max_native.h>
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
@@ -38,6 +39,7 @@ namespace native {
 FOREACH_BINARY_OP_SCALAR(add, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(div, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALAR(clamp_max, /*div_op*/ true);
 FOREACH_BINARY_OP_SCALAR(clamp_min, /*div_op*/ true);
 
 #define FOREACH_POINTWISE_OP_SCALAR(NAME)                                   \

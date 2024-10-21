@@ -185,6 +185,7 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",
@@ -197,6 +198,7 @@ _xpu_computation_op_list = [
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "nn.functional.ctc_loss",
+    "nn.functional.channel_shuffle",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -224,6 +226,7 @@ _xpu_computation_op_list = [
     "polygamma",
     "lgamma",
     "linspace",
+    "logspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -235,6 +238,7 @@ _xpu_computation_op_list = [
     "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
@@ -260,6 +264,10 @@ _xpu_computation_op_list = [
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
+    "index_copy",
+    "cauchy",
+    "geometric",
+    "mode",
     "log_normal",
 ]
 
@@ -713,6 +721,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
