@@ -67,7 +67,6 @@ skip_dict = {
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
-        "test_out_mode_xpu_float32",
 
         # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
         "test_out_nanmean_xpu_float32",
@@ -2592,6 +2591,11 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+
+        # internally uses index_put deterministic implementation
+        # dependent on "test_index_put_non_accumulate_deterministic"
+        "test_index_copy_deterministic",
+
         # scatter_add needs handle XPU deterministic
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
