@@ -50,7 +50,7 @@ inline C10_UNUSED std::array<int64_t, 4> upsample_2d_common_check(
   return {nbatch, channels, output_height, output_width};
 }
 
-inline C10_UNUSED std::array<int64_t, 5> upsample_3d_common_check(
+inline std::array<int64_t, 5> upsample_3d_common_check(
     IntArrayRef input_size,
     IntArrayRef output_size) {
   TORCH_CHECK(
