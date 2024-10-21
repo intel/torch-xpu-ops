@@ -11,6 +11,7 @@
 #include <ATen/native/xpu/sycl/BinaryKernels.h>
 #include <ATen/native/xpu/sycl/BinaryLogicalOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryMiscBackwardOpsKernels.h>
+#include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
@@ -34,6 +35,7 @@ REGISTER_XPU_DISPATCH(bitwise_and_stub, &xpu::bitwise_and_kernel);
 REGISTER_XPU_DISPATCH(bitwise_or_stub, &xpu::bitwise_or_kernel);
 REGISTER_XPU_DISPATCH(bitwise_xor_stub, &xpu::bitwise_xor_kernel);
 REGISTER_XPU_DISPATCH(gcd_stub, &xpu::gcd_kernel);
+REGISTER_XPU_DISPATCH(lcm_stub, &xpu::lcm_kernel);
 REGISTER_XPU_DISPATCH(maximum_stub, &xpu::maximum_kernel);
 REGISTER_XPU_DISPATCH(minimum_stub, &xpu::minimum_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);
@@ -51,6 +53,7 @@ REGISTER_XPU_DISPATCH(fmax_stub, &xpu::fmax_kernel);
 REGISTER_XPU_DISPATCH(fmin_stub, &xpu::fmin_kernel);
 REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
+REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
 
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,

@@ -80,6 +80,7 @@ _xpu_computation_op_list = [
     "gt",
     "hardtanh",
     "hardswish",
+    "nn.functional.hardshrink",
     "nn.functional.mish",
     "index_add",
     "index_fill",
@@ -89,6 +90,7 @@ _xpu_computation_op_list = [
     "masked_select",
     "isin",
     "isnan",
+    "lcm",
     "le",
     "log",
     "log10",
@@ -109,6 +111,7 @@ _xpu_computation_op_list = [
     "median",
     "nanmedian",
     "native_dropout_backward",
+    "nn.functional.dropout",
     "ne",
     "neg",
     "nn.functional.elu",
@@ -182,6 +185,7 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",
@@ -193,12 +197,16 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.ctc_loss",
+    "nn.functional.channel_shuffle",
     "sigmoid",
     "logsigmoid",
     "sgn",
     "sign",
     "signbit",
     "round",
+    "trunc",
+    "xlogy",
     "nn.functional.embedding_bag",
     "bucketize",
     "searchsorted",
@@ -217,6 +225,8 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "linspace",
+    "logspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -225,11 +235,15 @@ _xpu_computation_op_list = [
     "frac",
     "aminmax",
     "argmin",
+    "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
+    "max",
+    "min",
     "floor",
     "floor_divide",
     "copysign",
@@ -242,10 +256,16 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "index_copy",
+    "cauchy",
+    "geometric",
+    "mode",
+    "log_normal",
 ]
 
 _ops_without_cuda_support = [
     "histogram",
+    "histogramdd",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -693,6 +713,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()

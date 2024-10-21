@@ -213,6 +213,11 @@ def matmul_small_brute_force_3d_Nd(self, device, dtype):
             y = make_arg(size_y, noncontiguous=nctg_y)
             self.check_single_matmul(x, y)
 
+@setBlasBackendsToDefaultFinally
+@unittest.skip("xpu not support ck blas library")
+def ck_blas_library(self):
+    pass
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -227,6 +232,7 @@ TestLinalg.test__int_mm=_int_mm
 TestLinalg.test_matmul_small_brute_force_1d_Nd=matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd=matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd=matmul_small_brute_force_3d_Nd
+TestLinalg.test_ck_blas_library = ck_blas_library
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)

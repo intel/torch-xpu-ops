@@ -150,4 +150,20 @@ FOREACH_BINARY_SCALAR_KERNEL(div) {
   return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalar);
 }
 
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(clamp_max) {
+  return all_types_half_bfloat16_<foreach_internal::minimum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(clamp_max) {
+  return all_types_half_bfloat16<foreach_internal::minimum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(clamp_min) {
+  return all_types_half_bfloat16_<foreach_internal::maximum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(clamp_min) {
+  return all_types_half_bfloat16<foreach_internal::maximum>(tensors, scalar);
+}
+
 } // namespace at::native::xpu
