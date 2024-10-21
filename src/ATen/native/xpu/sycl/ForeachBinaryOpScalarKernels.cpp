@@ -122,7 +122,7 @@ void all_types_complex_half_bfloat16_(
       kBFloat16,
       tensors[0].scalar_type(),
       "foreach_binary_op_scalar_xpu_",
-      [&]() { foreach_binary_op<scalar_t, Op>(tensors, scalar); });
+      [&]() { foreach_binary_op_<scalar_t, Op>(tensors, scalar); });
 }
 
 template <template <class> class Op>
