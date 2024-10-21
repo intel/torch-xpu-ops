@@ -6,7 +6,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
+TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
@@ -17,7 +17,7 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
     Tensor& mean,
     Tensor& rstd);
 
-std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
+TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,

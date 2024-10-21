@@ -1,13 +1,15 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Norm.h>
 #include <comm/SYCLContext.h>
+
+#include <ATen/native/xpu/sycl/LayerNormKernels.h>
 
 namespace at {
 namespace native {

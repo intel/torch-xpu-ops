@@ -1,8 +1,10 @@
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
+
+#include <ATen/native/xpu/sycl/ActivationHardsigmoidKernels.h>
 
 namespace at::native::xpu {
 

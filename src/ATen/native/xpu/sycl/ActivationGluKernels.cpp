@@ -5,6 +5,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ActivationGluKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>

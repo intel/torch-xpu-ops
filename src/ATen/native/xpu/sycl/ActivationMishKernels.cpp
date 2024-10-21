@@ -8,6 +8,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
 
+#include <ATen/native/xpu/sycl/ActivationMishKernels.h>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
@@ -40,7 +42,7 @@ struct MishBackwardFunctor {
   }
 };
 
-void mish_backward_kernel(TensorIteratorBase& iter) {
+void mish_backward_kernel(TensorIterator& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
