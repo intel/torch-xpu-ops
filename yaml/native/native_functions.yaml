@@ -3492,6 +3492,34 @@
   structured_delegate: avg_pool2d_backward.grad_input
   tags: core
 
+- func: avg_pool3d.out(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: avg_pool3d_out_xpu
+    MkldnnCPU: mkldnn_avg_pool3d_out
+
+- func: avg_pool3d(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor
+  python_module: nn
+  structured_delegate: avg_pool3d.out
+  dispatch:
+    MkldnnCPU: mkldnn_avg_pool3d
+    QuantizedCPU: avg_pool3d_quantized_cpu
+  tags: core
+
+- func: avg_pool3d_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: avg_pool3d_backward_out_xpu
+    MkldnnCPU: mkldnn_avg_pool3d_backward_out
+
+- func: avg_pool3d_backward(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, bool ceil_mode, bool count_include_pad, int? divisor_override) -> Tensor
+  python_module: nn
+  structured_delegate: avg_pool3d_backward.grad_input
+  dispatch:
+    MkldnnCPU: mkldnn_avg_pool3d_backward
+
 - func: mse_loss.out(Tensor self, Tensor target, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured: True

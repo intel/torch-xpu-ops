@@ -185,6 +185,7 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",

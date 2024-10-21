@@ -157,8 +157,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_adaptive_avg_pool3d_backward",
     "adaptive_max_pool3d_backward.grad_input",
     "adaptive_max_pool3d.out",
-    "avg_pool3d_backward.grad_input",
-    "avg_pool3d.out",
     "_cdist_backward",
     "cholesky",
     "cholesky_inverse",
