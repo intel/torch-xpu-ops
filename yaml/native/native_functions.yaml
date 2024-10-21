@@ -4671,6 +4671,16 @@
   dispatch:
     XPU: _embedding_bag_backward_symint
 
+- func: _embedding_bag_dense_backward(Tensor grad, Tensor indices, Tensor offset2bag, Tensor bag_size, Tensor maximum_indices, SymInt num_weights, bool scale_grad_by_freq, int mode, Tensor? per_sample_weights, int padding_idx=-1) -> Tensor
+  dispatch:
+    XPU: _embedding_bag_dense_backward_xpu
+  autogen: _embedding_bag_dense_backward.out
+
+- func: _embedding_bag_per_sample_weights_backward(Tensor grad, Tensor weight, Tensor indices, Tensor offsets, Tensor offset2bag, int mode, int padding_idx=-1) -> Tensor
+  dispatch:
+    XPU: _embedding_bag_per_sample_weights_backward_xpu
+  autogen: _embedding_bag_per_sample_weights_backward.out
+
 - func: masked_scatter_(Tensor(a!) self, Tensor mask, Tensor source) -> Tensor(a!)
   variants: method
   dispatch:
