@@ -45,4 +45,21 @@ TORCH_XPU_API void exponential_kernel(
     double lambda,
     c10::optional<Generator> gen);
 
+TORCH_XPU_API void log_normal_kernel(
+    TensorIteratorBase& iter,
+    double mean,
+    double std,
+    std::optional<Generator> gen);
+
+TORCH_XPU_API void cauchy_kernel(
+    TensorIteratorBase& iter,
+    double median,
+    double sigma,
+    c10::optional<Generator> gen);
+
+TORCH_XPU_API void geometric_kernel(
+    TensorIteratorBase& iter,
+    double p_,
+    c10::optional<Generator> gen);
+
 } // namespace at::native::xpu
