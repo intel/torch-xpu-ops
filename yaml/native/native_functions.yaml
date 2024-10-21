@@ -2755,6 +2755,28 @@
   structured_delegate: max_pool2d_with_indices_backward.grad_input
   tags: core
 
+# Return: (Tensor output, Tensor indices)
+- func: adaptive_max_pool3d.out(Tensor self, int[3] output_size, *, Tensor(a!) out, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: adaptive_max_pool3d_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: adaptive_max_pool3d(Tensor self, int[3] output_size) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: adaptive_max_pool3d.out
+
+- func: adaptive_max_pool3d_backward.grad_input(Tensor grad_output, Tensor self, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: adaptive_max_pool3d_backward_out_xpu
+
+- func: adaptive_max_pool3d_backward(Tensor grad_output, Tensor self, Tensor indices) -> Tensor
+  python_module: nn
+  structured_delegate: adaptive_max_pool3d_backward.grad_input
+
 - func: _adaptive_avg_pool2d_backward(Tensor grad_output, Tensor self) -> Tensor
   python_module: nn
   dispatch:
@@ -4721,6 +4743,16 @@
 - func: _embedding_bag_backward(Tensor grad, Tensor indices, Tensor offsets, Tensor offset2bag, Tensor bag_size, Tensor maximum_indices, SymInt num_weights, bool scale_grad_by_freq, int mode, bool sparse, Tensor? per_sample_weights, int padding_idx=-1) -> Tensor
   dispatch:
     XPU: _embedding_bag_backward_symint
+
+- func: _embedding_bag_dense_backward(Tensor grad, Tensor indices, Tensor offset2bag, Tensor bag_size, Tensor maximum_indices, SymInt num_weights, bool scale_grad_by_freq, int mode, Tensor? per_sample_weights, int padding_idx=-1) -> Tensor
+  dispatch:
+    XPU: _embedding_bag_dense_backward_xpu
+  autogen: _embedding_bag_dense_backward.out
+
+- func: _embedding_bag_per_sample_weights_backward(Tensor grad, Tensor weight, Tensor indices, Tensor offsets, Tensor offset2bag, int mode, int padding_idx=-1) -> Tensor
+  dispatch:
+    XPU: _embedding_bag_per_sample_weights_backward_xpu
+  autogen: _embedding_bag_per_sample_weights_backward.out
 
 - func: masked_scatter_(Tensor(a!) self, Tensor mask, Tensor source) -> Tensor(a!)
   variants: method
