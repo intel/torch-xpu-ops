@@ -5981,3 +5981,25 @@
   dispatch:
     XPU: channel_shuffle
   autogen: channel_shuffle.out
+
+- func: index_copy.out(Tensor self, int dim, Tensor index, Tensor source, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  variants: function
+  precomputed:
+  - dim -> int dim
+  dispatch:
+    XPU: index_copy_out
+
+- func: index_copy_(Tensor(a!) self, int dim, Tensor index, Tensor source) -> Tensor(a!)
+  variants: method
+  structured_delegate: index_copy.out
+
+- func: index_copy(Tensor self, int dim, Tensor index, Tensor source) -> Tensor
+  variants: function, method
+  structured_delegate: index_copy.out
+
+- func: index_copy_.dimname(Tensor(a!) self, Dimname dim, Tensor index, Tensor source) -> Tensor(a!)
+  variants: method
+
+- func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
+  variants: function, method
