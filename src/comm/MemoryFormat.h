@@ -131,5 +131,23 @@ inline bool is_smf_channels_last(const Tensor& t) {
   return is_channels_last(suggest_memory_format_sycl(t));
 }
 
+inline MemoryFormat get_cl_tag_by_ndim(const int64_t ndim) {
+  TORCH_CHECK(
+      3 == ndim || 4 == ndim || 5 == ndim,
+      "ndim must be 3, 4 or 5 when get cl tag");
+  if (3 == ndim) {
+#ifdef USE_CHANNELS_LAST_1D
+    return CHANNELSLAST1D_SYCL;
+#else
+    // if doesn't enable channels last 1d
+    return at::MemoryFormat::Contiguous;
+#endif
+  } else if (5 == ndim) {
+    return at::MemoryFormat::ChannelsLast3d;
+  } else {
+    return at::MemoryFormat::ChannelsLast;
+  }
+}
+
 } // namespace sycl
 } // namespace xpu

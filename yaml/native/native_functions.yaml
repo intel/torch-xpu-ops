@@ -2704,6 +2704,26 @@
   structured_delegate: max_pool2d_with_indices_backward.grad_input
   tags: core
 
+- func: max_unpool2d.out(Tensor self, Tensor indices, SymInt[2] output_size, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: max_unpooling2d_forward_out_xpu
+
+- func: max_unpool2d(Tensor self, Tensor indices, SymInt[2] output_size) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: max_unpooling2d_forward_xpu
+
+- func: max_unpool3d.out(Tensor self, Tensor indices, SymInt[3] output_size, int[3] stride, int[3] padding, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: max_unpooling3d_forward_out_xpu
+
+- func: max_unpool3d(Tensor self, Tensor indices, SymInt[3] output_size, int[3] stride, int[3] padding) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: max_unpooling3d_forward_xpu
+
 - func: _adaptive_avg_pool2d_backward(Tensor grad_output, Tensor self) -> Tensor
   python_module: nn
   dispatch:

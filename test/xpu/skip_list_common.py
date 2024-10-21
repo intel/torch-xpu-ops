@@ -683,6 +683,11 @@ skip_dict = {
 
         # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
         "test_view_replay_multinomial_xpu_float32",
+
+        # AssertionError: The supported dtypes for nn.functional.max_unpool3d on device type xpu are incorrect!
+        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64}.
+        "test_dtypes_nn_functional_max_unpool3d_grad_xpu",
+        "test_dtypes_nn_functional_max_unpool3d_xpu",
     ),
 
     "test_binary_ufuncs_xpu.py": (
