@@ -12,7 +12,7 @@
 
 namespace at::native::xpu {
 
-inline C10_UNUSED std::array<int64_t, 4> upsample_2d_common_check(
+[[maybe_unused]] inline std::array<int64_t, 4> upsample_2d_common_check(
     IntArrayRef input_size,
     IntArrayRef output_size) {
   TORCH_CHECK(
@@ -228,7 +228,7 @@ static scalar_t upsample_get_value_bounded(
   return data[batch][channel][access_y][access_x];
 }
 
-static C10_UNUSED std::array<int64_t, 3> upsample_1d_common_check(
+[[maybe_unused]] inline std::array<int64_t, 3> upsample_1d_common_check(
     IntArrayRef input_size,
     IntArrayRef output_size) {
   TORCH_CHECK(
