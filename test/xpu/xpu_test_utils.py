@@ -360,7 +360,7 @@ _xpu_tolerance_override = {
         }
     },
     "histogram": {
-        ("TestCommonXPU", "test_out"):{
+        ("TestCommon", "test_out"):{
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     }
