@@ -185,6 +185,7 @@ _xpu_computation_op_list = [
     "max_pool2d_with_indices_backward",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",
@@ -237,6 +238,7 @@ _xpu_computation_op_list = [
     "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
@@ -254,10 +256,12 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
-    "tril_indicies",
-    "triu_indicies",
+    "tril_indices",
+    "triu_indices",
+    "index_copy",
     "cauchy",
     "geometric",
+    "mode",
     "log_normal",
 ]
 
@@ -357,7 +361,7 @@ _xpu_tolerance_override = {
         }
     },
     "histogram": {
-        ("TestCommonXPU", "test_out"):{
+        ("TestCommon", "test_out"):{
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     }
