@@ -6,6 +6,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_clamp_min_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
@@ -44,6 +45,7 @@ FOREACH_BINARY_OP_SCALARLIST(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(div, /*div_op*/ true);
 FOREACH_BINARY_OP_SCALARLIST(clamp_max, /*div_op*/ true);
 FOREACH_BINARY_OP_SCALARLIST(clamp_min, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALARLIST(pow, true);
 
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME)                                \
   std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_xpu(                \
