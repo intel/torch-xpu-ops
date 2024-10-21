@@ -40,6 +40,7 @@ namespace native {
   }
 
 FOREACH_BINARY_OP_TENSOR(mul, /*div_op*/ false);
+FOREACH_BINARY_OP_TENSOR(div, /*div_op*/ true);
 
 } // namespace native
 } // namespace at
