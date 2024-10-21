@@ -1,32 +1,40 @@
-#include <ATen/ATen.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+
+#include <xpu/ATen/ops/native_dropout_backward_native.h>
+#include <xpu/ATen/ops/native_dropout_native.h>
+
+#include <comm/xpu_aten.h>
 
 namespace at {
+namespace native {
 
-::std::tuple<Tensor, Tensor> XPUNativeFunctions::native_dropout(
+::std::tuple<Tensor, Tensor> native_dropout_xpu(
     const Tensor& input,
     double p,
     ::std::optional<bool> train) {
-  return at::native::xpu::dropout_kernel(input, p, train);
+  return xpu::dropout_kernel(input, p, train);
 }
 
-Tensor XPUNativeFunctions::native_dropout_backward(
+Tensor native_dropout_backward_xpu(
     const Tensor& grad_output,
     const Tensor& mask,
     double scale) {
-  std::optional<Device> common_device = std::nullopt;
-  c10::impl::check_and_update_common_device(
-      common_device,
-      grad_output,
-      "xpu::native_dropout_backward",
-      "grad_output");
-  c10::impl::check_and_update_common_device(
-      common_device, mask, "xpu::native_dropout_backward", "mask");
-  return at::native::xpu::dropout_backward_kernel(grad_output, mask, scale);
+  return xpu::dropout_backward_kernel(grad_output, mask, scale);
 }
 
+std::tuple<Tensor, Tensor> fused_dropout_xpu(
+    const Tensor& self,
+    double p,
+    std::optional<Generator> gen_) {
+  return xpu::fused_dropout_kernel(self, p, gen_);
+}
+
+Tensor masked_scale_xpu(const Tensor& self, const Tensor& mask, double scale) {
+  return xpu::masked_scale_kernel(self, mask, scale);
+}
+
+} // namespace native
 } // namespace at

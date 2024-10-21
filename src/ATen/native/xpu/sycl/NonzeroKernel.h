@@ -1,8 +1,8 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
 
-void nonzero_kernel(const Tensor& self, Tensor& out);
+TORCH_XPU_API void nonzero_kernel(const Tensor& self, Tensor& out);
 
 } // namespace at::native::xpu

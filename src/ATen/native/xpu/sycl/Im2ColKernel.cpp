@@ -1,9 +1,11 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
+
+#include <ATen/native/xpu/sycl/Im2ColKernel.h>
 
 namespace at {
 namespace native {
@@ -209,8 +211,8 @@ void im2col_kernel(
   output.resize_({batch_size, n_output_plane, output_length});
   output.zero_();
 
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "im2col_xpu", [&] {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+      kHalf, kBFloat16, kBool, input.scalar_type(), "im2col_xpu", [&] {
         Tensor input_n;
         Tensor output_n;
 

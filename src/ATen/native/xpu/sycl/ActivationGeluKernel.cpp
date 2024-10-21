@@ -1,11 +1,12 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
 #include <ATen/native/TensorIterator.h>
-
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/native/xpu/sycl/ActivationGeluKernel.h>
 
 namespace at {
 namespace native {

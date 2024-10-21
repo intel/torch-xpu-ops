@@ -4,8 +4,8 @@
 
 namespace at::native::xpu {
 
-void logaddexp_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logaddexp_kernel(TensorIteratorBase& iter);
 
-void logaddexp2_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void logaddexp2_kernel(TensorIteratorBase& iter);
 
 } // namespace at::native::xpu

@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>
@@ -6,6 +5,8 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/UnaryFractionKernels.h>
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
+
+#include <ATen/native/xpu/sycl/PowKernels.h>
 
 namespace at {
 namespace native {
@@ -37,7 +38,8 @@ static inline c10::complex<T> pow_(c10::complex<T> base, c10::complex<T> exp) {
 } // namespace impl
 
 #ifdef _MSC_VER
-// Divergence for MSVC due to accuracy issue. https://github.com/intel/torch-xpu-ops/issues/842.
+// Divergence for MSVC due to accuracy issue.
+// https://github.com/intel/torch-xpu-ops/issues/842.
 template <typename scalar_t>
 struct PowTensorTensorCastFunctor {
   using opmath_t = at::opmath_type<scalar_t>;

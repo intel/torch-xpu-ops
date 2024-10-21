@@ -7,6 +7,8 @@
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
+
 enum class NormType { L1, L2 };
 
 namespace at::native::xpu {
