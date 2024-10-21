@@ -10,6 +10,11 @@
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
+#include <xpu/ATen/ops/arange_native.h>
+#include <xpu/ATen/ops/linspace_native.h>
+#include <xpu/ATen/ops/logspace_native.h>
+#include <xpu/ATen/ops/range_native.h>
+
 namespace at {
 
 namespace native {
@@ -31,7 +36,8 @@ Tensor& arange_out_xpu(
 
         TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
         TORCH_CHECK(
-            std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
+            std::isfinite(static_cast<double>(xstart)) &&
+                std::isfinite(static_cast<double>(xend)),
             "unsupported range: ",
             xstart,
             " -> ",
@@ -99,7 +105,8 @@ Tensor& range_xpu_out(
 
   TORCH_CHECK(xstep > 0 || xstep < 0, "step must be nonzero");
   TORCH_CHECK(
-      std::isfinite(static_cast<double>(xstart)) && std::isfinite(static_cast<double>(xend)),
+      std::isfinite(static_cast<double>(xstart)) &&
+          std::isfinite(static_cast<double>(xend)),
       "unsupported range: ",
       xstart,
       " -> ",
@@ -113,6 +120,23 @@ Tensor& range_xpu_out(
   }
 
   return at::native::xpu::range_kernel(start, end, step, out);
+}
+
+Tensor& linspace_xpu_out(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    Tensor& out) {
+  return at::native::xpu::linspace_kernel(start, end, steps, out);
+}
+
+Tensor& logspace_xpu_out(
+    const Scalar& start,
+    const Scalar& end,
+    int64_t steps,
+    double base,
+    Tensor& result) {
+  return at::native::xpu::logspace_kernel(start, end, steps, base, result);
 }
 
 } // namespace native
