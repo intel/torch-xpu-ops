@@ -1,11 +1,13 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/ops/empty.h>
+#include <ATen/ops/sum.h>
 #include <comm/SYCLContext.h>
-#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/DistanceKernels.h>
 
 namespace at::native::xpu {
+
 template <typename scalar_t>
 static double device_sqrt(scalar_t val) {
   return std::sqrt(val);
@@ -594,33 +596,32 @@ static void cdist_backward_kernel_impl(
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
-Tensor cdist_backward_kernel(
-    Tensor& grad_x1,
+void cdist_backward_kernel(
+    Tensor& result,
     const Tensor& grad,
     const Tensor& x1,
     const Tensor& x2,
     const double p,
     const Tensor& cdist) {
+  if (p == 0.0 || grad.numel() == 0 || x1.numel() == 0 || x2.numel() == 0) {
+    result.fill_(0);
+    return;
+  }
+
   const int64_t r1 = x1.size(-2);
   const int64_t r2 = x2.size(-2);
   const int64_t m = x1.size(-1);
+
   const int64_t count = cdist.numel();
   const int64_t gs = 1;
 
-  Tensor result = at::empty_like(
-      grad_x1, grad_x1.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   int64_t batch = result.size(0);
-
-  if (p == 0.0 || grad.numel() == 0 || x1.numel() == 0 || x2.numel() == 0) {
-    result.fill_(0);
-    return result;
-  }
 
   if (2.0 == p && (r1 > 25 || r2 > 25)) {
     std::tuple<Tensor, Tensor> edist_tuple;
     edist_tuple = _euclidean_dist_backward(grad, x1, x2, cdist);
     result = std::get<0>(edist_tuple);
-    return result;
+    return;
   }
 
   Tensor buffer = (x1.dim() > 2)
@@ -716,10 +717,9 @@ Tensor cdist_backward_kernel(
   } else {
     at::sum_out(result, buffer, 0);
   }
-  return result;
 }
 
-template <typename scalar_t, typename F, int p_tpye, typename accscalar_t>
+template <typename scalar_t, typename F, typename accscalar_t>
 struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     auto out_ptr = out_data_;
@@ -786,7 +786,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const int64_t wgroup_size_;
 };
 
-template <typename scalar_t, typename F, int p_type>
+template <typename scalar_t, typename F>
 static void pdist_kernel_impl(
     Tensor& result,
     const Tensor& self,
@@ -797,7 +797,7 @@ static void pdist_kernel_impl(
     const double n2_squared_minus_1) {
   const auto ngroups = result.numel();
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using KernelClass = PdistKernelFunctor<scalar_t, F, p_type, accscalar_t>;
+  using KernelClass = PdistKernelFunctor<scalar_t, F, accscalar_t>;
   auto min_sg_size = syclMinSubGroupSize();
   auto wgroup_size = syclMaxWorkGroupSize<KernelClass>();
   while (wgroup_size >> 1 >= m && wgroup_size >> 1 >= 32 /* sg_size */) {
@@ -830,38 +830,34 @@ void pdist_forward_kernel(Tensor& result, const Tensor& self, double p) {
   const double n2 = n - .5;
   const double n2_squared_minus_1 = n2 * n2 - 1;
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      self.scalar_type(),
-      "pdist_xpu",
-      [&] {
-        if (p == 0.0) {
-          pdist_kernel_impl<scalar_t, DistsZero<scalar_t>, 0>(
-              result, self, n, m, p, n2, n2_squared_minus_1);
-        } else if (p == 1.0) {
-          pdist_kernel_impl<scalar_t, DistsOne<scalar_t>, 1>(
-              result, self, n, m, p, n2, n2_squared_minus_1);
-        } else if (p == 2.0) {
-          pdist_kernel_impl<scalar_t, DistsTwo<scalar_t>, 2>(
-              result, self, n, m, p, n2, n2_squared_minus_1);
-        } else if (std::isinf(p)) {
-          pdist_kernel_impl<scalar_t, DistsInf<scalar_t>, 3>(
-              result, self, n, m, p, n2, n2_squared_minus_1);
-        } else {
-          pdist_kernel_impl<scalar_t, DistsP<scalar_t>, 4>(
-              result, self, n, m, p, n2, n2_squared_minus_1);
-        }
-      });
+  AT_DISPATCH_FLOATING_TYPES(self.scalar_type(), "pdist_xpu", [&] {
+    if (p == 0.0) {
+      pdist_kernel_impl<scalar_t, DistsZero<scalar_t>>(
+          result, self, n, m, p, n2, n2_squared_minus_1);
+    } else if (p == 1.0) {
+      pdist_kernel_impl<scalar_t, DistsOne<scalar_t>>(
+          result, self, n, m, p, n2, n2_squared_minus_1);
+    } else if (p == 2.0) {
+      pdist_kernel_impl<scalar_t, DistsTwo<scalar_t>>(
+          result, self, n, m, p, n2, n2_squared_minus_1);
+    } else if (std::isinf(p)) {
+      pdist_kernel_impl<scalar_t, DistsInf<scalar_t>>(
+          result, self, n, m, p, n2, n2_squared_minus_1);
+    } else {
+      pdist_kernel_impl<scalar_t, DistsP<scalar_t>>(
+          result, self, n, m, p, n2, n2_squared_minus_1);
+    }
+  });
 }
 
-template <typename scalar_t, typename F, int p_type, typename accscalar_t>
+template <typename scalar_t, typename F, typename accscalar_t = double>
 struct PdistBackwardKernelFunctor {
-  void operator()(sycl::nd_item<2> item_id) const {
-    auto desc = cfg_.get_item_desc(item_id);
-    const int k = desc.glb_batch;
-    const int stride = desc.chunk_num * desc.chunk_size;
-    const int init = desc.chunk * desc.chunk_size + desc.chunk_off;
+  void operator()(sycl::nd_item<2> item) const {
+    const int64_t k =
+        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+    const int init =
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    const int stride = item.get_local_range(0) * item.get_group_range(0);
 
     if (k >= combs_) {
       return;
@@ -895,96 +891,42 @@ struct PdistBackwardKernelFunctor {
     }
   }
   PdistBackwardKernelFunctor(
+      scalar_t* buffer,
+      const scalar_t* grad,
+      const scalar_t* self,
+      const scalar_t* dist,
       int64_t gs,
       const int64_t n,
       const int64_t m,
       const int64_t combs,
-      BatchKernelConfig cfg,
-      accscalar_t p_val,
-      accscalar_t n2_val,
-      accscalar_t n2_squared_minus_1_val,
-      scalar_t* out_ptr,
-      scalar_t* in_ptr,
-      scalar_t* grad_ptr,
-      scalar_t* dist_ptr)
-      : gs_(gs),
+      const scalar_t p,
+      const accscalar_t n2,
+      const accscalar_t n2_squared_minus_1)
+      : out_ptr_(buffer),
+        grad_ptr_(grad),
+        in_ptr_(self),
+        dist_ptr_(dist),
+        gs_(gs),
         n_(n),
         m_(m),
         combs_(combs),
-        cfg_(cfg),
-        p_val_(p_val),
-        n2_val_(n2_val),
-        n2_squared_minus_1_val_(n2_squared_minus_1_val),
-        out_ptr_(out_ptr),
-        in_ptr_(in_ptr),
-        grad_ptr_(grad_ptr),
-        dist_ptr_(dist_ptr) {}
+        p_val_(p),
+        n2_val_(n2),
+        n2_squared_minus_1_val_(n2_squared_minus_1) {}
 
  private:
+  scalar_t* out_ptr_;
+  const scalar_t* grad_ptr_;
+  const scalar_t* in_ptr_;
+  const scalar_t* dist_ptr_;
   int64_t gs_;
   const int64_t n_;
   const int64_t m_;
   const int64_t combs_;
-  BatchKernelConfig cfg_;
-  accscalar_t p_val_;
-  accscalar_t n2_val_;
-  accscalar_t n2_squared_minus_1_val_;
-  scalar_t* out_ptr_;
-  scalar_t* in_ptr_;
-  scalar_t* grad_ptr_;
-  scalar_t* dist_ptr_;
+  const scalar_t p_val_;
+  const accscalar_t n2_val_;
+  const accscalar_t n2_squared_minus_1_val_;
 };
-
-template <typename scalar_t, typename F, int p_type>
-static void pdist_backward_kernel_impl(
-    Tensor& buffer,
-    const Tensor& grad,
-    const Tensor& self,
-    const Tensor& dist,
-    int64_t gs,
-    const int64_t n,
-    const int64_t m,
-    const int64_t combs,
-    const double p,
-    const double n2,
-    const double n2_squared_minus_1) {
-  static constexpr int val_per_wi = 8;
-  using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  using KernelClass =
-      PdistBackwardKernelFunctor<scalar_t, F, p_type, accscalar_t>;
-
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      dist.numel(), m / val_per_wi, 1, dist.numel(), true);
-  sycl::nd_range<2> work_load(cfg.global_size(), cfg.group_size());
-
-  auto p_val = static_cast<accscalar_t>(p);
-  auto n2_val = static_cast<accscalar_t>(n2);
-  auto n2_squared_minus_1_val = static_cast<accscalar_t>(n2_squared_minus_1);
-
-  auto out_ptr = buffer.data_ptr<scalar_t>();
-  auto in_ptr = self.data_ptr<scalar_t>();
-  auto grad_ptr = grad.data_ptr<scalar_t>();
-  auto dist_ptr = dist.data_ptr<scalar_t>();
-
-  cfg.build<KernelClass>();
-
-  KernelClass kfn(
-      gs,
-      n,
-      m,
-      combs,
-      cfg,
-      p_val,
-      n2_val,
-      n2_squared_minus_1_val,
-      out_ptr,
-      in_ptr,
-      grad_ptr,
-      dist_ptr);
-
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
-}
 
 void pdist_backward_kernel(
     Tensor& result,
@@ -1003,75 +945,97 @@ void pdist_backward_kernel(
 
   Tensor buffer =
       at::empty({n - 1, result.size(0), result.size(1)}, result.options());
-  AT_DISPATCH_FLOATING_TYPES_AND(
-      at::ScalarType::BFloat16, self.scalar_type(), "pdist_backward_xpu", [&] {
-        if (p == 1.0) {
-          pdist_backward_kernel_impl<scalar_t, DistsOne<scalar_t>, 0>(
-              buffer,
-              grad,
-              self,
-              dist,
-              grad.stride(0),
-              n,
-              m,
-              dist.numel(),
-              p,
-              n2,
-              n2_squared_minus_1);
-        } else if (p < 2.0) {
-          pdist_backward_kernel_impl<scalar_t, DistsLtTwo<scalar_t>, 1>(
-              buffer,
-              grad,
-              self,
-              dist,
-              grad.stride(0),
-              n,
-              m,
-              dist.numel(),
-              p,
-              n2,
-              n2_squared_minus_1);
-        } else if (p == 2.0) {
-          pdist_backward_kernel_impl<scalar_t, DistsTwo<scalar_t>, 2>(
-              buffer,
-              grad,
-              self,
-              dist,
-              grad.stride(0),
-              n,
-              m,
-              dist.numel(),
-              p,
-              n2,
-              n2_squared_minus_1);
-        } else if (std::isinf(p)) {
-          pdist_backward_kernel_impl<scalar_t, DistsInf<scalar_t>, 3>(
-              buffer,
-              grad,
-              self,
-              dist,
-              grad.stride(0),
-              n,
-              m,
-              dist.numel(),
-              p,
-              n2,
-              n2_squared_minus_1);
-        } else {
-          pdist_backward_kernel_impl<scalar_t, DistsP<scalar_t>, 4>(
-              buffer,
-              grad,
-              self,
-              dist,
-              grad.stride(0),
-              n,
-              m,
-              dist.numel(),
-              p,
-              n2,
-              n2_squared_minus_1);
-        }
-      });
+
+  const int group_size_x = 16;
+  const int group_size_y = 64;
+  const int ng_x = (dist.numel() + group_size_x - 1) / group_size_x;
+  const int ng_y = (m + group_size_y * 8 - 1) / (group_size_y * 8);
+
+  sycl::range<2> global_range(group_size_x * ng_x, group_size_y * ng_y);
+  sycl::range<2> local_range(group_size_x, group_size_y);
+
+  AT_DISPATCH_FLOATING_TYPES(result.scalar_type(), "pdist_backward_xpu", [&] {
+    auto buffer_ptr = buffer.mutable_data_ptr<scalar_t>();
+    auto grad_ptr = grad.const_data_ptr<scalar_t>();
+    auto self_ptr = self.const_data_ptr<scalar_t>();
+    auto dist_ptr = dist.const_data_ptr<scalar_t>();
+    if (p == 1.0) {
+      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsOne<scalar_t>>(
+          buffer_ptr,
+          grad_ptr,
+          self_ptr,
+          dist_ptr,
+          grad.stride(0),
+          n,
+          m,
+          dist.numel(),
+          p,
+          n2,
+          n2_squared_minus_1);
+      sycl_kernel_submit(
+          global_range, local_range, getCurrentSYCLQueue(), caller);
+    } else if (p < 2.0) {
+      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsLtTwo<scalar_t>>(
+          buffer_ptr,
+          grad_ptr,
+          self_ptr,
+          dist_ptr,
+          grad.stride(0),
+          n,
+          m,
+          dist.numel(),
+          p,
+          n2,
+          n2_squared_minus_1);
+      sycl_kernel_submit(
+          global_range, local_range, getCurrentSYCLQueue(), caller);
+    } else if (p == 2.0) {
+      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsTwo<scalar_t>>(
+          buffer_ptr,
+          grad_ptr,
+          self_ptr,
+          dist_ptr,
+          grad.stride(0),
+          n,
+          m,
+          dist.numel(),
+          p,
+          n2,
+          n2_squared_minus_1);
+      sycl_kernel_submit(
+          global_range, local_range, getCurrentSYCLQueue(), caller);
+    } else if (std::isinf(p)) {
+      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsInf<scalar_t>>(
+          buffer_ptr,
+          grad_ptr,
+          self_ptr,
+          dist_ptr,
+          grad.stride(0),
+          n,
+          m,
+          dist.numel(),
+          p,
+          n2,
+          n2_squared_minus_1);
+      sycl_kernel_submit(
+          global_range, local_range, getCurrentSYCLQueue(), caller);
+    } else {
+      auto caller = PdistBackwardKernelFunctor<scalar_t, DistsP<scalar_t>>(
+          buffer_ptr,
+          grad_ptr,
+          self_ptr,
+          dist_ptr,
+          grad.stride(0),
+          n,
+          m,
+          dist.numel(),
+          p,
+          n2,
+          n2_squared_minus_1);
+      sycl_kernel_submit(
+          global_range, local_range, getCurrentSYCLQueue(), caller);
+    }
+  });
 
   at::sum_out(result, buffer, 0);
 }
