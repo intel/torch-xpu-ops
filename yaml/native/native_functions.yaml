@@ -4958,6 +4958,14 @@
   dispatch:
     XPU: aminmax_out
 
+- func: _compute_linear_combination(Tensor input, Tensor coefficients) -> Tensor
+  dispatch:
+    XPU: _compute_linear_combination
+
+- func: _compute_linear_combination.out(Tensor input, Tensor coefficients, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: _compute_linear_combination_out
+
 - func: index_fill_.int_Scalar(Tensor(a!) self, int dim, Tensor index, Scalar value) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
