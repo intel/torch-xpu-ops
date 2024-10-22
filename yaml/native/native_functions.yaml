@@ -5522,6 +5522,29 @@
   python_module: nn
   structured_delegate: adaptive_max_pool2d_backward.grad_input
 
+# Return: (Tensor output, Tensor indices)
+- func: max_pool3d_with_indices.out(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False, *, Tensor(a!) out, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  dispatch:
+    XPU: max_pool3d_with_indices_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: max_pool3d_with_indices(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> (Tensor, Tensor)
+  python_module: nn
+  dispatch:
+    XPU: max_pool3d_with_indices_xpu
+  tags: core
+
+- func: max_pool3d_with_indices_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, int[3] dilation, bool ceil_mode, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: max_pool3d_with_indices_backward_out_xpu
+
+- func: max_pool3d_with_indices_backward(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, int[3] dilation, bool ceil_mode, Tensor indices) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: max_pool3d_with_indices_backward_xpu
+
   # VariableType::_weight_norm does not want to be given a gap in the autograd graph,
 # so we don't define "dispatch" variants for it.
 - func: _weight_norm(Tensor v, Tensor g, int dim=0) -> Tensor
