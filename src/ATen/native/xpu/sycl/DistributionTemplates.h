@@ -221,6 +221,236 @@ void distribution_nullary_kernel(
   }
 }
 
+// Unary kernel
+template <
+    typename scalar1_t,
+    typename scalar2_t,
+    typename func_t,
+    typename inp_offset_calc_t,
+    typename out_offset_calc_t>
+struct DistributionUnaryElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int group_size = item.get_local_range(0);
+    int global_size = item.get_global_range(0);
+    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+
+    auto seeds = philox_unpack(philox_args_);
+    randStatePhilox4_32_10_t state;
+    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+    for (int i = global_idx; i < numel_; i += global_size) {
+      auto in_offsets = inp_calc_.get(i);
+      auto out_offsets = out_calc_.get(i);
+      f_(state, output_data_[out_offsets[0]], input_data_[in_offsets[0]]);
+    }
+  }
+  DistributionUnaryElementwiseKernelFunctor(
+      int numel,
+      const func_t f,
+      PhiloxState philox_args,
+      scalar1_t* output_data,
+      const scalar2_t* input_data,
+      inp_offset_calc_t input_offset_calculator,
+      out_offset_calc_t output_offset_calculator)
+      : numel_(numel),
+        f_(f),
+        philox_args_(philox_args),
+        output_data_(output_data),
+        input_data_(input_data),
+        inp_calc_(input_offset_calculator),
+        out_calc_(output_offset_calculator) {}
+
+ private:
+  int numel_;
+  const func_t f_;
+  PhiloxState philox_args_;
+  scalar1_t* output_data_;
+  const scalar2_t* input_data_;
+  inp_offset_calc_t inp_calc_;
+  out_offset_calc_t out_calc_;
+};
+
+template <typename scalar1_t, typename scalar2_t, typename func_t>
+void distribution_unary_kernel(
+    TensorIterator& iter,
+    PhiloxState philox_args,
+    func_t f) {
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_unary_kernel<scalar1_t, scalar2_t, decltype(f)>(
+          sub_iter, philox_args, f);
+    }
+    return;
+  }
+
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(iter.can_use_32bit_indexing());
+
+  int64_t numel = iter.numel();
+  if (numel == 0) {
+    return;
+  }
+
+  auto execution_policy = calc_execution_policy(numel);
+  auto num_groups = std::get<1>(execution_policy);
+  auto group_size = std::get<2>(execution_policy);
+
+  scalar1_t* output_data = static_cast<scalar1_t*>(iter.data_ptr(0));
+  const scalar2_t* input_data = static_cast<const scalar2_t*>(iter.data_ptr(1));
+
+  if (iter.is_contiguous()) {
+    auto input_offset_calculator = TrivialOffsetCalculator<1>();
+    auto output_offset_calculator = TrivialOffsetCalculator<1>();
+    auto caller = DistributionUnaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  } else {
+    auto input_offset_calculator = make_input_offset_calculator<1>(iter);
+    auto output_offset_calculator = make_output_offset_calculator(iter);
+    auto caller = DistributionUnaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  }
+}
+
+// Binary kernel
+template <
+    typename func_t,
+    typename inp_offset_calc_t,
+    typename out_offset_calc_t>
+struct DistributionBinaryElementwiseKernelFunctor {
+  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
+  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
+  using output_t = typename function_traits<func_t>::result_type;
+  void operator()(sycl::nd_item<1> item) const {
+    int group_size = item.get_local_range(0);
+    int global_size = item.get_global_range(0);
+    int global_idx = item.get_group(0) * group_size + item.get_local_id(0);
+
+    auto seeds = philox_unpack(philox_args_);
+
+    randStatePhilox4_32_10_t state;
+    rand_init(std::get<0>(seeds), global_idx, std::get<1>(seeds), &state);
+
+    for (int i = global_idx; i < numel_; i += global_size) {
+      auto in_offsets = inp_calc_.get(i);
+      auto out_offsets = out_calc_.get(i);
+      out_data_[out_offsets[0]] =
+          f_(state, inp_data_1_[in_offsets[0]], inp_data_2_[in_offsets[1]]);
+    }
+  }
+
+  DistributionBinaryElementwiseKernelFunctor(
+      int numel,
+      func_t f,
+      PhiloxState philox_args,
+      output_t* output_data,
+      const input_t_1* input_data_1,
+      const input_t_2* input_data_2,
+      inp_offset_calc_t inp_calc,
+      out_offset_calc_t out_calc)
+      : numel_(numel),
+        f_(f),
+        philox_args_(philox_args),
+        out_data_(output_data),
+        inp_data_1_(input_data_1),
+        inp_data_2_(input_data_2),
+        inp_calc_(inp_calc),
+        out_calc_(out_calc) {}
+
+ private:
+  int64_t numel_;
+  func_t f_;
+  PhiloxState philox_args_;
+  output_t* out_data_;
+  const input_t_1* inp_data_1_;
+  const input_t_2* inp_data_2_;
+  inp_offset_calc_t inp_calc_;
+  out_offset_calc_t out_calc_;
+};
+
+template <typename func_t>
+void distribution_binary_kernel(
+    TensorIteratorBase& iter,
+    PhiloxState philox_args,
+    const func_t& f) {
+  static_assert(
+      std::is_same<
+          typename function_traits<func_t>::template arg<0>::type,
+          randStatePhilox4_32_10_t&>::value,
+      "the first argument of functor must be randStatePhilox4_32_10_t");
+  using input_t_1 = typename function_traits<func_t>::template arg<1>::type;
+  using input_t_2 = typename function_traits<func_t>::template arg<2>::type;
+  using output_t = typename function_traits<func_t>::result_type;
+
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      distribution_binary_kernel(sub_iter, philox_args, f);
+    }
+    return;
+  }
+
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(iter.can_use_32bit_indexing());
+
+  int64_t numel = iter.numel();
+  if (numel == 0) {
+    return;
+  }
+
+  auto execution_policy = calc_execution_policy(numel);
+  auto num_groups = std::get<1>(execution_policy);
+  auto group_size = std::get<2>(execution_policy);
+
+  output_t* output_data = static_cast<output_t*>(iter.data_ptr(0));
+  const input_t_1* input_data_1 =
+      static_cast<const input_t_1*>(iter.data_ptr(1));
+  const input_t_2* input_data_2 =
+      static_cast<const input_t_2*>(iter.data_ptr(2));
+
+  if (iter.is_contiguous()) {
+    auto input_offset_calculator = TrivialOffsetCalculator<2>();
+    auto output_offset_calculator = TrivialOffsetCalculator<1>();
+    auto caller = DistributionBinaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data_1,
+        input_data_2,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  } else {
+    auto input_offset_calculator = make_input_offset_calculator<2>(iter);
+    auto output_offset_calculator = make_output_offset_calculator(iter);
+    auto caller = DistributionBinaryElementwiseKernelFunctor(
+        numel,
+        f,
+        philox_args,
+        output_data,
+        input_data_1,
+        input_data_2,
+        input_offset_calculator,
+        output_offset_calculator);
+    sycl_kernel_submit(
+        num_groups * group_size, group_size, getCurrentSYCLQueue(), caller);
+  }
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
@@ -688,13 +918,120 @@ void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG gen) {
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       iter.dtype(),
-      "exponential__xpu_",
+      "exponential_xpu",
       [&] {
         using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
         auto lambd = static_cast<accscalar_t>(lambda);
         ExponentialFunctor<scalar_t, accscalar_t> exponential_func(lambd);
         uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
             iter, gen, exponential_func);
+      });
+}
+
+// ====================== LogNormal ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct LogNormalFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(transformation::log_normal<accscalar_t>(
+        transformation::normal<accscalar_t>(rand, mean_, std_)));
+  }
+  LogNormalFunctor(accscalar_t mean, accscalar_t std)
+      : mean_(mean), std_(std) {}
+
+ private:
+  accscalar_t mean_;
+  accscalar_t std_;
+};
+
+template <typename RNG>
+void log_normal_kernel(
+    TensorIteratorBase& iter,
+    double mean,
+    double std,
+    RNG gen) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "log_normal_xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto mean_ = static_cast<accscalar_t>(mean);
+        auto std_ = static_cast<accscalar_t>(std);
+        // define functor to multiply std and add mean
+        LogNormalFunctor<scalar_t, accscalar_t> log_normal_functor(mean_, std_);
+        normal_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, log_normal_functor);
+      });
+}
+
+// ====================== Cauchy ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct CauchyFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(
+        transformation::cauchy<accscalar_t>(rand, median_, sigma_));
+  }
+
+  CauchyFunctor(accscalar_t median, accscalar_t sigma)
+      : median_(median), sigma_(sigma) {}
+
+ private:
+  accscalar_t median_;
+  accscalar_t sigma_;
+};
+
+template <typename RNG>
+void cauchy_kernel(
+    TensorIteratorBase& iter,
+    double median,
+    double sigma,
+    RNG gen) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "cauchy_xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto median_ = static_cast<accscalar_t>(median);
+        auto sigma_ = static_cast<accscalar_t>(sigma);
+        CauchyFunctor<scalar_t, accscalar_t> cauchy_func(median_, sigma_);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, cauchy_func);
+      });
+}
+
+// ====================== Geometric ======================
+
+template <typename scalar_t, typename accscalar_t>
+struct GeometricFunctor {
+  scalar_t operator()(accscalar_t rand) const {
+    return static_cast<scalar_t>(
+        transformation::geometric<accscalar_t>(rand, p_));
+  }
+
+  GeometricFunctor(accscalar_t p) : p_(p) {}
+
+ private:
+  accscalar_t p_;
+};
+
+template <typename RNG>
+void geometric_kernel(TensorIteratorBase& iter, double p, RNG gen) {
+  AT_DISPATCH_ALL_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.dtype(),
+      "geometric_xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        auto p_ = static_cast<accscalar_t>(p);
+        GeometricFunctor<scalar_t, accscalar_t> geometric_func(p_);
+        uniform_and_transform<scalar_t, accscalar_t, rand4_engine_calls>(
+            iter, gen, geometric_func);
       });
 }
 
