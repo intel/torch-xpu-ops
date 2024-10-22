@@ -2787,6 +2787,11 @@
   autogen: embedding_dense_backward.out
   tags: core
 
+- func: embedding_renorm_(Tensor(a!) self, Tensor indices, float max_norm, float norm_type) -> Tensor(a!)
+  dispatch:
+    XPU: embedding_renorm_xpu_
+  autogen: embedding_renorm, embedding_renorm.out
+
 - func: elu.out(Tensor self, Scalar alpha=1, Scalar scale=1, Scalar input_scale=1, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
