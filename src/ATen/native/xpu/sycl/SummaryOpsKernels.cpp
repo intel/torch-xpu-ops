@@ -214,15 +214,6 @@ Tensor _histc_template(
     maxvalue = maxvalue + 1;
   }
 
-  TORCH_CHECK(
-      !(std::isinf(minvalue) || std::isinf(maxvalue) || std::isnan(minvalue) ||
-        std::isnan(maxvalue)),
-      "range of [",
-      minvalue,
-      ", ",
-      maxvalue,
-      "] is not finite");
-
   TORCH_CHECK(minvalue < maxvalue, "max must be larger than min");
 
   tensor_histogram<input_t, input_t, false>(
