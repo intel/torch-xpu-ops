@@ -390,6 +390,7 @@ supported:
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
+  - embedding_renorm_
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
