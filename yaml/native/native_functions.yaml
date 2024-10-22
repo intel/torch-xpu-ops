@@ -4969,6 +4969,16 @@
   dispatch:
     XPU: argmin_out
 
+- func: tril_indices(int row, int col, int offset=0, *, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: tril_indices_xpu
+  autogen: tril_indices.out
+
+- func: triu_indices(int row, int col, int offset=0, *, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: triu_indices_xpu
+  autogen: triu_indices.out
+
 - func: nansum(Tensor self, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   variants: function, method
   dispatch:
