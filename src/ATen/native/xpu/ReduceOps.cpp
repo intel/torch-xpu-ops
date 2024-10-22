@@ -14,10 +14,10 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
-#include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
