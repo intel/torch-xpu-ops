@@ -1210,7 +1210,7 @@ skip_dict = {
     "test_reductions_xpu.py": (
         # Accumulate error due to different accumulation order.
         "test_logcumsumexp_complex_xpu_complex64",
-    )
+    ),
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
