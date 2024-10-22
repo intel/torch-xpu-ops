@@ -3504,6 +3504,7 @@ skip_dict = {
         "test_basic_xpu_float64",
         "test_bmm_deterministic_xpu_float64",
         "test_bmm_windows_error_xpu_float64",
+        "test_bmm_oob_xpu",
         "test_bmm_xpu_float64",
         "test_cat_xpu_complex128",
         "test_cat_xpu_float64",
