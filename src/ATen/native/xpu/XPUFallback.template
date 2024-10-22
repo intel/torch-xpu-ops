@@ -273,8 +273,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "upsample_nearest3d_backward.grad_input",
     "_upsample_nearest_exact3d.out",
     "_upsample_nearest_exact3d_backward.grad_input",
-    "upsample_trilinear3d_backward.grad_input",
-    "upsample_trilinear3d.out",
     "_validate_compressed_sparse_indices",
     "vdot",
     "_upsample_bicubic2d_aa.out",
