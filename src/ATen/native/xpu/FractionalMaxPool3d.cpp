@@ -1,44 +1,70 @@
-#include <ATen/ATen.h>
+#include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/cpu/mixed_data_type.h>
 #include <ATen/native/xpu/sycl/FractionalMaxPool3dKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <ATen/ops/empty.h>
 
-namespace at {
-std::tuple<Tensor&, Tensor&> XPUNativeFunctions::fractional_max_pool3d_out(
-    const Tensor& self,
-    IntArrayRef kernel_size,
-    IntArrayRef output_size,
-    const Tensor& random_samples,
-    Tensor& output,
-    Tensor& indices) {
-  native::xpu::fractional_max_pool3d_out_kernel(
-      output, indices, self, kernel_size, output_size, random_samples);
-  return std::tuple<Tensor&, Tensor&>(output, indices);
+#include <xpu/ATen/ops/fractional_max_pool3d_backward_native.h>
+#include <xpu/ATen/ops/fractional_max_pool3d_native.h>
+
+namespace at::native {
+
+TORCH_IMPL_FUNC(fractional_max_pool3d_out_xpu)
+(const Tensor& input,
+ int64_t poolSizeT,
+ int64_t poolSizeH,
+ int64_t poolSizeW,
+ int64_t outputT,
+ int64_t outputH,
+ int64_t outputW,
+ const Tensor& randomSamples,
+ int64_t numBatch,
+ int64_t numPlanes,
+ int64_t inputT,
+ int64_t inputH,
+ int64_t inputW,
+ const Tensor& output,
+ const Tensor& indices) {
+  xpu::fractional_max_pool3d_out_kernel(
+      input,
+      poolSizeT,
+      poolSizeH,
+      poolSizeW,
+      outputT,
+      outputH,
+      outputW,
+      randomSamples,
+      numBatch,
+      numPlanes,
+      inputT,
+      inputH,
+      inputW,
+      output,
+      indices);
 }
 
-Tensor& XPUNativeFunctions::fractional_max_pool3d_backward_out(
+Tensor& fractional_max_pool3d_backward_out_xpu(
     const Tensor& grad_output,
     const Tensor& self,
     IntArrayRef kernel_size,
     IntArrayRef output_size,
     const Tensor& indices,
     Tensor& grad_input) {
-  native::xpu::fractional_max_pool3d_backward_out_kernel(
+  xpu::fractional_max_pool3d_backward_out_kernel(
       grad_input, grad_output, self, kernel_size, output_size, indices);
   return grad_input;
 }
 
-Tensor XPUNativeFunctions::fractional_max_pool3d_backward(
+Tensor fractional_max_pool3d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& self,
     IntArrayRef kernel_size,
     IntArrayRef output_size,
     const Tensor& indices) {
   Tensor grad_input = at::empty({0}, self.options());
-  native::xpu::fractional_max_pool3d_backward_out_kernel(
+  xpu::fractional_max_pool3d_backward_out_kernel(
       grad_input, grad_output, self, kernel_size, output_size, indices);
   return grad_input;
 }
 
-} // namespace at
+} // namespace at::native

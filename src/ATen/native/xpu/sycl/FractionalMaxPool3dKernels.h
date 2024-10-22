@@ -1,17 +1,26 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {
 
-void fractional_max_pool3d_out_kernel(
-    Tensor& output,
-    Tensor& indices,
+TORCH_XPU_API void fractional_max_pool3d_out_kernel(
     const Tensor& input,
-    IntArrayRef pool_size,
-    IntArrayRef output_size,
-    const Tensor& randomSamples);
+    int64_t poolSizeT,
+    int64_t poolSizeH,
+    int64_t poolSizeW,
+    int64_t outputT,
+    int64_t outputH,
+    int64_t outputW,
+    const Tensor& randomSamples,
+    int64_t numBatch,
+    int64_t numPlanes,
+    int64_t inputT,
+    int64_t inputH,
+    int64_t inputW,
+    const Tensor& output,
+    const Tensor& indices);
 
-void fractional_max_pool3d_backward_out_kernel(
+TORCH_XPU_API void fractional_max_pool3d_backward_out_kernel(
     Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,

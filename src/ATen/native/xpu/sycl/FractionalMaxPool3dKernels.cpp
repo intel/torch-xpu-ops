@@ -8,10 +8,9 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/NativeFunctions.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/core/TensorAccessor.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
-// #include <ATen/native/xpu/sycl/FractionalMaxPool3Kernels.h>
-#include <ATen/core/TensorAccessor.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLContext.h>
 
@@ -537,24 +536,25 @@ void fractional_max_pool3d_backward_out_frame(
 }
 
 void fractional_max_pool3d_out_kernel(
-    Tensor& output,
-    Tensor& indices,
     const Tensor& input,
-    IntArrayRef pool_size,
-    IntArrayRef output_size,
-    const Tensor& randomSamples) {
+    int64_t poolSizeT,
+    int64_t poolSizeH,
+    int64_t poolSizeW,
+    int64_t outputT,
+    int64_t outputH,
+    int64_t outputW,
+    const Tensor& randomSamples,
+    int64_t numBatch,
+    int64_t numPlanes,
+    int64_t inputT,
+    int64_t inputH,
+    int64_t inputW,
+    const Tensor& output,
+    const Tensor& indices) {
   int64_t planeDim = 0;
   int64_t dimt = 1;
   int64_t dimh = 2;
   int64_t dimw = 3;
-  int64_t numBatch = 1;
-
-  int64_t outputT = output_size[0];
-  int64_t outputH = output_size[1];
-  int64_t outputW = output_size[2];
-  int64_t poolSizeT = pool_size[0];
-  int64_t poolSizeH = pool_size[1];
-  int64_t poolSizeW = pool_size[2];
 
   int64_t ndims = input.ndimension();
   TORCH_CHECK(
@@ -570,12 +570,6 @@ void fractional_max_pool3d_out_kernel(
     dimh++;
     dimw++;
   }
-
-  /* sizes */
-  int64_t numPlanes = input.size(planeDim);
-  int64_t inputT = input.size(dimt);
-  int64_t inputH = input.size(dimh);
-  int64_t inputW = input.size(dimw);
 
   TORCH_CHECK(
       outputT + poolSizeT - 1 < inputT,

@@ -1,18 +1,18 @@
 #pragma once
-#include <ATen/ATen.h>
+#include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {
 
-void fractional_max_pool2d_out_kernel(
-    Tensor& output,
-    Tensor& indices,
+TORCH_XPU_API void fractional_max_pool2d_out_kernel(
+    const Tensor& output,
+    const Tensor& indices,
     const Tensor& input,
     IntArrayRef pool_size,
     IntArrayRef output_size,
     const Tensor& randomSamples);
 
-void fractional_max_pool2d_backward_out_kernel(
-    Tensor& gradInput,
+TORCH_XPU_API void fractional_max_pool2d_backward_kernel(
+    const Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
     IntArrayRef pool_size /* unused */,

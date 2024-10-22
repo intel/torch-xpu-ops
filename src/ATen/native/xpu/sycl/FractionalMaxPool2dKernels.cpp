@@ -10,7 +10,6 @@
 #include <ATen/NumericUtils.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
-// #include <ATen/native/xpu/sycl/FractionalMaxPool2Kernels.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLContext.h>
 
@@ -156,7 +155,7 @@ struct FractionalMaxPool2dOutFrameKernelFunctor {
 };
 
 template <typename scalar_t>
-void fractional_max_pool2d_out_frame(
+void fractional_max_pool2d_out_xpu_frame(
     scalar_t* output,
     int64_t* indices,
     scalar_t* input,
@@ -280,7 +279,7 @@ struct FractionalMaxPool2dBackwardOutFrameKernelFunctor {
 };
 
 template <typename scalar_t, bool is_channels_last>
-void fractional_max_pool2d_backward_out_frame(
+void fractional_max_pool2d_backward_out_xpu_frame(
     scalar_t* gradInput,
     scalar_t* gradOutput,
     int64_t* indices,
@@ -319,8 +318,8 @@ void fractional_max_pool2d_backward_out_frame(
 }
 
 void fractional_max_pool2d_out_kernel(
-    Tensor& output,
-    Tensor& indices,
+    const Tensor& output,
+    const Tensor& indices,
     const Tensor& input,
     IntArrayRef pool_size,
     IntArrayRef output_size,
@@ -396,9 +395,9 @@ void fractional_max_pool2d_out_kernel(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
       input.scalar_type(),
-      "fractional_max_pool2d_xpu",
+      "fractional_max_pool2d_out_xpu_frame",
       [&] {
-        fractional_max_pool2d_out_frame<scalar_t>(
+        fractional_max_pool2d_out_xpu_frame<scalar_t>(
             output_.data_ptr<scalar_t>(),
             indices_.data_ptr<int64_t>(),
             input_.data_ptr<scalar_t>(),
@@ -415,8 +414,8 @@ void fractional_max_pool2d_out_kernel(
       });
 }
 
-void fractional_max_pool2d_backward_out_kernel(
-    Tensor& gradInput,
+void fractional_max_pool2d_backward_kernel(
+    const Tensor& gradInput,
     const Tensor& gradOutput,
     const Tensor& input,
     IntArrayRef pool_size /* unused */,
@@ -466,10 +465,10 @@ void fractional_max_pool2d_backward_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       gradOutput.scalar_type(),
-      "fractional_max_pool2d_backward_xpu",
+      "fractional_max_pool2d_backward_out_xpu_frame",
       [&] {
         if (is_smf_channels_last(input)) {
-          fractional_max_pool2d_backward_out_frame<scalar_t, true>(
+          fractional_max_pool2d_backward_out_xpu_frame<scalar_t, true>(
               gradInput_.data_ptr<scalar_t>(),
               gradOutput_.data_ptr<scalar_t>(),
               indices_.data_ptr<int64_t>(),
@@ -480,7 +479,7 @@ void fractional_max_pool2d_backward_out_kernel(
               outputH,
               outputW);
         } else {
-          fractional_max_pool2d_backward_out_frame<scalar_t, false>(
+          fractional_max_pool2d_backward_out_xpu_frame<scalar_t, false>(
               gradInput_.data_ptr<scalar_t>(),
               gradOutput_.data_ptr<scalar_t>(),
               indices_.data_ptr<int64_t>(),
