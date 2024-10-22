@@ -3460,4 +3460,6 @@ skip_dict = {
         "test_sparse_mul_xpu",
         "test_sparse_sub_xpu",
     ),
+
+    "test_distributions_xpu.py": None,
 }
