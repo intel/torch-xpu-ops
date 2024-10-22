@@ -1220,6 +1220,8 @@ skip_dict = {
         "test_mode_xpu",
         "test_mode_wrong_dtype_xpu",
         "test_dim_reduction_fns_fn_name_mode",
+        # Accumulate error due to different accumulation order.
+        "test_logcumsumexp_complex_xpu_complex64",
     ),
 
     "test_unary_ufuncs_xpu.py": (

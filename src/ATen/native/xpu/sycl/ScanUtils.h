@@ -803,28 +803,28 @@ class SegmentScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using InputInfo = typename SSConfig::InputInfoType;
   using OutputInfo = typename SSConfig::OutputInfoType;
 
-  SegmentScanKernel(const SSConfig& cfg) : cfg(cfg), slm() {}
+  SegmentScanKernel(const SSConfig& cfg) : cfg_(cfg), slm_() {}
 
  public:
   void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg.get_item_desc(item);
+    auto id = cfg_.get_item_desc(item);
     int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0,
         glb_ldr_logical_off, glb_str_logical_off, crr_off;
 
-    int64_t e = cfg.type_ == INCLUSIVE_TYPE ? 0 : 1;
+    int64_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
     if constexpr (TrivialIdxCal) {
       glb_ldr_logical_off = item.get_global_linear_id();
       glb_str_logical_off = glb_ldr_logical_off + e;
       crr_off = id.chunk;
     } else {
-      si = id.glb_batch % cfg.stride_;
-      bi = id.glb_batch / cfg.stride_;
+      si = id.glb_batch % cfg_.stride_;
+      bi = id.glb_batch / cfg_.stride_;
       pi = id.chunk * id.chunk_size + id.chunk_off;
       glb_ldr_logical_off =
-          si + pi * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
+          si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
       glb_str_logical_off =
-          si + (pi + e) * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
-      crr_off = si + id.chunk * cfg.stride_ + bi * id.chunk_num * cfg.stride_;
+          si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
+      crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
     }
 
     if constexpr (TrivialOffCal) {
@@ -834,65 +834,65 @@ class SegmentScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     } else {
       glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
           glb_ldr_logical_off,
-          cfg.iinfo_,
+          cfg_.iinfo_,
           IndexToOffset<typename InputInfo::scalar_t, int64_t>::
               NON_STRICT_CONTIGUOUS);
       glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
           glb_str_logical_off,
-          cfg.oinfo_,
+          cfg_.oinfo_,
           IndexToOffset<typename InputInfo::scalar_t, int64_t>::
               NON_STRICT_CONTIGUOUS);
       glb_str_off_0 =
           IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
               glb_ldr_logical_off,
-              cfg.oinfo_,
+              cfg_.oinfo_,
               IndexToOffset<typename InputInfo::scalar_t, int64_t>::
                   NON_STRICT_CONTIGUOUS);
     }
-    T value = cfg.init_;
-    if (id.glb_problem < cfg.problem_ && id.glb_batch < cfg.problem_batch_) {
-      value = c10::load(cfg.iinfo_.data + glb_ldr_off);
+    T value = cfg_.init_;
+    if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
+      value = c10::load(cfg_.iinfo_.data + glb_ldr_off);
     }
 
-    if (cfg.problem_along_x_) {
+    if (cfg_.problem_along_x_) {
       // so far assign all work items along problem dimension
       // sg_shuffle benefits reduce on the dimension
       value = group_x_scan<T, BinaryFunction>(
-          item, value, slm, cfg.init_, cfg.func_);
+          item, value, slm_, cfg_.init_, cfg_.func_);
     } else {
       // parallel prefix reduce
-      value = group_y_scan<T, BinaryFunction>(item, value, slm, cfg.func_);
+      value = group_y_scan<T, BinaryFunction>(item, value, slm_, cfg_.func_);
     }
 
-    if (id.glb_batch < cfg.problem_batch_) {
-      if (cfg.type_ == INCLUSIVE_TYPE) {
-        if (id.glb_problem < cfg.problem_) {
-          cfg.oinfo_.data[glb_str_off] = value;
+    if (id.glb_batch < cfg_.problem_batch_) {
+      if (cfg_.type_ == INCLUSIVE_TYPE) {
+        if (id.glb_problem < cfg_.problem_) {
+          cfg_.oinfo_.data[glb_str_off] = value;
         }
       } else {
-        if (id.glb_problem < cfg.problem_ - 1 &&
+        if (id.glb_problem < cfg_.problem_ - 1 &&
             id.chunk_off < id.chunk_size - 1) {
-          cfg.oinfo_.data[glb_str_off] = value;
+          cfg_.oinfo_.data[glb_str_off] = value;
         }
-        if (id.glb_problem < cfg.problem_ && id.chunk_off == 0) {
-          cfg.oinfo_.data[glb_str_off_0] = cfg.init_;
+        if (id.glb_problem < cfg_.problem_ && id.chunk_off == 0) {
+          cfg_.oinfo_.data[glb_str_off_0] = cfg_.init_;
         }
       }
 
-      if (cfg.carrier_ != nullptr && id.chunk_off == id.chunk_size - 1) {
-        cfg.carrier_[crr_off] = value;
+      if (cfg_.carrier_ != nullptr && id.chunk_off == id.chunk_size - 1) {
+        cfg_.carrier_[crr_off] = value;
       }
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-    slm = sycl::local_accessor<T>(slm_size, cgh);
+    int slm_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
+    slm_ = sycl::local_accessor<T>(slm_size, cgh);
   }
 
  private:
-  SSConfig cfg;
-  sycl::local_accessor<T> slm;
+  SSConfig cfg_;
+  sycl::local_accessor<T> slm_;
 };
 
 template <
@@ -910,15 +910,15 @@ class SegmentScanWithIndicesKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using IndicesInfo = typename SSConfig::IndicesInfoType;
   using IndicesT = typename SSConfig::IndicesT;
 
-  SegmentScanWithIndicesKernel(const SSConfig& cfg) : cfg(cfg) {}
+  SegmentScanWithIndicesKernel(const SSConfig& cfg) : cfg_(cfg) {}
 
   void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg.get_item_desc(item);
+    auto id = cfg_.get_item_desc(item);
     int64_t si, pi, bi, glb_ldr_off, glb_str_off, glb_str_off_0, glb_idx_off,
         glb_idx_off_0, glb_ldr_logical_off, glb_str_logical_off, crr_off,
         glb_idx_logical_off;
 
-    int64_t e = cfg.type_ == INCLUSIVE_TYPE ? 0 : 1;
+    int64_t e = cfg_.type_ == INCLUSIVE_TYPE ? 0 : 1;
     if constexpr (TrivialIdxCal) {
       glb_ldr_logical_off = item.get_global_linear_id();
       glb_str_logical_off = glb_ldr_logical_off + e;
@@ -926,16 +926,16 @@ class SegmentScanWithIndicesKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       pi = id.chunk * id.chunk_size + id.chunk_off;
       crr_off = id.chunk;
     } else {
-      si = id.glb_batch % cfg.stride_;
-      bi = id.glb_batch / cfg.stride_;
+      si = id.glb_batch % cfg_.stride_;
+      bi = id.glb_batch / cfg_.stride_;
       pi = id.chunk * id.chunk_size + id.chunk_off;
       glb_ldr_logical_off =
-          si + pi * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
+          si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
       glb_str_logical_off =
-          si + (pi + e) * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
+          si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
       glb_idx_logical_off =
-          si + (pi + e) * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
-      crr_off = si + id.chunk * cfg.stride_ + bi * id.chunk_num * cfg.stride_;
+          si + (pi + e) * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
+      crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
     }
 
     if constexpr (TrivialOffCal) {
@@ -947,88 +947,88 @@ class SegmentScanWithIndicesKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     } else {
       glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
           glb_ldr_logical_off,
-          cfg.iinfo_,
+          cfg_.iinfo_,
           IndexToOffset<typename InputInfo::scalar_t, int64_t>::
               NON_STRICT_CONTIGUOUS);
       glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
           glb_str_logical_off,
-          cfg.oinfo_,
+          cfg_.oinfo_,
           IndexToOffset<typename InputInfo::scalar_t, int64_t>::
               NON_STRICT_CONTIGUOUS);
       glb_str_off_0 =
           IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
               glb_ldr_logical_off,
-              cfg.oinfo_,
+              cfg_.oinfo_,
               IndexToOffset<typename InputInfo::scalar_t, int64_t>::
                   NON_STRICT_CONTIGUOUS);
       glb_idx_off = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
           glb_idx_logical_off,
-          cfg.idxinfo_,
+          cfg_.idxinfo_,
           IndexToOffset<typename InputInfo::scalar_t, int64_t>::
               NON_STRICT_CONTIGUOUS);
       glb_idx_off_0 =
           IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
               glb_ldr_logical_off,
-              cfg.oinfo_,
+              cfg_.oinfo_,
               IndexToOffset<typename InputInfo::scalar_t, int64_t>::
                   NON_STRICT_CONTIGUOUS);
     }
-    T value = cfg.init_;
+    T value = cfg_.init_;
     IndicesT idx = pi;
-    if (id.glb_problem < cfg.problem_ && id.glb_batch < cfg.problem_batch_) {
-      value = c10::load(cfg.iinfo_.data + glb_ldr_off);
+    if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
+      value = c10::load(cfg_.iinfo_.data + glb_ldr_off);
       if constexpr (is_idx_carried) {
-        idx = cfg.idxinfo_.data[glb_ldr_off];
+        idx = cfg_.idxinfo_.data[glb_ldr_off];
       }
     }
 
-    if (cfg.problem_along_x_) {
+    if (cfg_.problem_along_x_) {
       // so far assign all work items along problem dimension
       // sg_shuffle benefits reduce on the dimension
       group_x_scan_with_indices<T, IndicesT, BinaryFunction>(
-          item, value, idx, slm, slm_idx, cfg.init_, cfg.func_);
+          item, value, idx, slm_, slm_idx_, cfg_.init_, cfg_.func_);
     } else {
       // parallel prefix reduce
       group_y_scan_with_indices<T, IndicesT, BinaryFunction>(
-          item, value, idx, slm, slm_idx, cfg.func_);
+          item, value, idx, slm_, slm_idx_, cfg_.func_);
     }
 
-    if (id.glb_batch < cfg.problem_batch_) {
-      if (cfg.type_ == INCLUSIVE_TYPE) {
-        if (id.glb_problem < cfg.problem_) {
-          cfg.oinfo_.data[glb_str_off] = value;
-          cfg.idxinfo_.data[glb_idx_off] = idx;
+    if (id.glb_batch < cfg_.problem_batch_) {
+      if (cfg_.type_ == INCLUSIVE_TYPE) {
+        if (id.glb_problem < cfg_.problem_) {
+          cfg_.oinfo_.data[glb_str_off] = value;
+          cfg_.idxinfo_.data[glb_idx_off] = idx;
         }
       } else {
-        if (id.glb_problem < cfg.problem_ - 1 &&
+        if (id.glb_problem < cfg_.problem_ - 1 &&
             id.chunk_off < id.chunk_size - 1) {
-          cfg.oinfo_.data[glb_str_off] = value;
-          cfg.idxinfo_.data[glb_idx_off] = idx;
+          cfg_.oinfo_.data[glb_str_off] = value;
+          cfg_.idxinfo_.data[glb_idx_off] = idx;
         }
-        if (id.glb_problem < cfg.problem_ && id.chunk_off == 0) {
-          cfg.oinfo_.data[glb_str_off_0] = cfg.init_;
-          cfg.idxinfo_.data[glb_idx_off_0] = pi;
+        if (id.glb_problem < cfg_.problem_ && id.chunk_off == 0) {
+          cfg_.oinfo_.data[glb_str_off_0] = cfg_.init_;
+          cfg_.idxinfo_.data[glb_idx_off_0] = pi;
         }
       }
 
-      if (cfg.carrier_ != nullptr && cfg.carrier_idx_ != nullptr &&
+      if (cfg_.carrier_ != nullptr && cfg_.carrier_idx_ != nullptr &&
           id.chunk_off == id.chunk_size - 1) {
-        cfg.carrier_[crr_off] = value;
-        cfg.carrier_idx_[crr_off] = idx;
+        cfg_.carrier_[crr_off] = value;
+        cfg_.carrier_idx_[crr_off] = idx;
       }
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    int slm_size = cfg.wg_range_x_ * cfg.wg_range_y_;
-    slm = sycl::local_accessor<T>(slm_size, cgh);
-    slm_idx = sycl::local_accessor<IndicesT>(slm_size, cgh);
+    int slm_size = cfg_.wg_range_x_ * cfg_.wg_range_y_;
+    slm_ = sycl::local_accessor<T>(slm_size, cgh);
+    slm_idx_ = sycl::local_accessor<IndicesT>(slm_size, cgh);
   }
 
  private:
-  SSConfig cfg;
-  sycl::local_accessor<T> slm;
-  sycl::local_accessor<IndicesT> slm_idx;
+  SSConfig cfg_;
+  sycl::local_accessor<T> slm_;
+  sycl::local_accessor<IndicesT> slm_idx_;
 };
 
 template <
@@ -1086,31 +1086,31 @@ struct AccumulateCarrierKernelFunctor {
 template <class SSConfig, bool TrivialIdxCal = false>
 struct AccumulateCarrierWithIndicesKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg.get_item_desc(item);
+    auto id = cfg_.get_item_desc(item);
     int64_t si, pi, bi, glb_off, crr_off;
     if constexpr (TrivialIdxCal) {
       glb_off = item.get_global_linear_id();
       crr_off = id.chunk;
     } else {
-      si = id.glb_batch % cfg.stride_;
-      bi = id.glb_batch / cfg.stride_;
+      si = id.glb_batch % cfg_.stride_;
+      bi = id.glb_batch / cfg_.stride_;
       pi = id.chunk * id.chunk_size + id.chunk_off;
-      glb_off = si + pi * cfg.stride_ + bi * cfg.problem_ * cfg.stride_;
-      crr_off = si + id.chunk * cfg.stride_ + bi * id.chunk_num * cfg.stride_;
+      glb_off = si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
+      crr_off = si + id.chunk * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
     }
-    if (id.glb_problem < cfg.problem_ && id.glb_batch < cfg.problem_batch_) {
+    if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
       binary_op_update(
-          cfg.carrier_[crr_off],
-          cfg.oinfo_.data[glb_off],
-          cfg.carrier_idx_[crr_off],
-          cfg.idxinfo_.data[glb_off],
-          cfg.func_);
+          cfg_.carrier_[crr_off],
+          cfg_.oinfo_.data[glb_off],
+          cfg_.carrier_idx_[crr_off],
+          cfg_.idxinfo_.data[glb_off],
+          cfg_.func_);
     }
   }
-  AccumulateCarrierWithIndicesKernelFunctor(const SSConfig cfg_) : cfg(cfg_) {}
+  AccumulateCarrierWithIndicesKernelFunctor(const SSConfig cfg) : cfg_(cfg) {}
 
  private:
-  const SSConfig cfg;
+  const SSConfig cfg_;
 };
 
 static inline bool dispatch_to_loop_scan_kernel(
