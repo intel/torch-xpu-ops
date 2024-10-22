@@ -35,66 +35,66 @@ inline int get_interval(
 template <typename scalar_t, typename accscalar_t>
 struct FractionalMaxPool2dOutFrameKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto input_ptr = input_data;
-    auto output_ptr = output_data;
-    auto indices_ptr = indices_data;
-    auto samples_ptr = samples_data;
+    auto input_ptr = input_data_;
+    auto output_ptr = output_data_;
+    auto indices_ptr = indices_data_;
+    auto samples_ptr = samples_data_;
 
     int linearIndex = item.get_global_id()[0];
-    for (int l = 0; l < loops; ++l) {
-      int outputIndex = linearIndex + l * (work_group_size * work_group_num);
-      int batch = outputIndex / (numPlane * outputSizeH * outputSizeW);
-      int plane = is_channels_last
-          ? outputIndex % numPlane
-          : (outputIndex / outputSizeH / outputSizeW) % numPlane;
-      int outputH = is_channels_last
-          ? outputIndex / numPlane / outputSizeW % outputSizeH
-          : outputIndex / outputSizeW % outputSizeH;
-      int outputW = is_channels_last ? outputIndex / numPlane % outputSizeW
-                                     : outputIndex % outputSizeW;
+    for (int l = 0; l < loops_; ++l) {
+      int outputIndex = linearIndex + l * (work_group_size_ * work_group_num_);
+      int batch = outputIndex / (numPlane_ * outputSizeH_ * outputSizeW_);
+      int plane = is_channels_last_
+          ? outputIndex % numPlane_
+          : (outputIndex / outputSizeH_ / outputSizeW_) % numPlane_;
+      int outputH = is_channels_last_
+          ? outputIndex / numPlane_ / outputSizeW_ % outputSizeH_
+          : outputIndex / outputSizeW_ % outputSizeH_;
+      int outputW = is_channels_last_ ? outputIndex / numPlane_ % outputSizeW_
+                                      : outputIndex % outputSizeW_;
 
-      if (batch < numBatch && plane < numPlane && outputH < outputSizeH &&
-          outputW < outputSizeW) {
+      if (batch < numBatch_ && plane < numPlane_ && outputH < outputSizeH_ &&
+          outputW < outputSizeW_) {
         int poolW = get_interval<scalar_t, accscalar_t>(
             static_cast<accscalar_t>(samples_ptr
-                                         [batch * numPlane * 2 + plane * 2 +
+                                         [batch * numPlane_ * 2 + plane * 2 +
                                           0] /*[batch][plane][0] */),
             outputW,
-            inputSizeW,
-            outputSizeW,
-            poolSizeW);
+            inputSizeW_,
+            outputSizeW_,
+            poolSizeW_);
         int poolH = get_interval<scalar_t, accscalar_t>(
             static_cast<accscalar_t>(samples_ptr
-                                         [batch * numPlane * 2 + plane * 2 +
+                                         [batch * numPlane_ * 2 + plane * 2 +
                                           1] /*[batch][plane][1] */),
             outputH,
-            inputSizeH,
-            outputSizeH,
-            poolSizeH);
+            inputSizeH_,
+            outputSizeH_,
+            poolSizeH_);
 
         scalar_t maxVal = std::numeric_limits<scalar_t>::lowest();
         int maxIndex = -1;
 
-        for (int h = poolH; h < poolH + poolSizeH; ++h) {
-          for (int w = poolW; w < poolW + poolSizeW; ++w) {
-            int64_t load_offset = is_channels_last
-                ? batch * inputSizeH * inputSizeW * numPlane + plane +
-                    h * inputSizeW * numPlane + w * numPlane
-                : batch * numPlane * inputSizeH * inputSizeW +
-                    plane * inputSizeH * inputSizeW + h * inputSizeW + w;
+        for (int h = poolH; h < poolH + poolSizeH_; ++h) {
+          for (int w = poolW; w < poolW + poolSizeW_; ++w) {
+            int64_t load_offset = is_channels_last_
+                ? batch * inputSizeH_ * inputSizeW_ * numPlane_ + plane +
+                    h * inputSizeW_ * numPlane_ + w * numPlane_
+                : batch * numPlane_ * inputSizeH_ * inputSizeW_ +
+                    plane * inputSizeH_ * inputSizeW_ + h * inputSizeW_ + w;
             scalar_t val = input_ptr[load_offset];
             if (val > maxVal) {
-              maxIndex = h * inputSizeW + w;
+              maxIndex = h * inputSizeW_ + w;
               maxVal = val;
             }
           }
         }
 
-        int64_t store_offset = is_channels_last
-            ? batch * outputSizeH * outputSizeW * numPlane + plane +
-                outputH * outputSizeW * numPlane + outputW * numPlane
-            : batch * numPlane * outputSizeH * outputSizeW +
-                plane * outputSizeH * outputSizeW + outputH * outputSizeW +
+        int64_t store_offset = is_channels_last_
+            ? batch * outputSizeH_ * outputSizeW_ * numPlane_ + plane +
+                outputH * outputSizeW_ * numPlane_ + outputW * numPlane_
+            : batch * numPlane_ * outputSizeH_ * outputSizeW_ +
+                plane * outputSizeH_ * outputSizeW_ + outputH * outputSizeW_ +
                 outputW;
         indices_ptr[store_offset] = maxIndex;
         output_ptr[store_offset] = maxVal;
@@ -102,56 +102,56 @@ struct FractionalMaxPool2dOutFrameKernelFunctor {
     }
   }
   FractionalMaxPool2dOutFrameKernelFunctor(
-      scalar_t* output_data_,
-      int64_t* indices_data_,
-      scalar_t* input_data_,
-      scalar_t* samples_data_,
-      int numBatch_,
-      int numPlane_,
-      int inputSizeH_,
-      int inputSizeW_,
-      int outputSizeH_,
-      int outputSizeW_,
-      int poolSizeH_,
-      int poolSizeW_,
-      const bool is_channels_last_,
-      int work_group_size_,
-      int work_group_num_,
-      int loops_)
-      : output_data(output_data_),
-        indices_data(indices_data_),
-        input_data(input_data_),
-        samples_data(samples_data_),
-        numBatch(numBatch_),
-        numPlane(numPlane_),
-        inputSizeH(inputSizeH_),
-        inputSizeW(inputSizeW_),
-        outputSizeH(outputSizeH_),
-        outputSizeW(outputSizeW_),
-        poolSizeH(poolSizeH_),
-        poolSizeW(poolSizeW_),
-        is_channels_last(is_channels_last_),
-        work_group_size(work_group_size_),
-        work_group_num(work_group_num_),
-        loops(loops_) {}
+      scalar_t* output_data,
+      int64_t* indices_data,
+      scalar_t* input_data,
+      scalar_t* samples_data,
+      int numBatch,
+      int numPlane,
+      int inputSizeH,
+      int inputSizeW,
+      int outputSizeH,
+      int outputSizeW,
+      int poolSizeH,
+      int poolSizeW,
+      const bool is_channels_last,
+      int work_group_size,
+      int work_group_num,
+      int loops)
+      : output_data_(output_data),
+        indices_data_(indices_data),
+        input_data_(input_data),
+        samples_data_(samples_data),
+        numBatch_(numBatch),
+        numPlane_(numPlane),
+        inputSizeH_(inputSizeH),
+        inputSizeW_(inputSizeW),
+        outputSizeH_(outputSizeH),
+        outputSizeW_(outputSizeW),
+        poolSizeH_(poolSizeH),
+        poolSizeW_(poolSizeW),
+        is_channels_last_(is_channels_last),
+        work_group_size_(work_group_size),
+        work_group_num_(work_group_num),
+        loops_(loops) {}
 
  private:
-  scalar_t* output_data;
-  int64_t* indices_data;
-  scalar_t* input_data;
-  scalar_t* samples_data;
-  int numBatch;
-  int numPlane;
-  int inputSizeH;
-  int inputSizeW;
-  int outputSizeH;
-  int outputSizeW;
-  int poolSizeH;
-  int poolSizeW;
-  const bool is_channels_last;
-  int work_group_size;
-  int work_group_num;
-  int loops;
+  scalar_t* output_data_;
+  int64_t* indices_data_;
+  scalar_t* input_data_;
+  scalar_t* samples_data_;
+  int numBatch_;
+  int numPlane_;
+  int inputSizeH_;
+  int inputSizeW_;
+  int outputSizeH_;
+  int outputSizeW_;
+  int poolSizeH_;
+  int poolSizeW_;
+  const bool is_channels_last_;
+  int work_group_size_;
+  int work_group_num_;
+  int loops_;
 };
 
 template <typename scalar_t>
@@ -215,25 +215,25 @@ void fractional_max_pool2d_out_xpu_frame(
 template <typename scalar_t, bool is_channels_last>
 struct FractionalMaxPool2dBackwardOutFrameKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto gradInput_ptr = gradInput_data;
-    auto gradOutput_ptr = gradOutput_data;
-    auto indices_ptr = indices_data;
+    auto gradInput_ptr = gradInput_data_;
+    auto gradOutput_ptr = gradOutput_data_;
+    auto indices_ptr = indices_data_;
 
     int64_t outputIndex = item.get_global_id()[0];
-    if (outputIndex < gradOutputSize) {
-      int batch = outputIndex / out_n_stride;
+    if (outputIndex < gradOutputSize_) {
+      int batch = outputIndex / out_n_stride_;
       if constexpr (is_channels_last) {
-        int plane = outputIndex % numPlane;
+        int plane = outputIndex % numPlane_;
         int64_t index = indices_ptr[outputIndex];
-        int64_t gI_offset = batch * in_n_stride + plane + index * numPlane;
+        int64_t gI_offset = batch * in_n_stride_ + plane + index * numPlane_;
         atomicAdd(
             (sycl_global_ptr<scalar_t>)&gradInput_ptr[gI_offset],
             gradOutput_ptr[outputIndex]);
       } else {
-        int plane = outputIndex / out_cf_c_stride % numPlane;
+        int plane = outputIndex / out_cf_c_stride_ % numPlane_;
         int64_t index = indices_ptr[outputIndex];
         int64_t gI_offset =
-            batch * in_n_stride + plane * in_cf_c_stride + index;
+            batch * in_n_stride_ + plane * in_cf_c_stride_ + index;
         atomicAdd(
             (sycl_global_ptr<scalar_t>)&gradInput_ptr[gI_offset],
             gradOutput_ptr[outputIndex]);
@@ -241,41 +241,41 @@ struct FractionalMaxPool2dBackwardOutFrameKernelFunctor {
     }
   }
   FractionalMaxPool2dBackwardOutFrameKernelFunctor(
-      scalar_t* gradInput_data_,
-      scalar_t* gradOutput_data_,
-      int64_t* indices_data_,
-      int numBatch_,
-      int numPlane_,
-      int gradInputSizeW_,
-      int64_t gradOutputSize_,
-      int out_cf_c_stride_,
-      int in_cf_c_stride_,
-      int out_n_stride_,
-      int in_n_stride_)
-      : gradInput_data(gradInput_data_),
-        gradOutput_data(gradOutput_data_),
-        indices_data(indices_data_),
-        numBatch(numBatch_),
-        numPlane(numPlane_),
-        gradInputSizeW(gradInputSizeW_),
-        gradOutputSize(gradOutputSize_),
-        out_cf_c_stride(out_cf_c_stride_),
-        in_cf_c_stride(in_cf_c_stride_),
-        out_n_stride(out_n_stride_),
-        in_n_stride(in_n_stride_) {}
+      scalar_t* gradInput_data,
+      scalar_t* gradOutput_data,
+      int64_t* indices_data,
+      int numBatch,
+      int numPlane,
+      int gradInputSizeW,
+      int64_t gradOutputSize,
+      int out_cf_c_stride,
+      int in_cf_c_stride,
+      int out_n_stride,
+      int in_n_stride)
+      : gradInput_data_(gradInput_data),
+        gradOutput_data_(gradOutput_data),
+        indices_data_(indices_data),
+        numBatch_(numBatch),
+        numPlane_(numPlane),
+        gradInputSizeW_(gradInputSizeW),
+        gradOutputSize_(gradOutputSize),
+        out_cf_c_stride_(out_cf_c_stride),
+        in_cf_c_stride_(in_cf_c_stride),
+        out_n_stride_(out_n_stride),
+        in_n_stride_(in_n_stride) {}
 
  private:
-  scalar_t* gradInput_data;
-  scalar_t* gradOutput_data;
-  int64_t* indices_data;
-  int numBatch;
-  int numPlane;
-  int gradInputSizeW;
-  int64_t gradOutputSize;
-  int out_cf_c_stride;
-  int in_cf_c_stride;
-  int out_n_stride;
-  int in_n_stride;
+  scalar_t* gradInput_data_;
+  scalar_t* gradOutput_data_;
+  int64_t* indices_data_;
+  int numBatch_;
+  int numPlane_;
+  int gradInputSizeW_;
+  int64_t gradOutputSize_;
+  int out_cf_c_stride_;
+  int in_cf_c_stride_;
+  int out_n_stride_;
+  int in_n_stride_;
 };
 
 template <typename scalar_t, bool is_channels_last>
