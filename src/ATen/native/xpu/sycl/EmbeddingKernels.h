@@ -2,9 +2,7 @@
 
 #include <ATen/native/TensorIterator.h>
 
-namespace at {
-namespace native {
-namespace xpu {
+namespace at::native::xpu {
 
 TORCH_XPU_API Tensor embedding_dense_backward_kernel(
     const Tensor& grad_,
@@ -13,6 +11,10 @@ TORCH_XPU_API Tensor embedding_dense_backward_kernel(
     int64_t padding_idx,
     bool scale_grad_by_freq);
 
-} // namespace xpu
-} // namespace native
-} // namespace at
+TORCH_XPU_API Tensor& embedding_renorm_kernel(
+    Tensor& self,
+    const Tensor& indices,
+    double max_norm,
+    double norm_type);
+
+} // namespace at::native::xpu
