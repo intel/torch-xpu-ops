@@ -114,6 +114,7 @@ _xpu_computation_op_list = [
     "median",
     "nanmedian",
     "native_dropout_backward",
+    "nn.functional.dropout",
     "ne",
     "neg",
     "nn.functional.elu",
@@ -183,10 +184,13 @@ _xpu_computation_op_list = [
     "scatter",
     "gather",
     "nn.functional.adaptive_max_pool2d",
+    "nn.functional.adaptive_max_pool3d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.max_pool3d",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",
@@ -199,6 +203,7 @@ _xpu_computation_op_list = [
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
     "nn.functional.ctc_loss",
+    "nn.functional.channel_shuffle",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -225,6 +230,8 @@ _xpu_computation_op_list = [
     "digamma",
     "polygamma",
     "lgamma",
+    "linspace",
+    "logspace",
     "unique_consecutive",
     "unique",
     "multinomial",
@@ -236,9 +243,12 @@ _xpu_computation_op_list = [
     "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
+    "max",
+    "min",
     "floor",
     "floor_divide",
     "copysign",
@@ -251,10 +261,16 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "index_copy",
+    "cauchy",
+    "geometric",
+    "mode",
+    "log_normal",
 ]
 
 _ops_without_cuda_support = [
     "histogram",
+    "histogramdd",
 ]
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -347,7 +363,7 @@ _xpu_tolerance_override = {
         }
     },
     "histogram": {
-        ("TestCommonXPU", "test_out"):{
+        ("TestCommon", "test_out"):{
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     }
@@ -701,6 +717,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
