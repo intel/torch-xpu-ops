@@ -85,6 +85,11 @@ skip_dict = {
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_float16",
+    # Same as cuda, AssertionError: Tensor-likes are not close!Should skip.
+    # Not in CUDA test scope too
+    # https://github.com/intel/torch-xpu-ops/issues/845
+    "test_compare_cpu_nn_functional_adaptive_avg_pool3d_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_adaptive_avg_pool3d_xpu_float16",
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
@@ -117,6 +122,9 @@ skip_dict = {
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_bfloat16",
     "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float16",
+    #AssertionError: Tensor-likes are not close! CUDA fails too.
+    "test_compare_cpu_nn_functional_interpolate_area_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_area_xpu_float16",
     # Not all operators are implemented for XPU tested in the case.
     # Retrieve it once the operator is implemented.
     # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
