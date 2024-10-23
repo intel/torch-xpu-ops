@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
