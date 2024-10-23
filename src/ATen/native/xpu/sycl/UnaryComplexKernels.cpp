@@ -1,6 +1,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/core/ScalarType.h>
@@ -91,6 +92,36 @@ void neg_kernel(TensorIterator& iter) {
         ScalarType::Half, ScalarType::BFloat16, dtype, "neg_xpu", [&]() {
           gpu_kernel(iter, NegScalarFunc<scalar_t>());
         });
+  }
+}
+
+template <typename scalar_t>
+struct AngleWrapper {
+  scalar_t operator()(scalar_t v) const {
+    if (at::_isnan(v)) {
+      return v;
+    }
+    return v < 0 ? M_PI : 0;
+  }
+};
+
+template <typename T>
+struct AngleWrapper<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> v) const {
+    return c10::complex<T>{std::arg(v), 0};
+  }
+};
+
+void angle_kernel(TensorIteratorBase& iter) {
+  auto dtype = iter.common_dtype();
+  if (at::isComplexType(dtype)) {
+    AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "angle_xpu", [&]() {
+      gpu_kernel(iter, AngleWrapper<scalar_t>());
+    });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES(dtype, "angle_xpu", [&]() {
+      gpu_kernel(iter, AngleWrapper<scalar_t>());
+    });
   }
 }
 
