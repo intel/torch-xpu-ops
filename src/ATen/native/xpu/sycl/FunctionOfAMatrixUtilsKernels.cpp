@@ -55,12 +55,12 @@ struct ComputeLinearCombinationInternalKernelFunctor {
   void operator()(int idx) const {
     auto offsets = offset_calc_.get(idx);
 
-    auto* __restrict__ out_data =
+    auto* RESTRICT out_data =
         reinterpret_cast<scalar_t*>(out_ptr_ + offsets[0]);
-    auto* __restrict__ in_data =
+    auto* RESTRICT in_data =
         reinterpret_cast<scalar_t*>(in_ptr_ + offsets[1]);
     using primitive_t = typename scalar_value_type<scalar_t>::type;
-    auto* __restrict__ coeff_data =
+    auto* RESTRICT coeff_data =
         reinterpret_cast<primitive_t*>(coeff_ptr_ + offsets[2]);
 
     // perform summation
@@ -71,9 +71,9 @@ struct ComputeLinearCombinationInternalKernelFunctor {
 
   ComputeLinearCombinationInternalKernelFunctor(
       offset_calc_t offset_calc,
-      char* __restrict__ out_ptr,
-      char* __restrict__ in_ptr,
-      char* __restrict__ coeff_ptr,
+      char* RESTRICT out_ptr,
+      char* RESTRICT in_ptr,
+      char* RESTRICT coeff_ptr,
       int32_t num_summations,
       int32_t in_stride,
       int32_t coeff_stride)
@@ -87,9 +87,9 @@ struct ComputeLinearCombinationInternalKernelFunctor {
 
  private:
   offset_calc_t offset_calc_;
-  char* __restrict__ out_ptr_;
-  char* __restrict__ in_ptr_;
-  char* __restrict__ coeff_ptr_;
+  char* RESTRICT out_ptr_;
+  char* RESTRICT in_ptr_;
+  char* RESTRICT coeff_ptr_;
   int32_t num_summations_;
   int32_t in_stride_;
   int32_t coeff_stride_;
@@ -114,9 +114,9 @@ void _compute_linear_combination_internal_kernel(
   }
 
   auto offset_calc = make_offset_calculator<3>(iter);
-  char* __restrict__ out_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
-  char* __restrict__ in_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
-  char* __restrict__ coeff_ptr = reinterpret_cast<char*>(iter.data_ptr(2));
+  char* RESTRICT out_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  char* RESTRICT in_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
+  char* RESTRICT coeff_ptr = reinterpret_cast<char*>(iter.data_ptr(2));
 
   ComputeLinearCombinationInternalKernelFunctor<scalar_t, decltype(offset_calc)>
       loop(
