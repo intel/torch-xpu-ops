@@ -4,6 +4,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/TensorBase.h>
 
+#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 
 #include <cmath>
