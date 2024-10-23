@@ -943,154 +943,123 @@ void index_copy_kernel(
       });
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename index_t>
 struct PutAtomicKernelFuncFunctor {
-  void operator()(char* out_data, char* in_data, uint64_t offset) const {
+  void operator()(
+      scalar_t* __restrict__ out_data,
+      const index_t offset,
+      char* __restrict__ iterated_ptr,
+      const index_t src_offset) const {
+    auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr + src_offset);
     sycl_global_ptr<scalar_t> out_ptr =
         sycl_global_ptr<scalar_t>((scalar_t*)(out_data + offset));
-    auto in = *(scalar_t*)in_data;
-    atomicAdd(out_ptr, in);
+    atomicAdd(out_ptr, iterated);
   }
 };
 
-template <typename dtype>
+template <typename scalar_t, typename index_t>
 struct PutKernelFuncFunctor {
-  void operator()(char* out_data, char* in_data, uint64_t offset) const {
-    *(dtype*)(out_data + offset) = *(dtype*)in_data;
+  using dtype = OpaqueType<sizeof(scalar_t)>;
+  void operator()(
+      scalar_t* __restrict__ out_data,
+      const index_t offset,
+      char* __restrict__ iterated_ptr,
+      const index_t src_offset) const {
+    auto& iterated = *reinterpret_cast<dtype*>(iterated_ptr + src_offset);
+    dtype* __restrict__ ptr = reinterpret_cast<dtype*>(out_data);
+    ptr[offset] = iterated;
   }
 };
 
-template <typename scalar_t, typename Func>
-void put_kernel_template(
-    const TensorBase& self,
-    const TensorBase& index,
-    const TensorBase& source,
+template <typename scalar_t, typename index_t, typename Func>
+void take_put_kernel_template(
+    TensorIterator& iter,
+    const TensorBase& indexed,
     Func f) {
-  auto numel = index.numel();
-  if (numel == 0)
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      take_put_kernel_template<scalar_t, index_t>(sub_iter, indexed, f);
+    }
     return;
+  }
 
-  auto out_numel = self.numel();
-  size_t scalar_bytes = sizeof(scalar_t);
+  auto* __restrict__ indexed_ptr = indexed.template data_ptr<scalar_t>();
 
-  TensorInfo<scalar_t, uint64_t> out_info =
-      getTensorInfo<scalar_t, uint64_t>(self);
-  out_info.collapseDims();
+  const auto numel = indexed.numel();
+  const bool is_contiguous = indexed.is_contiguous();
 
-  TensorInfo<int64_t, uint64_t> indices_info =
-      getTensorInfo<int64_t, uint64_t>(index);
-  indices_info.collapseDims();
+  char* const __restrict__ iterated_ptr =
+      reinterpret_cast<char*>(iter.data_ptr(0));
+  char* const __restrict__ idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
 
-  TensorInfo<scalar_t, uint64_t> source_info =
-      getTensorInfo<scalar_t, uint64_t>(source);
-  source_info.collapseDims();
+  const auto offset_calc = make_offset_calculator<2>(iter);
+  using uindex_t = std::make_unsigned_t<index_t>;
 
-  auto out_data = self.data_ptr<scalar_t>();
-  auto indices_data = index.data_ptr<int64_t>();
-  auto source_data = source.data_ptr<scalar_t>();
+  // OffsetCalculator needs the sizes and strides reveresed
+  const auto indexed_sizes =
+      std::vector<int64_t>(indexed.sizes().rbegin(), indexed.sizes().rend());
+  const auto indexed_strides = std::vector<int64_t>(
+      indexed.strides().rbegin(), indexed.strides().rend());
+  const auto* indexed_strides_data = indexed_strides.data();
+  const auto offset_indexed = OffsetCalculator<1, uindex_t>(
+      indexed.dim(), indexed_sizes.data(), &indexed_strides_data);
 
-  PutKernelFunctor<scalar_t, Func> kfn(
+  auto kfn = TakePutKernelFunctor<
+      scalar_t,
+      index_t,
+      Func,
+      decltype(offset_calc),
+      decltype(offset_indexed)>(
       f,
-      out_numel,
-      scalar_bytes,
-      out_info,
-      indices_info,
-      source_info,
-      out_data,
-      indices_data,
-      source_data);
+      numel,
+      indexed_ptr,
+      iterated_ptr,
+      idx_ptr,
+      offset_calc,
+      offset_indexed,
+      is_contiguous);
 
   sycl_kernel_submit(sycl::range</*dim=*/1>(numel), getCurrentSYCLQueue(), kfn);
 }
+
+template <typename scalar_t, typename index_t>
+struct TakeKernelFuncFunctor {
+  using dtype = OpaqueType<sizeof(scalar_t)>;
+  void operator()(
+      scalar_t* __restrict__ out_data,
+      const index_t offset,
+      char* __restrict__ iterated_ptr,
+      const index_t src_offset) const {
+    auto& iterated = *reinterpret_cast<dtype*>(iterated_ptr + src_offset);
+    dtype* __restrict__ ptr = reinterpret_cast<dtype*>(out_data);
+    iterated = ptr[offset];
+  }
+};
 
 void put_kernel(
     TensorIterator& iter,
     const TensorBase& output,
     const bool accumulate) {
-  const TensorBase& source = iter.input(0);
-  const TensorBase& index = iter.input(1);
-  const TensorBase& self = output;
-  if (accumulate) {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        self.scalar_type(),
-        "put__xpu",
-        [&] {
-          PutAtomicKernelFuncFunctor<scalar_t> f;
-          put_kernel_template<scalar_t>(self, index, source, f);
-        });
-  } else {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        self.scalar_type(),
-        "put__xpu",
-        [&] {
-          using dtype = OpaqueType<sizeof(scalar_t)>;
-          PutKernelFuncFunctor<dtype> f;
-          put_kernel_template<scalar_t>(self, index, source, f);
-        });
-  }
-}
-
-template <typename scalar_t, typename index_t>
-void take_kernel_template(TensorIterator& iter, const TensorBase& src) {
-  const TensorBase& dst = iter.output();
-  const TensorBase& index = iter.input(0);
-
-  ptrdiff_t src_num_elem = src.numel();
-  ptrdiff_t index_num_elem = index.numel();
-  static constexpr string_view DIM_WARNING =
-      "Tensor too large or too many (> 12) dimensions";
-  TORCH_CHECK(src.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
-  TORCH_CHECK(dst.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
-  TORCH_CHECK(index.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
-  TORCH_CHECK(
-      !(src_num_elem == 0 && index_num_elem != 0),
-      "tried to take from an empty tensor");
-
-  ptrdiff_t dst_num_elem = dst.numel();
-  if (dst_num_elem == 0) {
-    return;
-  }
-
-  TensorInfo<scalar_t, int64_t> src_info =
-      getTensorInfo<scalar_t, int64_t>(src);
-  src_info.collapseDims();
-
-  TensorInfo<scalar_t, int64_t> dst_info =
-      getTensorInfo<scalar_t, int64_t>(dst);
-  dst_info.collapseDims();
-
-  TensorInfo<int64_t, int64_t> idx_info =
-      getTensorInfo<int64_t, int64_t>(index);
-  idx_info.collapseDims();
-
-  using Kernel = TakeKernelFunctor<scalar_t>;
-  auto wgroup_size = syclMaxWorkGroupSize<Kernel>();
-  auto wgroup_range = (dst_num_elem + wgroup_size - 1) / wgroup_size;
-
-  auto src_data = src.data_ptr<scalar_t>();
-  auto dst_data = dst.data_ptr<scalar_t>();
-  auto idx_data = index.data_ptr<int64_t>();
-
-  Kernel kfn(
-      src_num_elem,
-      dst_num_elem,
-      src_info,
-      dst_info,
-      idx_info,
-      src_data,
-      dst_data,
-      idx_data);
-
-  sycl_kernel_submit(
-      {wgroup_range * wgroup_size}, {wgroup_size}, getCurrentSYCLQueue(), kfn);
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "put_xpu",
+      [&] {
+        AT_DISPATCH_INDEX_TYPES(
+            canUse32BitIndexMath(output) ? ScalarType::Int : ScalarType::Long,
+            "put_xpu_index",
+            [&] {
+              if (accumulate) {
+                PutAtomicKernelFuncFunctor<scalar_t, index_t> f;
+                take_put_kernel_template<scalar_t, index_t>(iter, output, f);
+              } else {
+                PutKernelFuncFunctor<scalar_t, index_t> f;
+                take_put_kernel_template<scalar_t, index_t>(iter, output, f);
+              }
+            });
+      });
 }
 
 void take_kernel(TensorIterator& iter, const TensorBase& input) {
@@ -1104,7 +1073,10 @@ void take_kernel(TensorIterator& iter, const TensorBase& input) {
         AT_DISPATCH_INDEX_TYPES(
             canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
             "take_xpu_index",
-            [&] { take_kernel_template<scalar_t, index_t>(iter, input); });
+            [&] {
+              TakeKernelFuncFunctor<scalar_t, index_t> f;
+              take_put_kernel_template<scalar_t, index_t>(iter, input, f);
+            });
       });
 }
 

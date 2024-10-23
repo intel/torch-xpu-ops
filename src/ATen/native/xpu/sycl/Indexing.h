@@ -928,119 +928,57 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
-template <typename scalar_t, typename Func>
-struct PutKernelFunctor {
+template <
+    typename scalar_t,
+    typename index_t,
+    typename Func,
+    typename offset_calc_t,
+    typename offset_indexed_t>
+struct TakePutKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
-    auto out_ptr = (char*)out_data_;
-    auto indices_ptr = indices_data_;
-    auto source_ptr = (char*)source_data_;
-
     auto linear_idx = item_id.get_id(0);
-    auto idx_offset =
-        IndexToOffset<int64_t, uint64_t>::get(linear_idx, indices_info_);
+    const auto offsets = offset_calc_.get(linear_idx);
 
-    auto index = indices_ptr[idx_offset];
-    if (index < 0) {
-      index += out_numel_;
+    const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
+
+    index_t offset = static_cast<index_t>(idx);
+    if (offset < 0) {
+      offset += numel_;
+    }
+    if (!is_contiguous_) {
+      offset = offset_indexed_.get(offset)[0];
     }
 
-    if (index > out_numel_) {
-      /*error handle*/
-      return;
-    }
-
-    auto src_offset =
-        IndexToOffset<scalar_t, uint64_t>::get(linear_idx, source_info_);
-    src_offset *= scalar_bytes_;
-    auto out_offset = IndexToOffset<scalar_t, uint64_t>::get(index, out_info_);
-    out_offset *= scalar_bytes_;
-
-    f_(out_ptr, source_ptr + src_offset, out_offset);
+    f_(indexed_ptr_, offset, iterated_ptr_, offsets[0]);
   }
-  PutKernelFunctor(
+
+  TakePutKernelFunctor(
       Func f,
-      int64_t out_numel,
-      size_t scalar_bytes,
-      TensorInfo<scalar_t, uint64_t> out_info,
-      TensorInfo<int64_t, uint64_t> indices_info,
-      TensorInfo<scalar_t, uint64_t> source_info,
-      scalar_t* out_data,
-      int64_t* indices_data,
-      scalar_t* source_data)
+      int64_t numel,
+      scalar_t* __restrict__ indexed_ptr,
+      char* const __restrict__ iterated_ptr,
+      char* const __restrict__ idx_ptr,
+      offset_calc_t offset_calc,
+      offset_indexed_t offset_indexed,
+      bool is_contiguous)
       : f_(f),
-        out_numel_(out_numel),
-        scalar_bytes_(scalar_bytes),
-        out_info_(out_info),
-        indices_info_(indices_info),
-        source_info_(source_info),
-        out_data_(out_data),
-        indices_data_(indices_data),
-        source_data_(source_data) {}
+        numel_(numel),
+        indexed_ptr_(indexed_ptr),
+        iterated_ptr_(iterated_ptr),
+        idx_ptr_(idx_ptr),
+        offset_calc_(offset_calc),
+        offset_indexed_(offset_indexed),
+        is_contiguous_(is_contiguous) {}
 
  private:
   Func f_;
-  int64_t out_numel_;
-  size_t scalar_bytes_;
-  TensorInfo<scalar_t, uint64_t> out_info_;
-  TensorInfo<int64_t, uint64_t> indices_info_;
-  TensorInfo<scalar_t, uint64_t> source_info_;
-  scalar_t* out_data_;
-  int64_t* indices_data_;
-  scalar_t* source_data_;
-};
-
-template <typename scalar_t>
-struct TakeKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto linear_idx = item.get_global_linear_id();
-    if (linear_idx < dst_num_elem_) {
-      auto idx_offset = IndexToOffset<int64_t, int64_t>::get(
-          linear_idx,
-          idx_info_,
-          IndexToOffset<int64_t, int64_t>::NON_STRICT_CONTIGUOUS);
-      auto src_idx = idx_data_[idx_offset];
-      if (src_idx < 0) {
-        src_idx += src_num_elem_;
-      }
-      auto source_offset = IndexToOffset<scalar_t, int64_t>::get(
-          src_idx,
-          src_info_,
-          IndexToOffset<scalar_t, int64_t>::NON_STRICT_CONTIGUOUS);
-      auto dst_offset = IndexToOffset<scalar_t, int64_t>::get(
-          linear_idx,
-          dst_info_,
-          IndexToOffset<scalar_t, int64_t>::NON_STRICT_CONTIGUOUS);
-
-      dst_data_[dst_offset] = src_data_[source_offset];
-    }
-  }
-  TakeKernelFunctor(
-      ptrdiff_t src_num_elem,
-      ptrdiff_t dst_num_elem,
-      TensorInfo<scalar_t, int64_t> src_info,
-      TensorInfo<scalar_t, int64_t> dst_info,
-      TensorInfo<int64_t, int64_t> idx_info,
-      scalar_t* src_data,
-      scalar_t* dst_data,
-      int64_t* idx_data)
-      : src_num_elem_(src_num_elem),
-        dst_num_elem_(dst_num_elem),
-        src_info_(src_info),
-        dst_info_(dst_info),
-        idx_info_(idx_info),
-        src_data_(src_data),
-        dst_data_(dst_data),
-        idx_data_(idx_data) {}
-
- private:
-  ptrdiff_t src_num_elem_;
-  ptrdiff_t dst_num_elem_;
-  TensorInfo<scalar_t, int64_t> src_info_;
-  TensorInfo<scalar_t, int64_t> dst_info_;
-  TensorInfo<int64_t, int64_t> idx_info_;
-  scalar_t* src_data_;
-  scalar_t* dst_data_;
-  int64_t* idx_data_;
+  int64_t numel_;
+  scalar_t* __restrict__ indexed_ptr_;
+  char* const __restrict__ iterated_ptr_;
+  char* const __restrict__ idx_ptr_;
+  offset_calc_t offset_calc_;
+  offset_indexed_t offset_indexed_;
+  bool is_contiguous_;
 };
 
 } // namespace at::native::xpu
