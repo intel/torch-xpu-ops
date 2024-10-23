@@ -3,9 +3,9 @@
 #include <ATen/ops/_foreach_addcdiv_native.h>
 #include <ATen/ops/_foreach_addcmul_native.h>
 #include <ATen/ops/_foreach_clamp_max_native.h>
+#include <ATen/ops/_foreach_clamp_min_native.h>
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
-#include <ATen/ops/_foreach_clamp_min_native.h>
 #include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
