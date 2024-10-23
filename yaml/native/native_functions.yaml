@@ -2787,6 +2787,11 @@
   autogen: embedding_dense_backward.out
   tags: core
 
+- func: embedding_renorm_(Tensor(a!) self, Tensor indices, float max_norm, float norm_type) -> Tensor(a!)
+  dispatch:
+    XPU: embedding_renorm_xpu_
+  autogen: embedding_renorm, embedding_renorm.out
+
 - func: elu.out(Tensor self, Scalar alpha=1, Scalar scale=1, Scalar input_scale=1, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
@@ -3794,6 +3799,35 @@
   python_module: nn
   dispatch:
     CompositeImplicitAutograd: adaptive_avg_pool2d_symint
+
+- func: adaptive_avg_pool3d.out(Tensor self, SymInt[3] output_size, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: adaptive_avg_pool3d_out_xpu
+    QuantizedCPU: adaptive_avg_pool3d_out_quantized_cpu
+
+- func: adaptive_avg_pool3d(Tensor self, SymInt[3] output_size) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeImplicitAutograd: adaptive_avg_pool3d_symint
+
+- func: _adaptive_avg_pool3d(Tensor self, SymInt[3] output_size) -> Tensor
+  dispatch:
+    XPU: adaptive_avg_pool3d_xpu
+    QuantizedCPU: adaptive_avg_pool3d_quantized_cpu
+  autogen: _adaptive_avg_pool3d.out
+  tags: core
+
+- func: adaptive_avg_pool3d_backward.grad_input(Tensor grad_output, Tensor self, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: adaptive_avg_pool3d_backward_out_xpu
+
+- func: _adaptive_avg_pool3d_backward(Tensor grad_output, Tensor self) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: adaptive_avg_pool3d_backward_xpu
+  autogen: _adaptive_avg_pool3d_backward.out
 
 - func: std_mean(Tensor self, bool unbiased=True) -> (Tensor, Tensor)
   device_check: NoCheck   # TensorIterator
@@ -4954,6 +4988,16 @@
   structured: True
   dispatch:
     XPU: argmin_out
+
+- func: tril_indices(int row, int col, int offset=0, *, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: tril_indices_xpu
+  autogen: tril_indices.out
+
+- func: triu_indices(int row, int col, int offset=0, *, ScalarType? dtype=long, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    XPU: triu_indices_xpu
+  autogen: triu_indices.out
 
 - func: nansum(Tensor self, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   variants: function, method
@@ -6171,6 +6215,66 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: angle_out
+  tags: pointwise
+
+- func: special_bessel_j0(Tensor self) -> Tensor
+  python_module: special
+  structured_delegate: special_bessel_j0.out
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_j0.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_bessel_j0_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_j1(Tensor self) -> Tensor
+  python_module: special
+  structured_delegate: special_bessel_j1.out
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_j1.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_bessel_j1_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_y0(Tensor self) -> Tensor
+  python_module: special
+  structured_delegate: special_bessel_y0.out
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_y0.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_bessel_y0_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_y1(Tensor self) -> Tensor
+  python_module: special
+  structured_delegate: special_bessel_y1.out
+  variants: function
+  tags: pointwise
+
+- func: special_bessel_y1.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_bessel_y1_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
   tags: pointwise
 
 - func: poisson(Tensor self, Generator? generator=None) -> Tensor
