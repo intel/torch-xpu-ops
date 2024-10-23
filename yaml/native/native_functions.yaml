@@ -1977,6 +1977,32 @@
     XPU: foreach_tensor_mul_scalar_kernel_xpu_
   autogen: _foreach_mul.Scalar_out
 
+- func: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_scalarlist_kernel_xpu
+
+- func: _foreach_mul_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_scalarlist_kernel_xpu_
+  autogen: _foreach_mul.ScalarList_out
+
+- func: _foreach_mul.Tensor(Tensor[] self, Tensor other) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_tensor_kernel_xpu
+
+- func: _foreach_mul_.Tensor(Tensor(a!)[] self, Tensor other) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_mul_tensor_kernel_xpu_
+  autogen: _foreach_mul.Tensor_out
+
 - func: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -2002,6 +2028,32 @@
   dispatch:
     XPU: foreach_tensor_div_scalar_kernel_xpu_
   autogen: _foreach_div.Scalar_out
+
+- func: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_scalarlist_kernel_xpu
+
+- func: _foreach_div_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_scalarlist_kernel_xpu_
+  autogen: _foreach_div.ScalarList_out
+
+- func: _foreach_div.Tensor(Tensor[] self, Tensor other) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_tensor_kernel_xpu
+
+- func: _foreach_div_.Tensor(Tensor(a!)[] self, Tensor other) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_div_tensor_kernel_xpu_
+  autogen: _foreach_div.Tensor_out
 
 - func: _foreach_clamp_max.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
@@ -4899,6 +4951,26 @@
   dispatch:
     XPU: _embedding_bag_per_sample_weights_backward_xpu
   autogen: _embedding_bag_per_sample_weights_backward.out
+
+- func: take.out(Tensor self, Tensor index, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: take_out
+
+- func: take(Tensor self, Tensor index) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: take
+
+- func: put_(Tensor(a!) self, Tensor index, Tensor source, bool accumulate=False) -> Tensor(a!)
+  variants: method
+  dispatch:
+    XPU: put_
+  autogen: put.out
+
+- func: put(Tensor self, Tensor index, Tensor source, bool accumulate=False) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: put
 
 - func: masked_scatter_(Tensor(a!) self, Tensor mask, Tensor source) -> Tensor(a!)
   variants: method
