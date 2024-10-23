@@ -296,7 +296,6 @@ void upsample_bicubic2d_backward_kernel(
     bool align_corners,
     std::optional<double> scales_h,
     std::optional<double> scales_w) {
-  globalContext().alertNotDeterministic("upsample_bicubic2d_backward_out_cuda");
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
@@ -317,7 +316,7 @@ void upsample_bicubic2d_backward_kernel(
       grad_output.scalar_type(),
       "upsample_bicubic2d_backward_out_frame",
       [&] {
-        using accscalar_t = at::acc_type<scalar_t, true>;
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
 
         auto idata = grad_input.packed_accessor64<scalar_t, 4>();
         auto odata = grad_output.packed_accessor64<const scalar_t, 4>();
