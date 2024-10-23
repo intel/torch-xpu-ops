@@ -18,6 +18,9 @@
     MPS: _copy_from_and_resize_mps
   autogen: _copy_from_and_resize.out
 
+# Return: (Tensor output, Tensor indices)
+- func: adaptive_max_pool1d(Tensor self, int[1] output_size) -> (Tensor, Tensor)
+
 - func: add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: add.out

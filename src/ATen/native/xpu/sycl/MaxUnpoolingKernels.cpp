@@ -169,6 +169,7 @@ struct MaxUnpooling3dForwardKernelFunctor {
     int64_t iFrame = (item.get_group()[0] + offsetZ_) % iT_; // input frame/time
     int64_t slice =
         (item.get_group()[0] + offsetZ_) / iT_; // input slice/feature
+    int64_t outputImageSize = oT_ * oH_ * oW_;
     if (iRow < iH_ && iColumn < iW_) {
       scalar_t val = input_ptr
           [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
@@ -176,6 +177,7 @@ struct MaxUnpooling3dForwardKernelFunctor {
       int64_t index = indices_ptr
           [slice * iT_ * iH_ * iW_ + iFrame * iH_ * iW_ + iRow * iW_ +
            iColumn] /*[slice][iFrame][iRow][iColumn]*/;
+      SYCL_KERNEL_ASSERT(index >= 0 && index < outputImageSize);
       output_ptr[slice * oT_ * oH_ * oW_ + index] = val;
     }
   }
