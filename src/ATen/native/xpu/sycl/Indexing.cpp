@@ -943,39 +943,61 @@ void index_copy_kernel(
       });
 }
 
-template <typename scalar_t, typename index_t>
-struct PutAtomicKernelFuncFunctor {
-  void operator()(
-      scalar_t* __restrict__ out_data,
-      const index_t offset,
-      char* __restrict__ iterated_ptr,
-      const index_t src_offset) const {
-    auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr + src_offset);
-    sycl_global_ptr<scalar_t> out_ptr =
-        sycl_global_ptr<scalar_t>((scalar_t*)(out_data + offset));
-    atomicAdd(out_ptr, iterated);
+template <
+    typename scalar_t,
+    typename index_t,
+    typename func_t,
+    typename offset_cal_t,
+    typename idx_offset_cal_t>
+struct TakePutLoopFunctor {
+  void operator()(int i) const {
+    const auto offsets = offset_calc_.get(i);
+    auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr_ + offsets[0]);
+    const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
+    SYCL_KERNEL_ASSERT(
+        idx < numel_ && idx >= -numel_ &&
+        "take_put_kernel_template() index out of bounds");
+    index_t offset = static_cast<index_t>(idx);
+    if (offset < 0) {
+      offset += numel_;
+    }
+    if (!is_contiguous_) {
+      offset = offset_indexed_.get(offset)[0];
+    }
+    f_(iterated, offset);
   }
+
+  TakePutLoopFunctor(
+      offset_cal_t offset_calc,
+      char* iterated_ptr,
+      char* idx_ptr,
+      int64_t numel,
+      bool is_contiguous,
+      idx_offset_cal_t offset_indexed,
+      func_t f)
+      : offset_calc_(offset_calc),
+        iterated_ptr_(iterated_ptr),
+        idx_ptr_(idx_ptr),
+        numel_(numel),
+        is_contiguous_(is_contiguous),
+        offset_indexed_(offset_indexed),
+        f_(f) {}
+
+ private:
+  offset_cal_t offset_calc_;
+  char* iterated_ptr_;
+  char* idx_ptr_;
+  int64_t numel_;
+  bool is_contiguous_;
+  idx_offset_cal_t offset_indexed_;
+  func_t f_;
 };
 
-template <typename scalar_t, typename index_t>
-struct PutKernelFuncFunctor {
-  using dtype = OpaqueType<sizeof(scalar_t)>;
-  void operator()(
-      scalar_t* __restrict__ out_data,
-      const index_t offset,
-      char* __restrict__ iterated_ptr,
-      const index_t src_offset) const {
-    auto& iterated = *reinterpret_cast<dtype*>(iterated_ptr + src_offset);
-    dtype* __restrict__ ptr = reinterpret_cast<dtype*>(out_data);
-    ptr[offset] = iterated;
-  }
-};
-
-template <typename scalar_t, typename index_t, typename Func>
+template <typename scalar_t, typename index_t, typename func_t>
 void take_put_kernel_template(
     TensorIterator& iter,
     const TensorBase& indexed,
-    Func f) {
+    const func_t& f) {
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
       take_put_kernel_template<scalar_t, index_t>(sub_iter, indexed, f);
@@ -983,14 +1005,11 @@ void take_put_kernel_template(
     return;
   }
 
-  auto* __restrict__ indexed_ptr = indexed.template data_ptr<scalar_t>();
-
   const auto numel = indexed.numel();
   const bool is_contiguous = indexed.is_contiguous();
 
-  char* const __restrict__ iterated_ptr =
-      reinterpret_cast<char*>(iter.data_ptr(0));
-  char* const __restrict__ idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
+  auto iterated_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  auto idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
 
   const auto offset_calc = make_offset_calculator<2>(iter);
   using uindex_t = std::make_unsigned_t<index_t>;
@@ -1004,36 +1023,83 @@ void take_put_kernel_template(
   const auto offset_indexed = OffsetCalculator<1, uindex_t>(
       indexed.dim(), indexed_sizes.data(), &indexed_strides_data);
 
-  auto kfn = TakePutKernelFunctor<
+  auto N = iter.numel();
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  auto loop_fn = TakePutLoopFunctor<
       scalar_t,
       index_t,
-      Func,
+      func_t,
       decltype(offset_calc),
       decltype(offset_indexed)>(
-      f,
-      numel,
-      indexed_ptr,
+      offset_calc,
       iterated_ptr,
       idx_ptr,
-      offset_calc,
+      numel,
+      is_contiguous,
       offset_indexed,
-      is_contiguous);
-
-  sycl_kernel_submit(sycl::range</*dim=*/1>(numel), getCurrentSYCLQueue(), kfn);
+      f);
+  auto caller =
+      TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
+  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto num_wg =
+      (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
+  sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
 }
 
 template <typename scalar_t, typename index_t>
-struct TakeKernelFuncFunctor {
-  using dtype = OpaqueType<sizeof(scalar_t)>;
-  void operator()(
-      scalar_t* __restrict__ out_data,
-      const index_t offset,
-      char* __restrict__ iterated_ptr,
-      const index_t src_offset) const {
-    auto& iterated = *reinterpret_cast<dtype*>(iterated_ptr + src_offset);
-    dtype* __restrict__ ptr = reinterpret_cast<dtype*>(out_data);
-    iterated = ptr[offset];
+struct TakeFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    iterated = indexed_ptr_[offset];
   }
+  TakeFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
+};
+
+void take_kernel(TensorIterator& iter, const TensorBase& input) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "take_xpu",
+      [&]() {
+        AT_DISPATCH_INDEX_TYPES(
+            canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
+            "take_xpu_index",
+            [&] {
+              scalar_t* indexed_ptr = input.template data_ptr<scalar_t>();
+              TakeFunctor<scalar_t, index_t> f(indexed_ptr);
+              take_put_kernel_template<scalar_t, index_t>(iter, input, f);
+            });
+      });
+}
+
+template <typename scalar_t, typename index_t>
+struct PutFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    indexed_ptr_[offset] = iterated;
+  }
+  PutFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
+};
+
+template <typename scalar_t, typename index_t>
+struct PutAccumulateFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    atomicAdd(sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), iterated);
+  }
+  PutAccumulateFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
 };
 
 void put_kernel(
@@ -1051,31 +1117,14 @@ void put_kernel(
             canUse32BitIndexMath(output) ? ScalarType::Int : ScalarType::Long,
             "put_xpu_index",
             [&] {
+              scalar_t* indexed_ptr = output.template data_ptr<scalar_t>();
               if (accumulate) {
-                PutAtomicKernelFuncFunctor<scalar_t, index_t> f;
+                PutAccumulateFunctor<scalar_t, index_t> f(indexed_ptr);
                 take_put_kernel_template<scalar_t, index_t>(iter, output, f);
               } else {
-                PutKernelFuncFunctor<scalar_t, index_t> f;
+                PutFunctor<scalar_t, index_t> f(indexed_ptr);
                 take_put_kernel_template<scalar_t, index_t>(iter, output, f);
               }
-            });
-      });
-}
-
-void take_kernel(TensorIterator& iter, const TensorBase& input) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
-      iter.dtype(),
-      "take_xpu",
-      [&]() {
-        AT_DISPATCH_INDEX_TYPES(
-            canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
-            "take_xpu_index",
-            [&] {
-              TakeKernelFuncFunctor<scalar_t, index_t> f;
-              take_put_kernel_template<scalar_t, index_t>(iter, input, f);
             });
       });
 }

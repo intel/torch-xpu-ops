@@ -928,57 +928,29 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
-template <
-    typename scalar_t,
-    typename index_t,
-    typename Func,
-    typename offset_calc_t,
-    typename offset_indexed_t>
+#define TAKE_PUT_UNROLL_SZIE 4
+
+template <int vt, typename func_t>
 struct TakePutKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto linear_idx = item_id.get_id(0);
-    const auto offsets = offset_calc_.get(linear_idx);
-
-    const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
-
-    index_t offset = static_cast<index_t>(idx);
-    if (offset < 0) {
-      offset += numel_;
+  void operator()(sycl::nd_item<1> item) const {
+    const auto tid = item.get_local_id(0);
+    const auto nt = item.get_local_range(0);
+    const auto nv = nt * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += nt;
+      }
     }
-    if (!is_contiguous_) {
-      offset = offset_indexed_.get(offset)[0];
-    }
-
-    f_(indexed_ptr_, offset, iterated_ptr_, offsets[0]);
   }
 
-  TakePutKernelFunctor(
-      Func f,
-      int64_t numel,
-      scalar_t* __restrict__ indexed_ptr,
-      char* const __restrict__ iterated_ptr,
-      char* const __restrict__ idx_ptr,
-      offset_calc_t offset_calc,
-      offset_indexed_t offset_indexed,
-      bool is_contiguous)
-      : f_(f),
-        numel_(numel),
-        indexed_ptr_(indexed_ptr),
-        iterated_ptr_(iterated_ptr),
-        idx_ptr_(idx_ptr),
-        offset_calc_(offset_calc),
-        offset_indexed_(offset_indexed),
-        is_contiguous_(is_contiguous) {}
+  TakePutKernelFunctor(const int64_t N, const func_t f) : N_(N), f_(f) {}
 
  private:
-  Func f_;
-  int64_t numel_;
-  scalar_t* __restrict__ indexed_ptr_;
-  char* const __restrict__ iterated_ptr_;
-  char* const __restrict__ idx_ptr_;
-  offset_calc_t offset_calc_;
-  offset_indexed_t offset_indexed_;
-  bool is_contiguous_;
+  const int64_t N_;
+  const func_t f_;
 };
 
 } // namespace at::native::xpu
