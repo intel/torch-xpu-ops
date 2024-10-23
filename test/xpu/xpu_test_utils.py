@@ -266,6 +266,8 @@ _xpu_computation_op_list = [
     "geometric",
     "mode",
     "log_normal",
+    "take",
+    "put",
 ]
 
 _ops_without_cuda_support = [
