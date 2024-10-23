@@ -217,7 +217,7 @@ Tensor _histc_template(
   TORCH_CHECK(
       !(std::isinf((float)minvalue) ||
         std::isinf((float)maxvalue) ||
-        std::isnan((float)invalue) ||
+        std::isnan((float)minvalue) ||
         std::isnan((float)maxvalue)),
       "range of [",
       minvalue,
