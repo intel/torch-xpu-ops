@@ -3,7 +3,7 @@
 #include <ATen/ops/_foreach_mul_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarKernels.h>
-#include <ATen/native/xpu/sycl/ForeachBinaryOpTensorKernels.h>
+#include <ATen/native/xpu/sycl/ForeachBinaryOpScalarTensorKernels.h>
 
 namespace at {
 namespace native {

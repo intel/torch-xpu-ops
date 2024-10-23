@@ -3,7 +3,7 @@
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <ATen/native/xpu/sycl/ForeachBinaryOpTensorKernels.h>
+#include <ATen/native/xpu/sycl/ForeachBinaryOpScalarTensorKernels.h>
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
