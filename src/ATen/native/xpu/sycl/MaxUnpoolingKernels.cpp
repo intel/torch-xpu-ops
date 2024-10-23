@@ -2,6 +2,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/NativeFunctions.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
+#include <ATen/native/xpu/sycl/MaxUnpoolingKernels.h>
 #include <comm/MemoryFormat.h>
 #include <comm/SYCLHelpers.h>
 
