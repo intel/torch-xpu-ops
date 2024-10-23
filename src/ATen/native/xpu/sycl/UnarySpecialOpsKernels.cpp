@@ -176,4 +176,73 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
       });
 }
 
+template <typename scalar_t>
+struct I0eFunctor {
+  scalar_t operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_i0e<opmath_t>(a);
+  }
+};
+
+void i0e_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "i0e_xpu",
+      [&]() { gpu_kernel(iter, I0eFunctor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct I1Functor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_i1(a);
+  }
+};
+
+void i1_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "i1_xpu", [&]() {
+    gpu_kernel(iter, I1Functor<scalar_t>());
+  });
+}
+
+template <typename scalar_t>
+struct I1eFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_i1e(a);
+  }
+};
+
+void i1e_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "i1e_xpu", [&]() {
+    gpu_kernel(iter, I1eFunctor<scalar_t>());
+  });
+}
+
+template <typename scalar_t>
+struct NdtriFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_ndtri(a);
+  }
+};
+
+void ndtri_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "ndtri_xpu", [&]() {
+    gpu_kernel(iter, NdtriFunctor<scalar_t>());
+  });
+}
+
+template <typename scalar_t>
+struct LogNdtrFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_log_ndtr(a);
+  }
+};
+
+void log_ndtr_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "log_ndtr_xpu", [&]() {
+    gpu_kernel(iter, LogNdtrFunctor<scalar_t>());
+  });
+}
+
 } // namespace at::native::xpu
