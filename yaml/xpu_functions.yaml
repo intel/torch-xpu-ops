@@ -731,3 +731,6 @@ supported:
   - _compute_linear_combination.out
   - _embedding_bag_dense_backward
   - _embedding_bag_per_sample_weights_backward
+  - put_
+  - take
+  - take.out
