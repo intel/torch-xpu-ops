@@ -5916,11 +5916,21 @@
   variants: method
   structured_delegate: renorm.out
 
+- func: isposinf(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: isposinf.out
+  tags: pointwise
+
 - func: isposinf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: isposinf_out
+  tags: pointwise
+
+- func: isneginf(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: isneginf.out
   tags: pointwise
 
 - func: isneginf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
