@@ -11,7 +11,7 @@
 #include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 
-#include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
+#include <ATen/native/xpu/sycl/AveragePool3dKernels.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

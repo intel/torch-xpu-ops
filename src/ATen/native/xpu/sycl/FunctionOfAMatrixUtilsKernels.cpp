@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/FunctionOfAMatrixUtilsKernels.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 
 #include <comm/SYCLContext.h>
