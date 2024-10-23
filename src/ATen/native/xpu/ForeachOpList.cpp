@@ -7,6 +7,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpListKernels.h>
@@ -68,6 +69,7 @@ FOREACH_BINARY_OP_LIST(mul, false);
 FOREACH_BINARY_OP_LIST(div, true);
 FOREACH_BINARY_OP_LIST(clamp_max, true);
 FOREACH_BINARY_OP_LIST(clamp_min, true);
+FOREACH_BINARY_OP_LIST(pow, true);
 
 #define FOREACH_POINTWISE_OP_TENSOR(NAME)                                  \
   std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_xpu(             \

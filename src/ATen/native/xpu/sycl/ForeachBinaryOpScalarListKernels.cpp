@@ -171,4 +171,12 @@ FOREACH_BINARY_SCALARLIST_KERNEL(clamp_min) {
   return all_types_half_bfloat16<foreach_internal::maximum>(tensors, scalars);
 }
 
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(pow) {
+  return all_types_complex_half_bfloat16_<power_functor>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(pow) {
+  return all_types_complex_half_bfloat16<power_functor>(tensors, scalars);
+}
+
 } // namespace at::native::xpu
