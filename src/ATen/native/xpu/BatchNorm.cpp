@@ -350,14 +350,14 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_xpu(
 }
 
 std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_xpu(
-        const Tensor& input,
-        const Tensor& mean,
-        const Tensor& invstd,
-        const std::optional<Tensor>& running_mean,
-        const std::optional<Tensor>& running_var,
-        double momentum,
-        double eps,
-        const Tensor& counts) {
+    const Tensor& input,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const std::optional<Tensor>& running_mean,
+    const std::optional<Tensor>& running_var,
+    double momentum,
+    double eps,
+    const Tensor& counts) {
   return xpu::batch_norm_gather_stats_with_counts_kernel(
       input, mean, invstd, running_mean, running_var, momentum, eps, counts);
 }
