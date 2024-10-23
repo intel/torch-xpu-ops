@@ -153,7 +153,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
  */
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
-    "_cdist_backward",
     "cholesky",
     "cholesky_inverse",
     "_cholesky_solve_helper",
@@ -205,8 +204,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "multi_margin_loss",
     "multi_margin_loss_backward",
     "ormqr",
-    "_pdist_backward",
-    "_pdist_forward",
     "rrelu_with_noise",
     "_scaled_dot_product_efficient_attention",
     "_scaled_mm",
