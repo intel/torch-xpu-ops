@@ -14,8 +14,7 @@ namespace at::native::xpu {
 template <typename T, template <class> class Op>
 std::vector<Tensor> foreach_binary_op(
     TensorList tensors,
-    const Tensor& scalar,
-    const Scalar& alpha = 1) {
+    const Tensor& scalar) {
   TORCH_CHECK(
       scalar.dim() == 0 && scalar.numel() == 1,
       "scalar tensor expected to be 0 dim but it has ",
@@ -53,10 +52,7 @@ std::vector<Tensor> foreach_binary_op(
 }
 
 template <typename T, template <class> class Op>
-void foreach_binary_op_(
-    TensorList tensors,
-    const Tensor& scalar,
-    const Scalar& alpha = 1) {
+void foreach_binary_op_(TensorList tensors, const Tensor& scalar) {
   TORCH_CHECK(
       scalar.dim() == 0 && scalar.numel() == 1,
       "scalar tensor expected to be 0 dim but has ",
@@ -89,31 +85,27 @@ void foreach_binary_op_(
 template <template <class> class Op>
 std::vector<Tensor> all_types_complex_bool_half_bfloat16(
     TensorList tensors,
-    const Tensor& scalar,
-    const Scalar& alpha = 1) {
+    const Tensor& scalar) {
   return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       kBool,
       kHalf,
       kBFloat16,
       tensors[0].scalar_type(),
       "foreach_binary_op_tensor_xpu",
-      [&]() {
-        return foreach_binary_op<scalar_t, Op>(tensors, scalar, alpha);
-      });
+      [&]() { return foreach_binary_op<scalar_t, Op>(tensors, scalar); });
 }
 
 template <template <class> class Op>
 void all_types_complex_bool_half_bfloat16_(
     TensorList tensors,
-    const Tensor& scalar,
-    const Scalar& alpha = 1) {
+    const Tensor& scalar) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       kBool,
       kHalf,
       kBFloat16,
       tensors[0].scalar_type(),
       "foreach_binary_op_tensor_xpu_",
-      [&]() { foreach_binary_op_<scalar_t, Op>(tensors, scalar, alpha); });
+      [&]() { foreach_binary_op_<scalar_t, Op>(tensors, scalar); });
 }
 
 FOREACH_BINARY_TENSOR_INPLACE_KERNEL(mul) {
