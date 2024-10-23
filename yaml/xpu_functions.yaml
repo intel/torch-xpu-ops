@@ -390,6 +390,7 @@ supported:
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
+  - embedding_renorm_
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
@@ -722,3 +723,11 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
+  - tril_indices
+  - tril_indices.out
+  - triu_indices
+  - triu_indices.out
+  - _compute_linear_combination
+  - _compute_linear_combination.out
+  - _embedding_bag_dense_backward
+  - _embedding_bag_per_sample_weights_backward
