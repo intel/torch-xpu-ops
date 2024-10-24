@@ -7,7 +7,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct hermite_polynomial_h_functor {
+struct HermitePolynomialHFunctor {
   scalar_t operator()(scalar_t x, scalar_t n_) const {
     int64_t n = static_cast<int64_t>(n_);
     if (n < 0) {
@@ -40,7 +40,7 @@ void hermite_polynomial_h_kernel(TensorIteratorBase& iterator) {
   AT_DISPATCH_FLOATING_TYPES(
       iterator.common_dtype(), "hermite_polynomial_h_xpu", [&]() {
         gpu_kernel_with_scalars(
-            iterator, hermite_polynomial_h_functor<scalar_t>());
+            iterator, HermitePolynomialHFunctor<scalar_t>());
       });
 }
 

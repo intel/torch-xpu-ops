@@ -196,27 +196,35 @@ void i0e_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct I1Functor {
   scalar_t operator()(scalar_t a) const {
-    return calc_i1(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_i1<opmath_t>(a);
   }
 };
 
 void i1_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "i1_xpu", [&]() {
-    gpu_kernel(iter, I1Functor<scalar_t>());
-  });
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "i1_xpu",
+      [&]() { gpu_kernel(iter, I1Functor<scalar_t>()); });
 }
 
 template <typename scalar_t>
 struct I1eFunctor {
   scalar_t operator()(scalar_t a) const {
-    return calc_i1e(a);
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_i1e<opmath_t>(a);
   }
 };
 
 void i1e_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "i1e_xpu", [&]() {
-    gpu_kernel(iter, I1eFunctor<scalar_t>());
-  });
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "i1e_xpu",
+      [&]() { gpu_kernel(iter, I1eFunctor<scalar_t>()); });
 }
 
 template <typename scalar_t>

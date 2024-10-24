@@ -7,7 +7,7 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct legendre_polynomial_p_functor {
+struct LegendrePolynomialPFunctor {
   scalar_t operator()(scalar_t x, scalar_t n_) const {
     int64_t n = static_cast<int64_t>(n_);
     if (n < 0) {
@@ -48,7 +48,7 @@ void legendre_polynomial_p_kernel(TensorIteratorBase& iterator) {
   AT_DISPATCH_FLOATING_TYPES(
       iterator.common_dtype(), "legendre_polynomial_p_xpu", [&]() {
         gpu_kernel_with_scalars(
-            iterator, legendre_polynomial_p_functor<scalar_t>());
+            iterator, LegendrePolynomialPFunctor<scalar_t>());
       });
 }
 
