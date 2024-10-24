@@ -181,43 +181,6 @@ endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 message(STATUS "MENG 9")
-# Create a clean working directory.
-set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
-file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
-file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
-# Create the test source file
-set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/llvm_features.cpp")
-set(TEST_EXE "${TEST_SRC_FILE}.exe")
-SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
-# Build the test and create test executable
-SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
-if(error)
-  message(STATUS "return 1")
-  return()
-endif()
-# Execute the test to extract information
-SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
-if(error)
-  message(STATUS "return 2")
-  return()
-endif()
-# Extract test output for information
-SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
-message(STATUS "MENG 10")
-
-# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
-string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
-if(nosycllang)
-  set(SYCLTOOLKIT_FOUND False)
-  set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
-  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
-endif()
-message(STATUS "MENG 11")
-
-
-# Include in Cache
-set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
-message(STATUS "MENG __INTEL_LLVM_COMPILER is ${__INTEL_LLVM_COMPILER}")
 
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
@@ -261,6 +224,44 @@ if(${has_werror} EQUAL -1)
   set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
 
+message(STATUS "MENG 11")
+# Create a clean working directory.
+set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
+file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
+file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
+# Create the test source file
+set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/llvm_features.cpp")
+set(TEST_EXE "${TEST_SRC_FILE}.exe")
+SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
+# Build the test and create test executable
+SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
+if(error)
+  message(STATUS "return 1")
+  return()
+endif()
+# Execute the test to extract information
+SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
+if(error)
+  message(STATUS "return 2")
+  return()
+endif()
+# Extract test output for information
+SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
+message(STATUS "MENG 10")
+
+# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
+string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
+if(nosycllang)
+  set(SYCLTOOLKIT_FOUND False)
+  set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
+  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
+endif()
+message(STATUS "MENG 11")
+
+
+# Include in Cache
+set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
+message(STATUS "MENG __INTEL_LLVM_COMPILER is ${__INTEL_LLVM_COMPILER}")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
