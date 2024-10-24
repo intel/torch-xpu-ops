@@ -253,6 +253,6 @@ endif()
 
 # Include in Cache
 set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
-
+message(STATUS "MENG __INTEL_LLVM_COMPILER is ${__INTEL_LLVM_COMPILER}")
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
