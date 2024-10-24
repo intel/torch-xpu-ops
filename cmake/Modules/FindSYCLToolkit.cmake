@@ -26,17 +26,17 @@ This will define the following variables:
 #]=======================================================================]
 
 include(${TORCH_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
-
+message(STATUS "MENG 1")
 if(NOT SYCL_FOUND)
   set(SYCLTOOLKIT_FOUND FALSE)
   return()
 endif()
-
+message(STATUS "MENG 2")
 if(SYCLTOOLKIT_FOUND)
   return()
 endif()
 set(SYCLTOOLKIT_FOUND TRUE)
-
+message(STATUS "MENG 3")
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 if(WIN32)
@@ -44,7 +44,7 @@ if(WIN32)
 else()
   set(SYCL_EXECUTABLE_NAME icpx)
 endif()
-
+message(STATUS "MENG 4")
 if(NOT SYCL_ROOT)
   execute_process(
     COMMAND which ${SYCL_EXECUTABLE_NAME}
@@ -59,7 +59,7 @@ if(NOT SYCL_ROOT)
   get_filename_component(SYCL_BIN_DIR "${SYCL_CMPLR_FULL_PATH}" DIRECTORY)
   set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
 endif()
-
+message(STATUS "MENG 5")
 find_program(
   SYCL_COMPILER
   NAMES ${SYCL_EXECUTABLE_NAME}
@@ -67,13 +67,14 @@ find_program(
   PATH_SUFFIXES bin bin64
   NO_DEFAULT_PATH
   )
-
+message(STATUS "MENG 6")
 string(COMPARE EQUAL "${SYCL_COMPILER}" "" nocmplr)
 if(nocmplr)
   set(SYCLTOOLKIT_FOUND False)
   set(SYCL_REASON_FAILURE "SYCL: CMAKE_CXX_COMPILER not set!!")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
+message(STATUS "MENG 7")
 
 # Function to write a test case to verify SYCL features.
 
@@ -164,6 +165,7 @@ function(SYCL_CMPLR_TEST_EXTRACT test_output macro_name)
 
   set(${macro_name} "${extracted_sycl_lang}" PARENT_SCOPE)
 endfunction()
+message(STATUS "MENG 8")
 
 set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
@@ -178,6 +180,7 @@ if(LINUX)
 endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
+message(STATUS "MENG 9")
 
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
