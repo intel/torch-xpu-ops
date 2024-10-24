@@ -792,7 +792,8 @@ void mode_kernel_impl(
     auto group_size = problem_size;
 
     // scratch memory size needed by built-in sort
-#if __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
     auto sort_scratch_memory_size =
         sycl::ext::oneapi::experimental::default_sorters::group_sorter<
             ModeOpValueIndex<scalar_t>,
