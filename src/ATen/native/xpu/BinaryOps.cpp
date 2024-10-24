@@ -16,6 +16,10 @@
 #include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/HermitePolynomialHKernel.h>
+#include <ATen/native/xpu/sycl/HermitePolynomialHeKernel.h>
+#include <ATen/native/xpu/sycl/LaguerrePolynomialLKernel.h>
+#include <ATen/native/xpu/sycl/LegendrePolynomialPKernel.h>
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 #include <ATen/native/xpu/sycl/StepKernels.h>

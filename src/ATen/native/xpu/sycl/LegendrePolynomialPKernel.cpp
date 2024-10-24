@@ -1,7 +1,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/Math.h>
-#include <ATen/native/xpu/sycl/Legendre_polynomial_p.h>
+#include <ATen/native/xpu/sycl/LegendrePolynomialPKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
