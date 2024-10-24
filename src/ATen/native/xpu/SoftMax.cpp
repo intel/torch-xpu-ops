@@ -76,4 +76,20 @@ TORCH_IMPL_FUNC(log_softmax_xpu_out)
   xpu::_log_softmax_kernel(input, dim, half_to_float, output);
 }
 
+Tensor masked_softmax_xpu(
+    const Tensor& input_,
+    const Tensor& mask_,
+    const std::optional<int64_t> dim_,
+    const std::optional<int64_t> mask_type_) {
+  return xpu::masked_softmax_kernel(input_, mask_, dim_, mask_type_);
+}
+
+Tensor masked_softmax_backward_xpu(
+    const Tensor& grad_,
+    const Tensor& output_,
+    const Tensor& mask_,
+    const std::optional<int64_t> dim_) {
+  return xpu::masked_softmax_backward_kernel(grad_, output_, mask_, dim_);
+}
+
 } // namespace at::native
