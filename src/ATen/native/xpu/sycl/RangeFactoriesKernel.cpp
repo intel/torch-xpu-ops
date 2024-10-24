@@ -143,7 +143,6 @@ Tensor& range_kernel(
   return result;
 }
 
-
 template <typename scalar_t, typename step_type>
 struct LinspaceFunctor {
   scalar_t operator()(int64_t ind) const {
