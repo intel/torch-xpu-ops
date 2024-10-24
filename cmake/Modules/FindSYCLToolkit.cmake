@@ -192,15 +192,18 @@ SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
 # Build the test and create test executable
 SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
 if(error)
+  message(STATUS "return 1")
   return()
 endif()
 # Execute the test to extract information
 SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
 if(error)
+  message(STATUS "return 2")
   return()
 endif()
 # Extract test output for information
 SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
+message(STATUS "MENG 10")
 
 # Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
 string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
@@ -209,6 +212,7 @@ if(nosycllang)
   set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
+message(STATUS "MENG 11")
 
 
 # Include in Cache
