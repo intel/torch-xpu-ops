@@ -242,8 +242,7 @@ endif()
 # Extract test output for information
 SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
 
-# As per specification, all the SYCL compatible compilers should
-# define macro  SYCL_LANGUAGE_VERSION
+# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
 string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
 if(nosycllang)
   set(SYCLTOOLKIT_FOUND False)
@@ -253,7 +252,7 @@ endif()
 
 
 # Include in Cache
-set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "SYCL Language version")
+set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
