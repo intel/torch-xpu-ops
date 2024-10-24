@@ -19,17 +19,12 @@
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 #include <ATen/native/xpu/sycl/StepKernels.h>
-#include <ATen/native/xpu/sycl/chebyshev_polynomial_t.h>
-#include <ATen/native/xpu/sycl/chebyshev_polynomial_u.h>
-#include <ATen/native/xpu/sycl/chebyshev_polynomial_v.h>
-#include <ATen/native/xpu/sycl/chebyshev_polynomial_w.h>
-#include <ATen/native/xpu/sycl/shifted_chebyshev_polynomial_t.h>
-#include <ATen/native/xpu/sycl/shifted_chebyshev_polynomial_u.h>
-#include <ATen/native/xpu/sycl/shifted_chebyshev_polynomial_v.h>
-#include <ATen/native/xpu/sycl/shifted_chebyshev_polynomial_w.h>
+#include <ATen/native/xpu/sycl/ChebyshevPolynomialKernels.h>
+#include <ATen/native/xpu/sycl/ShiftedChebyshevPolynomialKernels.h>
 
 namespace at {
 namespace native {
+
 REGISTER_XPU_DISPATCH(add_stub, &xpu::add_kernel)
 REGISTER_XPU_DISPATCH(sub_stub, &xpu::sub_kernel);
 REGISTER_XPU_DISPATCH(mul_stub, &xpu::mul_kernel);

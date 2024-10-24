@@ -2,12 +2,12 @@
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/chebyshev_polynomial_t.h>
+#include <ATen/native/xpu/sycl/ChebyshevPolynomialKernels.h>
 
 namespace at::native::xpu {
 
 template <typename scalar_t>
-struct chebyshev_polynomial_t_functor {
+struct ChebyshevPolynomialTFunctor {
   scalar_t operator()(scalar_t x, scalar_t n) const {
     return chebyshev_polynomial_t_forward<scalar_t>(x, n);
   }
@@ -16,7 +16,7 @@ struct chebyshev_polynomial_t_functor {
 void chebyshev_polynomial_t_kernel(TensorIteratorBase& iterator) {
   AT_DISPATCH_FLOATING_TYPES(
       iterator.common_dtype(), "chebyshev_polynomial_t_xpu", [&]() {
-        chebyshev_polynomial_t_functor<scalar_t> f;
+        ChebyshevPolynomialTFunctor<scalar_t> f;
         gpu_kernel_with_scalars(iterator, f);
       });
 }
