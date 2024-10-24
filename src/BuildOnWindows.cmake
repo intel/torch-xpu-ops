@@ -24,6 +24,7 @@ add_library(
   ${ATen_XPU_GEN_SRCS})
 install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 # target_compile_definitions(torch_xpu_ops_aten PRIVATE CAFFE2_BUILD_MAIN_LIB)
+target_compile_options(torch_xpu_ops_aten PRIVATE /permissive-)
 target_compile_definitions(torch_xpu_ops_aten PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
