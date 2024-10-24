@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/core/Generator.h>
 #include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {

@@ -9,6 +9,7 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/AdaptivePooling.h>
+#include <ATen/native/xpu/sycl/AdaptiveAveragePooling3dKernels.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
