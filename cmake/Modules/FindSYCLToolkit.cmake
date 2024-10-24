@@ -185,6 +185,7 @@ message(STATUS "MENG 9")
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
   # Create a clean working directory.
+  message(STATUS "MENG has_werror")
   set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
   file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
   file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
