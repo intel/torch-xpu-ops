@@ -199,8 +199,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "_logcumsumexp",
     "lu_unpack.out",
-    "max_unpool2d",
-    "max_unpool3d",
     "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
     "multi_margin_loss",
