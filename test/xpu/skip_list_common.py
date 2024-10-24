@@ -16,7 +16,6 @@ skip_dict = {
         # AssertionError: RuntimeError not raised
         "test_errors_dot_xpu",
         "test_errors_kthvalue_xpu",
-        "test_errors_take_xpu",
         "test_errors_vdot_xpu",
         # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
@@ -683,6 +682,20 @@ skip_dict = {
 
         # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
         "test_view_replay_multinomial_xpu_float32",
+
+        # AssertionError: The supported dtypes for nn.functional.max_unpool3d on device type xpu are incorrect!
+        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64}.
+        "test_dtypes_nn_functional_max_unpool3d_grad_xpu",
+        "test_dtypes_nn_functional_max_unpool3d_xpu",
+
+        # Unknown error with indexSelectBackward
+        # AssertionError: The supported dtypes for _refs.nn.functional.pdist on device type xpu are incorrect!
+        # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float64}.
+        # Unexpected failures raised the following errors:
+        # torch.float64 - Native API failed. Native API returns: -5 (PI_ERROR_OUT_OF_RESOURCES) -5 (PI_ERROR_OUT_OF_RESOURCES)
+        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
+        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
+        "test_dtypes__refs_nn_functional_pdist_xpu",
     ),
 
     "test_binary_ufuncs_xpu.py": (

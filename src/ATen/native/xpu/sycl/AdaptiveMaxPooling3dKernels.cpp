@@ -7,6 +7,8 @@
 #include <ATen/ATen.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/AdaptivePooling.h>
+
+#include <ATen/native/xpu/sycl/AdaptiveMaxPooling3dKernels.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>

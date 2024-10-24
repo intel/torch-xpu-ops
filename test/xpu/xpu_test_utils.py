@@ -200,6 +200,8 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.max_unpool2d",
+    "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
     "sigmoid",
@@ -217,6 +219,7 @@ _xpu_computation_op_list = [
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "addr",
     "cdist",
+    "nn.functional.pdist",
     "nn.functional.group_norm",
     "nn.functional.batch_norm",
     "native_batch_norm",
@@ -266,6 +269,8 @@ _xpu_computation_op_list = [
     "geometric",
     "mode",
     "log_normal",
+    "take",
+    "put",
 ]
 
 _ops_without_cuda_support = [

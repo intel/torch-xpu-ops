@@ -556,6 +556,8 @@ supported:
   - _upsample_nearest_exact2d_backward.grad_input
   - upsample_bicubic2d
   - upsample_bicubic2d.out
+  - upsample_bicubic2d_backward
+  - upsample_bicubic2d_backward.grad_input
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -731,3 +733,6 @@ supported:
   - _compute_linear_combination.out
   - _embedding_bag_dense_backward
   - _embedding_bag_per_sample_weights_backward
+  - put_
+  - take
+  - take.out

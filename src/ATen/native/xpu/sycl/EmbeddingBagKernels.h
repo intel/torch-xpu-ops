@@ -15,7 +15,7 @@ TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     bool include_last_offset,
     int64_t padding_idx);
 
-Tensor _embedding_bag_dense_backward_kernel(
+TORCH_XPU_API Tensor _embedding_bag_dense_backward_kernel(
     const Tensor& grad_t,
     const Tensor& indices,
     const Tensor& offset2bag,
@@ -27,7 +27,7 @@ Tensor _embedding_bag_dense_backward_kernel(
     const Tensor& per_sample_weights,
     int64_t padding_idx);
 
-Tensor _embedding_bag_per_sample_weights_backward_kernel(
+TORCH_XPU_API Tensor _embedding_bag_per_sample_weights_backward_kernel(
     const Tensor& grad,
     const Tensor& weight, // NB: embedding table, not per_sample_weights
     const Tensor& indices_,
