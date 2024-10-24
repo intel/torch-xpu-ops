@@ -19,9 +19,12 @@
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 #include <ATen/native/xpu/sycl/StepKernels.h>
+#include <ATen/native/xpu/sycl/ChebyshevPolynomialKernels.h>
+#include <ATen/native/xpu/sycl/ShiftedChebyshevPolynomialKernels.h>
 
 namespace at {
 namespace native {
+
 REGISTER_XPU_DISPATCH(add_stub, &xpu::add_kernel)
 REGISTER_XPU_DISPATCH(sub_stub, &xpu::sub_kernel);
 REGISTER_XPU_DISPATCH(mul_stub, &xpu::mul_kernel);
@@ -54,6 +57,30 @@ REGISTER_XPU_DISPATCH(fmin_stub, &xpu::fmin_kernel);
 REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
 REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
+REGISTER_XPU_DISPATCH(
+    chebyshev_polynomial_t_stub,
+    &xpu::chebyshev_polynomial_t_kernel);
+REGISTER_XPU_DISPATCH(
+    chebyshev_polynomial_u_stub,
+    &xpu::chebyshev_polynomial_u_kernel);
+REGISTER_XPU_DISPATCH(
+    chebyshev_polynomial_v_stub,
+    &xpu::chebyshev_polynomial_v_kernel);
+REGISTER_XPU_DISPATCH(
+    chebyshev_polynomial_w_stub,
+    &xpu::chebyshev_polynomial_w_kernel);
+REGISTER_XPU_DISPATCH(
+    shifted_chebyshev_polynomial_t_stub,
+    &xpu::shifted_chebyshev_polynomial_t_kernel);
+REGISTER_XPU_DISPATCH(
+    shifted_chebyshev_polynomial_u_stub,
+    &xpu::shifted_chebyshev_polynomial_u_kernel);
+REGISTER_XPU_DISPATCH(
+    shifted_chebyshev_polynomial_v_stub,
+    &xpu::shifted_chebyshev_polynomial_v_kernel);
+REGISTER_XPU_DISPATCH(
+    shifted_chebyshev_polynomial_w_stub,
+    &xpu::shifted_chebyshev_polynomial_w_kernel);
 
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,
