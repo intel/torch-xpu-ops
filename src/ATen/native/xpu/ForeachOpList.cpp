@@ -148,13 +148,13 @@ void foreach_tensor_lerp_ternary_xpu_(
 }
 
 void foreach_tensor_copy_list_kernel_xpu_(
-    at::TensorList self,
-    at::TensorList src,
+    TensorList self,
+    TensorList src,
     bool non_blocking) {
-      at::native::check_foreach_api_restrictions(self, src);
-      if (!at::native::can_use_fast_route(
+      check_foreach_api_restrictions(self, src);
+      if (!can_use_fast_route(
               self, src, /* does_op_promote_integer_inputs_to_float */ false)) {
-        return at::native::foreach_tensor_copy_list_kernel_slow_(
+        return foreach_tensor_copy_list_kernel_slow_(
             self, src, non_blocking);
     }
 
