@@ -243,7 +243,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_to_sparse",
     "_to_sparse_csr",
     "triangular_solve.X",
-    "upsample_bicubic2d_backward.grad_input",
     "_upsample_bilinear2d_aa.out",
     "upsample_trilinear3d_backward.grad_input",
     "upsample_trilinear3d.out",
