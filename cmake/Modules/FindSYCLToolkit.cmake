@@ -120,14 +120,14 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
     )
 
   # Verify if test case build properly.
+  set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
+  file(READ ${LOG_FILE_PATH} log_content)
+
+  message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
+  message(STATUS "MENG Compile Log Content:\n${log_content}")
   if(result)
     message("SYCL: feature test compile failed!!")
     message("compile output is: ${output}")
-    set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
-    file(READ ${LOG_FILE_PATH} log_content)
-
-    message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
-    message(STATUS "MENG Compile Log Content:\n${log_content}")
   endif()
 
   set(${error} ${result} PARENT_SCOPE)
