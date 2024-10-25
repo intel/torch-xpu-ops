@@ -5969,6 +5969,30 @@
   variants: method
   structured_delegate: renorm.out
 
+- func: isposinf(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: isposinf.out
+  tags: pointwise
+
+- func: isposinf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: isposinf_out
+  tags: pointwise
+
+- func: isneginf(Tensor self) -> Tensor
+  variants: function, method
+  structured_delegate: isneginf.out
+  tags: pointwise
+
+- func: isneginf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: isneginf_out
+  tags: pointwise
+
 - func: topk.values(Tensor self, SymInt k, int dim=-1, bool largest=True, bool sorted=True, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
   structured: True
   dispatch:
@@ -6287,6 +6311,141 @@
   dispatch:
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
+
+- func: special_chebyshev_polynomial_t(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_chebyshev_polynomial_t.out
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_t.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_chebyshev_polynomial_t_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_u(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_chebyshev_polynomial_u.out
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_u.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_chebyshev_polynomial_u_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_v(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_chebyshev_polynomial_v.out
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_v.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_chebyshev_polynomial_v_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_w(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_chebyshev_polynomial_w.out
+  variants: function
+  tags: pointwise
+
+- func: special_chebyshev_polynomial_w.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_chebyshev_polynomial_w_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_t(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_shifted_chebyshev_polynomial_t.out
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_t.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_shifted_chebyshev_polynomial_t_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_u(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_shifted_chebyshev_polynomial_u.out
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_u.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_shifted_chebyshev_polynomial_u_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_v(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_shifted_chebyshev_polynomial_v.out
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_v.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_shifted_chebyshev_polynomial_v_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_w(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_shifted_chebyshev_polynomial_w.out
+  variants: function
+  tags: pointwise
+
+- func: special_shifted_chebyshev_polynomial_w.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_shifted_chebyshev_polynomial_w_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
 
 - func: logspace(Scalar start, Scalar end, int steps, float base=10.0, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
@@ -6609,3 +6768,271 @@
 
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
+
+- func: special_i0e(Tensor self) -> Tensor
+  python_module: special
+  variants: function
+  structured_delegate: special_i0e.out
+  tags: pointwise
+
+- func: special_i0e.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: special
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: special_i0e_out
+  tags: pointwise
+
+- func: special_i1(Tensor self) -> Tensor
+  python_module: special
+  variants: function
+  structured_delegate: special_i1.out
+  tags: pointwise
+
+- func: special_i1.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: special
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: special_i1_out
+  tags: pointwise
+
+- func: special_i1e(Tensor self) -> Tensor
+  python_module: special
+  variants: function
+  structured_delegate: special_i1e.out
+  tags: pointwise
+
+- func: special_i1e.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: special
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: special_i1e_out
+  tags: pointwise
+
+- func: special_ndtri(Tensor self) -> Tensor
+  structured_delegate: special_ndtri.out
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_ndtri.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_ndtri_out
+  tags: pointwise
+
+- func: special_log_ndtr(Tensor self) -> Tensor
+  structured_delegate: special_log_ndtr.out
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_log_ndtr.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_log_ndtr_out
+  tags: pointwise
+
+- func: special_hermite_polynomial_h(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_hermite_polynomial_h.out
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_h.x_scalar(Scalar x, Tensor n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_h
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_h.n_scalar(Tensor x, Scalar n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_h
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_h.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_hermite_polynomial_h_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_h.x_scalar_out(Scalar x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_h_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_h.n_scalar_out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_h_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_hermite_polynomial_he.out
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he.x_scalar(Scalar x, Tensor n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_he
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he.n_scalar(Tensor x, Scalar n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_he
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_hermite_polynomial_he_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he.x_scalar_out(Scalar x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_he_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_hermite_polynomial_he.n_scalar_out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_hermite_polynomial_he_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_laguerre_polynomial_l.out
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l.x_scalar(Scalar x, Tensor n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_laguerre_polynomial_l
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l.n_scalar(Tensor x, Scalar n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_laguerre_polynomial_l
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_laguerre_polynomial_l_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l.x_scalar_out(Scalar x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_laguerre_polynomial_l_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_laguerre_polynomial_l.n_scalar_out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_laguerre_polynomial_l_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p(Tensor x, Tensor n) -> Tensor
+  device_check: NoCheck
+  python_module: special
+  structured_delegate: special_legendre_polynomial_p.out
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p.x_scalar(Scalar x, Tensor n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_legendre_polynomial_p
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p.n_scalar(Tensor x, Scalar n) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: special_legendre_polynomial_p
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck
+  dispatch:
+    XPU: special_legendre_polynomial_p_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p.x_scalar_out(Scalar x, Tensor n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_legendre_polynomial_p_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_legendre_polynomial_p.n_scalar_out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: special_legendre_polynomial_p_out
+  device_check: NoCheck
+  python_module: special
+  variants: function
+  tags: pointwise
