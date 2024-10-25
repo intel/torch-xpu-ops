@@ -26,14 +26,18 @@ This will define the following variables:
 #]=======================================================================]
 
 include(${TORCH_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
+
 if(NOT SYCL_FOUND)
   set(SYCLTOOLKIT_FOUND FALSE)
   return()
 endif()
+
 if(SYCLTOOLKIT_FOUND)
   return()
 endif()
+
 set(SYCLTOOLKIT_FOUND TRUE)
+
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 if(WIN32)
@@ -41,6 +45,7 @@ if(WIN32)
 else()
   set(SYCL_EXECUTABLE_NAME icpx)
 endif()
+
 if(NOT SYCL_ROOT)
   execute_process(
     COMMAND which ${SYCL_EXECUTABLE_NAME}
@@ -55,6 +60,7 @@ if(NOT SYCL_ROOT)
   get_filename_component(SYCL_BIN_DIR "${SYCL_CMPLR_FULL_PATH}" DIRECTORY)
   set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
 endif()
+
 find_program(
   SYCL_COMPILER
   NAMES ${SYCL_EXECUTABLE_NAME}
@@ -62,6 +68,7 @@ find_program(
   PATH_SUFFIXES bin bin64
   NO_DEFAULT_PATH
   )
+
 string(COMPARE EQUAL "${SYCL_COMPILER}" "" nocmplr)
 if(nocmplr)
   set(SYCLTOOLKIT_FOUND False)
@@ -168,7 +175,6 @@ if(LINUX)
   string(REGEX MATCH "libsycl-preview.so" is_abi_neutral ${SYCL_LIBRARY})
   if(is_abi_neutral)
     list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
-    # list(APPEND SYCL_FLAGS "-Werror")
     list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
   endif()
 endif()
