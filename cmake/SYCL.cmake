@@ -1,5 +1,6 @@
 # SYCL compiler and runtime setup
 if(NOT SYCLTOOLKIT_FOUND)
+  message(STATUS "MENG SYCLTOOLKIT_FOUND")
   # Avoid package conflict introduced in PyTorch cmake
   # find_package(SYCLToolkit REQUIRED)
   include(${TORCH_XPU_OPS_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)

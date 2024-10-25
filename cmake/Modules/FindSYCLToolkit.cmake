@@ -26,17 +26,17 @@ This will define the following variables:
 #]=======================================================================]
 
 include(${TORCH_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
-
+message(STATUS "MENG 1")
 if(NOT SYCL_FOUND)
   set(SYCLTOOLKIT_FOUND FALSE)
   return()
 endif()
-
+message(STATUS "MENG 2")
 if(SYCLTOOLKIT_FOUND)
   return()
 endif()
 set(SYCLTOOLKIT_FOUND TRUE)
-
+message(STATUS "MENG 3")
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 if(WIN32)
@@ -44,7 +44,7 @@ if(WIN32)
 else()
   set(SYCL_EXECUTABLE_NAME icpx)
 endif()
-
+message(STATUS "MENG 4")
 if(NOT SYCL_ROOT)
   execute_process(
     COMMAND which ${SYCL_EXECUTABLE_NAME}
@@ -59,7 +59,7 @@ if(NOT SYCL_ROOT)
   get_filename_component(SYCL_BIN_DIR "${SYCL_CMPLR_FULL_PATH}" DIRECTORY)
   set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
 endif()
-
+message(STATUS "MENG 5")
 find_program(
   SYCL_COMPILER
   NAMES ${SYCL_EXECUTABLE_NAME}
@@ -67,17 +67,18 @@ find_program(
   PATH_SUFFIXES bin bin64
   NO_DEFAULT_PATH
   )
-
+message(STATUS "MENG 6")
 string(COMPARE EQUAL "${SYCL_COMPILER}" "" nocmplr)
 if(nocmplr)
   set(SYCLTOOLKIT_FOUND False)
   set(SYCL_REASON_FAILURE "SYCL: CMAKE_CXX_COMPILER not set!!")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
+message(STATUS "MENG 7")
 
 # Function to write a test case to verify SYCL features.
 
-function(SYCL_CMPLR_TEST_WRITE src)
+function(SYCL_CMPLR_TEST_WRITE src macro_name)
 
   set(cpp_macro_if "#if")
   set(cpp_macro_endif "#endif")
@@ -88,8 +89,8 @@ function(SYCL_CMPLR_TEST_WRITE src)
 
   # Feature tests goes here
 
-  string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_if} defined(SYCL_LANGUAGE_VERSION)\n")
-  string(APPEND SYCL_CMPLR_TEST_CONTENT "cout << \"SYCL_LANGUAGE_VERSION=\"<<SYCL_LANGUAGE_VERSION<<endl;\n")
+  string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_if} defined(${macro_name})\n")
+  string(APPEND SYCL_CMPLR_TEST_CONTENT "cout << \"${macro_name}=\"<<${macro_name}<<endl;\n")
   string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_endif}\n")
 
   string(APPEND SYCL_CMPLR_TEST_CONTENT "return 0;}\n")
@@ -122,6 +123,11 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
   if(result)
     message("SYCL: feature test compile failed!!")
     message("compile output is: ${output}")
+    set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
+    file(READ ${LOG_FILE_PATH} log_content)
+
+    message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
+    message(STATUS "MENG Compile Log Content:\n${log_content}")
   endif()
 
   set(${error} ${result} PARENT_SCOPE)
@@ -150,20 +156,21 @@ function(SYCL_CMPLR_TEST_RUN error TEST_EXE)
 
 endfunction()
 
-function(SYCL_CMPLR_TEST_EXTRACT test_output)
+function(SYCL_CMPLR_TEST_EXTRACT test_output macro_name)
 
   string(REGEX REPLACE "\n" ";" test_output_list "${test_output}")
 
-  set(SYCL_LANGUAGE_VERSION "")
+  set(${macro_name} "")
   foreach(strl ${test_output_list})
-     if(${strl} MATCHES "^SYCL_LANGUAGE_VERSION=([A-Za-z0-9_]+)$")
-       string(REGEX REPLACE "^SYCL_LANGUAGE_VERSION=" "" extracted_sycl_lang "${strl}")
-       set(SYCL_LANGUAGE_VERSION ${extracted_sycl_lang})
+     if(${strl} MATCHES "^${macro_name}=([A-Za-z0-9_]+)$")
+       string(REGEX REPLACE "^${macro_name}=" "" extracted_sycl_lang "${strl}")
+       set(${macro_name} ${extracted_sycl_lang})
      endif()
   endforeach()
 
-  set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" PARENT_SCOPE)
+  set(${macro_name} "${extracted_sycl_lang}" PARENT_SCOPE)
 endfunction()
+message(STATUS "MENG 8")
 
 set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
@@ -178,10 +185,12 @@ if(LINUX)
 endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
+message(STATUS "MENG 9")
 
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
   # Create a clean working directory.
+  message(STATUS "MENG has_werror")
   set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
   file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
   file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
@@ -189,7 +198,7 @@ if(${has_werror} EQUAL -1)
   # Create the test source file
   set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/sycl_features.cpp")
   set(TEST_EXE "${TEST_SRC_FILE}.exe")
-  SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE})
+  SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "SYCL_LANGUAGE_VERSION")
 
   # Build the test and create test executable
   SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
@@ -204,7 +213,7 @@ if(${has_werror} EQUAL -1)
   endif()
 
   # Extract test output for information
-  SYCL_CMPLR_TEST_EXTRACT(${test_output})
+  SYCL_CMPLR_TEST_EXTRACT(${test_output} "SYCL_LANGUAGE_VERSION")
 
   # As per specification, all the SYCL compatible compilers should
   # define macro  SYCL_LANGUAGE_VERSION
@@ -220,6 +229,45 @@ if(${has_werror} EQUAL -1)
   # Include in Cache
   set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
+
+message(STATUS "MENG 11")
+# Create a clean working directory.
+set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
+file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
+file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
+# Create the test source file
+set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/llvm_features.cpp")
+set(TEST_EXE "${TEST_SRC_FILE}.exe")
+SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
+# Build the test and create test executable
+SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
+if(error)
+  message(STATUS "return 1")
+  return()
+endif()
+# Execute the test to extract information
+SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
+if(error)
+  message(STATUS "return 2")
+  return()
+endif()
+# Extract test output for information
+SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
+message(STATUS "MENG 10")
+
+# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
+string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
+if(nosycllang)
+  set(SYCLTOOLKIT_FOUND False)
+  set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
+  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
+endif()
+message(STATUS "MENG 11")
+
+
+# Include in Cache
+set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
+message(STATUS "MENG __INTEL_LLVM_COMPILER is ${__INTEL_LLVM_COMPILER}")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
