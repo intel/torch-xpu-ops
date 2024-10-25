@@ -6,6 +6,10 @@ namespace at::native::xpu {
 
 TORCH_XPU_API void where_kernel(TensorIterator& iter);
 
+TORCH_XPU_API void isposinf_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void isneginf_kernel(TensorIteratorBase& iter);
+
 TORCH_XPU_API void clamp_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void clamp_scalar_kernel(

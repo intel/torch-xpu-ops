@@ -167,6 +167,8 @@ _xpu_computation_op_list = [
     "add",
     "all",
     "any",
+    "isposinf",
+    "isneginf",
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
@@ -181,10 +183,14 @@ _xpu_computation_op_list = [
     "scatter",
     "gather",
     "nn.functional.adaptive_max_pool2d",
+    "nn.functional.adaptive_max_pool3d",
     "nn.functional.max_pool2d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.max_pool3d",
     "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.adaptive_avg_pool3d",
     "nn.functional.avg_pool2d",
+    "nn.functional.avg_pool3d",
     "nn.functional.embedding",
     "nn.functional.unfold",
     "nn.functional.pad",
@@ -196,6 +202,8 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.max_unpool2d",
+    "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
     "sigmoid",
@@ -213,6 +221,7 @@ _xpu_computation_op_list = [
     # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
     "addr",
     "cdist",
+    "nn.functional.pdist",
     "nn.functional.group_norm",
     "nn.functional.batch_norm",
     "native_batch_norm",
@@ -237,6 +246,7 @@ _xpu_computation_op_list = [
     "angle",
     "conj_physical",
     "histogram",
+    "histc",
     "repeat_interleave",
     "fmax",
     "fmin",
@@ -254,9 +264,15 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "tril_indices",
+    "triu_indices",
+    "index_copy",
     "cauchy",
     "geometric",
+    "mode",
     "log_normal",
+    "take",
+    "put",
 ]
 
 _ops_without_cuda_support = [
@@ -355,7 +371,7 @@ _xpu_tolerance_override = {
         }
     },
     "histogram": {
-        ("TestCommonXPU", "test_out"):{
+        ("TestCommon", "test_out"):{
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     }
