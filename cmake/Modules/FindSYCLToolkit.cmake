@@ -26,17 +26,14 @@ This will define the following variables:
 #]=======================================================================]
 
 include(${TORCH_ROOT}/cmake/Modules/FindSYCLToolkit.cmake)
-message(STATUS "MENG 1")
 if(NOT SYCL_FOUND)
   set(SYCLTOOLKIT_FOUND FALSE)
   return()
 endif()
-message(STATUS "MENG 2")
 if(SYCLTOOLKIT_FOUND)
   return()
 endif()
 set(SYCLTOOLKIT_FOUND TRUE)
-message(STATUS "MENG 3")
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 if(WIN32)
@@ -44,7 +41,6 @@ if(WIN32)
 else()
   set(SYCL_EXECUTABLE_NAME icpx)
 endif()
-message(STATUS "MENG 4")
 if(NOT SYCL_ROOT)
   execute_process(
     COMMAND which ${SYCL_EXECUTABLE_NAME}
@@ -59,7 +55,6 @@ if(NOT SYCL_ROOT)
   get_filename_component(SYCL_BIN_DIR "${SYCL_CMPLR_FULL_PATH}" DIRECTORY)
   set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
 endif()
-message(STATUS "MENG 5")
 find_program(
   SYCL_COMPILER
   NAMES ${SYCL_EXECUTABLE_NAME}
@@ -67,14 +62,12 @@ find_program(
   PATH_SUFFIXES bin bin64
   NO_DEFAULT_PATH
   )
-message(STATUS "MENG 6")
 string(COMPARE EQUAL "${SYCL_COMPILER}" "" nocmplr)
 if(nocmplr)
   set(SYCLTOOLKIT_FOUND False)
   set(SYCL_REASON_FAILURE "SYCL: CMAKE_CXX_COMPILER not set!!")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
-message(STATUS "MENG 7")
 
 # Function to write a test case to verify SYCL features.
 
@@ -121,22 +114,6 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
     )
 
   # Verify if test case build properly.
-message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
-set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
-
-# 检查日志文件是否存在
-if(EXISTS "${LOG_FILE_PATH}")
-    # 读取日志文件内容
-    file(READ "${LOG_FILE_PATH}" log_content)
-
-    # 打印日志文件内容
-    message(STATUS "${SYCL_CMPLR_TEST_DIR}/Compile.log")
-    message(STATUS "Compile Log Content:\n${log_content}")
-else()
-    message(WARNING "Log file does not exist: ${LOG_FILE_PATH}")
-endif()
-
-
   if(result)
     message("SYCL: feature test compile failed!!")
     message("compile output is: ${output}")
@@ -182,7 +159,6 @@ function(SYCL_CMPLR_TEST_EXTRACT test_output macro_name)
 
   set(${macro_name} "${extracted_sycl_lang}" PARENT_SCOPE)
 endfunction()
-message(STATUS "MENG 8")
 
 set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
@@ -198,7 +174,6 @@ if(LINUX)
 endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
-message(STATUS "MENG 9")
 
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
@@ -242,7 +217,6 @@ if(${has_werror} EQUAL -1)
   set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
 
-message(STATUS "MENG 11")
 # Create a clean working directory.
 set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
 file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
@@ -254,18 +228,15 @@ SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
 # Build the test and create test executable
 SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
 if(error)
-  message(STATUS "return 1")
-  return()
+  message(FATAL_ERROR "Can not build SYCL_CMPLR_TEST")
 endif()
 # Execute the test to extract information
 SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
 if(error)
-  message(STATUS "return 2")
-  return()
+  message(FATAL_ERROR "Can not run SYCL_CMPLR_TEST")
 endif()
 # Extract test output for information
 SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
-message(STATUS "MENG 10")
 
 # Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
 string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
@@ -274,12 +245,10 @@ if(nosycllang)
   set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
-message(STATUS "MENG 11")
 
 
 # Include in Cache
 set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
-message(STATUS "MENG __INTEL_LLVM_COMPILER is ${__INTEL_LLVM_COMPILER}")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
