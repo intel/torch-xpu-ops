@@ -167,6 +167,8 @@ _xpu_computation_op_list = [
     "add",
     "all",
     "any",
+    "isposinf",
+    "isneginf",
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
