@@ -104,6 +104,7 @@ endfunction()
 function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
 
   set(SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS}")
+  string(REPLACE "-Wno-stringop-overflow" "" SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS_LIST}")
   separate_arguments(SYCL_CXX_FLAGS_LIST)
 
   execute_process(
@@ -120,11 +121,22 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
     )
 
   # Verify if test case build properly.
-  set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
-  file(READ ${LOG_FILE_PATH} log_content)
+message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
+set(LOG_FILE_PATH "${SYCL_CMPLR_TEST_DIR}/Compile.log")
 
-  message(STATUS "MENG SYCL compiler ${SYCL_COMPILER}")
-  message(STATUS "MENG Compile Log Content:\n${log_content}")
+# 检查日志文件是否存在
+if(EXISTS "${LOG_FILE_PATH}")
+    # 读取日志文件内容
+    file(READ "${LOG_FILE_PATH}" log_content)
+
+    # 打印日志文件内容
+    message(STATUS "${SYCL_CMPLR_TEST_DIR}/Compile.log")
+    message(STATUS "Compile Log Content:\n${log_content}")
+else()
+    message(WARNING "Log file does not exist: ${LOG_FILE_PATH}")
+endif()
+
+
   if(result)
     message("SYCL: feature test compile failed!!")
     message("compile output is: ${output}")
@@ -180,6 +192,7 @@ if(LINUX)
   string(REGEX MATCH "libsycl-preview.so" is_abi_neutral ${SYCL_LIBRARY})
   if(is_abi_neutral)
     list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
+    # list(APPEND SYCL_FLAGS "-Werror")
     list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
   endif()
 endif()
@@ -190,7 +203,6 @@ message(STATUS "MENG 9")
 string(FIND "${CMAKE_CXX_FLAGS}" "-Werror" has_werror)
 if(${has_werror} EQUAL -1)
   # Create a clean working directory.
-  message(STATUS "MENG has_werror")
   set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
   file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
   file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
