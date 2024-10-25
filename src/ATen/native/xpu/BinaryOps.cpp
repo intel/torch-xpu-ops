@@ -73,6 +73,7 @@ REGISTER_XPU_DISPATCH(
 REGISTER_XPU_DISPATCH(
     legendre_polynomial_p_stub,
     &xpu::legendre_polynomial_p_kernel);
+REGISTER_XPU_DISPATCH(
     chebyshev_polynomial_t_stub,
     &xpu::chebyshev_polynomial_t_kernel);
 REGISTER_XPU_DISPATCH(
