@@ -12,10 +12,10 @@ Tensor& multi_margin_loss_xpu_out(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction,
     Tensor& out) {
-  at::native::xpu::multi_margin_loss_kernel(
+  xpu::multi_margin_loss_kernel(
       self, target, p, margin, weight, reduction, out);
   return out;
 }
@@ -25,10 +25,10 @@ Tensor multi_margin_loss_xpu(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction) {
   auto out = at::empty({0}, self.options());
-  at::native::xpu::multi_margin_loss_kernel(
+  xpu::multi_margin_loss_kernel(
       self, target, p, margin, weight, reduction, out);
   return out;
 }
@@ -39,10 +39,10 @@ Tensor& multi_margin_loss_xpu_backward_out(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction,
     Tensor& grad_input) {
-  at::native::xpu::multi_margin_loss_backward_kernel(
+  xpu::multi_margin_loss_backward_kernel(
       grad_output, self, target, p, margin, weight, reduction, grad_input);
   return grad_input;
 }
@@ -53,10 +53,10 @@ Tensor multi_margin_loss_xpu_backward(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction) {
   auto grad_input = at::empty({0}, self.options());
-  at::native::xpu::multi_margin_loss_backward_kernel(
+  xpu::multi_margin_loss_backward_kernel(
       grad_output, self, target, p, margin, weight, reduction, grad_input);
   return grad_input;
 }

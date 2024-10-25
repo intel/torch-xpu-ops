@@ -1,9 +1,3 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -11,7 +5,10 @@
 #include <ATen/ops/sum.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/MultiMarginLossKernels.h>
+
 namespace at::native::xpu {
+
 using namespace at::xpu;
 
 void multi_margin_loss_shape_check(
@@ -52,7 +49,8 @@ void multi_margin_loss_shape_check(
 }
 
 template <int P, typename scalar_t, typename accscalar_t>
-struct MultiMarginLossForwardKernelFunctor {
+struct MultiMarginLossForwardKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;
@@ -129,7 +127,8 @@ struct MultiMarginLossForwardKernelFunctor {
 };
 
 template <int P, typename scalar_t, typename accscalar_t>
-struct MultiMarginLossBackwardKernelFunctor {
+struct MultiMarginLossBackwardKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;
@@ -229,7 +228,7 @@ Tensor& multi_margin_loss_kernel(
     const Tensor& target_,
     const Scalar& p_,
     const Scalar& margin_,
-    const c10::optional<Tensor>& weights_,
+    const std::optional<Tensor>& weights_,
     int64_t reduction,
     Tensor& out_) {
   auto p = p_.toLong();
@@ -402,7 +401,7 @@ Tensor& multi_margin_loss_backward_kernel(
     const Tensor& target_,
     const Scalar& p_,
     const Scalar& margin_,
-    const c10::optional<Tensor>& weights_,
+    const std::optional<Tensor>& weights_,
     int64_t reduction,
     Tensor& grad_input_) {
   auto p = p_.toLong();
@@ -547,5 +546,3 @@ Tensor& multi_margin_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
-#pragma clang diagnostic pop
-#pragma GCC diagnostic pop

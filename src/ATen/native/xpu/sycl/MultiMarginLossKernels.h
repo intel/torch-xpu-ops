@@ -8,7 +8,7 @@ TORCH_XPU_API Tensor& multi_margin_loss_kernel(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction,
     Tensor& out);
 
@@ -18,7 +18,7 @@ TORCH_XPU_API Tensor& multi_margin_loss_backward_kernel(
     const Tensor& target,
     const Scalar& p,
     const Scalar& margin,
-    const c10::optional<Tensor>& weight,
+    const std::optional<Tensor>& weight,
     int64_t reduction,
     Tensor& grad_input);
 
