@@ -1,25 +1,21 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
+#include <ATen/native/ReduceOps.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/StridedRandomAccessor.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
+#include <ATen/ops/from_blob.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
-
-#ifdef _WIN32
-#define RESTRICT __restrict
-#else
-#define RESTRICT __restrict__
-#endif
 
 namespace at {
 namespace native {
@@ -1169,7 +1165,7 @@ struct BatchNormTransformInputKernelFunctor {
     } else {
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          device_sqrt(
+          std::sqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -1652,7 +1648,7 @@ struct BatchNormBackwardReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     local_sum_ = sycl_local_acc_t<Float2<input_scalar_t, stat_accscalar_t>>(
-        sycl::range<1>{(size_t)wg_size_}, cgh);
+        sycl::range<1>{(size_t)wg_size_ / SIMD}, cgh);
   }
 
   BatchNormBackwardReduceKernelFunctor(
@@ -1909,17 +1905,13 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
     int m_offset = item.get_global_id(0);
     int c_offset = item.get_global_id(1);
 
-    if (c_offset >= stride_ || m_offset >= reduction_size_) {
-      return;
-    }
-
     int loop_count =
         1 + (reduction_size_ - 1) / (inner_loop_stride * PARALLEL_LOADS);
     int address_base = m_offset * stride_ + c_offset;
     int address_increment = inner_loop_stride * stride_;
 
-    auto r_mean = mean_[c_offset];
-    auto factor = inv_std_[c_offset];
+    auto r_mean = c_offset < stride_ ? mean_[c_offset] : accscalar_t(0);
+    auto factor = c_offset < stride_ ? inv_std_[c_offset] : accscalar_t(0);
 
     for (int i = 0; i < loop_count; i++) {
       accscalar_t x_input[PARALLEL_LOADS];
@@ -3060,7 +3052,7 @@ void batch_norm_mean_var(
       }
 
       // For some reason this isn't an actual operator but it exists anyway...
-      var_mean_out(
+      at::native::var_mean_out(
           save_var,
           save_mean,
           self,
@@ -4018,6 +4010,258 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
   }
 
   return std::make_tuple(grad_input, grad_weight, grad_bias);
+}
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+struct BatchNormReduceStatisticsKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int feature_size = vec_mean_.size(1);
+    int world_size = vec_mean_.size(0);
+
+    int bid = item.get_group(0);
+    int tid = item.get_local_id(0);
+    int group_size_x = item.get_local_range(0);
+
+    auto mean = mean_;
+    auto invstd = invstd_;
+    auto running_mean = running_mean_;
+    auto running_var = running_var_;
+
+    // first the reductions each thread does separately
+    for (int i = bid * group_size_x + tid; i < feature_size;
+         i += item.get_group_range(0) * group_size_x) {
+      accscalar_t avg = 0;
+      accscalar_t var_n = 0;
+      index_t n = 0;
+      for (int j = 0; j < world_size; j++) {
+        scalar_t count = counts_[j];
+        accscalar_t m = vec_mean_[j][i];
+        accscalar_t v = accscalar_t(1.0) / (vec_invstd_[j][i]);
+        v = (v * v - epsilon_) * count;
+        accscalar_t factor = 1.0 / (n + count);
+        var_n += v + (avg - m) * (avg - m) * n * count * factor;
+        avg = n * factor * avg + count * factor * m;
+        n += count;
+      }
+      mean[i] = avg;
+      invstd[i] = static_cast<accscalar_t>(1) / std::sqrt(var_n / n + epsilon_);
+      if (running_mean.data() != NULL) {
+        running_mean[i] = static_cast<scalar_t>(
+            (1 - momentum_) * running_mean[i] + momentum_ * avg);
+      }
+      accscalar_t unbiasedVar = var_n / (n - 1);
+      if (running_var.data() != NULL) {
+        running_var[i] = static_cast<scalar_t>(
+            (1 - momentum_) * running_var[i] + momentum_ * unbiasedVar);
+      }
+    }
+  }
+  BatchNormReduceStatisticsKernelFunctor(
+      const GenericPackedTensorAccessor<
+          accscalar_t,
+          2,
+          RestrictPtrTraits,
+          index_t> vec_mean,
+      const GenericPackedTensorAccessor<
+          accscalar_t,
+          2,
+          RestrictPtrTraits,
+          index_t> vec_invstd,
+      GenericPackedTensorAccessor<accscalar_t, 1, RestrictPtrTraits, index_t>
+          mean,
+      GenericPackedTensorAccessor<accscalar_t, 1, RestrictPtrTraits, index_t>
+          invstd,
+      GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+          running_mean,
+      GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+          running_var,
+      const accscalar_t epsilon,
+      const accscalar_t momentum,
+      const GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+          counts)
+      : vec_mean_(vec_mean),
+        vec_invstd_(vec_invstd),
+        mean_(mean),
+        invstd_(invstd),
+        running_mean_(running_mean),
+        running_var_(running_var),
+        epsilon_(epsilon),
+        momentum_(momentum),
+        counts_(counts) {}
+
+ private:
+  const GenericPackedTensorAccessor<accscalar_t, 2, RestrictPtrTraits, index_t>
+      vec_mean_;
+  const GenericPackedTensorAccessor<accscalar_t, 2, RestrictPtrTraits, index_t>
+      vec_invstd_;
+  GenericPackedTensorAccessor<accscalar_t, 1, RestrictPtrTraits, index_t> mean_;
+  GenericPackedTensorAccessor<accscalar_t, 1, RestrictPtrTraits, index_t>
+      invstd_;
+  GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+      running_mean_;
+  GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+      running_var_;
+  const accscalar_t epsilon_;
+  const accscalar_t momentum_;
+  const GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, index_t>
+      counts_;
+};
+
+template <typename scalar_t, typename accscalar_t, typename index_t>
+std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel_template(
+    const Tensor& mean_,
+    const Tensor& invstd_,
+    const Tensor& running_mean_,
+    const Tensor& running_var_,
+    double momentum,
+    double epsilon,
+    const Tensor& counts_) {
+  Tensor save_mean_;
+  Tensor save_invstd_;
+
+  auto features = mean_.size(1);
+  auto input_options = mean_.options();
+  if (mean_.scalar_type() == at::ScalarType::Half ||
+      mean_.scalar_type() == at::ScalarType::BFloat16) {
+    input_options = input_options.dtype(ScalarType::Float);
+  }
+  save_mean_ = at::empty({features}, input_options);
+  save_invstd_ = at::empty({features}, input_options);
+
+  auto mean =
+      packed_accessor_or_dummy<accscalar_t, 2, RestrictPtrTraits, index_t>(
+          mean_, "mean");
+  auto invstd =
+      packed_accessor_or_dummy<accscalar_t, 2, RestrictPtrTraits, index_t>(
+          invstd_, "invstd");
+  auto running_mean =
+      packed_accessor_or_dummy<scalar_t, 1, RestrictPtrTraits, index_t>(
+          running_mean_, "running_mean");
+  auto running_var =
+      packed_accessor_or_dummy<scalar_t, 1, RestrictPtrTraits, index_t>(
+          running_var_, "running_mean");
+  auto counts =
+      packed_accessor_or_dummy<scalar_t, 1, RestrictPtrTraits, index_t>(
+          counts_, "counts");
+
+  auto save_mean =
+      get_packed_accessor<accscalar_t, 1, RestrictPtrTraits, index_t>(
+          save_mean_, "save_mean");
+  auto save_invstd =
+      get_packed_accessor<accscalar_t, 1, RestrictPtrTraits, index_t>(
+          save_invstd_, "save_invstd");
+
+  using KernelClass =
+      BatchNormReduceStatisticsKernelFunctor<scalar_t, accscalar_t, index_t>;
+
+  int group_size_x = get_num_threads<KernelClass>(features);
+  sycl::range<1> local_range(group_size_x);
+  sycl::range<1> global_range(
+      group_size_x * std::max<int>(1, features / group_size_x));
+
+  auto caller = KernelClass(
+      mean,
+      invstd,
+      save_mean,
+      save_invstd,
+      running_mean,
+      running_var,
+      epsilon,
+      momentum,
+      counts);
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), caller);
+
+  return std::make_tuple(save_mean_, save_invstd_);
+}
+
+std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
+    const Tensor& self,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const std::optional<Tensor>& running_mean_opt /* optional */,
+    const std::optional<Tensor>& running_var_opt /* optional */,
+    double momentum,
+    double epsilon,
+    const Tensor& counts) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> running_mean_maybe_owned =
+      at::borrow_from_optional_tensor(running_mean_opt);
+  const Tensor& running_mean = *running_mean_maybe_owned;
+  const Tensor& running_var =
+      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+
+  auto scalar_type =
+      running_mean.defined() ? running_mean.scalar_type() : self.scalar_type();
+  return AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      scalar_type,
+      "batch_norm_update_stats_kernel",
+      [&] {
+        using accscalar_t = acc_type_device<scalar_t, kXPU>;
+        if (canUse32BitIndexMath(self)) {
+          return batch_norm_gather_stats_kernel_template<
+              scalar_t,
+              accscalar_t,
+              int32_t>(
+              mean,
+              invstd,
+              running_mean,
+              running_var,
+              momentum,
+              epsilon,
+              counts);
+        } else {
+          return batch_norm_gather_stats_kernel_template<
+              scalar_t,
+              accscalar_t,
+              int64_t>(
+              mean,
+              invstd,
+              running_mean,
+              running_var,
+              momentum,
+              epsilon,
+              counts);
+        }
+      });
+}
+
+// accepting input(self) here to determine template data types, since
+// running_mean/running_var are optional
+std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
+    const Tensor& self,
+    const Tensor& mean,
+    const Tensor& invstd,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
+    double momentum,
+    double epsilon,
+    int64_t count) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> running_mean_maybe_owned =
+      at::borrow_from_optional_tensor(running_mean_opt);
+  const Tensor& running_mean = *running_mean_maybe_owned;
+  const Tensor& running_var =
+      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+
+  std::vector<int64_t> counts(mean.size(0), count);
+  Tensor counts_ = at::from_blob(
+      (void*)counts.data(),
+      {(int64_t)counts.size()},
+      self.options().dtype(at::kLong).device(at::kCPU));
+  counts_ =
+      counts_.to(self.device())
+          .to(running_mean.defined() ? running_mean.dtype() : self.dtype());
+  return batch_norm_gather_stats_with_counts_kernel(
+      self,
+      mean,
+      invstd,
+      running_mean,
+      running_var,
+      momentum,
+      epsilon,
+      counts_);
 }
 
 } // namespace xpu

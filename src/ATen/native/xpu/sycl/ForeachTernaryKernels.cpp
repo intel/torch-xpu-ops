@@ -1,12 +1,12 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Lerp.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
-#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 
 namespace at::native::xpu {
 

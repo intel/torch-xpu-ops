@@ -3,7 +3,7 @@ skip_dict = {
         # Skip list of base line
 
         # Need to revisit when the ops are enabled
-        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect! 
+        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect!
         "test_dtypes___rmod___xpu",
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
@@ -15,8 +15,7 @@ skip_dict = {
         "test_dtypes_sparse_sampled_addmm_xpu",
         # AssertionError: RuntimeError not raised
         "test_errors_dot_xpu",
-        "test_errors_kthvalue_xpu",     
-        "test_errors_take_xpu",
+        "test_errors_kthvalue_xpu",
         "test_errors_vdot_xpu",
         # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
         "test_noncontiguous_samples_linalg_det_xpu_float32",
@@ -37,7 +36,7 @@ skip_dict = {
         "test_errors_sparse_mul_layout2_xpu",
         "test_errors_sparse_mul_layout3_xpu",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
-        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",      
+        "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
 
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         # https://github.com/intel/torch-xpu-ops/issues/357
@@ -47,14 +46,14 @@ skip_dict = {
         # RuntimeError: sparse_dim expected sparse or strided tensor layout but got Sparse
         # Issue https://github.com/intel/torch-xpu-ops/issues/357
         "test_variant_consistency_eager_to_sparse_xpu_complex64",
-        "test_non_standard_bool_values_to_sparse_xpu_bool",        
-        
+        "test_non_standard_bool_values_to_sparse_xpu_bool",
+
         # OneDNN issues, https://github.com/intel/torch-xpu-ops/issues/253
-        # RuntimeError: Long is not supported in oneDNN! 
+        # RuntimeError: Long is not supported in oneDNN!
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",        
-        "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",        # 
+        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+        "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_int64",
@@ -63,15 +62,14 @@ skip_dict = {
         "test_noncontiguous_samples_nn_functional_conv_transpose3d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
-        
+
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
-        "test_out_mode_xpu_float32",
 
         # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
         "test_out_nanmean_xpu_float32",
-        "test_out_warning_nanmean_xpu",  
+        "test_out_warning_nanmean_xpu",
 
         # NameError: name 'nanj' is not defined. Did you mean: 'nan'?
         # https://github.com/intel/torch-xpu-ops/issues/768
@@ -98,6 +96,7 @@ skip_dict = {
         "test_out_geqrf_xpu_float32",
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+        "test_out_histc_xpu_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
@@ -109,19 +108,17 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_div_no_rounding_mode_xpu_complex32",
         "test_python_ref_torch_fallback__refs_pow_xpu_complex32",
 
-
-        # unexpected success because of cpu fallback 
+        # unexpected success because of cpu fallback
         "test_out_triangular_solve_xpu_float32",
 
         # Newly added:
 
-        # Cuda skipped it     
+        # Cuda skipped it
         "test_non_standard_bool_values_sort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
 
         # Cuda skipped it
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
 
-        
         # Unexpected success
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
 
@@ -672,13 +669,33 @@ skip_dict = {
         # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
         # https://github.com/intel/torch-xpu-ops/issues/623
         "test_dtypes_nextafter_xpu",
-        
+
         # AssertionError: The supported dtypes for argsort on device type xpu are incorrect!
         # The following dtypes worked in forward but are not listed by the OpInfo: {torch.bool}.
         # CUDA does not have torch.bool support on argsort.
         "test_dtypes_argsort_xpu",
         # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported"
         "test_errors_histogramdd_xpu",
+
+        # https://github.com/intel/torch-xpu-ops/issues/922
+        "test_dtypes_isin_xpu",
+
+        # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
+        "test_view_replay_multinomial_xpu_float32",
+
+        # AssertionError: The supported dtypes for nn.functional.max_unpool3d on device type xpu are incorrect!
+        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64}.
+        "test_dtypes_nn_functional_max_unpool3d_grad_xpu",
+        "test_dtypes_nn_functional_max_unpool3d_xpu",
+
+        # Unknown error with indexSelectBackward
+        # AssertionError: The supported dtypes for _refs.nn.functional.pdist on device type xpu are incorrect!
+        # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float64}.
+        # Unexpected failures raised the following errors:
+        # torch.float64 - Native API failed. Native API returns: -5 (PI_ERROR_OUT_OF_RESOURCES) -5 (PI_ERROR_OUT_OF_RESOURCES)
+        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
+        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
+        "test_dtypes__refs_nn_functional_pdist_xpu",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -707,6 +724,21 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/484
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
         "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
+        "test_scatter_add__xpu_complex64",
+        "test_scatter_add__xpu_float16",
+        "test_scatter_add__xpu_float32",
+        "test_scatter_add_mult_index_base_xpu_float32",
+        "test_scatter_reduce_mean_xpu_bfloat16",
+        "test_scatter_reduce_mean_xpu_float16",
+        "test_scatter_reduce_mean_xpu_float32",
+        "test_scatter_reduce_mean_xpu_float64",
+        "test_scatter_reduce_mean_xpu_int16",
+        "test_scatter_reduce_mean_xpu_int32",
+        "test_scatter_reduce_mean_xpu_int64",
+        "test_scatter_reduce_mean_xpu_int8",
+        "test_scatter_reduce_mean_xpu_uint8",
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "test_autograd_fallback_xpu.py": None,
@@ -1129,16 +1161,7 @@ skip_dict = {
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
     ),
 
-    "nn/test_pooling_xpu.py": (
-        # CPU fallback fails
-        "test_pooling_bfloat16_xpu",  # RuntimeError: "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_AdaptiveMaxPool3d_indices_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_max_pool_nan_inf_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_maxpool_indices_no_batch_dim_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-        "test_pool_large_size_xpu_bfloat16",  # "avg_pool3d_out_frame" not implemented for 'BFloat16'
-        "test_pool_large_size_xpu_float16",  # "avg_pool3d_out_frame" not implemented for 'Half'
-        "test_adaptive_pooling_empty_output_size_xpu_float16",  # "adaptive_max_pool3d_cpu" not implemented for 'Half'
-    ),
+    "nn/test_pooling_xpu.py": None,
 
     "nn/test_dropout_xpu.py": None,
 
@@ -1153,6 +1176,9 @@ skip_dict = {
         "test_sequential_pin_memory",
         "test_shuffle_pin_memory",
         "test_pin_memory",
+        # failed in preci
+        # https://github.com/intel/torch-xpu-ops/issues/928
+        "test_segfault",
     ),
 
     "test_tensor_creation_ops_xpu.py": (
@@ -1194,14 +1220,7 @@ skip_dict = {
         "test_record_function",
     ),
 
-    "test_reductions_xpu.py": (
-        # CPU/CUDA bias code in aten::mode_out
-        # https://github.com/intel/torch-xpu-ops/issues/327
-        # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
-        "test_mode_xpu",
-        "test_mode_wrong_dtype_xpu",
-        "test_dim_reduction_fns_fn_name_mode",
-    ),
+    "test_reductions_xpu.py": None,
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -1587,8 +1606,8 @@ skip_dict = {
         "test_triangular_solve_xpu_complex128",
         "test_triangular_solve_xpu_complex64",
         "test_triangular_solve_xpu_float64",
-        # https://github.com/intel/torch-xpu-ops/issues/317
-        # addmm.out, addmv.out, linalg_lstsq, vdot&dot lack XPU support and fallback to CPU
+        # https://github.com/intel/torch-xpu-ops/issues/821
+        # addmm.out, addmv.out, linalg_lstsq, vdot&dot, _int_mm lack XPU support and fallback to CPU
         "test_addmm_sizes_xpu_complex128",
         "test_addmm_sizes_xpu_complex64",
         "test_blas_alpha_beta_empty_xpu_complex128",
@@ -1599,6 +1618,7 @@ skip_dict = {
         "test_linalg_lstsq_input_checks_xpu_float64",
         "test_dot_invalid_args_xpu",
         "test_vdot_invalid_args_xpu",
+        "test__int_mm_errors_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/821
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         "test_norm_fused_type_promotion_xpu_bfloat16",
@@ -1609,6 +1629,7 @@ skip_dict = {
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
+        "test_matmul_offline_tunableop_xpu_float16",
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
@@ -1619,6 +1640,7 @@ skip_dict = {
         "test_validator_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float32",
         "test_addmm_relu_tunableop_rocm_xpu_float64",
+        "_tuning_tunableop_",
     ),
 
     "test_ops_fwd_gradients_xpu.py": (
@@ -2498,7 +2520,6 @@ skip_dict = {
         "test_nondeterministic_alert_ReplicationPad3d_xpu",
         "test_nondeterministic_alert_grid_sample_2d_xpu",
         "test_nondeterministic_alert_grid_sample_3d_xpu",
-        "test_nondeterministic_alert_histc_xpu",
         "test_nondeterministic_alert_interpolate_bicubic_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
         "test_nondeterministic_alert_interpolate_trilinear_xpu",
@@ -2570,6 +2591,15 @@ skip_dict = {
         # Greatest absolute difference: 0.03125 at index (1, 227, 114) (up to 0.01 allowed)
         # Greatest relative difference: 0.01495361328125 at index (1, 227, 114) (up to 0.01 allowed)
         "test_index_add_correctness",
+
+        # internally uses index_put deterministic implementation
+        # dependent on "test_index_put_non_accumulate_deterministic"
+        "test_index_copy_deterministic",
+
+        # scatter_add needs handle XPU deterministic
+        # https://github.com/intel/torch-xpu-ops/issues/906
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
@@ -2588,67 +2618,6 @@ skip_dict = {
 
     "test_foreach_xpu.py": (
         # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
-        # Unexpected success
-        "test_parity__foreach_ceil_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_ceil_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_ceil_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_ceil_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_clamp_max_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_clamp_max_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_clamp_max_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_clamp_max_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_clamp_min_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_clamp_min_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_clamp_min_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_clamp_min_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_erf_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_erf_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_erf_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_erf_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_erfc_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_erfc_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_erfc_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_erfc_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_floor_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_floor_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_floor_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_floor_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_frac_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_frac_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_frac_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_frac_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_bfloat16",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_lgamma_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_bfloat16",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_lgamma_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_maximum_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_maximum_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_maximum_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_maximum_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_minimum_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_minimum_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_minimum_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_minimum_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_round_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_round_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_round_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_round_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_sigmoid_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_sigmoid_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_sigmoid_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_sigmoid_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_sign_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_sign_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_sign_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_sign_fastpath_outplace_xpu_complex64",
-        "test_parity__foreach_trunc_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_trunc_fastpath_inplace_xpu_complex64",
-        "test_parity__foreach_trunc_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_trunc_fastpath_outplace_xpu_complex64",
-        "test_autodiff__foreach_sigmoid_inplace_xpu_complex128",
-        "test_autodiff__foreach_sigmoid_outplace_xpu_complex128",
         "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
         # AssertionError: RuntimeError not raised
         # https://github.com/intel/torch-xpu-ops/issues/784 
@@ -3470,8 +3439,6 @@ skip_dict = {
         "test_meta_inplace__foreach_sigmoid_xpu_complex",
         "test_meta_outplace__foreach_lgamma_xpu_bfloat16",
         "test_meta_outplace__foreach_sigmoid_xpu_complex",
-        # RuntimeError: Unsupport memory format. Supports only ChannelsLast3d, Contiguous
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_max_pool3d_xpu_float32",
         # adaptive_max_pool2d: Expected out tensor to have dtype c10::BFloat16/c10::Half/float/double, but got long int instead
         "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_bfloat16",
         "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
@@ -3483,5 +3450,29 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_bfloat16",
         "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",
+
+        # https://github.com/intel/torch-xpu-ops/issues/922
+        "test_dispatch_meta_outplace_isin_xpu_bfloat16",
+        "test_dispatch_meta_outplace_unique_consecutive_xpu_bfloat16",
+        "test_dispatch_symbolic_meta_outplace_isin_xpu_bfloat16",
+        "test_dispatch_symbolic_meta_outplace_unique_consecutive_xpu_bfloat16",
+        "test_meta_outplace_isin_xpu_bfloat16",
+        "test_meta_outplace_unique_consecutive_xpu_bfloat16",
     ),
+
+    "test_type_promotion_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/357
+        "test_sparse_add_xpu",
+        "test_sparse_div_promotion_xpu_bool",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int16",
+        "test_sparse_div_promotion_xpu_int32",
+        "test_sparse_div_promotion_xpu_int64",
+        "test_sparse_div_promotion_xpu_uint8",
+        "test_sparse_div_xpu",
+        "test_sparse_mul_xpu",
+        "test_sparse_sub_xpu",
+    ),
+
+    "test_distributions_xpu.py": None,
 }

@@ -4,7 +4,6 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -34,11 +33,9 @@ struct IndexFunctor {
 };
 
 void index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
-    IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride) {
+    IntArrayRef index_stride) {
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::ComplexHalf,
       at::ScalarType::BFloat16,
@@ -50,12 +47,7 @@ void index_kernel(
         using dtype = OpaqueType<sizeof(scalar_t)>;
         IndexFunctor<dtype> f;
         _index_kernel(
-            iter,
-            index_size,
-            index_stride,
-            non_index_size,
-            non_index_stride,
-            f);
+            iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
       });
 }
 
@@ -445,16 +437,30 @@ struct IndexFillScalarFunctor {
 };
 
 void index_fill_kernel(
-    Tensor& self,
-    int64_t dim,
-    const Tensor& index,
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride,
     const Scalar& source) {
-  if (self.numel() == 0 || index.numel() == 0) {
+  Tensor self = iter.tensor(0);
+  Tensor index = iter.tensor(1);
+
+  // index_fill operator generates TensorIterator as kernel input,
+  // self tensor is restrided to meet TensorIterator broadcast requirements. But
+  // xpu kernel doesn't support such restrided shape, so we restride self tensor
+  // back here.
+  auto self_sizes = self.sizes().vec();
+  auto self_strides = self.strides().vec();
+  self_sizes[dim] = self_dim_size;
+  self_strides[dim] = self_dim_stride;
+  auto self_restrided = self.as_strided(self_sizes, self_strides);
+
+  if (self_restrided.numel() == 0 || index.numel() == 0) {
     return;
   }
 
   TORCH_CHECK(
-      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      self_restrided.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "self has too many (>",
       XPU_MAX_TENSORINFO_DIMS,
       ") dims");
@@ -469,7 +475,7 @@ void index_fill_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       at::ScalarType::ComplexHalf,
-      self.scalar_type(),
+      self_restrided.scalar_type(),
       "index_fill_xpu",
       [&] {
         TensorInfo<int64_t, int64_t> index_info =
@@ -477,7 +483,7 @@ void index_fill_kernel(
         index_info.collapseDims();
 
         TensorInfo<scalar_t, int64_t> dst_info =
-            getTensorInfo<scalar_t, int64_t>(self);
+            getTensorInfo<scalar_t, int64_t>(self_restrided);
         int new_indexing_dim = dst_info.collapseDims(dim);
 
         // No used in index kernel frame for index_fill.
@@ -523,8 +529,6 @@ void index_put_kernel(
     TensorIterator& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
-    IntArrayRef non_index_size,
-    IntArrayRef non_index_stride,
     bool accumulate) {
   if (accumulate) {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -537,12 +541,7 @@ void index_put_kernel(
         [&] {
           IndexPutAccumulateFunctor<scalar_t> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -556,12 +555,7 @@ void index_put_kernel(
           using dtype = OpaqueType<sizeof(scalar_t)>;
           IndexPutFunctor<dtype> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              non_index_size,
-              non_index_stride,
-              f);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   }
 }
@@ -755,6 +749,383 @@ void masked_scatter_kernel(
       [&]() {
         auto source_ptr = source_contig.const_data_ptr<scalar_t>();
         gpu_kernel(iter, MaskedScatterElementwiseFunctor<scalar_t>(source_ptr));
+      });
+}
+
+template <typename ValType>
+class IndexCopyScalarFunctor {
+ public:
+  void operator()(
+      ValType* dst,
+      ValType* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      ValType alpha) const {
+    dst[dst_off] = src[src_off];
+  }
+};
+
+template <class SrcInfo, class DstInfo, class IdxInfo>
+static inline void _index_copy_kernel(
+    SrcInfo& src_info,
+    DstInfo& dst_info,
+    IdxInfo& index_info,
+    int64_t dim) {
+  using scalar_t = typename SrcInfo::scalar_t;
+  using IdxConfig = IndexKernelConfig<
+      SrcInfo,
+      DstInfo,
+      IdxInfo,
+      IndexCopyScalarFunctor<scalar_t>>;
+  using KernelClass = IndexKernel<IdxConfig, false, false>;
+  auto cfg = IdxConfig::template make_config<KernelClass>(
+      src_info,
+      dst_info,
+      index_info,
+      scalar_t{},
+      dim,
+      true,
+      IndexCopyScalarFunctor<scalar_t>());
+  launch_index_kernel(cfg);
+}
+
+template <typename scalar_t>
+static inline void index_copy_impl(
+    Tensor& dst,
+    int64_t dim,
+    const Tensor& indices,
+    const Tensor& source) {
+  static constexpr string_view DIM_WARNING =
+      "Tensor too large or too many (> 12) dimensions";
+
+  TORCH_CHECK(dst.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(indices.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+  TORCH_CHECK(source.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);
+
+  // The `src` is partitioned into two parts:
+  // -the size of each slice we are indexing, which is the
+  // total size of the tensor ignoring dimension `dim`;
+  // -the number of indices we are choosing, which is the total size
+  // of the tensor `indices`.
+  int64_t dstDims = dst.dim() == 0 ? 1 : dst.dim();
+
+  TORCH_CHECK(dim >= 0 && dim < dstDims, "Indexing dim is out of bounds");
+
+  ptrdiff_t sliceSize = 1;
+  for (int d = 0; d < dstDims; d++) {
+    if (d != dim) {
+      sliceSize *= dst.dim() == 0 ? 1 : dst.size(d);
+    }
+  }
+  if (sliceSize == 0) {
+    return;
+  }
+
+  TensorInfo<int64_t, int64_t> indices_info =
+      getTensorInfo<int64_t, int64_t>(indices);
+  indices_info.collapseDims();
+
+  TensorInfo<scalar_t, int64_t> src_info =
+      getTensorInfo<scalar_t, int64_t>(source);
+
+  TensorInfo<scalar_t, int64_t> dst_info =
+      getTensorInfo<scalar_t, int64_t>(dst);
+  auto collapse_dim = (dst.dim() == 0) ? -1 : dim;
+  int new_indexing_dim = dst_info.collapseDims(collapse_dim);
+  _index_copy_kernel(src_info, dst_info, indices_info, new_indexing_dim);
+}
+
+void index_copy_kernel(
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    Tensor& out) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND6(
+      at::ScalarType::ComplexHalf,
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      at::ScalarType::Float8_e4m3fn,
+      at::ScalarType::Float8_e5m2,
+      out.scalar_type(),
+      "index_copy_xpu",
+      [&]() { index_copy_impl<scalar_t>(out, dim, index, source); });
+}
+
+template <typename scalar_t, typename offset_cal_t>
+struct IndexCopyLoopFunctor {
+  void operator()(int i) const {
+    const auto offsets = offset_calc_.get(i);
+    auto self_data = reinterpret_cast<scalar_t*>(self_ptr_ + offsets[0]);
+    auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
+    auto source_data = reinterpret_cast<scalar_t*>(source_ptr_ + offsets[2]);
+    SYCL_KERNEL_ASSERT(idx >= 0 && idx < self_dim_size_);
+    self_data[idx * self_dim_stride_] = *source_data;
+  }
+  IndexCopyLoopFunctor(
+      offset_cal_t offset_calc,
+      char* self_ptr,
+      char* idx_ptr,
+      char* source_ptr,
+      const int64_t self_dim_size,
+      const int64_t self_dim_stride)
+      : offset_calc_(offset_calc),
+        self_ptr_(self_ptr),
+        idx_ptr_(idx_ptr),
+        source_ptr_(source_ptr),
+        self_dim_size_(self_dim_size),
+        self_dim_stride_(self_dim_stride) {}
+
+ private:
+  offset_cal_t offset_calc_;
+  char* self_ptr_;
+  char* idx_ptr_;
+  char* source_ptr_;
+  const int64_t self_dim_size_;
+  const int64_t self_dim_stride_;
+};
+
+template <typename scalar_t>
+void index_copy_kernel_impl(
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride) {
+  if (iter.numel() == 0) {
+    return;
+  }
+
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      index_copy_kernel_impl<scalar_t>(
+          sub_iter, dim, self_dim_size, self_dim_stride);
+    }
+    return;
+  }
+
+  char* self_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  char* idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
+  char* source_ptr = reinterpret_cast<char*>(iter.data_ptr(2));
+
+  const auto offset_calc = make_offset_calculator<3>(iter);
+
+  auto fn = IndexCopyLoopFunctor<scalar_t, decltype(offset_calc)>(
+      offset_calc,
+      self_ptr,
+      idx_ptr,
+      source_ptr,
+      self_dim_size,
+      self_dim_stride);
+  launch_index_group_stride_kernel<4, decltype(fn)>(iter.numel(), fn);
+}
+
+void index_copy_kernel(
+    TensorIterator& iter,
+    const int64_t dim,
+    const int64_t self_dim_size,
+    const int64_t self_dim_stride) {
+  // See note [Writing Nondeterministic Operations]
+  // Nondeterministic when index contains duplicate entries
+  // this kernel will not be called when
+  // torch.use_deterministic_algorithms(True)
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      at::ScalarType::BFloat16,
+      kComplexHalf,
+      iter.dtype(),
+      "index_copy_xpu",
+      [&] {
+        using dtype = OpaqueType<sizeof(scalar_t)>;
+        index_copy_kernel_impl<dtype>(
+            iter, dim, self_dim_size, self_dim_stride);
+      });
+}
+
+template <
+    typename scalar_t,
+    typename index_t,
+    typename func_t,
+    typename offset_cal_t,
+    typename idx_offset_cal_t>
+struct TakePutLoopFunctor {
+  void operator()(int i) const {
+    const auto offsets = offset_calc_.get(i);
+    auto& iterated = *reinterpret_cast<scalar_t*>(iterated_ptr_ + offsets[0]);
+    const auto idx = *reinterpret_cast<int64_t*>(idx_ptr_ + offsets[1]);
+    SYCL_KERNEL_ASSERT(
+        idx < numel_ && idx >= -numel_ &&
+        "take_put_kernel_template() index out of bounds");
+    index_t offset = static_cast<index_t>(idx);
+    if (offset < 0) {
+      offset += numel_;
+    }
+    if (!is_contiguous_) {
+      offset = offset_indexed_.get(offset)[0];
+    }
+    f_(iterated, offset);
+  }
+
+  TakePutLoopFunctor(
+      offset_cal_t offset_calc,
+      char* iterated_ptr,
+      char* idx_ptr,
+      int64_t numel,
+      bool is_contiguous,
+      idx_offset_cal_t offset_indexed,
+      func_t f)
+      : offset_calc_(offset_calc),
+        iterated_ptr_(iterated_ptr),
+        idx_ptr_(idx_ptr),
+        numel_(numel),
+        is_contiguous_(is_contiguous),
+        offset_indexed_(offset_indexed),
+        f_(f) {}
+
+ private:
+  offset_cal_t offset_calc_;
+  char* iterated_ptr_;
+  char* idx_ptr_;
+  int64_t numel_;
+  bool is_contiguous_;
+  idx_offset_cal_t offset_indexed_;
+  func_t f_;
+};
+
+template <typename scalar_t, typename index_t, typename func_t>
+void take_put_kernel_template(
+    TensorIterator& iter,
+    const TensorBase& indexed,
+    const func_t& f) {
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      take_put_kernel_template<scalar_t, index_t>(sub_iter, indexed, f);
+    }
+    return;
+  }
+
+  const auto numel = indexed.numel();
+  const bool is_contiguous = indexed.is_contiguous();
+
+  auto iterated_ptr = reinterpret_cast<char*>(iter.data_ptr(0));
+  auto idx_ptr = reinterpret_cast<char*>(iter.data_ptr(1));
+
+  const auto offset_calc = make_offset_calculator<2>(iter);
+  using uindex_t = std::make_unsigned_t<index_t>;
+
+  // OffsetCalculator needs the sizes and strides reveresed
+  const auto indexed_sizes =
+      std::vector<int64_t>(indexed.sizes().rbegin(), indexed.sizes().rend());
+  const auto indexed_strides = std::vector<int64_t>(
+      indexed.strides().rbegin(), indexed.strides().rend());
+  const auto* indexed_strides_data = indexed_strides.data();
+  const auto offset_indexed = OffsetCalculator<1, uindex_t>(
+      indexed.dim(), indexed_sizes.data(), &indexed_strides_data);
+
+  auto N = iter.numel();
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  auto loop_fn = TakePutLoopFunctor<
+      scalar_t,
+      index_t,
+      func_t,
+      decltype(offset_calc),
+      decltype(offset_indexed)>(
+      offset_calc,
+      iterated_ptr,
+      idx_ptr,
+      numel,
+      is_contiguous,
+      offset_indexed,
+      f);
+  auto caller =
+      TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
+  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto num_wg =
+      (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
+  sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
+}
+
+template <typename scalar_t, typename index_t>
+struct TakeFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    iterated = indexed_ptr_[offset];
+  }
+  TakeFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
+};
+
+void take_kernel(TensorIterator& iter, const TensorBase& input) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "take_xpu",
+      [&]() {
+        AT_DISPATCH_INDEX_TYPES(
+            canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
+            "take_xpu_index",
+            [&] {
+              scalar_t* indexed_ptr = input.template data_ptr<scalar_t>();
+              TakeFunctor<scalar_t, index_t> f(indexed_ptr);
+              take_put_kernel_template<scalar_t, index_t>(iter, input, f);
+            });
+      });
+}
+
+template <typename scalar_t, typename index_t>
+struct PutFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    indexed_ptr_[offset] = iterated;
+  }
+  PutFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
+};
+
+template <typename scalar_t, typename index_t>
+struct PutAccumulateFunctor {
+  void operator()(scalar_t& iterated, const index_t offset) const {
+    atomicAdd(sycl_global_ptr<scalar_t>(indexed_ptr_ + offset), iterated);
+  }
+  PutAccumulateFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+
+ private:
+  scalar_t* indexed_ptr_;
+};
+
+void put_kernel(
+    TensorIterator& iter,
+    const TensorBase& output,
+    const bool accumulate) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      iter.dtype(),
+      "put_xpu",
+      [&] {
+        AT_DISPATCH_INDEX_TYPES(
+            canUse32BitIndexMath(output) ? ScalarType::Int : ScalarType::Long,
+            "put_xpu_index",
+            [&] {
+              scalar_t* indexed_ptr = output.template data_ptr<scalar_t>();
+              if (accumulate) {
+                PutAccumulateFunctor<scalar_t, index_t> f(indexed_ptr);
+                take_put_kernel_template<scalar_t, index_t>(iter, output, f);
+              } else {
+                PutFunctor<scalar_t, index_t> f(indexed_ptr);
+                take_put_kernel_template<scalar_t, index_t>(iter, output, f);
+              }
+            });
       });
 }
 

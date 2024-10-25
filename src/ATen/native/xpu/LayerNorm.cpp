@@ -1,29 +1,29 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/layer_norm.h>
 #include <c10/core/SymIntArrayRef.h>
+#include <comm/xpu_aten.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
-#include <ATen/ops/empty.h>
-#endif
+// #ifndef AT_PER_OPERATOR_HEADERS
+// #include <ATen/Functions.h>
+// #include <ATen/NativeFunctions.h>
+// #else
+// #include <ATen/ops/empty.h>
+// #endif
 
 #include <ATen/native/xpu/sycl/LayerNormKernels.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
+#include <ATen/ops/empty_like_native.h>
+#include <ATen/ops/zeros_like_native.h>
 
 namespace at {
-
-::std::tuple<at::Tensor, at::Tensor, at::Tensor> XPUNativeFunctions::
-    native_layer_norm(
-        const at::Tensor& input,
-        at::IntArrayRef normalized_shape,
-        const ::std::optional<at::Tensor>& weight_opt,
-        const ::std::optional<at::Tensor>& bias_opt,
-        double epsilon) {
+namespace native {
+::std::tuple<at::Tensor, at::Tensor, at::Tensor> layer_norm_xpu(
+    const at::Tensor& input,
+    at::IntArrayRef normalized_shape,
+    const ::std::optional<at::Tensor>& weight_opt,
+    const ::std::optional<at::Tensor>& bias_opt,
+    double epsilon) {
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
       common_device, input, "xpu::native_layer_norm", "input");
@@ -69,7 +69,7 @@ namespace at {
   for (const auto idx : c10::irange(axis)) {
     stat_shape.push_back(input_shape[idx]);
   }
-  for (const auto C10_UNUSED idx : c10::irange(axis, input.dim())) {
+  for ([[maybe_unused]] const auto _ : c10::irange(axis, input.dim())) {
     stat_shape.push_back(1);
   }
 
@@ -79,16 +79,15 @@ namespace at {
   return std::make_tuple(std::move(Y), std::move(mean), std::move(rstd));
 }
 
-::std::tuple<at::Tensor, at::Tensor, at::Tensor> XPUNativeFunctions::
-    native_layer_norm_backward(
-        const at::Tensor& grad_output,
-        const at::Tensor& input,
-        at::IntArrayRef normalized_shape,
-        const at::Tensor& mean,
-        const at::Tensor& rstd,
-        const ::std::optional<at::Tensor>& weight_opt,
-        const ::std::optional<at::Tensor>& bias_opt,
-        ::std::array<bool, 3> grad_input_mask) {
+::std::tuple<at::Tensor, at::Tensor, at::Tensor> layer_norm_backward_xpu(
+    const at::Tensor& grad_output,
+    const at::Tensor& input,
+    at::IntArrayRef normalized_shape,
+    const at::Tensor& mean,
+    const at::Tensor& rstd,
+    const ::std::optional<at::Tensor>& weight_opt,
+    const ::std::optional<at::Tensor>& bias_opt,
+    ::std::array<bool, 3> grad_input_mask) {
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
       common_device, grad_output, "xpu::native_layer_norm_backward", "goutput");
@@ -177,5 +176,6 @@ namespace at {
       grad_bias,
       grad_input_mask);
 }
+} // namespace native
 
 } // namespace at

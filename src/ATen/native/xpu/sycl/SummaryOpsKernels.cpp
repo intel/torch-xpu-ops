@@ -187,6 +187,66 @@ void tensor_histogram(
 
   return;
 }
+
+template <typename input_t>
+Tensor _histc_template(
+    const Tensor& self,
+    int64_t nbins,
+    at::acc_type_device<input_t, kXPU> min,
+    at::acc_type_device<input_t, kXPU> max) {
+  if (nbins <= 0) {
+    AT_ERROR("bins must be > 0");
+  }
+  Tensor output = at::zeros(
+      {nbins},
+      self.scalar_type(),
+      std::nullopt /* layout */,
+      DeviceType::XPU,
+      std::nullopt /* pin_memory */);
+  input_t minvalue = min;
+  input_t maxvalue = max;
+  if (min == max && self.numel() > 0) {
+    minvalue = *self.min().cpu().const_data_ptr<input_t>();
+    maxvalue = *self.max().cpu().const_data_ptr<input_t>();
+  }
+  if (minvalue == maxvalue) {
+    minvalue = minvalue - 1;
+    maxvalue = maxvalue + 1;
+  }
+
+  TORCH_CHECK(
+      !(std::isinf((float)minvalue) ||
+        std::isinf((float)maxvalue) ||
+        std::isnan((float)minvalue) ||
+        std::isnan((float)maxvalue)),
+      "range of [",
+      minvalue,
+      ", ",
+      maxvalue,
+      "] is not finite");
+
+  TORCH_CHECK(minvalue < maxvalue, "max must be larger than min");
+
+  tensor_histogram<input_t, input_t, false>(
+      output, self, Tensor(), nbins, minvalue, maxvalue);
+  return output;
+}
+
+Tensor _histc_kernel(
+    const Tensor& self,
+    int64_t nbins,
+    const Scalar& min,
+    const Scalar& max) {
+  if (self.scalar_type() == ScalarType::Half) {
+    AT_ERROR("HalfTensor is not supported");
+  }
+  return AT_DISPATCH_ALL_TYPES(self.scalar_type(), "_histc_xpu", [&] {
+    using bounds_t = at::acc_type_device<scalar_t, kXPU>;
+    return _histc_template<scalar_t>(
+        self, nbins, min.to<bounds_t>(), max.to<bounds_t>());
+  });
+}
+
 template <typename input_t, typename weights_t>
 Tensor bincount_template(
     const Tensor& self,

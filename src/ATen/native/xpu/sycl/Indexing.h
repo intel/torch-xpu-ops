@@ -510,7 +510,7 @@ constexpr int OVER_SUBSCRIBE_DSS_FACTOR = 16;
 
 template <typename func_t>
 void small_index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
@@ -601,7 +601,7 @@ struct IndexKernelFunctor {
     auto out_ptr = out_data_ + offsets[0];
     auto in_ptr = in_data_ + offsets[1];
     int64_t offset = 0;
-    //#pragma unroll
+    // #pragma unroll
     for (size_t i = 0; i < num_indices_; i++) {
       // handle int32 index tensor according to the indice_size_bytes.
       // we didn't use template parametor to avoid too many kernels' creation
@@ -660,7 +660,7 @@ struct IndexKernelFunctor {
 
 template <typename func_t>
 void index_kernel_impl(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     const func_t f) {
@@ -700,7 +700,7 @@ void index_kernel_impl(
 
 template <typename func_t>
 void _index_kernel(
-    TensorIterator& iter,
+    TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
@@ -891,5 +891,66 @@ void launch_index_put_deterministic_kernel(
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
+
+template <int vt, typename func_t>
+struct IndexElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int wg_sz = item.get_local_range(0);
+    auto tid = item.get_local_id(0);
+    auto nv = wg_sz * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += wg_sz;
+      }
+    }
+  }
+
+  IndexElementwiseKernelFunctor(const int64_t N, const func_t f)
+      : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
+
+template <int vt, typename func_t>
+static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+  int wg_sz = syclMaxWorkItemsPerEU();
+  int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
+  auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+}
+
+#define TAKE_PUT_UNROLL_SZIE 4
+
+template <int vt, typename func_t>
+struct TakePutKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const auto tid = item.get_local_id(0);
+    const auto nt = item.get_local_range(0);
+    const auto nv = nt * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += nt;
+      }
+    }
+  }
+
+  TakePutKernelFunctor(const int64_t N, const func_t f) : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
 
 } // namespace at::native::xpu
