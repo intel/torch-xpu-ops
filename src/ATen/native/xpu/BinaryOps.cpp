@@ -16,6 +16,10 @@
 #include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/HermitePolynomialHKernel.h>
+#include <ATen/native/xpu/sycl/HermitePolynomialHeKernel.h>
+#include <ATen/native/xpu/sycl/LaguerrePolynomialLKernel.h>
+#include <ATen/native/xpu/sycl/LegendrePolynomialPKernel.h>
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
 #include <ATen/native/xpu/sycl/StepKernels.h>
@@ -57,6 +61,18 @@ REGISTER_XPU_DISPATCH(fmin_stub, &xpu::fmin_kernel);
 REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
 REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
+REGISTER_XPU_DISPATCH(
+    hermite_polynomial_h_stub,
+    &xpu::hermite_polynomial_h_kernel);
+REGISTER_XPU_DISPATCH(
+    hermite_polynomial_he_stub,
+    &xpu::hermite_polynomial_he_kernel);
+REGISTER_XPU_DISPATCH(
+    laguerre_polynomial_l_stub,
+    &xpu::laguerre_polynomial_l_kernel);
+REGISTER_XPU_DISPATCH(
+    legendre_polynomial_p_stub,
+    &xpu::legendre_polynomial_p_kernel);
 REGISTER_XPU_DISPATCH(
     chebyshev_polynomial_t_stub,
     &xpu::chebyshev_polynomial_t_kernel);
