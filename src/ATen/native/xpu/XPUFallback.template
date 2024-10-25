@@ -176,8 +176,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "igammac.out",
     "igamma.out",
     "index_reduce.out",
-    "isneginf.out",
-    "isposinf.out",
     "kthvalue.values",
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
