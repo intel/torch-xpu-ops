@@ -125,6 +125,7 @@ _xpu_computation_op_list = [
     "nn.functional.softplus",
     "nn.functional.softshrink",
     "nextafter",
+    "heaviside",
     "nonzero",
     "normal",
     "pow",
