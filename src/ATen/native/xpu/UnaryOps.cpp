@@ -65,6 +65,7 @@ REGISTER_XPU_DISPATCH(erfinv_stub, &xpu::erfinv_kernel);
 REGISTER_XPU_DISPATCH(exp2_stub, &xpu::exp2_kernel);
 REGISTER_XPU_DISPATCH(expm1_stub, &xpu::expm1_kernel);
 REGISTER_XPU_DISPATCH(frac_stub, &xpu::frac_kernel);
+REGISTER_XPU_DISPATCH(angle_stub, &xpu::angle_kernel);
 REGISTER_XPU_DISPATCH(conj_physical_stub, &xpu::conj_physical_kernel);
 REGISTER_XPU_DISPATCH(ceil_stub, &xpu::ceil_kernel);
 REGISTER_XPU_DISPATCH(sinh_stub, &xpu::sinh_kernel);
@@ -79,6 +80,11 @@ REGISTER_XPU_DISPATCH(round_stub, &xpu::round_kernel);
 REGISTER_XPU_DISPATCH(round_decimals_stub, &xpu::round_decimals_kernel);
 REGISTER_XPU_DISPATCH(floor_stub, &xpu::floor_kernel);
 REGISTER_XPU_DISPATCH(trunc_stub, &xpu::trunc_kernel);
+REGISTER_XPU_DISPATCH(special_i0e_stub, &xpu::i0e_kernel);
+REGISTER_XPU_DISPATCH(special_i1_stub, &xpu::i1_kernel);
+REGISTER_XPU_DISPATCH(special_i1e_stub, &xpu::i1e_kernel);
+REGISTER_XPU_DISPATCH(special_ndtri_stub, &xpu::ndtri_kernel);
+REGISTER_XPU_DISPATCH(special_log_ndtr_stub, &xpu::log_ndtr_kernel);
 
 } // namespace native
 } // namespace at
