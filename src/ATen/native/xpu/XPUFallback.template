@@ -173,8 +173,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "geqrf",
     "heaviside.out",
     "i0.out",
-    "igammac.out",
-    "igamma.out",
     "index_reduce.out",
     "kthvalue.values",
     "linalg_cholesky_ex.L",

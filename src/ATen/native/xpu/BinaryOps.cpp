@@ -16,6 +16,7 @@
 #include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
+#include <ATen/native/xpu/sycl/IGammaKernel.h>
 #include <ATen/native/xpu/sycl/HermitePolynomialHKernel.h>
 #include <ATen/native/xpu/sycl/HermitePolynomialHeKernel.h>
 #include <ATen/native/xpu/sycl/LaguerrePolynomialLKernel.h>
@@ -48,6 +49,8 @@ REGISTER_XPU_DISPATCH(minimum_stub, &xpu::minimum_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(nextafter_stub, &xpu::nextafter_kernel);
 REGISTER_XPU_DISPATCH(hypot_stub, &xpu::hypot_kernel);
+REGISTER_XPU_DISPATCH(igamma_stub, &xpu::igamma_kernel);
+REGISTER_XPU_DISPATCH(igammac_stub, &xpu::igammac_kernel);
 REGISTER_XPU_DISPATCH(atan2_stub, &xpu::atan2_kernel);
 REGISTER_XPU_DISPATCH(copysign_stub, &xpu::copysign_kernel);
 REGISTER_XPU_DISPATCH(logical_and_stub, &xpu::logical_and_kernel);
