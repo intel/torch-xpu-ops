@@ -172,7 +172,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_fused_moving_avg_obs_fq_helper",
     "geqrf",
     "heaviside.out",
-    "i0.out",
     "igammac.out",
     "igamma.out",
     "index_reduce.out",
