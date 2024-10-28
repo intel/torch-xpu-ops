@@ -81,8 +81,8 @@ skip_dict = {
     "test_compare_cpu_nn_functional_adaptive_avg_pool3d_xpu_float16",
     # Same as cuda, AssertionError: Tensor-likes are not close!Should skip.
     # Not in CUDA test scope too
-    "ttest_compare_cpu_nn_functional_interpolate_trilinear_xpu_bfloat16",
-    "ttest_compare_cpu_nn_functional_interpolate_trilinear_xpu_float16",
+    "test_compare_cpu_nn_functional_interpolate_trilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_trilinear_xpu_float16",
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",
