@@ -127,7 +127,7 @@ static inline void softmax_group_reduce_spatial(
 }
 
 template <int SIMD, int vec_size, int NUM, class KernelClass>
-static inline void get_wgroup_size(
+static inline int get_wgroup_size(
     uint64_t dim_size,
     int outer_size,
     int& sub_group_num,
@@ -148,7 +148,7 @@ static inline void get_wgroup_size(
     local_size_col = 1;
     local_size_row = SIMD;
     global_size_row = (outer_size + local_size_row - 1) / local_size_row;
-    return;
+    return maxWGSize;
   }
 
   // if outer_size is too large and local_size_col is small,
@@ -167,6 +167,8 @@ static inline void get_wgroup_size(
   while (sub_group_num <= (range >> 1)) {
     range = range >> 1;
   }
+
+  return maxWGSize;
 }
 
 // this method help to divide the computation resource for spatial_softmax
@@ -385,7 +387,7 @@ template <
     int outer_loop,
     bool is_masked = false,
     typename calc_t = decltype(nullptr)>
-void dispatch_softmax_forward_kernel(
+bool dispatch_softmax_forward_kernel(
     scalar_t* in_data,
     scalar_t* out_data,
     int dim_size,
@@ -413,14 +415,20 @@ void dispatch_softmax_forward_kernel(
         vec_t>;
 
     int sub_group_num, global_size_row, local_size_row, range, local_size;
-    get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
-        dim_size,
-        outer_size,
-        sub_group_num,
-        range,
-        global_size_row,
-        local_size_row,
-        local_size);
+    int max_group_size =
+        get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
+            dim_size,
+            outer_size,
+            sub_group_num,
+            range,
+            global_size_row,
+            local_size_row,
+            local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
+
     int64_t local_range{local_size_row * local_size};
     int64_t global_range{global_size_row * local_size_row * local_size};
 
@@ -455,14 +463,20 @@ void dispatch_softmax_forward_kernel(
         vec_t>;
 
     int sub_group_num, global_size_row, local_size_row, range, local_size;
-    get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
-        dim_size,
-        outer_size,
-        sub_group_num,
-        range,
-        global_size_row,
-        local_size_row,
-        local_size);
+    int max_group_size =
+        get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
+            dim_size,
+            outer_size,
+            sub_group_num,
+            range,
+            global_size_row,
+            local_size_row,
+            local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
+
     int64_t local_range{local_size_row * local_size};
     int64_t global_range{global_size_row * local_size_row * local_size};
 
@@ -482,6 +496,7 @@ void dispatch_softmax_forward_kernel(
         nan);
     sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
+  return true;
 }
 
 template <
@@ -964,7 +979,7 @@ template <
     bool LogSoftMax,
     bool is_masked = false,
     typename calc_t = decltype(nullptr)>
-void dispatch_softmax_backward_kernel(
+bool dispatch_softmax_backward_kernel(
     scalar_t* gradInput,
     scalar_t* output,
     scalar_t* gradOutput,
@@ -991,7 +1006,7 @@ void dispatch_softmax_backward_kernel(
         vec_t,
         NUM>;
 
-    get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+    int max_group_size = get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
         dim_size,
         outer_size,
         sub_group_num,
@@ -999,6 +1014,10 @@ void dispatch_softmax_backward_kernel(
         global_size_row,
         local_size_row,
         local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
 
     auto kfn = KernelClass(
         gradInput,
@@ -1033,7 +1052,7 @@ void dispatch_softmax_backward_kernel(
         vec_t,
         NUM>;
 
-    get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
+    int max_group_size = get_wgroup_size<SIMD, vec_size, NUM, KernelClass>(
         dim_size,
         outer_size,
         sub_group_num,
@@ -1041,6 +1060,10 @@ void dispatch_softmax_backward_kernel(
         global_size_row,
         local_size_row,
         local_size);
+
+    if (max_group_size * INNER_LOOP < dim_size) {
+      return false;
+    }
 
     auto kfn = KernelClass(
         gradInput,
@@ -1061,6 +1084,8 @@ void dispatch_softmax_backward_kernel(
 
     sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
+
+  return true;
 }
 
 template <
@@ -1398,7 +1423,7 @@ void spatial_softmax_forward(
 
 #define DISPATCH_SOFTMAX_FORWARD_IMPL(vec_size, SIMD, outer_loop) \
   {                                                               \
-    dispatch_softmax_forward_kernel<                              \
+    use_slow_path = !dispatch_softmax_forward_kernel<             \
         INNER_LOOP,                                               \
         vec_size,                                                 \
         SIMD,                                                     \
@@ -1446,29 +1471,8 @@ void spatial_softmax_forward(
     // if the element number is smaller than max_work_group_size * INNER_LOOP,
     // the fast path (dispatch_softmax_forward) will be selected.
     // otherwise, the general path (softmax_forward_kernel) will be selected.
-
-    // Query the smallest max work group size of the kernel template. The kernel
-    // instance with the largest register pressure will have the smallest max
-    // work group size. Memory spill probably occurs more severely than
-    // any other instances, then compiler probably chooses less SIMD width to
-    // mitgate register pressure. Actual max work group size of these kernel
-    // template allowed by the compiler is less than device allowed max work
-    // group size.
-    using DispatchSoftmaxForwardKernel = DispatchSoftmaxForwardKernelFunctor<
-        INNER_LOOP,
-        max_vec_size,
-        SIMD32,
-        scalar_t,
-        accscalar_t,
-        uint32_t,
-        LogSoftMax,
-        INNER_LOOP / max_vec_size,
-        false,
-        DummyFunctor,
-        vec_t>;
-    int max_group_size = syclMaxWorkGroupSize<DispatchSoftmaxForwardKernel>();
-
-    if (can_use_32bit_index && max_group_size * INNER_LOOP >= dim_size) {
+    bool use_slow_path = true;
+    if (can_use_32bit_index) {
       // it assumes vec_size * outer_loop * work_group_size >= dim_size
 
       if (SIMD == SIMD32) {
@@ -1510,7 +1514,9 @@ void spatial_softmax_forward(
               /*vec_size*/ 1, /*SIMD*/ SIMD16, outer_loop);
         }
       }
-    } else {
+    }
+
+    if (use_slow_path) {
       if (can_use_32bit_index) {
         // the start psition of tensor pointer should be the same
         // the kernel can handle the non-aligned status
@@ -1591,7 +1597,7 @@ void spatial_softmax_backward(
 
 #define DISPATCH_SOFTMAX_BACKWARD_IMPL(vec_size, SIMD) \
   {                                                    \
-    dispatch_softmax_backward_kernel<                  \
+    use_slow_path = !dispatch_softmax_backward_kernel< \
         INNER_LOOP,                                    \
         vec_size,                                      \
         SIMD,                                          \
@@ -1628,34 +1634,12 @@ void spatial_softmax_backward(
       outer_size);
 
   if (inner_size == 1) {
-    // Query the smallest max work group size of the kernel template. The kernel
-    // instance with the largest register pressure will have the smallest max
-    // work group size. Memory spill probably occurs more severely than
-    // any other instances, then compiler probably chooses less SIMD width to
-    // mitgate register pressure. Actual max work group size of these kernel
-    // template allowed by the compiler is less than device allowed max work
-    // group size.
-    constexpr int NUM = INNER_LOOP / max_vec_size /* * (SIMD32 / SIMD32) */;
-    using DispatchSoftmaxBackwardKernel = DispatchSoftmaxBackwardKernelFunctor<
-        INNER_LOOP,
-        max_vec_size,
-        SIMD32,
-        scalar_t,
-        accscalar_t,
-        uint32_t,
-        LogSoftMax,
-        false, /* No instance for true */
-        DummyFunctor,
-        vec_t,
-        NUM>;
-
-    int max_group_size = syclMaxWorkGroupSize<DispatchSoftmaxBackwardKernel>();
-
     // if the element number is smaller than max_work_group_size * INNER_LOOP
     // / 2, (2 indicates reading two tensors: output and gradOutput) the fast
     // path (dispatch_softmax_backward) will be selected. otherwise, the
     // general path (softmax_backward_kernel) will be selected.
-    if (can_use_32bit_index && max_group_size * INNER_LOOP >= dim_size) {
+    bool use_slow_path = true;
+    if (can_use_32bit_index) {
       if (SIMD == SIMD32) {
         if (gradin_start == 0 && output_start == 0 && gradoutput_start == 0 &&
             dim_size % max_vec_size == 0) {
@@ -1673,7 +1657,9 @@ void spatial_softmax_backward(
           DISPATCH_SOFTMAX_BACKWARD_IMPL(/*vec_size*/ 1, /*SIMD*/ SIMD16);
         }
       }
-    } else {
+    }
+
+    if (use_slow_path) {
       if (can_use_32bit_index) {
         if (gradin_start == output_start && gradin_start == gradoutput_start) {
           SOFTMAX_BACKWARD_IMPL(
@@ -1752,7 +1738,7 @@ Tensor& masked_softmax_forward(
 
 #define DISPATCH_MASK_SOFTMAX_FORWARD_IMPL(vec_size, SIMD, outer_loop) \
   {                                                                    \
-    dispatch_softmax_forward_kernel<                                   \
+    use_slow_path = !dispatch_softmax_forward_kernel<                  \
         INNER_LOOP,                                                    \
         vec_size,                                                      \
         SIMD,                                                          \
@@ -1771,9 +1757,8 @@ Tensor& masked_softmax_forward(
         input_calc);                                                   \
   }
 
-  int max_group_size = 512;
-  if (inner_size == 1 && can_use_32bit_index &&
-      max_group_size * INNER_LOOP >= dim_size) {
+  bool use_slow_path = true;
+  if (inner_size == 1 && can_use_32bit_index) {
     // if the element number is smaller than max_work_group_size * INNER_LOOP,
     // the fast path (dispatch_softmax_forward) will be selected.
     // otherwise, the general path (softmax_forward_kernel) will be selected.
@@ -1820,7 +1805,9 @@ Tensor& masked_softmax_forward(
             /*vec_size*/ 1, /*SIMD*/ SIMD16, outer_loop);
       }
     }
-  } else {
+  }
+
+  if (use_slow_path) {
     auto mask_expand = mask.expand(input.sizes());
     output = at::softmax_out(
         output,
@@ -1873,7 +1860,7 @@ void masked_softmax_backward(
 
 #define DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(vec_size, SIMD) \
   {                                                         \
-    dispatch_softmax_backward_kernel<                       \
+    use_slow_path = !dispatch_softmax_backward_kernel<      \
         INNER_LOOP,                                         \
         vec_size,                                           \
         SIMD,                                               \
@@ -1892,9 +1879,8 @@ void masked_softmax_backward(
         input_calc);                                        \
   }
 
-  int max_group_size = 512;
-  if (inner_size == 1 && can_use_32bit_index &&
-      max_group_size * INNER_LOOP >= dim_size) {
+  bool use_slow_path = true;
+  if (inner_size == 1 && can_use_32bit_index) {
     auto iter = TensorIterator::binary_op(gradInput, gradOutput, mask);
     auto input_calc = make_input_offset_calculator<2>(iter);
     // if the element number is smaller than max_work_group_size * INNER_LOOP
@@ -1918,7 +1904,8 @@ void masked_softmax_backward(
         DISPATCH_MASK_SOFTMAX_BACKWARD_IMPL(/*vec_size*/ 1, /*SIMD*/ SIMD16);
       }
     }
-  } else {
+  }
+  if (use_slow_path) {
     gradInput = at::_softmax_backward_data_out(
         gradInput,
         gradOutput,
