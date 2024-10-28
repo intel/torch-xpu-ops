@@ -202,6 +202,7 @@ _xpu_computation_op_list = [
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
     "nn.functional.huber_loss",
+    "nn.functional.multi_margin_loss",
     "nn.functional.max_unpool2d",
     "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
