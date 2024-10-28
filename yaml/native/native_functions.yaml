@@ -2749,6 +2749,20 @@
     XPU: foreach_tensor_zero_xpu_
   autogen: _foreach_zero, _foreach_zero.out
 
+- func: _foreach_copy_(Tensor(a!)[] self, Tensor[] src, bool non_blocking=False) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_copy_list_kernel_slow_
+    XPU: foreach_tensor_copy_list_kernel_xpu_
+  autogen: _foreach_copy.out
+
+- func: _foreach_copy(Tensor[] self, Tensor[] src, bool non_blocking=False) -> Tensor[] self_out
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: _foreach_copy
+    
 - func: native_layer_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight, Tensor? bias, float eps) -> (Tensor, Tensor, Tensor)
   dispatch:
     XPU: layer_norm_xpu
@@ -5833,6 +5847,26 @@
     XPU: _unique2_xpu
   tags: dynamic_output_shape
   autogen: _unique2.out
+
+- func: multi_margin_loss.out(Tensor self, Tensor target, Scalar p=1, Scalar margin=1, Tensor? weight=None, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: multi_margin_loss_xpu_out
+
+- func: multi_margin_loss(Tensor self, Tensor target, Scalar p=1, Scalar margin=1, Tensor? weight=None, int reduction=Mean) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: multi_margin_loss_xpu
+
+- func: multi_margin_loss_backward.grad_input(Tensor grad_output, Tensor self, Tensor target, Scalar p, Scalar margin, Tensor? weight=None, int reduction=Mean, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: multi_margin_loss_xpu_backward_out
+
+- func: multi_margin_loss_backward(Tensor grad_output, Tensor self, Tensor target, Scalar p, Scalar margin, Tensor? weight=None, int reduction=Mean) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: multi_margin_loss_xpu_backward
 
 - func: upsample_linear1d.vec(Tensor input, SymInt[]? output_size, bool align_corners, float[]? scale_factors) -> Tensor
   python_module: nn
