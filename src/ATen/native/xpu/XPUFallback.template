@@ -198,8 +198,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "lu_unpack.out",
     "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
-    "multi_margin_loss",
-    "multi_margin_loss_backward",
     "ormqr",
     "rrelu_with_noise",
     "_scaled_dot_product_efficient_attention",
