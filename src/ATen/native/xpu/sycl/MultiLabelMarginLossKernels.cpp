@@ -48,43 +48,6 @@ void multilabel_margin_loss_shape_check(
   }
 }
 
-void multi_margin_loss_shape_check(
-    int64_t& nframe,
-    int64_t& dim,
-    const int64_t& ndims,
-    const Tensor& input,
-    const Tensor& target,
-    const std::optional<Tensor>& weight) {
-  TORCH_CHECK(
-      (ndims == 2 && input.size(1) != 0) ||
-          (ndims == 1 && input.size(0) != 0) || ndims == 0,
-      "Expected non-empty vector or matrix with optional 0-dim batch size, but got: ",
-      input.sizes());
-
-  if (ndims <= 1) {
-    nframe = 1;
-    dim = ndims == 0 ? 1 : input.size(0);
-  } else {
-    nframe = input.size(0);
-    dim = input.size(1);
-  }
-
-  TORCH_CHECK(
-      target.dim() <= 1 && target.numel() == nframe,
-      "inconsistent target size, expected ",
-      nframe,
-      " but got ",
-      target.sizes());
-  if (weight && weight->defined()) {
-    TORCH_CHECK(
-        weight->dim() <= 1 && weight->numel() == dim,
-        "inconsistent weight size, expected ",
-        dim,
-        " but got ",
-        weight->sizes());
-  }
-}
-
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
