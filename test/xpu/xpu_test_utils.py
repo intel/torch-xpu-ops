@@ -125,6 +125,7 @@ _xpu_computation_op_list = [
     "nn.functional.softplus",
     "nn.functional.softshrink",
     "nextafter",
+    "heaviside",
     "nonzero",
     "normal",
     "pow",
@@ -221,7 +222,7 @@ _xpu_computation_op_list = [
     "bucketize",
     "searchsorted",
     "grid_sampler_2d",
-    # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
+    "nn.functional.grid_sample",
     "addr",
     "cdist",
     "nn.functional.pdist",
@@ -307,6 +308,11 @@ _cuda_xfail_xpu_pass = [
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
 
 _xpu_tolerance_override = {
+    "nn.functional.grid_sample": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.float32: tol(atol=0.002, rtol=0.008),
+        }
+    },
     "nn.functional.tanhshrink": {
         ("TestUnaryUfuncs", "test_reference_numerics_normal"): {
             torch.complex64: tol(atol=2e-05, rtol=9e-06),
