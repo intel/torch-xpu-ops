@@ -54,7 +54,7 @@ Tensor grid_sampler_3d_xpu(
     int64_t interpolation_mode,
     int64_t padding_mode,
     bool align_corners) {
-  return native::xpu::grid_sampler_3d_kernel(
+  return xpu::grid_sampler_3d_kernel(
       input, grid, interpolation_mode, padding_mode, align_corners);
 }
 
@@ -75,7 +75,7 @@ std::tuple<Tensor, Tensor> grid_sampler_3d_backward_xpu(
     }
   })();
   auto grad_grid = at::empty_like(grid, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  native::xpu::grid_sampler_3d_backward_kernel(
+  xpu::grid_sampler_3d_backward_kernel(
       grad_input,
       grad_grid,
       grad_output,

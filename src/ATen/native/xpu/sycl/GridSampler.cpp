@@ -23,8 +23,8 @@ using namespace at::xpu::detail;
 template <typename scalar_t, typename index_t>
 struct GridSampler2dKernelFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto index = item_id.get_global_linear_id();
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
     if (index >= nthreads_)
       return;
     const index_t w = index % out_W_;
@@ -357,8 +357,8 @@ Tensor grid_sampler_2d_kernel(
 
 template <typename scalar_t, typename index_t>
 struct GridSampler2dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto index = item_id.get_global_linear_id();
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
     if (index >= nthreads_)
       return;
     const index_t w = index % out_W_;
@@ -841,8 +841,8 @@ void grid_sampler_2d_backward_kernel(
 template <typename scalar_t, typename index_t>
 struct GridSampler3dKernelFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto index = item_id.get_global_linear_id();
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
     if (index >= nthreads_)
       return;
 
@@ -1214,8 +1214,8 @@ Tensor grid_sampler_3d_kernel(
 
 template <typename scalar_t, typename index_t>
 struct GridSampler3dBackwardKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto index = item_id.get_global_linear_id();
+  void operator()(sycl::nd_item<1> item) const {
+    auto index = item.get_global_linear_id();
     if (index >= nthreads_)
       return;
 
