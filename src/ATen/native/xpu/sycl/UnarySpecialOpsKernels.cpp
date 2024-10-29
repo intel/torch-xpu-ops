@@ -177,7 +177,7 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
 }
 
 template <typename scalar_t>
-struct Functor {
+struct I0Functor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
     return calc_i0<opmath_t>(a);
