@@ -117,7 +117,6 @@ void launch_multi_tensor_apply_kernel(
     U callable,
     int num_wg,
     ArgTypes... args) {
-  using KernelClass = MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...>;
 
   auto& q = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
@@ -129,7 +128,8 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  KernelClass kfn(kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+  MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
+      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
 
   sycl_kernel_submit(
       sycl::range<1>(num_wg * max_wg_size),
@@ -145,12 +145,6 @@ void multi_tensor_apply(
     T callable,
     ArgTypes... args) {
   using scalar_vals_t = typename T::opmath_t;
-  using KernelClass = MultiTensorApplyKernelFunctor<
-      TLMetaForAddressScalar<scalar_vals_t, depth>*,
-      TLMetaForWG*,
-      T,
-      ArgTypes...>;
-
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
@@ -232,11 +226,6 @@ void multi_tensor_apply(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
     T callable,
     ArgTypes... args) {
-  using KernelClass = MultiTensorApplyKernelFunctor<
-      TLMetaForAddress<depth>*,
-      TLMetaForWG*,
-      T,
-      ArgTypes...>;
 
   TORCH_CHECK(
       tensor_lists.size() == depth,
