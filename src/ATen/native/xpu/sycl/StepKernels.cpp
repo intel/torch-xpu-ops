@@ -29,7 +29,7 @@ void nextafter_kernel(TensorIteratorBase& iter) {
 }
 
 void heaviside_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES_AND3(
+  AT_DISPATCH_ALL_TYPES_AND3(
       kHalf, kBool, kBFloat16, iter.dtype(), "heaviside_xpu", [&]() {
         gpu_kernel_with_scalars(iter, HeavisideFunctor<scalar_t>());
       });
