@@ -172,12 +172,14 @@ void fractional_max_pool2d_out_xpu_frame(
     int poolSizeW,
     const bool is_channels_last) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize(dev_id);
+  using KernelClass =
+      FractionalMaxPool2dOutFrameKernelFunctor<scalar_t, accscalar_t>;
+
+  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
   int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
   int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
   // One full device launch could launch en_num * SMID32 * HD threads as below
-  const auto target_global_size = syclMaxWorkItemsPerTile(dev_id);
+  const auto target_global_size = syclMaxWorkItemsPerTile();
   // Each work group size is work_group_size, one full device launch is
   // target_global_size, so we can calculate max work group num as below
   const int max_work_group_num = target_global_size / work_group_size;
@@ -189,7 +191,7 @@ void fractional_max_pool2d_out_xpu_frame(
   // work item in each work group calculates loops' elements
   int loops = draft_work_group_num / work_group_num + 1;
 
-  FractionalMaxPool2dOutFrameKernelFunctor<scalar_t, accscalar_t> kfn(
+  auto kfn = KernelClass(
       output,
       indices,
       input,
@@ -291,8 +293,11 @@ void fractional_max_pool2d_backward_out_xpu_frame(
     int gradInputSizeW,
     int gradOutputSizeH,
     int gradOutputSizeW) {
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_wg_size = syclMaxWorkItemsPerEU(dev_id);
+  using KernelClass = FractionalMaxPool2dBackwardOutFrameKernelFunctor<
+      scalar_t,
+      is_channels_last>;
+
+  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>();
   int64_t gradOutputSize =
       numBatch * numPlane * gradOutputSizeH * gradOutputSizeW;
   int work_group_size =
@@ -304,18 +309,18 @@ void fractional_max_pool2d_backward_out_xpu_frame(
   auto out_n_stride = numPlane * out_cf_c_stride;
   auto in_n_stride = numPlane * in_cf_c_stride;
 
-  FractionalMaxPool2dBackwardOutFrameKernelFunctor<scalar_t, is_channels_last>
-      kfn(gradInput,
-          gradOutput,
-          indices,
-          numBatch,
-          numPlane,
-          gradInputSizeW,
-          gradOutputSize,
-          out_cf_c_stride,
-          in_cf_c_stride,
-          out_n_stride,
-          in_n_stride);
+  auto kfn = KernelClass(
+      gradInput,
+      gradOutput,
+      indices,
+      numBatch,
+      numPlane,
+      gradInputSizeW,
+      gradOutputSize,
+      out_cf_c_stride,
+      in_cf_c_stride,
+      out_n_stride,
+      in_n_stride);
   sycl_kernel_submit(global_range, work_group_size, getCurrentSYCLQueue(), kfn);
 }
 

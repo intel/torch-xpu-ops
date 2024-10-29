@@ -191,8 +191,10 @@ void fractional_max_pool3d_out_frame_cf(
     int poolSizeH,
     int poolSizeW) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  using KernelClass =
+      FractionalMaxPool3dOutFrameCfFunctor<scalar_t, accscalar_t>;
   auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize(dev_id);
+  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>(dev_id);
   int outputPlaneSize = outputSizeH * outputSizeW * outputSizeT;
   // input stride for NCTHW data
   int64_t iT_stride = inputSizeH * inputSizeW;
@@ -208,7 +210,7 @@ void fractional_max_pool3d_out_frame_cf(
   int work_group_num =
       (outputPlaneSize + work_group_size - 1) / work_group_size;
 
-  FractionalMaxPool3dOutFrameCfFunctor<scalar_t, accscalar_t> kfn(
+  auto kfn = KernelClass(
       output,
       indices,
       input,
@@ -394,8 +396,10 @@ void fractional_max_pool3d_out_frame_cl(
     int poolSizeH,
     int poolSizeW) {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  using KernelClass =
+      FractionalMaxPool3dOutFrameClFunctor<scalar_t, accscalar_t>;
   auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t max_wg_size = syclMaxWorkGroupSize(dev_id);
+  int64_t max_wg_size = syclMaxWorkGroupSize<KernelClass>(dev_id);
   int outputSize = outputSizeH * outputSizeW * numPlane;
   // input stride for NTHWC data
   int64_t iH_stride = inputSizeW * numPlane;
@@ -416,7 +420,8 @@ void fractional_max_pool3d_out_frame_cl(
   auto output_data = output;
   auto indices_data = indices;
   auto samples_data = samples;
-  FractionalMaxPool3dOutFrameClFunctor<scalar_t, accscalar_t> kfn(
+
+  auto kfn = KernelClass(
       output_data,
       indices_data,
       input_data,
