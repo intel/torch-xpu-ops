@@ -174,40 +174,37 @@ struct MultilabelMarginLossBackwardKernelFunctor
     item.barrier(sycl_local_fence);
 
     // iterate over targets
-    bool valid = false;
     for (int dt = 0; dt < dim_; dt++) {
-      if (valid) {
-        // next target:
-        int target_idx = static_cast<int>(target_k[dt]);
-        if (target_idx < 0) {
-          valid = false;
-        }
+      // next target:
+      int target_idx = static_cast<int>(target_k[dt]);
+      if (target_idx < 0) {
+        break;
+      }
 
-        // current value for target
-        scalar_t input_target_k = input_k[target_idx];
+      // current value for target
+      scalar_t input_target_k = input_k[target_idx];
 
-        // compare to all inputs (multithreaded):
-        accscalar_t sum = 0;
-        for (int d = item.get_local_id(0); d < dim_;
-             d += item.get_local_range(0)) {
-          // contribute to loss only if not a target
-          if (!static_cast<int>(is_target_k[d])) {
-            scalar_t z = 1 - input_target_k + input_k[d];
-            if (z > 0) {
-              sum -= g;
-              grad_input_k[d] += g;
-            }
+      // compare to all inputs (multithreaded):
+      accscalar_t sum = 0;
+      for (int d = item.get_local_id(0); d < dim_;
+           d += item.get_local_range(0)) {
+        // contribute to loss only if not a target
+        if (!static_cast<int>(is_target_k[d])) {
+          scalar_t z = 1 - input_target_k + input_k[d];
+          if (z > 0) {
+            sum -= g;
+            grad_input_k[d] += g;
           }
         }
-        item.barrier(sycl_local_fence);
+      }
+      item.barrier(sycl_local_fence);
 
-        sum = GroupReduceSumWithoutBroadcast<
-            accscalar_t,
-            MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
+      sum = GroupReduceSumWithoutBroadcast<
+          accscalar_t,
+          MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
 
-        if (item.get_local_id(0) == 0) {
-          grad_input_k[target_idx] += static_cast<scalar_t>(sum);
-        }
+      if (item.get_local_id(0) == 0) {
+        grad_input_k[target_idx] += static_cast<scalar_t>(sum);
       }
     }
 
@@ -232,6 +229,7 @@ struct MultilabelMarginLossBackwardKernelFunctor
       : grad_input_(grad_input),
         grad_output_(grad_output),
         input_(input),
+        target_(target),
         is_target_(is_target),
         nframe_(nframe),
         dim_(dim),
