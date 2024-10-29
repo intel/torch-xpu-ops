@@ -163,8 +163,9 @@ struct MultilabelMarginLossBackwardKernelFunctor
 
     // gain:
     scalar_t g = static_cast<scalar_t>(
-        size_average_ && reduce_ ? 1. / static_cast<accscalar_t>(nframe_ * dim_)
-                                 : 1. / static_cast<accscalar_t>(dim_));
+        size_average_ && reduce_
+            ? accscalar_t(1) / static_cast<accscalar_t>(nframe_ * dim_)
+            : accscalar_t(1) / static_cast<accscalar_t>(dim_));
 
     // zero gradients:
     for (int d = item.get_local_id(0); d < dim_; d += item.get_local_range(0)) {
@@ -173,41 +174,40 @@ struct MultilabelMarginLossBackwardKernelFunctor
     item.barrier(sycl_local_fence);
 
     // iterate over targets
-    bool valid = true;
+    bool valid = false;
     for (int dt = 0; dt < dim_; dt++) {
-      // next target:
-      int target_idx = 0;
       if (valid) {
-        target_idx = static_cast<int>(target_k[dt]);
+        // next target:
+        int target_idx = static_cast<int>(target_k[dt]);
         if (target_idx < 0) {
           valid = false;
         }
-      }
 
-      // current value for target
-      scalar_t input_target_k = valid ? input_k[target_idx] : scalar_t(0);
+        // current value for target
+        scalar_t input_target_k = input_k[target_idx];
 
-      // compare to all inputs (multithreaded):
-      accscalar_t sum = 0;
-      for (int d = item.get_local_id(0); d < dim_;
-           d += item.get_local_range(0)) {
-        // contribute to loss only if not a target
-        if (valid && !static_cast<int>(is_target_k[d])) {
-          scalar_t z = 1 - input_target_k + input_k[d];
-          if (z > 0) {
-            sum -= g;
-            grad_input_k[d] += g;
+        // compare to all inputs (multithreaded):
+        accscalar_t sum = 0;
+        for (int d = item.get_local_id(0); d < dim_;
+             d += item.get_local_range(0)) {
+          // contribute to loss only if not a target
+          if (!static_cast<int>(is_target_k[d])) {
+            scalar_t z = 1 - input_target_k + input_k[d];
+            if (z > 0) {
+              sum -= g;
+              grad_input_k[d] += g;
+            }
           }
         }
-      }
-      item.barrier(sycl_local_fence);
+        item.barrier(sycl_local_fence);
 
-      accscalar_t total_sum = GroupReduceSumWithoutBroadcast<
-          accscalar_t,
-          MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
+        sum = GroupReduceSumWithoutBroadcast<
+            accscalar_t,
+            MULTILABELMARGIN_SUB_GROUP_SIZE>(item, sum, smem_);
 
-      if (valid && item.get_local_id(0) == 0) {
-        grad_input_k[target_idx] += static_cast<scalar_t>(total_sum);
+        if (item.get_local_id(0) == 0) {
+          grad_input_k[target_idx] += static_cast<scalar_t>(sum);
+        }
       }
     }
 
