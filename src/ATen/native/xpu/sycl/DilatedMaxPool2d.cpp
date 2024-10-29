@@ -4,10 +4,10 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -498,8 +498,8 @@ void max_pool2d_with_indices_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode,
-    Tensor& output_,
-    Tensor& indices_) {
+    const Tensor& output_,
+    const Tensor& indices_) {
   NoNamesGuard guard;
 
   TensorArg output_arg{output_, "output", 1};
@@ -614,8 +614,8 @@ void max_pool2d_with_indices_kernel(
   }
 }
 
-Tensor& max_pool2d_with_indices_backward_kernel(
-    Tensor& gradInput_,
+void max_pool2d_with_indices_backward_kernel(
+    const Tensor& gradInput_,
     const Tensor& gradOutput_,
     const Tensor& input_,
     const Tensor& indices_,
@@ -733,8 +733,6 @@ Tensor& max_pool2d_with_indices_backward_kernel(
       (!is_3d && !gradInput_.is_contiguous(smf))) {
     gradInput_.copy_(gradInput);
   }
-
-  return gradInput_;
 }
 
 } // namespace at::native::xpu

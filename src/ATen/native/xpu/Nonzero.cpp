@@ -1,13 +1,12 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/xpu/EmptyTensor.h>
-#include <ATen/xpu/XPUNativeFunctions.h>
 
 #include <ATen/native/xpu/sycl/NonzeroKernel.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 
 namespace at {
-
-Tensor& XPUNativeFunctions::nonzero_out(const Tensor& self, Tensor& out) {
+namespace native {
+Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       self.numel() < std::numeric_limits<int>::max(),
       "nonzero is not supported for tensors with more than INT_MAX elements, \
@@ -30,14 +29,14 @@ Tensor& XPUNativeFunctions::nonzero_out(const Tensor& self, Tensor& out) {
       MAX_DIMS,
       " dimensions");
 
-  at::native::xpu::nonzero_kernel(self, out);
+  xpu::nonzero_kernel(self, out);
   return out;
 }
 
-Tensor XPUNativeFunctions::nonzero(const Tensor& self) {
+Tensor nonzero_xpu(const Tensor& self) {
   Tensor out = at::detail::empty_xpu({0}, self.options().dtype(kLong));
-  XPUNativeFunctions::nonzero_out(self, out);
+  nonzero_out_xpu(self, out);
   return out;
 }
-
+} // namespace native
 } // namespace at
