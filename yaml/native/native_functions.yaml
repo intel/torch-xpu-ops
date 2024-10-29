@@ -6803,6 +6803,11 @@
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
 
+- func: record_stream(Tensor(a!) self, Stream s) -> ()
+  variants: method
+  dispatch:
+    XPU: record_stream_xpu
+
 - func: special_i0e(Tensor self) -> Tensor
   python_module: special
   variants: function
