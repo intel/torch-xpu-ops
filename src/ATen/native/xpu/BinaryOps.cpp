@@ -47,6 +47,7 @@ REGISTER_XPU_DISPATCH(maximum_stub, &xpu::maximum_kernel);
 REGISTER_XPU_DISPATCH(minimum_stub, &xpu::minimum_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_backward_stub, &xpu::sigmoid_backward_kernel);
 REGISTER_XPU_DISPATCH(nextafter_stub, &xpu::nextafter_kernel);
+REGISTER_XPU_DISPATCH(heaviside_stub, &xpu::heaviside_kernel);
 REGISTER_XPU_DISPATCH(hypot_stub, &xpu::hypot_kernel);
 REGISTER_XPU_DISPATCH(atan2_stub, &xpu::atan2_kernel);
 REGISTER_XPU_DISPATCH(copysign_stub, &xpu::copysign_kernel);
