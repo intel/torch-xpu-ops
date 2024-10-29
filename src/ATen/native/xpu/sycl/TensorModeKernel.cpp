@@ -4,6 +4,8 @@
 #include <ATen/native/Resize.h>
 #include <ATen/ops/sort.h>
 #include <ATen/ops/zeros_like.h>
+
+#include <ATen/native/xpu/sycl/TensorModeKernel.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorInfo.h>
