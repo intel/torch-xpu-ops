@@ -65,14 +65,15 @@ jobs:
           )
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
-          call pip install pyyaml requests
-          conda install libuv
+          pip install pyyaml requests
+          conda install -y libuv
           git config --system core.longpaths true
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
+            echo "Replace torch-xpu-ops!"
             cd third_party
             if exist "torch-xpu-ops" (
               rmdir /s /q torch-xpu-ops 
@@ -90,7 +91,7 @@ jobs:
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install cmake setuptools==72.1.0
+          pip install cmake setuptools==72.1.0 clang-format
           set USE_KINETO=0
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
