@@ -67,7 +67,6 @@ jobs:
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install pyyaml requests
           conda install -y libuv
-          git config --system core.longpaths true
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
