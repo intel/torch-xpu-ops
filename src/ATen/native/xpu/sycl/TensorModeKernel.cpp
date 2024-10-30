@@ -792,11 +792,13 @@ void mode_kernel_impl(
     auto group_size = problem_size;
 
     // scratch memory size needed by built-in sort
-    auto sort_scratch_memory_size = sycl::ext::oneapi::experimental::
-        default_sorter<std::greater<scalar_t>>::template memory_required<
-            ModeOpValueIndex<scalar_t>>(
-            sycl::memory_scope::work_group,
-            sycl::range<1>{static_cast<size_t>(group_size)});
+
+    auto sort_scratch_memory_size =
+        sycl::ext::oneapi::experimental::default_sorters::
+            joint_sorter<std::greater<scalar_t>>::template memory_required<
+                ModeOpValueIndex<scalar_t>>(
+                sycl::memory_scope::work_group,
+                static_cast<size_t>(group_size));
 
     auto values_info = getTensorInfo<scalar_t, int64_t>(values_transposed);
     auto indices_info = getTensorInfo<int64_t, int64_t>(indices_transposed);
