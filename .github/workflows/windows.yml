@@ -90,7 +90,7 @@ jobs:
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install cmake setuptools==72.1.0 -y
+          pip install cmake setuptools==72.1.0
           set USE_KINETO=0
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
