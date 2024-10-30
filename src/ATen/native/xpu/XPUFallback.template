@@ -191,8 +191,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "linalg_solve_triangular",
     "_logcumsumexp",
     "lu_unpack.out",
-    "multilabel_margin_loss_backward",
-    "multilabel_margin_loss_forward",
     "ormqr",
     "rrelu_with_noise",
     "_scaled_dot_product_efficient_attention",
