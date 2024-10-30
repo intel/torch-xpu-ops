@@ -41,7 +41,7 @@ env:
 
 jobs:
   Torch-XPU-Windows-Build:
-    runs-on: Windows_CI
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -67,6 +67,7 @@ jobs:
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           call pip install pyyaml requests
           conda install libuv
+          git config --system core.longpaths true
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
