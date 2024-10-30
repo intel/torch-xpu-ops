@@ -38,7 +38,6 @@ permissions: read-all
 
 env: 
     USE_XPU: 1
-    VS2022INSTALLDIR: 'C:\Program Files\Microsoft Visual Studio\2022\Community'
 
 jobs:
   Torch-XPU-Windows-Build:
