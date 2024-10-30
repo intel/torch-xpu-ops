@@ -15,12 +15,12 @@ namespace {
 #ifdef _MSC_VER
 // Functions for pow
 // pow for at::Half
-static inline at::Half powI_(at::Half base, at::Half exp) {
+static inline at::Half pow_(at::Half base, at::Half exp) {
   return static_cast<at::Half>(
       std::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow for at::BFloat16
-static inline at::BFloat16 powI_(at::BFloat16 base, at::BFloat16 exp) {
+static inline at::BFloat16 pow_(at::BFloat16 base, at::BFloat16 exp) {
   return static_cast<at::BFloat16>(
       std::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
@@ -31,7 +31,7 @@ static inline typename std::enable_if<
         (std::is_same<Base_type, Exp_type>::value ||
          std::is_same<Exp_type, int>::value),
     Base_type>::type
-powI_(Base_type base, Exp_type exp) {
+pow_(Base_type base, Exp_type exp) {
   return std::pow(base, exp);
 }
 // pow (Otherwise)
@@ -40,7 +40,7 @@ static inline typename std::enable_if<
     !std::is_same<Base_type, Exp_type>::value &&
         !std::is_same<Exp_type, int>::value,
     Base_type>::type
-powI_(Base_type base, Exp_type exp) {
+pow_(Base_type base, Exp_type exp) {
   return static_cast<Base_type>(
       std::pow(static_cast<double>(base), static_cast<double>(exp)));
 }
