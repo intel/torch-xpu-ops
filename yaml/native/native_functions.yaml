@@ -7112,3 +7112,99 @@
   python_module: special
   variants: function
   tags: pointwise
+
+# linalg.det
+- func: _linalg_det(Tensor A) -> (Tensor result, Tensor LU, Tensor pivots)
+  structured_delegate: _linalg_det.result
+
+- func: _linalg_det.result(Tensor A, *, Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots) -> (Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots)
+  structured: True
+  dispatch:
+    XPU: _linalg_det_out
+
+- func: linalg_det(Tensor A) -> Tensor
+  python_module: linalg
+  variants: function
+
+- func: linalg_det.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+
+# torch.det, alias for torch.linalg.det
+- func: det(Tensor self) -> Tensor
+  variants: function, method
+
+# This function is exposes the `compute_v` flag, which is then used to implement `linalg.eigh` and
+# `linalg.eigvalsh` as composite functions that call this one
+- func: _linalg_eigh(Tensor A, str UPLO="L", bool compute_v=True) -> (Tensor eigenvalues, Tensor eigenvectors)
+  structured_delegate: _linalg_eigh.eigenvalues
+
+- func: _linalg_eigh.eigenvalues(Tensor A, str UPLO="L", bool compute_v=True, *, Tensor(a!) eigenvalues, Tensor(b!) eigenvectors) -> (Tensor(a!) eigenvalues, Tensor(b!) eigenvectors)
+  structured: True
+  dispatch:
+    XPU: _linalg_eigh_out
+
+- func: linalg_eigh(Tensor self, str UPLO="L") -> (Tensor eigenvalues, Tensor eigenvectors)
+  python_module: linalg
+
+- func: linalg_eigh.eigvals(Tensor self, str UPLO="L", *, Tensor(a!) eigvals, Tensor(b!) eigvecs) -> (Tensor(a!) eigenvalues, Tensor(b!) eigenvectors)
+  python_module: linalg
+
+- func: _linalg_eigvals(Tensor self) -> Tensor
+  python_module: linalg
+  dispatch:
+    XPU: _linalg_eigvals
+
+- func: linalg_eigvals(Tensor self) -> Tensor
+  python_module: linalg
+
+- func: linalg_eigvals.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  dispatch:
+    XPU: linalg_eigvals_out
+
+- func: _linalg_slogdet(Tensor A) -> (Tensor sign, Tensor logabsdet, Tensor LU, Tensor pivots)
+  structured_delegate: _linalg_slogdet.sign
+
+- func: _linalg_slogdet.sign(Tensor A, *, Tensor(a!) sign, Tensor(b!) logabsdet, Tensor(c!) LU, Tensor(d!) pivots) -> (Tensor(a!) sign, Tensor(b!) logabsdet, Tensor(c!) LU, Tensor(d!) pivots)
+  structured: True
+  dispatch:
+    XPU: _linalg_slogdet_out
+
+- func: linalg_slogdet(Tensor A) -> (Tensor sign, Tensor logabsdet)
+  python_module: linalg
+
+- func: linalg_slogdet.out(Tensor A, *, Tensor(a!) sign, Tensor(b!) logabsdet) -> (Tensor(a!) sign, Tensor(b!) logabsdet)
+  python_module: linalg
+
+- func: _linalg_solve_ex(Tensor A, Tensor B, *, bool left=True, bool check_errors=False) -> (Tensor result, Tensor LU, Tensor pivots, Tensor info)
+  structured_delegate: _linalg_solve_ex.result
+
+- func: _linalg_solve_ex.result(Tensor A, Tensor B, *, bool left=True, bool check_errors=False, Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots, Tensor(d!) info) -> (Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots, Tensor(d!) info)
+  structured: True
+  dispatch:
+    XPU: _linalg_solve_ex_out
+
+- func: linalg_solve_ex(Tensor A, Tensor B, *, bool left=True, bool check_errors=False) -> (Tensor result, Tensor info)
+  python_module: linalg
+
+- func: linalg_solve_ex.out(Tensor A, Tensor B, *, bool left=True, bool check_errors=False, Tensor(a!) result, Tensor(b!) info) -> (Tensor(a!) result, Tensor(b!) info)
+  python_module: linalg
+
+# This function is exposes the `compute_uv` flag, which is then used to implement `linalg.svd` and
+# `linalg.svdvals` as composite functions that call this one
+- func: _linalg_svd(Tensor A, bool full_matrices=False, bool compute_uv=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh)
+  variants: function
+  structured_delegate: _linalg_svd.U
+
+- func: _linalg_svd.U(Tensor A, bool full_matrices=False, bool compute_uv=True, *, str? driver=None, Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh) -> (Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh)
+  structured: True
+  dispatch:
+    XPU: _linalg_svd_out
+
+- func: linalg_svd(Tensor A, bool full_matrices=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh)
+  python_module: linalg
+  variants: function
+
+- func: linalg_svd.U(Tensor A, bool full_matrices=True, *, str? driver=None, Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh) -> (Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh)
+  python_module: linalg
+  variants: function
