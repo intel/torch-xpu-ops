@@ -19,7 +19,7 @@ namespace at::native::xpu {
 // - it is important to only call it with idx == 0 if the target length is 0
 template <typename target_t>
 static inline int64_t get_target_prime(
-    const target_t* __restrict__ target,
+    const target_t* RESTRICT target,
     int64_t offset,
     int64_t stride,
     int64_t idx,
@@ -182,21 +182,21 @@ struct CTCLossLogAlphaKernelFunctor {
   }
 
   CTCLossLogAlphaKernelFunctor(
-      scalar_t* __restrict__ log_alpha_data,
+      scalar_t* RESTRICT log_alpha_data,
       const scalar_t* log_probs_data,
-      const int64_t* __restrict__ input_lengths,
+      const int64_t* RESTRICT input_lengths,
       int64_t max_input_length,
-      const target_t* __restrict__ targets_data,
-      const int64_t* __restrict__ target_lengths,
+      const target_t* RESTRICT targets_data,
+      const int64_t* RESTRICT target_lengths,
       int64_t max_target_length,
-      scalar_t* __restrict__ neg_log_likelihood_data,
+      scalar_t* RESTRICT neg_log_likelihood_data,
       int64_t lp_input_stride,
       int64_t lp_batch_stride,
       int64_t lp_char_stride,
       int64_t la_batch_stride,
       int64_t la_input_stride,
       int64_t la_target_stride,
-      const int64_t* __restrict__ tg_batch_offsets,
+      const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
       int64_t BLANK)
@@ -220,21 +220,21 @@ struct CTCLossLogAlphaKernelFunctor {
         BLANK_(BLANK) {}
 
  private:
-  scalar_t* __restrict__ log_alpha_data_;
+  scalar_t* RESTRICT log_alpha_data_;
   const scalar_t* log_probs_data_;
-  const int64_t* __restrict__ input_lengths_;
+  const int64_t* RESTRICT input_lengths_;
   int64_t max_input_length_;
-  const target_t* __restrict__ targets_data_;
-  const int64_t* __restrict__ target_lengths_;
+  const target_t* RESTRICT targets_data_;
+  const int64_t* RESTRICT target_lengths_;
   int64_t max_target_length_;
-  scalar_t* __restrict__ neg_log_likelihood_data_;
+  scalar_t* RESTRICT neg_log_likelihood_data_;
   int64_t lp_input_stride_;
   int64_t lp_batch_stride_;
   int64_t lp_char_stride_;
   int64_t la_batch_stride_;
   int64_t la_input_stride_;
   int64_t la_target_stride_;
-  const int64_t* __restrict__ tg_batch_offsets_;
+  const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
   int64_t BLANK_;
@@ -543,12 +543,12 @@ struct CTCLossBackwardLogBetaKernelFunctor {
   }
 
   CTCLossBackwardLogBetaKernelFunctor(
-      scalar_t* __restrict__ log_beta_data,
+      scalar_t* RESTRICT log_beta_data,
       const scalar_t* log_probs_data,
-      const int64_t* __restrict__ input_lengths,
+      const int64_t* RESTRICT input_lengths,
       int64_t max_input_length,
-      const target_t* __restrict__ targets_data,
-      const int64_t* __restrict__ target_lengths,
+      const target_t* RESTRICT targets_data,
+      const int64_t* RESTRICT target_lengths,
       int64_t max_target_length,
       int64_t lp_input_stride,
       int64_t lp_batch_stride,
@@ -556,7 +556,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       int64_t lb_batch_stride,
       int64_t lb_input_stride,
       int64_t lb_target_stride,
-      const int64_t* __restrict__ tg_batch_offsets,
+      const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
       int64_t BLANK)
@@ -579,12 +579,12 @@ struct CTCLossBackwardLogBetaKernelFunctor {
         BLANK_(BLANK) {}
 
  private:
-  scalar_t* __restrict__ log_beta_data_;
+  scalar_t* RESTRICT log_beta_data_;
   const scalar_t* log_probs_data_;
-  const int64_t* __restrict__ input_lengths_;
+  const int64_t* RESTRICT input_lengths_;
   int64_t max_input_length_;
-  const target_t* __restrict__ targets_data_;
-  const int64_t* __restrict__ target_lengths_;
+  const target_t* RESTRICT targets_data_;
+  const int64_t* RESTRICT target_lengths_;
   int64_t max_target_length_;
   int64_t lp_input_stride_;
   int64_t lp_batch_stride_;
@@ -592,7 +592,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
   int64_t lb_batch_stride_;
   int64_t lb_input_stride_;
   int64_t lb_target_stride_;
-  const int64_t* __restrict__ tg_batch_offsets_;
+  const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
   int64_t BLANK_;
@@ -648,16 +648,16 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
     }
   }
   CTCLossBackwardCollectNonblankKernelFunctor(
-      scalar_t* __restrict__ gradient_data,
-      const scalar_t* __restrict__ grad_out_data,
+      scalar_t* RESTRICT gradient_data,
+      const scalar_t* RESTRICT grad_out_data,
       int64_t grad_out_batch_stride,
-      const scalar_t* __restrict__ log_alpha_data,
-      const scalar_t* __restrict__ log_beta_data,
+      const scalar_t* RESTRICT log_alpha_data,
+      const scalar_t* RESTRICT log_beta_data,
       const scalar_t* log_probs_data,
-      const int64_t* __restrict__ input_lengths,
-      const target_t* __restrict__ targets_data,
-      const int64_t* __restrict__ target_lengths,
-      const scalar_t* __restrict__ neg_log_likelihood_data,
+      const int64_t* RESTRICT input_lengths,
+      const target_t* RESTRICT targets_data,
+      const int64_t* RESTRICT target_lengths,
+      const scalar_t* RESTRICT neg_log_likelihood_data,
       int64_t gr_input_stride,
       int64_t gr_batch_stride,
       int64_t gr_char_stride,
@@ -670,7 +670,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
       int64_t lb_batch_stride,
       int64_t lb_input_stride,
       int64_t lb_target_stride,
-      const int64_t* __restrict__ tg_batch_offsets,
+      const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
       bool zero_infinity)
@@ -702,16 +702,16 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
         zero_infinity_(zero_infinity) {}
 
  private:
-  scalar_t* __restrict__ gradient_data_;
-  const scalar_t* __restrict__ grad_out_data_;
+  scalar_t* RESTRICT gradient_data_;
+  const scalar_t* RESTRICT grad_out_data_;
   int64_t grad_out_batch_stride_;
-  const scalar_t* __restrict__ log_alpha_data_;
-  const scalar_t* __restrict__ log_beta_data_;
+  const scalar_t* RESTRICT log_alpha_data_;
+  const scalar_t* RESTRICT log_beta_data_;
   const scalar_t* log_probs_data_;
-  const int64_t* __restrict__ input_lengths_;
-  const target_t* __restrict__ targets_data_;
-  const int64_t* __restrict__ target_lengths_;
-  const scalar_t* __restrict__ neg_log_likelihood_data_;
+  const int64_t* RESTRICT input_lengths_;
+  const target_t* RESTRICT targets_data_;
+  const int64_t* RESTRICT target_lengths_;
+  const scalar_t* RESTRICT neg_log_likelihood_data_;
   int64_t gr_input_stride_;
   int64_t gr_batch_stride_;
   int64_t gr_char_stride_;
@@ -724,7 +724,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
   int64_t lb_batch_stride_;
   int64_t lb_input_stride_;
   int64_t lb_target_stride_;
-  const int64_t* __restrict__ tg_batch_offsets_;
+  const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
   bool zero_infinity_;
@@ -796,18 +796,18 @@ struct CTCLossBackwardCollectKernelFunctor {
   }
 
   CTCLossBackwardCollectKernelFunctor(
-      scalar_t* __restrict__ gradient_data,
-      const scalar_t* __restrict__ grad_out_data,
+      scalar_t* RESTRICT gradient_data,
+      const scalar_t* RESTRICT grad_out_data,
       int64_t grad_out_batch_stride,
-      const scalar_t* __restrict__ log_alpha_data,
-      const scalar_t* __restrict__ log_beta_data,
+      const scalar_t* RESTRICT log_alpha_data,
+      const scalar_t* RESTRICT log_beta_data,
       const scalar_t* log_probs_data,
-      const int64_t* __restrict__ input_lengths,
+      const int64_t* RESTRICT input_lengths,
       int64_t max_input_length,
-      const target_t* __restrict__ targets_data,
-      const int64_t* __restrict__ target_lengths,
+      const target_t* RESTRICT targets_data,
+      const int64_t* RESTRICT target_lengths,
       int64_t max_target_length,
-      const scalar_t* __restrict__ neg_log_likelihood_data,
+      const scalar_t* RESTRICT neg_log_likelihood_data,
       int64_t gr_input_stride,
       int64_t gr_batch_stride,
       int64_t gr_char_stride,
@@ -820,7 +820,7 @@ struct CTCLossBackwardCollectKernelFunctor {
       int64_t lb_batch_stride,
       int64_t lb_input_stride,
       int64_t lb_target_stride,
-      const int64_t* __restrict__ tg_batch_offsets,
+      const int64_t* RESTRICT tg_batch_offsets,
       int64_t tg_target_stride,
       int64_t batch_size,
       int64_t num_labels,
@@ -858,18 +858,18 @@ struct CTCLossBackwardCollectKernelFunctor {
         zero_infinity_(zero_infinity) {}
 
  private:
-  scalar_t* __restrict__ gradient_data_;
-  const scalar_t* __restrict__ grad_out_data_;
+  scalar_t* RESTRICT gradient_data_;
+  const scalar_t* RESTRICT grad_out_data_;
   int64_t grad_out_batch_stride_;
-  const scalar_t* __restrict__ log_alpha_data_;
-  const scalar_t* __restrict__ log_beta_data_;
+  const scalar_t* RESTRICT log_alpha_data_;
+  const scalar_t* RESTRICT log_beta_data_;
   const scalar_t* log_probs_data_;
-  const int64_t* __restrict__ input_lengths_;
+  const int64_t* RESTRICT input_lengths_;
   int64_t max_input_length_;
-  const target_t* __restrict__ targets_data_;
-  const int64_t* __restrict__ target_lengths_;
+  const target_t* RESTRICT targets_data_;
+  const int64_t* RESTRICT target_lengths_;
   int64_t max_target_length_;
-  const scalar_t* __restrict__ neg_log_likelihood_data_;
+  const scalar_t* RESTRICT neg_log_likelihood_data_;
   int64_t gr_input_stride_;
   int64_t gr_batch_stride_;
   int64_t gr_char_stride_;
@@ -882,7 +882,7 @@ struct CTCLossBackwardCollectKernelFunctor {
   int64_t lb_batch_stride_;
   int64_t lb_input_stride_;
   int64_t lb_target_stride_;
-  const int64_t* __restrict__ tg_batch_offsets_;
+  const int64_t* RESTRICT tg_batch_offsets_;
   int64_t tg_target_stride_;
   int64_t batch_size_;
   int64_t num_labels_;
@@ -915,8 +915,8 @@ struct CTCLossZeroPaddedGradients {
   }
 
   CTCLossZeroPaddedGradients(
-      scalar_t* __restrict__ gradient_data, /* (T, B, D) layout */
-      const int64_t* __restrict__ input_lengths, /* (B, ) layout */
+      scalar_t* RESTRICT gradient_data, /* (T, B, D) layout */
+      const int64_t* RESTRICT input_lengths, /* (B, ) layout */
       int64_t gr_timestep_stride,
       int64_t gr_batch_stride,
       int64_t gr_label_stride,
@@ -934,8 +934,8 @@ struct CTCLossZeroPaddedGradients {
         num_labels_(num_labels) {}
 
  private:
-  scalar_t* __restrict__ gradient_data_; /* (T, B, D) layout */
-  const int64_t* __restrict__ input_lengths_; /* (B, ) layout */
+  scalar_t* RESTRICT gradient_data_; /* (T, B, D) layout */
+  const int64_t* RESTRICT input_lengths_; /* (B, ) layout */
   int64_t gr_timestep_stride_;
   int64_t gr_batch_stride_;
   int64_t gr_label_stride_;

@@ -70,6 +70,7 @@ skip_dict = {
     "test_compare_cpu_nn_functional_embedding_bag_xpu_bfloat16",
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
+    "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
@@ -79,6 +80,10 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/845
     "test_compare_cpu_nn_functional_adaptive_avg_pool3d_xpu_bfloat16",
     "test_compare_cpu_nn_functional_adaptive_avg_pool3d_xpu_float16",
+    # Same as cuda, AssertionError: Tensor-likes are not close!Should skip.
+    # Not in CUDA test scope too
+    "test_compare_cpu_nn_functional_interpolate_trilinear_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_interpolate_trilinear_xpu_float16",
     # CPU result is not golden reference
     "test_compare_cpu_nn_functional_group_norm_xpu_bfloat16",
     "test_compare_cpu_nn_functional_group_norm_xpu_float16",

@@ -18,4 +18,16 @@ TORCH_XPU_API void logit_kernel(
     TensorIteratorBase& iter,
     const Scalar& eps_scalar);
 
+TORCH_XPU_API void i0_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void i0e_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void i1_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void i1e_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void ndtri_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void log_ndtr_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu
