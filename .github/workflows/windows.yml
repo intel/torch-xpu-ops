@@ -41,7 +41,7 @@ env:
 
 jobs:
   Torch-XPU-Windows-Build:
-    runs-on: ${{ inputs.runner }} 
+    runs-on: Windows_CI
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
