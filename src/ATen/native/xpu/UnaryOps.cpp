@@ -80,6 +80,7 @@ REGISTER_XPU_DISPATCH(round_stub, &xpu::round_kernel);
 REGISTER_XPU_DISPATCH(round_decimals_stub, &xpu::round_decimals_kernel);
 REGISTER_XPU_DISPATCH(floor_stub, &xpu::floor_kernel);
 REGISTER_XPU_DISPATCH(trunc_stub, &xpu::trunc_kernel);
+REGISTER_XPU_DISPATCH(i0_stub, &xpu::i0_kernel);
 REGISTER_XPU_DISPATCH(special_i0e_stub, &xpu::i0e_kernel);
 REGISTER_XPU_DISPATCH(special_i1_stub, &xpu::i1_kernel);
 REGISTER_XPU_DISPATCH(special_i1e_stub, &xpu::i1e_kernel);

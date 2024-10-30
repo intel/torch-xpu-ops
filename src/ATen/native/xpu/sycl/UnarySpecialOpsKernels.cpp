@@ -177,6 +177,23 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
 }
 
 template <typename scalar_t>
+struct I0Functor {
+  scalar_t operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_i0<opmath_t>(a);
+  }
+};
+
+void i0_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "i0_xpu",
+      [&]() { gpu_kernel(iter, I0Functor<scalar_t>()); });
+}
+
+template <typename scalar_t>
 struct I0eFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
