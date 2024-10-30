@@ -1,5 +1,6 @@
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/ops/_foreach_add_native.h>
+#include <ATen/ops/_foreach_sub_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>
 #include <ATen/ops/_foreach_addcmul_native.h>
 #include <ATen/ops/_foreach_clamp_max_native.h>
@@ -41,6 +42,7 @@ namespace native {
   }
 
 FOREACH_BINARY_OP_SCALARLIST(add, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALARLIST(sub, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(div, /*div_op*/ true);
 FOREACH_BINARY_OP_SCALARLIST(clamp_max, /*div_op*/ true);
