@@ -67,7 +67,6 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -78,7 +77,6 @@ jobs:
       runner: ut_internal
 
   Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
