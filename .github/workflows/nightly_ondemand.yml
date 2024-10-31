@@ -75,7 +75,7 @@ jobs:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
+      runner: ut_internal
 
   Linux-Weekly-UT-Tests-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
@@ -83,13 +83,13 @@ jobs:
     with:
       abi: 0
       ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
-      runner: linux.idc.xpu
+      runner: ut_internal
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+    runs-on: e2e_internal
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 3600
+    timeout-minutes: 36000
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -119,7 +119,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install mkl-static mkl-include
+          # pip install mkl-static mkl-include
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
