@@ -66,8 +66,10 @@ jobs:
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install pyyaml requests
-          conda install -y libuv
-          git status && git show -s
+          call conda install -y libuv
+          git config --system core.longpaths true
+          git status 
+          git show -s 
           git submodule sync && git submodule update --init --recursive
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
@@ -97,8 +99,10 @@ jobs:
           set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
           if ${{ inputs.abi }} == '0' (
             set _GLIBCXX_USE_CXX11_ABI=0
+            echo "ABI=0"
           ) else (
             set _GLIBCXX_USE_CXX11_ABI=1
+            echo "ABI=1"
           )
           python setup.py clean
           python setup.py bdist_wheel > build_torch_wheel_log.log
