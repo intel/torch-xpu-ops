@@ -86,7 +86,7 @@ jobs:
       runner: ut_internal
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: e2e_internal
+    runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 36000
