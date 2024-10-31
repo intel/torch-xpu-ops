@@ -17,6 +17,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/129120",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/129735",
+        # [Intel GPU] Allow XPU device in cdist and pdist operators
+        "https://github.com/pytorch/pytorch/pull/138441",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
