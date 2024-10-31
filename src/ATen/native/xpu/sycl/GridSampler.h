@@ -23,6 +23,27 @@ static inline void safe_add_2d(
   }
 }
 
+template <typename scalar_t, typename index_t>
+static inline void safe_add_3d(
+    scalar_t* data,
+    int64_t d,
+    int64_t h,
+    int64_t w,
+    int64_t sD,
+    int64_t sH,
+    int64_t sW,
+    int64_t D,
+    int64_t H,
+    int64_t W,
+    scalar_t delta,
+    index_t NC_offset) {
+  if (within_bounds_3d(d, h, w, D, H, W)) {
+    atomicAdd(
+        (sycl_global_ptr<scalar_t>)&data[NC_offset + d * sD + h * sH + w * sW],
+        delta);
+  }
+}
+
 template <typename scalar_t>
 static inline scalar_t safe_downgrade_to_int_range(scalar_t x) {
   // -100.0 does not have special meaning. This is just to make sure
