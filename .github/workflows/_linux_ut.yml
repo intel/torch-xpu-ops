@@ -66,7 +66,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |sed 's/^nightly_wheel$/nightly/')
+          cd pytorch && git checkout $(echo ${{ inputs.pytorch }} |sed 's/^nightly_wheel$/nightly/')
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
