@@ -621,10 +621,16 @@ supported:
   - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
+  - grid_sampler_3d
+  - grid_sampler_3d_backward
   - acos
   - acos_
   - acos.out
   - acosh
+  - multi_margin_loss.out
+  - multi_margin_loss
+  - multi_margin_loss_backward.grad_input
+  - multi_margin_loss_backward
   - acosh_
   - acosh.out
   - addr
