@@ -22,6 +22,7 @@
 namespace at {
 
 namespace native {
+
 REGISTER_XPU_DISPATCH(index_stub, &xpu::index_kernel);
 REGISTER_XPU_DISPATCH(index_put_stub, &xpu::index_put_kernel);
 REGISTER_XPU_DISPATCH(
@@ -38,6 +39,9 @@ REGISTER_XPU_DISPATCH(
     &xpu::scatter_scalar_reduce_kernel);
 REGISTER_XPU_DISPATCH(gather_stub, &xpu::gather_kernel);
 REGISTER_XPU_DISPATCH(index_fill_stub, &xpu::index_fill_kernel);
+REGISTER_XPU_DISPATCH(index_copy_stub, &xpu::index_copy_kernel);
+REGISTER_XPU_DISPATCH(put_stub, &xpu::put_kernel);
+REGISTER_XPU_DISPATCH(take_stub, &xpu::take_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
