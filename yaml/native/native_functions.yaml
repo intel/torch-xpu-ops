@@ -6869,6 +6869,23 @@
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
 
+- func: i0(Tensor self) -> Tensor
+  structured_delegate: i0.out
+  variants: function, method
+  tags: pointwise
+
+- func: i0_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: i0.out
+  variants: function, method
+  tags: pointwise
+
+- func: i0.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: i0_out
+  tags: pointwise
+
 - func: special_i0e(Tensor self) -> Tensor
   python_module: special
   variants: function
