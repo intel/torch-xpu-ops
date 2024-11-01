@@ -130,10 +130,12 @@ scalar_t ratevl(
   // the coefficients for numerator are given by `num` while coeffs for
   // denumerator are given by `denom`
 
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+
   int64_t i, dir;
-  scalar_t y, num_ans, denom_ans;
-  scalar_t absx = std::fabs(x);
-  const scalar_t* p;
+  accscalar_t y, num_ans, denom_ans;
+  accscalar_t absx = std::fabs(x);
+  const accscalar_t* p;
 
   if (absx > 1) {
     /* Evaluate as a polynomial in 1/x. */
@@ -168,7 +170,7 @@ scalar_t ratevl(
   }
   if (absx > 1) {
     i = N - M;
-    return std::pow(x, i) * num_ans / denom_ans;
+    return std::pow(x, static_cast<accscalar_t>(i)) * num_ans / denom_ans;
   } else {
     return num_ans / denom_ans;
   }
@@ -182,8 +184,10 @@ scalar_t ratevl(
  */
 template <typename scalar_t>
 static scalar_t lanczos_sum_expg_scaled(scalar_t x) {
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+
   // lanczos approximation
-  static const scalar_t lanczos_sum_expg_scaled_num[13] = {
+  static const accscalar_t lanczos_sum_expg_scaled_num[13] = {
       0.006061842346248906525783753964555936883222,
       0.5098416655656676188125178644804694509993,
       19.51992788247617482847860966235652136208,
@@ -197,7 +201,7 @@ static scalar_t lanczos_sum_expg_scaled(scalar_t x) {
       86363131.28813859145546927288977868422342,
       103794043.1163445451906271053616070238554,
       56906521.91347156388090791033559122686859};
-  static const scalar_t lanczos_sum_expg_scaled_denom[13] = {
+  static const accscalar_t lanczos_sum_expg_scaled_denom[13] = {
       1.,
       66.,
       1925.,
@@ -212,7 +216,7 @@ static scalar_t lanczos_sum_expg_scaled(scalar_t x) {
       39916800.,
       0.};
   return ratevl(
-      x,
+      static_cast<accscalar_t>(x),
       lanczos_sum_expg_scaled_num,
       sizeof(lanczos_sum_expg_scaled_num) /
               sizeof(lanczos_sum_expg_scaled_num[0]) -
@@ -229,12 +233,13 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
   // corrected from (15) and (16) in [igam2] by replacing exp(x - a) with
   // exp(a - x).
 
-  scalar_t ax, fac, res, num, numfac;
-  static const scalar_t MAXLOG = std::is_same<scalar_t, double>::value
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  accscalar_t ax, fac, res, num, numfac;
+  static const accscalar_t MAXLOG = std::is_same<accscalar_t, double>::value
       ? 7.09782712893383996843E2
       : 88.72283905206835;
-  static const scalar_t EXP1 = 2.718281828459045;
-  static const scalar_t lanczos_g = 6.024680040776729583740234375;
+  static const accscalar_t EXP1 = 2.718281828459045;
+  static const accscalar_t lanczos_g = 6.024680040776729583740234375;
 
   if (std::fabs(a - x) > 0.4 * std::fabs(a)) {
     ax = a * std::log(x) - x - std::lgamma(a);
@@ -261,13 +266,14 @@ static scalar_t _igam_helper_fac(scalar_t a, scalar_t x) {
 template <typename scalar_t>
 static scalar_t _igam_helper_series(scalar_t a, scalar_t x) {
   // Compute igam using DLMF 8.11.4. [igam1]
-  static const scalar_t MACHEP = std::is_same<scalar_t, double>::value
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
   static const int MAXITER = 2000;
 
   int i;
-  scalar_t ans, ax, c, r;
+  accscalar_t ans, ax, c, r;
 
   ax = _igam_helper_fac(a, x);
   if (ax == 0.0) {
@@ -295,12 +301,13 @@ static scalar_t _igamc_helper_series(scalar_t a, scalar_t x) {
   // Compute igamc using DLMF 8.7.3 [igam1]. This is related to the series in
   // _igam_helper_series but extra care is taken to avoid cancellation.
 
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   int n;
-  scalar_t fac = 1;
-  scalar_t sum = 0;
-  scalar_t term, logx;
-  static const scalar_t MAXITER = 2000;
-  static const scalar_t MACHEP = std::is_same<scalar_t, double>::value
+  accscalar_t fac = 1;
+  accscalar_t sum = 0;
+  accscalar_t term, logx;
+  static const int MAXITER = 2000;
+  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
 
@@ -323,8 +330,9 @@ static const scalar_t _igam_helper_asymptotic_series(
     scalar_t a,
     scalar_t x,
     bool igam) {
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   // Compute igam/igamc using DLMF 8.12.3/8.12.4 [igam1]
-  static const scalar_t d[25][25] = {
+  static const accscalar_t d[25][25] = {
       {-3.3333333333333333e-1,  8.3333333333333333e-2,
        -1.4814814814814815e-2,  1.1574074074074074e-3,
        3.527336860670194e-4,    -1.7875514403292181e-4,
@@ -569,16 +577,16 @@ static const scalar_t _igam_helper_asymptotic_series(
 
   int k, n, sgn;
   int maxpow = 0;
-  static const scalar_t MACHEP = std::is_same<scalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  scalar_t lambda = x / a;
-  scalar_t sigma = (x - a) / a;
-  scalar_t eta, res, ck, ckterm, term, absterm;
-  scalar_t absoldterm = INFINITY;
-  scalar_t etapow[25] = {1};
-  scalar_t sum = 0;
-  scalar_t afac = 1;
+  accscalar_t lambda = x / a;
+  accscalar_t sigma = (x - a) / a;
+  accscalar_t eta, res, ck, ckterm, term, absterm;
+  accscalar_t absoldterm = INFINITY;
+  accscalar_t etapow[25] = {1};
+  accscalar_t sum = 0;
+  accscalar_t afac = 1;
 
   if (igam) {
     sgn = -1;
@@ -620,7 +628,7 @@ static const scalar_t _igam_helper_asymptotic_series(
     absoldterm = absterm;
     afac /= a;
   }
-  const float PI = 3.14159265358979323846;
+  const accscalar_t PI = 3.14159265358979323846;
   res += sgn * std::exp(-0.5 * a * eta * eta) * sum / std::sqrt(2 * PI * a);
 
   return res;
@@ -629,16 +637,18 @@ static const scalar_t _igam_helper_asymptotic_series(
 template <typename scalar_t>
 static scalar_t _igamc_helper_continued_fraction(scalar_t a, scalar_t x) {
   // Compute igamc using DLMF 8.9.2. [igam1]
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
   int i;
-  scalar_t ans, ax, c, yc, r, t, y, z;
-  scalar_t pk, pkm1, pkm2, qk, qkm1, qkm2;
+  accscalar_t ans, ax, c, yc, r, t, y, z;
+  accscalar_t pk, pkm1, pkm2, qk, qkm1, qkm2;
   int MAXITER = 2000;
-  static const scalar_t MACHEP = std::is_same<scalar_t, double>::value
+  static const accscalar_t MACHEP = std::is_same<accscalar_t, double>::value
       ? 1.11022302462515654042E-16
       : 5.9604644775390625E-8;
-  static const scalar_t BIG =
-      std::is_same<scalar_t, double>::value ? 4.503599627370496e15 : 16777216.;
-  static const scalar_t BIGINV = std::is_same<scalar_t, double>::value
+  static const accscalar_t BIG = std::is_same<accscalar_t, double>::value
+      ? 4.503599627370496e15
+      : 16777216.;
+  static const accscalar_t BIGINV = std::is_same<accscalar_t, double>::value
       ? 2.22044604925031308085e-16
       : 5.9604644775390625E-8;
 
@@ -700,32 +710,35 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
    *   incomplete gamma
    * - otherwise, calculate the series from [igam2] eq (5)
    */
-  scalar_t absxma_a;
 
-  static const scalar_t SMALL = 20.0;
-  static const scalar_t LARGE = 200.0;
-  static const scalar_t SMALLRATIO = 0.3;
-  static const scalar_t LARGERATIO = 4.5;
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  accscalar_t absxma_a;
 
-  // note that in SciPy, a and x are non-negative, with exclusive 0s (i.e.,
-  // at most 1 of them can be 0), where igammac(0, x) = 0.0 iff x > 0.
+  static const accscalar_t SMALL = 20.0;
+  static const accscalar_t LARGE = 200.0;
+  static const accscalar_t SMALLRATIO = 0.3;
+  static const accscalar_t LARGERATIO = 4.5;
+
+  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
+
   if ((x < 0) || (a < 0)) {
     // out of defined-region of the function
-    return std::numeric_limits<scalar_t>::quiet_NaN();
+    return std::numeric_limits<accscalar_t>::quiet_NaN();
   } else if (a == 0) {
     if (x > 0) {
       return 0.0;
     } else {
-      return std::numeric_limits<scalar_t>::quiet_NaN();
+      return std::numeric_limits<accscalar_t>::quiet_NaN();
     }
   } else if (x == 0) {
     return 1.0;
-  } else if (std::isinf(a)) {
-    if (std::isinf(x)) {
-      return std::numeric_limits<scalar_t>::quiet_NaN();
+  } else if (is_inf_a) {
+    if (is_inf_x) {
+      return std::numeric_limits<accscalar_t>::quiet_NaN();
     }
     return 1.0;
-  } else if (std::isinf(x)) {
+  } else if (is_inf_x) {
     return 0.0;
   }
 
@@ -758,7 +771,7 @@ inline scalar_t calc_igammac(scalar_t a, scalar_t x) {
 }
 
 template <typename scalar_t>
-scalar_t calc_igamma(scalar_t a, scalar_t x) {
+inline scalar_t calc_igamma(scalar_t a, scalar_t x) {
   /* the calculation of the regularized lower incomplete gamma function
    * is done differently based on the values of a and x:
    * - if x and/or a is at the boundary of defined region, then assign the
@@ -769,32 +782,37 @@ scalar_t calc_igamma(scalar_t a, scalar_t x) {
    *   incomplete gamma
    * - otherwise, calculate the series from [igam2] eq (4)
    */
-  scalar_t absxma_a;
-  static const scalar_t SMALL = 20.0;
-  static const scalar_t LARGE = 200.0;
-  static const scalar_t SMALLRATIO = 0.3;
-  static const scalar_t LARGERATIO = 4.5;
+
+  using accscalar_t = acc_type_device<scalar_t, kXPU>;
+  accscalar_t absxma_a;
+  static const accscalar_t SMALL = 20.0;
+  static const accscalar_t LARGE = 200.0;
+  static const accscalar_t SMALLRATIO = 0.3;
+  static const accscalar_t LARGERATIO = 4.5;
+
+  bool is_inf_a = std::isinf(static_cast<accscalar_t>(a));
+  bool is_inf_x = std::isinf(static_cast<accscalar_t>(x));
 
   // boundary values following SciPy
   // note that in SciPy, a and x are non-negative, with exclusive 0s (i.e.,
   // at most 1 of them can be 0), where igamma(0, x) = 1.0 iff x > 0.
   if ((x < 0) || (a < 0)) {
     // out of defined-region of the function
-    return std::numeric_limits<scalar_t>::quiet_NaN();
+    return std::numeric_limits<accscalar_t>::quiet_NaN();
   } else if (a == 0) {
     if (x > 0) {
       return 1.0;
     } else {
-      return std::numeric_limits<scalar_t>::quiet_NaN();
+      return std::numeric_limits<accscalar_t>::quiet_NaN();
     }
   } else if (x == 0) {
     return 0.0; // zero integration limit
-  } else if (std::isinf(a)) {
-    if (std::isinf(x)) {
-      return std::numeric_limits<scalar_t>::quiet_NaN();
+  } else if (is_inf_a) {
+    if (is_inf_x) {
+      return std::numeric_limits<accscalar_t>::quiet_NaN();
     }
     return 0.0;
-  } else if (std::isinf(x)) {
+  } else if (is_inf_x) {
     return 1.0;
   }
 
@@ -1174,13 +1192,10 @@ static inline C10_HOST_DEVICE scalar_t bessel_j1_forward(scalar_t x) {
   }
 
   return (pp / pq *
-              std::cos(
-                  x - scalar_t(2.356194490192344928846982537459627163)) -
+              std::cos(x - scalar_t(2.356194490192344928846982537459627163)) -
           scalar_t(5.0) / x * (qp / qq) *
-              std::sin(
-                  x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) /
-      std::sqrt(x);
+              std::sin(x - scalar_t(2.356194490192344928846982537459627163))) *
+      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
 } // bessel_j1_forward(scalar_t x)
 
 template <typename scalar_t>
@@ -1269,8 +1284,7 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
 
     return x * (yp / yq) +
         (scalar_t(0.636619772367581343075535053490057448) *
-         (bessel_j1_forward(x) * std::log(x) -
-          scalar_t(1.0) / x));
+         (bessel_j1_forward(x) * std::log(x) - scalar_t(1.0) / x));
   }
 
   scalar_t pp = 0.0;
@@ -1298,13 +1312,10 @@ static inline C10_HOST_DEVICE scalar_t bessel_y1_forward(scalar_t x) {
   }
 
   return (pp / pq *
-              std::sin(
-                  x - scalar_t(2.356194490192344928846982537459627163)) +
+              std::sin(x - scalar_t(2.356194490192344928846982537459627163)) +
           scalar_t(5.0) / x * (qp / qq) *
-              std::cos(
-                  x - scalar_t(2.356194490192344928846982537459627163))) *
-      scalar_t(0.797884560802865355879892119868763737) /
-      std::sqrt(x);
+              std::cos(x - scalar_t(2.356194490192344928846982537459627163))) *
+      scalar_t(0.797884560802865355879892119868763737) / std::sqrt(x);
 } // bessel_y1_forward(scalar_t x)
 
 } // namespace at::native::xpu
