@@ -60,10 +60,10 @@ jobs:
         run: |
           pwd
           which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          conda remove --all -y -n mengfeil || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/mengfeil
+          conda create -n mengfeil python=${{ inputs.python }} cmake ninja -y
+          source activate mengfeil
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ inputs.pytorch }} |sed 's/^nightly_wheel$/nightly/')
@@ -81,7 +81,7 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
@@ -95,7 +95,7 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           source .github/scripts/env.sh
           # pip install mkl-static mkl-include
           cd ../pytorch
@@ -117,7 +117,7 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           source .github/scripts/env.sh
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
@@ -134,7 +134,7 @@ jobs:
           cd ${{ github.workspace }}
           xpu-smi discovery
           source .github/scripts/env.sh
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
@@ -145,7 +145,7 @@ jobs:
           cd ${{ github.workspace }}
           xpu-smi discovery
           source .github/scripts/env.sh
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
@@ -157,7 +157,7 @@ jobs:
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           timeout 10000 python run_test_with_skip.py
@@ -165,7 +165,7 @@ jobs:
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
@@ -179,7 +179,7 @@ jobs:
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate mengfeil
           cd ../pytorch
           TEST_REPORTS_DIR=$(pwd)/test/test-reports
           rm -rf "$TEST_REPORTS_DIR" && mkdir -p "$TEST_REPORTS_DIR"
