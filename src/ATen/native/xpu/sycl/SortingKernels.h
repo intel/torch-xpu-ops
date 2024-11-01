@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SortingCommon.h>
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
@@ -315,6 +316,13 @@ void segmented_radix_sort_pairs_downsweep_kernel(
 
 // ======================= large sort =======================
 
+template <typename scalar_t>
+struct ABBufferCopyFunctor {
+  scalar_t operator()(scalar_t x) const {
+    return x;
+  }
+};
+
 template <
     typename key_t,
     typename value_t,
@@ -400,6 +408,29 @@ void segmented_radix_sort_pairs_kernel(
     begin_bit += RADIX_BITS;
     if (begin_bit >= end_bit)
       break;
+  }
+
+  // Among basic types, the bit size of bool is not an even multiple of 4. AB
+  // buffer switching is required.
+  if constexpr (std::is_same<key_t, bool>::value) {
+    auto input_calc = TrivialOffsetCalculator<2>();
+    at::detail::Array<char*, 2> data;
+    if (keys_out) {
+      data[0] = (char*)keys_out;
+      data[1] = (char*)keys_temp;
+      auto fn = ABBufferCopyFunctor<key_t>();
+      auto vec_size = memory::can_vectorize_up_to<decltype(fn)>(data);
+      launch_vectorized_kernel(
+          num_segments * num_elements, fn, data, input_calc, vec_size);
+    }
+    if (values_out) {
+      data[0] = (char*)values_out;
+      data[1] = (char*)values_temp;
+      auto fn = ABBufferCopyFunctor<value_t>();
+      auto vec_size = memory::can_vectorize_up_to<decltype(fn)>(data);
+      launch_vectorized_kernel(
+          num_segments * num_elements, fn, data, input_calc, vec_size);
+    }
   }
 }
 

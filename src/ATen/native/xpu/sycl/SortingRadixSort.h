@@ -525,11 +525,11 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < k) {
-        ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_temp[offset]);
+        ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_temp[offset]));
       } else {
         offset += num_start - k;
         if (offset < num_elements) {
-          ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_in[offset]);
+          ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_in[offset]));
         } else {
           KeyTraitsT padding_key;
           if (IS_DESCENDING) {
@@ -668,8 +668,8 @@ class RadixSortUpsweep {
     auto group_ptr = keys_in_ + group_offset;
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      keys[ITEM] =
-          KeyTraits<KeyT>::convert(group_ptr[lid_ + ITEM * GROUP_THREADS]);
+      keys[ITEM] = KeyTraits<KeyT>::convert(
+          c10::load(&group_ptr[lid_ + ITEM * GROUP_THREADS]));
     }
     item_.barrier(sycl_local_fence);
 #pragma unroll
@@ -684,7 +684,7 @@ class RadixSortUpsweep {
   inline void process_partial_tile(int group_offset, int group_end) {
     for (int offset = group_offset + lid_; offset < group_end;
          offset += GROUP_THREADS) {
-      KeyTraitsT key = KeyTraits<KeyT>::convert(keys_in_[offset]);
+      KeyTraitsT key = KeyTraits<KeyT>::convert(c10::load(&keys_in_[offset]));
       auto digit = extract_digit(key);
       auto sub_counter = digit & (PACKING_RATIO - 1);
       auto row_offset = digit >> LOG_PACKING_RATIO;
