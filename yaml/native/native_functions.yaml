@@ -5266,6 +5266,13 @@
   tags: nondeterministic_seeded
   autogen: binomial.out
 
+- func: _standard_gamma(Tensor self, Generator? generator=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _s_gamma_xpu
+  tags: nondeterministic_seeded
+  autogen: _standard_gamma.out
+
 - func: _sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor
   tags: nondeterministic_seeded
   variants: function

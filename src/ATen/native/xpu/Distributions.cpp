@@ -57,6 +57,14 @@ Tensor _s_binomial_xpu(
   return ret;
 }
 
+Tensor _s_gamma_xpu(const Tensor& alpha, c10::optional<Generator> gen_) {
+  auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+      gen_, at::xpu::detail::getDefaultXPUGenerator());
+  Tensor ret = at::empty(alpha.sizes(), alpha.options());
+  xpu::launch_gamma_kernel(ret, alpha, gen);
+  return ret;
+}
+
 Tensor _sample_dirichlet_xpu(
     const Tensor& alpha,
     std::optional<Generator> generator) {
