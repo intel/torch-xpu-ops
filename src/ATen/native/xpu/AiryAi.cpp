@@ -1,7 +1,6 @@
 #include <ATen/native/UnaryOps.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/AiryAiKernel.h>
 
 namespace at {
