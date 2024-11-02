@@ -202,7 +202,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "segment_reduce",
     "_segment_reduce_backward",
     "sinc.out",
-    "special_airy_ai.out",
     "special_entr.out",
     "special_erfcx.out",
     "special_scaled_modified_bessel_k0.out",
