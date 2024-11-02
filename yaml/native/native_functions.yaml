@@ -6696,6 +6696,12 @@
     XPU: angle_out
   tags: pointwise
 
+- func: special_airy_ai(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_airy_ai.out
+  variants: function
+  tags: pointwise
+
 - func: special_airy_ai.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
     XPU: special_airy_ai_out
