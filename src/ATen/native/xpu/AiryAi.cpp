@@ -1,3 +1,4 @@
+#include <ATen/native/DispatchStub.h>
 #include <ATen/native/xpu/sycl/AiryAiKernel.h>
 
 namespace at {
