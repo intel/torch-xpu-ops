@@ -82,6 +82,17 @@ Tensor _sample_dirichlet_xpu(
   return ret;
 }
 
+Tensor _standard_gamma_grad_xpu(const Tensor& self, const Tensor& output) {
+  Tensor ret = at::empty(self.sizes(), self.options());
+  TensorIterator iter = TensorIteratorConfig()
+                            .add_output(ret)
+                            .add_input(self)
+                            .add_input(output)
+                            .build();
+  xpu::launch_standard_gamma_grad_kernel(iter);
+  return ret;
+}
+
 Tensor _dirichlet_grad_xpu(
     const Tensor& x,
     const Tensor& alpha,

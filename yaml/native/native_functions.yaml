@@ -5266,6 +5266,12 @@
   tags: nondeterministic_seeded
   autogen: binomial.out
 
+- func: _standard_gamma_grad(Tensor self, Tensor output) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _standard_gamma_grad_xpu
+  autogen: _standard_gamma_grad.out
+
 - func: _standard_gamma(Tensor self, Generator? generator=None) -> Tensor
   variants: function
   dispatch:
