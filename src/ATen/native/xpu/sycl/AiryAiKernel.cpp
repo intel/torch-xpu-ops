@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/MathExtensions.h>
 
 #include <ATen/native/xpu/sycl/AiryAiKernel.h>
 
