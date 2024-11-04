@@ -21,4 +21,4 @@ void bessel_y0_kernel(TensorIteratorBase& iter) {
   });
 }
 
-}
+} // namespace at::native::xpu
