@@ -14,6 +14,7 @@
 #include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryRemainderKernel.h>
 #include <ATen/native/xpu/sycl/BinaryShiftOpsKernels.h>
+#include <ATen/native/xpu/sycl/ChebyshevPolynomialKernels.h>
 #include <ATen/native/xpu/sycl/CopysignKernel.h>
 #include <ATen/native/xpu/sycl/GcdLcmKernels.h>
 #include <ATen/native/xpu/sycl/IGammaKernel.h>
@@ -23,9 +24,9 @@
 #include <ATen/native/xpu/sycl/LegendrePolynomialPKernel.h>
 #include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 #include <ATen/native/xpu/sycl/MaxMinElementwiseKernels.h>
-#include <ATen/native/xpu/sycl/StepKernels.h>
-#include <ATen/native/xpu/sycl/ChebyshevPolynomialKernels.h>
 #include <ATen/native/xpu/sycl/ShiftedChebyshevPolynomialKernels.h>
+#include <ATen/native/xpu/sycl/StepKernels.h>
+#include <ATen/native/xpu/sycl/ZetaKernel.h>
 
 namespace at {
 namespace native {
@@ -65,6 +66,8 @@ REGISTER_XPU_DISPATCH(fmin_stub, &xpu::fmin_kernel);
 REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
 REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
+REGISTER_XPU_DISPATCH(xlog1py_stub, &xpu::xlog1py_kernel);
+REGISTER_XPU_DISPATCH(zeta_stub, &xpu::zeta_kernel);
 REGISTER_XPU_DISPATCH(
     hermite_polynomial_h_stub,
     &xpu::hermite_polynomial_h_kernel);
