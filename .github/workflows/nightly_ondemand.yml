@@ -179,6 +179,7 @@ jobs:
           export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
+          du -sh dist/*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
