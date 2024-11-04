@@ -16,9 +16,10 @@ struct SphericalBesselJ0Functor {
 };
 
 void spherical_bessel_j0_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "spherical_bessel_j0_xpu", [&]() {
-    gpu_kernel(iter, SphericalBesselJ0Functor<scalar_t>());
-  });
+  AT_DISPATCH_FLOATING_TYPES(
+      iter.common_dtype(), "spherical_bessel_j0_xpu", [&]() {
+        gpu_kernel(iter, SphericalBesselJ0Functor<scalar_t>());
+      });
 }
 
-}
+} // namespace at::native::xpu

@@ -1,8 +1,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
+#include <ATen/native/xpu/sycl/Distributions.h>
 #include <ATen/native/xpu/sycl/TensorApplyUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 

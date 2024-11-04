@@ -1964,6 +1964,51 @@
     XPU: foreach_tensor_add_scalar_kernel_xpu_
   autogen: _foreach_add.Scalar_out
 
+- func: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalar_kernel_slow
+    XPU: foreach_tensor_sub_scalar_kernel_xpu
+
+- func: _foreach_sub_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalar_kernel_slow_
+    XPU: foreach_tensor_sub_scalar_kernel_xpu_
+  autogen: _foreach_sub.Scalar_out
+
+- func: _foreach_sub.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_list_kernel_slow
+    XPU: foreach_tensor_sub_list_kernel_xpu
+
+- func: _foreach_sub_.List(Tensor(a!)[] self, Tensor[] other, *, Scalar alpha=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_list_kernel_slow_
+    XPU: foreach_tensor_sub_list_kernel_xpu_
+  autogen: _foreach_sub.List_out
+
+- func: _foreach_sub.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalarlist_kernel_slow
+    XPU: foreach_tensor_sub_scalarlist_kernel_xpu
+
+- func: _foreach_sub_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalarlist_kernel_slow_
+    XPU: foreach_tensor_sub_scalarlist_kernel_xpu_
+  autogen: _foreach_sub.ScalarList_out
+  
 - func: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -4023,6 +4068,40 @@
 
 - func: hypot_(Tensor(a!) self, Tensor other) -> Tensor(a!)
   structured_delegate: hypot.out
+  variants: method
+  tags: pointwise
+
+- func: igamma.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igamma_out
+  tags: pointwise
+
+- func: igamma(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igamma.out
+  variants: method, function
+  tags: pointwise
+
+- func: igamma_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igamma.out
+  variants: method
+  tags: pointwise
+
+- func: igammac.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igammac_out
+  tags: pointwise
+
+- func: igammac(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igammac.out
+  variants: method, function
+  tags: pointwise
+
+- func: igammac_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igammac.out
   variants: method
   tags: pointwise
 
@@ -6702,6 +6781,21 @@
     XPU: angle_out
   tags: pointwise
 
+- func: special_airy_ai(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_airy_ai.out
+  variants: function
+  tags: pointwise
+
+- func: special_airy_ai.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_airy_ai_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
 - func: special_bessel_j0(Tensor self) -> Tensor
   python_module: special
   structured_delegate: special_bessel_j0.out
@@ -6835,6 +6929,99 @@
   structured_inherits: TensorIteratorBase
   structured: True
   variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k0(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_scaled_modified_bessel_k0.out
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k0.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_scaled_modified_bessel_k0_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k1(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_scaled_modified_bessel_k1.out
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k1.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_scaled_modified_bessel_k1_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise 
+
+- func: special_xlog1py(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  python_module: special
+  variants: function
+  structured_delegate: special_xlog1py.out
+  tags: pointwise
+
+- func: special_xlog1py.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_xlog1py_out
+  tags: pointwise
+
+- func: special_zeta(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  python_module: special
+  variants: function
+  structured_delegate: special_zeta.out
+  tags: pointwise
+
+- func: special_zeta.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_zeta_out
+  tags: pointwise
+
+- func: special_entr(Tensor self) -> Tensor
+  structured_delegate: special_entr.out
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_entr.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_entr_out
+  tags: pointwise
+
+- func: special_erfcx(Tensor self) -> Tensor
+  python_module: special
+  variants: function
+  structured_delegate: special_erfcx.out
+  tags: pointwise
+
+- func: special_erfcx.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: special
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: special_erfcx_out
   tags: pointwise
 
 - func: poisson(Tensor self, Generator? generator=None) -> Tensor
