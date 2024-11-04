@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 
-void _fused_adamw_amsgrad_xpu_impl_(
+TORCH_XPU_API void _fused_adamw_amsgrad_xpu_impl_(
     at::TensorList params,
     at::TensorList grads,
     at::TensorList exp_avgs,
@@ -19,7 +19,7 @@ void _fused_adamw_amsgrad_xpu_impl_(
     const c10::optional<at::Tensor>& grad_scale,
     const c10::optional<at::Tensor>& found_inf);
 
-void _fused_adamw_amsgrad_xpu_impl_(
+TORCH_XPU_API void _fused_adamw_amsgrad_xpu_impl_(
     at::TensorList params,
     at::TensorList grads,
     at::TensorList exp_avgs,

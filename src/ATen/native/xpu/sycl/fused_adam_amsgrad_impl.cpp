@@ -29,10 +29,10 @@ void _fused_adam_amsgrad_xpu_impl_(
       exp_avg_sqs.vec(),
       max_exp_avg_sqs.vec()};
 
-  if (grad_scale.has_value())
-    TORCH_WARN(" grad_scale not supported with ipex fused_adam.")
-  if (found_inf.has_value() && found_inf->data_ptr<float>()[0] == true)
-    TORCH_WARN(" found_inf not supported with ipex fused_adam.")
+  const float* grad_scale_ptr =
+      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+  const float* found_inf_ptr =
+      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
 
   const float beta1_value = static_cast<float>(beta1);
   const float beta2_value = static_cast<float>(beta2);
@@ -55,7 +55,9 @@ void _fused_adam_amsgrad_xpu_impl_(
             beta2_value,
             weight_decay_value,
             eps_value,
-            maximize);
+            maximize,
+            grad_scale_ptr,
+            found_inf_ptr);
       });
 }
 
@@ -81,10 +83,10 @@ void _fused_adam_amsgrad_xpu_impl_(
       exp_avg_sqs.vec(),
       max_exp_avg_sqs.vec()};
 
-  if (grad_scale.has_value())
-    TORCH_WARN(" grad_scale not supported with ipex fused_adam.")
-  if (found_inf.has_value() && found_inf->data_ptr<float>()[0] == true)
-    TORCH_WARN(" found_inf not supported with ipex fused_adam.")
+  const float* grad_scale_ptr =
+      grad_scale.has_value() ? grad_scale->data_ptr<float>() : nullptr;
+  const float* found_inf_ptr =
+      found_inf.has_value() ? found_inf->data_ptr<float>() : nullptr;
 
   const float beta1_value = static_cast<float>(beta1);
   const float beta2_value = static_cast<float>(beta2);
@@ -108,7 +110,9 @@ void _fused_adam_amsgrad_xpu_impl_(
             beta2_value,
             weight_decay_value,
             eps_value,
-            maximize);
+            maximize,
+            grad_scale_ptr,
+            found_inf_ptr);
       });
 }
 

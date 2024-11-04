@@ -32,6 +32,8 @@ inline void adam_math(
     const float weight_decay,
     const float eps,
     const bool maximize,
+    const float* grad_scale_ptr,
+    const float* found_inf_ptr,
     const opmath_t bias_correction1,
     const opmath_t step_size,
     const double lr_weight_decay,
@@ -44,7 +46,10 @@ inline void adam_math(
     // Load values.
     opmath_t param = static_cast<opmath_t>(r_args[kParamIdx][ii]);
     opmath_t grad = static_cast<opmath_t>(r_args[kGradIdx][ii]);
-    // const opmath_t grad_to_store = grad;
+    if (grad_scale_ptr) {
+      grad /= (static_cast<double>(*grad_scale_ptr));
+    }
+    const opmath_t grad_to_store = grad;
 
     if (maximize) {
       grad = -grad;
@@ -81,6 +86,9 @@ inline void adam_math(
 
     // Store results.
     r_args[kParamIdx][ii] = param;
+    if (grad_scale_ptr) {
+      r_args[kGradIdx][ii] = grad_to_store;
+    }
     r_args[kExpAvgIdx][ii] = exp_avg;
     r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
     if constexpr (amsgrad) {
@@ -111,10 +119,16 @@ struct FusedAdamMathFunctor {
       const double beta2,
       const double weight_decay,
       const double eps,
-      const bool maximize) const {
+      const bool maximize,
+      const float* grad_scale_ptr,
+      const float* found_inf_ptr) const {
     auto group_id = item.get_group(0);
     auto item_id = item.get_local_id(0);
     auto local_range = item.get_local_range(0);
+
+    if (found_inf_ptr && *found_inf_ptr == 1) {
+      return;
+    }
 
     int tensor_loc = tlWGMeta[group_id].wg_to_tensor;
     int chunk_idx = tlWGMeta[group_id].wg_to_chunk;
@@ -155,6 +169,8 @@ struct FusedAdamMathFunctor {
             weight_decay,
             eps,
             maximize,
+            grad_scale_ptr,
+            found_inf_ptr,
             bias_correction1,
             step_size,
             lr_weight_decay,
@@ -163,7 +179,7 @@ struct FusedAdamMathFunctor {
 
 #pragma unroll
         for (int i = 0; i < depth; i++) {
-          if (i != kGradIdx) {
+          if (i != kGradIdx || grad_scale_ptr) {
             load_store(args[i], r_args[i], i_start, 0);
           }
         }
@@ -181,6 +197,8 @@ struct FusedAdamMathFunctor {
             weight_decay,
             eps,
             maximize,
+            grad_scale_ptr,
+            found_inf_ptr,
             bias_correction1,
             step_size,
             lr_weight_decay,
@@ -188,7 +206,7 @@ struct FusedAdamMathFunctor {
             bias_correction2_sqrt);
 #pragma unroll
         for (int i = 0; i < depth; i++) {
-          if (i != kGradIdx) {
+          if (i != kGradIdx || grad_scale_ptr) {
             store_args(
                 args[i],
                 r_args[i],

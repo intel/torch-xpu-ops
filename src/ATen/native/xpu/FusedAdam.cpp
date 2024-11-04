@@ -114,10 +114,6 @@ void _fused_adam_kernel_xpu_(
   TORCH_CHECK(
       lr.device() == param_device,
       "lr must be on the same GPU device as the params");
-  if (grad_scale.has_value())
-    TORCH_WARN(" grad_scale not supported with ipex fused_adam.")
-  if (found_inf.has_value() && found_inf->data_ptr<float>()[0] == true)
-    TORCH_WARN(" found_inf not supported with ipex fused_adam.")
 
   if (amsgrad) {
     TORCH_CHECK(

@@ -3475,4 +3475,44 @@ skip_dict = {
     ),
 
     "test_distributions_xpu.py": None,
+
+    "test_optim_xpu.py": (
+        # oneDNN issues
+        # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_foreach_matches_forloop_ASGD_xpu_float64",
+        "test_foreach_matches_forloop_Adadelta_xpu_float64",
+        "test_foreach_matches_forloop_Adafactor_xpu_float64",
+        "test_foreach_matches_forloop_Adagrad_xpu_float64",
+        "test_foreach_matches_forloop_AdamW_xpu_float64",
+        "test_foreach_matches_forloop_Adam_xpu_float64",
+        "test_foreach_matches_forloop_Adamax_xpu_float64",
+        "test_foreach_matches_forloop_NAdam_xpu_float64",
+        "test_foreach_matches_forloop_RAdam_xpu_float64",
+        "test_foreach_matches_forloop_RMSprop_xpu_float64",
+        "test_foreach_matches_forloop_Rprop_xpu_float64",
+        "test_foreach_matches_forloop_SGD_xpu_float64",
+        "test_fused_cpu_matches_cuda_AdamW_xpu_float64",
+        "test_fused_cpu_matches_cuda_Adam_xpu_float64",
+        "test_fused_matches_forloop_AdamW_xpu_float64",
+        "test_fused_matches_forloop_Adam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_ASGD_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adadelta_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adafactor_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adagrad_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_AdamW_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adamax_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_NAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
+
+        # AssertionError: 47616 not less than or equal to 47104
+        "test_peak_memory_foreach_ASGD_xpu_float32",
+        # AssertionError: 27136 not less than or equal to 26624
+        "test_peak_memory_foreach_Adamax_xpu_float32",
+        # AssertionError: 16896 not less than or equal to 16384
+        "test_peak_memory_foreach_SGD_xpu_float32",
+    ),
 }
