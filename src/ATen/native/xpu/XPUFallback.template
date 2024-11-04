@@ -200,7 +200,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "segment_reduce",
     "_segment_reduce_backward",
     "sinc.out",
-    "special_airy_ai.out",
     "_thnn_fused_gru_cell",
     "_to_sparse",
     "_to_sparse_csr",
