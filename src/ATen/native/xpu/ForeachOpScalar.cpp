@@ -1,7 +1,6 @@
-#include <ATen/native/ForeachUtils.h>
 #include <ATen/native/BinaryOps.h>
+#include <ATen/native/ForeachUtils.h>
 #include <ATen/ops/_foreach_add_native.h>
-#include <ATen/ops/_foreach_sub_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>
 #include <ATen/ops/_foreach_addcmul_native.h>
 #include <ATen/ops/_foreach_clamp_max_native.h>
@@ -10,6 +9,7 @@
 #include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_pow_native.h>
+#include <ATen/ops/_foreach_sub_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarKernels.h>

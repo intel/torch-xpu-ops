@@ -195,7 +195,8 @@ FOREACH_BINARY_SCALAR_KERNEL(pow) {
 }
 
 FOREACH_BINARY_SCALAR_KERNEL(pow_list) {
-  return all_types_complex_half_bfloat16<reverse_power_functor>(tensors, scalar);
+  return all_types_complex_half_bfloat16<reverse_power_functor>(
+      tensors, scalar);
 }
 
 } // namespace at::native::xpu
