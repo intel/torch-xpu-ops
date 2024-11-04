@@ -4020,6 +4020,40 @@
   variants: method
   tags: pointwise
 
+- func: igamma.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igamma_out
+  tags: pointwise
+
+- func: igamma(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igamma.out
+  variants: method, function
+  tags: pointwise
+
+- func: igamma_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igamma.out
+  variants: method
+  tags: pointwise
+
+- func: igammac.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igammac_out
+  tags: pointwise
+
+- func: igammac(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igammac.out
+  variants: method, function
+  tags: pointwise
+
+- func: igammac_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igammac.out
+  variants: method
+  tags: pointwise
+
 - func: _efficientzerotensor(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
     XPU: _efficientzerotensor_xpu
