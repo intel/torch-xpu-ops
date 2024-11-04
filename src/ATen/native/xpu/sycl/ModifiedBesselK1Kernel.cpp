@@ -16,9 +16,10 @@ struct ModifiedBesselK1Functor {
 };
 
 void modified_bessel_k1_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "modified_bessel_k1_xpu", [&]() {
-    gpu_kernel(iter, ModifiedBesselK1Functor<scalar_t>());
-  });
+  AT_DISPATCH_FLOATING_TYPES(
+      iter.common_dtype(), "modified_bessel_k1_xpu", [&]() {
+        gpu_kernel(iter, ModifiedBesselK1Functor<scalar_t>());
+      });
 }
 
-}
+} // namespace at::native::xpu
