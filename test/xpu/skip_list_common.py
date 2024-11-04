@@ -1643,8 +1643,6 @@ skip_dict = {
         "_tuning_tunableop_",
         # TODO: align input data type for convert_weight_to_int4pack with CUDA
         # XPU expects weight to be kInt, while CUDA expects kByte
-        # RuntimeError: _convert_weight_to_int4pack_xpu : expect weight to be kInt
-        "test__convert_weight_to_int4pack_xpu",
         "test__int4_mm_m_32_k_32_n_48_xpu",
         "test__int4_mm_m_32_k_32_n_64_xpu",
         "test__int4_mm_m_32_k_64_n_48_xpu",
@@ -1661,7 +1659,6 @@ skip_dict = {
         "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         "test_compile_int4_mm_m_64_k_64_n_48_xpu",
         "test_compile_int4_mm_m_64_k_64_n_64_xpu",
-        "test__convert_weight_to_int4pack_xpu",
         "test__int4_mm_m_32_k_32_n_48_xpu",
         "test__int4_mm_m_32_k_32_n_64_xpu",
         "test__int4_mm_m_32_k_64_n_48_xpu",
