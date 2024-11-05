@@ -7,6 +7,8 @@
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
 
+#include <ATen/native/xpu/sycl/RNNKernels.h>
+
 static constexpr int64_t GRU_WORKSPACE_MULTIPLIER = 5;
 
 namespace at::native::xpu {
