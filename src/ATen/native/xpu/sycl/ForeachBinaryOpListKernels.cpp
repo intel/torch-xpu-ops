@@ -164,6 +164,16 @@ FOREACH_BINARY_LIST_ALPHA_KERNEL(add) {
       tensor1, tensor2, alpha);
 }
 
+FOREACH_BINARY_LIST_ALPHA_INPLACE_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16_<std::minus>(
+      tensor1, tensor2, alpha);
+}
+
+FOREACH_BINARY_LIST_ALPHA_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16<std::minus>(
+      tensor1, tensor2, alpha);
+}
+
 FOREACH_BINARY_LIST_INPLACE_KERNEL(mul) {
   return all_types_complex_bool_half_bfloat16_<std::multiplies>(
       tensor1, tensor2);
@@ -196,6 +206,14 @@ FOREACH_BINARY_LIST_INPLACE_KERNEL(clamp_min) {
 
 FOREACH_BINARY_LIST_KERNEL(clamp_min) {
   return all_types_half_bfloat16<foreach_internal::maximum>(tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_INPLACE_KERNEL(pow) {
+  return all_types_complex_half_bfloat16_<power_functor>(tensor1, tensor2);
+}
+
+FOREACH_BINARY_LIST_KERNEL(pow) {
+  return all_types_complex_half_bfloat16<power_functor>(tensor1, tensor2);
 }
 
 } // namespace at::native::xpu

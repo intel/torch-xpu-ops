@@ -8,12 +8,6 @@
 
 #include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
 
-#ifdef _WIN32
-#define RESTRICT __restrict
-#else
-#define RESTRICT __restrict__
-#endif
-
 namespace at::native::xpu {
 
 template <int N>
