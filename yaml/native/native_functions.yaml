@@ -185,6 +185,25 @@
   tags: pointwise
 # multiply, alias for mul
 
+- func: mvlgamma.out(Tensor self, int p, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: mvlgamma_out
+  tags: pointwise
+
+- func: mvlgamma(Tensor self, int p) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma
+  tags: pointwise
+
+- func: mvlgamma_(Tensor(a!) self, int p) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma_
+  tags: pointwise
+
 - func: div.Tensor(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
