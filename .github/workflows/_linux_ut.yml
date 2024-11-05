@@ -125,6 +125,8 @@ jobs:
 
           cd ..
           python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
       - name: Run XPU OP Examples
         if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
         run: |

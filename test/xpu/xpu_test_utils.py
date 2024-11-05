@@ -236,6 +236,8 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "igamma",
+    "igammac",
     "digamma",
     "polygamma",
     "lgamma",
