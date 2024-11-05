@@ -1,4 +1,5 @@
 #pragma once
+
 #include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 
@@ -21,26 +22,22 @@ constexpr uint8_t kMaxExpAvgSqIdx = 4;
 template <
     typename scalar_type,
     typename opmath_t,
-    int depth = 4,
-    ADAM_MODE mode = ADAM_MODE::ORIGINAL,
+    int depth,
+    ADAM_MODE adam_mode,
     bool amsgrad>
 inline void adam_math(
     scalar_type r_args[depth][kILP],
-    const float* step_count,
-    const float beta1,
-    const float beta2,
-    const float weight_decay,
-    const float eps,
-    const bool maximize,
+    const double& lr,
+    const double& beta1,
+    const double& beta2,
+    const double& weight_decay,
+    const double& eps,
+    const bool& maximize,
     const float* grad_scale_ptr,
     const float* found_inf_ptr,
-    const opmath_t bias_correction1,
-    const opmath_t step_size,
-    const double lr_weight_decay,
-    const opmath_t bias_correction2,
-    const opmath_t bias_correction2_sqrt) {
-  bool use_weight_decay = weight_decay != 0;
-
+    const opmath_t& bias_correction1,
+    const opmath_t& bias_correction2_sqrt) {
+  static_assert(depth == 4 || depth == 5);
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
     // Load values.
@@ -50,33 +47,29 @@ inline void adam_math(
       grad /= (static_cast<double>(*grad_scale_ptr));
     }
     const opmath_t grad_to_store = grad;
-
     if (maximize) {
       grad = -grad;
     }
-
     opmath_t exp_avg = static_cast<opmath_t>(r_args[kExpAvgIdx][ii]);
     opmath_t exp_avg_sq = static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]);
     opmath_t max_exp_avg_sq;
-
-    if constexpr (amsgrad) {
+    if (amsgrad) {
       max_exp_avg_sq = static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]);
     }
-
     // Update param, grad, 1st and 2nd order momentum.
-    if (use_weight_decay) {
-      if constexpr (mode == ADAM_MODE::ORIGINAL)
+    if (weight_decay != 0) {
+      if constexpr (adam_mode == ADAM_MODE::ORIGINAL) {
         grad += param * weight_decay;
-      else // ADAM_MODE::ADAMW:
-        param -= (lr_weight_decay * param);
+      } else if constexpr (adam_mode == ADAM_MODE::ADAMW) {
+        param -= lr * weight_decay * param;
+      }
     }
 
-    // todo(crcrpar): use lerp
-    exp_avg = beta1 * exp_avg + (1.0f - beta1) * grad;
-    exp_avg_sq = beta2 * exp_avg_sq + (1.0f - beta2) * grad * grad;
+    exp_avg = beta1 * exp_avg + (1 - beta1) * grad;
+    exp_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * grad * grad;
+    const opmath_t step_size = lr / bias_correction1;
     opmath_t denom;
-
-    if constexpr (amsgrad) {
+    if (amsgrad) {
       max_exp_avg_sq = std::max(max_exp_avg_sq, exp_avg_sq);
       denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
     } else {
@@ -91,79 +84,72 @@ inline void adam_math(
     }
     r_args[kExpAvgIdx][ii] = exp_avg;
     r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
-    if constexpr (amsgrad) {
+    if (amsgrad) {
       r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
     }
   }
 }
 
-template <
-    typename scalar_type,
-    int depth = 4,
-    ADAM_MODE mode = ADAM_MODE::ORIGINAL,
-    bool amsgrad = false>
+template <typename scalar_type, int depth, ADAM_MODE adam_mode, bool amsgrad>
 struct FusedAdamMathFunctor {
   static_assert(
       depth == 4 || depth == 5,
       "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
   using opmath_t = at::opmath_type<scalar_type>;
   template <typename TLA, typename TLW>
-  void operator()(
-      const int chunk_size,
+  inline void operator()(
+      int chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
       sycl::nd_item<1> item,
       const float* lr_ptr,
-      const double lr,
-      const double beta1,
-      const double beta2,
-      const double weight_decay,
-      const double eps,
-      const bool maximize,
+      const double& lr,
+      const double& beta1,
+      const double& beta2,
+      const double& weight_decay,
+      const double& eps,
+      const bool& maximize,
       const float* grad_scale_ptr,
       const float* found_inf_ptr) const {
     auto group_id = item.get_group(0);
     auto item_id = item.get_local_id(0);
     auto local_range = item.get_local_range(0);
 
+    const auto tensor_loc = tlWGMeta[group_id].wg_to_tensor;
+    const auto chunk_idx = tlWGMeta[group_id].wg_to_chunk;
+    const double lr_double = lr_ptr ? *lr_ptr : lr;
+
     if (found_inf_ptr && *found_inf_ptr == 1) {
       return;
     }
-
-    int tensor_loc = tlWGMeta[group_id].wg_to_tensor;
-    int chunk_idx = tlWGMeta[group_id].wg_to_chunk;
-    int n = tlAddress[tensor_loc].numel_to_tensor;
-
-    float* step_count =
-        reinterpret_cast<float*>(tlAddress[tensor_loc].state_steps_addresses);
+    const auto [bias_correction1, bias_correction2_sqrt] =
+        [&]() -> std::pair<double, double> {
+      auto* step_count = reinterpret_cast<const float*>(
+          tlAddress[tensor_loc].state_steps_addresses);
+      const auto bias_correction1 = 1 - std::pow(beta1, *step_count);
+      const auto bias_correction2 = 1 - std::pow(beta2, *step_count);
+      const auto bias_correction2_sqrt = std::sqrt(bias_correction2);
+      return {bias_correction1, bias_correction2_sqrt};
+    }();
 
     scalar_type* args[depth];
-    bool all_aligned =
-        init_args<depth>(args, tlAddress, chunk_idx, chunk_size, tensor_loc);
-    n -= chunk_idx * chunk_size;
     scalar_type r_args[depth][kILP];
-    double lr_value = lr_ptr ? *lr_ptr : lr;
+    const auto n =
+        tlAddress[tensor_loc].numel_to_tensor - chunk_idx * chunk_size;
 
-    const opmath_t bias_correction1 =
-        static_cast<opmath_t>(1.0f - std::pow(beta1, *step_count));
-    const opmath_t bias_correction2 =
-        static_cast<opmath_t>(1.0f - std::pow(beta2, *step_count));
-    const opmath_t step_size =
-        static_cast<opmath_t>(lr_value / bias_correction1);
-    const opmath_t bias_correction2_sqrt = std::sqrt(bias_correction2);
-    const double lr_weight_decay = lr_value * weight_decay;
-
+    const bool all_aligned{
+        init_args<depth>(args, tlAddress, chunk_idx, chunk_size, tensor_loc)};
     if ((n % kILP == 0) && (chunk_size % kILP == 0) && all_aligned) {
-      for (int i_start = item_id;
+      for (int64_t i_start = item_id;
            i_start * kILP < n && i_start * kILP < chunk_size;
            i_start += local_range) {
 #pragma unroll
         for (int i = 0; i < depth; i++) {
           load_store(r_args[i], args[i], 0, i_start);
         }
-        adam_math<scalar_type, opmath_t, depth, mode, amsgrad>(
+        adam_math<scalar_type, opmath_t, depth, adam_mode, amsgrad>(
             r_args,
-            step_count,
+            lr_double,
             beta1,
             beta2,
             weight_decay,
@@ -172,11 +158,7 @@ struct FusedAdamMathFunctor {
             grad_scale_ptr,
             found_inf_ptr,
             bias_correction1,
-            step_size,
-            lr_weight_decay,
-            bias_correction2,
             bias_correction2_sqrt);
-
 #pragma unroll
         for (int i = 0; i < depth; i++) {
           if (i != kGradIdx || grad_scale_ptr) {
@@ -185,13 +167,13 @@ struct FusedAdamMathFunctor {
         }
       }
     } else {
-      for (int i_start = 0; i_start < n && i_start < chunk_size;
+      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
            i_start += local_range * kILP) {
         load_args<depth>(
             r_args, args, i_start, chunk_size, n, item_id, local_range);
-        adam_math<scalar_type, opmath_t, depth, mode, amsgrad>(
+        adam_math<scalar_type, opmath_t, depth, adam_mode, amsgrad>(
             r_args,
-            step_count,
+            lr_double,
             beta1,
             beta2,
             weight_decay,
@@ -200,9 +182,6 @@ struct FusedAdamMathFunctor {
             grad_scale_ptr,
             found_inf_ptr,
             bias_correction1,
-            step_size,
-            lr_weight_decay,
-            bias_correction2,
             bias_correction2_sqrt);
 #pragma unroll
         for (int i = 0; i < depth; i++) {

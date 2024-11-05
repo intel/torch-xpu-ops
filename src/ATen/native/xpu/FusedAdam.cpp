@@ -8,8 +8,7 @@
 #include <ATen/ops/_fused_adam_native.h>
 #endif
 
-#include <ATen/native/xpu/sycl/fused_adam_amsgrad_impl.h>
-#include <ATen/native/xpu/sycl/fused_adam_impl.h>
+#include <ATen/native/xpu/sycl/FusedAdamKernels.h>
 
 namespace at {
 namespace native {
@@ -35,7 +34,7 @@ void _fused_adam_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adam_amsgrad_xpu_impl_(
+    xpu::fused_adam_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -55,7 +54,7 @@ void _fused_adam_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs}),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adam_xpu_impl_(
+    xpu::fused_adam_kernel(
         params,
         grads,
         exp_avgs,
@@ -89,7 +88,6 @@ void _fused_adam_kernel_xpu_(
     const bool maximize,
     const c10::optional<at::Tensor>& grad_scale,
     const c10::optional<at::Tensor>& found_inf) {
-  // lr could be cpu tensor, fall back then
   if (lr.is_cpu()) {
     _fused_adam_kernel_xpu_(
         params,
@@ -110,7 +108,19 @@ void _fused_adam_kernel_xpu_(
     return;
   }
 
+  // Manually check devices since we specify no device check in
+  // native_functions.yaml
   Device param_device = params[0].device();
+  if (grad_scale != std::nullopt) {
+    TORCH_CHECK(
+        grad_scale->device() == param_device,
+        "grad_scale must be on the same GPU device as the params");
+  }
+  if (found_inf != std::nullopt) {
+    TORCH_CHECK(
+        found_inf->device() == param_device,
+        "found_inf must be on the same GPU device as the params");
+  }
   TORCH_CHECK(
       lr.device() == param_device,
       "lr must be on the same GPU device as the params");
@@ -120,7 +130,7 @@ void _fused_adam_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adam_amsgrad_xpu_impl_(
+    xpu::fused_adam_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -140,7 +150,7 @@ void _fused_adam_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs}),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adam_xpu_impl_(
+    xpu::fused_adam_kernel(
         params,
         grads,
         exp_avgs,

@@ -3507,12 +3507,5 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
-
-        # AssertionError: 47616 not less than or equal to 47104
-        "test_peak_memory_foreach_ASGD_xpu_float32",
-        # AssertionError: 27136 not less than or equal to 26624
-        "test_peak_memory_foreach_Adamax_xpu_float32",
-        # AssertionError: 16896 not less than or equal to 16384
-        "test_peak_memory_foreach_SGD_xpu_float32",
     ),
 }

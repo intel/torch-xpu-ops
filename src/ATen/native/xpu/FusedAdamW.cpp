@@ -8,8 +8,7 @@
 #include <ATen/ops/_fused_adamw_native.h>
 #endif
 
-#include <ATen/native/xpu/sycl/fused_adamw_amsgrad_impl.h>
-#include <ATen/native/xpu/sycl/fused_adamw_impl.h>
+#include <ATen/native/xpu/sycl/FusedAdamWKernels.h>
 
 namespace at {
 namespace native {
@@ -35,7 +34,7 @@ void _fused_adamw_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adamw_amsgrad_xpu_impl_(
+    xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -55,7 +54,7 @@ void _fused_adamw_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs}),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adamw_xpu_impl_(
+    xpu::fused_adamw_kernel(
         params,
         grads,
         exp_avgs,
@@ -117,7 +116,7 @@ void _fused_adamw_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs}),
         "params, grads, exp_avgs, exp_avg_sqs, and max_exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adamw_amsgrad_xpu_impl_(
+    xpu::fused_adamw_amsgrad_kernel(
         params,
         grads,
         exp_avgs,
@@ -137,7 +136,7 @@ void _fused_adamw_kernel_xpu_(
         at::native::check_fast_path_restrictions(
             {params, grads, exp_avgs, exp_avg_sqs}),
         "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device, and layout");
-    native::xpu::_fused_adamw_xpu_impl_(
+    xpu::fused_adamw_kernel(
         params,
         grads,
         exp_avgs,
