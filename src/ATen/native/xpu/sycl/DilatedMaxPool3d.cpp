@@ -12,6 +12,7 @@
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>

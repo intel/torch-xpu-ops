@@ -8,8 +8,10 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/UpSample.h>
 #include <ATen/ops/empty.h>
+
+#include <ATen/native/xpu/UpSample.h>
+#include <ATen/native/xpu/sycl/UpSampleNearest3dKernels.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {

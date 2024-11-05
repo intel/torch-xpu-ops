@@ -270,6 +270,23 @@ static scalar_t upsample_get_value_bounded(
   return data[batch][channel][access_y][access_x];
 }
 
+template <typename scalar_t, typename accscalar_t>
+static void upsample_increment_value_bounded(
+    PackedTensorAccessor64<scalar_t, 4>& data,
+    int batch,
+    int channel,
+    int height,
+    int width,
+    int y,
+    int x,
+    accscalar_t value) {
+  int access_y = max(min(y, height - 1), 0);
+  int access_x = max(min(x, width - 1), 0);
+  atomicAdd(
+      (sycl_global_ptr<scalar_t>)(&data[batch][channel][access_y][access_x]),
+      static_cast<scalar_t>(value));
+}
+
 [[maybe_unused]] inline std::array<int64_t, 3> upsample_1d_common_check(
     IntArrayRef input_size,
     IntArrayRef output_size) {
