@@ -16,6 +16,7 @@
 #include <ATen/ops/narrow_native.h>
 #endif
 
+#include <ATen/native/transformers/sycl/AttentionKernels.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
@@ -403,7 +404,7 @@ static Tensor NestedTensor_batch_offsets_from_size_tensor(
   return offsets;
 }
 
-TORCH_XPU_API void _transform_bias_rescale_qkv_kernel(
+void _transform_bias_rescale_qkv_kernel(
     const Tensor& qkv,
     const Tensor& qkv_bias,
     const int64_t num_head,

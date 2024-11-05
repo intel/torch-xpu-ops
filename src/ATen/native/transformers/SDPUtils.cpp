@@ -4,16 +4,6 @@
 
 namespace sdp {
 
-inline bool xetla_supported(sdp_params const& params, bool debug) {
-  bool is_supported = false;
-  if (!is_supported) {
-    if (debug) {
-      TORCH_WARN_ONCE("Your Pytorch version currently doesn't support xetla.");
-    }
-  }
-  return is_supported;
-}
-
 bool check_all_tensors_on_device(sdp_params const& params, bool debug) {
   // Check that all tensors are on the GPU device
   // This should be handled by the stub dispatch, but whe call
@@ -41,11 +31,10 @@ inline bool check_head_dim(sdp_params const& params, bool debug) {
   return true;
 }
 
-bool use_mem_efficient_attention(sdp::sdp_params params, bool debug) {
+bool can_use_mem_efficient_attention(sdp::sdp_params params, bool debug) {
   //  Define gate functions that determine if a flash kernel can be ran
   constexpr auto general_constraints =
       array_of<bool (*)(sdp_params const&, bool)>(
-          xetla_supported,
           sdp::check_runtime_disabled_mem_efficient,
           check_all_tensors_on_device,
           sdp::check_tensor_shapes,

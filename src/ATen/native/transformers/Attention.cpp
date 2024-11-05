@@ -14,8 +14,8 @@
 #include <ATen/ops/split_native.h>
 #endif
 
-#include <ATen/native/transformers/xpu/sdp_utils.h>
-#include <ATen/native/transformers/xpu/sycl/AttentionKernels.h>
+#include <ATen/native/transformers/SDPUtils.h>
+#include <ATen/native/transformers/sycl/AttentionKernels.h>
 
 #include <comm/SYCLContext.h>
 
@@ -38,9 +38,16 @@ std::tuple<Tensor, Tensor, Tensor> transform_bias_rescale_qkv_xpu(
   auto T = qkv.is_nested() ? native::NestedTensor_get_max_size(
                                  *native::get_nested_tensor_impl(qkv))[0]
                            : qkv.size(1);
+  if (qkv.is_nested()) {
+    // Don't mess with non-nested case for now since it's not set up to fiddle
+    // with mask size.
 
-  // qkv_bias size should be same with finall linear projection layer, which
-  // size is 3 * D
+    // Round T up to next multiple of 8 so as to be able to utilize Tensor
+    // cores. Otherwise, sometimes with padding, *no* row will have the maximum
+    // sequence length and so we'll have a non-divisible-by-8 dimension even if
+    // the model author chose a multiple of 8.
+    T = T + (8 - (T % 8)) % 8;
+  }
   auto _3D = qkv_bias.size(0);
   auto D = _3D / 3;
   TORCH_CHECK(D % num_head == 0);
@@ -49,7 +56,7 @@ std::tuple<Tensor, Tensor, Tensor> transform_bias_rescale_qkv_xpu(
   // q_k_v B T 3D -> 3, B, num_head, T, dim_per_head
   auto q_k_v = at::empty({3, B, num_head, T, dim_per_head}, qkv_bias.options());
 
-  native::xpu::_transform_bias_rescale_qkv_kernel(
+  xpu::_transform_bias_rescale_qkv_kernel(
       qkv, qkv_bias, num_head, q_k_v, B, T, D, dim_per_head);
 
   auto q_k_v_s =
@@ -104,7 +111,7 @@ int64_t _fused_sdp_choice_xpu(
   // The statements will be printed when debug is true
   bool print_debug = false;
   sdp::SDPBackend backend =
-      sdp::use_mem_efficient_attention(kernel_params, print_debug)
+      sdp::can_use_mem_efficient_attention(kernel_params, print_debug)
       ? sdp::SDPBackend::efficient_attention
       : sdp::SDPBackend::math;
   if (backend == sdp::SDPBackend::error) {
