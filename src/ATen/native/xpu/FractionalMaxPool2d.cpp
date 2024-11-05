@@ -15,8 +15,8 @@ TORCH_IMPL_FUNC(fractional_max_pool2d_out_xpu)
  const Tensor& randomSamples,
  const Tensor& output,
  const Tensor& indices) {
-  at::native::xpu::fractional_max_pool2d_out_kernel(
-      output, indices, input, pool_size, output_size, randomSamples);
+  xpu::fractional_max_pool2d_kernel(
+      input, pool_size, output_size, randomSamples, output, indices);
 }
 
 TORCH_IMPL_FUNC(fractional_max_pool2d_backward_xpu)
@@ -26,8 +26,8 @@ TORCH_IMPL_FUNC(fractional_max_pool2d_backward_xpu)
  IntArrayRef output_size,
  const Tensor& indices,
  const Tensor& gradInput) {
-  at::native::xpu::fractional_max_pool2d_backward_kernel(
-      gradInput, gradOutput, input, pool_size, output_size, indices);
+  xpu::fractional_max_pool2d_backward_kernel(
+      gradOutput, input, pool_size, output_size, indices, gradInput);
 }
 
 } // namespace at::native

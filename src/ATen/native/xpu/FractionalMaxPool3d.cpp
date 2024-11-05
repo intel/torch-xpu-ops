@@ -25,7 +25,7 @@ TORCH_IMPL_FUNC(fractional_max_pool3d_out_xpu)
  int64_t inputW,
  const Tensor& output,
  const Tensor& indices) {
-  xpu::fractional_max_pool3d_out_kernel(
+  xpu::fractional_max_pool3d_kernel(
       input,
       poolSizeT,
       poolSizeH,
@@ -45,25 +45,28 @@ TORCH_IMPL_FUNC(fractional_max_pool3d_out_xpu)
 
 Tensor& fractional_max_pool3d_backward_out_xpu(
     const Tensor& grad_output,
-    const Tensor& self,
-    IntArrayRef kernel_size,
+    const Tensor& input,
+    IntArrayRef pool_size,
     IntArrayRef output_size,
     const Tensor& indices,
     Tensor& grad_input) {
-  xpu::fractional_max_pool3d_backward_out_kernel(
-      grad_input, grad_output, self, kernel_size, output_size, indices);
+  globalContext().alertNotDeterministic(
+      "fractional_max_pool3d_backward_out_xpu");
+  xpu::fractional_max_pool3d_backward_kernel(
+      grad_input, grad_output, input, output_size, indices);
   return grad_input;
 }
 
 Tensor fractional_max_pool3d_backward_xpu(
     const Tensor& grad_output,
-    const Tensor& self,
-    IntArrayRef kernel_size,
+    const Tensor& input,
+    IntArrayRef pool_size,
     IntArrayRef output_size,
     const Tensor& indices) {
-  Tensor grad_input = at::empty({0}, self.options());
-  xpu::fractional_max_pool3d_backward_out_kernel(
-      grad_input, grad_output, self, kernel_size, output_size, indices);
+  globalContext().alertNotDeterministic("fractional_max_pool3d_backward_xpu");
+  Tensor grad_input = at::empty({0}, input.options());
+  xpu::fractional_max_pool3d_backward_kernel(
+      grad_input, grad_output, input, output_size, indices);
   return grad_input;
 }
 
