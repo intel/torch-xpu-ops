@@ -3,7 +3,6 @@
 #include <ATen/NumericUtils.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/GRUFusedCellKernels.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <comm/SYCLContext.h>
 
