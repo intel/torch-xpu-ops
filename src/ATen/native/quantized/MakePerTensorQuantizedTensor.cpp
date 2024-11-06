@@ -10,7 +10,7 @@
 #include <ATen/ops/_empty_per_channel_affine_quantized.h>
 #endif
 
-#include <ATen/native/quantized/sycl/MakePerTensorQuantizedTensorKernel.h>
+#include <ATen/native/quantized/sycl/MakePerTensorQuantizedTensorKernels.h>
 
 namespace at {
 namespace native {
@@ -24,13 +24,7 @@ Tensor make_per_tensor_quantized_tensor_xpu(
       self.options().dtype(toQIntType(self.scalar_type())),
       scale,
       zero_point);
-
-  auto iter = TensorIteratorConfig()
-                  .check_all_same_dtype(false)
-                  .add_output(dst)
-                  .add_input(self)
-                  .build();
-  native::xpu::assign_quantized_tensor_kernel(iter);
+  xpu::assign_quantized_tensor_kernel(self, dst);
   return dst;
 }
 
@@ -45,13 +39,7 @@ Tensor make_per_channel_quantized_tensor_xpu(
       zero_points,
       axis,
       self.options().dtype(toQIntType(self.scalar_type())));
-
-  auto iter = TensorIteratorConfig()
-                  .check_all_same_dtype(false)
-                  .add_output(dst)
-                  .add_input(self)
-                  .build();
-  native::xpu::assign_quantized_tensor_kernel(iter);
+  xpu::assign_quantized_tensor_kernel(self, dst);
   return dst;
 }
 

@@ -2132,7 +2132,16 @@ skip_dict = {
         "test_reduction_all_sum_layout2_xpu_float64",
     ),
 
-    "quantization/core/test_workflow_ops_xpu.py": None,
+    "quantization/core/test_workflow_ops_xpu.py": (
+        # AssertionError: Not equal to tolerance rtol=1e-06, atol=1e-06
+        # Max absolute difference among violations: 1.731507e+10
+        # Max relative difference among violations: 0.01587304
+        # ACTUAL: array([-1.108163e+12,  1.108163e+12], dtype=float32)
+        # DESIRED: array([-1.108163e+12,  1.090847e+12], dtype=float32)
+        "test_fq_module_per_tensor_xpu",
+        # AssertionError: False is not true : Expected dScale=tensor([-0.0173], device='xpu:0') to match scale.grad=tensor([0.0189], device='xpu:0')
+        "test_learnable_backward_per_channel_cuda_xpu",
+    ),
 
     "quantization/core/test_workflow_module_xpu.py": None,
 

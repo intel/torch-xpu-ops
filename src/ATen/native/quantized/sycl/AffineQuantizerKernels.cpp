@@ -13,6 +13,7 @@
 #include <ATen/ops/lt.h>
 #endif
 
+#include <ATen/native/quantized/sycl/AffineQuantizerKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 
@@ -185,8 +186,9 @@ void quantize_tensor_per_channel_float_qparams_kernel(
 
 template <typename scalar_t>
 struct DequantizerTensorPerChannelFloatQparamsFunctor {
-  float operator()(scalar_t value, double scale, int64_t zero_point) const {
-    return static_cast<float>(value.val_ - zero_point) * scale;
+  float operator()(scalar_t value, float scale, float zero_point) const {
+    return static_cast<float>(static_cast<float>(value.val_) - zero_point) *
+        scale;
   }
 
   DequantizerTensorPerChannelFloatQparamsFunctor() {}
@@ -272,7 +274,8 @@ void quantize_tensor_per_tensor_affine_kernel(
 template <typename scalar_t>
 struct DequantizerTensorPerTensorAffineFunctor {
   float operator()(scalar_t value) const {
-    return static_cast<float>(value.val_ - zero_point_) * scale_;
+    return static_cast<float>(static_cast<float>(value.val_) - zero_point_) *
+        scale_;
   }
 
   DequantizerTensorPerTensorAffineFunctor(double scale, int64_t zero_point)

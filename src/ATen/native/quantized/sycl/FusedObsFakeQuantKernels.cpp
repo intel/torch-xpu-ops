@@ -6,6 +6,7 @@
 #include <ATen/ops/aminmax.h>
 #endif
 
+#include <ATen/native/quantized/sycl/FusedObsFakeQuantKernels.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <comm/SYCLContext.h>
 

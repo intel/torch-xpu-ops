@@ -6634,11 +6634,23 @@
     XPU: make_per_channel_quantized_tensor_xpu
   autogen: _make_per_channel_quantized_tensor.out
 
+- func: fake_quantize_per_tensor_affine_cachemask(Tensor self, float scale, int zero_point, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
+  variants: function
+  dispatch:
+    XPU: fake_quantize_per_tensor_affine_cachemask
+  autogen: fake_quantize_per_tensor_affine_cachemask.out
+
 - func: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(Tensor self, Tensor scale, Tensor zero_point, Tensor fake_quant_enabled, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
   variants: function
   dispatch:
     XPU: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
   autogen: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams.out
+
+- func: fake_quantize_per_channel_affine_cachemask(Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
+  variants: function
+  dispatch:
+    XPU: fake_quantize_per_channel_affine_cachemask
+  autogen: fake_quantize_per_channel_affine_cachemask.out
 
 - func: _fake_quantize_learnable_per_tensor_affine(Tensor self, Tensor scale, Tensor zero_point, int quant_min, int quant_max, float grad_factor=1.0) -> Tensor
   variants: function
