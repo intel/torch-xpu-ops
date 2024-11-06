@@ -7182,6 +7182,11 @@
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
 
+- func: record_stream(Tensor(a!) self, Stream s) -> ()
+  variants: method
+  dispatch:
+    XPU: record_stream_xpu
+
 - func: i0(Tensor self) -> Tensor
   structured_delegate: i0.out
   variants: function, method
