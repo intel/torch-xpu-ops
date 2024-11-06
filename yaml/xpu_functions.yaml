@@ -13,6 +13,9 @@ supported:
   - adaptive_max_pool2d_backward
   - adaptive_max_pool2d.out
   - adaptive_max_pool2d
+  - fractional_max_pool3d.output
+  - fractional_max_pool3d_backward
+  - fractional_max_pool3d_backward.grad_input
   - cumsum
   - cumsum.out
   - cumsum_
@@ -390,6 +393,7 @@ supported:
   - max_pool2d_with_indices_backward
   - max_pool2d_with_indices_backward.grad_input
   - embedding_dense_backward
+  - embedding_renorm_
   - _softmax.out
   - _softmax
   - _softmax_backward_data.out
@@ -555,6 +559,8 @@ supported:
   - _upsample_nearest_exact2d_backward.grad_input
   - upsample_bicubic2d
   - upsample_bicubic2d.out
+  - upsample_bicubic2d_backward
+  - upsample_bicubic2d_backward.grad_input
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -618,10 +624,16 @@ supported:
   - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
+  - grid_sampler_3d
+  - grid_sampler_3d_backward
   - acos
   - acos_
   - acos.out
   - acosh
+  - multi_margin_loss.out
+  - multi_margin_loss
+  - multi_margin_loss_backward.grad_input
+  - multi_margin_loss_backward
   - acosh_
   - acosh.out
   - addr
@@ -722,18 +734,14 @@ supported:
   - _weight_norm_interface
   - _weight_norm_interface_backward
   - range.out
-  - _fused_moving_avg_obs_fq_helper
-  - _fake_quantize_learnable_per_channel_affine
-  - _fake_quantize_learnable_per_channel_affine_backward
-  - _fake_quantize_learnable_per_tensor_affine
-  - _fake_quantize_learnable_per_tensor_affine_backward
-  - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
-  - _empty_affine_quantized
-  - _empty_per_channel_affine_quantized
-  - quantize_per_channel
-  - quantize_per_tensor
-  - quantize_per_tensor_dynamic
-  - quantize_per_tensor.tensor_qparams
-  - dequantize.self
-  - _make_per_tensor_quantized_tensor
-  - _make_per_channel_quantized_tensor
+  - tril_indices
+  - tril_indices.out
+  - triu_indices
+  - triu_indices.out
+  - _compute_linear_combination
+  - _compute_linear_combination.out
+  - _embedding_bag_dense_backward
+  - _embedding_bag_per_sample_weights_backward
+  - put_
+  - take
+  - take.out
