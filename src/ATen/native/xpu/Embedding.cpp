@@ -35,6 +35,5 @@ Tensor& embedding_renorm_xpu_(
       self, indices, max_norm, norm_type);
 }
 
-
 } // namespace native
 } // namespace at

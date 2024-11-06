@@ -94,4 +94,26 @@ void xlogy_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel_with_scalars(iter, XlogyFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct Xlog1pyFunctor {
+  scalar_t operator()(scalar_t x, scalar_t y) const {
+    if (at::_isnan(y)) {
+      return NAN;
+    }
+    if (x == 0) {
+      return 0;
+    }
+    return x * std::log1p(y);
+  }
+};
+
+void xlog1py_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "xlog1py_xpu",
+      [&]() { gpu_kernel_with_scalars(iter, Xlog1pyFunctor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu

@@ -57,6 +57,14 @@ Tensor _s_binomial_xpu(
   return ret;
 }
 
+Tensor _s_gamma_xpu(const Tensor& alpha, c10::optional<Generator> gen_) {
+  auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+      gen_, at::xpu::detail::getDefaultXPUGenerator());
+  Tensor ret = at::empty(alpha.sizes(), alpha.options());
+  xpu::launch_gamma_kernel(ret, alpha, gen);
+  return ret;
+}
+
 Tensor _sample_dirichlet_xpu(
     const Tensor& alpha,
     std::optional<Generator> generator) {
@@ -71,6 +79,17 @@ Tensor _sample_dirichlet_xpu(
                   .add_input(gamma_sum)
                   .build();
   xpu::launch_dirichlet_kernel(iter);
+  return ret;
+}
+
+Tensor _standard_gamma_grad_xpu(const Tensor& self, const Tensor& output) {
+  Tensor ret = at::empty(self.sizes(), self.options());
+  TensorIterator iter = TensorIteratorConfig()
+                            .add_output(ret)
+                            .add_input(self)
+                            .add_input(output)
+                            .build();
+  xpu::launch_standard_gamma_grad_kernel(iter);
   return ret;
 }
 

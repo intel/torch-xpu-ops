@@ -19,6 +19,8 @@ TORCH_XPU_API void launch_gamma_kernel(
     const Tensor& alpha,
     XPUGeneratorImpl* gen);
 
+TORCH_XPU_API void launch_standard_gamma_grad_kernel(TensorIteratorBase& iter);
+
 TORCH_XPU_API void launch_dirichlet_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void launch_dirichlet_grad_kernel(TensorIteratorBase& iter);

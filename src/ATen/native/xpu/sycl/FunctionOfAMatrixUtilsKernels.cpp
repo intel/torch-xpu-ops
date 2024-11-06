@@ -58,8 +58,7 @@ struct ComputeLinearCombinationInternalKernelFunctor {
 
     auto* RESTRICT out_data =
         reinterpret_cast<scalar_t*>(out_ptr_ + offsets[0]);
-    auto* RESTRICT in_data =
-        reinterpret_cast<scalar_t*>(in_ptr_ + offsets[1]);
+    auto* RESTRICT in_data = reinterpret_cast<scalar_t*>(in_ptr_ + offsets[1]);
     using primitive_t = typename scalar_value_type<scalar_t>::type;
     auto* RESTRICT coeff_data =
         reinterpret_cast<primitive_t*>(coeff_ptr_ + offsets[2]);

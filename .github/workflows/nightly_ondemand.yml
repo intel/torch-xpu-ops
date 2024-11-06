@@ -186,6 +186,7 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test

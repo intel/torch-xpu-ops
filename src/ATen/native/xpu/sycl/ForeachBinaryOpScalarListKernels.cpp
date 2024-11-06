@@ -137,6 +137,14 @@ FOREACH_BINARY_SCALARLIST_KERNEL(add) {
   return all_types_complex_bool_half_bfloat16<std::plus>(tensors, scalars);
 }
 
+FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16_<std::minus>(tensors, scalars);
+}
+
+FOREACH_BINARY_SCALARLIST_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16<std::minus>(tensors, scalars);
+}
+
 FOREACH_BINARY_SCALARLIST_INPLACE_KERNEL(mul) {
   return all_types_complex_bool_half_bfloat16_<std::multiplies>(
       tensors, scalars);

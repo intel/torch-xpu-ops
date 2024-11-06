@@ -270,4 +270,40 @@ void log_ndtr_kernel(TensorIteratorBase& iter) {
   });
 }
 
+template <typename scalar_t>
+struct EntrFunctor {
+  scalar_t operator()(scalar_t x) const {
+    if (at::_isnan(x)) {
+      return x;
+    } else if (x > 0) {
+      return -x * std::log(x);
+    } else if (x == 0) {
+      return 0;
+    }
+    return static_cast<scalar_t>(-std::numeric_limits<scalar_t>::infinity());
+  }
+};
+
+void entr_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "entr_xpu",
+      [&]() { gpu_kernel(iter, EntrFunctor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct ErfcxFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_erfcx(a);
+  }
+};
+
+void erfcx_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "erfcx_xpu", [&]() {
+    gpu_kernel(iter, ErfcxFunctor<scalar_t>());
+  });
+}
+
 } // namespace at::native::xpu

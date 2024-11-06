@@ -145,6 +145,14 @@ FOREACH_BINARY_SCALAR_KERNEL(add) {
   return all_types_complex_bool_half_bfloat16<std::plus>(tensors, scalar);
 }
 
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16_<std::minus>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16<std::minus>(tensors, scalar);
+}
+
 FOREACH_BINARY_SCALAR_INPLACE_KERNEL(mul) {
   return all_types_complex_bool_half_bfloat16_<std::multiplies>(
       tensors, scalar);
@@ -187,7 +195,8 @@ FOREACH_BINARY_SCALAR_KERNEL(pow) {
 }
 
 FOREACH_BINARY_SCALAR_KERNEL(pow_list) {
-  return all_types_complex_half_bfloat16<reverse_power_functor>(tensors, scalar);
+  return all_types_complex_half_bfloat16<reverse_power_functor>(
+      tensors, scalar);
 }
 
 } // namespace at::native::xpu
