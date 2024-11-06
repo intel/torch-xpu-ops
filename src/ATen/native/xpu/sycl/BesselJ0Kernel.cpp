@@ -1,12 +1,8 @@
-#include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
-#include <ATen/NumericUtils.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <c10/core/Scalar.h>
-#include <c10/util/complex.h>
-#include <comm/XPUMathCompat.h>
 
 #include <ATen/native/xpu/sycl/BesselJ0Kernel.h>
 
@@ -25,4 +21,4 @@ void bessel_j0_kernel(TensorIteratorBase& iter) {
   });
 }
 
-}
+} // namespace at::native::xpu

@@ -58,4 +58,11 @@ TORCH_XPU_API void index_copy_kernel(
     const int64_t self_dim_size,
     const int64_t self_dim_stride);
 
+TORCH_XPU_API void put_kernel(
+    TensorIterator& iter,
+    const TensorBase& output,
+    const bool accumulate);
+
+TORCH_XPU_API void take_kernel(TensorIterator& iter, const TensorBase& input);
+
 } // namespace at::native::xpu

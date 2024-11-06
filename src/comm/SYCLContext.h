@@ -1,6 +1,7 @@
 #pragma once
 
 #include <comm/DeviceProperties.h>
+#include <comm/Macros.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 

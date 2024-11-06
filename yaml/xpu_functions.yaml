@@ -13,6 +13,9 @@ supported:
   - adaptive_max_pool2d_backward
   - adaptive_max_pool2d.out
   - adaptive_max_pool2d
+  - fractional_max_pool3d.output
+  - fractional_max_pool3d_backward
+  - fractional_max_pool3d_backward.grad_input
   - cumsum
   - cumsum.out
   - cumsum_
@@ -556,6 +559,8 @@ supported:
   - _upsample_nearest_exact2d_backward.grad_input
   - upsample_bicubic2d
   - upsample_bicubic2d.out
+  - upsample_bicubic2d_backward
+  - upsample_bicubic2d_backward.grad_input
   - bincount
   - _embedding_bag
   - _embedding_bag_forward_only
@@ -619,10 +624,16 @@ supported:
   - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
+  - grid_sampler_3d
+  - grid_sampler_3d_backward
   - acos
   - acos_
   - acos.out
   - acosh
+  - multi_margin_loss.out
+  - multi_margin_loss
+  - multi_margin_loss_backward.grad_input
+  - multi_margin_loss_backward
   - acosh_
   - acosh.out
   - addr
@@ -731,3 +742,6 @@ supported:
   - _compute_linear_combination.out
   - _embedding_bag_dense_backward
   - _embedding_bag_per_sample_weights_backward
+  - put_
+  - take
+  - take.out
