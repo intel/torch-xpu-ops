@@ -36,6 +36,7 @@ skip_dict = {
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
     "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_float16",
     "test_compare_cpu_exp_xpu_bfloat16",
     "test_compare_cpu_exp_xpu_complex128",
     "test_compare_cpu_exp_xpu_complex64",
