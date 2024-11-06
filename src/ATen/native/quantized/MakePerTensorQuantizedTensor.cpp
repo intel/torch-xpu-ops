@@ -10,7 +10,7 @@
 #include <ATen/ops/_empty_per_channel_affine_quantized.h>
 #endif
 
-#include <ATen/native/quantized/xpu/sycl/MakePerTensorQuantizedTensorKernel.h>
+#include <ATen/native/quantized/sycl/MakePerTensorQuantizedTensorKernel.h>
 
 namespace at {
 namespace native {

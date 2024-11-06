@@ -2,7 +2,7 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/quantized/FakeQuantAffine.h>
 
-#include <ATen/native/quantized/xpu/sycl/FakeQuantizeCoreKernels.h>
+#include <ATen/native/quantized/sycl/FakeQuantizeCoreKernels.h>
 
 namespace at {
 namespace native {

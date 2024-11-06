@@ -9,7 +9,7 @@
 #include <ATen/ops/ones_like.h>
 #endif
 
-#include <ATen/native/quantized/xpu/sycl/FusedObsFakeQuantKernels.h>
+#include <ATen/native/quantized/sycl/FusedObsFakeQuantKernels.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
 
 namespace at {
