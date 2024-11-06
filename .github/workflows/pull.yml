@@ -41,7 +41,7 @@ jobs:
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/windows.yml
     with: 
-      runner: Windows_CI
+      runner: windows_build_vm
 
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
