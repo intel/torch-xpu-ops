@@ -119,6 +119,9 @@ skip_dict = {
         # Cuda skipped it
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
 
+        # Cuda XFAIL (stock pytorch commit: e7cf7d0)
+        "test_non_standard_bool_values_argsort_xpu_bool",
+
         # Unexpected success
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
 
