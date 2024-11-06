@@ -739,6 +739,7 @@ class XPUPatchForImport:
         self.test_package = (
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
+            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/quantization",
             os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
         )
         self.patch_test_case = patch_test_case
@@ -950,6 +951,7 @@ class XPUPatchForImport:
         ]
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
+        common_cuda.TEST_CUDNN_VERSION = 0
         cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
 
