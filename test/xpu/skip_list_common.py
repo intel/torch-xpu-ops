@@ -2118,6 +2118,42 @@ skip_dict = {
         "test_reduction_all_sum_layout2_xpu_float64",
     ),
 
+    "quantization/core/test_workflow_ops_xpu.py": (
+        # AssertionError: Not equal to tolerance rtol=1e-06, atol=1e-06
+        # Max absolute difference among violations: 1.731507e+10
+        # Max relative difference among violations: 0.01587304
+        # ACTUAL: array([-1.108163e+12,  1.108163e+12], dtype=float32)
+        # DESIRED: array([-1.108163e+12,  1.090847e+12], dtype=float32)
+        "test_fq_module_per_tensor_xpu",
+        # AssertionError: False is not true : Expected dScale=tensor([-0.0173], device='xpu:0') to match scale.grad=tensor([0.0189], device='xpu:0')
+        "test_learnable_backward_per_channel_cuda_xpu",
+    ),
+
+    "quantization/core/test_workflow_module_xpu.py": None,
+
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend
+        "test_compare_per_channel_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend.
+        "test_compare_per_tensor_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_cuda_quantization_does_not_pin_memory_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_per_channel_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_tensor_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::q_scale' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_index_put_impl_' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_put_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::index_select' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_select_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_masked_fill_cuda_xpu",
+    ),
+
     "nn/test_packed_sequence_xpu.py": (
         # test case porting issue
         "test_to and not test_to_memory and not test_total",
