@@ -3820,6 +3820,17 @@
   dispatch:
     XPU: linalg_vector_norm_out
 
+- func: frexp.Tensor(Tensor self) -> (Tensor mantissa, Tensor exponent)
+  variants: method, function
+  dispatch:
+    CompositeExplicitAutograd: frexp
+  tags: pointwise
+
+- func: frexp.Tensor_out(Tensor self, *, Tensor(a!) mantissa, Tensor(b!) exponent) -> (Tensor(a!) mantissa, Tensor(b!) exponent)
+  dispatch:
+    XPU: frexp_out
+  tags: pointwise
+
 - func: clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor
   variants: function, method
   dispatch:

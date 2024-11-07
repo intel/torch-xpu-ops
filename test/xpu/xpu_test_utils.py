@@ -74,6 +74,7 @@ _xpu_computation_op_list = [
     "exponential",
     "fill",
     "fmod",
+    "frexp",
     "gcd",
     "ge",
     "gelu",

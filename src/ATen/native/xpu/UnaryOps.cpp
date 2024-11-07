@@ -46,6 +46,7 @@ REGISTER_XPU_DISPATCH(log1p_stub, &xpu::log1p_kernel);
 REGISTER_XPU_DISPATCH(log2_stub, &xpu::log2_kernel);
 REGISTER_XPU_DISPATCH(sqrt_stub, &xpu::sqrt_kernel);
 REGISTER_XPU_DISPATCH(rsqrt_stub, &xpu::rsqrt_kernel);
+REGISTER_XPU_DISPATCH(frexp_stub, &xpu::frexp_kernel);
 REGISTER_XPU_DISPATCH(tanh_stub, &xpu::tanh_kernel);
 REGISTER_XPU_DISPATCH(neg_stub, &xpu::neg_kernel);
 REGISTER_XPU_DISPATCH(logical_not_stub, &xpu::logical_not_kernel);

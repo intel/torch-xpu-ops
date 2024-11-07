@@ -254,4 +254,69 @@ void expm1_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, Expm1Functor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct FrexpFunctor {
+  std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
+    int32_t exponent;
+    scalar_t mantissa = std::frexp(a, &exponent);
+    return {mantissa, exponent};
+  }
+};
+
+void frexp_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      // The iter.dtype() here is the dtype of mantissa output.
+      // It's a floating point type and must be the same as the input's dtype.
+      iter.dtype(),
+      "frexp_xpu",
+      [&]() {
+        FrexpFunctor<scalar_t> f;
+        gpu_kernel_multiple_outputs(iter, f);
+      });
+}
+
+std::tuple<Tensor&, Tensor&> frexp_out(
+    const Tensor& self,
+    Tensor& mantissa,
+    Tensor& exponent) {
+  // torch.frexp is implemented for floating-point dtypes for now,
+  // should add support for integral dtypes in the future.
+  TORCH_CHECK(
+      at::isFloatingType(self.scalar_type()),
+      "torch.frexp() only supports floating-point dtypes");
+
+  TORCH_CHECK(
+      mantissa.dtype() == self.dtype(),
+      "torch.frexp() expects mantissa to have dtype ",
+      self.dtype(),
+      " but got ",
+      mantissa.dtype());
+  TORCH_CHECK(
+      exponent.dtype() == at::kInt,
+      "torch.frexp() expects exponent to have int dtype "
+      "but got ",
+      exponent.dtype());
+
+  auto iter = TensorIteratorConfig()
+                  .add_output(mantissa)
+                  .add_output(exponent)
+                  .add_input(self)
+                  .check_all_same_dtype(false)
+                  .set_check_mem_overlap(true)
+                  .build();
+
+  frexp_kernel(iter);
+  return std::tuple<Tensor&, Tensor&>(mantissa, exponent);
+}
+
+std::tuple<Tensor, Tensor> frexp(const Tensor& self) {
+  Tensor mantissa = at::empty_like(self);
+  Tensor exponent = at::empty_like(self, self.options().dtype(at::kInt));
+
+  frexp_out(self, mantissa, exponent);
+  return std::tuple<Tensor, Tensor>(mantissa, exponent);
+}
+
 } // namespace at::native::xpu
