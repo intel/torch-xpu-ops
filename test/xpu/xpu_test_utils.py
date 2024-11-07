@@ -216,6 +216,7 @@ _xpu_computation_op_list = [
     "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
+    "nn.functional.multi_head_attention_forward",
     "sigmoid",
     "logsigmoid",
     "sgn",

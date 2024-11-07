@@ -213,10 +213,10 @@ void launch_standard_gamma_grad_kernel(TensorIteratorBase& iter) {
       iter.input_dtype(),
       "_standard_gamma_grad_xpu",
       [&] {
-    using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-    StandardGammaGradKernelFunctor<scalar_t, accscalar_t> f;
-    gpu_kernel(iter, f);
-  });
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        StandardGammaGradKernelFunctor<scalar_t, accscalar_t> f;
+        gpu_kernel(iter, f);
+      });
 }
 
 template <typename scalar_t>
