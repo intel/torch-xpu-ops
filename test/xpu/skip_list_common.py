@@ -24,9 +24,7 @@ skip_dict = {
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
-        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
 
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
@@ -425,9 +423,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/683
         "test_conj_view_addbmm_xpu_complex64",
         "test_neg_conj_view_addbmm_xpu_complex128",
-        # CPU fallback error: AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/271
-        "test_neg_view_nn_functional_rrelu_xpu_float64",
         ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         # https://github.com/intel/torch-xpu-ops/issues/254
         "test_conj_view___rmatmul___xpu_complex64",
@@ -1096,12 +1091,6 @@ skip_dict = {
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
-        # AssertionError: Tensor-likes are not close!
-        "test_RReLU_cuda",
-        "test_RReLU_no_batch_dim_cuda",
-        "test_RReLU_with_up_down_cuda",
-        # AssertionError: Scalars are not close!
-        "test_RReLU_with_up_down_scalar_cuda",
         # rnn fallback to cpu
         "test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
@@ -1917,9 +1906,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
-        "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
@@ -2418,11 +2404,6 @@ skip_dict = {
         "test_fn_gradgrad_addbmm_xpu_complex128",
         "test_inplace_grad_addbmm_xpu_complex128",
         "test_inplace_gradgrad_addbmm_xpu_complex128",
-        ### rrelu_xpu op is not implemented,try these cases after implementing rrelu.
-        "test_fn_grad_nn_functional_rrelu_xpu_float64",
-        "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_grad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
