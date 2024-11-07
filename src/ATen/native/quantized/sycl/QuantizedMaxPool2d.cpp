@@ -15,8 +15,7 @@
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
-#include <ATen/native/xpu/sycl/QuantizedMaxPool2d.h>
-
+#include <ATen/native/quantized/sycl/QuantizedMaxPool2d.h>
 namespace at::native::xpu {
 
 namespace {

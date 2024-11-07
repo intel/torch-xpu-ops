@@ -2133,8 +2133,11 @@ skip_dict = {
     ),
 
     "quantization/core/test_quantized_op_xpu.py": (
-        "test_qgelu",
-        "test_qrelu",
+        # AssertionError: Torch not compiled with CUDA enabled
+        "test_qgelu_xpu",
+        "test_qrelu_xpu",
+        # AttributeError: 'TestQuantizedOpsXPU' object has no attribute 'test_qsoftmax'
+        "test_qsoftmax_qnnpack_xpu",
     ),
 
     "quantization/core/test_workflow_ops_xpu.py": (

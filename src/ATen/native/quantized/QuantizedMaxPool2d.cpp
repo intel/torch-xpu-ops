@@ -1,7 +1,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Pool.h>
+#include <ATen/native/quantized/sycl/QuantizedMaxPool2d.h>
 #include <ATen/native/utils/ParamUtils.h>
-#include <ATen/native/xpu/sycl/QuantizedMaxPool2d.h>
 #include <comm/RegisterUtils.h>
 #include <torch/library.h>
 
