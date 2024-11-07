@@ -237,7 +237,6 @@ std::tuple<Tensor, Tensor> _euclidean_dist_backward(
     const Tensor& x1,
     const Tensor& x2,
     const Tensor& res) {
-  printf("_euclidean_dist_backward\n");
   if (!grad.defined()) {
     return std::tuple<Tensor, Tensor>(Tensor(), Tensor());
   }

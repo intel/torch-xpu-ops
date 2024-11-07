@@ -809,10 +809,8 @@ void mode_kernel_impl(
 
     auto values_info = getTensorInfo<scalar_t, int64_t>(values_transposed);
     auto indices_info = getTensorInfo<int64_t, int64_t>(indices_transposed);
-    printf("self 4\n");
     
     auto problem_values_ptr = contiguous.const_data_ptr<scalar_t>();
-    printf("self 5\n");
 
     ModeFusedKernelFunctor<scalar_t> kfn(
         problem_values_ptr,
