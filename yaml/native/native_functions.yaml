@@ -185,6 +185,25 @@
   tags: pointwise
 # multiply, alias for mul
 
+- func: mvlgamma.out(Tensor self, int p, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: mvlgamma_out
+  tags: pointwise
+
+- func: mvlgamma(Tensor self, int p) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma
+  tags: pointwise
+
+- func: mvlgamma_(Tensor(a!) self, int p) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma_
+  tags: pointwise
+
 - func: div.Tensor(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
@@ -2972,6 +2991,54 @@
   tags: core
 
 # Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool2d.output(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples, *, Tensor(a!) output, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: fractional_max_pool2d_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool2d(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: fractional_max_pool2d.output
+
+- func: fractional_max_pool2d_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] output_size, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: fractional_max_pool2d_backward_xpu
+
+- func: fractional_max_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] output_size, Tensor indices) -> Tensor
+  python_module: nn
+  structured_delegate: fractional_max_pool2d_backward.grad_input
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool3d.output(Tensor self, int[3] kernel_size, int[3] output_size, Tensor random_samples, *, Tensor(a!) output, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  precomputed:
+  - kernel_size -> int poolSizeT, int poolSizeH, int poolSizeW
+  - output_size -> int outputT, int outputH, int outputW
+  - int numBatch, int numPlanes, int inputT, int inputH, int inputW
+  dispatch:
+    XPU: fractional_max_pool3d_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool3d(Tensor self, int[3] kernel_size, int[3] output_size, Tensor random_samples) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: fractional_max_pool3d.output
+
+- func: fractional_max_pool3d_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] output_size, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: fractional_max_pool3d_backward_out_xpu
+
+- func: fractional_max_pool3d_backward(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] output_size, Tensor indices) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: fractional_max_pool3d_backward_xpu
+
+# Return: (Tensor output, Tensor indices)
 - func: max_pool2d_with_indices.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False, *, Tensor(a!) out, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
   python_module: nn
   structured: True
@@ -5377,6 +5444,19 @@
   tags: nondeterministic_seeded
   autogen: binomial.out
 
+- func: _standard_gamma_grad(Tensor self, Tensor output) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _standard_gamma_grad_xpu
+  autogen: _standard_gamma_grad.out
+
+- func: _standard_gamma(Tensor self, Generator? generator=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _s_gamma_xpu
+  tags: nondeterministic_seeded
+  autogen: _standard_gamma.out
+
 - func: _sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor
   tags: nondeterministic_seeded
   variants: function
@@ -5388,6 +5468,24 @@
   dispatch:
     XPU: _dirichlet_grad_xpu
   autogen: _dirichlet_grad.out
+
+# Fused implementation detail for transformers. Adds in-projection bias to QKV and divides Q by sqrt(D/num_heads).
+- func: _transform_bias_rescale_qkv(Tensor qkv, Tensor qkv_bias, int num_heads) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: transform_bias_rescale_qkv_xpu
+  autogen: _transform_bias_rescale_qkv.out
+
+- func: _native_multi_head_attention(Tensor query, Tensor key, Tensor value, int embed_dim, int num_head, Tensor qkv_weight, Tensor qkv_bias, Tensor proj_weight, Tensor proj_bias, Tensor? mask=None, bool need_weights=True, bool average_attn_weights=True, int? mask_type=None) -> (Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: native_multi_head_attention_xpu
+  autogen: _native_multi_head_attention.out
+
+# This aten function is kept so that we can test the choice function from Python
+- func: _fused_sdp_choice(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, float dropout_p=0.0, bool is_causal=False, *, float? scale=None, bool enable_gqa=False) -> int
+  dispatch:
+    XPU: _fused_sdp_choice_xpu
+  tags: nondeterministic_seeded
 
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
   structured_delegate: argmin.out
@@ -7093,6 +7191,11 @@
 
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
+
+- func: record_stream(Tensor(a!) self, Stream s) -> ()
+  variants: method
+  dispatch:
+    XPU: record_stream_xpu
 
 - func: i0(Tensor self) -> Tensor
   structured_delegate: i0.out
