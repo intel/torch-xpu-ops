@@ -6580,6 +6580,105 @@
   autogen: bitwise_right_shift.Scalar_Tensor_out
   tags: pointwise
 
+# it's a factory function receiving a tensor argument, thus overriding explicitly
+# other overrides are to provide a more helpful error message that dtype is required
+- func: _empty_per_channel_affine_quantized(SymInt[] size, *, Tensor scales, Tensor zero_points, int axis, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=contiguous_format) -> Tensor
+  category_override: factory
+  dispatch:
+    XPU: empty_per_channel_affine_quantized
+  autogen: _empty_per_channel_affine_quantized.out
+
+# other overrides are to provide a more helpful error message that dtype is required
+- func: _empty_affine_quantized(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, float scale=1, int zero_point=0, MemoryFormat? memory_format=contiguous_format) -> Tensor
+  dispatch:
+    XPU: empty_affine_quantized
+  autogen: _empty_affine_quantized.out
+
+- func: quantize_per_tensor_dynamic(Tensor self, ScalarType dtype, bool reduce_range) -> Tensor
+  variants: function
+  dispatch:
+    XPU: quantize_per_tensor_dynamic
+  autogen: quantize_per_tensor_dynamic.out
+
+- func: quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType dtype) -> Tensor
+  variants: function
+  dispatch:
+    XPU: quantize_per_tensor
+  autogen: quantize_per_tensor.out
+
+- func: quantize_per_tensor.tensor_qparams(Tensor self, Tensor scale, Tensor zero_point, ScalarType dtype) -> Tensor
+  variants: function
+  dispatch:
+    XPU: quantize_per_tensor_tensor_qparams
+  autogen: quantize_per_tensor.tensor_qparams_out
+
+- func: quantize_per_channel(Tensor self, Tensor scales, Tensor zero_points, int axis, ScalarType dtype) -> Tensor
+  variants: function
+  dispatch:
+    XPU: quantize_per_channel
+  autogen: quantize_per_channel.out
+
+- func: dequantize.self(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: dequantize_cpu_or_cuda
+  autogen: dequantize.self_out
+
+- func: _make_per_tensor_quantized_tensor(Tensor self, float scale, int zero_point) -> Tensor
+  dispatch:
+    XPU: make_per_tensor_quantized_tensor_xpu
+  autogen: _make_per_tensor_quantized_tensor.out
+
+- func: _make_per_channel_quantized_tensor(Tensor self, Tensor scale, Tensor zero_point, int axis) -> Tensor
+  dispatch:
+    XPU: make_per_channel_quantized_tensor_xpu
+  autogen: _make_per_channel_quantized_tensor.out
+
+- func: fake_quantize_per_tensor_affine_cachemask(Tensor self, float scale, int zero_point, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
+  variants: function
+  dispatch:
+    XPU: fake_quantize_per_tensor_affine_cachemask
+  autogen: fake_quantize_per_tensor_affine_cachemask.out
+
+- func: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(Tensor self, Tensor scale, Tensor zero_point, Tensor fake_quant_enabled, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
+  variants: function
+  dispatch:
+    XPU: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+  autogen: _fake_quantize_per_tensor_affine_cachemask_tensor_qparams.out
+
+- func: fake_quantize_per_channel_affine_cachemask(Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max) -> (Tensor output, Tensor mask)
+  variants: function
+  dispatch:
+    XPU: fake_quantize_per_channel_affine_cachemask
+  autogen: fake_quantize_per_channel_affine_cachemask.out
+
+- func: _fake_quantize_learnable_per_tensor_affine(Tensor self, Tensor scale, Tensor zero_point, int quant_min, int quant_max, float grad_factor=1.0) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fake_quantize_learnable_per_tensor_affine
+  autogen: _fake_quantize_learnable_per_tensor_affine.out
+
+- func: _fake_quantize_learnable_per_tensor_affine_backward(Tensor grad, Tensor self, Tensor scale, Tensor zero_point, int quant_min, int quant_max, float grad_factor=1.0) -> (Tensor, Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: _fake_quantize_learnable_per_tensor_affine_backward
+
+- func: _fake_quantize_learnable_per_channel_affine(Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max, float grad_factor=1.0) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fake_quantize_learnable_per_channel_affine
+  autogen: _fake_quantize_learnable_per_channel_affine.out
+
+- func: _fake_quantize_learnable_per_channel_affine_backward(Tensor grad, Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max, float grad_factor=1.0) -> (Tensor, Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: _fake_quantize_learnable_per_channel_affine_backward
+
+- func: _fused_moving_avg_obs_fq_helper(Tensor self, Tensor observer_on, Tensor fake_quant_on, Tensor(a!) running_min, Tensor(b!) running_max, Tensor(c!) scale, Tensor(d!) zero_point, float averaging_const, int quant_min, int quant_max, int ch_axis, bool per_row_fake_quant=False, bool symmetric_quant=False) -> (Tensor output, Tensor mask)
+  dispatch:
+    XPU: fused_moving_avg_obs_fake_quant_xpu
+  autogen: _fused_moving_avg_obs_fq_helper_functional, _fused_moving_avg_obs_fq_helper.out
+
 - func: sign(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: sign.out
