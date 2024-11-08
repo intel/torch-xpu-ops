@@ -6,8 +6,6 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
-// #include <ATen/native/xpu/sycl/Atomics.h>
-// #include <ATen/native/xpu/sycl/NumericLimits.h>
 #include <c10/util/generic_math.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -17,27 +15,6 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/RNNKernels.h>
-
-// #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-// #include <ATen/AccumulateType.h>
-// #include <ATen/Dispatch.h>
-// #include <ATen/TensorUtils.h>
-// #include <ATen/core/Tensor.h>
-// #include <ATen/cuda/CUDAContext.h>
-// #include <c10/macros/Macros.h>
-// #include <ATen/cuda/CUDAApplyUtils.cuh>
-
-// #ifndef AT_PER_OPERATOR_HEADERS
-// #include <ATen/Functions.h>
-// #include <ATen/NativeFunctions.h>
-// #else
-// #include <ATen/ops/_thnn_fused_gru_cell_backward_native.h>
-// #include <ATen/ops/_thnn_fused_gru_cell_native.h>
-// #include <ATen/ops/_thnn_fused_lstm_cell_backward_impl_native.h>
-// #include <ATen/ops/_thnn_fused_lstm_cell_native.h>
-// #include <ATen/ops/empty.h>
-// #include <ATen/ops/empty_like.h>
-// #endif
 
 namespace at::native::xpu {
 using at::native::canUse32BitIndexMath;
@@ -89,15 +66,8 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
   collapseDims(infos...);
 }
 
-// #define DEVICE_LINEAR_GET(D_TENSOR, INDEX)                               \
-//   D_TENSOR.data[IndexToOffset<scalar_t, index_type, indexing_kind>::get( \
-//       INDEX, D_TENSOR)]
 #define DEVICE_LINEAR_GET(D_TENSOR, INDEX) \
   D_TENSOR.data[IndexToOffset<scalar_t, index_type>::get(INDEX, D_TENSOR)]
-
-// // Biases are always 1D
-// #define DEVICE_BIAS_GET(D_TENSOR, INDEX) \
-//   D_TENSOR.data[IndexToOffset<scalar_t, index_type, 1>::get(INDEX, D_TENSOR)]
 
 // Biases are always 1D
 #define DEVICE_BIAS_GET(D_TENSOR, INDEX) \
@@ -160,16 +130,6 @@ struct LstmCellForwardFunctor {
         b2c = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 2 * hsz);
         b2o = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 3 * hsz);
       } else {
-#ifndef THC_REAL_IS_HALF
-        b1i = 0.0;
-        b1f = 0.0;
-        b1c = 0.0;
-        b1o = 0.0;
-        b2i = 0.0;
-        b2f = 0.0;
-        b2c = 0.0;
-        b2o = 0.0;
-#else
         b1i = F2H(0.0);
         b1f = F2H(0.0);
         b1c = F2H(0.0);
@@ -178,7 +138,6 @@ struct LstmCellForwardFunctor {
         b2f = F2H(0.0);
         b2c = F2H(0.0);
         b2o = F2H(0.0);
-#endif
       }
 
       accscalar_t ig, fg, cg, og;
@@ -342,9 +301,6 @@ template <
 struct GruCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     bool has_bias = Bias1.data != nullptr;
-
-    // const int32_t local_id = item.get_local_id(0);
-    // const int32_t global_id = item.get_group(0);
 
     for (index_type linearIndex = item.get_local_id(0);
          linearIndex < totalElements;
