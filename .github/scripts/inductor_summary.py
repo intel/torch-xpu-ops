@@ -1,8 +1,9 @@
 import argparse
-
 import pandas as pd
 from scipy.stats import gmean
 from styleframe import StyleFrame, Styler, utils
+import numpy as np
+from openpyxl import Workbook
 
 parser = argparse.ArgumentParser(description="Generate report")
 parser.add_argument('-s', '--suite', default=["huggingface"], nargs='*', type=str, help='model suite name')
@@ -11,24 +12,18 @@ parser.add_argument('-r', '--reference', type=str, help='reference log files')
 parser.add_argument('-m', '--mode', default=["inference", "training"], nargs='*', type=str, help='mode name')
 parser.add_argument('-sc', '--scenario', default=["performance"], nargs='*', type=str, help='Test scenario set')
 args = parser.parse_args()
-
 passrate_values = {}
 geomean_values = {}
-
 new_performance_regression=pd.DataFrame()
-
 failure_style = Styler(bg_color='#FF0000', font_color=utils.colors.black)
 regression_style = Styler(bg_color='#F0E68C', font_color=utils.colors.red)
 improve_style = Styler(bg_color='#00FF00', font_color=utils.colors.black)
-
 # refer https://github.com/pytorch/pytorch/blob/main/benchmarks/dynamo/runner.py#L757-L778
-
 
 def percentage(part, whole, decimals=2):
     if whole == 0:
         return 0
     return round(100 * float(part) / float(whole), decimals)
-
 
 def get_passing_entries(df, column_name, scenario):
     if scenario == 'performance':
@@ -36,13 +31,11 @@ def get_passing_entries(df, column_name, scenario):
     else:
         return df[df[column_name].notnull()]
 
-
 def caculate_geomean(df, column_name, scenario):
     cleaned_df = get_passing_entries(df, column_name, scenario).clip(1)
     if cleaned_df.empty:
         return "0.0x"
     return f"{gmean(cleaned_df):.2f}x"
-
 
 def caculate_passrate(df, key_word, scenario):
     total = len(df.index)
@@ -163,7 +156,7 @@ def process(input, scenario, precision, mode):
             processed_data = data_new
             processed_data = StyleFrame({'name': list(data_new['name']),
                             'batch_size': list(data_new['batch_size']),
-                             'accuracy': list(data_new['accuracy'])})
+                            'accuracy': list(data_new['accuracy'])})
             processed_data.set_column_width(1, 10)
             processed_data.set_column_width(2, 18)
             processed_data.set_column_width(3, 18)
@@ -225,7 +218,6 @@ def update_summary(excel, scenario, suite):
             'refer_timm_models ': [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ']
         }
         summary = pd.DataFrame(data)
-
         if suite == 'huggingface':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -241,7 +233,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[6:7, 5:6] = passrate_values['target_amp_fp16_training']
                     summary.iloc[7:8, 5:6] = geomean_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[8:9, 5:6] = passrate_values['target_bfloat16_inference']
@@ -263,7 +254,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[18:19, 5:6] = passrate_values['target_float32_training']
                     summary.iloc[19:20, 5:6] = geomean_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -279,7 +269,6 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[6:7, 8:9] = passrate_values['reference_amp_fp16_training']
                         summary.iloc[7:8, 8:9] = geomean_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[8:9, 8:9] = passrate_values['reference_bfloat16_inference']
@@ -301,7 +290,6 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[18:19, 8:9] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 8:9] = geomean_values['reference_float32_training']
-
         if suite == 'timm_models':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -317,7 +305,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[6:7, 6:7] = passrate_values['target_amp_fp16_training']
                     summary.iloc[7:8, 6:7] = geomean_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[8:9, 6:7] = passrate_values['target_bfloat16_inference']
@@ -339,7 +326,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[18:19, 6:7] = passrate_values['target_float32_training']
                     summary.iloc[19:20, 6:7] = geomean_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -348,7 +334,6 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[2:3, 9:10] = passrate_values['reference_amp_bf16_training']
                         summary.iloc[3:4, 9:10] = geomean_values['reference_amp_bf16_training']
-
                 if 'amp_fp16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[4:5, 9:10] = passrate_values['reference_amp_fp16_inference']
@@ -356,7 +341,6 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[6:7, 9:10] = passrate_values['reference_amp_fp16_training']
                         summary.iloc[7:8, 9:10] = geomean_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[8:9, 9:10] = passrate_values['reference_bfloat16_inference']
@@ -394,7 +378,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[6:7, 4:5] = passrate_values['target_amp_fp16_training']
                     summary.iloc[7:8, 4:5] = geomean_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[8:9, 4:5] = passrate_values['target_bfloat16_inference']
@@ -416,7 +399,6 @@ def update_summary(excel, scenario, suite):
                 if 'training' in args.mode:
                     summary.iloc[18:19, 4:5] = passrate_values['target_float32_training']
                     summary.iloc[19:20, 4:5] = geomean_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -432,7 +414,6 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[6:7, 7:8] = passrate_values['reference_amp_fp16_training']
                         summary.iloc[7:8, 7:8] = geomean_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[8:9, 7:8] = passrate_values['reference_bfloat16_inference']
@@ -464,7 +445,6 @@ def update_summary(excel, scenario, suite):
         for j in range(1, 22):
             sf.set_row_height(j, 30)
         sf.to_excel(sheet_name=suite + '_'  + scenario + '_Summary', excel_writer=excel)
-
     else:
         data = {
         'Test Secnario': ['AMP_BF16 Inference', 'AMP_BF16 Training', 'AMP_FP16 Inference', 'AMP_FP16 Training', 'BF16 Inference', 'BF16 Training', 'FP16 Inference', 'FP16 Training', 'FP32 Inference', 'FP32 Training'],
@@ -478,7 +458,6 @@ def update_summary(excel, scenario, suite):
         'refer_timm_models ': [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ']
         }
         summary = pd.DataFrame(data)
-
         if suite == 'huggingface':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -492,7 +471,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[2:3, 4:5] = passrate_values['target_amp_fp16_inference']
                 if 'training' in args.mode:
                     summary.iloc[3:4, 4:5] = passrate_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[4:5, 4:5] = passrate_values['target_bfloat16_inference']
@@ -508,7 +486,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[8:9, 4:5] = passrate_values['target_float32_inference']
                 if 'training' in args.mode:
                     summary.iloc[9:10, 4:5] = passrate_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -521,7 +498,6 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[2:3, 7:8] = passrate_values['reference_amp_fp16_inference']
                     if 'training' in args.mode:
                         summary.iloc[3:4, 7:8] = passrate_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[4:5, 7:8] = passrate_values['reference_bfloat16_inference']
@@ -537,7 +513,6 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[8:9, 7:8] = passrate_values['reference_float32_inference']
                     if 'training' in args.mode:
                         summary.iloc[9:10, 7:8] = passrate_values['reference_float32_training']
-
         if suite == 'timm_models':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -550,7 +525,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[2:3, 5:6] = passrate_values['target_amp_fp16_inference']
                 if 'training' in args.mode:
                     summary.iloc[3:4, 5:6] = passrate_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[4:5, 5:6] = passrate_values['target_bfloat16_inference']
@@ -566,7 +540,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[8:9, 5:6] = passrate_values['target_float32_inference']
                 if 'training' in args.mode:
                     summary.iloc[9:10, 5:6] = passrate_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -579,7 +552,6 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[2:3, 8:9] = passrate_values['reference_amp_fp16_inference']
                     if 'training' in args.mode:
                         summary.iloc[3:4, 8:9] = passrate_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[4:5, 8:9] = passrate_values['reference_bfloat16_inference']
@@ -595,7 +567,6 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[8:9, 8:9] = passrate_values['reference_float32_inference']
                     if 'training' in args.mode:
                         summary.iloc[9:10, 8:9] = passrate_values['reference_float32_training']
-
         if suite == 'torchbench':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -608,7 +579,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[2:3, 3:4] = passrate_values['target_amp_fp16_inference']
                 if 'training' in args.mode:
                     summary.iloc[3:4, 3:4] = passrate_values['target_amp_fp16_training']
-
             if 'bfloat16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[4:5, 3:4] = passrate_values['target_bfloat16_inference']
@@ -624,7 +594,6 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[8:9, 3:4] = passrate_values['target_float32_inference']
                 if 'training' in args.mode:
                     summary.iloc[9:10, 3:4] = passrate_values['target_float32_training']
-
             if args.reference is not None:
                 if 'amp_bf16' in args.precision:
                     if 'inference' in args.mode:
@@ -632,13 +601,11 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[0:1, 6:7] = passrate_values['reference_amp_bf16_inference']
                     if 'training' in args.mode:
                         summary.iloc[1:2, 6:7] = passrate_values['reference_amp_bf16_training']
-
                 if 'amp_fp16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[2:3, 6:7] = passrate_values['reference_amp_fp16_inference']
                     if 'training' in args.mode:
                         summary.iloc[3:4, 6:7] = passrate_values['reference_amp_fp16_training']
-
                 if 'bfloat16' in args.precision:
                     if 'inference' in args.mode:
                         summary.iloc[4:5, 6:7] = passrate_values['reference_bfloat16_inference']
@@ -665,6 +632,74 @@ def update_summary(excel, scenario, suite):
             sf.set_row_height(j, 30)
         sf.to_excel(sheet_name=suite + '_'  + scenario + '_Summary', excel_writer=excel)
 
+def summary_conclusion(scenario, excel):
+    excel.book.save(excel)
+    df = pd.read_excel(excel, sheet_name = None, header = None)
+    #df = pd.DataFrame(excel)
+    if scenario == 'performance':
+        sheet_names = list(df.keys())
+        sheet_names = [s for s in sheet_names if 'Summary' in s and 'performance' in s]
+        sheet_names.sort()
+        print(f"Merge excel as below:\n{sheet_names}")
+        print("\n")
+        features = [[]] * 21
+        for sheet_name in sheet_names:
+            df_sheet = df[sheet_name]
+            df_sheet = df_sheet.values
+            features = np.hstack((features, df_sheet))
+        
+        if len(sheet_names) == 1:
+            print("sheet not merge")
+        elif len(sheet_names) == 2:
+            print("2 sheets merge")
+            if 'huggingface' in sheet_names[0]:
+                features[:, 4:5] = features[:, 14:15]
+                features[:, 6:7] = features[:, 16:17]
+            else:
+                features[:, 4:5] = features[:, 14:15]
+        else:
+            print("3 sheets merge")
+            features[:, 4:5] = features[:, 24:25]
+            features[:, 6:7] = features[:, 16:17]
+
+        df_concat = StyleFrame(pd.DataFrame(features).iloc[:,:10])
+        for i in range(10):
+            df_concat.set_column_width(i, 22)
+        for j in range(1, 23):
+            df_concat.set_row_height(j, 30)
+        df_concat.to_excel(sheet_name='Perf_Summary', excel_writer=excel, index=False)
+    else:
+        sheet_names = list(df.keys())
+        sheet_names = [s for s in sheet_names if 'Summary' in s and 'accuracy' in s]
+        sheet_names.sort()
+        print(f"Merge excel as below:\n{sheet_names}")
+        print("\n")
+        features = [[]] * 11
+        for sheet_name in sheet_names:
+            df_sheet = df[sheet_name]
+            df_sheet = df_sheet.values
+            features = np.hstack((features, df_sheet))
+        if len(sheet_names) == 1:
+            print("sheet not merge")
+        elif len(sheet_names) == 2:
+            print("2 sheets merge")
+            if 'huggingface' in sheet_names[0]:
+                features[:, 3:4] = features[:, 12:13]
+                features[:, 5:6] = features[:, 14:15]
+            else:
+                features[:, 3:4] = features[:, 12:13]
+        else:
+            print("3 sheets merge")
+            features[:, 3:4] = features[:, 21:22]
+            features[:, 5:6] = features[:, 14:15]
+
+        df_concat = StyleFrame(pd.DataFrame(features).iloc[:,:9])
+        for i in range(10):
+            df_concat.set_column_width(i, 22)
+        for j in range(1, 13):
+            df_concat.set_row_height(j, 30)
+        df_concat.to_excel(sheet_name='Acc_Summary', excel_writer=excel, index=False)
+        
 
 def generate_report(excel, scenario_list, precision_list, mode_list, suite_list):
     for sc in scenario_list:
@@ -693,8 +728,19 @@ def excel_postprocess(file, scenario, precison, mode, suite):
                     wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
             wb.save(file)
 
+        if len(scenario) == 2:
+            wb.move_sheet("Perf_Summary", -(len(wb.worksheets)-1))
+            wb.move_sheet("Acc_Summary", -(len(wb.worksheets)-1))
+        elif len(scenario) == 1 and sc == 'accuracy':
+            wb.move_sheet("Acc_Summary", -(len(wb.worksheets)-1))
+        else:
+            wb.move_sheet("Perf_Summary", -(len(wb.worksheets)-1))
 
 if __name__ == '__main__':
     excel = StyleFrame.ExcelWriter('inductor_log/Inductor_E2E_Test_Report.xlsx')
     generate_report(excel, args.scenario, args.precision, args.mode, args.suite)
+    print(type(excel))
+    for sc in args.scenario:
+        summary_conclusion(sc, excel)
     excel_postprocess(excel, args.scenario, args.precision, args.mode, args.suite)
+    excel.close()
