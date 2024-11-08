@@ -1,433 +1,1009 @@
 #include <ATen/ATen.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/OpMathType.h>
 #include <ATen/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/NumericLimits.h>
+#include <ATen/core/TensorAccessor.h>
+#include <ATen/native/CanUse32BitIndexMath.h>
+// #include <ATen/native/xpu/sycl/Atomics.h>
+// #include <ATen/native/xpu/sycl/NumericLimits.h>
+#include <c10/util/generic_math.h>
 #include <comm/SYCLContext.h>
+#include <comm/TensorInfo.h>
 
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/RNNKernels.h>
 
-static constexpr int64_t GRU_WORKSPACE_MULTIPLIER = 5;
+// #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+// #include <ATen/AccumulateType.h>
+// #include <ATen/Dispatch.h>
+// #include <ATen/TensorUtils.h>
+// #include <ATen/core/Tensor.h>
+// #include <ATen/cuda/CUDAContext.h>
+// #include <c10/macros/Macros.h>
+// #include <ATen/cuda/CUDAApplyUtils.cuh>
+
+// #ifndef AT_PER_OPERATOR_HEADERS
+// #include <ATen/Functions.h>
+// #include <ATen/NativeFunctions.h>
+// #else
+// #include <ATen/ops/_thnn_fused_gru_cell_backward_native.h>
+// #include <ATen/ops/_thnn_fused_gru_cell_native.h>
+// #include <ATen/ops/_thnn_fused_lstm_cell_backward_impl_native.h>
+// #include <ATen/ops/_thnn_fused_lstm_cell_native.h>
+// #include <ATen/ops/empty.h>
+// #include <ATen/ops/empty_like.h>
+// #endif
 
 namespace at::native::xpu {
+using at::native::canUse32BitIndexMath;
+using at::xpu::detail::getTensorInfo;
+using at::xpu::detail::IndexToOffset;
+using at::xpu::detail::TensorInfo;
+
+// Factor will be 3 for GRU and 4 for LSTM
+void checkSizes(
+    CheckedFrom c,
+    const TensorArg& input_gates,
+    const TensorArg& hidden_gates,
+    const TensorArg& input_bias,
+    const TensorArg& hidden_bias,
+    int64_t factor,
+    const TensorArg& prev_hidden) {
+  checkDim(c, input_gates, 2);
+  checkSameSize(c, input_gates, hidden_gates);
+  int64_t gates_size = input_gates->size(1);
+
+  if (input_bias->defined()) {
+    checkDim(c, input_bias, 1);
+    checkNumel(c, input_bias, gates_size);
+    checkSameSize(c, input_bias, hidden_bias);
+  }
+
+  checkDim(c, prev_hidden, 2);
+  checkNumel(c, prev_hidden, input_gates->size(0) * gates_size / factor);
+
+  checkAllSameGPU(
+      c, {input_gates, hidden_gates, input_bias, hidden_bias, prev_hidden});
+}
+
+bool allContiguous(at::TensorList tensors) {
+  return std::all_of(tensors.begin(), tensors.end(), [](const at::Tensor& t) {
+    return !t.defined() || t.is_contiguous();
+  });
+}
+
+template <typename T, typename T2>
+TensorInfo<T, T2> tryGetTensorInfo(const at::Tensor& t) {
+  return t.defined() ? getTensorInfo<T, T2>(t) : TensorInfo<T, T2>{};
+}
+
+void collapseDims(){};
+template <typename T, typename T2, typename... Args>
+void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
+  info.collapseDims();
+  collapseDims(infos...);
+}
+
+// #define DEVICE_LINEAR_GET(D_TENSOR, INDEX)                               \
+//   D_TENSOR.data[IndexToOffset<scalar_t, index_type, indexing_kind>::get( \
+//       INDEX, D_TENSOR)]
+#define DEVICE_LINEAR_GET(D_TENSOR, INDEX) \
+  D_TENSOR.data[IndexToOffset<scalar_t, index_type>::get(INDEX, D_TENSOR)]
+
+// // Biases are always 1D
+// #define DEVICE_BIAS_GET(D_TENSOR, INDEX) \
+//   D_TENSOR.data[IndexToOffset<scalar_t, index_type, 1>::get(INDEX, D_TENSOR)]
+
+// Biases are always 1D
+#define DEVICE_BIAS_GET(D_TENSOR, INDEX) \
+  D_TENSOR.data[IndexToOffset<scalar_t, index_type>::get(INDEX, D_TENSOR)]
+
+#define H2F(input) static_cast<accscalar_t>(input)
+#define F2H(input) static_cast<scalar_t>(input)
 
 template <typename T>
-struct FuseOpsKernelFunctor {
-  void operator()(sycl::nd_item<1> itemId) const {
-    int64_t lid = itemId.get_local_id(0);
-    int64_t gid = itemId.get_group(0);
-    // this kernel is used to implemente the small op fusion in GRUCell.
-    // The small ops include
-    // (1) reset_gate = sigmoid(W_i0x+b_i0 + W_h0h+b_h0)
-    // (2) input_gate = sigmoid(W_i1x+b_i1+ w_h1h+b_h1)
-    // (3) new_gate = tanh(W_i2x+b_i2 + reset_gate*(W_h2h+b_h2))
-    // (4) output = (1-input_gate)*new_gate + input_gate*hidden
-    // All above operations are elementwise and cannot be implemented in
-    // parallel as the sequential dependence. The igates or hgates here
-    // are blocks of 3 three tensors after matmul. So one can access them
-    // respectively by the pointer with constant shift of COL.
-    int64_t gate0_index = gid * COL_ * 3;
-    int64_t gate1_index = gate0_index + COL_;
-    int64_t gate2_index = gate1_index + COL_;
-    int64_t workspace0_index = gid * COL_ * 5;
-    int64_t workspace1_index = workspace0_index + COL_;
-    int64_t workspace2_index = workspace1_index + COL_;
-    int64_t workspace3_index = workspace2_index + COL_;
-    int64_t workspace4_index = workspace3_index + COL_;
-    for (int64_t loc = lid; loc < COL_; loc += GROUP_SIZE_) {
-      int64_t index = gid * COL_ + loc;
-      if (has_bias_) {
-        T reset_gate = 1.0f /
-            (1.0f +
-             std::exp(
-                 -(igates_[gate0_index + loc] + hgates_[gate0_index + loc] +
-                   ibias_[loc] + hbias_[loc])));
+T sigmoid(T in) {
+  T one = static_cast<T>(1.0);
+  return one / (one + std::exp(-in));
+}
 
-        T input_gate = 1.0f /
-            (1.0f +
-             std::exp(
-                 -(igates_[gate1_index + loc] + hgates_[loc + gate1_index] +
-                   ibias_[loc + COL_] + hbias_[loc + COL_])));
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
+struct LstmCellForwardFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    bool has_bias = bias1.data != nullptr;
 
-        T hn_bn = hgates_[loc + gate2_index] + hbias_[loc + 2 * COL_];
+    for (index_type linearIndex = item.get_local_id(0);
+         linearIndex < totalElements;
+         linearIndex += item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz) * 4 * hsz + linearIndex % hsz;
 
-        T new_gate = std::tanh(
-            igates_[gate2_index + loc] + ibias_[loc + 2 * COL_] +
-            reset_gate * hn_bn);
+      scalar_t iig = DEVICE_LINEAR_GET(input, offset + 0 * hsz);
+      scalar_t ifg = DEVICE_LINEAR_GET(input, offset + 1 * hsz);
+      scalar_t icg = DEVICE_LINEAR_GET(input, offset + 2 * hsz);
+      scalar_t iog = DEVICE_LINEAR_GET(input, offset + 3 * hsz);
 
-        output_[index] =
-            (1.0f - input_gate) * new_gate + input_gate * hidden_[index];
-        // save for the backward computation
-        workspace_[loc + workspace0_index] = reset_gate;
-        workspace_[workspace1_index + loc] = input_gate;
-        workspace_[workspace2_index + loc] = new_gate;
-        workspace_[workspace3_index + loc] = hidden_[index];
-        workspace_[workspace4_index + loc] = hn_bn;
+      scalar_t hig = DEVICE_LINEAR_GET(hidden, offset + 0 * hsz);
+      scalar_t hfg = DEVICE_LINEAR_GET(hidden, offset + 1 * hsz);
+      scalar_t hcg = DEVICE_LINEAR_GET(hidden, offset + 2 * hsz);
+      scalar_t hog = DEVICE_LINEAR_GET(hidden, offset + 3 * hsz);
+
+      scalar_t* wig = &DEVICE_LINEAR_GET(workspace, offset + 0 * hsz);
+      scalar_t* wfg = &DEVICE_LINEAR_GET(workspace, offset + 1 * hsz);
+      scalar_t* wcg = &DEVICE_LINEAR_GET(workspace, offset + 2 * hsz);
+      scalar_t* wog = &DEVICE_LINEAR_GET(workspace, offset + 3 * hsz);
+
+      scalar_t cx = DEVICE_LINEAR_GET(_cx, linearIndex);
+
+      scalar_t* hy = &DEVICE_LINEAR_GET(_hy, linearIndex);
+      scalar_t* cy = &DEVICE_LINEAR_GET(_cy, linearIndex);
+
+      scalar_t b1i, b1f, b1c, b1o;
+      scalar_t b2i, b2f, b2c, b2o;
+
+      if (has_bias) {
+        b1i = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 0 * hsz);
+        b1f = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 1 * hsz);
+        b1c = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 2 * hsz);
+        b1o = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 3 * hsz);
+
+        b2i = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 0 * hsz);
+        b2f = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 1 * hsz);
+        b2c = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 2 * hsz);
+        b2o = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 3 * hsz);
       } else {
-        T reset_gate = 1.0f /
-            (1.0f +
-             std::exp(
-                 -(igates_[gate0_index + loc] + hgates_[gate0_index + loc])));
-
-        T input_gate = 1.0f /
-            (1.0f +
-             std::exp(
-                 -(igates_[gate1_index + loc] + hgates_[loc + gate1_index])));
-
-        T hn_bn = hgates_[loc + gate2_index];
-
-        T new_gate = std::tanh(igates_[gate2_index + loc] + reset_gate * hn_bn);
-
-        output_[index] =
-            (1.0f - input_gate) * new_gate + input_gate * hidden_[index];
-        // save for the backward computation
-        workspace_[loc + workspace0_index] = reset_gate;
-        workspace_[workspace1_index + loc] = input_gate;
-        workspace_[workspace2_index + loc] = new_gate;
-        workspace_[workspace3_index + loc] = hidden_[index];
-        workspace_[workspace4_index + loc] = hn_bn;
+#ifndef THC_REAL_IS_HALF
+        b1i = 0.0;
+        b1f = 0.0;
+        b1c = 0.0;
+        b1o = 0.0;
+        b2i = 0.0;
+        b2f = 0.0;
+        b2c = 0.0;
+        b2o = 0.0;
+#else
+        b1i = F2H(0.0);
+        b1f = F2H(0.0);
+        b1c = F2H(0.0);
+        b1o = F2H(0.0);
+        b2i = F2H(0.0);
+        b2f = F2H(0.0);
+        b2c = F2H(0.0);
+        b2o = F2H(0.0);
+#endif
       }
+
+      accscalar_t ig, fg, cg, og;
+      accscalar_t f_hy, f_cy;
+
+      ig = sigmoid(H2F(iig) + H2F(hig) + H2F(b1i) + H2F(b2i));
+      fg = sigmoid(H2F(ifg) + H2F(hfg) + H2F(b1f) + H2F(b2f));
+      cg = ::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
+      og = sigmoid(H2F(iog) + H2F(hog) + H2F(b1o) + H2F(b2o));
+
+      f_cy = (fg * H2F(cx)) + (ig * cg);
+      f_hy = og * ::tanh(f_cy);
+
+      *hy = F2H(f_hy);
+      *cy = F2H(f_cy);
+
+      // SAVE FOR BACKWARDS
+      // Also need cy and cx but can be saved easily in python
+      *wig = F2H(ig);
+      *wfg = F2H(fg);
+      *wcg = F2H(cg);
+      *wog = F2H(og);
     }
   }
-  FuseOpsKernelFunctor(
-      const T* igates,
-      const T* hgates,
-      const T* ibias,
-      const T* hbias,
-      const T* hidden,
-      T* output,
-      T* workspace,
-      const int64_t feature_size,
-      const int64_t batch_size,
-      bool has_bias,
-      const int64_t COL,
-      const int64_t ROW,
-      int64_t GROUP_SIZE)
-      : igates_(igates),
-        hgates_(hgates),
-        ibias_(ibias),
-        hbias_(hbias),
-        hidden_(hidden),
-        output_(output),
-        workspace_(workspace),
-        feature_size_(feature_size),
-        batch_size_(batch_size),
-        has_bias_(has_bias),
-        COL_(COL),
-        ROW_(ROW),
-        GROUP_SIZE_(GROUP_SIZE) {}
+
+  LstmCellForwardFunctor(
+      TensorInfo<scalar_t, index_type> input,
+      TensorInfo<scalar_t, index_type> hidden,
+      TensorInfo<scalar_t, index_type> bias1,
+      TensorInfo<scalar_t, index_type> bias2,
+      TensorInfo<scalar_t, index_type> _cx,
+      TensorInfo<scalar_t, index_type> _hy,
+      TensorInfo<scalar_t, index_type> _cy,
+      TensorInfo<scalar_t, index_type> workspace,
+      index_type hsz,
+      index_type totalElements)
+      : input(input),
+        hidden(hidden),
+        bias1(bias1),
+        bias2(bias2),
+        _cx(_cx),
+        _hy(_hy),
+        _cy(_cy),
+        workspace(workspace),
+        hsz(hsz),
+        totalElements(totalElements) {}
 
  private:
-  const T* igates_;
-  const T* hgates_;
-  const T* ibias_;
-  const T* hbias_;
-  const T* hidden_;
-  T* output_;
-  T* workspace_;
-  const int64_t feature_size_;
-  const int64_t batch_size_;
-  bool has_bias_;
-  const int64_t COL_;
-  const int64_t ROW_;
-  int64_t GROUP_SIZE_;
+  TensorInfo<scalar_t, index_type> input;
+  TensorInfo<scalar_t, index_type> hidden;
+  TensorInfo<scalar_t, index_type> bias1;
+  TensorInfo<scalar_t, index_type> bias2;
+  TensorInfo<scalar_t, index_type> _cx;
+  TensorInfo<scalar_t, index_type> _hy;
+  TensorInfo<scalar_t, index_type> _cy;
+  TensorInfo<scalar_t, index_type> workspace;
+  index_type hsz;
+  index_type totalElements;
 };
 
-// forward sycl implementation
-template <typename T>
-static inline void fuse_ops_kernel(
-    const T* igates,
-    const T* hgates,
-    const T* ibias,
-    const T* hbias,
-    const T* hidden,
-    T* output,
-    T* workspace,
-    const int64_t feature_size,
-    const int64_t batch_size,
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
+struct LstmCellBackwardFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    bool has_gradoutput = gradoutput.data != nullptr;
+    bool has_gradoutputcell = gradoutputcell.data != nullptr;
+
+    for (index_type linearIndex = item.get_local_id(0);
+         linearIndex < totalElements;
+         linearIndex += item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz) * 4 * hsz + linearIndex % hsz;
+
+      scalar_t ig = DEVICE_LINEAR_GET(storage, offset + 0 * hsz);
+      scalar_t fg = DEVICE_LINEAR_GET(storage, offset + 1 * hsz);
+      scalar_t cg = DEVICE_LINEAR_GET(storage, offset + 2 * hsz);
+      scalar_t og = DEVICE_LINEAR_GET(storage, offset + 3 * hsz);
+
+      scalar_t* ih = &DEVICE_LINEAR_GET(gradInGates, offset + 0 * hsz);
+      scalar_t* fh = &DEVICE_LINEAR_GET(gradInGates, offset + 1 * hsz);
+      scalar_t* ch = &DEVICE_LINEAR_GET(gradInGates, offset + 2 * hsz);
+      scalar_t* oh = &DEVICE_LINEAR_GET(gradInGates, offset + 3 * hsz);
+
+      // will return hidden grads here
+      scalar_t cx = DEVICE_LINEAR_GET(_cx, linearIndex);
+      scalar_t cy = DEVICE_LINEAR_GET(_cy, linearIndex);
+
+      scalar_t* gi = &DEVICE_LINEAR_GET(gradInputCx, linearIndex);
+
+      accscalar_t go = has_gradoutput
+          ? H2F(DEVICE_LINEAR_GET(gradoutput, linearIndex))
+          : 0.f;
+      accscalar_t goc = has_gradoutputcell
+          ? H2F(DEVICE_LINEAR_GET(gradoutputcell, linearIndex))
+          : 0.f;
+
+      accscalar_t gcx = ::tanh(H2F(cy));
+
+      accscalar_t gog = go * gcx;
+      gcx = go * H2F(og) * (1 - gcx * gcx) + goc;
+
+      accscalar_t gig = gcx * H2F(cg);
+      accscalar_t gfg = gcx * H2F(cx);
+      accscalar_t gcg = gcx * H2F(ig);
+
+      gcx = gcx * H2F(fg);
+
+      gig = gig * (1 - H2F(ig)) * H2F(ig);
+      gfg = gfg * (1 - H2F(fg)) * H2F(fg);
+      gcg = gcg * (1 - H2F(cg) * H2F(cg));
+      gog = gog * (1 - H2F(og)) * H2F(og);
+
+      *ih = F2H(gig);
+      *fh = F2H(gfg);
+      *ch = F2H(gcg);
+      *oh = F2H(gog);
+
+      *gi = F2H(gcx);
+    }
+  }
+
+  LstmCellBackwardFunctor(
+      TensorInfo<scalar_t, index_type> storage,
+      TensorInfo<scalar_t, index_type> gradInGates,
+      TensorInfo<scalar_t, index_type> _cx,
+      TensorInfo<scalar_t, index_type> _cy,
+      TensorInfo<scalar_t, index_type> gradoutput,
+      TensorInfo<scalar_t, index_type> gradoutputcell,
+      TensorInfo<scalar_t, index_type> gradInputCx,
+      index_type hsz,
+      index_type totalElements)
+      : storage(storage),
+        gradInGates(gradInGates),
+        _cx(_cx),
+        _cy(_cy),
+        gradoutput(gradoutput),
+        gradoutputcell(gradoutputcell),
+        gradInputCx(gradInputCx),
+        hsz(hsz),
+        totalElements(totalElements) {}
+
+ private:
+  TensorInfo<scalar_t, index_type> storage;
+  TensorInfo<scalar_t, index_type> gradInGates;
+  TensorInfo<scalar_t, index_type> _cx;
+  TensorInfo<scalar_t, index_type> _cy;
+  TensorInfo<scalar_t, index_type> gradoutput;
+  TensorInfo<scalar_t, index_type> gradoutputcell;
+  TensorInfo<scalar_t, index_type> gradInputCx;
+  index_type hsz;
+  index_type totalElements;
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
+struct GruCellForwardFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    bool has_bias = Bias1.data != nullptr;
+
+    // const int32_t local_id = item.get_local_id(0);
+    // const int32_t global_id = item.get_group(0);
+
+    for (index_type linearIndex = item.get_local_id(0);
+         linearIndex < totalElements;
+         linearIndex += item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz) * 3 * hsz + linearIndex % hsz;
+
+      scalar_t ir = DEVICE_LINEAR_GET(Input, offset + 0 * hsz);
+      scalar_t ii = DEVICE_LINEAR_GET(Input, offset + 1 * hsz);
+      scalar_t in = DEVICE_LINEAR_GET(Input, offset + 2 * hsz);
+      scalar_t hr = DEVICE_LINEAR_GET(Hidden, offset + 0 * hsz);
+      scalar_t hi = DEVICE_LINEAR_GET(Hidden, offset + 1 * hsz);
+      scalar_t hn = DEVICE_LINEAR_GET(Hidden, offset + 2 * hsz);
+
+      scalar_t hx = DEVICE_LINEAR_GET(_hx, linearIndex);
+      scalar_t* hy = &DEVICE_LINEAR_GET(_hy, linearIndex);
+
+      scalar_t b1r, b1i, b1n, b2r, b2i, b2n;
+
+      if (has_bias) {
+        b1r = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 0 * hsz);
+        b1i = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 1 * hsz);
+        b1n = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 2 * hsz);
+
+        b2r = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 0 * hsz);
+        b2i = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 1 * hsz);
+        b2n = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 2 * hsz);
+      } else {
+        b1r = F2H(0.0);
+        b1i = F2H(0.0);
+        b1n = F2H(0.0);
+        b2r = F2H(0.0);
+        b2i = F2H(0.0);
+        b2n = F2H(0.0);
+      }
+
+      offset = (linearIndex / hsz) * 5 * hsz + linearIndex % hsz;
+
+      accscalar_t rg, ig, ng;
+
+      rg = sigmoid(H2F(ir) + H2F(hr) + H2F(b1r) + H2F(b2r));
+      ig = sigmoid(H2F(ii) + H2F(hi) + H2F(b1i) + H2F(b2i));
+
+      ng = H2F(in) + H2F(b1n) + rg * (H2F(hn) + H2F(b2n));
+      ng = ::tanh(ng);
+      *hy = F2H(ng + ig * (H2F(hx) - ng));
+
+      // SAVE FOR BACKWARDS
+      DEVICE_LINEAR_GET(storage, offset + 0 * hsz) = F2H(rg);
+      DEVICE_LINEAR_GET(storage, offset + 1 * hsz) = F2H(ig);
+      DEVICE_LINEAR_GET(storage, offset + 2 * hsz) = F2H(ng);
+      DEVICE_LINEAR_GET(storage, offset + 3 * hsz) = hx;
+      DEVICE_LINEAR_GET(storage, offset + 4 * hsz) = F2H(H2F(hn) + H2F(b2n));
+    }
+  }
+
+  GruCellForwardFunctor(
+      TensorInfo<scalar_t, index_type> Input,
+      const TensorInfo<scalar_t, index_type> Hidden,
+      const TensorInfo<scalar_t, index_type> Bias1,
+      const TensorInfo<scalar_t, index_type> Bias2,
+      const TensorInfo<scalar_t, index_type> _hx,
+      const TensorInfo<scalar_t, index_type> _hy,
+      const TensorInfo<scalar_t, index_type> storage,
+      const index_type hsz,
+      const index_type totalElements)
+      : Input(Input),
+        Hidden(Hidden),
+        Bias1(Bias1),
+        Bias2(Bias2),
+        _hx(_hx),
+        _hy(_hy),
+        storage(storage),
+        hsz(hsz),
+        totalElements(totalElements) {}
+
+ private:
+  TensorInfo<scalar_t, index_type> Input;
+  const TensorInfo<scalar_t, index_type> Hidden;
+  const TensorInfo<scalar_t, index_type> Bias1;
+  const TensorInfo<scalar_t, index_type> Bias2;
+  const TensorInfo<scalar_t, index_type> _hx;
+  const TensorInfo<scalar_t, index_type> _hy;
+  const TensorInfo<scalar_t, index_type> storage;
+  const index_type hsz;
+  const index_type totalElements;
+};
+
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
+struct GruCellBackwardFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    for (index_type linearIndex = item.get_local_id(0);
+         linearIndex < totalElements;
+         linearIndex += item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz) * 5 * hsz + linearIndex % hsz;
+
+      scalar_t rg = DEVICE_LINEAR_GET(storage, offset + 0 * hsz);
+      scalar_t ig = DEVICE_LINEAR_GET(storage, offset + 1 * hsz);
+      scalar_t ng = DEVICE_LINEAR_GET(storage, offset + 2 * hsz);
+      scalar_t hx = DEVICE_LINEAR_GET(storage, offset + 3 * hsz);
+      scalar_t hn = DEVICE_LINEAR_GET(storage, offset + 4 * hsz);
+
+      scalar_t go = DEVICE_LINEAR_GET(gradOutput, linearIndex);
+
+      offset = (linearIndex / hsz) * 3 * hsz + linearIndex % hsz;
+
+      accscalar_t gig = H2F(go) * (H2F(hx) - H2F(ng)) * (1 - H2F(ig)) * H2F(ig);
+      accscalar_t ghx = H2F(go) * H2F(ig);
+      accscalar_t gin = H2F(go) * (1 - H2F(ig)) * (1 - H2F(ng) * H2F(ng));
+      accscalar_t ghn = gin * H2F(rg);
+      accscalar_t grg = gin * H2F(hn) * (1 - H2F(rg)) * H2F(rg);
+
+      DEVICE_LINEAR_GET(gradInInput, offset + 0 * hsz) = F2H(grg);
+      DEVICE_LINEAR_GET(gradInInput, offset + 1 * hsz) = F2H(gig);
+      DEVICE_LINEAR_GET(gradInInput, offset + 2 * hsz) = F2H(gin);
+
+      DEVICE_LINEAR_GET(gradInHidden, offset + 0 * hsz) = F2H(grg);
+      DEVICE_LINEAR_GET(gradInHidden, offset + 1 * hsz) = F2H(gig);
+      DEVICE_LINEAR_GET(gradInHidden, offset + 2 * hsz) = F2H(ghn);
+      DEVICE_LINEAR_GET(gradInputHx, linearIndex) = F2H(ghx);
+    }
+  }
+
+  GruCellBackwardFunctor(
+      TensorInfo<scalar_t, index_type> gradInInput,
+      TensorInfo<scalar_t, index_type> gradInHidden,
+      TensorInfo<scalar_t, index_type> gradOutput,
+      TensorInfo<scalar_t, index_type> gradInputHx,
+      TensorInfo<scalar_t, index_type> storage,
+      index_type hsz,
+      index_type totalElements)
+      : gradInInput(gradInInput),
+        gradInHidden(gradInHidden),
+        gradOutput(gradOutput),
+        gradInputHx(gradInputHx),
+        storage(storage),
+        hsz(hsz),
+        totalElements(totalElements) {}
+
+ private:
+  TensorInfo<scalar_t, index_type> gradInInput;
+  TensorInfo<scalar_t, index_type> gradInHidden;
+  TensorInfo<scalar_t, index_type> gradOutput;
+  TensorInfo<scalar_t, index_type> gradInputHx;
+  TensorInfo<scalar_t, index_type> storage;
+  index_type hsz;
+  index_type totalElements;
+};
+
+#undef DEVICE_LINEAR_GET
+#undef DEVICE_BIAS_GET
+#undef H2F
+#undef F2H
+
+template <typename scalar_t, typename index_type>
+void lstm_forward_impl(
+    const Tensor& input_gates,
+    const Tensor& hidden_gates,
+    const Tensor& input_bias,
+    const Tensor& hidden_bias,
+    const Tensor& cx,
+    const Tensor& hy,
+    const Tensor& cy,
+    const Tensor& workspace) {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+
+  int64_t numel = cx.numel();
+  if (numel == 0)
+    return;
+
+  auto max_wg_size = syclDeviceMaxWorkGroupSize();
+  auto local_range = max_wg_size;
+  auto global_range = (numel + 512 - 1) / 512;
+
+  auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
+  auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
+  auto input_biasI = tryGetTensorInfo<scalar_t, index_type>(input_bias);
+  auto hidden_biasI = tryGetTensorInfo<scalar_t, index_type>(hidden_bias);
+  auto cxI = getTensorInfo<scalar_t, index_type>(cx);
+  auto hyI = getTensorInfo<scalar_t, index_type>(hy);
+  auto cyI = getTensorInfo<scalar_t, index_type>(cy);
+  auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
+  index_type hidden_size = cxI.sizes[cxI.dims - 1];
+
+  if (allContiguous(
+          {input_gates,
+           hidden_gates,
+           input_bias,
+           hidden_bias,
+           cx,
+           hy,
+           cy,
+           workspace})) {
+    collapseDims(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        cxI,
+        hyI,
+        cyI,
+        workspaceI);
+    LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        cxI,
+        hyI,
+        cyI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  } else {
+    LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        cxI,
+        hyI,
+        cyI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
+}
+
+template <typename scalar_t, typename index_type>
+void lstm_backward_impl(
+    const Tensor& grad_hy,
+    const Tensor& grad_cy,
+    const Tensor& cx,
+    const Tensor& cy,
+    const Tensor& workspace,
+    const Tensor& grad_gates,
+    const Tensor& grad_cx) {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+
+  int64_t numel = cx.numel();
+  if (numel == 0)
+    return;
+
+  auto max_wg_size = syclDeviceMaxWorkGroupSize();
+  auto local_range = max_wg_size;
+  auto global_range = (numel + 512 - 1) / 512;
+
+  auto grad_hyI = tryGetTensorInfo<scalar_t, index_type>(grad_hy);
+  auto grad_cyI = tryGetTensorInfo<scalar_t, index_type>(grad_cy);
+  auto cxI = getTensorInfo<scalar_t, index_type>(cx);
+  auto cyI = getTensorInfo<scalar_t, index_type>(cy);
+  auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
+  auto grad_gatesI = getTensorInfo<scalar_t, index_type>(grad_gates);
+  auto grad_cxI = getTensorInfo<scalar_t, index_type>(grad_cx);
+  index_type hidden_size = cxI.sizes[cxI.dims - 1];
+
+  if (allContiguous(
+          {grad_hy, grad_cy, cx, cy, workspace, grad_gates, grad_cx})) {
+    collapseDims(
+        grad_hyI, grad_cyI, cxI, cyI, workspaceI, grad_gatesI, grad_cxI);
+    LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+        workspaceI,
+        grad_gatesI,
+        cxI,
+        cyI,
+        grad_hyI,
+        grad_cyI,
+        grad_cxI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  } else {
+    LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+        workspaceI,
+        grad_gatesI,
+        cxI,
+        cyI,
+        grad_hyI,
+        grad_cyI,
+        grad_cxI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
+}
+
+template <typename scalar_t, typename index_type>
+void gru_forward_impl(
+    const Tensor& input_gates,
+    const Tensor& hidden_gates,
+    const Tensor& input_bias,
+    const Tensor& hidden_bias,
+    const Tensor& hx,
+    const Tensor& hy,
+    const Tensor& workspace) {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+
+  int64_t numel = hx.numel();
+  if (numel == 0)
+    return;
+
+  auto max_wg_size = syclDeviceMaxWorkGroupSize();
+  auto local_range = max_wg_size;
+  auto global_range = (numel + 512 - 1) / 512;
+
+  auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
+  auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
+  auto input_biasI = tryGetTensorInfo<scalar_t, index_type>(input_bias);
+  auto hidden_biasI = tryGetTensorInfo<scalar_t, index_type>(hidden_bias);
+  auto hxI = getTensorInfo<scalar_t, index_type>(hx);
+  auto hyI = getTensorInfo<scalar_t, index_type>(hy);
+  auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
+  index_type hidden_size = hxI.sizes[hxI.dims - 1];
+
+  if (allContiguous(
+          {input_gates,
+           hidden_gates,
+           input_bias,
+           hidden_bias,
+           hx,
+           hy,
+           workspace})) {
+    collapseDims(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        hxI,
+        hyI,
+        workspaceI);
+    GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        hxI,
+        hyI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  } else {
+    GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+        input_gatesI,
+        hidden_gatesI,
+        input_biasI,
+        hidden_biasI,
+        hxI,
+        hyI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
+}
+
+template <typename scalar_t, typename index_type>
+void gru_backward_impl(
+    const Tensor& grad_hy,
+    const Tensor& workspace,
+    const Tensor& grad_input_gates,
+    const Tensor& grad_hidden_gates,
+    const Tensor& grad_hx) {
+  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+
+  int64_t numel = grad_hy.numel();
+  if (numel == 0)
+    return;
+
+  auto max_wg_size = syclDeviceMaxWorkGroupSize();
+  auto local_range = max_wg_size;
+  auto global_range = (numel + 512 - 1) / 512;
+
+  auto grad_hyI = getTensorInfo<scalar_t, index_type>(grad_hy);
+  auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
+  auto grad_input_gatesI =
+      getTensorInfo<scalar_t, index_type>(grad_input_gates);
+  auto grad_hidden_gatesI =
+      getTensorInfo<scalar_t, index_type>(grad_hidden_gates);
+  auto grad_hxI = getTensorInfo<scalar_t, index_type>(grad_hx);
+  index_type hidden_size = grad_hyI.sizes[grad_hyI.dims - 1];
+
+  if (allContiguous(
+          {grad_hy, workspace, grad_input_gates, grad_hidden_gates, grad_hx})) {
+    collapseDims(
+        grad_hyI, workspaceI, grad_input_gatesI, grad_hidden_gatesI, grad_hxI);
+    GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+        grad_input_gatesI,
+        grad_hidden_gatesI,
+        grad_hyI,
+        grad_hxI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  } else {
+    GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+        grad_input_gatesI,
+        grad_hidden_gatesI,
+        grad_hyI,
+        grad_hxI,
+        workspaceI,
+        hidden_size,
+        numel);
+    sycl_kernel_submit(
+        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
+}
+
+// Note [64-bit index math check elision]
+// It's enough to perform the check for 64-bit math on the largest tensor only.
+// If 32-bit is enough for it, it will suffice for all other tensors too, and we
+// can save some work using this trick.
+
+std::tuple<Tensor, Tensor, Tensor> _thnn_fused_lstm_cell_kernel(
+    const Tensor& input_gates,
+    const Tensor& hidden_gates,
+    const Tensor& cx,
+    const std::optional<Tensor>& input_bias_opt,
+    const std::optional<Tensor>& hidden_bias_opt) {
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> input_bias_maybe_owned =
+      at::borrow_from_optional_tensor(input_bias_opt);
+  const Tensor& input_bias = *input_bias_maybe_owned;
+  const Tensor& hidden_bias = hidden_bias_opt.value_or(Tensor());
+
+  checkSizes(
+      "_thnn_fused_lstm_cell_xpu",
+      {input_gates, "input_gates", 1},
+      {hidden_gates, "hidden_gates", 2},
+      {input_bias, "input_bias", 3},
+      {hidden_bias, "hidden_bias", 4},
+      /*factor=*/4,
+      {cx, "prev_hidden", 5});
+
+  auto workspace = at::empty_like(input_gates, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto hy = at::empty_like(cx, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto cy = at::empty_like(cx, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      input_gates.scalar_type(),
+      "_thnn_fused_lstm_cell_xpu",
+      [&] {
+        if (canUse32BitIndexMath(
+                workspace)) { // See Note [64-bit index math check elision]
+          lstm_forward_impl<scalar_t, int32_t>(
+              input_gates,
+              hidden_gates,
+              input_bias,
+              hidden_bias,
+              cx,
+              hy,
+              cy,
+              workspace);
+        } else {
+          lstm_forward_impl<scalar_t, int64_t>(
+              input_gates,
+              hidden_gates,
+              input_bias,
+              hidden_bias,
+              cx,
+              hy,
+              cy,
+              workspace);
+        }
+      });
+  return std::make_tuple(std::move(hy), std::move(cy), std::move(workspace));
+}
+
+void checkLSTMBackwardSizes(
+    const TensorArg& grad_hy,
+    const TensorArg& grad_cy,
+    const TensorArg& cx,
+    const TensorArg& cy,
+    const TensorArg& workspace) {
+  CheckedFrom c = "fused_lstm_cell_backward";
+  const TensorArg& defined_grad = grad_hy->defined() ? grad_hy : grad_cy;
+  checkDim(c, defined_grad, 2);
+  auto exp_size = defined_grad->sizes();
+  if (grad_hy->defined()) {
+    checkSize(c, grad_hy, exp_size);
+  }
+  if (grad_cy->defined()) {
+    checkSize(c, grad_cy, exp_size);
+  }
+  checkSize(c, cx, exp_size);
+  checkSize(c, cy, exp_size);
+  checkDim(c, workspace, 2);
+  checkNumel(c, workspace, exp_size[0] * exp_size[1] * 4);
+}
+
+std::tuple<Tensor, Tensor, Tensor> _thnn_fused_lstm_cell_backward_kernel(
+    const std::optional<Tensor>& grad_hy_opt,
+    const std::optional<Tensor>& grad_cy_opt,
+    const Tensor& cx,
+    const Tensor& cy,
+    const Tensor& workspace,
     bool has_bias) {
-  const int64_t COL = feature_size;
-  const int64_t ROW = batch_size;
+  // See [Note: hacky wrapper removal for optional tensor]
+  c10::MaybeOwned<Tensor> grad_hy_maybe_owned =
+      at::borrow_from_optional_tensor(grad_hy_opt);
+  const Tensor& grad_hy = *grad_hy_maybe_owned;
+  const Tensor& grad_cy = grad_cy_opt.value_or(Tensor());
 
-  using KernelClass = FuseOpsKernelFunctor<T>;
-  int64_t max_group_size = syclMaxWorkGroupSize<KernelClass>();
-  int64_t group_size = std::min(feature_size, max_group_size);
-  const sycl::range<1> global_size{(size_t)ROW * group_size};
-  const sycl::range<1> local_size{(size_t)group_size};
-
-  KernelClass kfn(
-      igates,
-      hgates,
-      ibias,
-      hbias,
-      hidden,
-      output,
-      workspace,
-      feature_size,
-      batch_size,
-      has_bias,
-      COL,
-      ROW,
-      group_size);
-
-  sycl_kernel_submit(global_size, local_size, getCurrentSYCLQueue(), kfn);
-}
-
-template <typename T>
-struct FuseOpsKernelBackwardFunctor {
-  void operator()(sycl::nd_item<1> itemId) const {
-    int64_t lid = itemId.get_local_id(0);
-    int64_t gid = itemId.get_group(0);
-    int64_t grad_0 = gid * COL_ * 3;
-    int64_t grad_1 = grad_0 + COL_;
-    int64_t grad_2 = grad_1 + COL_;
-    // the bwd process is accomplished with elementwise operation
-    // the storage order of the workspace is vital and one can according
-    // to their name to access different blocks of a whole tensor. For
-    // example, workspacer_index denotes the reset_gates cache in fwd and
-    // vice versa.
-    int64_t workspacer_index = gid * COL_ * 5; // r
-    int64_t workspacez_index = workspacer_index + COL_; // z
-    int64_t workspacen_index = workspacez_index + COL_; // n
-    int64_t workspaceh_index = workspacen_index + COL_; // h
-    int64_t workspacehbn_index = workspaceh_index + COL_; // hbn
-    for (int64_t loc = lid; loc < COL_; loc += GROUP_SIZE_) {
-      int64_t index_ = gid * COL_ + loc;
-
-      // grad_input_1 = A*(1-z)*(1-n^2)*hn*(1-r)*r
-      grad_input_gates_[grad_0 + loc] = grad_hy_[index_] *
-          (1.0f - workspace_[workspacez_index + loc]) *
-          (1.0f -
-           workspace_[workspacen_index + loc] *
-               workspace_[workspacen_index + loc]) *
-          workspace_[workspacehbn_index + loc] *
-          (1.0f - workspace_[workspacer_index + loc]) *
-          workspace_[workspacer_index + loc];
-      // grad_input_2 = A*(h-n)*(1-z)*z
-      grad_input_gates_[grad_1 + loc] = grad_hy_[index_] *
-          (workspace_[workspaceh_index + loc] -
-           workspace_[workspacen_index + loc]) *
-          (1.0f - workspace_[workspacez_index + loc]) *
-          workspace_[workspacez_index + loc];
-      // grad_input_3 = A*(1-z)*(1-n^2)
-      grad_input_gates_[grad_2 + loc] = grad_hy_[index_] *
-          (1 - workspace_[workspacez_index + loc]) *
-          (1 -
-           workspace_[workspacen_index + loc] *
-               workspace_[workspacen_index + loc]);
-      // grad_hidden_1 = A*(1-z)*(1-n^2)*hn*(1-r)*r
-      grad_hidden_gates_[grad_0 + loc] = grad_hy_[index_] *
-          (1.0f - workspace_[workspacez_index + loc]) *
-          (1.0f -
-           workspace_[workspacen_index + loc] *
-               workspace_[workspacen_index + loc]) *
-          workspace_[workspacehbn_index + loc] *
-          (1.0f - workspace_[workspacer_index + loc]) *
-          workspace_[workspacer_index + loc];
-      // grad_hidden_2 = A*(h-n)*(1-z)*z
-      grad_hidden_gates_[grad_1 + loc] = grad_hy_[index_] *
-          (workspace_[workspaceh_index + loc] -
-           workspace_[workspacen_index + loc]) *
-          (1 - workspace_[workspacez_index + loc]) *
-          workspace_[workspacez_index + loc];
-      // grad_hidden_3 = A*(1-z)*(1-n^2)*r
-      grad_hidden_gates_[grad_2 + loc] = grad_hy_[index_] *
-          (1.0f - workspace_[workspacez_index + loc]) *
-          (1.0f -
-           workspace_[workspacen_index + loc] *
-               workspace_[workspacen_index + loc]) *
-          workspace_[workspacer_index + loc];
-      grad_hx_[index_] = grad_hy_[index_] * workspace_[workspacez_index + loc];
-    }
+  if (!grad_hy.defined() && !grad_cy.defined()) {
+    return std::tuple<Tensor, Tensor, Tensor>();
   }
-  FuseOpsKernelBackwardFunctor(
-      const T* grad_hy,
-      const T* workspace,
-      T* grad_input_gates,
-      T* grad_hidden_gates,
-      T* grad_hx,
-      const int64_t feature_size,
-      const int64_t batch_size,
-      const int64_t COL,
-      const int64_t ROW,
-      int64_t GROUP_SIZE)
-      : grad_hy_(grad_hy),
-        workspace_(workspace),
-        grad_input_gates_(grad_input_gates),
-        grad_hidden_gates_(grad_hidden_gates),
-        grad_hx_(grad_hx),
-        feature_size_(feature_size),
-        batch_size_(batch_size),
-        COL_(COL),
-        ROW_(ROW),
-        GROUP_SIZE_(GROUP_SIZE) {}
+  checkLSTMBackwardSizes(
+      {grad_hy, "grad_hy", 1},
+      {grad_cy, "grad_cy", 2},
+      {cx, "cx", 3},
+      {cy, "cy", 4},
+      {workspace, "workspace", 5});
 
- private:
-  const T* grad_hy_;
-  const T* workspace_;
-  T* grad_input_gates_;
-  T* grad_hidden_gates_;
-  T* grad_hx_;
-  const int64_t feature_size_;
-  const int64_t batch_size_;
-  const int64_t COL_;
-  const int64_t ROW_;
-  int64_t GROUP_SIZE_;
-};
+  auto grad_gates = at::empty_like(workspace, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto grad_cx = at::empty_like(cx, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      workspace.scalar_type(),
+      "_thnn_fused_lstm_cell_backward_xpu",
+      [&] {
+        if (canUse32BitIndexMath(
+                workspace)) { // See Note [64-bit index math check elision]
+          lstm_backward_impl<scalar_t, int32_t>(
+              grad_hy, grad_cy, cx, cy, workspace, grad_gates, grad_cx);
+        } else {
+          lstm_backward_impl<scalar_t, int64_t>(
+              grad_hy, grad_cy, cx, cy, workspace, grad_gates, grad_cx);
+        }
+      });
 
-// backward sycl implementation
-template <typename T>
-static inline void fuse_ops_kernel_backward(
-    const T* grad_hy,
-    const T* workspace,
-    T* grad_input_gates,
-    T* grad_hidden_gates,
-    T* grad_hx,
-    const int64_t feature_size,
-    const int64_t batch_size) {
-  using KernelClass = FuseOpsKernelBackwardFunctor<T>;
-  int64_t max_group_size = syclMaxWorkGroupSize<KernelClass>();
-  const int64_t COL = feature_size;
-  const int64_t ROW = batch_size;
-  int64_t group_size = std::min(feature_size, max_group_size);
-
-  const sycl::range<1> global_size{(size_t)ROW * group_size};
-  const sycl::range<1> local_size{(size_t)group_size};
-  // all input gates have the same shape
-  // all intermdiate variables are precessed in this function
-
-  KernelClass kfn(
-      grad_hy,
-      workspace,
-      grad_input_gates,
-      grad_hidden_gates,
-      grad_hx,
-      feature_size,
-      batch_size,
-      COL,
-      ROW,
-      group_size);
-
-  sycl_kernel_submit(global_size, local_size, getCurrentSYCLQueue(), kfn);
+  auto grad_bias =
+      has_bias ? grad_gates.sum(0, /*keepdim=*/false) : at::Tensor{};
+  return std::make_tuple(
+      std::move(grad_gates), std::move(grad_cx), std::move(grad_bias));
 }
+
+static constexpr int64_t GRU_WORKSPACE_MULTIPLIER = 5;
 
 std::tuple<Tensor, Tensor> _thnn_fused_gru_cell_kernel(
     const Tensor& input_gates,
     const Tensor& hidden_gates,
     const Tensor& hx,
-    const c10::optional<Tensor>& input_bias_opt,
-    const c10::optional<Tensor>& hidden_bias_opt) {
+    const std::optional<Tensor>& input_bias_opt,
+    const std::optional<Tensor>& hidden_bias_opt) {
+  // See [Note: hacky wrapper removal for optional tensor]
   c10::MaybeOwned<Tensor> input_bias_maybe_owned =
       at::borrow_from_optional_tensor(input_bias_opt);
   const Tensor& input_bias = *input_bias_maybe_owned;
-  const Tensor& hidden_bias =
-      c10::value_or_else(hidden_bias_opt, [] { return Tensor(); });
+  const Tensor& hidden_bias = hidden_bias_opt.value_or(Tensor());
 
-  auto batched_input = true;
-  auto feature_size = hx.size(1);
-  auto batch_size = hx.size(0);
+  checkSizes(
+      "_thnn_fused_gru_cell_xpu",
+      {input_gates, "input_gates", 1},
+      {hidden_gates, "hidden_gates", 2},
+      {input_bias, "input_bias", 3},
+      {hidden_bias, "hidden_bias", 4},
+      /*factor=*/3,
+      {hx, "prev_hidden", 5});
 
-  if (hx.dim() == 1) {
-    // no batch input
-    hx.resize_({1, hx.size(0)});
-  }
-
-  at::Tensor workspace = at::empty(
+  auto workspace = at::empty(
       {hx.size(0), hx.size(1) * GRU_WORKSPACE_MULTIPLIER}, hx.options());
-
   auto hy = at::empty_like(hx, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input_gates.scalar_type(),
       "_thnn_fused_gru_cell_xpu",
       [&] {
-        bool has_bias = input_bias.defined() || hidden_bias.defined();
-        scalar_t* input_bias_ptr =
-            input_bias.defined() ? input_bias.data_ptr<scalar_t>() : NULL;
-        scalar_t* hidden_bias_ptr =
-            hidden_bias.defined() ? hidden_bias.data_ptr<scalar_t>() : NULL;
-        fuse_ops_kernel<scalar_t>(
-            input_gates.data_ptr<scalar_t>(),
-            hidden_gates.data_ptr<scalar_t>(),
-            input_bias_ptr,
-            hidden_bias_ptr,
-            hx.data_ptr<scalar_t>(),
-            hy.data_ptr<scalar_t>(),
-            workspace.data_ptr<scalar_t>(),
-            feature_size,
-            batch_size,
-            has_bias);
+        if (canUse32BitIndexMath(
+                workspace)) { // See Note [64-bit index math check elision]
+          gru_forward_impl<scalar_t, int32_t>(
+              input_gates,
+              hidden_gates,
+              input_bias,
+              hidden_bias,
+              hx,
+              hy,
+              workspace);
+        } else {
+          gru_forward_impl<scalar_t, int64_t>(
+              input_gates,
+              hidden_gates,
+              input_bias,
+              hidden_bias,
+              hx,
+              hy,
+              workspace);
+        }
       });
-
-  if (!batched_input) {
-    hy.resize_({feature_size});
-    return std::make_tuple(hy, workspace);
-  }
-  return std::make_tuple(hy, workspace);
+  return std::make_tuple(std::move(hy), std::move(workspace));
 }
 
-// backward process
+void checkGRUBackwardSizes(
+    const TensorArg& grad_hy,
+    const TensorArg& workspace) {
+  CheckedFrom c = "fused_gru_cell_backward";
+  checkDim(c, grad_hy, 2);
+  checkSize(
+      c,
+      workspace,
+      {grad_hy->size(0), grad_hy->size(1) * GRU_WORKSPACE_MULTIPLIER});
+}
+
 std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor>
 _thnn_fused_gru_cell_backward_kernel(
     const Tensor& grad_hy,
     const Tensor& workspace,
     bool has_bias) {
+  checkGRUBackwardSizes({grad_hy, "grad_hy", 1}, {workspace, "workspace", 2});
+
   int64_t hidden_size = workspace.size(1) / GRU_WORKSPACE_MULTIPLIER;
-  int64_t batch_size = workspace.size(0);
-
-  // grad_hy input is not contiguous in GRUCell bwd. But we hope it contiguous
-  // to save much time. One can access the grad_hy without congtiguous operation
-  // with information of current timestep. Then, one can access the grad_hy by
-  // the pointer directly i.e. index_grad_hy = row*(seq_len*hidden) +
-  // timestep*hidden + loc. this operation requires knowing the seq_len and
-  // current timestep. but one can fuse all GRU components such as the different
-  // layers and matmul and smallop in a GRUCEll. Then, the freedom degree is
-  // larger without concerning the current API implementations.
-  auto grad_hy_ = grad_hy;
-  if (grad_hy_.is_contiguous() == false) {
-    grad_hy_ = grad_hy_.contiguous();
-  }
-
-  at::Tensor grad_input_gates =
-      at::empty({batch_size, hidden_size * 3}, workspace.options());
-
-  at::Tensor grad_hidden_gates =
-      at::empty({batch_size, hidden_size * 3}, workspace.options());
-
-  auto grad_hx = at::empty_like(grad_hy_, workspace.options());
-
+  auto grad_input_gates =
+      at::empty({workspace.size(0), hidden_size * 3}, workspace.options());
+  auto grad_hidden_gates =
+      at::empty({workspace.size(0), hidden_size * 3}, workspace.options());
+  auto grad_hx = at::empty_like(grad_hy, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       grad_hy.scalar_type(),
       "_thnn_fused_gru_cell_backward_xpu",
       [&] {
-        fuse_ops_kernel_backward<scalar_t>(
-            grad_hy_.data_ptr<scalar_t>(),
-            workspace.data_ptr<scalar_t>(),
-            grad_input_gates.data_ptr<scalar_t>(),
-            grad_hidden_gates.data_ptr<scalar_t>(),
-            grad_hx.data_ptr<scalar_t>(),
-            hidden_size,
-            batch_size);
+        if (canUse32BitIndexMath(
+                workspace)) { // See Note [64-bit index math check elision]
+          gru_backward_impl<scalar_t, int32_t>(
+              grad_hy, workspace, grad_input_gates, grad_hidden_gates, grad_hx);
+        } else {
+          gru_backward_impl<scalar_t, int64_t>(
+              grad_hy, workspace, grad_input_gates, grad_hidden_gates, grad_hx);
+        }
       });
 
   at::Tensor grad_input_bias, grad_hidden_bias;
-
   if (has_bias) {
-    grad_input_bias = grad_input_gates.sum(0, false);
-    grad_hidden_bias = grad_hidden_gates.sum(0, false);
+    grad_input_bias = grad_input_gates.sum(0, /*keepdim=*/false);
+    grad_hidden_bias = grad_hidden_gates.sum(0, /*keepdim=*/false);
   }
 
   return std::make_tuple(
-      grad_input_gates,
-      grad_hidden_gates,
-      grad_hx,
-      grad_input_bias,
-      grad_hidden_bias);
+      std::move(grad_input_gates),
+      std::move(grad_hidden_gates),
+      std::move(grad_hx),
+      std::move(grad_input_bias),
+      std::move(grad_hidden_bias));
 }
 
 } // namespace at::native::xpu
