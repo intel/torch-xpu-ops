@@ -19,6 +19,7 @@
 #endif
 
 #include <comm/SYCLContext.h>
+#include <ATen/native/xpu/sycl/SegmentReduceKernels.h>
 
 namespace at::native::xpu {
 
