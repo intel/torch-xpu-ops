@@ -82,6 +82,7 @@ _xpu_computation_op_list = [
     "hardswish",
     "nn.functional.hardshrink",
     "nn.functional.mish",
+    "i0",
     "index_add",
     "index_fill",
     "index_put",
@@ -119,12 +120,14 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.prelu",
+    "nn.functional.rrelu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
     "nextafter",
+    "heaviside",
     "nonzero",
     "normal",
     "pow",
@@ -167,6 +170,8 @@ _xpu_computation_op_list = [
     "add",
     "all",
     "any",
+    "isposinf",
+    "isneginf",
     "arange",
     "as_strided",
     # "sort", # Comparison with CPU is not feasible due to its unstable sorting algorithm
@@ -178,12 +183,18 @@ _xpu_computation_op_list = [
     "cat",
     "log_softmax",
     "softmax",
+    "_softmax_backward_data",
     "scatter",
     "gather",
     "nn.functional.adaptive_max_pool2d",
+    "nn.functional.adaptive_max_pool3d",
     "nn.functional.max_pool2d",
+    "nn.functional.fractional_max_pool2d",
+    "nn.functional.fractional_max_pool3d",
     "max_pool2d_with_indices_backward",
+    "nn.functional.max_pool3d",
     "nn.functional.adaptive_avg_pool2d",
+    "nn.functional.adaptive_avg_pool3d",
     "nn.functional.avg_pool2d",
     "nn.functional.avg_pool3d",
     "nn.functional.embedding",
@@ -196,9 +207,14 @@ _xpu_computation_op_list = [
     "nn.functional.smooth_l1_loss",
     "nn.functional.mse_loss",
     "nn.functional.binary_cross_entropy",
+    "nn.functional.multilabel_margin_loss",
     "nn.functional.huber_loss",
+    "nn.functional.multi_margin_loss",
+    "nn.functional.max_unpool2d",
+    "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
+    "nn.functional.multi_head_attention_forward",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -211,9 +227,10 @@ _xpu_computation_op_list = [
     "bucketize",
     "searchsorted",
     "grid_sampler_2d",
-    # "nn.functional.grid_sample", # Lack of XPU implementation of aten::grid_sampler_3d.
+    "nn.functional.grid_sample",
     "addr",
     "cdist",
+    "nn.functional.pdist",
     "nn.functional.group_norm",
     "nn.functional.batch_norm",
     "native_batch_norm",
@@ -222,6 +239,8 @@ _xpu_computation_op_list = [
     "bincount",
     "cross",
     "renorm",
+    "igamma",
+    "igammac",
     "digamma",
     "polygamma",
     "lgamma",
@@ -256,11 +275,15 @@ _xpu_computation_op_list = [
     "square",
     "heaviside",
     "argsort",
+    "tril_indices",
+    "triu_indices",
     "index_copy",
     "cauchy",
     "geometric",
     "mode",
     "log_normal",
+    "take",
+    "put",
 ]
 
 _ops_without_cuda_support = [
@@ -292,6 +315,11 @@ _cuda_xfail_xpu_pass = [
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
 
 _xpu_tolerance_override = {
+    "nn.functional.grid_sample": {
+        ("TestCommon", "test_compare_cpu"): {
+            torch.float32: tol(atol=0.002, rtol=0.008),
+        }
+    },
     "nn.functional.tanhshrink": {
         ("TestUnaryUfuncs", "test_reference_numerics_normal"): {
             torch.complex64: tol(atol=2e-05, rtol=9e-06),
@@ -710,10 +738,12 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
 
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
+        test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
+            test_dir,
+            os.path.join(test_dir, "nn"),
+            os.path.join(test_dir, "distributions"),
+            os.path.join(test_dir, "quantization/core"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()

@@ -601,7 +601,7 @@ struct IndexKernelFunctor {
     auto out_ptr = out_data_ + offsets[0];
     auto in_ptr = in_data_ + offsets[1];
     int64_t offset = 0;
-    //#pragma unroll
+    // #pragma unroll
     for (size_t i = 0; i < num_indices_; i++) {
       // handle int32 index tensor according to the indice_size_bytes.
       // we didn't use template parametor to avoid too many kernels' creation
@@ -927,5 +927,30 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
+
+#define TAKE_PUT_UNROLL_SZIE 4
+
+template <int vt, typename func_t>
+struct TakePutKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const auto tid = item.get_local_id(0);
+    const auto nt = item.get_local_range(0);
+    const auto nv = nt * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += nt;
+      }
+    }
+  }
+
+  TakePutKernelFunctor(const int64_t N, const func_t f) : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
 
 } // namespace at::native::xpu
