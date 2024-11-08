@@ -1983,6 +1983,32 @@
     XPU: foreach_tensor_add_scalar_kernel_xpu_
   autogen: _foreach_add.Scalar_out
 
+- func: _foreach_add.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalarlist_kernel_xpu
+
+- func: _foreach_add_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalarlist_kernel_xpu_
+  autogen: _foreach_add.ScalarList_out
+
+- func: _foreach_add.Tensor(Tensor[] self, Tensor other, *, Scalar alpha=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_tensor_kernel_xpu
+
+- func: _foreach_add_.Tensor(Tensor(a!)[] self, Tensor other, *, Scalar alpha=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_tensor_kernel_xpu_
+  autogen: _foreach_add.Tensor_out
+
 - func: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -4197,6 +4223,11 @@
   dispatch:
     CompositeImplicitAutograd: adaptive_avg_pool2d_symint
 
+- func: adaptive_avg_pool2d.out(Tensor self, SymInt[2] output_size, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: adaptive_avg_pool2d_out_xpu
+
 - func: adaptive_avg_pool3d.out(Tensor self, SymInt[3] output_size, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
   dispatch:
@@ -4496,6 +4527,12 @@
   structured_delegate: lerp.Scalar_out
   tags: pointwise
 
+- func: lerp_.Scalar(Tensor(a!) self, Tensor end, Scalar weight) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: lerp.Scalar_out
+  tags: pointwise
+
 - func: lerp.Tensor(Tensor self, Tensor end, Tensor weight) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: method, function
@@ -4508,6 +4545,12 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: lerp_Tensor
+  tags: pointwise
+
+- func: lerp_.Tensor(Tensor(a!) self, Tensor end, Tensor weight) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  structured_delegate: lerp.Tensor_out
   tags: pointwise
 
 - func: addcdiv.out(Tensor self, Tensor tensor1, Tensor tensor2, *, Scalar value=1, Tensor(a!) out) -> Tensor(a!)
@@ -5567,6 +5610,18 @@
 
 - func: norm.names_out(Tensor self, Scalar? p, Dimname[1] dim, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
+
+# DEPRECATED: Use torch.aminmax instead
+- func: _aminmax(Tensor self) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _aminmax_all
+  autogen: _aminmax.out
+
+# DEPRECATED: Use torch.aminmax instead
+- func: _aminmax.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _aminmax
+  autogen: _aminmax.dim_out
 
 - func: aminmax(Tensor self, *, int? dim=None, bool keepdim=False) -> (Tensor min, Tensor max)
   device_check: NoCheck   # TensorIterator
@@ -7582,3 +7637,27 @@
   python_module: special
   variants: function
   tags: pointwise
+
+- func: rrelu_with_noise.out(Tensor self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  tags: nondeterministic_seeded
+  dispatch:
+    XPU: rrelu_with_noise_out_xpu
+
+- func: rrelu_with_noise(Tensor self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: rrelu_with_noise_xpu
+  tags: nondeterministic_seeded
+
+- func: rrelu_with_noise_backward(Tensor grad_output, Tensor self, Tensor noise, Scalar lower, Scalar upper, bool training, bool self_is_result) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeExplicitAutograd: rrelu_with_noise_backward
+  autogen: rrelu_with_noise_backward.out
+
+- func: rrelu_with_noise_(Tensor(a!) self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor(a!)
+  python_module: nn
+  tags: nondeterministic_seeded
+  dispatch:
+    XPU: rrelu_with_noise_xpu_
