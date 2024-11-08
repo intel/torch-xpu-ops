@@ -162,8 +162,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",
-    "frexp.Tensor_out",
-    "_fused_moving_avg_obs_fq_helper",
     "geqrf",
     "index_reduce.out",
     "kthvalue.values",
