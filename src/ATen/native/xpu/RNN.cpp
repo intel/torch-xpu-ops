@@ -1,11 +1,9 @@
 #include <ATen/ATen.h>
-#include <ATen/core/op_registration/adaption.h>
-#include <ATen/native/cpu/mixed_data_type.h>
 #include <ATen/native/xpu/sycl/RNNKernels.h>
 
 namespace at::native {
 
-std::tuple<Tensor, Tensor, Tensor> _thnn_fused_lstm_cell_cuda(
+std::tuple<Tensor, Tensor, Tensor> _thnn_fused_lstm_cell_xpu(
     const Tensor& input_gates,
     const Tensor& hidden_gates,
     const Tensor& cx,

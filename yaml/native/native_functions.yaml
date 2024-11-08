@@ -6980,7 +6980,7 @@
 # NB: this is function is NOT differentiable
 - func: _thnn_fused_lstm_cell_backward_impl(Tensor? grad_hy, Tensor? grad_cy, Tensor cx, Tensor cy, Tensor workspace, bool has_bias) -> (Tensor, Tensor, Tensor)
   dispatch:
-    XPU: _thnn_fused_lstm_cell_backward_impl_xpu
+    XPU: _thnn_fused_lstm_cell_backward_xpu
   autogen: _thnn_fused_lstm_cell_backward_impl.out
 
 - func: _thnn_fused_gru_cell(Tensor input_gates, Tensor hidden_gates, Tensor hx, Tensor? input_bias=None, Tensor? hidden_bias=None) -> (Tensor, Tensor)
