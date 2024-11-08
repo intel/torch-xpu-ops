@@ -123,6 +123,7 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.prelu",
+    "nn.functional.rrelu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
