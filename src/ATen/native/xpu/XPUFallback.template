@@ -194,7 +194,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_segment_reduce_backward",
     "sinc.out",
     "_thnn_fused_gru_cell",
-    "_to_sparse",
     "_to_sparse_csr",
     "triangular_solve.X",
     "_upsample_bilinear2d_aa.out",

@@ -7,6 +7,7 @@ set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 
 if(WIN32)
@@ -45,6 +46,7 @@ endfunction(GEN_BACKEND)
 
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 function(GEN_XPU file_yaml)
   set(generated_files "")
@@ -75,7 +77,7 @@ function(GEN_XPU file_yaml)
     --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --per-operator-headers
     --static-dispatch-backend
-    --backend-whitelist=XPU
+    --backend-whitelist XPU SparseXPU
     COMMAND
     ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
@@ -98,11 +100,12 @@ GEN_XPU(
   native_functions.yaml
   XPUFunctions.h
   RegisterXPU.cpp
+  RegisterSparseXPU.cpp
 )
 
 
 
 
-list(APPEND xpu_generated_src ${RegisterXPU_PATH})
+list(APPEND xpu_generated_src ${RegisterXPU_PATH} ${RegisterSparseXPU_PATH})
 add_custom_target(TORCH_XPU_GEN_TARGET DEPENDS ${xpu_generated_src})
 set(ATen_XPU_GEN_SRCS ${xpu_generated_src})
