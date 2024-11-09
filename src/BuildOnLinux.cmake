@@ -28,7 +28,6 @@ else()
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_REDUCE_SRCS)
-  set(ATen_XPU_SYCL_ACTIVATION_SRCS)
   set(ATen_XPU_SYCL_FOREACH_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
 
@@ -50,7 +49,7 @@ else()
     elseif(NOT IS_COPY STREQUAL "" OR NOT IS_POW STREQUAL "")
       list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
     elseif(NOT IS_ACTIVATION STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_ACTIVATION_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
     else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
     endif()
@@ -79,18 +78,6 @@ else()
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_reduce_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-
-  # Activation kernel lib
-  set(sycl_activation_lib torch_xpu_ops_sycl_activation_kernels)
-  sycl_add_library(
-    ${sycl_activation_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_ACTIVATION_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_activation_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_activation_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_activation_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
   # Foreach kernel lib
   set(sycl_foreach_lib torch_xpu_ops_sycl_foreach_kernels)
