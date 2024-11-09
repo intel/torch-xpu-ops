@@ -2683,6 +2683,8 @@ skip_dict = {
 
     "test_comparison_utils_xpu.py": None,
 
+    "test_segment_reductions_xpu.py": None,
+
     "nn/test_pruning_xpu.py": None,
 
     "test_foreach_xpu.py": (
