@@ -105,7 +105,7 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
 
   set(SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS}")
   string(REPLACE "-Wno-stringop-overflow" "" SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS_LIST}")
-  string(REPLACE "-Werror" "" SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS_LIST}")
+  string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   separate_arguments(SYCL_CXX_FLAGS_LIST)
 
   execute_process(
