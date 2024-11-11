@@ -24,9 +24,7 @@ skip_dict = {
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
-        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
 
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
@@ -118,6 +116,9 @@ skip_dict = {
 
         # Cuda skipped it
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
+
+        # Cuda XFAIL (stock pytorch commit: e7cf7d0)
+        "test_non_standard_bool_values_argsort_xpu_bool",
 
         # Unexpected success
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
@@ -422,9 +423,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/683
         "test_conj_view_addbmm_xpu_complex64",
         "test_neg_conj_view_addbmm_xpu_complex128",
-        # CPU fallback error: AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/271
-        "test_neg_view_nn_functional_rrelu_xpu_float64",
         ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         # https://github.com/intel/torch-xpu-ops/issues/254
         "test_conj_view___rmatmul___xpu_complex64",
@@ -1093,12 +1091,6 @@ skip_dict = {
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
-        # AssertionError: Tensor-likes are not close!
-        "test_RReLU_cuda",
-        "test_RReLU_no_batch_dim_cuda",
-        "test_RReLU_with_up_down_cuda",
-        # AssertionError: Scalars are not close!
-        "test_RReLU_with_up_down_scalar_cuda",
         # rnn fallback to cpu
         "test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
@@ -1220,7 +1212,10 @@ skip_dict = {
         "test_record_function",
     ),
 
-    "test_reductions_xpu.py": None,
+    "test_reductions_xpu.py": (
+        # Accumulate error due to different accumulation order.
+        "test_logcumsumexp_complex_xpu_complex64",
+    ),
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -1914,9 +1909,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
-        "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
@@ -2127,6 +2119,42 @@ skip_dict = {
         "test_reduction_all_prod_layout2_xpu_float64",
         "test_reduction_all_sum_layout2_xpu_float16",
         "test_reduction_all_sum_layout2_xpu_float64",
+    ),
+
+    "quantization/core/test_workflow_ops_xpu.py": (
+        # AssertionError: Not equal to tolerance rtol=1e-06, atol=1e-06
+        # Max absolute difference among violations: 1.731507e+10
+        # Max relative difference among violations: 0.01587304
+        # ACTUAL: array([-1.108163e+12,  1.108163e+12], dtype=float32)
+        # DESIRED: array([-1.108163e+12,  1.090847e+12], dtype=float32)
+        "test_fq_module_per_tensor_xpu",
+        # AssertionError: False is not true : Expected dScale=tensor([-0.0173], device='xpu:0') to match scale.grad=tensor([0.0189], device='xpu:0')
+        "test_learnable_backward_per_channel_cuda_xpu",
+    ),
+
+    "quantization/core/test_workflow_module_xpu.py": None,
+
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend
+        "test_compare_per_channel_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend.
+        "test_compare_per_tensor_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_cuda_quantization_does_not_pin_memory_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_per_channel_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_tensor_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::q_scale' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_index_put_impl_' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_put_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::index_select' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_select_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_masked_fill_cuda_xpu",
     ),
 
     "nn/test_packed_sequence_xpu.py": (
@@ -2415,11 +2443,6 @@ skip_dict = {
         "test_fn_gradgrad_addbmm_xpu_complex128",
         "test_inplace_grad_addbmm_xpu_complex128",
         "test_inplace_gradgrad_addbmm_xpu_complex128",
-        ### rrelu_xpu op is not implemented,try these cases after implementing rrelu.
-        "test_fn_grad_nn_functional_rrelu_xpu_float64",
-        "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_grad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
@@ -2608,11 +2631,59 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
+        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
     ),
 
+    "test_native_mha_xpu.py": (
+        # NotImplementedError: Could not run 'aten::_native_multi_head_attention' with arguments from the 'NestedTensorXPU' backend.
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_transform_bias_rescale_qkv_nested_xpu_float32",
+    ),
+
     "test_comparison_utils_xpu.py": None,
+
+    "test_segment_reductions_xpu.py": None,
 
     "nn/test_pruning_xpu.py": None,
 

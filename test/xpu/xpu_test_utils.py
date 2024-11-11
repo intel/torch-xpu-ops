@@ -66,6 +66,8 @@ _xpu_computation_op_list = [
     "copy",
     "cumprod",
     "cumsum",
+    "cummax",
+    "cummin",
     "equal",
     "eq",
     "exp",
@@ -99,6 +101,7 @@ _xpu_computation_op_list = [
     "log2",
     "logaddexp",
     "logaddexp2",
+    "logcumsumexp",
     "logit",
     "lt",
     "logical_and",
@@ -120,6 +123,7 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.prelu",
+    "nn.functional.rrelu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
@@ -213,6 +217,7 @@ _xpu_computation_op_list = [
     "nn.functional.max_unpool3d",
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
+    "nn.functional.multi_head_attention_forward",
     "sigmoid",
     "logsigmoid",
     "sgn",
@@ -282,6 +287,7 @@ _xpu_computation_op_list = [
     "log_normal",
     "take",
     "put",
+    "_segment_reduce",
 ]
 
 _ops_without_cuda_support = [
@@ -299,7 +305,6 @@ _cuda_xfail_xpu_pass = [
     ("_batch_norm_with_update", "test_noncontiguous_samples"),
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
     ("histc", "test_out"),
-    ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
@@ -736,10 +741,12 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
 
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
+        test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
+            test_dir,
+            os.path.join(test_dir, "nn"),
+            os.path.join(test_dir, "distributions"),
+            os.path.join(test_dir, "quantization/core"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
