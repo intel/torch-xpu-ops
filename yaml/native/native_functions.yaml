@@ -73,6 +73,57 @@
     XPU: add_out_xpu
   tags: pointwise
 
+- func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: cummax
+
+- func: cummax.out(Tensor self, int dim, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    CompositeExplicitAutograd: cummax_out
+
+- func: cummax.dimname(Tensor self, Dimname dim) -> (Tensor values, Tensor indices)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: cummax.dimname_out(Tensor self, Dimname dim, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  device_check: NoCheck   # TensorIterator
+
+- func: _cummax_helper(Tensor self, Tensor(a!) values, Tensor(b!) indices, int dim) -> ()
+  variants: function
+  dispatch:
+    XPU: cummax_helper_xpu
+
+- func: cummin(Tensor self, int dim) -> (Tensor values, Tensor indices)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: cummin
+
+- func: cummin.out(Tensor self, int dim, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    CompositeExplicitAutograd: cummin_out
+
+- func: cummin.dimname(Tensor self, Dimname dim) -> (Tensor values, Tensor indices)
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+
+- func: cummin.dimname_out(Tensor self, Dimname dim, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
+  device_check: NoCheck   # TensorIterator
+
+- func: _cummin_helper(Tensor self, Tensor(a!) values, Tensor(b!) indices, int dim) -> ()
+  variants: function
+  dispatch:
+    XPU: cummin_helper_xpu
+
+- func: cummaxmin_backward(Tensor grad, Tensor input, Tensor indices, int dim) -> Tensor
+  variants: function
+  device_check: NoCheck
+  device_guard: False
+
 - func: cumsum(Tensor self, int dim, *, ScalarType? dtype=None) -> Tensor
   structured_delegate: cumsum.out
   device_check: NoCheck   # TensorIterator
@@ -118,6 +169,28 @@
   variants: function
   device_check: NoCheck
   device_guard: False
+
+- func: _logcumsumexp(Tensor self, int dim) -> Tensor
+  dispatch:
+    XPU: _logcumsumexp_xpu
+
+- func: _logcumsumexp.out(Tensor self, int dim, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: _logcumsumexp_out_xpu
+
+- func: logcumsumexp(Tensor self, int dim) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: logcumsumexp
+
+- func: logcumsumexp.out(Tensor self, int dim, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: logcumsumexp_out
+
+- func: logcumsumexp.dimname(Tensor self, Dimname dim) -> Tensor
+  variants: function, method
+
+- func: logcumsumexp.dimname_out(Tensor self, Dimname dim, *, Tensor(a!) out) -> Tensor(a!)
 
 - func: sub.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -1982,6 +2055,32 @@
   dispatch:
     XPU: foreach_tensor_add_scalar_kernel_xpu_
   autogen: _foreach_add.Scalar_out
+
+- func: _foreach_add.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalarlist_kernel_xpu
+
+- func: _foreach_add_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_scalarlist_kernel_xpu_
+  autogen: _foreach_add.ScalarList_out
+
+- func: _foreach_add.Tensor(Tensor[] self, Tensor other, *, Scalar alpha=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_tensor_kernel_xpu
+
+- func: _foreach_add_.Tensor(Tensor(a!)[] self, Tensor other, *, Scalar alpha=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_add_tensor_kernel_xpu_
+  autogen: _foreach_add.Tensor_out
 
 - func: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
@@ -6336,6 +6435,18 @@
   variants: method, function
   structured_delegate: topk.values
   tags: core
+
+- func: segment_reduce(Tensor data, str reduce, *, Tensor? lengths=None, Tensor? indices=None, Tensor? offsets=None, int axis=0, bool unsafe=False, Scalar? initial=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: segment_reduce_kernel
+  autogen: segment_reduce.out
+
+- func: _segment_reduce_backward(Tensor grad, Tensor output, Tensor data, str reduce, *, Tensor? lengths=None, Tensor? offsets=None, int axis=0, Scalar? initial=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _segment_reduce_backward_kernel
+  autogen: _segment_reduce_backward.out
 
 - func: repeat(Tensor self, SymInt[] repeats) -> Tensor
   variants: method  # This is method-only to match the previous tensor API. In the future we could make this a function too.
