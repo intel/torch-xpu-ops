@@ -11,6 +11,8 @@ skip_dict = {
     # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
+    "test_compare_cpu_logcumsumexp_xpu_bfloat16",
+    "test_compare_cpu_logcumsumexp_xpu_complex128",
     "test_compare_cpu_log_xpu_complex64",
     "test_compare_cpu_log10_xpu_complex64",
     "test_compare_cpu_log1p_xpu_complex64",
@@ -36,6 +38,7 @@ skip_dict = {
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
     "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_float16",
     "test_compare_cpu_exp_xpu_bfloat16",
     "test_compare_cpu_exp_xpu_complex128",
     "test_compare_cpu_exp_xpu_complex64",

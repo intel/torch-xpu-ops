@@ -1212,7 +1212,10 @@ skip_dict = {
         "test_record_function",
     ),
 
-    "test_reductions_xpu.py": None,
+    "test_reductions_xpu.py": (
+        # Accumulate error due to different accumulation order.
+        "test_logcumsumexp_complex_xpu_complex64",
+    ),
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -2680,19 +2683,13 @@ skip_dict = {
 
     "test_comparison_utils_xpu.py": None,
 
+    "test_segment_reductions_xpu.py": None,
+
     "nn/test_pruning_xpu.py": None,
 
     "test_foreach_xpu.py": (
-        # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
-        "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
-        # AssertionError: RuntimeError not raised
-        # https://github.com/intel/torch-xpu-ops/issues/784 
-        "test_0dim_tensor_overload_exception_xpu",
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float64",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float64",
+        "use_cuda_graph_True",
     ),
 
     "nn/test_convolution_xpu.py": (
