@@ -42,7 +42,6 @@ void sub_kernel(TensorIteratorBase& iter, const c10::Scalar& alpha) {
 }
 
 void mul_kernel(TensorIteratorBase& iter) {
-  printf("mul_kernel\n");
   auto common_dtype = iter.common_dtype();
   if (common_dtype == kComplexHalf) {
     using scalar_t = c10::complex<c10::Half>;
