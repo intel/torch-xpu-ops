@@ -22,6 +22,7 @@ cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 set(PROJECT_NAME "torch-xpu-ops")
 set(PROJECT_VERSION "2.3.0")
+set($ENV{WERROR} OFF)
 cmake_policy(SET CMP0048 NEW)
 project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
 
@@ -56,4 +57,3 @@ set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)
-set($ENV{WERROR} OFF)
