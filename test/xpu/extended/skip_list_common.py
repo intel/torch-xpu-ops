@@ -11,6 +11,8 @@ skip_dict = {
     # 6. std functions get different results when input is nan or inf between GCC and SYCL.
     "test_compare_cpu_cumsum_xpu_bfloat16",
     "test_compare_cpu_cumsum_xpu_float16",
+    "test_compare_cpu_logcumsumexp_xpu_bfloat16",
+    "test_compare_cpu_logcumsumexp_xpu_complex128",
     "test_compare_cpu_log_xpu_complex64",
     "test_compare_cpu_log10_xpu_complex64",
     "test_compare_cpu_log1p_xpu_complex64",
@@ -36,6 +38,7 @@ skip_dict = {
     "test_compare_cpu_floor_divide_xpu_bfloat16",
     "test_compare_cpu_floor_divide_xpu_float16",
     "test_compare_cpu_polygamma_polygamma_n_0_xpu_bfloat16",
+    "test_compare_cpu_polygamma_polygamma_n_0_xpu_float16",
     "test_compare_cpu_exp_xpu_bfloat16",
     "test_compare_cpu_exp_xpu_complex128",
     "test_compare_cpu_exp_xpu_complex64",
@@ -73,6 +76,12 @@ skip_dict = {
     # Double and complex datatype matmul is not supported in oneDNN
     "test_compare_cpu_cdist_xpu_float64",
     "test_compare_cpu_nn_functional_grid_sample_xpu_float64",
+    # CPU change: https://github.com/pytorch/pytorch/pull/134812
+    # Issue link: https://github.com/intel/torch-xpu-ops/issues/1061
+    "test_compare_cpu_grid_sampler_2d_xpu_bfloat16",
+    "test_compare_cpu_grid_sampler_2d_xpu_float16",
+    "test_compare_cpu_nn_functional_grid_sample_xpu_bfloat16",
+    "test_compare_cpu_nn_functional_grid_sample_xpu_float16",
     # bilinear interpolate includes large calculation steps, accuracy reduces in half-precision
     # Not in CUDA test scope too
     "test_compare_cpu_nn_functional_upsample_bilinear_xpu_bfloat16",
