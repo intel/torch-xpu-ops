@@ -82,6 +82,7 @@ function(GEN_XPU file_yaml)
     ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
+    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_PATH}
     ${SIMPLE_TRACE} 
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS

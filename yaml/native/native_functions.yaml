@@ -27,6 +27,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: add.out
   variants: function, method
+  dispatch:
+    SparseXPU: add_sparse
   tags: [core, pointwise]
 
 - func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor
@@ -62,6 +64,8 @@
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: add.out
+  dispatch:
+    SparseXPU: add_sparse_
   tags: pointwise
 
 - func: add.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
@@ -73,6 +77,7 @@
     ScalarOnly: add (Bool)
   dispatch:
     XPU: add_out_xpu
+    SparseXPU: add_out_sparse_xpu
   tags: pointwise
 
 - func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
@@ -1140,7 +1145,7 @@
   structured_delegate: pow.Tensor_Scalar_out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA, SparseXPU: pow_sparse_scalar
+    SparseXPU: pow_sparse_scalar
   tags: [core, pointwise]
 
 - func: pow_.Scalar(Tensor(a!) self, Scalar exponent) -> Tensor(a!)
@@ -5101,8 +5106,7 @@
   structured_delegate: tan.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA, SparseXPU: tan_sparse
-    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr
+    SparseXPU: tan_sparse
   tags: [core, pointwise]
 
 - func: tan_(Tensor(a!) self) -> Tensor(a!)
@@ -5110,8 +5114,7 @@
   structured_delegate: tan.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA, SparseXPU: tan_sparse_
-    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr_
+    SparseXPU: tan_sparse_
   tags: pointwise
 
 - func: tan.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6146,8 +6149,7 @@
   structured_delegate: round.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA, SparseXPU: round_sparse
-    SparseCsrCPU, SparseCsrCUDA: round_sparse_csr
+    SparseXPU: round_sparse
   tags: [core, pointwise]
 
 - func: round_(Tensor(a!) self) -> Tensor(a!)
@@ -6155,8 +6157,7 @@
   structured_delegate: round.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA, SparseXPU: round_sparse_
-    SparseCsrCPU, SparseCsrCUDA: round_sparse_csr_
+    SparseXPU: round_sparse_
   tags: pointwise
 
 - func: round.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -7985,6 +7986,7 @@
 # sparse tensor.
 # FIXME: would be nicer if TensorOptions was optional based; not adding default arguments for options given
 # the default would never make sense.
+
 - func: sparse_resize_(Tensor(a!) self, int[] size, int sparse_dim, int dense_dim) -> Tensor(a!)
   use_const_ref_for_mutable_tensors: True
   variants: method
@@ -8014,7 +8016,6 @@
     SparseXPU: new_with_dims_and_tensor_sparse_symint
   autogen: _sparse_coo_tensor_with_dims_and_tensors.out
 
-
 - func: sparse_resize_and_clear_(Tensor(a!) self, int[] size, int sparse_dim, int dense_dim) -> Tensor(a!)
   use_const_ref_for_mutable_tensors: True
   variants: method
@@ -8022,14 +8023,24 @@
     SparseXPU: sparse_resize_and_clear_
   autogen: sparse_resize_and_clear, sparse_resize_and_clear.out
 
+- func: to_dense(Tensor self, ScalarType? dtype=None, *, bool? masked_grad=None) -> Tensor
+  variants: method
+
 # Special case of to_dense with custom derivative
+- func: _to_dense(Tensor self, ScalarType? dtype=None, bool? masked_grad=None) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_to_dense
+  autogen: _to_dense.out
+
+- func: to_dense_backward(Tensor grad, Tensor input, bool? masked_grad=None) -> Tensor
+
 - func: sparse_dim(Tensor self) -> int
   variants: method
   dispatch:
     SparseXPU: sparse_dim_sparse
   device_check: NoCheck
   device_guard: False
-
 
 # legacy method
 - func: _dimI(Tensor self) -> int
@@ -8058,14 +8069,6 @@
   variants: method
   dispatch:
     SparseXPU: _nnz_sparse
-  device_check: NoCheck
-  device_guard: False
-
-
-- func: is_coalesced(Tensor self) -> bool
-  variants: method
-  dispatch:
-    SparseXPU: is_coalesced_sparse
   device_check: NoCheck
   device_guard: False
 
@@ -8111,9 +8114,30 @@
   device_check: NoCheck
   device_guard: False
 
+# NOTE: [ coalesce autograd ]
+# coalesce returns self directly for already coalesced sparse tensors.
+# This means coalesce cannot have a derivative registered, otherwise it creates
+# circular references in the autograd graph (see gh-52874).
+# Instead, the derivative is registered on the slow-path "_coalesce"
+- func: coalesce(Tensor(a) self) -> Tensor(a)
+  variants: method
+
+- func: _coalesce(Tensor self) -> Tensor
+  dispatch:
+    SparseXPU: _coalesce_sparse_xpu
+  autogen: _coalesce.out
+
+- func: is_coalesced(Tensor self) -> bool
+  variants: method
+  dispatch:
+    SparseXPU: is_coalesced_sparse
+  device_check: NoCheck
+  device_guard: False
+
 # This method doesn't do any check but only directly sets the flag. So it can be
 # a bit unsafe. Similar to _indices and _values, this is useful for implementing
 # custom sparse operations in Python/C++ extension.
+
 - func: _coalesced_(Tensor(a!) self, bool coalesced) -> Tensor(a!)
   variants: method
   dispatch:
@@ -8155,7 +8179,6 @@
     XPU: dense_to_sparse
     SparseXPU: sparse_coo_to_sparse
   autogen: _to_sparse.out
-
 
 - func: copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)
   device_check: NoCheck  # Allows copy into different device
