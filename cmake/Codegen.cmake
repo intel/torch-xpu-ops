@@ -96,9 +96,6 @@ function(GEN_XPU file_yaml)
     ${depended_files}
     ${TORCH_XPU_OPS_ROOT}/yaml/native/${file_yaml}
     ${XPUFallback_PATH}
-	# Post codegen delete the copied templates folder.
-    COMMAND
-    ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
   )
 
   # Post codegen delete the copied templates folder only on Windows.
