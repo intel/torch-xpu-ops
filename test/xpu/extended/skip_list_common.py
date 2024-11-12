@@ -64,6 +64,7 @@ skip_dict = {
     # https://github.com/intel/torch-xpu-ops/issues/281
     "test_cow_input_addr_xpu_float32",
     "test_cow_input_cdist_xpu_float32",
+    "test_cow_input_nn_functional_multi_head_attention_forward_xpu_float32",
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
     # std::exp{-inf, inf}, the result is (±0,±0) (signs are unspecified)
