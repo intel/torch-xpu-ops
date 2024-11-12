@@ -205,18 +205,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sub_out
+    SparseXPU: sub_out_sparse
   tags: pointwise
 
 - func: sub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: sub.out
+  dispatch:
+    SparseXPU: sub_sparse
   tags: [core, pointwise]
 
 - func: sub_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: sub.out
+  dispatch:
+    SparseXPU: sub_sparse_
   tags: pointwise
 # For C++ only, until we have conversion from C++ numbers to Tensor
 
@@ -236,12 +241,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: mul.out
   variants: function, method
+  dispatch:
+    SparseXPU: mul_sparse
   tags: [core, pointwise]
 
 - func: mul_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: mul.out
   variants: method
+  dispatch:
+    SparseXPU: mul_sparse_
   tags: pointwise
 
 - func: mul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -250,6 +259,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: mul_out
+    SparseXPU: mul_out_sparse_xpu
   tags: pointwise
   # For C++ only, until we have conversion from C++ numbers to Tensor
 
@@ -283,6 +293,13 @@
   dispatch:
     CompositeExplicitAutograd: mvlgamma_
   tags: pointwise
+
+- func: narrow_copy(Tensor self, int dim, SymInt start, SymInt length) -> Tensor
+  variants: function, method
+  dispatch:
+    SparseXPU: narrow_copy_sparse
+    CompositeExplicitAutogradNonFunctional: narrow_copy_dense_symint
+  tags: view_copy
 
 - func: div.Tensor(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -1789,11 +1806,21 @@
 - func: min.names_dim_min(Tensor self, Dimname dim, bool keepdim=False, *, Tensor(a!) min, Tensor(b!) min_indices) -> (Tensor(a!) values, Tensor(b!) indices)
   device_check: NoCheck   # TensorIterator
 
+- func: sum(Tensor self, *, ScalarType? dtype=None) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: sum
+    SparseXPU: sum_coo
+  autogen: sum.out
+
 - func: sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   # TODO: Align the signature of sum.dim_IntList and _sparse_csr_sum.dim_dtype
   structured_delegate: sum.IntList_out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: sum_sparse_coo
   tags: core
 
 - func: sum.dim_DimnameList(Tensor self, Dimname[1] dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
@@ -1805,6 +1832,9 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: sum_out
+
+- func: sum.DimnameList_out(Tensor self, Dimname[1] dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
 
 - func: mean.dim(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   structured_delegate: mean.out
@@ -4560,6 +4590,16 @@
   python_module: nn
   structured_delegate: upsample_bilinear2d_backward.grad_input
 
+- func: native_norm(Tensor self, Scalar p=2) -> Tensor
+  dispatch:
+    SparseXPU: norm_sparse
+  autogen: native_norm.out
+
+- func: native_norm.ScalarOpt_dim_dtype(Tensor self, Scalar? p, int[1] dim, bool keepdim, ScalarType? dtype) -> Tensor
+  dispatch:
+    SparseXPU: norm_sparse
+  autogen: native_norm.ScalarOpt_dim_dtype_out
+
 - func: batch_norm_stats(Tensor input, float eps) -> (Tensor, Tensor)
   dispatch:
     XPU: batch_norm_stats_xpu
@@ -5745,12 +5785,15 @@
   structured_delegate: norm.dtype_out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: sparse_dtype_norm
 
 - func: norm.ScalarOpt_dim(Tensor self, Scalar? p, int[1] dim, bool keepdim=False) -> Tensor
   structured_delegate: norm.out
   device_check: NoCheck   # TensorIterator
   variants: function, method
-
+  dispatch:
+    SparseXPU: sparse_norm
 
 - func: norm.dtype_out(Tensor self, Scalar? p, int[1] dim, bool keepdim, *, ScalarType dtype, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -8022,6 +8065,18 @@
   dispatch:
     SparseXPU: sparse_resize_and_clear_
   autogen: sparse_resize_and_clear, sparse_resize_and_clear.out
+
+- func: sparse_mask(Tensor self, Tensor mask) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_mask
+  autogen: sparse_mask.out
+
+- func: _sparse_mask_projection(Tensor self, Tensor mask, bool accumulate_matches=False) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_mask_projection
+  autogen: _sparse_mask_projection.out
 
 - func: to_dense(Tensor self, ScalarType? dtype=None, *, bool? masked_grad=None) -> Tensor
   variants: method

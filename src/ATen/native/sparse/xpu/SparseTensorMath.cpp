@@ -12,4 +12,11 @@ SparseTensor& add_out_sparse_xpu(
   return xpu::add_sparse_kernel(t, src, value, r_);
 }
 
+SparseTensor& mul_out_sparse_xpu(
+    const Tensor& t_,
+    const Tensor& src_,
+    SparseTensor& r_) {
+  return xpu::mul_sparse_kernel(t_, src_, r_);
+}
+
 } // namespace at::native
