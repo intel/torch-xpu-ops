@@ -460,18 +460,24 @@ template <
     int res_arg_index,
     typename Op,
     typename T,
+    typename opmath_t,
     typename scalar_t = T>
 void binary_op_scalar_tensor(
     T r_args[][kILP],
     T** args,
     scalar_t* scalar,
+    opmath_t alpha,
     int n,
     int chunk_size,
     bool all_aligned,
     Op op,
     size_t item_range,
     size_t item_idx) {
-  using opmath_t = at::opmath_type<T>;
+  // deal with compiler error with bool for '*' operator:
+  // "error: ‘*’ in boolean context, suggest ‘&&’ instead"
+  auto second_arg = std::is_same<opmath_t, bool>::value
+      ? static_cast<opmath_t>(alpha) && static_cast<opmath_t>(*scalar)
+      : static_cast<opmath_t>(alpha) * static_cast<opmath_t>(*scalar);
   // to make things simple, we put aligned case in a different code path
   if (n % kILP == 0 && chunk_size % kILP == 0 && all_aligned) {
     for (int64_t i = item_idx; i * kILP < n && i * kILP < chunk_size;
@@ -481,8 +487,7 @@ void binary_op_scalar_tensor(
 #pragma unroll
       for (int ii = 0; ii < kILP; ii++) {
         r_args[0][ii] = static_cast<T>(
-            op(static_cast<opmath_t>(r_args[0][ii]),
-               static_cast<opmath_t>(*scalar)));
+            op(static_cast<opmath_t>(r_args[0][ii]), second_arg));
       }
       // store
       load_store(args[res_arg_index], r_args[0], i, 0);
@@ -496,8 +501,7 @@ void binary_op_scalar_tensor(
 #pragma unroll
       for (int ii = 0; ii < kILP; ii++) {
         r_args[0][ii] = static_cast<T>(
-            op(static_cast<opmath_t>(r_args[0][ii]),
-               static_cast<opmath_t>(*scalar)));
+            op(static_cast<opmath_t>(r_args[0][ii]), second_arg));
       }
       store_args(
           args[res_arg_index],
@@ -664,7 +668,8 @@ struct BinaryOpScalarTensorFunctor {
       TLW tlWGMeta,
       sycl::nd_item<1> item_id,
       Op op,
-      T* scalar) const {
+      T* scalar,
+      opmath_t alpha) const {
     auto item_idx = item_id.get_local_id(0);
     auto item_range = item_id.get_local_range(0);
     auto group_idx = item_id.get_group(0);
@@ -682,6 +687,7 @@ struct BinaryOpScalarTensorFunctor {
         r_args,
         args,
         scalar,
+        alpha,
         n,
         chunk_size,
         all_aligned,
