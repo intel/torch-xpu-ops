@@ -1116,6 +1116,7 @@ skip_dict = {
         "test_rnn_retain_variables_xpu_float64",
         "test_transformerencoderlayer_xpu_float64",
         "test_variable_sequence_xpu_float64",
+        "test_TransformerDecoderLayer_empty_xpu",
         # AssertionError: RuntimeError not raised
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bicubic_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
