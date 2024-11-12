@@ -100,6 +100,16 @@ function(GEN_XPU file_yaml)
     COMMAND
     ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
   )
+
+  # Post codegen delete the copied templates folder only on Windows.
+  if(WIN32)
+    add_custom_target(DELETE_TEMPLATES ALL DEPENDS ${generated_files})
+    add_custom_command(
+      TARGET DELETE_TEMPLATES
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
+    )
+  endif()
 endfunction(GEN_XPU)
 
 # GEN_BACKEND(
