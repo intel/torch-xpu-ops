@@ -275,6 +275,11 @@
   tags: pointwise
 # multiply, alias for mul
 
+- func: mv(Tensor self, Tensor vec) -> Tensor
+  variants: function, method
+  dispatch:
+    SparseXPU: mv_sparse
+
 - func: mvlgamma.out(Tensor self, int p, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
     XPU: mvlgamma_out
@@ -864,10 +869,13 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: threshold_backward_out
+    SparseXPU: threshold_backward_sparse_out
 
 - func: threshold_backward(Tensor grad_output, Tensor self, Scalar threshold) -> Tensor
   variants: function
   structured_delegate: threshold_backward.grad_input
+  dispatch:
+    SparseXPU: threshold_backward_sparse
   tags: pointwise
 
 - func: gelu.out(Tensor self, *, str approximate='none', Tensor(a!) out) -> Tensor(a!)
@@ -1183,6 +1191,20 @@
     SparseXPU: empty_sparse
   tags: core
 
+- func: empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: empty_like
+    SparseXPU: empty_like_sparse_coo
+  autogen: empty_like.out
+
+- func: new_empty_strided(Tensor self, SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  variants: method
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: new_empty_strided_symint
+  autogen: new_empty_strided.out
+
 - func: empty_strided(SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
     XPU: empty_strided_xpu
@@ -1209,6 +1231,13 @@
   dispatch:
     XPU: fill_
   autogen: fill.Tensor_out
+
+- func: resize_as_sparse_(Tensor(a!) self, Tensor the_template) -> Tensor(a!)
+  use_const_ref_for_mutable_tensors: True
+  variants: function, method
+  dispatch:
+    SparseXPU: resize_as_sparse_
+  autogen: resize_as_sparse, resize_as_sparse.out
 
 - func: zero_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -3161,6 +3190,43 @@
     XPU: _pin_memory_xpu
   autogen: _pin_memory.out
 
+- func: rad2deg(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: rad2deg
+    SparseXPU: rad2deg_sparse
+
+- func: rad2deg_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: rad2deg_
+    SparseXPU: rad2deg_sparse_
+
+- func: rad2deg.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: rad2deg_out
+    SparseXPU: rad2deg_sparse_out
+
+- func: deg2rad(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: deg2rad
+    SparseXPU: deg2rad_sparse
+  tags: pointwise
+
+- func: deg2rad_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: deg2rad_
+    SparseXPU: deg2rad_sparse_
+  tags: pointwise
+
+- func: deg2rad.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: deg2rad_out
+    SparseXPU: deg2rad_sparse_out
+  tags: pointwise
+
 - func: _embedding_bag_forward_only(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)
   dispatch:
     XPU: _embedding_bag_forward_only_xpu
@@ -4033,6 +4099,20 @@
   dispatch:
     XPU: _pdist_backward
   autogen: _pdist_backward.out
+
+- func: permute_copy(Tensor self, int[] dims) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: permute_copy
+  tags: view_copy
+  autogen: permute_copy.out
+
+- func: permute(Tensor(a) self, int[] dims) -> Tensor(a)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: permute
+    SparseXPU: permute_sparse_coo
+  tags: core
 
 - func: _amp_foreach_non_finite_check_and_unscale_(Tensor(a!)[] self, Tensor(b!) found_inf, Tensor inv_scale) -> ()
   variants: function
@@ -6417,6 +6497,38 @@
   tags: dynamic_output_shape
   autogen: _unique2.out
 
+- func: unsqueeze_copy(Tensor self, int dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: unsqueeze_copy
+  tags: view_copy
+  autogen: unsqueeze_copy.out
+
+- func: unsqueeze(Tensor(a) self, int dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: unsqueeze
+    SparseXPU: unsqueeze_sparse
+  tags: core
+
+- func: zeros(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: zeros_symint
+
+- func: zeros_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    # NB: Although this composite mutates on the inside, it is
+    # non-differentiable so NonFunctional doesn't apply
+    CompositeExplicitAutograd, CompositeImplicitAutogradNestedTensor: zeros_like
+  autogen: zeros_like.out
+
+- func: zeros.out(SymInt[] size, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: zeros_out
+    SparseXPU: zeros_sparse_out
+
 - func: multi_margin_loss.out(Tensor self, Tensor target, Scalar p=1, Scalar margin=1, Tensor? weight=None, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
   dispatch:
@@ -7604,6 +7716,16 @@
 
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
+
+- func: isinf(Tensor self) -> Tensor
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: isinf
+    SparseXPU: isinf_sparse
+  autogen: isinf.out
+  tags: [core, pointwise]
 
 - func: record_stream(Tensor(a!) self, Stream s) -> ()
   variants: method
