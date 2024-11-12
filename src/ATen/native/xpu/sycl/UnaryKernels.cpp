@@ -254,4 +254,24 @@ void expm1_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel(iter, Expm1Functor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct FrexpFunctor {
+  std::tuple<scalar_t, int32_t> operator()(scalar_t a) const {
+    int32_t exponent;
+    scalar_t mantissa = std::frexp(a, &exponent);
+    return {mantissa, exponent};
+  }
+};
+
+void frexp_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      // The iter.dtype() here is the dtype of mantissa output.
+      // It's a floating point type and must be the same as the input's dtype.
+      iter.dtype(),
+      "frexp_xpu",
+      [&]() { gpu_kernel_multiple_outputs(iter, FrexpFunctor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu

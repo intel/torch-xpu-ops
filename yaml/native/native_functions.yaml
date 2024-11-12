@@ -920,6 +920,23 @@
     XPU: sin_out
   tags: pointwise
 
+- func: sinc(Tensor self) -> Tensor
+  structured_delegate: sinc.out
+  variants: function, method
+  tags: pointwise
+
+- func: sinc_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: sinc.out
+  variants: function, method
+  tags: pointwise
+
+- func: sinc.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sinc_out
+  tags: pointwise
+
 - func: cos(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
@@ -1719,6 +1736,11 @@
   variants: method, function
   dispatch:
     XPU: min
+
+- func: min.unary_out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: min_unary_out
 
 - func: min.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
   device_check: NoCheck   # TensorIterator
@@ -5683,6 +5705,17 @@
 
 - func: norm.names_out(Tensor self, Scalar? p, Dimname[1] dim, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
+
+- func: frexp.Tensor(Tensor self) -> (Tensor mantissa, Tensor exponent)
+  variants: method, function
+  dispatch:
+    CompositeExplicitAutograd: frexp
+  tags: pointwise
+
+- func: frexp.Tensor_out(Tensor self, *, Tensor(a!) mantissa, Tensor(b!) exponent) -> (Tensor(a!) mantissa, Tensor(b!) exponent)
+  dispatch:
+    XPU: frexp_out
+  tags: pointwise
 
 # DEPRECATED: Use torch.aminmax instead
 - func: _aminmax(Tensor self) -> (Tensor, Tensor)
