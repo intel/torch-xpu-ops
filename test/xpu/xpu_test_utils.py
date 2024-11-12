@@ -218,6 +218,7 @@ _xpu_computation_op_list = [
     "nn.functional.ctc_loss",
     "nn.functional.channel_shuffle",
     "nn.functional.multi_head_attention_forward",
+    "nn.TransformerEncoderLayer",
     "sigmoid",
     "logsigmoid",
     "sgn",

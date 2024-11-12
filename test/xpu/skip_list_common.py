@@ -810,7 +810,7 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/761
         # AssertionError: False is not true
         # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
-        # "test_disable_fastpath_xpu",
+        "test_disable_fastpath_xpu",
         # We have no mechanism to handle SDPBackend::ERROR so far. Will give a fully support when we support all SDPBackends.
         "test_dispatch_fails_no_backend_xpu",
         # Could not run 'aten::_to_copy' with arguments from the 'NestedTensorXPU' backend
