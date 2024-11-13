@@ -2531,6 +2531,19 @@
     XPU: foreach_tensor_addcmul_scalarlist_xpu_
   autogen: _foreach_addcmul.ScalarList_out
 
+- func: _foreach_addcmul.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_tensor_xpu
+
+- func: _foreach_addcmul_.Tensor(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_tensor_xpu_
+  autogen: _foreach_addcmul.Tensor_out
+
 - func: _foreach_addcdiv_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -2556,6 +2569,19 @@
   dispatch:
     XPU: foreach_tensor_addcdiv_scalar_xpu_
   autogen: _foreach_addcdiv.Scalar_out
+
+- func: _foreach_addcdiv.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_tensor_xpu
+
+- func: _foreach_addcdiv_.Tensor(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_tensor_xpu_
+  autogen: _foreach_addcdiv.Tensor_out
 
 - func: _foreach_abs(Tensor[] self) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
@@ -8073,6 +8099,22 @@
   tags: nondeterministic_seeded
   dispatch:
     XPU: rrelu_with_noise_xpu_
+
+- func: _fused_sgd_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float weight_decay, float momentum, float lr, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  variants: function
+  dispatch:
+    XPU: _fused_sgd_kernel_xpu_
+  autogen: _fused_sgd, _fused_sgd.out
+
+- func: _fused_sgd_.tensor_lr(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float weight_decay, float momentum, Tensor lr, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  # but still skip the device check as the Tensor LR can be on CPU
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    XPU: _fused_sgd_kernel_xpu_
+  autogen: _fused_sgd.tensor_lr, _fused_sgd.tensor_lr_out
 
 # NOTE [ Sparse: autograd and API ]
 #
