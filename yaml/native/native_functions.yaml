@@ -4214,6 +4214,18 @@
   dispatch:
     XPU: glu_backward_xpu
 
+- func: glu_jvp(Tensor glu, Tensor x, Tensor dx, int dim) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: glu_jvp
+  autogen: glu_jvp.out
+
+- func: glu_backward_jvp(Tensor grad_x, Tensor grad_glu, Tensor x, Tensor dgrad_glu, Tensor dx, int dim) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: glu_backward_jvp
+  autogen: glu_backward_jvp.out
+
 - func: softplus.out(Tensor self, Scalar beta=1, Scalar threshold=20, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase

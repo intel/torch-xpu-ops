@@ -132,8 +132,7 @@ skip_dict = {
     "test_compare_cpu_nn_functional_interpolate_area_xpu_float16",
     # Not all operators are implemented for XPU tested in the case.
     # Retrieve it once the operator is implemented.
-    # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
-    "test_forward_ad_nn_functional_glu_xpu_float32",
+
     # Precision error.
     # Mismatched elements: 1 / 812 (0.1%)
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
