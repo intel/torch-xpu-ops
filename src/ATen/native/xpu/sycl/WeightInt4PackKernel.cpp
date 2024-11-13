@@ -14,9 +14,14 @@ struct WeightToInt4PackKernelFunctor {
     int in_y = out_x;
     int in_x = out_y * 4;
     int K_div_2 = K_ / 2;
-    uint32_t res =
-        *reinterpret_cast<uint32_t*>(&weight_[in_y * K_div_2 + in_x]);
-    weight_packed_[out_y * N_ + out_x] = res;
+    using vec_t = memory::aligned_vector<uint8_t, 4>;
+    vec_t input = *reinterpret_cast<vec_t*>(&weight_[in_y * K_div_2 + in_x]);
+    vec_t output;
+#pragma unroll
+    for (int i = 0; i < 4; i++) {
+      output[i] = input[3 - i];
+    }
+    *reinterpret_cast<vec_t*>(&weight_packed_[out_y * N_ + out_x]) = output;
   }
   WeightToInt4PackKernelFunctor(
       uint32_t* weight_packed,
