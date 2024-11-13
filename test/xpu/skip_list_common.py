@@ -1028,6 +1028,9 @@ skip_dict = {
         "test_save_load_nn_GRU_eval_mode_xpu_float32",
         "test_save_load_nn_GRUCell_xpu_float32",
         "test_save_load_nn_GRU_train_mode_xpu_float32",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "_LSTM_",
+        "_LSTMCell_",
         # CPU fallback fails
         # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
         "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
@@ -1102,6 +1105,10 @@ skip_dict = {
         "test_transformerencoderlayer_xpu_float32",
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_TransformerDecoderLayer_empty_xpu",
+        "test_TransformerDecoder_empty_xpu",
+        "test_TransformerEncoder_empty_xpu",
+        "test_Transformer_empty_xpu",
         "test_affine_grid",
         "test_affine_grid_3d",
         "test_RNN_cpu_vs_cudnn_no_dropout",
@@ -1121,8 +1128,13 @@ skip_dict = {
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-        #upsamplingNearest2d: Failed: Unexpected success
+        # upsamplingNearest2d: Failed: Unexpected success
         "test_upsamplingNearest2d_launch_fail_xpu",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "test_RNN_cudnn_weight_norm",
+        "test_partial_flat_weights",
+        "test_variable_sequence_xpu_float16",
+        "test_variable_sequence_xpu_float32",
         # CPU fallback could not cover
         # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
         "test_cudnn_weight_tying",
@@ -1210,6 +1222,8 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/731
         "test_profiler",
         "test_record_function",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
 
     "test_reductions_xpu.py": (
@@ -1425,6 +1439,8 @@ skip_dict = {
     "nn/test_lazy_modules_xpu.py": None,
 
     "test_linalg_xpu.py": (
+        # _convert_weight_to_int4pack not support
+        "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
@@ -1446,6 +1462,7 @@ skip_dict = {
         "test_bmm_xpu_complex128",
         "test_bmm_xpu_complex64",
         "test_bmm_xpu_float64",
+        "test_blas_alpha_beta_empty_xpu_float64",
         "test_cholesky_errors_and_warnings_xpu_complex128",
         "test_cholesky_errors_and_warnings_xpu_complex64",
         "test_cholesky_errors_and_warnings_xpu_float64",
@@ -3556,8 +3573,10 @@ skip_dict = {
         "test_foreach_matches_forloop_SGD_xpu_float64",
         "test_fused_cpu_matches_cuda_AdamW_xpu_float64",
         "test_fused_cpu_matches_cuda_Adam_xpu_float64",
+        "test_fused_cpu_matches_cuda_SGD_xpu_float64",
         "test_fused_matches_forloop_AdamW_xpu_float64",
         "test_fused_matches_forloop_Adam_xpu_float64",
+        "test_fused_matches_forloop_SGD_xpu_float64",
         "test_set_default_dtype_works_with_foreach_ASGD_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Adadelta_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Adafactor_xpu_float64",
