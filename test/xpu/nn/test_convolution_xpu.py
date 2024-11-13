@@ -16,6 +16,9 @@ from torch.testing._internal.common_device_type import (
     onlyXPU,
     skipIf,
 )
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types_and,
+)
 from torch.testing._internal.common_utils import (
     dtype2prec_DONTUSE,
     gradcheck,
@@ -1267,6 +1270,30 @@ with XPUPatchForImport(False):
                 atol=1e-1 if dtype == torch.half else dtype2prec_DONTUSE[dtype],
                 rtol=0,
             )
+    @dtypes(
+        *floating_and_complex_types_and(
+            torch.half, torch.bfloat16
+        )
+    )
+    def conv2d_deterministic_cudnn(self, device, dtype):
+        inputs = torch.randn(2, 3, 5, 5, device=device, dtype=dtype, requires_grad=True)
+        with torch.backends.mkldnn.flags(enabled=False, deterministic=True):
+            conv1 = torch.nn.Conv2d(3, 3, 3).to(device, dtype)
+            conv2 = torch.nn.Conv2d(3, 3, 3).to(device, dtype)
+            conv2.bias.data.copy_(conv1.bias.data)
+            conv2.weight.data.copy_(conv1.weight.data)
+            out1 = conv1(inputs)
+            out2 = conv2(inputs)
+            self.assertEqual(out1, out2, atol=0.0, rtol=0)
+            y = torch.randn(out1.size(), device=device, dtype=dtype)
+            out1.backward(y)
+            out2.backward(y)
+            self.assertEqual(
+                conv1.bias.grad.data, conv2.bias.grad.data, atol=0.0, rtol=0
+            )
+            self.assertEqual(
+                conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0
+            )
 
 
     TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = conv2d_depthwise_naive_groups
@@ -1283,6 +1310,7 @@ with XPUPatchForImport(False):
     TestConvolutionNNDeviceType.test_conv_large_batch_1 = conv_large_batch_1
     TestConvolutionNNDeviceType.test_conv_large_nosplit = conv_large_nosplit
     TestConvolutionNNDeviceType.test_conv_transposed_large = conv_transposed_large
+    TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = conv2d_deterministic_cudnn
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = conv2d_inconsistent_types_on_GPU_with_mkldnn
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_without_cudnn = conv2d_inconsistent_types_on_GPU_without_mkldnn
     TestConvolutionNN.test_ConvTranspose2d_half_cublas_gemm = convTranspose2d_half_gemm
@@ -1299,3 +1327,4 @@ instantiate_parametrized_tests(TestConvolutionNN)
 
 if __name__ == "__main__":
     run_tests()
+

@@ -203,8 +203,11 @@ Tensor _histc_template(
       std::nullopt /* layout */,
       DeviceType::XPU,
       std::nullopt /* pin_memory */);
-  input_t minvalue = min;
-  input_t maxvalue = max;
+
+  using bounds_t = at::acc_type_device<input_t, kXPU>;
+  bounds_t minvalue = min;
+  bounds_t maxvalue = max;
+
   if (min == max && self.numel() > 0) {
     minvalue = *self.min().cpu().const_data_ptr<input_t>();
     maxvalue = *self.max().cpu().const_data_ptr<input_t>();

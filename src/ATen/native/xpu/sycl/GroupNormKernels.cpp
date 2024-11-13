@@ -88,6 +88,83 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<WelfordType> shared_;
 };
 
+template <typename T, int SIMD>
+struct GNRowwiseMomentsNHWCFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using T_ACC = acc_type_device<T, kXPU>;
+  using WelfordType = WelfordData<T_ACC, int64_t>;
+  using WelfordOp =
+      WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<1> item) const {
+    auto group_x = item.get_group(0);
+    auto gorup_dim_x = item.get_local_range(0);
+    auto thread_x = item.get_local_id(0);
+    const int64_t channels_per_group = C_ / G_;
+    const int64_t batch_index = group_x / G_;
+    const int64_t ng = group_x % G_;
+    const int64_t batch_offset = batch_index * H_ * W_ * C_;
+    const int64_t group_offset = ng * channels_per_group;
+    const int64_t start = batch_offset + group_offset;
+
+    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+    WelfordType val(0, 0, 0, 0);
+    for (int64_t j = thread_x; j < H_ * W_; j += gorup_dim_x) {
+      for (int64_t c = 0; c < channels_per_group; ++c) {
+        const int64_t index = start + j * C_ + c;
+        val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
+      }
+    }
+
+    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
+        item, val, welford_op, shared_);
+
+    if (thread_x == 0) {
+      T_ACC m1;
+      T_ACC m2;
+      std::tie(m2, m1) = welford_op.project(val);
+      mean_[group_x] = m1;
+      rstd_[group_x] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+  }
+
+  GNRowwiseMomentsNHWCFunctor(
+      int64_t N,
+      int64_t H,
+      int64_t W,
+      int64_t C,
+      int64_t G,
+      T eps,
+      const T* X,
+      T* mean,
+      T* rstd)
+      : N_(N),
+        H_(H),
+        W_(W),
+        C_(C),
+        G_(G),
+        eps_(eps),
+        X_(X),
+        mean_(mean),
+        rstd_(rstd) {}
+
+ private:
+  int64_t N_;
+  int64_t H_;
+  int64_t W_;
+  int64_t C_;
+  int64_t G_;
+  T eps_;
+  const T* X_;
+  T* mean_;
+  T* rstd_;
+  sycl_local_acc_t<WelfordType> shared_;
+};
+
 template <typename T, typename T_ACC>
 struct ComputeFusedParamsFunctor {
   void operator()(sycl::item<1> item) const {
@@ -231,7 +308,7 @@ struct GroupNormFunctor {
 
 template <typename T>
 void group_norm_kernel_impl(
-    const Tensor& X_,
+    const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
     int64_t N,
@@ -242,8 +319,6 @@ void group_norm_kernel_impl(
     Tensor& Y,
     Tensor& mean,
     Tensor& rstd) {
-  auto X = X_.contiguous();
-
   using T_ACC = acc_type_device<T, kXPU>;
   TORCH_CHECK(X.numel() == N * C * HxW);
   TORCH_CHECK(!gamma.defined() || gamma.numel() == C);
@@ -251,11 +326,15 @@ void group_norm_kernel_impl(
   if (N == 0) {
     return;
   }
+
   const int64_t G = group;
   const int64_t D = C / G;
   const T* X_data = X.const_data_ptr<T>();
   T* mean_data = mean.mutable_data_ptr<T>();
   T* rstd_data = rstd.mutable_data_ptr<T>();
+
+  at::MemoryFormat x_format = X.suggest_memory_format();
+  Y.is_contiguous(x_format);
 
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
@@ -265,18 +344,54 @@ void group_norm_kernel_impl(
   int64_t nwg = N * G;
   auto global_range = sycl::range<1>(nwg * wg_size);
   auto local_range = sycl::range<1>(wg_size);
-  group_norm_kernel_simd_choice_and_launch<
-      GNRowwiseMomentsFunctor<T, SIMD16>,
-      GNRowwiseMomentsFunctor<T, SIMD32>>(
-      simd,
-      global_range,
-      local_range,
-      queue,
-      D * HxW,
-      eps,
-      X_data,
-      mean_data,
-      rstd_data);
+
+  int height;
+  int width;
+
+  switch (x_format) {
+    case MemoryFormat::Contiguous: {
+      group_norm_kernel_simd_choice_and_launch<
+          GNRowwiseMomentsFunctor<T, SIMD16>,
+          GNRowwiseMomentsFunctor<T, SIMD32>>(
+          simd,
+          global_range,
+          local_range,
+          queue,
+          D * HxW,
+          eps,
+          X_data,
+          mean_data,
+          rstd_data);
+      break;
+    }
+    case MemoryFormat::ChannelsLast: {
+      height = X.size(2);
+      width = X.size(3);
+      group_norm_kernel_simd_choice_and_launch<
+          GNRowwiseMomentsNHWCFunctor<T, SIMD16>,
+          GNRowwiseMomentsNHWCFunctor<T, SIMD32>>(
+          simd,
+          global_range,
+          local_range,
+          queue,
+          N,
+          height,
+          width,
+          C,
+          G,
+          eps,
+          X_data,
+          mean_data,
+          rstd_data);
+      break;
+    }
+    default: {
+      TORCH_CHECK(
+          false,
+          "Unsupported memory format for group normalization: ",
+          x_format);
+    }
+  }
 
   if (HxW == 1) {
     group_norm_1d_forward<T>(X, mean, rstd, gamma, beta, N, C, G, Y);
@@ -305,15 +420,36 @@ void group_norm_kernel_impl(
         C, G, mean_data, rstd_data, gamma_data, beta_data, a_data, b_data);
     sycl_kernel_submit(sycl::range<1>(N * C), queue, caller);
 
-    auto iter = TensorIteratorConfig()
-                    .check_all_same_dtype(std::is_same<T, T_ACC>::value)
-                    .resize_outputs(false)
-                    .add_owned_output(Y.view({N * C, HxW}))
-                    .add_owned_const_input(X.view({N * C, HxW}))
-                    .add_owned_input(a.view({N * C, 1}))
-                    .add_owned_input(b.view({N * C, 1}))
-                    .build();
-    gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
+    switch (x_format) {
+      case MemoryFormat::Contiguous: {
+        TensorIterator iter =
+            TensorIteratorConfig()
+                .check_all_same_dtype(std::is_same_v<T, T_ACC>)
+                .resize_outputs(false)
+                .add_owned_output(Y.view({N * C, HxW}))
+                .add_owned_const_input(X.view({N * C, HxW}))
+                .add_owned_input(a.view({N * C, 1}))
+                .add_owned_input(b.view({N * C, 1}))
+                .build();
+        gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
+        break;
+      }
+      case MemoryFormat::ChannelsLast: {
+        TensorIterator iter =
+            TensorIteratorConfig()
+                .check_all_same_dtype(std::is_same_v<T, T_ACC>)
+                .resize_outputs(false)
+                .add_owned_output(Y)
+                .add_owned_const_input(X)
+                .add_owned_input(a.view({N, C, 1, 1}))
+                .add_owned_input(b.view({N, C, 1, 1}))
+                .build();
+        gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
+        break;
+      }
+      default:
+        break; // shouldn't hit this
+    }
   }
 }
 
