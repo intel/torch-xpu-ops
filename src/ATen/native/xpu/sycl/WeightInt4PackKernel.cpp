@@ -21,19 +21,13 @@ struct WeightToInt4PackKernelFunctor {
   WeightToInt4PackKernelFunctor(
       uint32_t* weight_packed,
       uint8_t* weight,
-      int K_div_8,
       int N,
       int K)
-      : weight_packed_(weight_packed),
-        weight_(weight),
-        K_div_8_(K_div_8),
-        N_(N),
-        K_(K) {}
+      : weight_packed_(weight_packed), weight_(weight), N_(N), K_(K) {}
 
  private:
   uint32_t* weight_packed_;
   uint8_t* weight_;
-  int K_div_8_;
   int N_;
   int K_;
 };
@@ -48,8 +42,8 @@ void weight_to_int4pack_kernel(
   const auto weight_data = weight.data_ptr<uint8_t>();
   int K_div_8 = K / 8;
   size_t global_range = N * K_div_8;
-  auto fn = WeightToInt4PackKernelFunctor(
-      weight_packed_data, weight_data, K_div_8, N, K);
+  auto fn =
+      WeightToInt4PackKernelFunctor(weight_packed_data, weight_data, N, K);
   sycl_kernel_submit(sycl::range<1>(global_range), getCurrentSYCLQueue(), fn);
 }
 
