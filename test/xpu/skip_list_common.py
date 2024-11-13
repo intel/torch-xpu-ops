@@ -24,9 +24,7 @@ skip_dict = {
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
-        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
 
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
@@ -425,9 +423,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/683
         "test_conj_view_addbmm_xpu_complex64",
         "test_neg_conj_view_addbmm_xpu_complex128",
-        # CPU fallback error: AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/271
-        "test_neg_view_nn_functional_rrelu_xpu_float64",
         ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         # https://github.com/intel/torch-xpu-ops/issues/254
         "test_conj_view___rmatmul___xpu_complex64",
@@ -1096,12 +1091,6 @@ skip_dict = {
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
-        # AssertionError: Tensor-likes are not close!
-        "test_RReLU_cuda",
-        "test_RReLU_no_batch_dim_cuda",
-        "test_RReLU_with_up_down_cuda",
-        # AssertionError: Scalars are not close!
-        "test_RReLU_with_up_down_scalar_cuda",
         # rnn fallback to cpu
         "test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
@@ -1113,6 +1102,10 @@ skip_dict = {
         "test_transformerencoderlayer_xpu_float32",
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_TransformerDecoderLayer_empty_xpu",
+        "test_TransformerDecoder_empty_xpu",
+        "test_TransformerEncoder_empty_xpu",
+        "test_Transformer_empty_xpu",
         "test_affine_grid",
         "test_affine_grid_3d",
         "test_RNN_cpu_vs_cudnn_no_dropout",
@@ -1223,7 +1216,10 @@ skip_dict = {
         "test_record_function",
     ),
 
-    "test_reductions_xpu.py": None,
+    "test_reductions_xpu.py": (
+        # Accumulate error due to different accumulation order.
+        "test_logcumsumexp_complex_xpu_complex64",
+    ),
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -1433,6 +1429,8 @@ skip_dict = {
     "nn/test_lazy_modules_xpu.py": None,
 
     "test_linalg_xpu.py": (
+        # _convert_weight_to_int4pack not support
+        "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
@@ -1454,6 +1452,7 @@ skip_dict = {
         "test_bmm_xpu_complex128",
         "test_bmm_xpu_complex64",
         "test_bmm_xpu_float64",
+        "test_blas_alpha_beta_empty_xpu_float64",
         "test_cholesky_errors_and_warnings_xpu_complex128",
         "test_cholesky_errors_and_warnings_xpu_complex64",
         "test_cholesky_errors_and_warnings_xpu_float64",
@@ -1917,9 +1916,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
-        "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
@@ -2454,11 +2450,6 @@ skip_dict = {
         "test_fn_gradgrad_addbmm_xpu_complex128",
         "test_inplace_grad_addbmm_xpu_complex128",
         "test_inplace_gradgrad_addbmm_xpu_complex128",
-        ### rrelu_xpu op is not implemented,try these cases after implementing rrelu.
-        "test_fn_grad_nn_functional_rrelu_xpu_float64",
-        "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_grad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
@@ -2699,19 +2690,13 @@ skip_dict = {
 
     "test_comparison_utils_xpu.py": None,
 
+    "test_segment_reductions_xpu.py": None,
+
     "nn/test_pruning_xpu.py": None,
 
     "test_foreach_xpu.py": (
-        # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
-        "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
-        # AssertionError: RuntimeError not raised
-        # https://github.com/intel/torch-xpu-ops/issues/784 
-        "test_0dim_tensor_overload_exception_xpu",
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float64",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float64",
+        "use_cuda_graph_True",
     ),
 
     "nn/test_convolution_xpu.py": (
@@ -3578,8 +3563,10 @@ skip_dict = {
         "test_foreach_matches_forloop_SGD_xpu_float64",
         "test_fused_cpu_matches_cuda_AdamW_xpu_float64",
         "test_fused_cpu_matches_cuda_Adam_xpu_float64",
+        "test_fused_cpu_matches_cuda_SGD_xpu_float64",
         "test_fused_matches_forloop_AdamW_xpu_float64",
         "test_fused_matches_forloop_Adam_xpu_float64",
+        "test_fused_matches_forloop_SGD_xpu_float64",
         "test_set_default_dtype_works_with_foreach_ASGD_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Adadelta_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Adafactor_xpu_float64",
