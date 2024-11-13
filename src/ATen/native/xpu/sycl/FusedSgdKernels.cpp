@@ -2,6 +2,7 @@
 #include <ATen/native/ForeachUtils.h>
 
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
+#include <ATen/native/xpu/sycl/FusedSgdKernels.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
 #include <comm/SYCLHelpers.h>
