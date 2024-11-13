@@ -54,8 +54,8 @@ jobs:
       - name: Prepare Stock Pytorch
         shell: cmd
         run: |
-          echo "C:\Users\sdp\miniforge3\Scripts" >> $GITHUB_PATH
-          echo "C:\Users\sdp\miniforge3\Library\bin" >> $GITHUB_PATH
+          echo "C:\Users\sdp\miniforge3\Scripts" >> "$GITHUB_PATH"
+          echo "C:\Users\sdp\miniforge3\Library\bin" >> "$GITHUB_PATH"
           call "C:\Users\sdp\miniforge3\Scripts\activate.bat"
           call conda clean -ay
           call conda remove --all -y -n windows_ci
