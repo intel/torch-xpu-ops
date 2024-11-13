@@ -56,6 +56,9 @@ jobs:
         run: |
           echo "C:\Users\sdp\miniforge3\Scripts" >> "$GITHUB_PATH"
           echo "C:\Users\sdp\miniforge3\Library\bin" >> "$GITHUB_PATH"
+          $env:Path += ';C:\Users\sdp\miniforge3\Scripts'
+          $env:Path += ';C:\Users\sdp\miniforge3'
+          $env:Path += ';C:\Users\sdp\miniforge3\Library\bin'
           call "C:\Users\sdp\miniforge3\Scripts\activate.bat"
           call conda clean -ay
           call conda remove --all -y -n windows_ci
