@@ -20,4 +20,6 @@ TORCH_XPU_API void nan_to_num_kernel(
     std::optional<double> pos_inf,
     std::optional<double> neg_inf);
 
+TORCH_XPU_API void frexp_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu
