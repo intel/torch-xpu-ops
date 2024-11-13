@@ -1120,10 +1120,6 @@ skip_dict = {
         "test_rnn_retain_variables_xpu_float64",
         "test_transformerencoderlayer_xpu_float64",
         "test_variable_sequence_xpu_float64",
-        "test_TransformerDecoderLayer_empty_xpu",
-        "test_TransformerDecoder_empty_xpu ",
-        "test_TransformerEncoder_empty_xpu ",
-        "test_Transformer_empty_xpu ",
         # AssertionError: RuntimeError not raised
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bicubic_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
@@ -1437,7 +1433,6 @@ skip_dict = {
         "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_1_sized_with_0_strided_xpu_float64",
-        "test_blas_alpha_beta_empty_xpu_float64",
         "test_addbmm_xpu_complex128",
         "test_addbmm_xpu_complex64",
         "test_addbmm_xpu_float64",
