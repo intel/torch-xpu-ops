@@ -1,10 +1,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
 
+#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
-
-#include <ATen/native/xpu/sycl/CumsumKernel.h>
-#include <ATen/native/xpu/sycl/ScanKernels.h>
 
 namespace at::native::xpu {
 
@@ -22,24 +20,6 @@ void launch_cumsum_kernel(
         scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
             result, self, dim, init, std::plus<scalar_t>());
       });
-}
-
-static c10::MaybeOwned<Tensor> contiguous_out_arg(const Tensor& tensor) {
-  if (tensor.is_contiguous()) {
-    return c10::MaybeOwned<Tensor>::borrowed(tensor);
-  }
-  return c10::MaybeOwned<Tensor>::owned(
-      at::empty(tensor.sizes(), tensor.options()));
-}
-
-void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
-  auto result_ = contiguous_out_arg(result);
-
-  launch_cumsum_kernel(*result_, self, dim);
-
-  if (!result.is_same(*result_)) {
-    result.copy_(*result_);
-  }
 }
 
 } // namespace at::native::xpu
