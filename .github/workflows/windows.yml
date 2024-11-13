@@ -52,7 +52,7 @@ jobs:
       #     call .github\scripts\install_xpu.bat
       #     if errorlevel 1 exit /b 1
       - name: Prepare Stock Pytorch
-        shell: bash
+        shell: cmd
         run: |
           echo "C:\Users\sdp\miniforge3\Scripts" >> $GITHUB_PATH
           echo "C:\Users\sdp\miniforge3\Library\bin" >> $GITHUB_PATH
@@ -85,7 +85,7 @@ jobs:
             Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
           )
       - name: Build Pytorch XPU
-        shell: bash
+        shell: cmd
         run: |
           call "C:\Users\sdp\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -122,7 +122,7 @@ jobs:
           pip install --force-reinstall dist/*.whl
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
-        shell: bash
+        shell: cmd
         run: |
           call "C:\Users\sdp\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
