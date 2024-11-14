@@ -223,7 +223,7 @@ void countRadixUsingMask(
     int radixDigitPos,
     index_t sliceSize,
     index_t withinSliceStride,
-    const sycl_global_ptr<scalar_t>& data,
+    const scalar_t* data,
     sycl::nd_item<1>& item_id) {
   // Clear out per-thread counts from a previous round
   for (int i = 0; i < RadixSize; ++i) {
@@ -276,7 +276,7 @@ constexpr int RADIX_MASK = (RADIX_SIZE - 1);
 template <typename scalar_t, typename bitwise_t, typename index_t>
 scalar_t findPattern(
     const sycl_local_acc_t<int>& smem,
-    const sycl_global_ptr<scalar_t>& data,
+    const scalar_t* data,
     index_t sliceSize,
     index_t withinSliceStride,
     bitwise_t desired,
@@ -329,7 +329,7 @@ scalar_t findPattern(
 // Returns the top-Kth element found in the data using radix selection
 template <typename scalar_t, typename bitwise_t, typename index_t, bool Order>
 void radixSelect(
-    const sycl_global_ptr<scalar_t>& data,
+    const scalar_t* data,
     index_t k,
     index_t sliceSize,
     index_t withinSliceStride,
