@@ -199,6 +199,26 @@ void launch_gamma_kernel(
       [&] { gamma_kernel<scalar_t>(ret, alpha, rng_engine_inputs); });
 }
 
+template <typename scalar_t, typename accscalar_t>
+struct StandardGammaGradKernelFunctor {
+  scalar_t operator()(scalar_t self_val, scalar_t output_val) const {
+    return standard_gamma_grad_one<scalar_t, accscalar_t>(self_val, output_val);
+  }
+};
+
+void launch_standard_gamma_grad_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(),
+      "_standard_gamma_grad_xpu",
+      [&] {
+        using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
+        StandardGammaGradKernelFunctor<scalar_t, accscalar_t> f;
+        gpu_kernel(iter, f);
+      });
+}
+
 template <typename scalar_t>
 struct DirichletKernelFunctor {
   scalar_t operator()(scalar_t gamma, scalar_t gamma_sum) const {
