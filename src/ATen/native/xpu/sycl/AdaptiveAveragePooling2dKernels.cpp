@@ -61,7 +61,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   }
 
   AdaptiveAvgPool2dBwdKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 4> gyacc,
+      PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
       : gyacc_(gyacc), gxacc_(gxacc) {
     ib_ = gxacc_.size(0);
@@ -97,7 +97,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
   int64_t numel_;
   int global_range_;
   int local_range_;
-  PackedTensorAccessor64<scalar_t, 4> gyacc_;
+  PackedTensorAccessor64<const scalar_t, 4> gyacc_;
   PackedTensorAccessor64<scalar_t, 4> gxacc_;
 };
 
@@ -183,7 +183,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   }
 
   AdaptiveAvgPool2dBwdSLMKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 4> gyacc,
+      PackedTensorAccessor64<const scalar_t, 4> gyacc,
       PackedTensorAccessor64<scalar_t, 4> gxacc)
       : gyacc_(gyacc), gxacc_(gxacc) {
     ib_ = gxacc_.size(0);
@@ -220,7 +220,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
   int64_t numel_;
   int local_range_;
   int global_range_;
-  PackedTensorAccessor64<scalar_t, 4> gyacc_;
+  PackedTensorAccessor64<const scalar_t, 4> gyacc_;
   PackedTensorAccessor64<scalar_t, 4> gxacc_;
   sycl_local_acc_t<int> _oh0_cached_;
   sycl_local_acc_t<int> _oh1_cached_;
@@ -282,7 +282,7 @@ void adaptive_avg_pool2d_backward_kernel(
       "adaptive_avg_pool2d_backward_xpu",
       [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
-        auto gyacc = grad_output.packed_accessor64<scalar_t, 4>();
+        auto gyacc = grad_output.packed_accessor64<const scalar_t, 4>();
         auto gxacc = grad_input.packed_accessor64<scalar_t, 4>();
 
         int64_t ohw01_shared_size =
@@ -375,7 +375,7 @@ struct AdaptiveAvgPool2dKernelFunctor {
       int ow,
       int64_t numel,
       int global_range,
-      PackedTensorAccessor64<scalar_t, 4> input,
+      PackedTensorAccessor64<const scalar_t, 4> input,
       PackedTensorAccessor64<scalar_t, 4> output)
       : ih_(ih),
         iw_(iw),
@@ -397,13 +397,13 @@ struct AdaptiveAvgPool2dKernelFunctor {
   int ow_;
   int64_t numel_;
   int global_range_;
-  PackedTensorAccessor64<scalar_t, 4> input_;
+  PackedTensorAccessor64<const scalar_t, 4> input_;
   PackedTensorAccessor64<scalar_t, 4> output_;
 };
 
 template <typename scalar_t, typename opmath_t, bool is_channels_last>
 void launch_adaptive_avg_pool2d_kernel(
-    PackedTensorAccessor64<scalar_t, 4> input,
+    PackedTensorAccessor64<const scalar_t, 4> input,
     PackedTensorAccessor64<scalar_t, 4> output) {
   int ih = input.size(2);
   int iw = input.size(3);
@@ -495,7 +495,7 @@ void adaptive_avg_pool2d_kernel(
       "adaptive_avg_pool2d_xpu",
       [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
-        auto iacc = input_.packed_accessor64<scalar_t, 4>();
+        auto iacc = input_.packed_accessor64<const scalar_t, 4>();
         auto oacc = output.packed_accessor64<scalar_t, 4>();
         if (is_smf_channels_last(output)) {
           launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, true>(
