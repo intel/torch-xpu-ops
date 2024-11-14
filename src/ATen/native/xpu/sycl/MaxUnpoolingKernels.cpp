@@ -183,8 +183,8 @@ struct MaxUnpooling3dForwardKernelFunctor {
     }
   }
   MaxUnpooling3dForwardKernelFunctor(
-      scalar_t* input_data,
-      int64_t* indices_data,
+      const scalar_t* input_data,
+      const int64_t* indices_data,
       scalar_t* output_data,
       const int64_t batchSize,
       const int64_t inputSlices,
@@ -209,8 +209,8 @@ struct MaxUnpooling3dForwardKernelFunctor {
         offsetZ_(offsetZ) {}
 
  private:
-  scalar_t* input_data_;
-  int64_t* indices_data_;
+  const scalar_t* input_data_;
+  const int64_t* indices_data_;
   scalar_t* output_data_;
   const int64_t batchSize_;
   const int64_t inputSlices_;
@@ -225,8 +225,8 @@ struct MaxUnpooling3dForwardKernelFunctor {
 
 template <typename scalar_t>
 void max_unpooling3d_forward_kernel(
-    scalar_t* input,
-    int64_t* indices,
+    const scalar_t* input,
+    const int64_t* indices,
     scalar_t* output,
     const int64_t batchSize,
     const int64_t inputSlices,
@@ -443,9 +443,9 @@ Tensor& max_unpooling3d_forward_kernel(
       "max_unpooling3d_forward_xpu",
       ([&] {
         max_unpooling3d_forward_kernel(
-            self.data_ptr<scalar_t>(),
-            indices.data_ptr<int64_t>(),
-            output.data_ptr<scalar_t>(),
+            self.const_data_ptr<scalar_t>(),
+            indices.const_data_ptr<int64_t>(),
+            output.mutable_data_ptr<scalar_t>(),
             batchSize,
             inputSlices,
             inputTime,

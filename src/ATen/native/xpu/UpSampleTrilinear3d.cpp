@@ -28,7 +28,8 @@ TORCH_IMPL_FUNC(upsample_trilinear3d_backward_out_xpu)
  std::optional<double> scales_h,
  std::optional<double> scales_w,
  const Tensor& grad_input) {
-  globalContext().alertNotDeterministic("upsample_trilinear3d_backward_out_xpu");
+  globalContext().alertNotDeterministic(
+      "upsample_trilinear3d_backward_out_xpu");
   xpu::upsample_trilinear3d_backward_out_kernel(
       grad_input,
       grad_output,

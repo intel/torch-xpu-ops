@@ -13,6 +13,9 @@ supported:
   - adaptive_max_pool2d_backward
   - adaptive_max_pool2d.out
   - adaptive_max_pool2d
+  - fractional_max_pool3d.output
+  - fractional_max_pool3d_backward
+  - fractional_max_pool3d_backward.grad_input
   - cumsum
   - cumsum.out
   - cumsum_
@@ -621,6 +624,8 @@ supported:
   - linalg_vector_norm.out
   - grid_sampler_2d
   - grid_sampler_2d_backward
+  - grid_sampler_3d
+  - grid_sampler_3d_backward
   - acos
   - acos_
   - acos.out
@@ -740,3 +745,5 @@ supported:
   - put_
   - take
   - take.out
+  - segment_reduce
+  - _segment_reduce_backward

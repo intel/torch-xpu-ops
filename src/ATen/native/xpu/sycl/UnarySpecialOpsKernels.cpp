@@ -177,6 +177,23 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
 }
 
 template <typename scalar_t>
+struct I0Functor {
+  scalar_t operator()(scalar_t a) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    return calc_i0<opmath_t>(a);
+  }
+};
+
+void i0_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "i0_xpu",
+      [&]() { gpu_kernel(iter, I0Functor<scalar_t>()); });
+}
+
+template <typename scalar_t>
 struct I0eFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
@@ -251,6 +268,64 @@ void log_ndtr_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "log_ndtr_xpu", [&]() {
     gpu_kernel(iter, LogNdtrFunctor<scalar_t>());
   });
+}
+
+template <typename scalar_t>
+struct EntrFunctor {
+  scalar_t operator()(scalar_t x) const {
+    if (at::_isnan(x)) {
+      return x;
+    } else if (x > 0) {
+      return -x * std::log(x);
+    } else if (x == 0) {
+      return 0;
+    }
+    return static_cast<scalar_t>(-std::numeric_limits<scalar_t>::infinity());
+  }
+};
+
+void entr_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "entr_xpu",
+      [&]() { gpu_kernel(iter, EntrFunctor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct ErfcxFunctor {
+  scalar_t operator()(scalar_t a) const {
+    return calc_erfcx(a);
+  }
+};
+
+void erfcx_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "erfcx_xpu", [&]() {
+    gpu_kernel(iter, ErfcxFunctor<scalar_t>());
+  });
+}
+
+template <typename scalar_t>
+struct SincFunctor {
+  scalar_t operator()(scalar_t a) const {
+    if (a == scalar_t(0)) {
+      return scalar_t(1);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      opmath_t product = c10::detail::pi<opmath_t>() * opmath_t{a};
+      return static_cast<scalar_t>(std::sin(product) / product);
+    }
+  }
+};
+
+void sinc_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "sinc_xpu",
+      [&]() { gpu_kernel(iter, SincFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu
