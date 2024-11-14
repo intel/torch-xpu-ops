@@ -620,7 +620,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     numBags -= 1;
   }
 
-  auto bag_size = at::empty(numBags, indices.options());
+  auto bag_size = at::empty(offsets.sizes(), indices.options());
   auto offset2bag = at::empty({indices.size(0)}, indices.options());
   auto output = at::empty({numBags, weight.size(1)}, weight.options());
 

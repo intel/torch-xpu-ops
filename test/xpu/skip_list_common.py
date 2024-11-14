@@ -3497,12 +3497,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_dispatch_symbolic_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        # _embedding_bag_forward_only: RuntimeError: output 2: meta disagrees with real impl:
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_embedding_bag_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_float",
         # RuntimeError: output 0: meta disagrees with real impl:
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
