@@ -170,8 +170,8 @@ struct GridSampler2dKernelFunctor {
   }
   GridSampler2dKernelFunctor(
       const index_t nthreads,
-      TensorInfo<scalar_t, index_t> input,
-      TensorInfo<scalar_t, index_t> grid,
+      TensorInfo<const scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> grid,
       TensorInfo<scalar_t, index_t> output,
       const GridSamplerInterpolation interpolation_mode,
       const GridSamplerPadding padding_mode,
@@ -220,8 +220,8 @@ struct GridSampler2dKernelFunctor {
 
  private:
   const index_t nthreads_;
-  TensorInfo<scalar_t, index_t> input_;
-  TensorInfo<scalar_t, index_t> grid_;
+  TensorInfo<const scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> grid_;
   TensorInfo<scalar_t, index_t> output_;
   const GridSamplerInterpolation interpolation_mode_;
   const GridSamplerPadding padding_mode_;
@@ -248,8 +248,8 @@ struct GridSampler2dKernelFunctor {
 template <typename scalar_t, typename index_t>
 void grid_sampler_2d_forward_template(
     const index_t nthreads,
-    TensorInfo<scalar_t, index_t> input,
-    TensorInfo<scalar_t, index_t> grid,
+    TensorInfo<const scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> grid,
     TensorInfo<scalar_t, index_t> output,
     const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode,
@@ -334,8 +334,8 @@ Tensor grid_sampler_2d_kernel(
               canUse32BitIndexMath(output)) {
             grid_sampler_2d_forward_template<scalar_t>(
                 static_cast<int>(count),
-                getTensorInfo<scalar_t, int>(input),
-                getTensorInfo<scalar_t, int>(grid),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
                 getTensorInfo<scalar_t, int>(output),
                 static_cast<GridSamplerInterpolation>(interpolation_mode),
                 static_cast<GridSamplerPadding>(padding_mode),
@@ -343,8 +343,8 @@ Tensor grid_sampler_2d_kernel(
           } else {
             grid_sampler_2d_forward_template<scalar_t>(
                 count,
-                getTensorInfo<scalar_t, int64_t>(input),
-                getTensorInfo<scalar_t, int64_t>(grid),
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
                 getTensorInfo<scalar_t, int64_t>(output),
                 static_cast<GridSamplerInterpolation>(interpolation_mode),
                 static_cast<GridSamplerPadding>(padding_mode),
@@ -395,15 +395,15 @@ struct GridSampler2dBackwardKernelFunctor {
       scalar_t se = (ix - ix_nw) * (iy - iy_nw);
 
       scalar_t gix = static_cast<scalar_t>(0), giy = static_cast<scalar_t>(0);
-      scalar_t* gOut_ptr_NCHW =
+      const scalar_t* gOut_ptr_NCHW =
           grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
       index_t NC_offset = n * gInp_sN_;
-      scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
+      const scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
       for (index_t c = 0; c < C_; ++c,
                    inp_ptr_NC += inp_sC_,
                    NC_offset += gInp_sC_,
                    gOut_ptr_NCHW += gOut_sC_) {
-        scalar_t gOut = *gOut_ptr_NCHW;
+        const scalar_t gOut = *gOut_ptr_NCHW;
 
         if (input_requires_grad_) {
           // calculate and set grad_input
@@ -485,7 +485,7 @@ struct GridSampler2dBackwardKernelFunctor {
         index_t iy_nearest = static_cast<index_t>(std::nearbyint(iy));
 
         // assign nearest neighor pixel value to output pixel
-        scalar_t* gOut_ptr_NCHW =
+        const scalar_t* gOut_ptr_NCHW =
             grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
         index_t NC_offset = n * gInp_sN_;
         for (index_t c = 0; c < C_;
@@ -536,16 +536,16 @@ struct GridSampler2dBackwardKernelFunctor {
       scalar_t gix = static_cast<scalar_t>(0);
       scalar_t giy = static_cast<scalar_t>(0);
 
-      scalar_t* gOut_ptr_NCHW =
+      const scalar_t* gOut_ptr_NCHW =
           grad_output_.data + n * gOut_sN_ + h * gOut_sH_ + w * gOut_sW_;
       index_t NC_offset = n * gInp_sN_;
-      scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
+      const scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
 
       for (index_t c = 0; c < C_; ++c,
                    gOut_ptr_NCHW += gOut_sC_,
                    NC_offset += gInp_sC_,
                    inp_ptr_NC += inp_sC_) {
-        scalar_t gOut = *gOut_ptr_NCHW;
+        const scalar_t gOut = *gOut_ptr_NCHW;
 
 #pragma unroll 4
         for (index_t i = 0; i < 4; ++i) {
@@ -591,9 +591,9 @@ struct GridSampler2dBackwardKernelFunctor {
   }
   GridSampler2dBackwardKernelFunctor(
       const index_t nthreads,
-      TensorInfo<scalar_t, index_t> grad_output,
-      TensorInfo<scalar_t, index_t> input,
-      TensorInfo<scalar_t, index_t> grid,
+      TensorInfo<const scalar_t, index_t> grad_output,
+      TensorInfo<const scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> grid,
       TensorInfo<scalar_t, index_t> grad_input,
       TensorInfo<scalar_t, index_t> grad_grid,
       const GridSamplerInterpolation interpolation_mode,
@@ -657,9 +657,9 @@ struct GridSampler2dBackwardKernelFunctor {
 
  private:
   const index_t nthreads_;
-  TensorInfo<scalar_t, index_t> grad_output_;
-  TensorInfo<scalar_t, index_t> input_;
-  TensorInfo<scalar_t, index_t> grid_;
+  TensorInfo<const scalar_t, index_t> grad_output_;
+  TensorInfo<const scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> grid_;
   TensorInfo<scalar_t, index_t> grad_input_;
   TensorInfo<scalar_t, index_t> grad_grid_;
   const GridSamplerInterpolation interpolation_mode_;
@@ -693,9 +693,9 @@ struct GridSampler2dBackwardKernelFunctor {
 template <typename scalar_t, typename index_t>
 void grid_sampler_2d_backward_template(
     const index_t nthreads,
-    TensorInfo<scalar_t, index_t> grad_output,
-    TensorInfo<scalar_t, index_t> input,
-    TensorInfo<scalar_t, index_t> grid,
+    TensorInfo<const scalar_t, index_t> grad_output,
+    TensorInfo<const scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> grid,
     TensorInfo<scalar_t, index_t> grad_input, // initialized to zeros
     // (or unused if input_requires_grad is false)
     TensorInfo<scalar_t, index_t> grad_grid, // initialized to empty
@@ -809,9 +809,9 @@ void grid_sampler_2d_backward_kernel(
               canUse32BitIndexMath(grad_output)) {
             grid_sampler_2d_backward_template<scalar_t>(
                 static_cast<int>(count),
-                getTensorInfo<scalar_t, int>(grad_output),
-                getTensorInfo<scalar_t, int>(input),
-                getTensorInfo<scalar_t, int>(grid),
+                getTensorInfo<const scalar_t, int>(grad_output),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
                 input_requires_grad ? getTensorInfo<scalar_t, int>(grad_input)
                                     : TensorInfo<scalar_t, int>(),
                 getTensorInfo<scalar_t, int>(grad_grid),
@@ -822,9 +822,9 @@ void grid_sampler_2d_backward_kernel(
           } else {
             grid_sampler_2d_backward_template<scalar_t>(
                 count,
-                getTensorInfo<scalar_t, int64_t>(grad_output),
-                getTensorInfo<scalar_t, int64_t>(input),
-                getTensorInfo<scalar_t, int64_t>(grid),
+                getTensorInfo<const scalar_t, int64_t>(grad_output),
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
                 input_requires_grad
                     ? getTensorInfo<scalar_t, int64_t>(grad_input)
                     : TensorInfo<scalar_t, int64_t>(),
@@ -999,8 +999,8 @@ struct GridSampler3dKernelFunctor {
   }
   GridSampler3dKernelFunctor(
       const index_t nthreads,
-      TensorInfo<scalar_t, index_t> input,
-      TensorInfo<scalar_t, index_t> grid,
+      TensorInfo<const scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> grid,
       TensorInfo<scalar_t, index_t> output,
       const GridSamplerInterpolation interpolation_mode,
       const GridSamplerPadding padding_mode,
@@ -1059,8 +1059,8 @@ struct GridSampler3dKernelFunctor {
 
  private:
   const index_t nthreads_;
-  TensorInfo<scalar_t, index_t> input_;
-  TensorInfo<scalar_t, index_t> grid_;
+  TensorInfo<const scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> grid_;
   TensorInfo<scalar_t, index_t> output_;
   const GridSamplerInterpolation interpolation_mode_;
   const GridSamplerPadding padding_mode_;
@@ -1092,8 +1092,8 @@ struct GridSampler3dKernelFunctor {
 template <typename scalar_t, typename index_t>
 void grid_sampler_3d_forward_template(
     const index_t nthreads,
-    TensorInfo<scalar_t, index_t> input,
-    TensorInfo<scalar_t, index_t> grid,
+    TensorInfo<const scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> grid,
     TensorInfo<scalar_t, index_t> output,
     const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode,
@@ -1191,8 +1191,8 @@ Tensor grid_sampler_3d_kernel(
               canUse32BitIndexMath(output)) {
             grid_sampler_3d_forward_template<scalar_t>(
                 static_cast<int>(count),
-                getTensorInfo<scalar_t, int>(input),
-                getTensorInfo<scalar_t, int>(grid),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
                 getTensorInfo<scalar_t, int>(output),
                 static_cast<GridSamplerInterpolation>(interpolation_mode),
                 static_cast<GridSamplerPadding>(padding_mode),
@@ -1200,8 +1200,8 @@ Tensor grid_sampler_3d_kernel(
           } else {
             grid_sampler_3d_forward_template<scalar_t>(
                 count,
-                getTensorInfo<scalar_t, int64_t>(input),
-                getTensorInfo<scalar_t, int64_t>(grid),
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
                 getTensorInfo<scalar_t, int64_t>(output),
                 static_cast<GridSamplerInterpolation>(interpolation_mode),
                 static_cast<GridSamplerPadding>(padding_mode),
@@ -1288,16 +1288,16 @@ struct GridSampler3dBackwardKernelFunctor {
 
       scalar_t gix = static_cast<scalar_t>(0), giy = static_cast<scalar_t>(0),
                giz = static_cast<scalar_t>(0);
-      scalar_t* gOut_ptr_NCDHW = grad_output_.data + n * gOut_sN_ +
+      const scalar_t* gOut_ptr_NCDHW = grad_output_.data + n * gOut_sN_ +
           d * gOut_sD_ + h * gOut_sH_ + w * gOut_sW_;
       index_t NC_offset = n * gInp_sN_;
-      scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
+      const scalar_t* inp_ptr_NC = input_.data + n * inp_sN_;
       // calculate bilinear weighted pixel value and set output pixel
       for (index_t c = 0; c < C_; ++c,
                    gOut_ptr_NCDHW += gOut_sC_,
                    NC_offset += gInp_sC_,
                    inp_ptr_NC += inp_sC_) {
-        scalar_t gOut = *gOut_ptr_NCDHW;
+        const scalar_t gOut = *gOut_ptr_NCDHW;
 
         if (input_requires_grad_) {
           // calculate and set grad_input_
@@ -1482,7 +1482,7 @@ struct GridSampler3dBackwardKernelFunctor {
         auto iz_nearest = static_cast<index_t>(std::round(iz));
 
         // assign nearest neighor pixel value to output pixel
-        scalar_t* gOut_ptr_NCDHW = grad_output_.data + n * gOut_sN_ +
+        const scalar_t* gOut_ptr_NCDHW = grad_output_.data + n * gOut_sN_ +
             d * gOut_sD_ + h * gOut_sH_ + w * gOut_sW_;
         index_t NC_offset = n * gInp_sN_;
         for (index_t c = 0; c < C_;
@@ -1517,9 +1517,9 @@ struct GridSampler3dBackwardKernelFunctor {
   }
   GridSampler3dBackwardKernelFunctor(
       const index_t nthreads,
-      TensorInfo<scalar_t, index_t> grad_output,
-      TensorInfo<scalar_t, index_t> input,
-      TensorInfo<scalar_t, index_t> grid,
+      TensorInfo<const scalar_t, index_t> grad_output,
+      TensorInfo<const scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> grid,
       TensorInfo<scalar_t, index_t> grad_input,
       TensorInfo<scalar_t, index_t> grad_grid,
       const GridSamplerInterpolation interpolation_mode,
@@ -1595,9 +1595,9 @@ struct GridSampler3dBackwardKernelFunctor {
 
  private:
   const index_t nthreads_;
-  TensorInfo<scalar_t, index_t> grad_output_;
-  TensorInfo<scalar_t, index_t> input_;
-  TensorInfo<scalar_t, index_t> grid_;
+  TensorInfo<const scalar_t, index_t> grad_output_;
+  TensorInfo<const scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> grid_;
   TensorInfo<scalar_t, index_t> grad_input_;
   TensorInfo<scalar_t, index_t> grad_grid_;
   const GridSamplerInterpolation interpolation_mode_;
@@ -1637,9 +1637,9 @@ struct GridSampler3dBackwardKernelFunctor {
 template <typename scalar_t, typename index_t>
 void grid_sampler_3d_backward_template(
     const index_t nthreads,
-    TensorInfo<scalar_t, index_t> grad_output,
-    TensorInfo<scalar_t, index_t> input,
-    TensorInfo<scalar_t, index_t> grid,
+    TensorInfo<const scalar_t, index_t> grad_output,
+    TensorInfo<const scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> grid,
     TensorInfo<scalar_t, index_t> grad_input, // initialized to zeros
     // (or unused if input_requires_grad is false)
     TensorInfo<scalar_t, index_t> grad_grid, // initialized to empty
@@ -1768,9 +1768,9 @@ void grid_sampler_3d_backward_kernel(
               canUse32BitIndexMath(grad_output)) {
             grid_sampler_3d_backward_template<scalar_t>(
                 static_cast<int>(count),
-                getTensorInfo<scalar_t, int>(grad_output),
-                getTensorInfo<scalar_t, int>(input),
-                getTensorInfo<scalar_t, int>(grid),
+                getTensorInfo<const scalar_t, int>(grad_output),
+                getTensorInfo<const scalar_t, int>(input),
+                getTensorInfo<const scalar_t, int>(grid),
                 input_requires_grad ? getTensorInfo<scalar_t, int>(grad_input)
                                     : TensorInfo<scalar_t, int>(),
                 getTensorInfo<scalar_t, int>(grad_grid),
@@ -1781,9 +1781,9 @@ void grid_sampler_3d_backward_kernel(
           } else {
             grid_sampler_3d_backward_template<scalar_t>(
                 count,
-                getTensorInfo<scalar_t, int64_t>(grad_output),
-                getTensorInfo<scalar_t, int64_t>(input),
-                getTensorInfo<scalar_t, int64_t>(grid),
+                getTensorInfo<const scalar_t, int64_t>(grad_output),
+                getTensorInfo<const scalar_t, int64_t>(input),
+                getTensorInfo<const scalar_t, int64_t>(grid),
                 input_requires_grad
                     ? getTensorInfo<scalar_t, int64_t>(grad_input)
                     : TensorInfo<scalar_t, int64_t>(),

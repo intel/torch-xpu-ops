@@ -812,7 +812,7 @@ void bernoulli_tensor_kernel(
   // element at each time.
   at::native::xpu::tensor_apply2<
       scalar_t,
-      prob_t,
+      const prob_t,
       4,
       decltype(functor),
       /*threads_per_group=*/512>(ret, p, functor);
