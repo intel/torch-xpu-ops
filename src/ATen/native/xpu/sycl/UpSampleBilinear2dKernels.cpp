@@ -59,7 +59,7 @@ struct UpsampleBilinear2dKernelFunctor {
       const accscalar_t rheight,
       const accscalar_t rwidth,
       const bool align_corners,
-      const PackedTensorAccessor<scalar_t, 4> idata_acc,
+      const PackedTensorAccessor<const scalar_t, 4> idata_acc,
       PackedTensorAccessor<scalar_t, 4> odata_acc,
       int64_t input_height,
       int64_t input_width,
@@ -85,7 +85,7 @@ struct UpsampleBilinear2dKernelFunctor {
   const accscalar_t rheight_;
   const accscalar_t rwidth_;
   const bool align_corners_;
-  const PackedTensorAccessor<scalar_t, 4> in_data_acc_;
+  const PackedTensorAccessor<const scalar_t, 4> in_data_acc_;
   PackedTensorAccessor<scalar_t, 4> out_data_acc_;
   int64_t input_height_;
   int64_t input_width_;
@@ -101,7 +101,7 @@ void launch_upsample_bilinear2d_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
     const bool align_corners,
-    const PackedTensorAccessor<scalar_t, 4> idata_acc,
+    const PackedTensorAccessor<const scalar_t, 4> idata_acc,
     PackedTensorAccessor<scalar_t, 4> odata_acc,
     int64_t input_height,
     int64_t input_width,
@@ -312,7 +312,7 @@ void upsample_bilinear2d_out_kernel(
       "upsample_bilinear2d_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        auto idata_acc = input.packed_accessor64<scalar_t, 4>();
+        auto idata_acc = input.packed_accessor64<const scalar_t, 4>();
         auto odata_acc = output.packed_accessor64<scalar_t, 4>();
 
         const accscalar_t rheight = area_pixel_compute_scale<accscalar_t>(
@@ -382,8 +382,8 @@ void upsample_bilinear2d_backward_out_kernel(
             : at::zeros(grad_input.sizes(), grad_input.options());
         Tensor grad_output = grad_output_.contiguous();
 
-        scalar_t* idata = grad_input_c.data_ptr<scalar_t>();
-        scalar_t* odata = grad_output.data_ptr<scalar_t>();
+        scalar_t* idata = grad_input_c.mutable_data_ptr<scalar_t>();
+        const scalar_t* odata = grad_output.const_data_ptr<scalar_t>();
 
         const accscalar_t rheight = area_pixel_compute_scale<scalar_t>(
             input_height, output_height, align_corners, scales_h);
