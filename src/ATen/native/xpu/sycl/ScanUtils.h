@@ -1394,8 +1394,8 @@ void scan(
 
   TORCH_INTERNAL_ASSERT(self.is_contiguous());
 
-  TensorInfo<scalar_t, int64_t> input_info =
-      getTensorInfo<scalar_t, int64_t>(input_);
+  TensorInfo<const scalar_t, int64_t> input_info =
+      getTensorInfo<const scalar_t, int64_t>(input_);
   int dim_after_collapse = input_info.collapseDims(dimension);
 
   TensorInfo<oscalar_t, int64_t> output_info =
@@ -1443,8 +1443,8 @@ void scan_with_indices(
       dimension,
       " out of range");
 
-  TensorInfo<scalar_t, int64_t> input_info =
-      getTensorInfo<scalar_t, int64_t>(self);
+  TensorInfo<const scalar_t, int64_t> input_info =
+      getTensorInfo<const scalar_t, int64_t>(self);
   int dim_after_collapse = input_info.collapseDims(dimension);
 
   TensorInfo<oscalar_t, int64_t> output_info =
