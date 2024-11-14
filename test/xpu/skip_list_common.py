@@ -1222,6 +1222,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/731
         "test_profiler",
         "test_record_function",
+        # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
+        # https://github.com/intel/torch-xpu-ops/issues/1071
+        "test_reentrant_parent_error_on_cpu_xpu",
         # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
         "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
