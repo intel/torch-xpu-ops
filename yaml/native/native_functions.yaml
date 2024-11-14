@@ -6,6 +6,8 @@
   variants: method
   device_check: NoCheck
   device_guard: False
+  dispatch:
+    SparseXPU: copy_sparse_wrapper_
   autogen: copy.out
 
 - func: _copy_from(Tensor self, Tensor dst, bool non_blocking=False) -> Tensor
@@ -25,6 +27,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: add.out
   variants: function, method
+  dispatch:
+    SparseXPU: add_sparse
   tags: [core, pointwise]
 
 - func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor
@@ -60,6 +64,8 @@
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: add.out
+  dispatch:
+    SparseXPU: add_sparse_
   tags: pointwise
 
 - func: add.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
@@ -71,6 +77,7 @@
     ScalarOnly: add (Bool)
   dispatch:
     XPU: add_out_xpu
+    SparseXPU: add_out_sparse_xpu
   tags: pointwise
 
 - func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
@@ -198,18 +205,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sub_out
+    SparseXPU: sub_out_sparse
   tags: pointwise
 
 - func: sub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: sub.out
+  dispatch:
+    SparseXPU: sub_sparse
   tags: [core, pointwise]
 
 - func: sub_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: sub.out
+  dispatch:
+    SparseXPU: sub_sparse_
   tags: pointwise
 # For C++ only, until we have conversion from C++ numbers to Tensor
 
@@ -229,12 +241,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: mul.out
   variants: function, method
+  dispatch:
+    SparseXPU: mul_sparse
   tags: [core, pointwise]
 
 - func: mul_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: mul.out
   variants: method
+  dispatch:
+    SparseXPU: mul_sparse_
   tags: pointwise
 
 - func: mul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -243,6 +259,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: mul_out
+    SparseXPU: mul_out_sparse_xpu
   tags: pointwise
   # For C++ only, until we have conversion from C++ numbers to Tensor
 
@@ -257,6 +274,11 @@
   autogen: mul.Scalar_out
   tags: pointwise
 # multiply, alias for mul
+
+- func: mv(Tensor self, Tensor vec) -> Tensor
+  variants: function, method
+  dispatch:
+    SparseXPU: mv_sparse
 
 - func: mvlgamma.out(Tensor self, int p, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
@@ -277,16 +299,27 @@
     CompositeExplicitAutograd: mvlgamma_
   tags: pointwise
 
+- func: narrow_copy(Tensor self, int dim, SymInt start, SymInt length) -> Tensor
+  variants: function, method
+  dispatch:
+    SparseXPU: narrow_copy_sparse
+    CompositeExplicitAutogradNonFunctional: narrow_copy_dense_symint
+  tags: view_copy
+
 - func: div.Tensor(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: div.out
+  dispatch:
+    SparseXPU: div_sparse
   tags: [core, pointwise]
 
 - func: div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: div.out
+  dispatch:
+    SparseXPU: div_sparse_
   tags: pointwise
 
 - func: div.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -295,18 +328,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: div_out
+    SparseXPU: div_out_sparse_zerodim
   tags: pointwise
 
 - func: div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: div.out_mode
+  dispatch:
+    SparseXPU: div_sparse
   tags: [core, pointwise]
 
 - func: div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
   structured_delegate: div.out_mode
+  dispatch:
+    SparseXPU: div_sparse_
   tags: pointwise
 
 - func: div.out_mode(Tensor self, Tensor other, *, str? rounding_mode, Tensor(a!) out) -> Tensor(a!)
@@ -315,6 +353,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: div_out_mode
+    SparseXPU: div_out_sparse_zerodim
   tags: pointwise
 
 # For C++ only, until we have conversion from C++ numbers to Tensor
@@ -699,6 +738,7 @@
   device_guard: False
   dispatch:
     XPU: isnan
+    SparseXPU: isnan_sparse
   autogen: isnan.out
   tags: [core, pointwise]
 
@@ -829,10 +869,13 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: threshold_backward_out
+    SparseXPU: threshold_backward_sparse_out
 
 - func: threshold_backward(Tensor grad_output, Tensor self, Scalar threshold) -> Tensor
   variants: function
   structured_delegate: threshold_backward.grad_input
+  dispatch:
+    SparseXPU: threshold_backward_sparse
   tags: pointwise
 
 - func: gelu.out(Tensor self, *, str approximate='none', Tensor(a!) out) -> Tensor(a!)
@@ -889,27 +932,36 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: abs_out
+    SparseXPU: abs_sparse_out
   tags: pointwise
 
 - func: abs(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: abs_sparse
   tags: [core, pointwise]
 
 - func: abs_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: abs_sparse_
 
 - func: sin(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: sin.out
   variants: function, method
+  dispatch:
+    SparseXPU: sin_sparse
   tags: [core, pointwise]
 
 - func: sin_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: sin.out
   variants: function, method
+  dispatch:
+    SparseXPU: sin_sparse_
   tags: pointwise
 
 - func: sin.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -918,6 +970,24 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sin_out
+    SparseXPU: sin_sparse_out
+  tags: pointwise
+
+- func: sinc(Tensor self) -> Tensor
+  structured_delegate: sinc.out
+  variants: function, method
+  tags: pointwise
+
+- func: sinc_(Tensor(a!) self) -> Tensor(a!)
+  structured_delegate: sinc.out
+  variants: function, method
+  tags: pointwise
+
+- func: sinc.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: sinc_out
   tags: pointwise
 
 - func: cos(Tensor self) -> Tensor
@@ -966,12 +1036,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: sqrt.out
   variants: function, method
+  dispatch:
+    SparseXPU: sqrt_sparse
   tags: [core, pointwise]
 
 - func: sqrt_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: sqrt.out
   variants: function, method
+  dispatch:
+    SparseXPU: sqrt_sparse_
   tags: pointwise
 
 - func: sqrt.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -980,6 +1054,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sqrt_out
+    SparseXPU: sqrt_sparse_out
   tags: pointwise
 
 - func: rsqrt(Tensor self) -> Tensor
@@ -1006,12 +1081,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: tanh.out
   variants: function, method
+  dispatch:
+    SparseXPU: tanh_sparse
   tags: [core, pointwise]
 
 - func: tanh_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: tanh.out
   variants: function, method
+  dispatch:
+    SparseXPU: tanh_sparse_
   tags: pointwise
 
 - func: tanh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -1020,18 +1099,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: tanh_out
+    SparseXPU: tanh_sparse_out
   tags: pointwise
 
 - func: neg(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: neg.out
   variants: function, method
+  dispatch:
+    SparseXPU: neg_sparse
   tags: [core, pointwise]
 
 - func: neg_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: neg.out
   variants: function, method
+  dispatch:
+    SparseXPU: neg_sparse_
   tags: pointwise
 
 - func: neg.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -1040,6 +1124,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: neg_out
+    SparseXPU: neg_out_sparse
   tags: pointwise
 
 - func: reciprocal(Tensor self) -> Tensor
@@ -1094,6 +1179,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: pow_Tensor_Scalar_out
+    SparseXPU: pow_out_sparse_scalar
   tags: pointwise
 
 - func: pow.Tensor_Scalar(Tensor self, Scalar exponent) -> Tensor
@@ -1101,7 +1187,7 @@
   structured_delegate: pow.Tensor_Scalar_out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA: pow_sparse_scalar
+    SparseXPU: pow_sparse_scalar
   tags: [core, pointwise]
 
 - func: pow_.Scalar(Tensor(a!) self, Scalar exponent) -> Tensor(a!)
@@ -1119,7 +1205,22 @@
 - func: empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
   dispatch:
     XPU: empty_xpu
+    SparseXPU: empty_sparse
   tags: core
+
+- func: empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: empty_like
+    SparseXPU: empty_like_sparse_coo
+  autogen: empty_like.out
+
+- func: new_empty_strided(Tensor self, SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  variants: method
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: new_empty_strided_symint
+  autogen: new_empty_strided.out
 
 - func: empty_strided(SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
@@ -1148,11 +1249,19 @@
     XPU: fill_
   autogen: fill.Tensor_out
 
+- func: resize_as_sparse_(Tensor(a!) self, Tensor the_template) -> Tensor(a!)
+  use_const_ref_for_mutable_tensors: True
+  variants: function, method
+  dispatch:
+    SparseXPU: resize_as_sparse_
+  autogen: resize_as_sparse, resize_as_sparse.out
+
 - func: zero_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method, function
   dispatch:
     XPU: zero_
+    SparseXPU: zero_sparse_
   autogen: zero, zero.out
 
 - func: random_.from(Tensor(a!) self, int from, int? to, *, Generator? generator=None) -> Tensor(a!)
@@ -1720,6 +1829,11 @@
   dispatch:
     XPU: min
 
+- func: min.unary_out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: min_unary_out
+
 - func: min.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
   device_check: NoCheck   # TensorIterator
   structured_delegate: min.dim_min
@@ -1743,11 +1857,21 @@
 - func: min.names_dim_min(Tensor self, Dimname dim, bool keepdim=False, *, Tensor(a!) min, Tensor(b!) min_indices) -> (Tensor(a!) values, Tensor(b!) indices)
   device_check: NoCheck   # TensorIterator
 
+- func: sum(Tensor self, *, ScalarType? dtype=None) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: sum
+    SparseXPU: sum_coo
+  autogen: sum.out
+
 - func: sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   # TODO: Align the signature of sum.dim_IntList and _sparse_csr_sum.dim_dtype
   structured_delegate: sum.IntList_out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: sum_sparse_coo
   tags: core
 
 - func: sum.dim_DimnameList(Tensor self, Dimname[1] dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
@@ -1759,6 +1883,9 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: sum_out
+
+- func: sum.DimnameList_out(Tensor self, Dimname[1] dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
 
 - func: mean.dim(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
   structured_delegate: mean.out
@@ -1971,11 +2098,15 @@
 - func: sgn(Tensor self) -> Tensor
   variants: function, method
   structured_delegate: sgn.out
+  dispatch:
+    SparseXPU: sgn_sparse
   tags: pointwise
 
 - func: sgn_(Tensor(a!) self) -> Tensor(a!)
   variants: method
   structured_delegate: sgn.out
+  dispatch:
+    SparseXPU: sgn_sparse_
   tags: pointwise
 
 - func: sgn.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -1983,6 +2114,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sgn_out
+    SparseXPU: sgn_sparse_out
   tags: pointwise
 
 - func: _foreach_clamp_min.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
@@ -2399,6 +2531,19 @@
     XPU: foreach_tensor_addcmul_scalarlist_xpu_
   autogen: _foreach_addcmul.ScalarList_out
 
+- func: _foreach_addcmul.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_tensor_xpu
+
+- func: _foreach_addcmul_.Tensor(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcmul_tensor_xpu_
+  autogen: _foreach_addcmul.Tensor_out
+
 - func: _foreach_addcdiv_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -2424,6 +2569,19 @@
   dispatch:
     XPU: foreach_tensor_addcdiv_scalar_xpu_
   autogen: _foreach_addcdiv.Scalar_out
+
+- func: _foreach_addcdiv.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_tensor_xpu
+
+- func: _foreach_addcdiv_.Tensor(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    XPU: foreach_tensor_addcdiv_tensor_xpu_
+  autogen: _foreach_addcdiv.Tensor_out
 
 - func: _foreach_abs(Tensor[] self) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
@@ -3053,6 +3211,8 @@
 
 - func: cat(Tensor[] tensors, int dim=0) -> Tensor
   structured_delegate: cat.out
+  dispatch:
+    SparseXPU: cat_sparse
   tags: core
 
 - func: cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
@@ -3077,6 +3237,43 @@
   dispatch:
     XPU: _pin_memory_xpu
   autogen: _pin_memory.out
+
+- func: rad2deg(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: rad2deg
+    SparseXPU: rad2deg_sparse
+
+- func: rad2deg_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: rad2deg_
+    SparseXPU: rad2deg_sparse_
+
+- func: rad2deg.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: rad2deg_out
+    SparseXPU: rad2deg_sparse_out
+
+- func: deg2rad(Tensor self) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: deg2rad
+    SparseXPU: deg2rad_sparse
+  tags: pointwise
+
+- func: deg2rad_(Tensor(a!) self) -> Tensor(a!)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: deg2rad_
+    SparseXPU: deg2rad_sparse_
+  tags: pointwise
+
+- func: deg2rad.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: deg2rad_out
+    SparseXPU: deg2rad_sparse_out
+  tags: pointwise
 
 - func: _embedding_bag_forward_only(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)
   dispatch:
@@ -3342,6 +3539,7 @@
   variants: function, method
   dispatch:
     XPU: relu
+    SparseXPU: relu_sparse
   tags: [core, pointwise]
 
 - func: relu_(Tensor(a!) self) -> Tensor(a!)
@@ -3349,6 +3547,7 @@
   variants: function, method
   dispatch:
     XPU: relu_
+    SparseXPU: relu_sparse_
   autogen: relu.out
   tags: pointwise
 
@@ -3431,6 +3630,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: any.all_out
   variants: method, function
+  dispatch:
+    SparseXPU: any_sparse
   tags: core
 
 - func: addr(Tensor self, Tensor vec1, Tensor vec2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
@@ -3947,6 +4148,20 @@
     XPU: _pdist_backward
   autogen: _pdist_backward.out
 
+- func: permute_copy(Tensor self, int[] dims) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: permute_copy
+  tags: view_copy
+  autogen: permute_copy.out
+
+- func: permute(Tensor(a) self, int[] dims) -> Tensor(a)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: permute
+    SparseXPU: permute_sparse_coo
+  tags: core
+
 - func: _amp_foreach_non_finite_check_and_unscale_(Tensor(a!)[] self, Tensor(b!) found_inf, Tensor inv_scale) -> ()
   variants: function
   dispatch:
@@ -4035,6 +4250,7 @@
   variants: function, method
   dispatch:
     CompositeExplicitAutograd: clone
+    SparseXPU: clone_sparse
   autogen: clone.out
   tags: [core, pointwise]
 
@@ -4165,6 +4381,18 @@
   python_module: nn
   dispatch:
     XPU: glu_backward_xpu
+
+- func: glu_jvp(Tensor glu, Tensor x, Tensor dx, int dim) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: glu_jvp
+  autogen: glu_jvp.out
+
+- func: glu_backward_jvp(Tensor grad_x, Tensor grad_glu, Tensor x, Tensor dgrad_glu, Tensor dx, int dim) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: glu_backward_jvp
+  autogen: glu_backward_jvp.out
 
 - func: softplus.out(Tensor self, Scalar beta=1, Scalar threshold=20, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -4502,6 +4730,16 @@
   python_module: nn
   structured_delegate: upsample_bilinear2d_backward.grad_input
 
+- func: native_norm(Tensor self, Scalar p=2) -> Tensor
+  dispatch:
+    SparseXPU: norm_sparse
+  autogen: native_norm.out
+
+- func: native_norm.ScalarOpt_dim_dtype(Tensor self, Scalar? p, int[1] dim, bool keepdim, ScalarType? dtype) -> Tensor
+  dispatch:
+    SparseXPU: norm_sparse
+  autogen: native_norm.ScalarOpt_dim_dtype_out
+
 - func: batch_norm_stats(Tensor input, float eps) -> (Tensor, Tensor)
   dispatch:
     XPU: batch_norm_stats_xpu
@@ -4688,12 +4926,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: erf.out
   variants: function, method
+  dispatch:
+    SparseXPU: erf_sparse
   tags: [core, pointwise]
 
 - func: erf_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: erf.out
   variants: function, method
+  dispatch:
+    SparseXPU: erf_sparse_
   tags: pointwise
 
 - func: erf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -4702,6 +4944,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: erf_out
+    SparseXPU: erf_sparse_out
   tags: pointwise
 
 - func: erfc(Tensor self) -> Tensor
@@ -4737,6 +4980,7 @@
 - func: conj_physical.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
     XPU: conj_physical_out
+    SparseXPU: conj_physical_out_sparse
   tags: pointwise
 
 - func: conj_physical_(Tensor(a!) self) -> Tensor(a!)
@@ -4749,12 +4993,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: ceil.out
   variants: function, method
+  dispatch:
+    SparseXPU: ceil_sparse
   tags: [core, pointwise]
 
 - func: ceil_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: ceil.out
   variants: function, method
+  dispatch:
+    SparseXPU: ceil_sparse_
   tags: pointwise
 
 - func: ceil.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -4763,6 +5011,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: ceil_out
+    SparseXPU: ceil_sparse_out
   tags: pointwise
 
 - func: searchsorted.Tensor(Tensor sorted_sequence, Tensor self, *, bool out_int32=False, bool right=False, str? side=None, Tensor? sorter=None) -> Tensor
@@ -4978,12 +5227,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: sinh.out
   variants: function, method
+  dispatch:
+    SparseXPU: sinh_sparse
   tags: [core, pointwise]
 
 - func: sinh_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: sinh.out
   variants: function, method
+  dispatch:
+    SparseXPU: sinh_sparse_
   tags: pointwise
 
 - func: sinh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -4992,6 +5245,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sinh_out
+    SparseXPU: sinh_sparse_out
 # Returns a copy of this `Variable` that is detached from its autograd graph.
 # This method is OK to call if the `Variable` is a view.
 #
@@ -5008,11 +5262,15 @@
 - func: asinh(Tensor self) -> Tensor
   variants: function, method
   structured_delegate: asinh.out
+  dispatch:
+    SparseXPU: asinh_sparse
   tags: [core, pointwise]
 
 - func: asinh_(Tensor(a!) self) -> Tensor(a!)
   variants: function, method
   structured_delegate: asinh.out
+  dispatch:
+    SparseXPU: asinh_sparse_
   tags: pointwise
 
 - func: asinh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5020,6 +5278,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: asinh_out
+    SparseXPU: asinh_sparse_out
   tags: pointwise
 
 - func: tan(Tensor self) -> Tensor
@@ -5027,8 +5286,7 @@
   structured_delegate: tan.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA: tan_sparse
-    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr
+    SparseXPU: tan_sparse
   tags: [core, pointwise]
 
 - func: tan_(Tensor(a!) self) -> Tensor(a!)
@@ -5036,8 +5294,7 @@
   structured_delegate: tan.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA: tan_sparse_
-    SparseCsrCPU, SparseCsrCUDA: tan_sparse_csr_
+    SparseXPU: tan_sparse_
   tags: pointwise
 
 - func: tan.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5046,18 +5303,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: tan_out
+    SparseXPU: tan_sparse_out
   tags: pointwise
 
 - func: atan(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: atan.out
   variants: function, method
+  dispatch:
+    SparseXPU: atan_sparse
   tags: [core, pointwise]
 
 - func: atan_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: atan.out
   variants: function, method
+  dispatch:
+    SparseXPU: atan_sparse_
   tags: pointwise
 
 - func: atan.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5066,16 +5328,21 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: atan_out
+    SparseXPU: atan_sparse_out
   tags: pointwise
 
 - func: atanh(Tensor self) -> Tensor
   structured_delegate: atanh.out
   variants: function, method
+  dispatch:
+    SparseXPU: atanh_sparse
   tags: [core, pointwise]
 
 - func: atanh_(Tensor(a!) self) -> Tensor(a!)
   structured_delegate: atanh.out
   variants: function, method
+  dispatch:
+    SparseXPU: atanh_sparse_
   tags: pointwise
 
 - func: atanh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5083,6 +5350,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: atanh_out
+    SparseXPU: atanh_sparse_out
   tags: pointwise
 # arctanh, alias for atanh
 
@@ -5110,17 +5378,20 @@
   variants: function, method
   dispatch:
     CompositeExplicitAutograd: nan_to_num
+    SparseXPU: nan_to_num_sparse
   tags: pointwise
 
 - func: nan_to_num_(Tensor(a!) self, float? nan=None, float? posinf=None, float? neginf=None) -> Tensor(a!)
   variants: function, method
   dispatch:
     CompositeExplicitAutograd: nan_to_num_
+    SparseXPU: nan_to_num_sparse_
   tags: pointwise
 
 - func: nan_to_num.out(Tensor self, float? nan=None, float? posinf=None, float? neginf=None, *, Tensor(a!) out) -> Tensor(a!)
   dispatch:
     XPU: nan_to_num_out
+    SparseXPU: nan_to_num_sparse_out
   tags: pointwise
 
 - func: linalg_cross(Tensor self, Tensor other, *, int dim=-1) -> Tensor
@@ -5340,17 +5611,20 @@
   variants: function, method
   dispatch:
     XPU: floor_divide
+    SparseXPU: floor_divide_sparse
 
 - func: floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
   dispatch:
     XPU: floor_divide_
+    SparseXPU: floor_divide_sparse_
 
 - func: floor_divide.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: floor_divide_out
+    SparseXPU: floor_divide_out_sparse_zerodim
 
 - func: floor_divide.Scalar(Tensor self, Scalar other) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -5651,11 +5925,15 @@
   structured_delegate: norm.dtype_out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: sparse_dtype_norm
 
 - func: norm.ScalarOpt_dim(Tensor self, Scalar? p, int[1] dim, bool keepdim=False) -> Tensor
   structured_delegate: norm.out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: sparse_norm
 
 - func: norm.dtype_out(Tensor self, Scalar? p, int[1] dim, bool keepdim, *, ScalarType dtype, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -5683,6 +5961,17 @@
 
 - func: norm.names_out(Tensor self, Scalar? p, Dimname[1] dim, bool keepdim=False, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
+
+- func: frexp.Tensor(Tensor self) -> (Tensor mantissa, Tensor exponent)
+  variants: method, function
+  dispatch:
+    CompositeExplicitAutograd: frexp
+  tags: pointwise
+
+- func: frexp.Tensor_out(Tensor self, *, Tensor(a!) mantissa, Tensor(b!) exponent) -> (Tensor(a!) mantissa, Tensor(b!) exponent)
+  dispatch:
+    XPU: frexp_out
+  tags: pointwise
 
 # DEPRECATED: Use torch.aminmax instead
 - func: _aminmax(Tensor self) -> (Tensor, Tensor)
@@ -5851,12 +6140,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: log1p.out
   variants: function, method
+  dispatch:
+    SparseXPU: log1p_sparse
   tags: [core, pointwise]
 
 - func: log1p_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: log1p.out
   variants: function, method
+  dispatch:
+    SparseXPU: log1p_sparse_
   tags: pointwise
 
 - func: log1p.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5865,6 +6158,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: log1p_out
+    SparseXPU: log1p_sparse_out
   tags: pointwise
 
 - func: log2(Tensor self) -> Tensor
@@ -5931,12 +6225,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: erfinv.out
   variants: method, function
+  dispatch:
+    SparseXPU: erfinv_sparse
   tags: pointwise
 
 - func: erfinv_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: erfinv.out
   variants: method
+  dispatch:
+    SparseXPU: erfinv_sparse_
   tags: pointwise
 
 - func: erfinv.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5945,6 +6243,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: erfinv_out
+    SparseXPU: erfinv_sparse_out
   tags: pointwise
 
 - func: exp2(Tensor self) -> Tensor
@@ -5968,12 +6267,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: expm1.out
   variants: function, method
+  dispatch:
+    SparseXPU: expm1_sparse
   tags: [core, pointwise]
 
 - func: expm1_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: expm1.out
   variants: function, method
+  dispatch:
+    SparseXPU: expm1_sparse_
   tags: pointwise
 
 - func: expm1.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5982,18 +6285,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: expm1_out
+    SparseXPU: expm1_sparse_out
   tags: pointwise
 
 - func: frac(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   structured_delegate: frac.out
   variants: function, method
+  dispatch:
+    SparseXPU: frac_sparse
   tags: pointwise
 
 - func: frac_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: frac.out
   variants: function, method
+  dispatch:
+    SparseXPU: frac_sparse_
   tags: pointwise
 
 - func: frac.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6002,18 +6310,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: frac_out
+    SparseXPU: frac_sparse_out
   tags: pointwise
 
 - func: asin(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: asin.out
+  dispatch:
+    SparseXPU: asin_sparse
   tags: [core, pointwise]
 
 - func: asin_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: function, method
   structured_delegate: asin.out
+  dispatch:
+    SparseXPU: asin_sparse_
   tags: pointwise
 
 - func: asin.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6022,6 +6335,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: asin_out
+    SparseXPU: asin_sparse_out
   tags: pointwise
 
 - func: round(Tensor self) -> Tensor
@@ -6029,8 +6343,7 @@
   structured_delegate: round.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA: round_sparse
-    SparseCsrCPU, SparseCsrCUDA: round_sparse_csr
+    SparseXPU: round_sparse
   tags: [core, pointwise]
 
 - func: round_(Tensor(a!) self) -> Tensor(a!)
@@ -6038,8 +6351,7 @@
   structured_delegate: round.out
   variants: function, method
   dispatch:
-    SparseCPU, SparseCUDA: round_sparse_
-    SparseCsrCPU, SparseCsrCUDA: round_sparse_csr_
+    SparseXPU: round_sparse_
   tags: pointwise
 
 - func: round.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6048,6 +6360,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: round_out
+    SparseXPU: round_sparse_out
   tags: pointwise
 
 - func: round.decimals(Tensor self, *, int decimals) -> Tensor
@@ -6074,6 +6387,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: floor.out
   variants: function, method
+  dispatch:
+    SparseXPU: floor_sparse
   tags: [core, pointwise]
 
 - func: floor_(Tensor(a!) self) -> Tensor(a!)
@@ -6088,18 +6403,23 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: floor_out
+    SparseXPU: floor_sparse_out
   tags: pointwise
 
 - func: trunc(Tensor self) -> Tensor
   structured_delegate: trunc.out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: trunc_sparse
   tags: [core, pointwise]
 
 - func: trunc_(Tensor(a!) self) -> Tensor(a!)
   structured_delegate: trunc.out
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    SparseXPU: trunc_sparse_
   tags: pointwise
 
 - func: trunc.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6108,6 +6428,7 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: trunc_out
+    SparseXPU: trunc_sparse_out
   tags: pointwise
 
 - func: replication_pad1d.out(Tensor self, SymInt[2] padding, *, Tensor(a!) out) -> Tensor(a!)
@@ -6246,6 +6567,38 @@
     XPU: _unique2_xpu
   tags: dynamic_output_shape
   autogen: _unique2.out
+
+- func: unsqueeze_copy(Tensor self, int dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: unsqueeze_copy
+  tags: view_copy
+  autogen: unsqueeze_copy.out
+
+- func: unsqueeze(Tensor(a) self, int dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: unsqueeze
+    SparseXPU: unsqueeze_sparse
+  tags: core
+
+- func: zeros(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: zeros_symint
+
+- func: zeros_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    # NB: Although this composite mutates on the inside, it is
+    # non-differentiable so NonFunctional doesn't apply
+    CompositeExplicitAutograd, CompositeImplicitAutogradNestedTensor: zeros_like
+  autogen: zeros_like.out
+
+- func: zeros.out(SymInt[] size, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeExplicitAutograd: zeros_out
+    SparseXPU: zeros_sparse_out
 
 - func: multi_margin_loss.out(Tensor self, Tensor target, Scalar p=1, Scalar margin=1, Tensor? weight=None, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
@@ -6405,6 +6758,8 @@
 - func: isposinf(Tensor self) -> Tensor
   variants: function, method
   structured_delegate: isposinf.out
+  dispatch:
+    SparseXPU: isposinf_sparse
   tags: pointwise
 
 - func: isposinf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6412,11 +6767,14 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: isposinf_out
+    SparseXPU: isposinf_sparse_out
   tags: pointwise
 
 - func: isneginf(Tensor self) -> Tensor
   variants: function, method
   structured_delegate: isneginf.out
+  dispatch:
+    SparseXPU: isneginf_sparse
   tags: pointwise
 
 - func: isneginf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6424,6 +6782,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: isneginf_out
+    SparseXPU: isneginf_sparse_out
   tags: pointwise
 
 - func: topk.values(Tensor self, SymInt k, int dim=-1, bool largest=True, bool sorted=True, *, Tensor(a!) values, Tensor(b!) indices) -> (Tensor(a!) values, Tensor(b!) indices)
@@ -6503,6 +6862,8 @@
 - func: signbit(Tensor self) -> Tensor
   variants: function, method
   structured_delegate: signbit.out
+  dispatch:
+    SparseXPU: signbit_sparse
   tags: pointwise
 
 - func: signbit.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6510,6 +6871,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: signbit_out
+    SparseXPU: signbit_sparse_out
   tags: pointwise
 
 - func: median(Tensor self) -> Tensor
@@ -6823,12 +7185,16 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: sign.out
   variants: function, method
+  dispatch:
+    SparseXPU: sign_sparse
   tags: [core, pointwise]
 
 - func: sign_(Tensor(a!) self) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   structured_delegate: sign.out
   variants: method
+  dispatch:
+    SparseXPU: sign_sparse_
   tags: pointwise
 
 - func: sign.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6837,6 +7203,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     XPU: sign_out
+    SparseXPU: sign_sparse_out
   tags: pointwise
 
 - func: range.step(Scalar start, Scalar end, Scalar step=1, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
@@ -7421,6 +7788,16 @@
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
 
+- func: isinf(Tensor self) -> Tensor
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: isinf
+    SparseXPU: isinf_sparse
+  autogen: isinf.out
+  tags: [core, pointwise]
+
 - func: record_stream(Tensor(a!) self, Stream s) -> ()
   variants: method
   dispatch:
@@ -7734,3 +8111,342 @@
   tags: nondeterministic_seeded
   dispatch:
     XPU: rrelu_with_noise_xpu_
+
+- func: _fused_sgd_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float weight_decay, float momentum, float lr, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  variants: function
+  dispatch:
+    XPU: _fused_sgd_kernel_xpu_
+  autogen: _fused_sgd, _fused_sgd.out
+
+- func: _fused_sgd_.tensor_lr(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float weight_decay, float momentum, Tensor lr, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  # but still skip the device check as the Tensor LR can be on CPU
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    XPU: _fused_sgd_kernel_xpu_
+  autogen: _fused_sgd.tensor_lr, _fused_sgd.tensor_lr_out
+
+# NOTE [ Sparse: autograd and API ]
+#
+#
+# Sparse Tensor Constructors
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# The API entry points to sparse tensor construction should be
+# `sparse_coo tensor` and `_sparse_coo_tensor_unsafe`. Depending on whether the
+# indices and values tensors are given, they eventually dispatch to either
+# `sparse_coo_tensor_with_dims` or `sparse_coo_tensor_with_dims_and_tensors`.
+#
+# The autograd support for ctor is implement on `sparse_coo_tensor_with_dims_and_tensors`.
+#
+# The API methods `sparse_coo tensor` and `_sparse_coo_tensor_unsafe`
+# **must not** have specific type dispatches because otherwise codegen will
+# consider them as abstract methods (see Note [Abstract ATen methods]), dispatch
+# using **Tensor** type, and thus lose autograd tracking on the actual method
+# they dispatch to, e.g., `sparse_coo_tensor_with_dims_and_tensors`.
+#
+#
+# Sparse Methods API Design
+# ~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# Goals: 1. Flexible API for users to write custom sparse ops
+#        2. ctor and member accessor with autograd support
+#
+# To achieve 1, we need to provide a set of *dangerous* APIs (dangerous in the
+# sense that misusing them will break sparse tensor invariant and may out in
+# unexpected behavior, e.g., crash). These methods are all prefixed with
+# underscore "_" to indicate that they should be used with care. We provide:
+#
+#   + `_indices()`: returns the *raw* indices within the sparse tensor (not just
+#                   sharing storage). Any inplace operation will change the
+#                   actual indices, including t_, set_, as_strided_, resize_,
+#                   etc.
+#   + `_values()`: returns the *raw* values within the sparse tensor. Similar
+#                  semantics as `_indices()`
+#   + `_nnz()`: returns the number of non-zero entries. This will always be
+#               determined by the shapes of indices and values.
+#   + `_coalesced_(bool)`: inplace sets whether the tensor is coalesced, and
+#                          returns itself.
+#
+# These methods are very useful in writing new operations, e.g., a custom
+# autograd Function.
+#
+# We also provide other public *safe* APIs:
+#   + `indices()`: returns a **view** of the indices tensor if the sparse tensor
+#                  is **coalesced**.
+#   + `values()`: returns a **view** of the values tensor if the containing
+#                 sparse tensor is **coalesced**.
+#   + `sparse_dim()`: number of sparse dimensions
+#   + `dense_dim()`: number of dense dimensions
+#   + `is_coalesced()`: whether the sparse tensor is coalesced
+#
+# `_indices()` and `_values()` should returns the raw indices and values dense
+# tensors within a sparse tensor. They can be quite unsafe with inplace
+# operations like `t_()`, and exposes uncoalesced indices and values. The public
+# recommended API is `indices()` and `values()`, both of which first check that
+# the tensor is coalesced and return views on those tensors.
+#
+#
+# Autograd Support
+# ~~~~~~~~~~~~~~~~
+#
+# Autograd is supported on `values()` and sparse tensor ctor with indices and
+# values tensors. E.g., `torch.sparse_coo_tensor(i, v).values().sum()` is
+# differentiable w.r.t. `v`.
+#
+# NB: The `values()` and `_values()` operators are special in that they are
+# layout-aware, i.e., the output depends not just on the data it represents, but
+# also on the input layout details (in this case, the `indices` tensor). See
+# NOTE [ as_strided Backward and layout-aware/agnostic autograd ] in Functions.cpp
+# for discussion on layout-aware vs layout-agnostic autograd. Since PyTorch ops
+# operate in the layout-agnostic mode, similar to `as_strided`, backward of
+# these two operators need to consider them in a layout-agnostic way:
+#   + `values()`:
+#     Input is coalesced.
+#     We just pretend having `input.indices()` as an additional argument
+#     `input_indices`, then forward is similar to
+#     `input.to(kStrided).index_select(input_indices)` regardless of the layout.
+#     Note that `values()` normally is layout-aware even if we constrain
+#     ourselves on sparse inputs since it may include all zeros values entries
+#     as "present" entries.
+#   + `_values()`:
+#     Input may be uncoalesced.
+#     It is not straightforward to construct a layout-agnostic version because
+#     duplicate indices entries may exist and additional parameterization is
+#     needed to distribute the value into different values entries. Furthermore,
+#     this op is intended to provide ways to write custom sparse ops, rather
+#     than being used in autograd graph, so it is marked as *non-differentiable*
+#     in derivatives.yaml.
+#
+# Before reading the following, see NOTE [ Autograd Variable Views ] in
+# variable.h for details on views that are tracked by autograd, and views that
+# are not.
+#
+# Moreover, these methods return tensors that share storage with inputs, so we
+# mark these methods as view ops to support autograd history tracking.
+# The sparse tensor ctor output should technically be view of both input indices
+# and values tensors, but currently we only support setting as view of a single
+# Variable, so it is only view of the values tensor.
+# TODO: clone indices in sparse tensor ctor.
+#
+# For other methods that return outputs that share storage with inputs, i.e.,
+# `indices()` and `_indices()`. We mark their outputs as non-differentiable, so
+# the view relation is not tracked by autograd, but the version counter is still
+# shared. In other words, their outputs are non-differentiable views of the
+# sparse tensor.
+# FIXME: would be nicer if TensorOptions was optional based; not adding default arguments for options given
+# the default would never make sense.
+
+- func: sparse_resize_(Tensor(a!) self, int[] size, int sparse_dim, int dense_dim) -> Tensor(a!)
+  use_const_ref_for_mutable_tensors: True
+  variants: method
+  dispatch:
+    SparseXPU: sparse_resize_
+  autogen: sparse_resize, sparse_resize.out
+
+- func: _sparse_broadcast_to_copy(Tensor self, int[] size) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _sparse_broadcast_to_copy
+  tags: view_copy
+  autogen: _sparse_broadcast_to_copy.out
+
+- func: _sparse_broadcast_to(Tensor(a) self, int[] size) -> Tensor(a)
+  variants: function
+  dispatch:
+    SparseXPU: sparse_broadcast_to
+
+- func: _sparse_coo_tensor_with_dims(int sparse_dim, int dense_dim, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False) -> Tensor
+  dispatch:
+    SparseXPU: new_with_dims_sparse
+  autogen: _sparse_coo_tensor_with_dims.out
+
+- func: _sparse_coo_tensor_with_dims_and_tensors(int sparse_dim, int dense_dim, SymInt[] size, Tensor indices, Tensor values, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=False, bool? is_coalesced=None) -> Tensor
+  dispatch:
+    SparseXPU: new_with_dims_and_tensor_sparse_symint
+  autogen: _sparse_coo_tensor_with_dims_and_tensors.out
+
+- func: sparse_resize_and_clear_(Tensor(a!) self, int[] size, int sparse_dim, int dense_dim) -> Tensor(a!)
+  use_const_ref_for_mutable_tensors: True
+  variants: method
+  dispatch:
+    SparseXPU: sparse_resize_and_clear_
+  autogen: sparse_resize_and_clear, sparse_resize_and_clear.out
+
+- func: sparse_mask(Tensor self, Tensor mask) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_mask
+  autogen: sparse_mask.out
+
+- func: _sparse_mask_projection(Tensor self, Tensor mask, bool accumulate_matches=False) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_mask_projection
+  autogen: _sparse_mask_projection.out
+
+- func: to_dense(Tensor self, ScalarType? dtype=None, *, bool? masked_grad=None) -> Tensor
+  variants: method
+
+# Special case of to_dense with custom derivative
+- func: _to_dense(Tensor self, ScalarType? dtype=None, bool? masked_grad=None) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: sparse_to_dense
+  autogen: _to_dense.out
+
+- func: to_dense_backward(Tensor grad, Tensor input, bool? masked_grad=None) -> Tensor
+
+- func: sparse_dim(Tensor self) -> int
+  variants: method
+  dispatch:
+    SparseXPU: sparse_dim_sparse
+  device_check: NoCheck
+  device_guard: False
+
+# legacy method
+- func: _dimI(Tensor self) -> int
+  variants: method
+  dispatch:
+    SparseXPU: sparse_dim_sparse
+  device_check: NoCheck
+  device_guard: False
+
+- func: dense_dim(Tensor self) -> int
+  variants: method
+  dispatch:
+    SparseXPU: dense_dim_sparse
+  device_check: NoCheck
+  device_guard: False
+
+# legacy method
+- func: _dimV(Tensor self) -> int
+  variants: method
+  dispatch:
+    SparseXPU: dense_dim_sparse
+  device_check: NoCheck
+  device_guard: False
+
+- func: _nnz(Tensor self) -> int
+  variants: method
+  dispatch:
+    SparseXPU: _nnz_sparse
+  device_check: NoCheck
+  device_guard: False
+
+- func: _indices_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _indices_copy
+  tags: view_copy
+  autogen: _indices_copy.out
+
+- func: _values_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _values_copy
+  tags: view_copy
+  autogen: _values_copy.out
+
+- func: indices_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: indices_copy
+  tags: view_copy
+  autogen: indices_copy.out
+
+- func: values_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: values_copy
+  tags: view_copy
+  autogen: values_copy.out
+
+- func: _indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseXPU: _indices_sparse
+  device_check: NoCheck
+  device_guard: False
+
+- func: _values(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseXPU: _values_sparse
+  device_check: NoCheck
+  device_guard: False
+
+# NOTE: [ coalesce autograd ]
+# coalesce returns self directly for already coalesced sparse tensors.
+# This means coalesce cannot have a derivative registered, otherwise it creates
+# circular references in the autograd graph (see gh-52874).
+# Instead, the derivative is registered on the slow-path "_coalesce"
+- func: coalesce(Tensor(a) self) -> Tensor(a)
+  variants: method
+
+- func: _coalesce(Tensor self) -> Tensor
+  dispatch:
+    SparseXPU: _coalesce_sparse_xpu
+  autogen: _coalesce.out
+
+- func: is_coalesced(Tensor self) -> bool
+  variants: method
+  dispatch:
+    SparseXPU: is_coalesced_sparse
+  device_check: NoCheck
+  device_guard: False
+
+# This method doesn't do any check but only directly sets the flag. So it can be
+# a bit unsafe. Similar to _indices and _values, this is useful for implementing
+# custom sparse operations in Python/C++ extension.
+
+- func: _coalesced_(Tensor(a!) self, bool coalesced) -> Tensor(a!)
+  variants: method
+  dispatch:
+    SparseXPU: _coalesced_sparse_
+  device_check: NoCheck
+  device_guard: False
+  autogen: _coalesced, _coalesced.out
+
+- func: indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseXPU: indices_sparse
+    CompositeExplicitAutograd: indices_default
+  device_check: NoCheck
+  device_guard: False
+
+- func: values(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseXPU: values_sparse
+  device_check: NoCheck
+  device_guard: False
+
+# Special case of to_sparse.sparse_dim with custom derivative
+- func: _to_sparse.sparse_dim(Tensor self, int sparse_dim) -> Tensor
+  variants: method
+  dispatch:
+    XPU: dense_to_sparse
+    SparseXPU: sparse_coo_to_sparse
+  autogen: _to_sparse.sparse_dim_out
+
+- func: to_sparse(Tensor self, *, Layout? layout=None, int[2]? blocksize=None, int? dense_dim=None) -> Tensor
+  variants: method
+
+# Special case of to_sparse with custom derivative
+- func: _to_sparse(Tensor self, *, Layout? layout=None, int[2]? blocksize=None, int? dense_dim=None) -> Tensor
+  variants: method
+  dispatch:
+    XPU: dense_to_sparse
+    SparseXPU: sparse_coo_to_sparse
+  autogen: _to_sparse.out
+
+- func: copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)
+  device_check: NoCheck  # Allows copy into different device
+  variants: function
+  dispatch:
+    SparseXPU: copy_sparse_
+  autogen: copy_sparse_to_sparse, copy_sparse_to_sparse.out
