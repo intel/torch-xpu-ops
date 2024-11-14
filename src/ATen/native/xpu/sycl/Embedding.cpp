@@ -53,7 +53,7 @@ Tensor embedding_dense_backward_kernel(
                 sorted_indices.copy_(indices);
                 pstl::itoa(orig_begin, orig_begin + num_indices, (index_t)0);
                 pstl::sort<index_t, index_t>(
-                    indices.data_ptr<index_t>(),
+                    indices.const_data_ptr<index_t>(),
                     sorted_begin,
                     orig_begin,
                     num_indices,

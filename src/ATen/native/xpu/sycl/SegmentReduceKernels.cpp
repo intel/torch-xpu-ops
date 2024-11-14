@@ -18,8 +18,8 @@
 #include <ATen/ops/zeros.h>
 #endif
 
-#include <comm/SYCLContext.h>
 #include <ATen/native/xpu/sycl/SegmentReduceKernels.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
@@ -83,7 +83,7 @@ struct SegmentReduceForwardKernelFunctor {
   SegmentReduceForwardKernelFunctor(
       native::ReductionType reduction,
       scalar_t* output_data,
-      scalar_t* values_data,
+      const scalar_t* values_data,
       const index_t* lengths_data,
       const index_t* lengths_cumsum_data,
       const int64_t segment_count,
@@ -119,7 +119,7 @@ struct SegmentReduceForwardKernelFunctor {
  private:
   native::ReductionType reduction_;
   scalar_t* output_data_;
-  scalar_t* values_data_;
+  const scalar_t* values_data_;
   const index_t* lengths_data_;
   const index_t* lengths_cumsum_data_;
   const int64_t segment_count_;
@@ -140,7 +140,7 @@ template <typename scalar_t, typename index_t>
 void segment_reduce_forward_kernel(
     native::ReductionType reduction,
     scalar_t* output_data,
-    scalar_t* values_data,
+    const scalar_t* values_data,
     const index_t* lengths_data,
     const index_t* lengths_cumsum_data,
     const int64_t segment_count,
@@ -241,16 +241,16 @@ Tensor _segment_reduce_lengths_offsets_xpu_kernel(
 
   AT_DISPATCH_INDEX_TYPES(
       lengths_or_offsets.scalar_type(), "_segment_reduce_xpu_kernel1", ([&] {
-        auto* offsets_data_ptr = offsets.data_ptr<index_t>();
-        auto* lengths_data_ptr = lengths.data_ptr<index_t>();
+        auto* offsets_data_ptr = offsets.const_data_ptr<index_t>();
+        auto* lengths_data_ptr = lengths.const_data_ptr<index_t>();
         AT_DISPATCH_FLOATING_TYPES_AND2(
             at::ScalarType::Half,
             at::ScalarType::BFloat16,
             data.scalar_type(),
             "segment_reduce_xpu",
             [&]() {
-              auto* data_data_ptr = data.data_ptr<scalar_t>();
-              auto* output_data_ptr = output.data_ptr<scalar_t>();
+              auto* data_data_ptr = data.const_data_ptr<scalar_t>();
+              auto* output_data_ptr = output.mutable_data_ptr<scalar_t>();
 
               // initialize starting value
               scalar_t initial_value;
@@ -409,8 +409,8 @@ struct SegmentReduceBackwardKernelFunctor {
   SegmentReduceBackwardKernelFunctor(
       native::ReductionType reduction,
       scalar_t* grad_input_data,
-      scalar_t* grad_data,
-      scalar_t* output_data,
+      const scalar_t* grad_data,
+      const scalar_t* output_data,
       const scalar_t* values_data,
       const index_t* lengths_data,
       const index_t* lengths_cumsum_data,
@@ -447,8 +447,8 @@ struct SegmentReduceBackwardKernelFunctor {
  private:
   native::ReductionType reduction_;
   scalar_t* grad_input_data_;
-  scalar_t* grad_data_;
-  scalar_t* output_data_;
+  const scalar_t* grad_data_;
+  const scalar_t* output_data_;
   const scalar_t* values_data_;
   const index_t* lengths_data_;
   const index_t* lengths_cumsum_data_;
@@ -469,8 +469,8 @@ template <typename scalar_t, typename index_t>
 void segment_reduce_backward_kernel(
     native::ReductionType reduction,
     scalar_t* grad_input_data,
-    scalar_t* grad_data,
-    scalar_t* output_data,
+    const scalar_t* grad_data,
+    const scalar_t* output_data,
     const scalar_t* values_data,
     const index_t* lengths_data,
     const index_t* lengths_cumsum_data,
@@ -572,8 +572,8 @@ Tensor _segment_reduce_lengths_offsets_backward_xpu_kernel(
       lengths_or_offsets_contig.scalar_type(),
       "_segment_reduce_xpu_lengths_offsets_backward_kernel1",
       ([&] {
-        const auto* lengths_data = lengths.data_ptr<index_t>();
-        auto* offsets_data = offsets.data_ptr<index_t>();
+        const auto* lengths_data = lengths.const_data_ptr<index_t>();
+        auto* offsets_data = offsets.const_data_ptr<index_t>();
 
         // TODO: Switch to TensorIterator for better maintainablility and
         // readability
@@ -583,10 +583,10 @@ Tensor _segment_reduce_lengths_offsets_backward_xpu_kernel(
             data_contig.scalar_type(),
             "_segment_reduce_xpu",
             ([&]() {
-              auto* output_data = output_contig.data_ptr<scalar_t>();
-              auto* grad_data = grad_contig.data_ptr<scalar_t>();
-              auto* grad_input_data = grad_input.data_ptr<scalar_t>();
-              const auto* values_data = data_contig.data_ptr<scalar_t>();
+              auto* output_data = output_contig.const_data_ptr<scalar_t>();
+              auto* grad_data = grad_contig.const_data_ptr<scalar_t>();
+              auto* grad_input_data = grad_input.mutable_data_ptr<scalar_t>();
+              const auto* values_data = data_contig.const_data_ptr<scalar_t>();
 
               scalar_t initial_prod_value;
               if (initial.has_value()) {

@@ -228,8 +228,8 @@ void parallel_cat(
         int64_t dimSize =
             at::native::size(inputs[i + batchCounter].get(), dimension);
 
-        stackInputs[batchCounter].input = static_cast<scalar_in_t*>(
-            inputs[i + batchCounter].get().data_ptr());
+        stackInputs[batchCounter].input =
+            (scalar_in_t*)(inputs[i + batchCounter].get().const_data_ptr());
         stackInputs[batchCounter].offset = offset;
         stackInputs[batchCounter].dimSize = dimSize;
         stackInputs[batchCounter].nElements =

@@ -24,7 +24,7 @@ inline int imax(int a, int b) {
   return a > b ? a : b;
 }
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 struct ParallelReplicationPad1dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_id = item.get_global_id(2);
@@ -45,8 +45,8 @@ struct ParallelReplicationPad1dKernelFunctor {
     }
   }
   ParallelReplicationPad1dKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 3> input,
-      PackedTensorAccessor64<scalar_t, 3> output,
+      PackedTensorAccessor64<input_scalar_t, 3> input,
+      PackedTensorAccessor64<output_scalar_t, 3> output,
       int64_t pad_left,
       int64_t pad_right,
       const F f,
@@ -59,25 +59,25 @@ struct ParallelReplicationPad1dKernelFunctor {
         output_plane_size_(output_plane_size) {}
 
  private:
-  PackedTensorAccessor64<scalar_t, 3> input_;
-  PackedTensorAccessor64<scalar_t, 3> output_;
+  PackedTensorAccessor64<input_scalar_t, 3> input_;
+  PackedTensorAccessor64<output_scalar_t, 3> output_;
   int64_t pad_left_;
   int64_t pad_right_;
   const F f_;
   int64_t output_plane_size_;
 };
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad1d(
-    PackedTensorAccessor64<scalar_t, 3> input,
-    PackedTensorAccessor64<scalar_t, 3> output,
+    PackedTensorAccessor64<input_scalar_t, 3> input,
+    PackedTensorAccessor64<output_scalar_t, 3> output,
     int64_t pad_left,
     int64_t pad_right,
     const F& f) {
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2);
 
-  ParallelReplicationPad1dKernelFunctor<scalar_t, F> kfn(
+  ParallelReplicationPad1dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, pad_left, pad_right, f, output_plane_size);
 
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
@@ -95,7 +95,7 @@ void parallel_replication_pad1d(
 template <typename scalar_t>
 struct ReplicationPad1dForwardFunctor {
   void operator()(
-      PackedTensorAccessor64<scalar_t, 3> input,
+      PackedTensorAccessor64<const scalar_t, 3> input,
       PackedTensorAccessor64<scalar_t, 3> output,
       int64_t plane,
       int64_t batch,
@@ -108,7 +108,7 @@ struct ReplicationPad1dForwardFunctor {
 
 template <typename scalar_t>
 void replication_pad1d_forward_template(
-    PackedTensorAccessor64<scalar_t, 3> input,
+    PackedTensorAccessor64<const scalar_t, 3> input,
     PackedTensorAccessor64<scalar_t, 3> output,
     int64_t pad_left,
     int64_t pad_right) {
@@ -120,7 +120,7 @@ template <typename scalar_t>
 struct ReplicationPad1dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 3> grad_input,
-      PackedTensorAccessor64<scalar_t, 3> grad_output,
+      PackedTensorAccessor64<const scalar_t, 3> grad_output,
       int64_t plane,
       int64_t batch,
       int64_t output_x,
@@ -135,14 +135,14 @@ struct ReplicationPad1dBackwardFunctor {
 template <typename scalar_t>
 void replication_pad1d_backward_template(
     PackedTensorAccessor64<scalar_t, 3> grad_input,
-    PackedTensorAccessor64<scalar_t, 3> grad_output,
+    PackedTensorAccessor64<const scalar_t, 3> grad_output,
     int64_t pad_left,
     int64_t pad_right) {
   ReplicationPad1dBackwardFunctor<scalar_t> f;
   parallel_replication_pad1d(grad_input, grad_output, pad_left, pad_right, f);
 }
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 struct ParallelReplicationPad2dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     const int output_id = item.get_global_id(2);
@@ -169,32 +169,32 @@ struct ParallelReplicationPad2dKernelFunctor {
     }
   }
   ParallelReplicationPad2dKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 4> input,
-      PackedTensorAccessor64<scalar_t, 4> output,
+      PackedTensorAccessor64<input_scalar_t, 4> input,
+      PackedTensorAccessor64<output_scalar_t, 4> output,
       int64_t padT,
       int64_t padL,
       const F f)
       : input_(input), output_(output), padT_(padT), padL_(padL), f_(f) {}
 
  private:
-  PackedTensorAccessor64<scalar_t, 4> input_;
-  PackedTensorAccessor64<scalar_t, 4> output_;
+  PackedTensorAccessor64<input_scalar_t, 4> input_;
+  PackedTensorAccessor64<output_scalar_t, 4> output_;
   int64_t padT_;
   int64_t padL_;
   const F f_;
 };
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad2d(
-    PackedTensorAccessor64<scalar_t, 4> input,
-    PackedTensorAccessor64<scalar_t, 4> output,
+    PackedTensorAccessor64<input_scalar_t, 4> input,
+    PackedTensorAccessor64<output_scalar_t, 4> output,
     const int padT,
     const int padL,
     const F& f) {
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3);
 
-  ParallelReplicationPad2dKernelFunctor<scalar_t, F> kfn(
+  ParallelReplicationPad2dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, padT, padL, f);
 
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
@@ -212,7 +212,7 @@ void parallel_replication_pad2d(
 template <typename scalar_t>
 struct ReplicationPad2dForwardFunctor {
   void operator()(
-      PackedTensorAccessor64<scalar_t, 4> input,
+      PackedTensorAccessor64<const scalar_t, 4> input,
       PackedTensorAccessor64<scalar_t, 4> output,
       int64_t batch,
       int64_t plane,
@@ -227,7 +227,7 @@ struct ReplicationPad2dForwardFunctor {
 
 template <typename scalar_t>
 void replication_pad2d_forward_template(
-    PackedTensorAccessor64<scalar_t, 4> input,
+    PackedTensorAccessor64<const scalar_t, 4> input,
     PackedTensorAccessor64<scalar_t, 4> output,
     int64_t padT,
     int64_t padL) {
@@ -239,7 +239,7 @@ template <typename scalar_t>
 struct ReplicationPad2dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 4> grad_input,
-      PackedTensorAccessor64<scalar_t, 4> grad_output,
+      PackedTensorAccessor64<const scalar_t, 4> grad_output,
       int64_t batch,
       int64_t plane,
       int64_t input_x,
@@ -256,14 +256,14 @@ struct ReplicationPad2dBackwardFunctor {
 template <typename scalar_t>
 void replication_pad2d_backward_template(
     PackedTensorAccessor64<scalar_t, 4> grad_input,
-    PackedTensorAccessor64<scalar_t, 4> grad_output,
+    PackedTensorAccessor64<const scalar_t, 4> grad_output,
     const int padT,
     const int padL) {
   ReplicationPad2dBackwardFunctor<scalar_t> f;
   parallel_replication_pad2d(grad_input, grad_output, padT, padL, f);
 }
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 struct ParallelReplicationPad3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_id = item.get_global_id(2);
@@ -302,8 +302,8 @@ struct ParallelReplicationPad3dKernelFunctor {
     }
   }
   ParallelReplicationPad3dKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 5> input,
-      PackedTensorAccessor64<scalar_t, 5> output,
+      PackedTensorAccessor64<input_scalar_t, 5> input,
+      PackedTensorAccessor64<output_scalar_t, 5> output,
       int64_t pad_left,
       int64_t pad_top,
       int64_t pad_front,
@@ -318,8 +318,8 @@ struct ParallelReplicationPad3dKernelFunctor {
         output_plane_size_(output_plane_size) {}
 
  private:
-  PackedTensorAccessor64<scalar_t, 5> input_;
-  PackedTensorAccessor64<scalar_t, 5> output_;
+  PackedTensorAccessor64<input_scalar_t, 5> input_;
+  PackedTensorAccessor64<output_scalar_t, 5> output_;
   int64_t pad_left_;
   int64_t pad_top_;
   int64_t pad_front_;
@@ -327,10 +327,10 @@ struct ParallelReplicationPad3dKernelFunctor {
   int64_t output_plane_size_;
 };
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 void parallel_replication_pad3d(
-    PackedTensorAccessor64<scalar_t, 5> input,
-    PackedTensorAccessor64<scalar_t, 5> output,
+    PackedTensorAccessor64<input_scalar_t, 5> input,
+    PackedTensorAccessor64<output_scalar_t, 5> output,
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front,
@@ -338,7 +338,7 @@ void parallel_replication_pad3d(
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
 
-  ParallelReplicationPad3dKernelFunctor<scalar_t, F> kfn(
+  ParallelReplicationPad3dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, pad_left, pad_top, pad_front, f, output_plane_size);
   int64_t work_group_size = syclMaxWorkGroupSize(kfn);
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
@@ -355,7 +355,7 @@ void parallel_replication_pad3d(
 template <typename scalar_t>
 struct ReplicationPad3dForwardFunctor {
   void operator()(
-      PackedTensorAccessor64<scalar_t, 5> input,
+      PackedTensorAccessor64<const scalar_t, 5> input,
       PackedTensorAccessor64<scalar_t, 5> output,
       int64_t plane,
       int64_t batch,
@@ -372,7 +372,7 @@ struct ReplicationPad3dForwardFunctor {
 
 template <typename scalar_t>
 void replication_pad3d_forward_template(
-    PackedTensorAccessor64<scalar_t, 5> input,
+    PackedTensorAccessor64<const scalar_t, 5> input,
     PackedTensorAccessor64<scalar_t, 5> output,
     int64_t pad_left,
     int64_t pad_top,
@@ -385,7 +385,7 @@ template <typename scalar_t>
 struct ReplicationPad3dBackwardFunctor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 5> grad_input,
-      PackedTensorAccessor64<scalar_t, 5> grad_output,
+      PackedTensorAccessor64<const scalar_t, 5> grad_output,
       int64_t plane,
       int64_t batch,
       int64_t output_z,
@@ -404,7 +404,7 @@ struct ReplicationPad3dBackwardFunctor {
 template <typename scalar_t>
 void replication_pad3d_backward_template(
     PackedTensorAccessor64<scalar_t, 5> grad_input,
-    PackedTensorAccessor64<scalar_t, 5> grad_output,
+    PackedTensorAccessor64<const scalar_t, 5> grad_output,
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
@@ -438,7 +438,7 @@ void replication_pad1d_kernel(
           output_ = output.unsqueeze(0);
         }
 
-        auto input_packed = input_.packed_accessor64<scalar_t, 3>();
+        auto input_packed = input_.packed_accessor64<const scalar_t, 3>();
         auto output_packed = output_.packed_accessor64<scalar_t, 3>();
 
         replication_pad1d_forward_template<scalar_t>(
@@ -484,7 +484,8 @@ void replication_pad1d_backward_kernel(
           grad_output_ = grad_output.unsqueeze(0);
         }
         auto grad_input_packed = grad_input_.packed_accessor64<scalar_t, 3>();
-        auto grad_output_packed = grad_output_.packed_accessor64<scalar_t, 3>();
+        auto grad_output_packed =
+            grad_output_.packed_accessor64<const scalar_t, 3>();
 
         replication_pad1d_backward_template<scalar_t>(
             grad_input_packed, grad_output_packed, pad_left, pad_right);
@@ -511,7 +512,7 @@ void replication_pad2d_kernel(
           input_ = input.unsqueeze(0);
           output_ = output.unsqueeze(0);
         }
-        auto devInput = input_.packed_accessor64<scalar_t, 4>();
+        auto devInput = input_.packed_accessor64<const scalar_t, 4>();
         auto devOutput = output_.packed_accessor64<scalar_t, 4>();
         replication_pad2d_forward_template<scalar_t>(
             devInput, devOutput, padT, padL);
@@ -583,7 +584,8 @@ void replication_pad2d_backward_kernel(
           grad_output_ = grad_output.unsqueeze(0);
         }
         auto grad_input_packed = grad_input_.packed_accessor64<scalar_t, 4>();
-        auto grad_output_packed = grad_output_.packed_accessor64<scalar_t, 4>();
+        auto grad_output_packed =
+            grad_output_.packed_accessor64<const scalar_t, 4>();
 
         replication_pad2d_backward_template<scalar_t>(
             grad_input_packed, grad_output_packed, padT, padL);
@@ -612,7 +614,7 @@ void replication_pad3d_kernel(
           output_ = output.unsqueeze(0);
         }
 
-        auto input_packed = input_.packed_accessor64<scalar_t, 5>();
+        auto input_packed = input_.packed_accessor64<const scalar_t, 5>();
         auto output_packed = output_.packed_accessor64<scalar_t, 5>();
 
         replication_pad3d_forward_template<scalar_t>(
@@ -752,7 +754,8 @@ void replication_pad3d_backward_kernel(
           grad_output_ = grad_output.unsqueeze(0);
         }
         auto grad_input_packed = grad_input_.packed_accessor64<scalar_t, 5>();
-        auto grad_output_packed = grad_output_.packed_accessor64<scalar_t, 5>();
+        auto grad_output_packed =
+            grad_output_.packed_accessor64<const scalar_t, 5>();
         replication_pad3d_backward_template<scalar_t>(
             grad_input_packed,
             grad_output_packed,

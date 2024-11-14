@@ -240,7 +240,7 @@ struct DispatchSoftmaxForwardKernelFunctor
       if (index >= dim_size_)
         break;
 
-      reg_in[i] = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + index));
+      reg_in[i] = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + index));
       if constexpr (is_masked) {
         auto vec_offset = group_offset + index;
 #pragma unroll(vec_size)
@@ -328,11 +328,11 @@ struct DispatchSoftmaxForwardKernelFunctor
   }
 
   DispatchSoftmaxForwardKernelFunctor(
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* out_data,
       int dim_size,
       int outer_size,
-      bool* mask_data,
+      const bool* mask_data,
       calc_t input_calc,
       int sub_group_num,
       int global_size_row,
@@ -356,11 +356,11 @@ struct DispatchSoftmaxForwardKernelFunctor
         nan_(nan) {}
 
  private:
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* out_data_;
   int dim_size_;
   int outer_size_;
-  bool* mask_data_;
+  const bool* mask_data_;
   calc_t input_calc_;
   int sub_group_num_;
   int global_size_row_;
@@ -388,11 +388,11 @@ template <
     bool is_masked = false,
     typename calc_t = decltype(nullptr)>
 bool dispatch_softmax_forward_kernel(
-    scalar_t* in_data,
+    const scalar_t* in_data,
     scalar_t* out_data,
     int dim_size,
     int outer_size,
-    bool* mask_data = nullptr,
+    const bool* mask_data = nullptr,
     calc_t input_calc = nullptr) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
@@ -518,7 +518,7 @@ struct SoftmaxForwardKernelFunctor {
     // get max value
     auto max_value = std::numeric_limits<accscalar_t>::lowest();
     for (int i = local_id; i < loops_end; i += local_size_) {
-      vec_t in_val = *(reinterpret_cast<vec_t*>(
+      vec_t in_val = *(reinterpret_cast<const vec_t*>(
           in_data_ + group_offset - start + i * vec_size));
 #pragma unroll(vec_size)
       for (IndexType j = 0; j < vec_size; ++j) {
@@ -535,7 +535,7 @@ struct SoftmaxForwardKernelFunctor {
     // get sum value
     auto sum_value = accscalar_t(0);
     for (IndexType i = local_id; i < loops_end; i += local_size_) {
-      vec_t in_val = *(reinterpret_cast<vec_t*>(
+      vec_t in_val = *(reinterpret_cast<const vec_t*>(
           in_data_ + group_offset - start + i * vec_size));
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
@@ -569,7 +569,7 @@ struct SoftmaxForwardKernelFunctor {
           }
         }
       } else {
-        vec_t in_val = *(reinterpret_cast<vec_t*>(
+        vec_t in_val = *(reinterpret_cast<const vec_t*>(
             in_data_ + group_offset - start + i * vec_size));
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
@@ -586,7 +586,7 @@ struct SoftmaxForwardKernelFunctor {
     }
   }
   SoftmaxForwardKernelFunctor(
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* out_data,
       int dim_size,
       int outer_size,
@@ -598,7 +598,7 @@ struct SoftmaxForwardKernelFunctor {
         local_size_(local_size) {}
 
  private:
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* out_data_;
   int dim_size_;
   int outer_size_;
@@ -612,7 +612,7 @@ template <
     typename IndexType,
     bool LogSoftMax>
 void softmax_forward_kernel(
-    scalar_t* in_data,
+    const scalar_t* in_data,
     scalar_t* out_data,
     int dim_size,
     int outer_size) {
@@ -658,14 +658,14 @@ struct SpatialSoftmaxForwardKernelFunctor
     // get max value
     accscalar_t max_value[vec_size];
     auto offset = local_row_id * inner_size_ + global_col * vec_size;
-    vec_t value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
+    vec_t value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
       max_value[j] = accscalar_t(value[j]);
     }
     for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
-      value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
+      value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         max_value[j] = std::max(max_value[j], accscalar_t(value[j]));
@@ -688,14 +688,14 @@ struct SpatialSoftmaxForwardKernelFunctor
     // get sum value
     accscalar_t sum_value[vec_size];
     offset = local_row_id * inner_size_ + global_col * vec_size;
-    value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
+    value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
       sum_value[j] = std::exp(value[j] - max_value[j]);
     }
     for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
-      value = *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
+      value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         sum_value[j] += std::exp(value[j] - max_value[j]);
@@ -730,7 +730,7 @@ struct SpatialSoftmaxForwardKernelFunctor
       for (int i = local_row_id; i < dim_size_; i += block_row_) {
         auto offset = i * inner_size_ + global_col * vec_size;
         vec_t in_val =
-            *(reinterpret_cast<vec_t*>(in_data_ + group_offset + offset));
+            *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
         for (int j = 0; j < vec_size; ++j) {
           if (LogSoftMax)
@@ -753,7 +753,7 @@ struct SpatialSoftmaxForwardKernelFunctor
   }
 
   SpatialSoftmaxForwardKernelFunctor(
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* out_data,
       int dim_size,
       int inner_size,
@@ -771,7 +771,7 @@ struct SpatialSoftmaxForwardKernelFunctor
         group_num_(group_num) {}
 
  private:
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* out_data_;
   int dim_size_;
   int inner_size_;
@@ -789,7 +789,7 @@ template <
     typename IndexType,
     bool LogSoftMax>
 void spatial_softmax_forward(
-    scalar_t* in_data,
+    const scalar_t* in_data,
     scalar_t* out_data,
     int dim_size,
     int inner_size,
@@ -866,9 +866,10 @@ struct DispatchSoftmaxBackwardKernelFunctor
       if (index >= dim_size_)
         break;
 
-      reg_out[i] = *(reinterpret_cast<vec_t*>(output_ + group_offset + index));
+      reg_out[i] =
+          *(reinterpret_cast<const vec_t*>(output_ + group_offset + index));
       reg_gradout[i] =
-          *(reinterpret_cast<vec_t*>(gradOutput_ + group_offset + index));
+          *(reinterpret_cast<const vec_t*>(gradOutput_ + group_offset + index));
       if constexpr (is_masked) {
         auto vec_offset = group_offset + index;
 #pragma unroll(vec_size)
@@ -929,11 +930,11 @@ struct DispatchSoftmaxBackwardKernelFunctor
 
   DispatchSoftmaxBackwardKernelFunctor(
       scalar_t* gradInput,
-      scalar_t* output,
-      scalar_t* gradOutput,
+      const scalar_t* output,
+      const scalar_t* gradOutput,
       int dim_size,
       int outer_size,
-      bool* mask_data,
+      const bool* mask_data,
       calc_t input_calc,
       int sub_group_num,
       int global_size_row,
@@ -955,11 +956,11 @@ struct DispatchSoftmaxBackwardKernelFunctor
 
  private:
   scalar_t* gradInput_;
-  scalar_t* output_;
-  scalar_t* gradOutput_;
+  const scalar_t* output_;
+  const scalar_t* gradOutput_;
   int dim_size_;
   int outer_size_;
-  bool* mask_data_;
+  const bool* mask_data_;
   calc_t input_calc_;
   int sub_group_num_;
   int global_size_row_;
@@ -981,11 +982,11 @@ template <
     typename calc_t = decltype(nullptr)>
 bool dispatch_softmax_backward_kernel(
     scalar_t* gradInput,
-    scalar_t* output,
-    scalar_t* gradOutput,
+    const scalar_t* output,
+    const scalar_t* gradOutput,
     int dim_size,
     int outer_size,
-    bool* mask_data = nullptr,
+    const bool* mask_data = nullptr,
     calc_t input_calc = nullptr) {
   using vec_t = at::native::memory::aligned_vector<scalar_t, vec_size>;
   auto& queue = getCurrentSYCLQueue();
@@ -1432,8 +1433,8 @@ void spatial_softmax_forward(
         uint32_t,                                                 \
         LogSoftMax,                                               \
         outer_loop>(                                              \
-        input.data_ptr<scalar_t>(),                               \
-        output.data_ptr<scalar_t>(),                              \
+        input.const_data_ptr<scalar_t>(),                         \
+        output.mutable_data_ptr<scalar_t>(),                      \
         dim_size,                                                 \
         outer_size);                                              \
   }
@@ -1446,8 +1447,8 @@ void spatial_softmax_forward(
         accscalar_t,                              \
         IndexType,                                \
         LogSoftMax>(                              \
-        input.data_ptr<scalar_t>(),               \
-        output.data_ptr<scalar_t>(),              \
+        input.const_data_ptr<scalar_t>(),         \
+        output.mutable_data_ptr<scalar_t>(),      \
         dim_size,                                 \
         outer_size);                              \
   }
@@ -1460,8 +1461,8 @@ void spatial_softmax_forward(
         accscalar_t,                                      \
         IndexType,                                        \
         LogSoftMax>(                                      \
-        input.data_ptr<scalar_t>(),                       \
-        output.data_ptr<scalar_t>(),                      \
+        input.const_data_ptr<scalar_t>(),                 \
+        output.mutable_data_ptr<scalar_t>(),              \
         dim_size,                                         \
         inner_size,                                       \
         outer_size);                                      \
@@ -1605,18 +1606,18 @@ void spatial_softmax_backward(
         accscalar_t,                                   \
         uint32_t,                                      \
         LogSoftMax>(                                   \
-        gradInput.data_ptr<scalar_t>(),                \
-        output.data_ptr<scalar_t>(),                   \
-        gradOutput.data_ptr<scalar_t>(),               \
+        gradInput.mutable_data_ptr<scalar_t>(),        \
+        output.const_data_ptr<scalar_t>(),             \
+        gradOutput.const_data_ptr<scalar_t>(),         \
         dim_size,                                      \
         outer_size);                                   \
   }
 
 #define SOFTMAX_BACKWARD_IMPL(vec_size, IndexType)                      \
   softmax_backward_kernel<vec_size, scalar_t, accscalar_t, LogSoftMax>( \
-      gradInput.data_ptr<scalar_t>(),                                   \
-      output.data_ptr<scalar_t>(),                                      \
-      gradOutput.data_ptr<scalar_t>(),                                  \
+      gradInput.mutable_data_ptr<scalar_t>(),                           \
+      output.const_data_ptr<scalar_t>(),                                \
+      gradOutput.const_data_ptr<scalar_t>(),                            \
       dim_size,                                                         \
       outer_size);
 
@@ -1626,9 +1627,9 @@ void spatial_softmax_backward(
       scalar_t,                                            \
       accscalar_t,                                         \
       LogSoftMax>(                                         \
-      gradInput.data_ptr<scalar_t>(),                      \
-      output.data_ptr<scalar_t>(),                         \
-      gradOutput.data_ptr<scalar_t>(),                     \
+      gradInput.mutable_data_ptr<scalar_t>(),              \
+      output.const_data_ptr<scalar_t>(),                   \
+      gradOutput.const_data_ptr<scalar_t>(),               \
       dim_size,                                            \
       inner_size,                                          \
       outer_size);
@@ -1718,9 +1719,9 @@ Tensor& masked_softmax_forward(
   using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   int input_start =
-      ((uint64_t)input.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)input.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int output_start =
-      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)output.const_data_ptr()) % align_bytes / sizeof(scalar_t);
 
   // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
   bool can_use_32bit_index =
@@ -1749,11 +1750,11 @@ Tensor& masked_softmax_forward(
         outer_loop,                                                    \
         true,                                                          \
         decltype(input_calc)>(                                         \
-        input.data_ptr<scalar_t>(),                                    \
-        output.data_ptr<scalar_t>(),                                   \
+        input.const_data_ptr<scalar_t>(),                              \
+        output.mutable_data_ptr<scalar_t>(),                           \
         dim_size,                                                      \
         outer_size,                                                    \
-        mask.data_ptr<bool>(),                                         \
+        mask.const_data_ptr<bool>(),                                   \
         input_calc);                                                   \
   }
 
@@ -1838,11 +1839,11 @@ void masked_softmax_backward(
   using vec_t = at::native::memory::aligned_vector<scalar_t, max_vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   int gradin_start =
-      ((uint64_t)gradInput.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)gradInput.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int output_start =
-      ((uint64_t)output.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)output.const_data_ptr()) % align_bytes / sizeof(scalar_t);
   int gradoutput_start =
-      ((uint64_t)gradOutput.data_ptr()) % align_bytes / sizeof(scalar_t);
+      ((uint64_t)gradOutput.const_data_ptr()) % align_bytes / sizeof(scalar_t);
 
   // decide indexing range: uint32_t (4GB) or uint64_t (>4GB)
   bool can_use_32bit_index = canUse32BitIndexMath(gradInput) &&
@@ -1870,12 +1871,12 @@ void masked_softmax_backward(
         LogSoftMax,                                         \
         true,                                               \
         decltype(input_calc)>(                              \
-        gradInput.data_ptr<scalar_t>(),                     \
-        output.data_ptr<scalar_t>(),                        \
-        gradOutput.data_ptr<scalar_t>(),                    \
+        gradInput.mutable_data_ptr<scalar_t>(),             \
+        output.const_data_ptr<scalar_t>(),                  \
+        gradOutput.const_data_ptr<scalar_t>(),              \
         dim_size,                                           \
         outer_size,                                         \
-        mask.data_ptr<bool>(),                              \
+        mask.const_data_ptr<bool>(),                        \
         input_calc);                                        \
   }
 

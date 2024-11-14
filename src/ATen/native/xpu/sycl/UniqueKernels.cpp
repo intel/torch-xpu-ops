@@ -154,7 +154,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
 
   if (!consecutive) {
     at::native::xpu::pstl::sort<scalar_t, int64_t>(
-        self_c.data_ptr<scalar_t>(),
+        self_c.const_data_ptr<scalar_t>(),
         output.data_ptr<scalar_t>(),
         sorted_indices.data_ptr<int64_t>(),
         num_inp,
@@ -258,13 +258,16 @@ struct UniqueDimLessFunctor {
     return false;
   }
 
-  UniqueDimLessFunctor(int64_t num_inp, int64_t n, scalar_t* input_flat_ptr)
+  UniqueDimLessFunctor(
+      int64_t num_inp,
+      int64_t n,
+      const scalar_t* input_flat_ptr)
       : num_inp_(num_inp), n_(n), input_flat_ptr_(input_flat_ptr) {}
 
  private:
   int64_t num_inp_;
   int64_t n_;
-  scalar_t* input_flat_ptr_;
+  const scalar_t* input_flat_ptr_;
 };
 
 template <typename scalar_t>
@@ -280,12 +283,12 @@ struct UniqueDimEqualFunctor {
     }
     return true;
   }
-  UniqueDimEqualFunctor(int64_t n, scalar_t* input_flat_ptr)
+  UniqueDimEqualFunctor(int64_t n, const scalar_t* input_flat_ptr)
       : n_(n), input_flat_ptr_(input_flat_ptr) {}
 
  private:
   int64_t n_;
-  scalar_t* input_flat_ptr_;
+  const scalar_t* input_flat_ptr_;
 };
 
 template <typename scalar_t>
@@ -301,12 +304,12 @@ struct UniqueDimNotEqualFunctor {
     }
     return false;
   }
-  UniqueDimNotEqualFunctor(int64_t n, scalar_t* input_flat_ptr)
+  UniqueDimNotEqualFunctor(int64_t n, const scalar_t* input_flat_ptr)
       : n_(n), input_flat_ptr_(input_flat_ptr) {}
 
  private:
   int64_t n_;
-  scalar_t* input_flat_ptr_;
+  const scalar_t* input_flat_ptr_;
 };
 
 template <typename scalar_t>
@@ -338,7 +341,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_dim_template(
   auto index_options = self.options().dtype(kLong);
   Tensor input_flat = self.moveaxis(dim, 0).contiguous().view({num_inp, -1});
   int64_t n = input_flat.size(1);
-  scalar_t* input_flat_ptr = input_flat.data_ptr<scalar_t>();
+  const scalar_t* input_flat_ptr = input_flat.const_data_ptr<scalar_t>();
 
   Tensor indices = at::arange(0, num_inp, index_options);
   Tensor indices_idx = at::arange(0, num_inp, index_options);

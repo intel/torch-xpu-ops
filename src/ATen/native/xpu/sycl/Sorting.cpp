@@ -141,7 +141,7 @@ void sort_stable_kernel(
       self_.scalar_type(),
       "sort_stable_kernel",
       [&]() {
-        scalar_t* self_ptr = self_.data_ptr<scalar_t>();
+        const scalar_t* self_ptr = self_.const_data_ptr<scalar_t>();
         int nsegments = numel / nsort;
         segmented_sort_pairs<scalar_t, int64_t>(
             self_ptr,
@@ -172,11 +172,11 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     index_t indicesSliceStartIndex =
         IndexToOffset<int64_t, index_t>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
-    scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
+    const scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
 
     index_t nan_count = 0;
     for (index_t i = item.get_local_id(0); i < inputSliceSize_;
@@ -216,7 +216,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         typename TopKTypeConfig<scalar_t>::RadixType,
         index_t,
         false>(
-        (sycl_global_ptr<scalar_t>)inputSliceStart,
+        inputSliceStart,
         k + 1,
         inputSliceSize_,
         inputWithinSliceStride_,
@@ -245,12 +245,12 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   GatherMedianKernelFunctor(
       TensorInfo<scalar_t, index_t> values,
       TensorInfo<int64_t, index_t> indices,
-      TensorInfo<scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> input,
       index_t inputSliceSize,
       index_t numInputSlices,
       index_t inputWithinSliceStride,
       bool ignore_nan,
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* values_data,
       int64_t* indices_data)
       : values_(values),
@@ -267,12 +267,12 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   TensorInfo<scalar_t, index_t> values_;
   TensorInfo<int64_t, index_t> indices_;
-  TensorInfo<scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> input_;
   index_t inputSliceSize_;
   index_t numInputSlices_;
   index_t inputWithinSliceStride_;
   bool ignore_nan_;
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* values_data_;
   int64_t* indices_data_;
   sycl_local_acc_t<int> smem_;
@@ -284,7 +284,7 @@ template <typename scalar_t, typename index_t, int Dim>
 void gatherMedian(
     TensorInfo<scalar_t, index_t> values,
     TensorInfo<int64_t, index_t> indices,
-    TensorInfo<scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> input,
     index_t inputSliceSize,
     index_t numInputSlices,
     index_t inputWithinSliceStride,
@@ -323,7 +323,7 @@ struct MedianLauncher {
       int collapse_values_dim,
       TensorInfo<int64_t, index_t> indices_info,
       int collapse_indices_dim,
-      TensorInfo<scalar_t, index_t> self_info,
+      TensorInfo<const scalar_t, index_t> self_info,
       int collapse_self_dim,
       int64_t num_slices,
       int64_t slice_size) {
@@ -344,6 +344,7 @@ void launch_median_kernel(
     const TensorBase& self,
     int64_t dim,
     bool ignore_nan) {
+  // return;
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

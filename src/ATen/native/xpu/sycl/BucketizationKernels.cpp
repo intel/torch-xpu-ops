@@ -91,17 +91,15 @@ struct SearchsortedKernelFunctor {
       int64_t idim_in,
       int64_t idim_bd,
       const int64_t* data_st,
-      output_t* data_out,
       bool is_1d_boundaries,
-      input_t* data_in_data,
-      input_t* data_bd_data,
+      const input_t* data_in_data,
+      const input_t* data_bd_data,
       output_t* data_out_data)
       : right_(right),
         numel_in_(numel_in),
         idim_in_(idim_in),
         idim_bd_(idim_bd),
         data_st_(data_st),
-        data_out_(data_out),
         is_1d_boundaries_(is_1d_boundaries),
         data_in_data_(data_in_data),
         data_bd_data_(data_bd_data),
@@ -113,10 +111,9 @@ struct SearchsortedKernelFunctor {
   int64_t idim_in_;
   int64_t idim_bd_;
   const int64_t* data_st_;
-  output_t* data_out_;
   bool is_1d_boundaries_;
-  input_t* data_in_data_;
-  input_t* data_bd_data_;
+  const input_t* data_in_data_;
+  const input_t* data_bd_data_;
   output_t* data_out_data_;
 };
 template <typename input_t, typename output_t>
@@ -133,20 +130,18 @@ void searchsorted_template(
   int64_t idim_bd = boundaries.sizes().back();
 
   const int64_t* data_st =
-      sorter.defined() ? sorter.data_ptr<int64_t>() : nullptr;
-  output_t* data_out = result.data_ptr<output_t>();
+      sorter.defined() ? sorter.const_data_ptr<int64_t>() : nullptr;
 
   bool is_1d_boundaries = boundaries.dim() == 1;
-  auto data_in_data = input.data_ptr<input_t>();
-  auto data_bd_data = boundaries.data_ptr<input_t>();
-  auto data_out_data = result.data_ptr<output_t>();
+  auto data_in_data = input.const_data_ptr<input_t>();
+  auto data_bd_data = boundaries.const_data_ptr<input_t>();
+  auto data_out_data = result.mutable_data_ptr<output_t>();
   SearchsortedKernelFunctor<input_t, output_t> kfn(
       right,
       numel_in,
       idim_in,
       idim_bd,
       data_st,
-      data_out,
       is_1d_boundaries,
       data_in_data,
       data_bd_data,
