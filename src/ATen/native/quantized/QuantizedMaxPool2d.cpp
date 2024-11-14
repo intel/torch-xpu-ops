@@ -31,11 +31,11 @@ class QMaxPool_arr_args final {
       std::vector<int64_t> dilation,
       bool ceil_mode) {
     // Now we only support Byte, qint is not supported.
-    if (qx.scalar_type() == c10::ScalarType::Byte) {
-      return at::native::quantized_max_pool2d_xpu(
-          qx, kernel_size, stride, padding, dilation, ceil_mode);
-    }
-    TORCH_CHECK(false, "QuantizedMaxPool2d only supports Byte for xpu now");
+    TORCH_CHECK(
+        qx.scalar_type() == c10::ScalarType::Byte,
+        "QuantizedMaxPool2d only supports Byte for xpu now");
+    return at::native::quantized_max_pool2d_xpu(
+        qx, kernel_size, stride, padding, dilation, ceil_mode);
   }
 };
 } // anonymous namespace
