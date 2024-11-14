@@ -21,6 +21,8 @@ def replace_op_headers():
         rep = r'#include <xpu/ATen/ops'
         with open(args.register_xpu_path, 'w') as fw:
             for ln in lines:
+                if 'empty.h' in ln:
+                    continue
                 replaced = re.sub(patt, rep, ln)
                 fw.write(replaced)
 

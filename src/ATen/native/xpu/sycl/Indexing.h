@@ -28,7 +28,7 @@ TensorInfo<T, IndexType> tensorInfoIfScalar(TensorInfo<T, IndexType> ti) {
 template <class SrcInfo, class DstInfo, class IdxInfo, class FuncType>
 class IndexKernelConfig : public BatchKernelConfig {
  public:
-  using ValType = typename SrcInfo::scalar_t;
+  using ValType = typename DstInfo::scalar_t;
   using IdxType = typename IdxInfo::scalar_t;
 
   IndexKernelConfig() = delete;
@@ -325,17 +325,17 @@ class IndexKernel {
             cfg_.dinfo_,
             IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<ValType, int64_t>::get(
+          src_off = IndexToOffset<const ValType, int64_t>::get(
               glb_fixing_logical_off,
               cfg_.sinfo_,
-              IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+              IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         }
       } else {
         // index_select
-        src_off = IndexToOffset<ValType, int64_t>::get(
+        src_off = IndexToOffset<const ValType, int64_t>::get(
             glb_indexing_logical_off,
             cfg_.sinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+            IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         dst_off = IndexToOffset<ValType, int64_t>::get(
             glb_fixing_logical_off,
             cfg_.dinfo_,
@@ -822,7 +822,7 @@ struct IndexPutDeterministicKernelFunctor {
   IndexPutDeterministicKernelFunctor(
       int64_t* sorted_indices,
       int64_t* indices,
-      scalar_t* value,
+      const scalar_t* value,
       scalar_t* self,
       int64_t stride,
       int64_t stride_before,
@@ -842,7 +842,7 @@ struct IndexPutDeterministicKernelFunctor {
  private:
   int64_t* sorted_indices_;
   int64_t* indices_;
-  scalar_t* value_;
+  const scalar_t* value_;
   scalar_t* self_;
   int64_t stride_;
   int64_t stride_before_;
@@ -855,7 +855,7 @@ template <typename scalar_t>
 void launch_index_put_deterministic_kernel(
     int64_t* sorted_indices,
     int64_t* indices,
-    scalar_t* value,
+    const scalar_t* value,
     scalar_t* self,
     int64_t numel,
     int64_t stride,

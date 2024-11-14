@@ -366,12 +366,12 @@ class NormForward {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   NormForward() = delete;
   NormForward(
-      scalar_t* X_data,
+      const scalar_t* X_data,
       scalar_t* Y_data,
       mean_t* mean_data,
       mean_t* var_data,
-      weight_t* gamma_data,
-      weight_t* beta_data,
+      const weight_t* gamma_data,
+      const weight_t* beta_data,
       accscalar_t eps)
       : X_data(X_data),
         Y_data(Y_data),
@@ -384,7 +384,7 @@ class NormForward {
   int get_rowwise_reduce_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(X_data)));
 
     while (problem_size % vec_size != 0) {
       vec_size = vec_size >> 1;
@@ -395,19 +395,21 @@ class NormForward {
   int get_update_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(X_data)));
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(Y_data)));
     if (gamma_data) {
       vec_size = std::min(
           vec_size,
-          can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
+          can_vectorize_up_to<weight_t>(
+              reinterpret_cast<const char*>(gamma_data)));
     }
     if (beta_data) {
       vec_size = std::min(
           vec_size,
-          can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
+          can_vectorize_up_to<weight_t>(
+              reinterpret_cast<const char*>(gamma_data)));
     }
 
     while (problem_size % vec_size != 0) {
@@ -419,7 +421,7 @@ class NormForward {
   int get_eltwise_update_vec_size(int vec_size) {
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(X_data)));
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(Y_data)));
@@ -446,8 +448,8 @@ class NormForward {
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
-        vec_t value =
-            *(reinterpret_cast<vec_t*>(X_data + group_offset + plane_offset));
+        vec_t value = *(reinterpret_cast<const vec_t*>(
+            X_data + group_offset + plane_offset));
         for (int v = 0; v < vec_size; ++v) {
           sum1 += static_cast<accscalar_t>(value[v]);
           sum2 += static_cast<accscalar_t>(value[v]) *
@@ -473,12 +475,12 @@ class NormForward {
   }
 
  public:
-  scalar_t* X_data;
+  const scalar_t* X_data;
   scalar_t* Y_data;
   mean_t* mean_data;
   mean_t* var_data;
-  weight_t* gamma_data;
-  weight_t* beta_data;
+  const weight_t* gamma_data;
+  const weight_t* beta_data;
   accscalar_t eps;
 };
 
@@ -491,12 +493,12 @@ class NormBackward {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   NormBackward(
-      scalar_t* X_data,
-      scalar_t* dY_data,
+      const scalar_t* X_data,
+      const scalar_t* dY_data,
       scalar_t* dX_data,
-      mean_t* mean_data,
-      mean_t* var_data,
-      weight_t* gamma_data,
+      const mean_t* mean_data,
+      const mean_t* var_data,
+      const weight_t* gamma_data,
       accscalar_t* a_data,
       accscalar_t* b_data)
       : X_data(X_data),
@@ -508,26 +510,27 @@ class NormBackward {
         a_data(a_data),
         b_data(b_data) {}
 
-  scalar_t* X_data;
-  scalar_t* dY_data;
+  const scalar_t* X_data;
+  const scalar_t* dY_data;
   scalar_t* dX_data;
-  mean_t* mean_data;
-  mean_t* var_data;
-  weight_t* gamma_data;
+  const mean_t* mean_data;
+  const mean_t* var_data;
+  const weight_t* gamma_data;
   accscalar_t* a_data;
   accscalar_t* b_data;
 
   int get_rowwise_reduce_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(X_data)));
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dY_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(dY_data)));
     if (gamma_data) {
       vec_size = std::min(
           vec_size,
-          can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
+          can_vectorize_up_to<weight_t>(
+              reinterpret_cast<const char*>(gamma_data)));
     }
 
     while (problem_size % vec_size != 0) {
@@ -539,17 +542,18 @@ class NormBackward {
   int get_update_vec_size(int problem_size, int vec_size) {
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(X_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(X_data)));
     vec_size = std::min(
         vec_size,
-        can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dY_data)));
+        can_vectorize_up_to<scalar_t>(reinterpret_cast<const char*>(dY_data)));
     vec_size = std::min(
         vec_size,
         can_vectorize_up_to<scalar_t>(reinterpret_cast<char*>(dX_data)));
     if (gamma_data) {
       vec_size = std::min(
           vec_size,
-          can_vectorize_up_to<weight_t>(reinterpret_cast<char*>(gamma_data)));
+          can_vectorize_up_to<weight_t>(
+              reinterpret_cast<const char*>(gamma_data)));
     }
 
     while (problem_size % vec_size != 0) {
