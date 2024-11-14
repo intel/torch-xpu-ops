@@ -45,7 +45,7 @@ TORCH_IMPL_FUNC(_upsample_bilinear2d_aa_out_xpu) (
   std::optional<double> scales_h,
   std::optional<double> scales_w,
   const Tensor& output) {
-    xpu::upsample_gen2d_aa_out_kernel<upsample_antialias::BilinearFilterFunctor>(
+    xpu::upsample_gen2d_aa_out_kernel<xpu::upsample_antialias::BilinearFilterFunctor>(
         output, input, output_size, align_corners, scales_h, scales_w);
 }
 
@@ -58,7 +58,7 @@ TORCH_IMPL_FUNC(_upsample_bicubic2d_aa_out_xpu) (
     std::optional<double> scales_h,
     std::optional<double> scales_w,
     const Tensor& output) {
-      xpu::upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
+      xpu::upsample_gen2d_aa_out_kernel<xpu::upsample_antialias::BicubicFilterFunctor>(
           output, input, output_size, align_corners, scales_h, scales_w);
 }
 

@@ -324,7 +324,7 @@ namespace upsample_antialias {
 struct BilinearFilterFunctor {
 
   template <typename accscalar_t>
-  static accscalar_t operator()(accscalar_t x) const {
+  accscalar_t operator()(accscalar_t x) const {
     if (x < 0) {
       x = -x;
     }
@@ -343,7 +343,7 @@ struct BilinearFilterFunctor {
 struct BicubicFilterFunctor {
 
   template <typename accscalar_t>
-  static accscalar_t operator()(accscalar_t x) const {
+  accscalar_t operator()(accscalar_t x) const {
     // https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
     const accscalar_t a = -0.5;
     if (x < 0) {
@@ -362,7 +362,7 @@ struct BicubicFilterFunctor {
 };
 
 template <typename accscalar_t>
-static __forceinline__ void _compute_weights_span(
+static inline void _compute_weights_span(
     const int i,
     const int input_size,
     const accscalar_t scale,

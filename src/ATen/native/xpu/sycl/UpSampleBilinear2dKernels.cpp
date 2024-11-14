@@ -9,6 +9,7 @@
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
 #include <comm/xpu_aten.h>
+#include <ATen/native/xpu/sycl/LaunchUtils.h>
 
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -186,7 +187,8 @@ struct UpsampleBilinear2dBackwardKernelFunctor {
 
       atomicAdd(
           (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1 + w1p0.5          static_cast<scalar_t>(h1lambda * w1lambda * d2val));
+              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1 + w1p)),
+          static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
   UpsampleBilinear2dBackwardKernelFunctor(
@@ -466,12 +468,12 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const scalar_t * buffer1;
 
     // Parallelized across batch/channels
-    for (int i = item.get_group(0); i < batchsize * channels; i += item.get_global_range(0)) {
+    for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
       int n = i / channels_;
       int c = i % channels_;
       // interpolate on y-axis for ymin to ymin + ysize
       for (int y = 0; y < ysize; y++) {
-        buffer1 = &(idata[n][c][ymin + y][xmin]);
+        buffer1 = &(idata_[n][c][ymin + y][xmin]);
         buffer2[y] = static_cast<scalar_t>(
             upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
                 buffer1, wx, xsize));
@@ -505,8 +507,6 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         width_scale_(width_scale),
         idata_(idata),
         odata_(odata),
-        in_data_acc_(idata_acc),
-        out_data_acc_(odata_acc),
         interp_filter_(interp_filter),
         input_height_(input_height),
         input_width_(input_width),
@@ -544,7 +544,7 @@ void upsample_gen2d_aa_out_kernel(
     bool align_corners,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  TensorArg input_arg{input, "input", 1}, output_arg{output, "output", 2};
+  TensorArg input_arg{input_, "input_", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
   // TODO: remove this when the kernel is updated to support the channels_last memory format.
@@ -559,9 +559,6 @@ void upsample_gen2d_aa_out_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   auto total_threads = syclMaxWorkItemsPerTile();
-  // TODO: test if 256 really works better
-  int maxThreadsPerBlock = std::min(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>()), 256);
-  int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -586,7 +583,11 @@ void upsample_gen2d_aa_out_kernel(
         const int interp_height = (int)ceilf(support_h) * 2 + 1;
         const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
-        int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
+        // TODO: test if 256 really works better
+        int maxThreadsPerBlock = std::min(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
+        int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
+	
+	int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
         int denom = interp_height * (block_x + 1);
         int block_y = lastPow2((unsigned int) (numer / denom));
         block_y = std::min<int>(maxThreadsPerBlock / block_x, block_y);
@@ -620,11 +621,13 @@ void upsample_gen2d_aa_out_kernel(
             support_w,
             shmem_size);
 
+	auto queue = getCurrentSYCLQueue();
         sycl_kernel_submit(
           sycl::range<3>(grid_z, grid_y, grid_x),
           sycl::range<3>(1, block_y, block_x),
           queue,
           kfn);
+      });
 
   if (!output.is_contiguous()) {
        output.copy_(output_c);
