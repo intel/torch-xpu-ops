@@ -21,4 +21,13 @@ TORCH_XPU_API void upsample_bilinear2d_backward_out_kernel(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w);
 
+template<typename InterpFilter>
+TORCH_XPU_API void upsample_gen2d_aa_out_kernel(
+    const Tensor& output,
+    const Tensor& input_,
+    IntArrayRef output_size,
+    bool align_corners,
+    c10::optional<double> scales_h,
+    c10::optional<double> scales_w);
+
 } // namespace at::native::xpu

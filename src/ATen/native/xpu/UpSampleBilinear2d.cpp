@@ -38,5 +38,16 @@ TORCH_IMPL_FUNC(upsample_bilinear2d_backward_out_xpu)
       scales_w);
 }
 
+TORCH_IMPL_FUNC(_upsample_bilinear2d_aa_out_xpu) (
+  const Tensor& input,
+  IntArrayRef output_size,
+  bool align_corners,
+  std::optional<double> scales_h,
+  std::optional<double> scales_w,
+  const Tensor& output) {
+    xpu::upsample_gen2d_aa_out_cuda_template<upsample_antialias::BilinearFilterFunctor>(
+        output, input, output_size, align_corners, scales_h, scales_w);
+}
+
 } // namespace native
 } // namespace at

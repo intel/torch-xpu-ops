@@ -4398,6 +4398,16 @@
   python_module: nn
   structured_delegate: upsample_bilinear2d_backward.grad_input
 
+- func: _upsample_bilinear2d_aa.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: _upsample_bilinear2d_aa_out_xpu
+
+- func: _upsample_bilinear2d_aa(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bilinear2d_aa.out
+
 - func: batch_norm_stats(Tensor input, float eps) -> (Tensor, Tensor)
   dispatch:
     XPU: batch_norm_stats_xpu
