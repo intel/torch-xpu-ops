@@ -564,7 +564,7 @@ void upsample_gen2d_aa_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_bilinear2d_aa_xpu",
+      "upsample_gen2d_aa_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         auto idata = input.packed_accessor64<const scalar_t, 4>();
