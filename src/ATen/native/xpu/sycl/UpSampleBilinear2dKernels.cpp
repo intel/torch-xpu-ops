@@ -491,7 +491,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   UpsampleGen2dAaKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      const PackedTensorAccessor<scalar_t, 4> idata,
+      const PackedTensorAccessor<const scalar_t, 4> idata,
       PackedTensorAccessor<scalar_t, 4> odata,
       const InterpFilter & interp_filter,
       int64_t input_height,
@@ -521,7 +521,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  const PackedTensorAccessor<scalar_t, 4> idata_;
+  const PackedTensorAccessor<const scalar_t, 4> idata_;
   PackedTensorAccessor<scalar_t, 4> odata_;
   const InterpFilter & interp_filter_;
   int64_t input_height_;
@@ -533,7 +533,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const accscalar_t support_h_;
   const accscalar_t support_w_;
   int64_t local_size_;
-  sycl_local_acc_t<accscalar_t, 1> shared_;
+  sycl_local_acc_t<scalar_t> shared_;
 };
 
 template<typename InterpFilter>
@@ -567,8 +567,8 @@ void upsample_gen2d_aa_out_kernel(
       "upsample_gen2d_aa_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        auto idata = input.packed_accessor64<const scalar_t, 4>();
-        auto odata = output_c.packed_accessor64<scalar_t, 4>();
+        const PackedTensorAccessor<const scalar_t, 4> idata = input.packed_accessor64<const scalar_t, 4>();
+        PackedTensorAccessor<scalar_t, 4> odata = output_c.packed_accessor64<scalar_t, 4>();
 
         const accscalar_t height_scale = area_pixel_compute_scale<accscalar_t>(
             input_height, output_height, align_corners, scales_h);
@@ -584,7 +584,7 @@ void upsample_gen2d_aa_out_kernel(
         const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
         // TODO: test if 256 really works better
-        int maxThreadsPerBlock = std::min(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
+        int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
         int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
 	
 	int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
@@ -611,12 +611,12 @@ void upsample_gen2d_aa_out_kernel(
             idata,
             odata,
             interp_filter,
-            input_height,
-            input_width,
-            output_height,
-            output_width,
-            nbatch,
-            channels,
+            (int64_t) input_height,
+            (int64_t) input_width,
+            (int64_t) output_height,
+            (int64_t) output_width,
+            (int64_t) nbatch,
+            (int64_t) channels,
             support_h,
             support_w,
             shmem_size);
@@ -633,6 +633,29 @@ void upsample_gen2d_aa_out_kernel(
        output.copy_(output_c);
   }
 }
+
+void upsample_bilinear2d_aa_out_kernel(
+    const Tensor& output,
+    const Tensor& input,
+    IntArrayRef output_size,
+    bool align_corners,
+    c10::optional<double> scales_h,
+    c10::optional<double> scales_w) {
+  return upsample_gen2d_aa_out_kernel<upsample_antialias::BilinearFilterFunctor>(
+        output, input, output_size, align_corners, scales_h, scales_w);
+}
+
+void upsample_bicubic2d_aa_out_kernel(
+    const Tensor& output,
+    const Tensor& input,
+    IntArrayRef output_size,
+    bool align_corners,
+    c10::optional<double> scales_h,
+    c10::optional<double> scales_w) {
+  return upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
+        output, input, output_size, align_corners, scales_h, scales_w);
+}
+
 
 } // namespace at::native::xpu
 

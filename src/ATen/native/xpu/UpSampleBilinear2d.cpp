@@ -6,6 +6,8 @@
 
 #include <xpu/ATen/ops/upsample_bilinear2d_backward_native.h>
 #include <xpu/ATen/ops/upsample_bilinear2d_native.h>
+#include <xpu/ATen/ops/_upsample_bilinear2d_aa_native.h>
+#include <xpu/ATen/ops/_upsample_bicubic2d_aa_native.h>
 
 namespace at {
 namespace native {
@@ -45,8 +47,8 @@ TORCH_IMPL_FUNC(_upsample_bilinear2d_aa_out_xpu) (
   std::optional<double> scales_h,
   std::optional<double> scales_w,
   const Tensor& output) {
-    xpu::upsample_gen2d_aa_out_kernel<xpu::upsample_antialias::BilinearFilterFunctor>(
-        output, input, output_size, align_corners, scales_h, scales_w);
+    xpu::upsample_bilinear2d_aa_out_kernel(
+      output, input, output_size, align_corners, scales_h, scales_w);
 }
 
 // We define bicubic anti-alias function implementations in this file instead of
@@ -58,8 +60,8 @@ TORCH_IMPL_FUNC(_upsample_bicubic2d_aa_out_xpu) (
     std::optional<double> scales_h,
     std::optional<double> scales_w,
     const Tensor& output) {
-      xpu::upsample_gen2d_aa_out_kernel<xpu::upsample_antialias::BicubicFilterFunctor>(
-          output, input, output_size, align_corners, scales_h, scales_w);
+      xpu::upsample_bicubic2d_aa_out_kernel(
+      output, input, output_size, align_corners, scales_h, scales_w);
 }
 
 } // namespace native
