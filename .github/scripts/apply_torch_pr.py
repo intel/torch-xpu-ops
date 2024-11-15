@@ -13,6 +13,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/126516",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/129735",
+        # triton 3.2
+        "https://github.com/pytorch/pytorch/pull/137886",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])

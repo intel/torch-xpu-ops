@@ -83,6 +83,7 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
+          pip install -U pybind11>=2.13.1
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
