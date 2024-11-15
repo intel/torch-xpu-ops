@@ -556,8 +556,8 @@ struct ModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   ModeKernelFunctor(
-      scalar_t* problem_values_ptr,
-      int64_t* problem_indices_ptr,
+      const scalar_t* problem_values_ptr,
+      const int64_t* problem_indices_ptr,
       TensorInfo<scalar_t, int64_t> values_info,
       TensorInfo<int64_t, int64_t> indices_info,
       int64_t* scratch_status_ptr,
@@ -580,8 +580,8 @@ struct ModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         problem_upper_limit_(problem_upper_limit) {}
 
  private:
-  scalar_t* problem_values_ptr_;
-  int64_t* problem_indices_ptr_;
+  const scalar_t* problem_values_ptr_;
+  const int64_t* problem_indices_ptr_;
   TensorInfo<scalar_t, int64_t> values_info_;
   TensorInfo<int64_t, int64_t> indices_info_;
   int64_t* scratch_status_ptr_;
@@ -634,7 +634,7 @@ struct ModeFusedKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   ModeFusedKernelFunctor(
-      scalar_t* problem_values_ptr,
+      const scalar_t* problem_values_ptr,
       TensorInfo<scalar_t, int64_t> values_info,
       TensorInfo<int64_t, int64_t> indices_info,
       int64_t sort_scratch_memory_size,
@@ -652,7 +652,7 @@ struct ModeFusedKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         group_size_(group_size) {}
 
  private:
-  scalar_t* problem_values_ptr_;
+  const scalar_t* problem_values_ptr_;
   TensorInfo<scalar_t, int64_t> values_info_;
   TensorInfo<int64_t, int64_t> indices_info_;
   int64_t sort_scratch_memory_size_;
@@ -769,8 +769,8 @@ void mode_kernel_impl(
         ? (problem_size)
         : ((problem_size / group_size + 1) * group_size);
 
-    auto problem_values_ptr = problem_values.data_ptr<scalar_t>();
-    auto problem_indices_ptr = problem_indices.data_ptr<int64_t>();
+    auto problem_values_ptr = problem_values.const_data_ptr<scalar_t>();
+    auto problem_indices_ptr = problem_indices.const_data_ptr<int64_t>();
     auto scratch_status_ptr = scratch_status_tensor.data_ptr<int64_t>();
     auto scratch_value_ptr = scratch_value_tensor.data_ptr<int64_t>();
     ModeKernelFunctor<scalar_t> kfn(
@@ -792,16 +792,26 @@ void mode_kernel_impl(
     auto group_size = problem_size;
 
     // scratch memory size needed by built-in sort
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+    auto sort_scratch_memory_size =
+        sycl::ext::oneapi::experimental::default_sorters::group_sorter<
+            ModeOpValueIndex<scalar_t>,
+            std::greater<scalar_t>,
+            1>::memory_required(sycl::memory_scope::work_group, group_size);
+#else
     auto sort_scratch_memory_size = sycl::ext::oneapi::experimental::
         default_sorter<std::greater<scalar_t>>::template memory_required<
             ModeOpValueIndex<scalar_t>>(
             sycl::memory_scope::work_group,
             sycl::range<1>{static_cast<size_t>(group_size)});
+#endif
 
     auto values_info = getTensorInfo<scalar_t, int64_t>(values_transposed);
     auto indices_info = getTensorInfo<int64_t, int64_t>(indices_transposed);
+    
+    auto problem_values_ptr = contiguous.const_data_ptr<scalar_t>();
 
-    auto problem_values_ptr = contiguous.data_ptr<scalar_t>();
     ModeFusedKernelFunctor<scalar_t> kfn(
         problem_values_ptr,
         values_info,

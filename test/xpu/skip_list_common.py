@@ -24,9 +24,7 @@ skip_dict = {
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_rrelu_xpu_float32",
         "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
-        "test_variant_consistency_eager_nn_functional_rrelu_xpu_float32",
 
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
@@ -118,6 +116,9 @@ skip_dict = {
 
         # Cuda skipped it
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
+
+        # Cuda XFAIL (stock pytorch commit: e7cf7d0)
+        "test_non_standard_bool_values_argsort_xpu_bool",
 
         # Unexpected success
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
@@ -422,9 +423,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/683
         "test_conj_view_addbmm_xpu_complex64",
         "test_neg_conj_view_addbmm_xpu_complex128",
-        # CPU fallback error: AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/271
-        "test_neg_view_nn_functional_rrelu_xpu_float64",
         ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         # https://github.com/intel/torch-xpu-ops/issues/254
         "test_conj_view___rmatmul___xpu_complex64",
@@ -1030,6 +1028,9 @@ skip_dict = {
         "test_save_load_nn_GRU_eval_mode_xpu_float32",
         "test_save_load_nn_GRUCell_xpu_float32",
         "test_save_load_nn_GRU_train_mode_xpu_float32",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "_LSTM_",
+        "_LSTMCell_",
         # CPU fallback fails
         # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
         "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
@@ -1093,12 +1094,6 @@ skip_dict = {
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
         "test_type",
-        # AssertionError: Tensor-likes are not close!
-        "test_RReLU_cuda",
-        "test_RReLU_no_batch_dim_cuda",
-        "test_RReLU_with_up_down_cuda",
-        # AssertionError: Scalars are not close!
-        "test_RReLU_with_up_down_scalar_cuda",
         # rnn fallback to cpu
         "test_cudnn_weight_format",
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
@@ -1110,6 +1105,10 @@ skip_dict = {
         "test_transformerencoderlayer_xpu_float32",
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_TransformerDecoderLayer_empty_xpu",
+        "test_TransformerDecoder_empty_xpu",
+        "test_TransformerEncoder_empty_xpu",
+        "test_Transformer_empty_xpu",
         "test_affine_grid",
         "test_affine_grid_3d",
         "test_RNN_cpu_vs_cudnn_no_dropout",
@@ -1129,8 +1128,13 @@ skip_dict = {
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_3_mode_bilinear_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bicubic_uint8_xpu_uint8",
         "test_upsamplingBiMode2d_nonsupported_dtypes_antialias_True_num_channels_5_mode_bilinear_uint8_xpu_uint8",
-        #upsamplingNearest2d: Failed: Unexpected success
+        # upsamplingNearest2d: Failed: Unexpected success
         "test_upsamplingNearest2d_launch_fail_xpu",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "test_RNN_cudnn_weight_norm",
+        "test_partial_flat_weights",
+        "test_variable_sequence_xpu_float16",
+        "test_variable_sequence_xpu_float32",
         # CPU fallback could not cover
         # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
         "test_cudnn_weight_tying",
@@ -1218,9 +1222,17 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/731
         "test_profiler",
         "test_record_function",
+        # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
+        # https://github.com/intel/torch-xpu-ops/issues/1071
+        "test_reentrant_parent_error_on_cpu_xpu",
+        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
+        "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
 
-    "test_reductions_xpu.py": None,
+    "test_reductions_xpu.py": (
+        # Accumulate error due to different accumulation order.
+        "test_logcumsumexp_complex_xpu_complex64",
+    ),
 
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -1430,6 +1442,8 @@ skip_dict = {
     "nn/test_lazy_modules_xpu.py": None,
 
     "test_linalg_xpu.py": (
+        # _convert_weight_to_int4pack not support
+        "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
@@ -1451,6 +1465,7 @@ skip_dict = {
         "test_bmm_xpu_complex128",
         "test_bmm_xpu_complex64",
         "test_bmm_xpu_float64",
+        "test_blas_alpha_beta_empty_xpu_float64",
         "test_cholesky_errors_and_warnings_xpu_complex128",
         "test_cholesky_errors_and_warnings_xpu_complex64",
         "test_cholesky_errors_and_warnings_xpu_float64",
@@ -1914,9 +1929,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # torch.autograd.gradcheck.GradcheckError: Jacobian computed with forward mode mismatch for output 0 with respect to input 0,
-        "test_fn_fwgrad_bwgrad_nn_functional_rrelu_xpu_float64",
-        "test_forward_mode_AD_nn_functional_rrelu_xpu_float64",
         # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
         "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
         "test_forward_mode_AD_to_sparse_xpu_float64",
@@ -2127,6 +2139,42 @@ skip_dict = {
         "test_reduction_all_prod_layout2_xpu_float64",
         "test_reduction_all_sum_layout2_xpu_float16",
         "test_reduction_all_sum_layout2_xpu_float64",
+    ),
+
+    "quantization/core/test_workflow_ops_xpu.py": (
+        # AssertionError: Not equal to tolerance rtol=1e-06, atol=1e-06
+        # Max absolute difference among violations: 1.731507e+10
+        # Max relative difference among violations: 0.01587304
+        # ACTUAL: array([-1.108163e+12,  1.108163e+12], dtype=float32)
+        # DESIRED: array([-1.108163e+12,  1.090847e+12], dtype=float32)
+        "test_fq_module_per_tensor_xpu",
+        # AssertionError: False is not true : Expected dScale=tensor([-0.0173], device='xpu:0') to match scale.grad=tensor([0.0189], device='xpu:0')
+        "test_learnable_backward_per_channel_cuda_xpu",
+    ),
+
+    "quantization/core/test_workflow_module_xpu.py": None,
+
+    "quantization/core/test_quantized_tensor_xpu.py": (
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend
+        "test_compare_per_channel_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend.
+        "test_compare_per_tensor_device_numerics_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_cuda_quantization_does_not_pin_memory_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_per_channel_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_qtensor_creation_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_channel_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::empty_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_per_tensor_to_device_xpu",
+        # NotImplementedError: Could not run 'aten::q_scale' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_index_put_impl_' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_put_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::index_select' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_index_select_cuda_xpu",
+        # NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
+        "test_qtensor_masked_fill_cuda_xpu",
     ),
 
     "nn/test_packed_sequence_xpu.py": (
@@ -2415,11 +2463,6 @@ skip_dict = {
         "test_fn_gradgrad_addbmm_xpu_complex128",
         "test_inplace_grad_addbmm_xpu_complex128",
         "test_inplace_gradgrad_addbmm_xpu_complex128",
-        ### rrelu_xpu op is not implemented,try these cases after implementing rrelu.
-        "test_fn_grad_nn_functional_rrelu_xpu_float64",
-        "test_fn_gradgrad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_grad_nn_functional_rrelu_xpu_float64",
-        "test_inplace_gradgrad_nn_functional_rrelu_xpu_float64",
         ### Error #4 in TestBwdGradientsXPU , totally 8 , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_complex128",
         "test_fn_grad_nn_functional_conv_transpose2d_xpu_float64",
@@ -2608,25 +2651,65 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
+        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
     ),
 
+    "test_native_mha_xpu.py": (
+        # NotImplementedError: Could not run 'aten::_native_multi_head_attention' with arguments from the 'NestedTensorXPU' backend.
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_transform_bias_rescale_qkv_nested_xpu_float32",
+    ),
+
     "test_comparison_utils_xpu.py": None,
+
+    "test_segment_reductions_xpu.py": None,
 
     "nn/test_pruning_xpu.py": None,
 
     "test_foreach_xpu.py": (
-        # CPU fallback fails. Implementation difference between CPU and CUDA. Expect success on CPU and expect fail on CUDA. When we use CPU fallback and align expected fail list with CUDA, these cases fail.
-        "test_binary_op_with_scalar_self_support__foreach_pow_is_fastpath_True_xpu_bool",
-        # AssertionError: RuntimeError not raised
-        # https://github.com/intel/torch-xpu-ops/issues/784 
-        "test_0dim_tensor_overload_exception_xpu",
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_max_use_cuda_graph_True_xpu_float64",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float32",
-        "test_big_num_tensors__foreach_norm_use_cuda_graph_True_xpu_float64",
+        "use_cuda_graph_True",
     ),
 
     "nn/test_convolution_xpu.py": (
@@ -3414,12 +3497,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_dispatch_symbolic_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        # _embedding_bag_forward_only: RuntimeError: output 2: meta disagrees with real impl:
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_embedding_bag_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_float",
         # RuntimeError: output 0: meta disagrees with real impl:
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
@@ -3475,4 +3552,76 @@ skip_dict = {
     ),
 
     "test_distributions_xpu.py": None,
+
+    "test_optim_xpu.py": (
+        # oneDNN issues
+        # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_foreach_matches_forloop_ASGD_xpu_float64",
+        "test_foreach_matches_forloop_Adadelta_xpu_float64",
+        "test_foreach_matches_forloop_Adafactor_xpu_float64",
+        "test_foreach_matches_forloop_Adagrad_xpu_float64",
+        "test_foreach_matches_forloop_AdamW_xpu_float64",
+        "test_foreach_matches_forloop_Adam_xpu_float64",
+        "test_foreach_matches_forloop_Adamax_xpu_float64",
+        "test_foreach_matches_forloop_NAdam_xpu_float64",
+        "test_foreach_matches_forloop_RAdam_xpu_float64",
+        "test_foreach_matches_forloop_RMSprop_xpu_float64",
+        "test_foreach_matches_forloop_Rprop_xpu_float64",
+        "test_foreach_matches_forloop_SGD_xpu_float64",
+        "test_fused_cpu_matches_cuda_AdamW_xpu_float64",
+        "test_fused_cpu_matches_cuda_Adam_xpu_float64",
+        "test_fused_cpu_matches_cuda_SGD_xpu_float64",
+        "test_fused_matches_forloop_AdamW_xpu_float64",
+        "test_fused_matches_forloop_Adam_xpu_float64",
+        "test_fused_matches_forloop_SGD_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_ASGD_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adadelta_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adafactor_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adagrad_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_AdamW_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adamax_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_NAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
+    ),
+    "test_sparse_xpu.py": (
+        "test_bmm_deterministic_xpu_float64", # - AssertionError: Torch not compiled with CUDA enabled
+        "test_bmm_oob_xpu", # - NotImplementedError: Could not run 'aten::bmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was ...
+        "test_bmm_xpu_float64", # - NotImplementedError: Could not run 'aten::bmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was ...
+        "test_dsmm_xpu_float64", # - NotImplementedError: Could not run 'aten::mm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was o...
+        "test_empty_like_xpu_complex128", # - AssertionError: "Could not run 'aten::empty_strided' with arguments from the 'Sparse(CPU|CUDA)' backend" does not match "Could not run 'aten::empty_strided' with argu...
+        "test_empty_like_xpu_float64", # - AssertionError: "Could not run 'aten::empty_strided' with arguments from the 'Sparse(CPU|CUDA)' backend" does not match "Could not run 'aten::empty_strided' with argu...
+        "test_factory_device_type_inference_xpu", # - RuntimeError: PyTorch is not linked with support for cuda devices
+        "test_hsmm_xpu_float64", # - NotImplementedError: Could not run 'aten::hspmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_index_select_empty_and_non_contiguous_index_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_empty_and_non_contiguous_index_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_exhaustive_index_large_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_exhaustive_index_large_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_exhaustive_index_small_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_exhaustive_index_small_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_index_select_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
+        "test_log_softmax_zero_nnz_xpu_float32", # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
+        "test_log_softmax_zero_nnz_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
+        "test_mv_xpu_float64", # - NotImplementedError: Could not run 'aten::mm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was o...
+        "test_new_device_single_gpu_xpu", # - RuntimeError: PyTorch was compiled without CUDA support
+        "test_print_coalesced_xpu_float64", # - RuntimeError: I got this output for TestSparseXPU.test_print_coalesced_xpu_float64:
+        "test_print_uncoalesced_xpu_float64", # - RuntimeError: I got this output for TestSparseXPU.test_print_uncoalesced_xpu_float64:
+        "test_softmax_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
+        "test_softmax_zero_nnz_xpu_float32", # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
+        "test_softmax_zero_nnz_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
+        "test_sparse_addmm_xpu_bfloat16", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_sparse_addmm_xpu_complex128", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_sparse_addmm_xpu_float16", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_sparse_addmm_xpu_float64", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_sparse_matmul_xpu_complex128", # - RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_sparse_matmul_xpu_complex64", # - RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_sparse_matmul_xpu_float32", # - NotImplementedError: Could not run 'aten::_sparse_sparse_matmul' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for thi...
+        "test_sparse_matmul_xpu_float64", # - RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_sparse_mm_xpu_float64", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
+        "test_sparse_sum_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_sum_backward' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this...
+    ),
 }

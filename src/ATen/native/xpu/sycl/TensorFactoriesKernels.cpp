@@ -1,5 +1,6 @@
 #include <ATen/native/TensorFactories.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
+#include <ATen/native/xpu/sycl/TensorFactoriesKernels.h>
 #include <ATen/xpu/EmptyTensor.h>
 #include <c10/core/TensorOptions.h>
 #include <comm/DeviceProperties.h>
