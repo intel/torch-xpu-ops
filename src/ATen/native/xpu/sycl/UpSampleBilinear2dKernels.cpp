@@ -536,6 +536,73 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<scalar_t> shared_;
 };
 
+template <typename scalar_t, typename accscalar_t, typename InterpFilter>
+void upsample_gen2d_aa_frame(
+    const accscalar_t height_scale,
+    const accscalar_t width_scale,
+    const PackedTensorAccessor<const scalar_t, 4> idata,
+    PackedTensorAccessor<scalar_t, 4> odata,
+    const InterpFilter & interp_filter,
+    int64_t input_height,
+    int64_t input_width,
+    int64_t output_height,
+    int64_t output_width,
+    int64_t batchsize,
+    int64_t channels,
+    const accscalar_t support_h,
+    const accscalar_t support_w,
+    int64_t local_size) {
+  auto queue = getCurrentSYCLQueue();
+
+  const int interp_height = (int)ceilf(support_h) * 2 + 1;
+  const int interp_width = (int)ceilf(support_w) * 2 + 1;
+
+  // TODO: test if 256 really works better
+  int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
+  int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
+
+  int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
+  int denom = interp_height * (block_x + 1);
+  int block_y = lastPow2((unsigned int) (numer / denom));
+  block_y = std::min<int>(maxThreadsPerBlock / block_x, block_y);
+
+  int grid_x = std::min<int>(total_threads, (output_width + block_x - 1) / block_x * block_x);
+  int grid_y = std::min<int>(total_threads / grid_x, (output_height + block_y - 1) / block_y * block_y);
+  int grid_z = std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
+
+  int64_t weights_per_block = interp_width * block_x + interp_height * block_y;
+  weights_per_block += interp_height * block_y * block_x;
+  int64_t shmem_size = weights_per_block * sizeof(scalar_t);
+  TORCH_CHECK(
+      shmem_size <= sharedMemPerBlock,
+      "Provided interpolation parameters can not be handled with current algorithm implementation. ",
+      "Please reduce the scale factor. Too much shared memory required: ",
+      shmem_size, " vs ", sharedMemPerBlock);
+
+  UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter> kfn(
+        height_scale,
+        width_scale,
+        idata,
+        odata,
+        interp_filter,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        nbatch,
+        channels,
+        support_h,
+        support_w,
+        shmem_size);
+
+  sycl_kernel_submit(
+    sycl::range<3>(grid_z, grid_y, grid_x),
+    sycl::range<3>(1, block_y, block_x),
+    queue,
+    kfn);
+}
+
+
 template<typename InterpFilter>
 void upsample_gen2d_aa_out_kernel(
     const Tensor& output,
@@ -567,8 +634,8 @@ void upsample_gen2d_aa_out_kernel(
       "upsample_gen2d_aa_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        const PackedTensorAccessor<const scalar_t, 4> idata = input.packed_accessor64<const scalar_t, 4>();
-        PackedTensorAccessor<scalar_t, 4> odata = output_c.packed_accessor64<scalar_t, 4>();
+        auto idata = input.packed_accessor64<const scalar_t, 4>();
+        auto odata = output_c.packed_accessor64<scalar_t, 4>();
 
         const accscalar_t height_scale = area_pixel_compute_scale<accscalar_t>(
             input_height, output_height, align_corners, scales_h);
@@ -580,53 +647,21 @@ void upsample_gen2d_aa_out_kernel(
             (height_scale >= 1.0) ? (interp_filter.size * 0.5) * height_scale : interp_filter.size * 0.5);
         const accscalar_t support_w = static_cast<accscalar_t>(
             (width_scale >= 1.0) ? (interp_filter.size * 0.5) * width_scale : interp_filter.size * 0.5);
-        const int interp_height = (int)ceilf(support_h) * 2 + 1;
-        const int interp_width = (int)ceilf(support_w) * 2 + 1;
-
-        // TODO: test if 256 really works better
-        int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
-        int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
-	
-	int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
-        int denom = interp_height * (block_x + 1);
-        int block_y = lastPow2((unsigned int) (numer / denom));
-        block_y = std::min<int>(maxThreadsPerBlock / block_x, block_y);
-
-        int grid_x = std::min<int>(total_threads, (output_width + block_x - 1) / block_x * block_x);
-        int grid_y = std::min<int>(total_threads / grid_x, (output_height + block_y - 1) / block_y * block_y);
-        int grid_z = std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
-
-        int64_t weights_per_block = interp_width * block_x + interp_height * block_y;
-        weights_per_block += interp_height * block_y * block_x;
-        int64_t shmem_size = weights_per_block * sizeof(scalar_t);
-        TORCH_CHECK(
-            shmem_size <= sharedMemPerBlock,
-            "Provided interpolation parameters can not be handled with current algorithm implementation. ",
-            "Please reduce the scale factor. Too much shared memory required: ",
-            shmem_size, " vs ", sharedMemPerBlock);
-
-        UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter> kfn(
+        upsample_gen2d_aa_frame<scalar_t, accscalar_t>(
             height_scale,
             width_scale,
             idata,
             odata,
             interp_filter,
-            (int64_t) input_height,
-            (int64_t) input_width,
-            (int64_t) output_height,
-            (int64_t) output_width,
-            (int64_t) nbatch,
-            (int64_t) channels,
+            input_height,
+            input_width,
+            output_height,
+            output_width,
+            batchsize,
+            channels,
             support_h,
             support_w,
-            shmem_size);
-
-	auto queue = getCurrentSYCLQueue();
-        sycl_kernel_submit(
-          sycl::range<3>(grid_z, grid_y, grid_x),
-          sycl::range<3>(1, block_y, block_x),
-          queue,
-          kfn);
+            local_size);
       });
 
   if (!output.is_contiguous()) {
