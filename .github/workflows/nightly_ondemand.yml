@@ -178,6 +178,7 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          export TORCH_XPU_DEVICE_CODE_COMPRESSION=1
           python setup.py bdist_wheel
           pip install --force-reinstall dist/*.whl
           du -sh dist/*.whl
