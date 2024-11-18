@@ -3,11 +3,6 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-# Walk around cyclic dependence
-# libtorch_xpu.so links to libtorch_xpu_ops.a
-# Load libtorch_xpu_ops_aten.so explicitly by torch/__init__.py:_load_dll_libraries (Break cycle)
-# libtorch_xpu_ops_aten.so links to libtorch_xpu_ops_sycl_unary_binary_kernels.so and libtorch_xpu_ops_sycl_kernels.so
-# libtorch_xpu_ops_sycl_unary_binary_kernels.so and libtorch_xpu_ops_sycl_kernels.so links to libtorch_xpu.so
 add_library(
   torch_xpu_ops
   STATIC
@@ -21,7 +16,6 @@ add_library(
   ${ATen_XPU_NATIVE_CPP_SRCS}
   ${ATen_XPU_GEN_SRCS})
 install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-# target_compile_definitions(torch_xpu_ops_aten PRIVATE CAFFE2_BUILD_MAIN_LIB)
 target_compile_definitions(torch_xpu_ops_aten PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
 target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
@@ -48,8 +42,23 @@ else()
   set(ATen_XPU_SYCL_REDUCE_SRCS)
   set(ATen_XPU_SYCL_ACTIVATION_SRCS)
   set(ATen_XPU_SYCL_FOREACH_SRCS)
+  set(ATen_XPU_SYCL_OTHERS_SLOW_SRCS)
+  set(ATen_XPU_SYCL_OTHERS_FAST_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
-
+  list(APPEND slow_patterns
+	  Indexing
+	  Compare
+	  MaxMinElementWise
+	  Step
+	  Unique
+	  GroupNorm
+	  Pointwise
+	  BatchNorm
+	  SoftMax
+	  Cumminmax
+	  TensorTopK
+	  Resize
+  )
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
     string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
@@ -77,6 +86,19 @@ else()
     else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
     endif()
+  endforeach()
+  
+  #Separate ATen_XPU_SYCL_OTHERS_SRCS into two libs. Fast + Slow (larger obj file)
+  foreach(sfile ${ATen_XPU_SYCL_OTHERS_SRCS})
+	foreach(fn_pattern ${slow_patterns})
+	  string(REGEX MATCH "${fn_pattern}" FN_LIST ${sfile})
+	  if(FN_LIST AND NOT ${sfile} IN_LIST ATen_XPU_SYCL_OTHERS_SLOW_SRCS)
+		list(APPEND ATen_XPU_SYCL_OTHERS_SLOW_SRCS ${sfile})
+	  endif()
+	endforeach()
+	if(NOT ${sfile} IN_LIST ATen_XPU_SYCL_OTHERS_SLOW_SRCS)
+	  list(APPEND ATen_XPU_SYCL_OTHERS_FAST_SRCS ${sfile})
+	endif()
   endforeach()
 
   # Binary kernel lib
@@ -149,19 +171,33 @@ else()
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_foreach_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
-  # Other kernel lib
-  set(sycl_lib torch_xpu_ops_sycl_kernels)
+  # Other Slow kernel lib
+  set(sycl_slow_lib torch_xpu_ops_sycl_slow_kernels)
   sycl_add_library(
-    ${sycl_lib}
+    ${sycl_slow_lib}
     SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_OTHERS_SRCS})
-  target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
-  target_link_libraries(${sycl_lib} PUBLIC torch_xpu)
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+    SYCL_SOURCES ${ATen_XPU_SYCL_OTHERS_SLOW_SRCS})
+  target_compile_definitions(${sycl_slow_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+  target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_slow_lib})
+  target_link_libraries(${sycl_slow_lib} PUBLIC torch_xpu)
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_slow_lib})
+  
+  # Decouple with PyTorch cmake definition.
+  install(TARGETS ${sycl_slow_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  
+  # Other Fast kernel lib
+  set(sycl_fast_lib torch_xpu_ops_sycl_fast_kernels)
+  sycl_add_library(
+    ${sycl_fast_lib}
+    SHARED
+    SYCL_SOURCES ${ATen_XPU_SYCL_OTHERS_FAST_SRCS})
+  target_compile_definitions(${sycl_fast_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+  target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_fast_lib})
+  target_link_libraries(${sycl_fast_lib} PUBLIC torch_xpu)
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_fast_lib})
 
   # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS ${sycl_fast_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
