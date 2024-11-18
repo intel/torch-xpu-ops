@@ -80,6 +80,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
       runner: ut_internal
 
