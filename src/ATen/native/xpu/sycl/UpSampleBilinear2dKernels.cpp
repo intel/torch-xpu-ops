@@ -427,10 +427,11 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // threadIdx.x + blockIdx.x * blockDim.x;
     // item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    scalar_t* wx = shared_ + interp_width * item.get_local_id(2);
-    scalar_t* wy = shared_ + interp_width * item.get_local_range(2) + interp_height * item.get_local_id(1);
+    auto ptr = shared_.template get_multi_ptr<sycl::access::decorated::no>().get();
+    scalar_t* wx = ptr + interp_width * item.get_local_id(2);
+    scalar_t* wy = ptr + interp_width * item.get_local_range(2) + interp_height * item.get_local_id(1);
     const int offset = interp_width * item.get_local_range(2) + interp_height * item.get_local_range(1);
-    scalar_t *buffer2 = shared_ + offset + interp_height * (item.get_local_id(2) + item.get_local_id(1) * item.get_local_range(2));
+    scalar_t *buffer2 = ptr + offset + interp_height * (item.get_local_id(2) + item.get_local_id(1) * item.get_local_range(2));
 
     int xmin, xsize, ymin, ysize;
     accscalar_t xcenter, ycenter;
@@ -466,6 +467,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     item.barrier(sycl_local_fence);
 
     const scalar_t * buffer1;
+    auto odata = odata_;
 
     // Parallelized across batch/channels
     for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
@@ -478,7 +480,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
                 buffer1, wx, xsize));
       }
-      odata_[n][c][output_y][output_x] = static_cast<scalar_t>(
+      odata[n][c][output_y][output_x] = static_cast<scalar_t>(
           upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
               buffer2, wy, ysize));
     }
@@ -493,7 +495,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const accscalar_t width_scale,
       const PackedTensorAccessor<const scalar_t, 4> idata,
       PackedTensorAccessor<scalar_t, 4> odata,
-      const InterpFilter & interp_filter,
+      InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
       int64_t output_height,
@@ -523,7 +525,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const accscalar_t width_scale_;
   const PackedTensorAccessor<const scalar_t, 4> idata_;
   PackedTensorAccessor<scalar_t, 4> odata_;
-  const InterpFilter & interp_filter_;
+  InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
   int64_t output_height_;
@@ -542,21 +544,22 @@ void upsample_gen2d_aa_frame(
     const accscalar_t width_scale,
     const PackedTensorAccessor<const scalar_t, 4> idata,
     PackedTensorAccessor<scalar_t, 4> odata,
-    const InterpFilter & interp_filter,
+    InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
     int64_t output_height,
     int64_t output_width,
-    int64_t batchsize,
+    int64_t nbatch,
     int64_t channels,
     const accscalar_t support_h,
-    const accscalar_t support_w,
-    int64_t local_size) {
+    const accscalar_t support_w) {
   auto queue = getCurrentSYCLQueue();
 
   const int interp_height = (int)ceilf(support_h) * 2 + 1;
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
+  auto sharedMemPerBlock = syclLocalMemSize();
+  auto total_threads = syclMaxWorkItemsPerTile();
   // TODO: test if 256 really works better
   int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
   int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
@@ -624,9 +627,6 @@ void upsample_gen2d_aa_out_kernel(
   int nbatch = input.size(0);
   int channels = input.size(1);
 
-  auto sharedMemPerBlock = syclLocalMemSize();
-  auto total_threads = syclMaxWorkItemsPerTile();
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -657,11 +657,10 @@ void upsample_gen2d_aa_out_kernel(
             input_width,
             output_height,
             output_width,
-            batchsize,
+            nbatch,
             channels,
             support_h,
-            support_w,
-            local_size);
+            support_w);
       });
 
   if (!output.is_contiguous()) {
