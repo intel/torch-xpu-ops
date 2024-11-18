@@ -122,7 +122,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
 
   if(WIN32)
-    set(AOT_TARGETS "ats-m150,mtl-u,mtl-h,xe2-lpg,xe2-hpg")
+    set(AOT_TARGETS "ats-m150,lnl-m,mtl-u,mtl-h")
   else()
     set(AOT_TARGETS "pvc,xe-lpg,ats-m150")
   endif()
