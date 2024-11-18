@@ -13,15 +13,6 @@
 #include <xpu/ATen/ops/as_strided_native.h>
 #include <xpu/ATen/ops/cat_native.h>
 
-#ifndef AT_PER_OPERATOR_HEADERS
-#include <ATen/Functions.h>
-#include <ATen/NativeFunctions.h>
-#else
-#include <ATen/ops/_chunk_cat_native.h>
-#include <ATen/ops/empty.h>
-#include <ATen/ops/split_with_sizes_copy_native.h>
-#endif
-
 namespace at {
 
 namespace native {

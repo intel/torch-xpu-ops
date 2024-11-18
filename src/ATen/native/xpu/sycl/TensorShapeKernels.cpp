@@ -1,10 +1,8 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
-// #include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorShape.h>
-// #include <c10/cuda/CUDAGraphsC10Utils.h>
 #include <c10/util/TypeCast.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -16,7 +14,6 @@
 #include <ATen/ops/split_with_sizes_copy_native.h>
 #endif
 
-#include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/TensorShapeKernels.h>
 
 namespace at::native::xpu {
@@ -102,7 +99,7 @@ struct SplitWithSizesCopyOutContiguousNoCastFunctor {
   int64_t num_chunks;
 };
 
-// Pack multiple std::vector<int64_t> into a single cuda tensor.
+// Pack multiple std::vector<int64_t> into a single tensor.
 std::pair<at::Tensor, std::vector<int64_t*>> pack_vecs(
     std::vector<const std::vector<int64_t>*> vecs,
     const at::Device& device) {
@@ -133,9 +130,8 @@ std::pair<at::Tensor, std::vector<int64_t*>> pack_vecs(
   return std::make_pair(std::move(packed), std::move(ptrs));
 }
 
-// NOTE [CUDA kernel for chunk_cat]
-// chunk_cat_cuda adopts a "jagged grid" strategy, inspired by NOTE [CUDA fast
-// path for split_with_sizes_copy.out]. In addition, chunk_cat_cuda supports
+// chunk_cat_xpu adopts a "jagged grid" strategy, inspired by NOTE [Fast
+// path for split_with_sizes_copy.out]. In addition, chunk_cat_xpu supports
 // padding via copy_chunk_with_pad when src chunk size is less than dst chunk
 // size.
 template <typename dst_t, typename src_t>
@@ -289,7 +285,6 @@ get_chunk_cat_metadata(
       num_blocks_per_tensor_chunk);
 }
 
-// See [CUDA kernel for chunk_cat_cuda]
 template <typename dst_t, typename src_t>
 void _chunk_cat_out_xpu_contiguous(
     TensorList tensors,
@@ -336,8 +331,6 @@ void _chunk_cat_out_xpu_contiguous(
       (size_t)(leading_dim)};
   sycl::range<3> local_range{(size_t)BLOCK_SIZE, (size_t)1, (size_t)1};
 
-  // dim3 blocks(num_blocks_per_chunk, num_chunks, leading_dim);
-  // dim3 threads(BLOCK_SIZE, 1, 1);
   ChunkCatFunctor<dst_t, src_t> kfn(
       /*srcs=*/reinterpret_cast<src_t**>(packed.second[0]),
       reinterpret_cast<dst_t*>(out.data_ptr()),
@@ -353,7 +346,6 @@ void _chunk_cat_out_xpu_contiguous(
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
-// split_with_sizes_copy.out]----------------------------------------------------
 void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     const at::Tensor& self,
     at::IntArrayRef split_sizes,
@@ -383,13 +375,6 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   int64_t tile_size = syclMaxWorkItemsPerTile(dev_id);
   // int64_t wg_size = syclMaxWorkItemsPerEU(dev_id);
   const int64_t max_blocks = tile_size / BLOCK_SIZE * 2.0;
-
-  // const auto num_sms =
-  //     at::cuda::getCurrentDeviceProperties()->multiProcessorCount;
-  // const auto max_threads_per_sm =
-  //     at::cuda::getCurrentDeviceProperties()->maxThreadsPerMultiProcessor;
-  // const int64_t max_blocks =
-  //     num_sms * max_threads_per_sm / BLOCK_SIZE * 2.0;
 
   // Make each thread process BYTES_PER_THREAD * iter_factor bytes to regulate
   // block size. Spread iter_factor evenly between chunks_per_block and
@@ -422,9 +407,6 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
       (size_t)(1)};
   sycl::range<3> local_range{(size_t)BLOCK_SIZE, (size_t)1, (size_t)1};
 
-  // dim3 blocks(blocks_cumsums.back(), num_chunks / chunks_per_block, 1);
-  // dim3 threads(BLOCK_SIZE, 1, 1);
-
   auto [_, ptrs] = pack_vecs(
       {&dst_base_addrs,
        &src_base_addrs,
@@ -450,15 +432,12 @@ void split_with_sizes_copy_out_xpu_kernel(
     IntArrayRef split_sizes,
     int64_t dim,
     TensorList out) {
-  // const bool is_capturing = at::cuda::currentStreamCaptureStatusMayInitCtx()
-  // !=
-  //     at::cuda::CaptureStatus::None;
   bool contiguous_no_cast = self.is_non_overlapping_and_dense();
   for (const auto& t : out) {
     contiguous_no_cast &= t.is_non_overlapping_and_dense();
     contiguous_no_cast &= (t.dtype() == self.dtype());
   }
-  // TODO(yifu): make the fast path work for CUDA graph
+
   // if (!is_capturing && contiguous_no_cast) {
   if (contiguous_no_cast) {
     // Perform equivalent checks performed by the composite impl
