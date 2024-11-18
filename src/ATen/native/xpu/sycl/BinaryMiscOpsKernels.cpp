@@ -1,13 +1,13 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
+#include <ATen/NumericUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 #include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
 
 namespace at::native::xpu {
-
 template <typename scalar_t>
 struct MSEFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
@@ -70,6 +70,50 @@ void huber_kernel(TensorIterator& iter, double delta) {
         scalar_t delta_val(delta);
         gpu_kernel(iter, HuberFunctor<scalar_t>(delta_val));
       });
+}
+
+template <typename scalar_t>
+struct XlogyFunctor {
+  scalar_t operator()(scalar_t x, scalar_t y) const {
+    if (at::_isnan(y)) {
+      return NAN;
+    }
+    if (x == 0) {
+      return 0;
+    }
+    return x * std::log(y);
+  }
+};
+
+void xlogy_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "xlogy_xpu",
+      [&]() { gpu_kernel_with_scalars(iter, XlogyFunctor<scalar_t>()); });
+}
+
+template <typename scalar_t>
+struct Xlog1pyFunctor {
+  scalar_t operator()(scalar_t x, scalar_t y) const {
+    if (at::_isnan(y)) {
+      return NAN;
+    }
+    if (x == 0) {
+      return 0;
+    }
+    return x * std::log1p(y);
+  }
+};
+
+void xlog1py_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.common_dtype(),
+      "xlog1py_xpu",
+      [&]() { gpu_kernel_with_scalars(iter, Xlog1pyFunctor<scalar_t>()); });
 }
 
 } // namespace at::native::xpu

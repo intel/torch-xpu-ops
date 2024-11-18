@@ -4,8 +4,6 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
-#include <ATen/ATen.h>
-#include <ATen/Context.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/IndexingUtils.h>
@@ -13,6 +11,7 @@
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
 
@@ -93,7 +92,7 @@ struct ReflectionPad1dKernelFunctor {
     }
   }
   ReflectionPad1dKernelFunctor(
-      scalar_t* input_data,
+      const scalar_t* input_data,
       scalar_t* output_data,
       int64_t input_w,
       int64_t pad_l,
@@ -105,7 +104,7 @@ struct ReflectionPad1dKernelFunctor {
         output_w_(output_w) {}
 
  private:
-  scalar_t* input_data_;
+  const scalar_t* input_data_;
   scalar_t* output_data_;
   int64_t input_w_;
   int64_t pad_l_;
@@ -114,7 +113,7 @@ struct ReflectionPad1dKernelFunctor {
 
 template <typename scalar_t>
 void reflection_pad1d_template(
-    scalar_t* input,
+    const scalar_t* input,
     scalar_t* output,
     int64_t input_w,
     int64_t pad_l,
@@ -151,7 +150,7 @@ struct ReflectionPad1dBackwardKernelFunctor {
   }
   ReflectionPad1dBackwardKernelFunctor(
       scalar_t* grad_input_data,
-      scalar_t* grad_output_data,
+      const scalar_t* grad_output_data,
       int64_t input_w,
       int64_t pad_l,
       int64_t output_w)
@@ -163,7 +162,7 @@ struct ReflectionPad1dBackwardKernelFunctor {
 
  private:
   scalar_t* grad_input_data_;
-  scalar_t* grad_output_data_;
+  const scalar_t* grad_output_data_;
   int64_t input_w_;
   int64_t pad_l_;
   int64_t output_w_;
@@ -172,7 +171,7 @@ struct ReflectionPad1dBackwardKernelFunctor {
 template <typename scalar_t>
 void reflection_pad1d_backward_template(
     scalar_t* grad_input,
-    scalar_t* grad_output,
+    const scalar_t* grad_output,
     int64_t input_w,
     int64_t pad_l,
     int64_t pad_r,
@@ -212,7 +211,7 @@ struct ReflectionPad2dKernellFunctor {
     }
   }
   ReflectionPad2dKernellFunctor(
-      scalar_t* input,
+      const scalar_t* input,
       scalar_t* output,
       int64_t input_dim_x,
       int64_t input_dim_y,
@@ -230,7 +229,7 @@ struct ReflectionPad2dKernellFunctor {
         output_dim_y_(output_dim_y) {}
 
  private:
-  scalar_t* input_;
+  const scalar_t* input_;
   scalar_t* output_;
   int64_t input_dim_x_;
   int64_t input_dim_y_;
@@ -242,7 +241,7 @@ struct ReflectionPad2dKernellFunctor {
 
 template <typename scalar_t>
 void reflection_pad2d_template(
-    scalar_t* input,
+    const scalar_t* input,
     scalar_t* output,
     int64_t input_dim_x,
     int64_t input_dim_y,
@@ -299,7 +298,7 @@ struct ReflectionPad2dBackwardKernelFunctor {
   }
   ReflectionPad2dBackwardKernelFunctor(
       scalar_t* grad_input,
-      scalar_t* grad_output,
+      const scalar_t* grad_output,
       int64_t input_dim_x,
       int64_t input_dim_y,
       int64_t pad_t,
@@ -317,7 +316,7 @@ struct ReflectionPad2dBackwardKernelFunctor {
 
  private:
   scalar_t* grad_input_;
-  scalar_t* grad_output_;
+  const scalar_t* grad_output_;
   int64_t input_dim_x_;
   int64_t input_dim_y_;
   int64_t pad_t_;
@@ -329,7 +328,7 @@ struct ReflectionPad2dBackwardKernelFunctor {
 template <typename scalar_t>
 void reflection_pad2d_backward_template(
     scalar_t* grad_input,
-    scalar_t* grad_output,
+    const scalar_t* grad_output,
     int64_t input_dim_x,
     int64_t input_dim_y,
     int64_t pad_t,
@@ -361,7 +360,7 @@ void reflection_pad2d_backward_template(
       kfn);
 }
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 struct ParallelReflectionPad3dKernelFunctor {
   void operator()(sycl::nd_item<3> item) const {
     auto output_id = item.get_global_id(2);
@@ -403,8 +402,8 @@ struct ParallelReflectionPad3dKernelFunctor {
        input_x);
   }
   ParallelReflectionPad3dKernelFunctor(
-      PackedTensorAccessor64<scalar_t, 5> input,
-      PackedTensorAccessor64<scalar_t, 5> output,
+      PackedTensorAccessor64<input_scalar_t, 5> input,
+      PackedTensorAccessor64<output_scalar_t, 5> output,
       int64_t pad_left,
       int64_t pad_top,
       int64_t pad_front,
@@ -419,8 +418,8 @@ struct ParallelReflectionPad3dKernelFunctor {
         output_plane_size_(output_plane_size) {}
 
  private:
-  PackedTensorAccessor64<scalar_t, 5> input_;
-  PackedTensorAccessor64<scalar_t, 5> output_;
+  PackedTensorAccessor64<input_scalar_t, 5> input_;
+  PackedTensorAccessor64<output_scalar_t, 5> output_;
   int64_t pad_left_;
   int64_t pad_top_;
   int64_t pad_front_;
@@ -428,10 +427,10 @@ struct ParallelReflectionPad3dKernelFunctor {
   int64_t output_plane_size_;
 };
 
-template <typename scalar_t, typename F>
+template <typename input_scalar_t, typename output_scalar_t, typename F>
 inline void parallel_reflection_pad3d(
-    PackedTensorAccessor64<scalar_t, 5> input,
-    PackedTensorAccessor64<scalar_t, 5> output,
+    PackedTensorAccessor64<input_scalar_t, 5> input,
+    PackedTensorAccessor64<output_scalar_t, 5> output,
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front,
@@ -443,7 +442,7 @@ inline void parallel_reflection_pad3d(
   int64_t nplane = input.size(1);
   int64_t nbatch = input.size(0);
 
-  ParallelReflectionPad3dKernelFunctor<scalar_t, F> kfn(
+  ParallelReflectionPad3dKernelFunctor<input_scalar_t, output_scalar_t, F> kfn(
       input, output, pad_left, pad_top, pad_front, f, output_plane_size);
   sycl_kernel_submit(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
@@ -455,7 +454,7 @@ inline void parallel_reflection_pad3d(
 template <typename scalar_t>
 struct reflection_pad3d_kernel_functor {
   void operator()(
-      PackedTensorAccessor64<scalar_t, 5> input,
+      PackedTensorAccessor64<const scalar_t, 5> input,
       PackedTensorAccessor64<scalar_t, 5> output,
       int64_t plane,
       int64_t batch,
@@ -472,7 +471,7 @@ struct reflection_pad3d_kernel_functor {
 
 template <typename scalar_t>
 void reflection_pad3d_template(
-    PackedTensorAccessor64<scalar_t, 5> input,
+    PackedTensorAccessor64<const scalar_t, 5> input,
     PackedTensorAccessor64<scalar_t, 5> output,
     int64_t pad_left,
     int64_t pad_top,
@@ -485,7 +484,7 @@ template <typename scalar_t>
 struct reflection_pad3d_backward_kernel_functor {
   void operator()(
       PackedTensorAccessor64<scalar_t, 5> grad_input,
-      PackedTensorAccessor64<scalar_t, 5> grad_output,
+      PackedTensorAccessor64<const scalar_t, 5> grad_output,
       int64_t plane,
       int64_t batch,
       int64_t output_z,
@@ -504,7 +503,7 @@ struct reflection_pad3d_backward_kernel_functor {
 template <typename scalar_t>
 void reflection_pad3d_backward_template(
     PackedTensorAccessor64<scalar_t, 5> grad_input,
-    PackedTensorAccessor64<scalar_t, 5> grad_output,
+    PackedTensorAccessor64<const scalar_t, 5> grad_output,
     int64_t pad_left,
     int64_t pad_top,
     int64_t pad_front) {
@@ -514,7 +513,7 @@ void reflection_pad3d_backward_template(
 }
 
 void reflection_pad1d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -547,8 +546,8 @@ void reflection_pad1d_kernel(
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       kHalf, kBFloat16, input.scalar_type(), "reflection_pad1d_xpu", [&] {
         reflection_pad1d_template<scalar_t>(
-            input.data_ptr<scalar_t>(),
-            output.data_ptr<scalar_t>(),
+            input.const_data_ptr<scalar_t>(),
+            output.mutable_data_ptr<scalar_t>(),
             input_w,
             pad_l,
             pad_r,
@@ -559,7 +558,7 @@ void reflection_pad1d_kernel(
 }
 
 void reflection_pad1d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     const Tensor& input,
     IntArrayRef padding) {
@@ -604,8 +603,8 @@ void reflection_pad1d_backward_kernel(
       "reflection_pad1d_backward_xpu",
       [&] {
         reflection_pad1d_backward_template<scalar_t>(
-            grad_input.data_ptr<scalar_t>(),
-            grad_output.data_ptr<scalar_t>(),
+            grad_input.mutable_data_ptr<scalar_t>(),
+            grad_output.const_data_ptr<scalar_t>(),
             input_w,
             pad_l,
             pad_r,
@@ -616,7 +615,7 @@ void reflection_pad1d_backward_kernel(
 }
 
 void reflection_pad2d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -699,8 +698,8 @@ void reflection_pad2d_kernel(
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
       kHalf, kBFloat16, input.scalar_type(), "reflection_pad2d_xpu", [&] {
         reflection_pad2d_template<scalar_t>(
-            input.data_ptr<scalar_t>(),
-            output.data_ptr<scalar_t>(),
+            input.const_data_ptr<scalar_t>(),
+            output.mutable_data_ptr<scalar_t>(),
             input_w,
             input_h,
             pad_t,
@@ -713,7 +712,7 @@ void reflection_pad2d_kernel(
 }
 
 void reflection_pad2d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     const Tensor& input,
     IntArrayRef padding) {
@@ -776,8 +775,8 @@ void reflection_pad2d_backward_kernel(
       "reflection_pad2d_backward_xpu",
       [&] {
         reflection_pad2d_backward_template<scalar_t>(
-            grad_input.data_ptr<scalar_t>(),
-            grad_output.data_ptr<scalar_t>(),
+            grad_input.mutable_data_ptr<scalar_t>(),
+            grad_output.const_data_ptr<scalar_t>(),
             input_w,
             input_h,
             pad_t,
@@ -790,7 +789,7 @@ void reflection_pad2d_backward_kernel(
 }
 
 void reflection_pad3d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef padding) {
   TORCH_CHECK(
@@ -817,7 +816,7 @@ void reflection_pad3d_kernel(
           output_inner = output.unsqueeze(0);
         }
 
-        auto input_packed = input_inner.packed_accessor64<scalar_t, 5>();
+        auto input_packed = input_inner.packed_accessor64<const scalar_t, 5>();
         auto output_packed = output_inner.packed_accessor64<scalar_t, 5>();
 
         reflection_pad3d_template<scalar_t>(
@@ -826,7 +825,7 @@ void reflection_pad3d_kernel(
 }
 
 void reflection_pad3d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
@@ -862,7 +861,8 @@ void reflection_pad3d_backward_kernel(
         }
 
         auto grad_input_packed = grad_input_.packed_accessor64<scalar_t, 5>();
-        auto grad_output_packed = grad_output_.packed_accessor64<scalar_t, 5>();
+        auto grad_output_packed =
+            grad_output_.packed_accessor64<const scalar_t, 5>();
 
         reflection_pad3d_backward_template<scalar_t>(
             grad_input_packed,

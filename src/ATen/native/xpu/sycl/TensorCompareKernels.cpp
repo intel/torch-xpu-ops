@@ -1,8 +1,8 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 
@@ -17,6 +17,20 @@ struct WhereFunctor {
   scalar_t operator()(bool cond_val, scalar_t self_val, scalar_t other_val)
       const {
     return cond_val ? self_val : other_val;
+  }
+};
+
+template <typename scalar_t>
+struct IsposinfFunctor {
+  bool operator()(scalar_t a) const {
+    return a == std::numeric_limits<scalar_t>::infinity();
+  }
+};
+
+template <typename scalar_t>
+struct IsneginfFunctor {
+  bool operator()(scalar_t a) const {
+    return a == -std::numeric_limits<scalar_t>::infinity();
   }
 };
 
@@ -70,6 +84,24 @@ void where_kernel(TensorIterator& iter) {
       });
 }
 
+void isposinf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(),
+      "isposinf_xpu",
+      [&] { gpu_kernel(iter, IsposinfFunctor<scalar_t>()); });
+}
+
+void isneginf_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(),
+      "isneginf_xpu",
+      [&] { gpu_kernel(iter, IsneginfFunctor<scalar_t>()); });
+}
+
 void clamp_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_ALL_TYPES_AND2(
       kHalf, kBFloat16, iter.common_dtype(), "clamp_xpu", [&] {
@@ -117,6 +149,95 @@ void isin_kernel(
   out.copy_(
       invert ? elements.unsqueeze(-1).ne(test_elements.view(bc_shape)).all(-1)
              : elements.unsqueeze(-1).eq(test_elements.view(bc_shape)).any(-1));
+}
+
+struct Msg {
+  static constexpr size_t MAX_MSG_LENGTH = 256;
+  char msg[MAX_MSG_LENGTH];
+};
+
+// SYCL_KERNEL_ASSERT_MSG is not ready
+template <typename scalar_t>
+struct AssertAsyncKernelFunctor1 {
+  void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(input_[0] != 0);
+  }
+  AssertAsyncKernelFunctor1(const scalar_t* input, Msg msg)
+      : input_(input), msg_(msg) {}
+
+ private:
+  const scalar_t* input_;
+  Msg msg_;
+};
+
+struct AssertAsyncKernelFunctor2 {
+  void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<float>(0, 0));
+  }
+  AssertAsyncKernelFunctor2(const c10::complex<float>* input, Msg msg)
+      : input_(input), msg_(msg) {}
+
+ private:
+  const c10::complex<float>* input_;
+  Msg msg_;
+};
+
+struct AssertAsyncKernelFunctor3 {
+  void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(input_[0] != c10::complex<double>(0, 0));
+  }
+  AssertAsyncKernelFunctor3(const c10::complex<double>* input, Msg msg)
+      : input_(input), msg_(msg) {}
+
+ private:
+  const c10::complex<double>* input_;
+  Msg msg_;
+};
+
+template <typename scalar_t>
+void launch_assert_async_kernel(const scalar_t* input, Msg msg) {
+  AssertAsyncKernelFunctor1<scalar_t> kfn(input, msg);
+  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+}
+
+template <>
+void launch_assert_async_kernel(const c10::complex<float>* input, Msg msg) {
+  AssertAsyncKernelFunctor2 kfn(input, msg);
+  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+}
+
+template <>
+void launch_assert_async_kernel(const c10::complex<double>* input, Msg msg) {
+  AssertAsyncKernelFunctor3 kfn(input, msg);
+  sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+}
+
+void _assert_async_msg_kernel(
+    const Tensor& self_tensor,
+    c10::string_view assert_msg) {
+  const TensorBase& self = get_tensor_base(self_tensor);
+  auto n = self.numel();
+  TORCH_CHECK(n != 0, "Boolean value of Tensor with no values is ambiguous");
+  TORCH_CHECK(
+      n < 2, "Boolean value of Tensor with more than one value is ambiguous");
+  Msg msg;
+  size_t copy_length = assert_msg.length();
+  TORCH_CHECK(
+      copy_length < Msg::MAX_MSG_LENGTH - 1,
+      "Message length must be smaller than " +
+          std::to_string(Msg::MAX_MSG_LENGTH - 1));
+  std::copy_n(assert_msg.data(), copy_length, msg.msg);
+  msg.msg[copy_length] = '\0'; // Ensure null-termination
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::Bool,
+      at::ScalarType::BFloat16,
+      self.scalar_type(),
+      "_assert_async_xpu",
+      [&] {
+        launch_assert_async_kernel<scalar_t>(
+            self.const_data_ptr<scalar_t>(), msg);
+      });
 }
 
 } // namespace xpu

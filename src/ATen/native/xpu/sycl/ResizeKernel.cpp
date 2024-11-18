@@ -25,7 +25,6 @@ void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
   c10::xpu::XPUGuard guard(device.index());
   at::DataPtr data = allocator->allocate(size_bytes);
   if (storage->data_ptr()) {
-    at::globalContext().lazyInitXPU();
     auto q = at::xpu::getCurrentSYCLQueue();
 
     q.memcpy(

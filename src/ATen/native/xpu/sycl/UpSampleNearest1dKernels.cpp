@@ -95,7 +95,7 @@ void upsample_nearest1d_backward_frame(
 }
 
 void upsample_nearest1d_backward_kernel(
-    Tensor& grad_input,
+    const Tensor& grad_input,
     const Tensor& grad_output_,
     IntArrayRef output_size,
     IntArrayRef input_size,
@@ -125,8 +125,8 @@ void upsample_nearest1d_backward_kernel(
       "upsample_nearest1d_backward_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        auto idata = grad_input_c.data_ptr<scalar_t>();
-        auto odata = grad_output.data_ptr<scalar_t>();
+        auto idata = grad_input_c.mutable_data_ptr<scalar_t>();
+        auto odata = grad_output.const_data_ptr<scalar_t>();
         const float scale_factor = compute_scales_value_backwards<float>(
             scales, output_width, input_width);
         if (is_exact) {
@@ -244,7 +244,7 @@ void upsample_nearest1d_frame(
 }
 
 void upsample_nearest1d_kernel(
-    Tensor& output,
+    const Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
     c10::optional<double> scales,
@@ -277,8 +277,8 @@ void upsample_nearest1d_kernel(
       input.scalar_type(),
       "upsample_nearest1d_xpu",
       [&] {
-        auto idata = input.data_ptr<scalar_t>();
-        auto odata = output_c.data_ptr<scalar_t>();
+        auto idata = input.const_data_ptr<scalar_t>();
+        auto odata = output_c.mutable_data_ptr<scalar_t>();
 
         const float scale_factor =
             compute_scales_value<float>(scales, input_width, output_width);

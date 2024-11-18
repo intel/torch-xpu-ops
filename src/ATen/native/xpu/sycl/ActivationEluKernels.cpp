@@ -1,5 +1,5 @@
-#include <ATen/ATen.h>
 #include <ATen/OpMathType.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 

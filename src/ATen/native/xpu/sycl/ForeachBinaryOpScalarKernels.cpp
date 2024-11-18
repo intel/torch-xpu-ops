@@ -7,8 +7,9 @@
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 
-namespace at::native::xpu {
+#include <ATen/ops/empty_like_native.h>
 
+namespace at::native::xpu {
 template <typename scalar_t, template <class> class Op>
 std::vector<Tensor> foreach_binary_op(
     TensorList tensors,
@@ -113,6 +114,18 @@ std::vector<Tensor> all_types_complex_half_bfloat16(
 }
 
 template <template <class> class Op>
+void all_types_complex_half_bfloat16_(
+    TensorList tensors,
+    const Scalar& scalar) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      kHalf,
+      kBFloat16,
+      tensors[0].scalar_type(),
+      "foreach_binary_op_scalar_xpu_",
+      [&]() { foreach_binary_op_<scalar_t, Op>(tensors, scalar); });
+}
+
+template <template <class> class Op>
 void AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2_(
     TensorList tensors,
     const Scalar& scalar) {
@@ -132,6 +145,14 @@ FOREACH_BINARY_SCALAR_KERNEL(add) {
   return all_types_complex_bool_half_bfloat16<std::plus>(tensors, scalar);
 }
 
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16_<std::minus>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(sub) {
+  return all_types_complex_bool_half_bfloat16<std::minus>(tensors, scalar);
+}
+
 FOREACH_BINARY_SCALAR_INPLACE_KERNEL(mul) {
   return all_types_complex_bool_half_bfloat16_<std::multiplies>(
       tensors, scalar);
@@ -147,6 +168,35 @@ FOREACH_BINARY_SCALAR_INPLACE_KERNEL(div) {
 
 FOREACH_BINARY_SCALAR_KERNEL(div) {
   return all_types_complex_bool_half_bfloat16<std::divides>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(clamp_max) {
+  return all_types_half_bfloat16_<foreach_internal::minimum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(clamp_max) {
+  return all_types_half_bfloat16<foreach_internal::minimum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(clamp_min) {
+  return all_types_half_bfloat16_<foreach_internal::maximum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(clamp_min) {
+  return all_types_half_bfloat16<foreach_internal::maximum>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_INPLACE_KERNEL(pow) {
+  return all_types_complex_half_bfloat16_<power_functor>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(pow) {
+  return all_types_complex_half_bfloat16<power_functor>(tensors, scalar);
+}
+
+FOREACH_BINARY_SCALAR_KERNEL(pow_list) {
+  return all_types_complex_half_bfloat16<reverse_power_functor>(
+      tensors, scalar);
 }
 
 } // namespace at::native::xpu

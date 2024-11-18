@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Activation.h>
@@ -9,6 +8,10 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
 #include <comm/TensorInfo.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/ones_like.h>
+#include <ATen/ops/zeros_like.h>
 
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
 
@@ -104,7 +107,7 @@ struct FusedDropoutVecFunctor {
     }
   }
   FusedDropoutVecFunctor(
-      TensorInfo<scalar_t, IndexType> a,
+      TensorInfo<const scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
@@ -118,7 +121,7 @@ struct FusedDropoutVecFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<scalar_t, IndexType> a_;
+  TensorInfo<const scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
@@ -162,7 +165,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<scalar_t, IndexType>::get(li, a_);
+              IndexToOffset<const scalar_t, IndexType>::get(li, a_);
           src[ii] = a_.data[aOffset];
         }
       }
@@ -179,7 +182,7 @@ struct FusedDropoutUnrollFunctor {
     }
   }
   FusedDropoutUnrollFunctor(
-      TensorInfo<scalar_t, IndexType> a,
+      TensorInfo<const scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
@@ -193,7 +196,7 @@ struct FusedDropoutUnrollFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<scalar_t, IndexType> a_;
+  TensorInfo<const scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
@@ -275,7 +278,7 @@ inline void launcher(
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         accscalar_t pa = (accscalar_t)(p);
-        auto self_info = getTensorInfo<scalar_t, index_type>(self);
+        auto self_info = getTensorInfo<const scalar_t, index_type>(self);
         auto ret_info = getTensorInfo<scalar_t, index_type>(ret);
         auto mask_info = getTensorInfo<mask_t, index_type>(mask);
         self_info.collapseDims();
@@ -430,7 +433,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
   return dropout<bool>(gen, self, p1m);
 }
 
-std::tuple<Tensor, Tensor> fused_dropout(
+std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
     c10::optional<Generator> gen_) {
@@ -466,7 +469,10 @@ Tensor dropout_backward_kernel(
   return dropout_backward<bool>(grad, mask, scale);
 }
 
-Tensor masked_scale(const Tensor& self, const Tensor& mask, double scale) {
+Tensor masked_scale_kernel(
+    const Tensor& self,
+    const Tensor& mask,
+    double scale) {
   TORCH_CHECK(
       mask.scalar_type() == at::ScalarType::Byte,
       "mask should be torch.uint8 dtype");

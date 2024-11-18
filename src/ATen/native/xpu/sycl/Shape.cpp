@@ -1,4 +1,3 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/WrapDimUtils.h>
@@ -7,6 +6,10 @@
 #include <ATen/native/TensorShape.h>
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <comm/SYCLContext.h>
+#include <comm/xpu_aten.h>
+
+#include <ATen/ops/narrow.h>
+#include <ATen/ops/size_native.h>
 
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
 
@@ -225,8 +228,8 @@ void parallel_cat(
         int64_t dimSize =
             at::native::size(inputs[i + batchCounter].get(), dimension);
 
-        stackInputs[batchCounter].input = static_cast<scalar_in_t*>(
-            inputs[i + batchCounter].get().data_ptr());
+        stackInputs[batchCounter].input =
+            (scalar_in_t*)(inputs[i + batchCounter].get().const_data_ptr());
         stackInputs[batchCounter].offset = offset;
         stackInputs[batchCounter].dimSize = dimSize;
         stackInputs[batchCounter].nElements =

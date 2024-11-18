@@ -43,7 +43,7 @@ struct ApplyTriuTrilKernelFunctor {
       IndexType result_stride_0_,
       IndexType result_stride_1_,
       scalar_t* result_ptr_,
-      scalar_t* self_ptr_)
+      const scalar_t* self_ptr_)
       : k(k_),
         N(N_),
         self_size_0(self_size_0_),
@@ -69,11 +69,14 @@ struct ApplyTriuTrilKernelFunctor {
   IndexType result_stride_0;
   IndexType result_stride_1;
   scalar_t* result_ptr;
-  scalar_t* self_ptr;
+  const scalar_t* self_ptr;
 };
 
 template <typename scalar_t, typename IndexType, bool upper>
-void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
+void apply_triu_tril(
+    const Tensor& result,
+    const Tensor& self,
+    const int64_t k) {
   auto N = self.numel();
   IndexType self_size_0 = (IndexType)self.size(-2);
   IndexType self_size_1 = (IndexType)self.size(-1);
@@ -86,7 +89,7 @@ void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
   IndexType result_stride_1 = (IndexType)result.stride(-1);
 
   scalar_t* result_ptr = result.data_ptr<scalar_t>();
-  scalar_t* self_ptr = self.data_ptr<scalar_t>();
+  const scalar_t* self_ptr = self.const_data_ptr<scalar_t>();
 
   ApplyTriuTrilKernelFunctor<scalar_t, IndexType, upper> kfn(
       k,
@@ -120,12 +123,13 @@ void apply_triu_tril(Tensor& result, const Tensor& self, const int64_t k) {
     }                                                             \
   }
 
-Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k) {
+void tril_kernel(const Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
   if (self.numel() == 0) {
-    return result;
+    // return result;
+    return;
   }
 
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -137,15 +141,16 @@ Tensor& tril_kernel(Tensor& result, const Tensor& self, int64_t k) {
       "tril_xpu",
       TRIU_TRIL_LAMBDA(false));
 
-  return result;
+  // return result;
 }
 
-Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k) {
+void triu_kernel(const Tensor& result, const Tensor& self, int64_t k) {
   if (result.sizes() != self.sizes()) {
     result.resize_as_(self);
   }
   if (self.numel() == 0) {
-    return result;
+    // return result;
+    return;
   }
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
       at::ScalarType::Half,
@@ -156,7 +161,7 @@ Tensor& triu_kernel(Tensor& result, const Tensor& self, int64_t k) {
       "triu_xpu",
       TRIU_TRIL_LAMBDA(true));
 
-  return result;
+  // return result;
 }
 
 } // namespace at::native::xpu

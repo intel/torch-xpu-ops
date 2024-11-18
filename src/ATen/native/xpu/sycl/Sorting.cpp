@@ -1,9 +1,10 @@
+
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
 // Avoid SYCL compiler return-type error
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
-#include <ATen/ATen.h>
+
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NumericUtils.h>
@@ -16,6 +17,7 @@
 #include <c10/macros/Macros.h>
 
 #include <ATen/native/xpu/sycl/Sorting.h>
+#include <ATen/ops/empty_strided.h>
 
 namespace at::native::xpu {
 
@@ -67,21 +69,27 @@ std::vector<int64_t> infer_dense_strides_dim_last(
   return new_strides_unsort;
 }
 
-std::tuple<Tensor&, Tensor&> sort_stable_kernel(
-    const Tensor& self,
-    c10::optional<bool> stable,
-    Tensor& values,
-    Tensor& indices,
-    int dim,
-    bool descending) {
-  TORCH_INTERNAL_ASSERT(
-      stable.has_value(),
-      "sort_out(): c10::optional<bool> for stable has to have value.");
+void sort_stable_kernel(
+    const TensorBase& self_base,
+    const TensorBase& values_base,
+    const TensorBase& indices_base,
+    int64_t dim,
+    bool descending,
+    bool stable) {
+  // Macro for converting `TensorBase` -> `Tensor` without
+  // reference count bumps.
+#define TOTENSOR(BASE, VAR)           \
+  OptionalTensorRef opt_##BASE(BASE); \
+  const Tensor& VAR = *opt_##BASE;
+
+  // Converting TensorBase into Tensor.
+  // We will need Tensor's methods from this point onwards.
+  TOTENSOR(self_base, self);
+  TOTENSOR(values_base, values);
+  TOTENSOR(indices_base, indices);
 
   bool is_non_overlapping_and_dense = self.is_non_overlapping_and_dense();
   int64_t numel = self.numel();
-  int64_t ndim = self.dim();
-  dim = maybe_wrap_dim(dim, ndim);
   int64_t nsort = self.sizes()[dim];
 
   TORCH_CHECK(
@@ -92,22 +100,6 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
       self_dtype != ScalarType::ComplexFloat &&
           self_dtype != ScalarType::ComplexDouble,
       "Sort currently does not support complex dtypes on XPU.");
-
-  if (ndim == 0) {
-    if (!values.defined()) {
-      values = self.clone();
-    } else {
-      values.resize_as_(self);
-      values.copy_(self);
-    }
-    if (!indices.defined()) {
-      indices = at::zeros({}, self.options().dtype(kLong));
-    } else {
-      indices.resize_as_(self);
-      indices.zero_();
-    }
-    return std::forward_as_tuple(values, indices);
-  }
 
   Tensor self_;
   bool newself = false;
@@ -120,62 +112,26 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
     newself = true;
   }
 
-  Tensor values_tmp, indices_tmp;
-  void* values_ptr_;
-  int64_t* indices_ptr;
-  if (!values.defined()) {
-    if (is_non_overlapping_and_dense) {
-      values = at::empty_strided(self.sizes(), self.strides(), self.options());
-    } else {
-      auto strides = at::infer_dense_strides(self.sizes(), self.strides());
-      values = at::empty_strided(self.sizes(), strides, self.options());
-    }
-  } else {
-    TORCH_CHECK(
-        self_.scalar_type() == values.scalar_type(),
-        "Unexpected dtype for values, expect ",
-        self_.scalar_type(),
-        ", got ",
-        values.scalar_type());
-    values.resize_as_(self);
-  }
-
+  c10::MaybeOwned<Tensor> values_tmp, indices_tmp;
   if (values.strides() == self_.strides() &&
       (newself || get_overlap_status(self, values) == MemOverlapStatus::No)) {
-    values_ptr_ = values.data_ptr();
+    values_tmp = c10::MaybeOwned<Tensor>::borrowed(values);
   } else {
-    values_tmp =
-        at::empty_strided(self_.sizes(), self_.strides(), self_.options());
-    values_ptr_ = values_tmp.data_ptr();
+    values_tmp = c10::MaybeOwned<Tensor>::owned(
+        at::empty_strided(self_.sizes(), self_.strides(), self_.options()));
   }
-
-  if (!indices.defined()) {
-    if (is_non_overlapping_and_dense) {
-      indices = at::empty_strided(
-          self.sizes(), self.strides(), self.options().dtype(kLong));
-    } else {
-      auto strides = at::infer_dense_strides(self.sizes(), self.strides());
-      indices =
-          at::empty_strided(self.sizes(), strides, self.options().dtype(kLong));
-    }
-  } else {
-    TORCH_CHECK(
-        kLong == indices.scalar_type(),
-        "Unexpected dtype for values, expect torch.long, got ",
-        indices.scalar_type());
-    indices.resize_as_(self);
-  }
+  const Tensor& values_tensor = *values_tmp;
 
   if (indices.strides() != self_.strides()) {
-    indices_tmp = at::empty_strided(
-        self_.sizes(), self_.strides(), self_.options().dtype(kLong));
-    indices_ptr = indices_tmp.data_ptr<int64_t>();
+    indices_tmp = c10::MaybeOwned<Tensor>::owned(at::empty_strided(
+        self_.sizes(), self_.strides(), self_.options().dtype(kLong)));
   } else {
-    indices_ptr = indices.data_ptr<int64_t>();
+    indices_tmp = c10::MaybeOwned<Tensor>::borrowed(indices);
   }
+  const Tensor& indices_tensor = *indices_tmp;
 
   if (numel == 0) {
-    return std::forward_as_tuple(values, indices);
+    return;
   }
 
   AT_DISPATCH_ALL_TYPES_AND3(
@@ -185,25 +141,24 @@ std::tuple<Tensor&, Tensor&> sort_stable_kernel(
       self_.scalar_type(),
       "sort_stable_kernel",
       [&]() {
-        scalar_t* self_ptr = self_.data_ptr<scalar_t>();
+        const scalar_t* self_ptr = self_.const_data_ptr<scalar_t>();
         int nsegments = numel / nsort;
         segmented_sort_pairs<scalar_t, int64_t>(
             self_ptr,
-            (scalar_t*)values_ptr_,
+            values_tensor.data_ptr<scalar_t>(),
             nullptr,
-            (int64_t*)indices_ptr,
+            indices_tensor.data_ptr<int64_t>(),
             nsegments,
             nsort,
             descending);
       });
 
-  if (values_tmp.defined()) {
-    values.copy_(values_tmp);
+  if (!values_tmp->is_same(values)) {
+    values.copy_(*values_tmp);
   }
-  if (indices_tmp.defined()) {
-    indices.copy_(indices_tmp);
+  if (!indices_tmp->is_same(indices)) {
+    indices.copy_(*indices_tmp);
   }
-  return std::forward_as_tuple(values, indices);
 }
 
 template <typename scalar_t, typename index_t, int Dim>
@@ -217,11 +172,11 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     index_t indicesSliceStartIndex =
         IndexToOffset<int64_t, index_t>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
-    scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
+    const scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
 
     index_t nan_count = 0;
     for (index_t i = item.get_local_id(0); i < inputSliceSize_;
@@ -261,7 +216,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         typename TopKTypeConfig<scalar_t>::RadixType,
         index_t,
         false>(
-        (sycl_global_ptr<scalar_t>)inputSliceStart,
+        inputSliceStart,
         k + 1,
         inputSliceSize_,
         inputWithinSliceStride_,
@@ -290,12 +245,12 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   GatherMedianKernelFunctor(
       TensorInfo<scalar_t, index_t> values,
       TensorInfo<int64_t, index_t> indices,
-      TensorInfo<scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> input,
       index_t inputSliceSize,
       index_t numInputSlices,
       index_t inputWithinSliceStride,
       bool ignore_nan,
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* values_data,
       int64_t* indices_data)
       : values_(values),
@@ -312,12 +267,12 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   TensorInfo<scalar_t, index_t> values_;
   TensorInfo<int64_t, index_t> indices_;
-  TensorInfo<scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> input_;
   index_t inputSliceSize_;
   index_t numInputSlices_;
   index_t inputWithinSliceStride_;
   bool ignore_nan_;
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* values_data_;
   int64_t* indices_data_;
   sycl_local_acc_t<int> smem_;
@@ -329,7 +284,7 @@ template <typename scalar_t, typename index_t, int Dim>
 void gatherMedian(
     TensorInfo<scalar_t, index_t> values,
     TensorInfo<int64_t, index_t> indices,
-    TensorInfo<scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> input,
     index_t inputSliceSize,
     index_t numInputSlices,
     index_t inputWithinSliceStride,
@@ -368,7 +323,7 @@ struct MedianLauncher {
       int collapse_values_dim,
       TensorInfo<int64_t, index_t> indices_info,
       int collapse_indices_dim,
-      TensorInfo<scalar_t, index_t> self_info,
+      TensorInfo<const scalar_t, index_t> self_info,
       int collapse_self_dim,
       int64_t num_slices,
       int64_t slice_size) {
@@ -389,6 +344,7 @@ void launch_median_kernel(
     const TensorBase& self,
     int64_t dim,
     bool ignore_nan) {
+  // return;
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

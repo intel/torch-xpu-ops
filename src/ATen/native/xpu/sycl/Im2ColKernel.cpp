@@ -1,5 +1,5 @@
-#include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/im2col_shape_check.h>
 #include <comm/Runtime.h>
@@ -221,7 +221,7 @@ void im2col_kernel(
           output_n = output.select(0, elt);
 
           im2col_kernel<scalar_t>(
-              input_n.data_ptr<scalar_t>(),
+              input_n.const_data_ptr<scalar_t>(),
               n_input_plane,
               input_height,
               input_width,
