@@ -1739,7 +1739,7 @@ def _test_groupnorm_nhwc(self):
                 helper(self, (4, 40, 40, 40), 2, torch.channels_last, is_mixed, device, dtype)
                 helper(self, (2, 30, 50, 50), 3, torch.channels_last, is_mixed, device, dtype)
                 helper(self, (2, 60, 50, 50), 3, torch.channels_last, is_mixed, device, dtype)
-TestNN.test_groupnorm_nhwc = _test_groupnorm_nhwc
+TestNN.test_groupnorm_nhwc = None # TODO: Disable it temporarily as Pytorch has revert the PR: https://github.com/pytorch/pytorch/pull/126635
 
 @parametrize_test("memory_format", [torch.contiguous_format, torch.channels_last])
 @parametrize_test("mode", ["bilinear", "bicubic"])
