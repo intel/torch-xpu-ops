@@ -34,4 +34,6 @@ TORCH_XPU_API void entr_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void erfcx_kernel(TensorIteratorBase& iter);
 
+TORCH_XPU_API void sinc_kernel(TensorIteratorBase& iter);
+
 } // namespace at::native::xpu

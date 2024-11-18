@@ -37,18 +37,19 @@ template <
     int vec_size>
 void embedding_bag(
     scalar_t* const output,
-    scalar_t* const weights,
-    index_t* const index,
-    index_t* const offset,
+    const scalar_t* const weights,
+    const index_t* const index,
+    const index_t* const offset,
     index_t* const offset2bag,
     index_t* const bag_size,
     index_t* const max_index,
-    scalar_t* const per_sample_weights,
+    const scalar_t* const per_sample_weights,
     int64_t index_size,
     int64_t bag_num,
     int64_t vec_len,
     index_t padding_idx,
-    bool ignore_offsets) {
+    bool ignore_offsets,
+    int64_t num_row) {
   using vec_t = at::detail::Array<scalar_t, vec_size>;
   using vec_acc_t = at::detail::Array<accscalar_t, vec_size>;
   using vec_idx_t = at::detail::Array<index_t, vec_size>;
@@ -63,7 +64,7 @@ void embedding_bag(
       vec_idx_t>;
 
   vec_t* o_vec = reinterpret_cast<vec_t*>(output);
-  vec_t* w_vec = reinterpret_cast<vec_t*>(weights);
+  const vec_t* w_vec = reinterpret_cast<const vec_t*>(weights);
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   vec_len = vec_len / vec_size;
@@ -87,79 +88,86 @@ void embedding_bag(
       w_vec,
       max_idx_vec,
       cfg,
-      fixing_bag_size);
+      fixing_bag_size,
+      num_row);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
 
-#define EMBBAG_KERNEL_ACC(                                                   \
-    scalar_t,                                                                \
-    accscalar_t,                                                             \
-    index_t,                                                                 \
-    mode,                                                                    \
-    vec_size,                                                                \
-    output,                                                                  \
-    weight,                                                                  \
-    input,                                                                   \
-    offset,                                                                  \
-    offset2bag,                                                              \
-    bag_size,                                                                \
-    max_indices,                                                             \
-    per_sample_weights,                                                      \
-    index_len,                                                               \
-    bag_num,                                                                 \
-    vec_len,                                                                 \
-    padding_idx,                                                             \
-    ignore_offsets)                                                          \
-  embedding_bag<scalar_t, accscalar_t, index_t, mode, vec_size>(             \
-      output.data_ptr<scalar_t>(),                                           \
-      weight.data_ptr<scalar_t>(),                                           \
-      indices.data_ptr<index_t>(),                                           \
-      offsets.data_ptr<index_t>(),                                           \
-      offset2bag.data_ptr<index_t>(),                                        \
-      bag_size.data_ptr<index_t>(),                                          \
-      max_indices.data_ptr<index_t>(),                                       \
-      per_sample_weights.defined() ? per_sample_weights.data_ptr<scalar_t>() \
-                                   : nullptr,                                \
-      index_size,                                                            \
-      bag_num,                                                               \
-      vec_len,                                                               \
-      padding_idx,                                                           \
-      ignore_offsets)
+#define EMBBAG_KERNEL_ACC(                                       \
+    scalar_t,                                                    \
+    accscalar_t,                                                 \
+    index_t,                                                     \
+    mode,                                                        \
+    vec_size,                                                    \
+    output,                                                      \
+    weight,                                                      \
+    input,                                                       \
+    offset,                                                      \
+    offset2bag,                                                  \
+    bag_size,                                                    \
+    max_indices,                                                 \
+    per_sample_weights,                                          \
+    index_len,                                                   \
+    bag_num,                                                     \
+    vec_len,                                                     \
+    padding_idx,                                                 \
+    ignore_offsets,                                              \
+    num_row)                                                     \
+  embedding_bag<scalar_t, accscalar_t, index_t, mode, vec_size>( \
+      output.mutable_data_ptr<scalar_t>(),                       \
+      weight.const_data_ptr<scalar_t>(),                         \
+      indices.const_data_ptr<index_t>(),                         \
+      offsets.const_data_ptr<index_t>(),                         \
+      offset2bag.mutable_data_ptr<index_t>(),                    \
+      bag_size.mutable_data_ptr<index_t>(),                      \
+      max_indices.mutable_data_ptr<index_t>(),                   \
+      per_sample_weights.defined()                               \
+          ? per_sample_weights.const_data_ptr<scalar_t>()        \
+          : nullptr,                                             \
+      index_size,                                                \
+      bag_num,                                                   \
+      vec_len,                                                   \
+      padding_idx,                                               \
+      ignore_offsets,                                            \
+      num_row)
 
-#define EMBBAG_KERNEL_NO_ACC(                                                \
-    scalar_t,                                                                \
-    index_t,                                                                 \
-    mode,                                                                    \
-    vec_size,                                                                \
-    output,                                                                  \
-    weight,                                                                  \
-    input,                                                                   \
-    offset,                                                                  \
-    offset2bag,                                                              \
-    bag_size,                                                                \
-    max_indices,                                                             \
-    per_sample_weights,                                                      \
-    index_len,                                                               \
-    bag_num,                                                                 \
-    vec_len,                                                                 \
-    padding_idx,                                                             \
-    ignore_offsets)                                                          \
-  embedding_bag<scalar_t, scalar_t, index_t, mode, vec_size>(                \
-      output.data_ptr<scalar_t>(),                                           \
-      weight.data_ptr<scalar_t>(),                                           \
-      indices.data_ptr<index_t>(),                                           \
-      offsets.data_ptr<index_t>(),                                           \
-      offset2bag.data_ptr<index_t>(),                                        \
-      bag_size.data_ptr<index_t>(),                                          \
-      max_indices.data_ptr<index_t>(),                                       \
-      per_sample_weights.defined() ? per_sample_weights.data_ptr<scalar_t>() \
-                                   : nullptr,                                \
-      index_size,                                                            \
-      bag_num,                                                               \
-      vec_len,                                                               \
-      padding_idx,                                                           \
-      ignore_offsets)
+#define EMBBAG_KERNEL_NO_ACC(                                 \
+    scalar_t,                                                 \
+    index_t,                                                  \
+    mode,                                                     \
+    vec_size,                                                 \
+    output,                                                   \
+    weight,                                                   \
+    input,                                                    \
+    offset,                                                   \
+    offset2bag,                                               \
+    bag_size,                                                 \
+    max_indices,                                              \
+    per_sample_weights,                                       \
+    index_len,                                                \
+    bag_num,                                                  \
+    vec_len,                                                  \
+    padding_idx,                                              \
+    ignore_offsets,                                           \
+    num_row)                                                  \
+  embedding_bag<scalar_t, scalar_t, index_t, mode, vec_size>( \
+      output.mutable_data_ptr<scalar_t>(),                    \
+      weight.const_data_ptr<scalar_t>(),                      \
+      indices.const_data_ptr<index_t>(),                      \
+      offsets.const_data_ptr<index_t>(),                      \
+      offset2bag.mutable_data_ptr<index_t>(),                 \
+      bag_size.mutable_data_ptr<index_t>(),                   \
+      max_indices.mutable_data_ptr<index_t>(),                \
+      per_sample_weights.defined()                            \
+          ? per_sample_weights.const_data_ptr<scalar_t>()     \
+          : nullptr,                                          \
+      index_size,                                             \
+      bag_num,                                                \
+      vec_len,                                                \
+      padding_idx,                                            \
+      ignore_offsets,                                         \
+      num_row)
 
 void embedding_bag_sum_template(
     const Tensor& indices,
@@ -175,6 +183,7 @@ void embedding_bag_sum_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_SUM_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_ACC(                           \
       scalar_t,                                \
@@ -194,7 +203,8 @@ void embedding_bag_sum_template(
       bag_num,                                 \
       vec_len,                                 \
       padding_idx,                             \
-      ignore_offsets)
+      ignore_offsets,                          \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -206,7 +216,7 @@ void embedding_bag_sum_template(
             indices.scalar_type(), "embedding_bag_sum_xpu", [&] {
               using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
-                  (char*)weights.data_ptr());
+                  (char*)weights.const_data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;
               switch (vec_size) {
                 case 8:
@@ -241,6 +251,7 @@ void embedding_bag_mean_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_MEAN_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_ACC(                            \
       scalar_t,                                 \
@@ -260,7 +271,8 @@ void embedding_bag_mean_template(
       bag_num,                                  \
       vec_len,                                  \
       padding_idx,                              \
-      ignore_offsets)
+      ignore_offsets,                           \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -272,7 +284,7 @@ void embedding_bag_mean_template(
             indices.scalar_type(), "embedding_bag_mean_xpu", [&] {
               using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
-                  (char*)weights.data_ptr());
+                  (char*)weights.const_data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;
               switch (vec_size) {
                 case 8:
@@ -307,6 +319,7 @@ void embedding_bag_max_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_MAX_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_NO_ACC(                        \
       scalar_t,                                \
@@ -325,7 +338,8 @@ void embedding_bag_max_template(
       bag_num,                                 \
       vec_len,                                 \
       padding_idx,                             \
-      ignore_offsets)
+      ignore_offsets,                          \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -337,7 +351,7 @@ void embedding_bag_max_template(
             indices.scalar_type(), "embedding_bag_max_xpu", [&] {
               // using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
-                  (char*)weights.data_ptr());
+                  (char*)weights.const_data_ptr());
               vec_size = vec_len % vec_size == 0 ? vec_size : 1;
               switch (vec_size) {
                 case 8:
@@ -389,22 +403,26 @@ Tensor embedding_bag_backward_xpu_sum_avg(
   // int64_t stride = grad_weight.stride(0);
 
   auto sorted_indices = at::empty_like(indices);
-  auto sorted_begin = sorted_indices.data_ptr<index_t>();
+  auto sorted_begin = sorted_indices.mutable_data_ptr<index_t>();
   auto orig_indices = at::empty_like(indices);
-  auto orig_begin = orig_indices.data_ptr<index_t>();
+  auto orig_begin = orig_indices.mutable_data_ptr<index_t>();
 
   // directly
   {
     sorted_indices.copy_(indices);
     pstl::itoa(orig_begin, orig_begin + numel, (index_t)0);
     pstl::sort<index_t, index_t>(
-        indices.data_ptr<index_t>(), sorted_begin, orig_begin, numel, false);
+        indices.const_data_ptr<index_t>(),
+        sorted_begin,
+        orig_begin,
+        numel,
+        false);
   }
 
   Tensor count;
   if (scale_grad_by_freq) {
     count = at::empty_like(sorted_indices);
-    index_t* count_begin = count.data_ptr<index_t>();
+    index_t* count_begin = count.mutable_data_ptr<index_t>();
     // Take the maximum of each count per unique key:
     // sorted: 2 5 5 5 7 7 8 9 9
     //  count: 1 3 3 3 2 2 1 2 2
@@ -456,8 +474,8 @@ struct EmbeddingBagAccGradParametersKernelMaxFunctor {
     }
   }
   EmbeddingBagAccGradParametersKernelMaxFunctor(
-      index_t* max_indices_data,
-      scalar_t* gradOutput_data,
+      const index_t* max_indices_data,
+      const scalar_t* gradOutput_data,
       scalar_t* gradWeight_data,
       int64_t stride,
       int64_t chunksPerBag,
@@ -470,8 +488,8 @@ struct EmbeddingBagAccGradParametersKernelMaxFunctor {
         numChunks_(numChunks) {}
 
  private:
-  index_t* max_indices_data_;
-  scalar_t* gradOutput_data_;
+  const index_t* max_indices_data_;
+  const scalar_t* gradOutput_data_;
   scalar_t* gradWeight_data_;
   int64_t stride_;
   int64_t chunksPerBag_;
@@ -480,8 +498,8 @@ struct EmbeddingBagAccGradParametersKernelMaxFunctor {
 
 template <typename scalar_t, typename index_t>
 void EmbeddingBag_accGradParametersKernel_max(
-    index_t* max_indices,
-    scalar_t* gradOutput,
+    const index_t* max_indices,
+    const scalar_t* gradOutput,
     scalar_t* gradWeight,
     int64_t stride,
     int64_t numBags) {
@@ -519,9 +537,9 @@ Tensor embedding_bag_backward_xpu_max(
   int64_t numBags = grad.size(0);
 
   EmbeddingBag_accGradParametersKernel_max<scalar_t>(
-      max_indices.data_ptr<index_t>(),
-      grad.data_ptr<scalar_t>(),
-      grad_weight.data_ptr<scalar_t>(),
+      max_indices.const_data_ptr<index_t>(),
+      grad.const_data_ptr<scalar_t>(),
+      grad_weight.mutable_data_ptr<scalar_t>(),
       stride,
       numBags);
 
@@ -614,7 +632,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     numBags -= 1;
   }
 
-  auto bag_size = at::empty(numBags, indices.options());
+  auto bag_size = at::empty(offsets.sizes(), indices.options());
   auto offset2bag = at::empty({indices.size(0)}, indices.options());
   auto output = at::empty({numBags, weight.size(1)}, weight.options());
 
@@ -764,17 +782,17 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
               _embedding_bag_per_sample_weights_backward_impl<
                   scalar_t,
                   index_t>(
-                  grad.data_ptr<scalar_t>(),
+                  grad.const_data_ptr<scalar_t>(),
                   grad.stride(0),
                   grad.stride(1),
-                  weight.data_ptr<scalar_t>(),
+                  weight.const_data_ptr<scalar_t>(),
                   weight.stride(0),
                   weight.stride(1),
-                  indices.data_ptr<index_t>(),
-                  offset2bag.data_ptr<index_t>(),
+                  indices.const_data_ptr<index_t>(),
+                  offset2bag.const_data_ptr<index_t>(),
                   num_samples,
                   embedding_features,
-                  output.data_ptr<scalar_t>(),
+                  output.mutable_data_ptr<scalar_t>(),
                   padding_idx);
             });
       });

@@ -52,7 +52,7 @@ struct Histogram1DKernelFunctor {
     auto linear_index = item_id.get_id(0);
     // Convert `linear_index` into an offset of `b`
     const IndexType b_offset =
-        IndexToOffset<input_t, IndexType>::get(linear_index, b_);
+        IndexToOffset<const input_t, IndexType>::get(linear_index, b_);
     const auto b_val = in_ptr[b_offset];
     if (b_val >= min_value_ && b_val <= max_value_) {
       // Use value at `b` as an offset of `a`
@@ -67,7 +67,7 @@ struct Histogram1DKernelFunctor {
   }
   Histogram1DKernelFunctor(
       TensorInfo<output_t, IndexType> a,
-      TensorInfo<input_t, IndexType> b,
+      TensorInfo<const input_t, IndexType> b,
       TensorInfo<output_t, IndexType> c,
       int nbins,
       at::acc_type_device<input_t, kXPU> minvalue,
@@ -85,7 +85,7 @@ struct Histogram1DKernelFunctor {
 
  private:
   TensorInfo<output_t, IndexType> a_;
-  TensorInfo<input_t, IndexType> b_;
+  TensorInfo<const input_t, IndexType> b_;
   TensorInfo<output_t, IndexType> c_;
   int nbins_;
   at::acc_type_device<input_t, kXPU> min_value_;
@@ -106,7 +106,7 @@ template <
     typename Op>
 void histogram_1d_kernel(
     TensorInfo<output_t, IndexType> a, /* output */
-    TensorInfo<input_t, IndexType> b, /* input */
+    TensorInfo<const input_t, IndexType> b, /* input */
     TensorInfo<output_t, IndexType> c, /* weight */
     int nbins,
     at::acc_type_device<input_t, kXPU> min_value,
@@ -171,7 +171,7 @@ void tensor_histogram(
 
   using IndexType = int64_t;
   auto a_info = getTensorInfo<output_t, IndexType>(a);
-  auto b_info = getTensorInfo<input_t, IndexType>(b);
+  auto b_info = getTensorInfo<const input_t, IndexType>(b);
   if (has_weights) {
     auto c_info = getTensorInfo<output_t, IndexType>(c);
     const IndexingFunctor<output_t, IndexType, decltype(c_info)> get_weights_op(

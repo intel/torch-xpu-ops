@@ -278,7 +278,7 @@ static inline int preferred_vector_width(at::DeviceIndex dev_id, int elem_sz) {
 // get enough payloads without outer loop. Outer loop may bring additional
 // instructions and potential registers usage.
 template <typename scalar_t>
-inline int can_vectorize_up_to(char* pointer) {
+inline int can_vectorize_up_to(const char* pointer) {
   int elem_size = sizeof(scalar_t);
   at::DeviceIndex dev_id = c10::xpu::current_device();
   int preferred_width = preferred_vector_width(dev_id, elem_size);
@@ -301,6 +301,11 @@ inline int can_vectorize_up_to(char* pointer) {
     return std::min<int>(preferred_width, 2);
   }
   return 1;
+}
+
+template <typename scalar_t>
+inline int can_vectorize_up_to(char* pointer) {
+  return can_vectorize_up_to<scalar_t>(static_cast<const char*>(pointer));
 }
 
 template <int i>

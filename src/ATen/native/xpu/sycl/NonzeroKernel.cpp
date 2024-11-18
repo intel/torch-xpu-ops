@@ -51,10 +51,10 @@ struct CopyIfFunc {
   bool operator()(int64_t x) const {
     return self_begin_[x] != scalar_t(0);
   }
-  CopyIfFunc(scalar_t* self_begin) : self_begin_(self_begin) {}
+  CopyIfFunc(const scalar_t* self_begin) : self_begin_(self_begin) {}
 
  private:
-  scalar_t* self_begin_;
+  const scalar_t* self_begin_;
 };
 
 template <>
@@ -68,10 +68,10 @@ struct CopyIfFunc<bool> {
     bool res = in != int(0) ? 1 : 0;
     return res;
   }
-  CopyIfFunc(bool* self_begin) : self_begin_(self_begin) {}
+  CopyIfFunc(const bool* self_begin) : self_begin_(self_begin) {}
 
  private:
-  bool* self_begin_;
+  const bool* self_begin_;
 };
 
 template <typename scalar_t>
@@ -89,7 +89,7 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
     Tensor range = at::empty(
         {N}, tensor.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT));
 
-    scalar_t* self_begin = self.data_ptr<scalar_t>();
+    const scalar_t* self_begin = self.const_data_ptr<scalar_t>();
     int64_t* idx_flat_begin = idx_flat.data_ptr<int64_t>();
     int64_t* range_begin = nullptr;
 
