@@ -28,7 +28,7 @@ TensorInfo<T, IndexType> tensorInfoIfScalar(TensorInfo<T, IndexType> ti) {
 template <class SrcInfo, class DstInfo, class IdxInfo, class FuncType>
 class IndexKernelConfig : public BatchKernelConfig {
  public:
-  using ValType = typename SrcInfo::scalar_t;
+  using ValType = typename DstInfo::scalar_t;
   using IdxType = typename IdxInfo::scalar_t;
 
   IndexKernelConfig() = delete;
@@ -325,17 +325,17 @@ class IndexKernel {
             cfg_.dinfo_,
             IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<ValType, int64_t>::get(
+          src_off = IndexToOffset<const ValType, int64_t>::get(
               glb_fixing_logical_off,
               cfg_.sinfo_,
-              IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+              IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         }
       } else {
         // index_select
-        src_off = IndexToOffset<ValType, int64_t>::get(
+        src_off = IndexToOffset<const ValType, int64_t>::get(
             glb_indexing_logical_off,
             cfg_.sinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+            IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
         dst_off = IndexToOffset<ValType, int64_t>::get(
             glb_fixing_logical_off,
             cfg_.dinfo_,
@@ -601,7 +601,7 @@ struct IndexKernelFunctor {
     auto out_ptr = out_data_ + offsets[0];
     auto in_ptr = in_data_ + offsets[1];
     int64_t offset = 0;
-    //#pragma unroll
+    // #pragma unroll
     for (size_t i = 0; i < num_indices_; i++) {
       // handle int32 index tensor according to the indice_size_bytes.
       // we didn't use template parametor to avoid too many kernels' creation
@@ -822,7 +822,7 @@ struct IndexPutDeterministicKernelFunctor {
   IndexPutDeterministicKernelFunctor(
       int64_t* sorted_indices,
       int64_t* indices,
-      scalar_t* value,
+      const scalar_t* value,
       scalar_t* self,
       int64_t stride,
       int64_t stride_before,
@@ -842,7 +842,7 @@ struct IndexPutDeterministicKernelFunctor {
  private:
   int64_t* sorted_indices_;
   int64_t* indices_;
-  scalar_t* value_;
+  const scalar_t* value_;
   scalar_t* self_;
   int64_t stride_;
   int64_t stride_before_;
@@ -855,7 +855,7 @@ template <typename scalar_t>
 void launch_index_put_deterministic_kernel(
     int64_t* sorted_indices,
     int64_t* indices,
-    scalar_t* value,
+    const scalar_t* value,
     scalar_t* self,
     int64_t numel,
     int64_t stride,
@@ -891,5 +891,66 @@ void launch_index_put_deterministic_kernel(
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
+
+template <int vt, typename func_t>
+struct IndexElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int wg_sz = item.get_local_range(0);
+    auto tid = item.get_local_id(0);
+    auto nv = wg_sz * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += wg_sz;
+      }
+    }
+  }
+
+  IndexElementwiseKernelFunctor(const int64_t N, const func_t f)
+      : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
+
+template <int vt, typename func_t>
+static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+  int wg_sz = syclMaxWorkItemsPerEU();
+  int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
+  auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
+  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+}
+
+#define TAKE_PUT_UNROLL_SZIE 4
+
+template <int vt, typename func_t>
+struct TakePutKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const auto tid = item.get_local_id(0);
+    const auto nt = item.get_local_range(0);
+    const auto nv = nt * vt;
+    auto idx = nv * item.get_group(0) + tid;
+#pragma unroll
+    for (int i = 0; i < vt; i++) {
+      if (idx < N_) {
+        f_(idx);
+        idx += nt;
+      }
+    }
+  }
+
+  TakePutKernelFunctor(const int64_t N, const func_t f) : N_(N), f_(f) {}
+
+ private:
+  const int64_t N_;
+  const func_t f_;
+};
 
 } // namespace at::native::xpu

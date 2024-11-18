@@ -8,12 +8,6 @@
 
 #include <ATen/native/xpu/sycl/TensorTransformationsKernels.h>
 
-#ifdef _WIN32
-#define RESTRICT __restrict
-#else
-#define RESTRICT __restrict__
-#endif
-
 namespace at::native::xpu {
 
 template <int N>
@@ -166,7 +160,7 @@ struct RollKernelFunctor {
     }
   }
   RollKernelFunctor(
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* out_data,
       int val_of_work_item,
       int64_t N,
@@ -188,7 +182,7 @@ struct RollKernelFunctor {
         global_range_(global_range) {}
 
  private:
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* out_data_;
   int val_of_work_item_;
   int64_t N_;
@@ -226,7 +220,7 @@ void roll_template(
   global_range =
       global_range < target_global_range ? global_range : target_global_range;
 
-  auto in_data = in_tensor.data_ptr<scalar_t>();
+  auto in_data = in_tensor.const_data_ptr<scalar_t>();
   auto out_data = out_tensor.data_ptr<scalar_t>();
   KernelClass kfn(
       in_data,

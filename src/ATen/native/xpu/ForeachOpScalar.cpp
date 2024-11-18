@@ -1,33 +1,22 @@
+#include <ATen/native/BinaryOps.h>
 #include <ATen/native/ForeachUtils.h>
+#include <ATen/ops/_foreach_add_native.h>
+#include <ATen/ops/_foreach_addcdiv_native.h>
+#include <ATen/ops/_foreach_addcmul_native.h>
+#include <ATen/ops/_foreach_clamp_max_native.h>
+#include <ATen/ops/_foreach_clamp_min_native.h>
+#include <ATen/ops/_foreach_div_native.h>
+#include <ATen/ops/_foreach_lerp_native.h>
+#include <ATen/ops/_foreach_mul_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
+#include <ATen/ops/_foreach_sub_native.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
 
 namespace at {
-
 namespace native {
-
-::std::vector<at::Tensor> foreach_tensor_add_scalar_kernel_slow(
-    at::TensorList self,
-    const at::Scalar& scalar);
-void foreach_tensor_add_scalar_kernel_slow_(
-    at::TensorList self,
-    const at::Scalar& scalar);
-
-::std::vector<at::Tensor> foreach_tensor_mul_scalar_kernel_slow(
-    at::TensorList self,
-    const at::Scalar& scalar);
-void foreach_tensor_mul_scalar_kernel_slow_(
-    at::TensorList self,
-    const at::Scalar& scalar);
-
-::std::vector<at::Tensor> foreach_tensor_div_scalar_kernel_slow(
-    at::TensorList self,
-    const at::Scalar& scalar);
-void foreach_tensor_div_scalar_kernel_slow_(
-    at::TensorList self,
-    const at::Scalar& scalar);
 
 #define FOREACH_BINARY_OP_SCALAR(NAME, DIV_OP)                             \
   void foreach_tensor_##NAME##_scalar_kernel_xpu_(                         \
@@ -50,31 +39,48 @@ void foreach_tensor_div_scalar_kernel_slow_(
     return xpu::FOREACH_BINARY_SCALAR_KERNEL_NAME(NAME)(tensors, scalar);  \
   }
 
+// In the case of subtraction, we dont allow scalar to be boolean following the
+// torch.sub logic
+#define FOREACH_BINARY_OP_SCALAR_NO_BOOLEAN(NAME, DIV_OP)                  \
+  void foreach_tensor_##NAME##_scalar_kernel_xpu_(                         \
+      TensorList tensors, const Scalar& scalar) {                          \
+    check_foreach_api_restrictions(tensors);                               \
+    sub_check(tensors[0], scalar);                                         \
+    if (!can_use_fast_route(tensors, scalar, DIV_OP)) {                    \
+      return foreach_tensor_##NAME##_scalar_kernel_slow_(tensors, scalar); \
+    }                                                                      \
+                                                                           \
+    xpu::FOREACH_BINARY_SCALAR_INPLACE_KERNEL_NAME(NAME)(tensors, scalar); \
+  }                                                                        \
+                                                                           \
+  std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_xpu(           \
+      TensorList tensors, const Scalar& scalar) {                          \
+    check_foreach_api_restrictions(tensors);                               \
+    sub_check(tensors[0], scalar);                                         \
+    if (!can_use_fast_route(tensors, scalar, DIV_OP)) {                    \
+      return foreach_tensor_##NAME##_scalar_kernel_slow(tensors, scalar);  \
+    }                                                                      \
+                                                                           \
+    return xpu::FOREACH_BINARY_SCALAR_KERNEL_NAME(NAME)(tensors, scalar);  \
+  }
+
 FOREACH_BINARY_OP_SCALAR(add, /*div_op*/ false);
+FOREACH_BINARY_OP_SCALAR_NO_BOOLEAN(sub, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(mul, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALAR(div, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALAR(clamp_max, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALAR(clamp_min, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALAR(pow, /*div_op*/ true);
 
-::std::vector<at::Tensor> foreach_tensor_addcmul_scalar_slow(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    const at::Scalar& value);
-void foreach_tensor_addcmul_scalar_slow_(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    const at::Scalar& value);
-
-::std::vector<at::Tensor> foreach_tensor_addcdiv_scalar_slow(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    const at::Scalar& value);
-void foreach_tensor_addcdiv_scalar_slow_(
-    at::TensorList self,
-    at::TensorList tensor1,
-    at::TensorList tensor2,
-    const at::Scalar& value);
+std::vector<Tensor> foreach_scalar_pow_list_kernel_xpu(
+    const Scalar& scalar,
+    TensorList exponent) {
+  check_foreach_api_restrictions(exponent);
+  if (!can_use_fast_route(exponent)) {
+    return foreach_scalar_pow_list_kernel_slow(scalar, exponent);
+  }
+  return xpu::foreach_binary_pow_list_scalar_kernel(exponent, scalar);
+}
 
 #define FOREACH_POINTWISE_OP_SCALAR(NAME)                                   \
   std::vector<Tensor> foreach_tensor_##NAME##_scalar_xpu(                   \
@@ -111,15 +117,6 @@ void foreach_tensor_addcdiv_scalar_slow_(
 
 FOREACH_POINTWISE_OP_SCALAR(addcmul)
 FOREACH_POINTWISE_OP_SCALAR(addcdiv)
-
-::std::vector<at::Tensor> foreach_tensor_lerp_list_kernel_slow(
-    at::TensorList self,
-    at::TensorList tensors1,
-    const at::Scalar& weight);
-void foreach_tensor_lerp_list_kernel_slow_(
-    at::TensorList self,
-    at::TensorList tensors1,
-    const at::Scalar& weight);
 
 std::vector<at::Tensor> foreach_tensor_lerp_list_xpu(
     TensorList tensors1,

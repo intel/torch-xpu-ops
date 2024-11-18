@@ -52,7 +52,7 @@ struct Histogram1DKernelFunctor {
     auto linear_index = item_id.get_id(0);
     // Convert `linear_index` into an offset of `b`
     const IndexType b_offset =
-        IndexToOffset<input_t, IndexType>::get(linear_index, b_);
+        IndexToOffset<const input_t, IndexType>::get(linear_index, b_);
     const auto b_val = in_ptr[b_offset];
     if (b_val >= min_value_ && b_val <= max_value_) {
       // Use value at `b` as an offset of `a`
@@ -67,7 +67,7 @@ struct Histogram1DKernelFunctor {
   }
   Histogram1DKernelFunctor(
       TensorInfo<output_t, IndexType> a,
-      TensorInfo<input_t, IndexType> b,
+      TensorInfo<const input_t, IndexType> b,
       TensorInfo<output_t, IndexType> c,
       int nbins,
       at::acc_type_device<input_t, kXPU> minvalue,
@@ -85,7 +85,7 @@ struct Histogram1DKernelFunctor {
 
  private:
   TensorInfo<output_t, IndexType> a_;
-  TensorInfo<input_t, IndexType> b_;
+  TensorInfo<const input_t, IndexType> b_;
   TensorInfo<output_t, IndexType> c_;
   int nbins_;
   at::acc_type_device<input_t, kXPU> min_value_;
@@ -106,7 +106,7 @@ template <
     typename Op>
 void histogram_1d_kernel(
     TensorInfo<output_t, IndexType> a, /* output */
-    TensorInfo<input_t, IndexType> b, /* input */
+    TensorInfo<const input_t, IndexType> b, /* input */
     TensorInfo<output_t, IndexType> c, /* weight */
     int nbins,
     at::acc_type_device<input_t, kXPU> min_value,
@@ -171,7 +171,7 @@ void tensor_histogram(
 
   using IndexType = int64_t;
   auto a_info = getTensorInfo<output_t, IndexType>(a);
-  auto b_info = getTensorInfo<input_t, IndexType>(b);
+  auto b_info = getTensorInfo<const input_t, IndexType>(b);
   if (has_weights) {
     auto c_info = getTensorInfo<output_t, IndexType>(c);
     const IndexingFunctor<output_t, IndexType, decltype(c_info)> get_weights_op(
@@ -187,6 +187,67 @@ void tensor_histogram(
 
   return;
 }
+
+template <typename input_t>
+Tensor _histc_template(
+    const Tensor& self,
+    int64_t nbins,
+    at::acc_type_device<input_t, kXPU> min,
+    at::acc_type_device<input_t, kXPU> max) {
+  if (nbins <= 0) {
+    AT_ERROR("bins must be > 0");
+  }
+  Tensor output = at::zeros(
+      {nbins},
+      self.scalar_type(),
+      std::nullopt /* layout */,
+      DeviceType::XPU,
+      std::nullopt /* pin_memory */);
+
+  using bounds_t = at::acc_type_device<input_t, kXPU>;
+  bounds_t minvalue = min;
+  bounds_t maxvalue = max;
+
+  if (min == max && self.numel() > 0) {
+    minvalue = *self.min().cpu().const_data_ptr<input_t>();
+    maxvalue = *self.max().cpu().const_data_ptr<input_t>();
+  }
+  if (minvalue == maxvalue) {
+    minvalue = minvalue - 1;
+    maxvalue = maxvalue + 1;
+  }
+
+  TORCH_CHECK(
+      !(std::isinf((float)minvalue) || std::isinf((float)maxvalue) ||
+        std::isnan((float)minvalue) || std::isnan((float)maxvalue)),
+      "range of [",
+      minvalue,
+      ", ",
+      maxvalue,
+      "] is not finite");
+
+  TORCH_CHECK(minvalue < maxvalue, "max must be larger than min");
+
+  tensor_histogram<input_t, input_t, false>(
+      output, self, Tensor(), nbins, minvalue, maxvalue);
+  return output;
+}
+
+Tensor _histc_kernel(
+    const Tensor& self,
+    int64_t nbins,
+    const Scalar& min,
+    const Scalar& max) {
+  if (self.scalar_type() == ScalarType::Half) {
+    AT_ERROR("HalfTensor is not supported");
+  }
+  return AT_DISPATCH_ALL_TYPES(self.scalar_type(), "_histc_xpu", [&] {
+    using bounds_t = at::acc_type_device<scalar_t, kXPU>;
+    return _histc_template<scalar_t>(
+        self, nbins, min.to<bounds_t>(), max.to<bounds_t>());
+  });
+}
+
 template <typename input_t, typename weights_t>
 Tensor bincount_template(
     const Tensor& self,

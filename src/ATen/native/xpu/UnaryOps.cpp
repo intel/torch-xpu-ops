@@ -53,6 +53,7 @@ REGISTER_XPU_DISPATCH(reciprocal_stub, &xpu::reciprocal_kernel);
 REGISTER_XPU_DISPATCH(bitwise_not_stub, &xpu::bitwise_not_kernel);
 REGISTER_XPU_DISPATCH(exp_stub, &xpu::exp_kernel);
 REGISTER_XPU_DISPATCH(sigmoid_stub, &xpu::sigmoid_kernel);
+REGISTER_XPU_DISPATCH(sinc_stub, &xpu::sinc_kernel);
 REGISTER_XPU_DISPATCH(logit_stub, &xpu::logit_kernel);
 REGISTER_XPU_DISPATCH(sgn_stub, &xpu::sgn_kernel);
 REGISTER_XPU_DISPATCH(sign_stub, &xpu::sign_kernel);
@@ -61,6 +62,7 @@ REGISTER_XPU_DISPATCH(acos_stub, &xpu::acos_kernel);
 REGISTER_XPU_DISPATCH(acosh_stub, &xpu::acosh_kernel);
 REGISTER_XPU_DISPATCH(erf_stub, &xpu::erf_kernel);
 REGISTER_XPU_DISPATCH(erfc_stub, &xpu::erfc_kernel);
+
 REGISTER_XPU_DISPATCH(erfinv_stub, &xpu::erfinv_kernel);
 REGISTER_XPU_DISPATCH(exp2_stub, &xpu::exp2_kernel);
 REGISTER_XPU_DISPATCH(expm1_stub, &xpu::expm1_kernel);
@@ -76,10 +78,19 @@ REGISTER_XPU_DISPATCH(atan_stub, &xpu::atan_kernel);
 REGISTER_XPU_DISPATCH(atanh_stub, &xpu::atanh_kernel);
 REGISTER_XPU_DISPATCH(cosh_stub, &xpu::cosh_kernel);
 REGISTER_XPU_DISPATCH(nan_to_num_stub, &xpu::nan_to_num_kernel);
+REGISTER_XPU_DISPATCH(frexp_stub, &xpu::frexp_kernel);
 REGISTER_XPU_DISPATCH(round_stub, &xpu::round_kernel);
 REGISTER_XPU_DISPATCH(round_decimals_stub, &xpu::round_decimals_kernel);
 REGISTER_XPU_DISPATCH(floor_stub, &xpu::floor_kernel);
 REGISTER_XPU_DISPATCH(trunc_stub, &xpu::trunc_kernel);
+REGISTER_XPU_DISPATCH(i0_stub, &xpu::i0_kernel);
+REGISTER_XPU_DISPATCH(special_i0e_stub, &xpu::i0e_kernel);
+REGISTER_XPU_DISPATCH(special_i1_stub, &xpu::i1_kernel);
+REGISTER_XPU_DISPATCH(special_i1e_stub, &xpu::i1e_kernel);
+REGISTER_XPU_DISPATCH(special_ndtri_stub, &xpu::ndtri_kernel);
+REGISTER_XPU_DISPATCH(special_log_ndtr_stub, &xpu::log_ndtr_kernel);
+REGISTER_XPU_DISPATCH(special_erfcx_stub, &xpu::erfcx_kernel);
+REGISTER_XPU_DISPATCH(special_entr_stub, &xpu::entr_kernel);
 
 } // namespace native
 } // namespace at

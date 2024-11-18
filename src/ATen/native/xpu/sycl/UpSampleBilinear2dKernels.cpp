@@ -59,7 +59,7 @@ struct UpsampleBilinear2dKernelFunctor {
       const accscalar_t rheight,
       const accscalar_t rwidth,
       const bool align_corners,
-      const PackedTensorAccessor<scalar_t, 4> idata_acc,
+      const PackedTensorAccessor<const scalar_t, 4> idata_acc,
       PackedTensorAccessor<scalar_t, 4> odata_acc,
       int64_t input_height,
       int64_t input_width,
@@ -85,7 +85,7 @@ struct UpsampleBilinear2dKernelFunctor {
   const accscalar_t rheight_;
   const accscalar_t rwidth_;
   const bool align_corners_;
-  const PackedTensorAccessor<scalar_t, 4> in_data_acc_;
+  const PackedTensorAccessor<const scalar_t, 4> in_data_acc_;
   PackedTensorAccessor<scalar_t, 4> out_data_acc_;
   int64_t input_height_;
   int64_t input_width_;
@@ -101,7 +101,7 @@ void launch_upsample_bilinear2d_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
     const bool align_corners,
-    const PackedTensorAccessor<scalar_t, 4> idata_acc,
+    const PackedTensorAccessor<const scalar_t, 4> idata_acc,
     PackedTensorAccessor<scalar_t, 4> odata_acc,
     int64_t input_height,
     int64_t input_width,
