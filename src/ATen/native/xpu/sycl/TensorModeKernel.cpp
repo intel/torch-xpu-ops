@@ -3,6 +3,8 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/TensorCompare.h>
+#include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/TensorModeKernel.h>
 #include <ATen/ops/sort.h>
 #include <ATen/ops/zeros_like.h>
@@ -16,12 +18,6 @@ using namespace at::xpu::detail;
 
 constexpr int64_t MAX_GROUP_SIZE = 256;
 constexpr int64_t MAX_GRID_SIZE = 65535LL;
-
-// Used for a segmented reduction
-struct ModeUnsignedBoolPair {
-  unsigned int val;
-  bool flag;
-};
 
 template <typename integer>
 inline integer ceil_div(integer n, integer m) {
@@ -141,6 +137,98 @@ struct BitonicSortFn {
   }
 };
 
+// Used for a segmented reduction
+struct ModeUnsignedBoolPair {
+  unsigned int val;
+  bool flag;
+};
+
+// In the kernel below, we have a common pattern of reducing (unsigned int,
+// unsigned int) pairs of data
+struct ModeUnsignedPair {
+  unsigned int val;
+  unsigned int index;
+};
+
+// Inclusive Scan via an upsweep/downsweep mechanism. Assumes:
+//
+// 1. Power2ScanSize is a power of 2. This code still works for collections that
+// do not exactly contain a power of 2 number of elements, simply round up to
+// the nearest power of 2 and then call.
+//
+// 2. That there are two-elements per thread, i.e. the size of the smem storage
+// is 2 * groupDim.x * sizeof(T).
+//
+// Consider a (+)-Scan on the following elements:
+//
+// Upsweep:
+//
+//    0  1  2  3  4  5  6  7
+//       1     5     9    13
+//             6          22
+//                        28
+//
+// Downsweep:
+//                  15
+//         3     10    21
+template <int Power2ScanSize, typename T, class BinaryOp>
+inline void inclusivePrefixScan(
+    sycl::nd_item<3> item,
+    T* smem,
+    BinaryOp binop) {
+  // Reduce step ("upsweep")
+#pragma unroll
+  for (int stride = 1; stride < Power2ScanSize; stride <<= 1) {
+    int index = (item.get_local_id(2) + 1) * stride * 2 - 1;
+    if (index < Power2ScanSize) {
+      smem[index] = binop(smem[index], smem[index - stride]);
+    }
+    item.barrier(sycl_local_fence);
+  }
+
+  // Post-reduce step ("downsweep")
+#pragma unroll
+  for (int stride = Power2ScanSize / 4; stride > 0; stride >>= 1) {
+    int index = (item.get_local_id(2) + 1) * stride * 2 - 1;
+    if ((index + stride) < Power2ScanSize) {
+      smem[index + stride] = binop(smem[index + stride], smem[index]);
+    }
+    item.barrier(sycl_local_fence);
+  }
+}
+
+template <typename T>
+struct InclusivePrefixScanFunctor {
+  ModeUnsignedBoolPair operator()(const T& a, const T& b) const {
+    ModeUnsignedBoolPair c;
+    c.val = a.flag ? a.val : a.val + b.val;
+    c.flag = a.flag | b.flag;
+    return c;
+  }
+};
+
+template <int N, typename T, typename ReduceOp>
+inline T reduceGroupWithNThreadLocalReductions(
+    sycl::nd_item<3> item,
+    T* smem,
+    T threadVals[N],
+    const unsigned int numVals,
+    ReduceOp reduceOp,
+    T init) {
+  int offset = item.get_local_id(2) * N;
+  T local = offset < numVals ? threadVals[0] : init;
+
+#pragma unroll
+  for (int i = 1; i < N; ++i) {
+    ++offset;
+    T next = offset < numVals ? threadVals[i] : init;
+    local = reduceOp.combine(local, next);
+  }
+
+  return GroupReduceWithoutBroadcast<T, ReduceOp, 32>(
+      item, local, reduceOp, smem);
+}
+
 template <typename T, unsigned int Power2Size>
 struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(32)]] void operator()(
@@ -150,7 +238,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         item.get_local_id(2); // Second index this thread responsible for
 
     // First, we need to calculate the offset into the sorted Tensor that
-    // represents the start of the slice for this block to calculate the mode
+    // represents the start of the slice for this group to calculate the mode
     // for. This offset is a combination of the gridIndices, and the number of
     // elements in the slice.
     unsigned int groupId = get_linear_group_id<unsigned int>(item);
@@ -231,10 +319,125 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       ubpmem[(tidx + 1) * 2].val = !ubpmem[(tidx + 1) * 2].flag;
     }
     item.barrier(sycl_local_fence); // barrier for ubpmem initialization
+
+    // Next, we perform a segmented prefix sum on the neighboring elements,
+    // where
+    // the presence of a one indicates the start of a segment. In this case B
+    // acts as the segment start flags, and C is the buffer to be summed:
+    //
+    // Input  (C)  = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
+    // Flag   (B)  = [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1]
+    // Output (C)  = [0, 1, 0, 1, 0, 1, 2, 0, 0, 0, 1, 0, 0]
+    //
+    // Afterwards, the (index) components of the ubpmem buffer contain the
+    // lengths of the segments (minus 1), i.e. the counts of each element in the
+    // original input.
+    inclusivePrefixScan<Power2Size, ModeUnsignedBoolPair>(
+        item, ubpmem, InclusivePrefixScanFunctor<ModeUnsignedBoolPair>());
+    // assumes scan syncs at the end
+
+    // Next, we reinterpret the ubpmem buffer as pairs of unsigned integers
+    // (i.e. we treat the boolean flag regions as integers). We initialize these
+    // to represent indices, and we'll call this buffer I
+    struct ModeUnsignedPair* uupmem =
+        reinterpret_cast<struct ModeUnsignedPair*>(ubpmem);
+
+    // At this point, we need to find the maximum element in lengths buffer C.
+    // This element will represent the count (-1) of the mode. Because of the
+    // way we have set up the problem, the index where this mode occurs will
+    // also be the location of the mode value in the sorted array, e.g.
+    //
+    // smem = [0, 0, 1, 1, 1, 2]
+    // C    = [0, 1, 0, 1, 2, 0]
+    // I    = [0, 1, 2, 3, 4, 5]
+    //                     ^
+    //                     maximum value, also aligned with mode = 1
+    //
+    // We perform a group wide max-reduction of the C buffer, but we also need
+    // the indices to come along with it, so we utilize the uupmem construction.
+    //
+    // At the end we need to return the ModeUnsignedPair containing index = 4,
+    // val = 2, which represents the max
+
+    // In practice, we will make each thread locally reduce 2 values in its
+    // registers prior to the global group-wide reduction. Note that instead of
+    // tidx/stidx, we utilize tidx * 2, tidx * 2 + 1, so each thread deals with
+    // adjacent elements. This is because the reduce code below relies on thread
+    // elements to be adjacent.
+    struct ModeUnsignedPair uup[2];
+    uup[0].index = tidx * 2;
+    uup[0].val = ubpmem[tidx * 2].val;
+    uup[1].index = tidx * 2 + 1;
+    uup[1].val = ubpmem[tidx * 2 + 1].val;
+    item.barrier(sycl_local_fence);
+
+    struct ModeUnsignedPair max = {0, 0};
+
+    struct MaxOp {
+      inline ModeUnsignedPair combine(ModeUnsignedPair a, ModeUnsignedPair b)
+          const {
+        return b.val > a.val ? b : a;
+      }
+    } max_op;
+
+    max = reduceGroupWithNThreadLocalReductions<2>(
+        item, uupmem, uup, sliceSize_, max_op, max);
+
+    // Given the above constraints, the mode is the value at the reduced index
+    // in the original sorted element buffer
+    if (tidx == 0) {
+      mode_[0] = smem[max.index];
+    }
+    item.barrier(sycl_local_fence); // broadcast mode
+
+    // Finally, we need to find "an" index of the mode in the input
+    // Tensor. The API does not constrain which index we pick, but here
+    // we always pick the largest index. We store the index if the value
+    // is the mode, or 0 otherwise. Then find the maximum value.
+    //
+    // Again we reduce 2 elements in the thread's registers prior to the
+    // group-wide reduction
+    unsigned mode_index[2] = {0u, 0u};
+    if (tidx * 2 < sliceSize_) {
+      const unsigned idx = tidx * 2;
+      mode_index[0] =
+          c10::load(&input_[linearOffset + idx]) == mode_[0] ? idx : 0u;
+    }
+    if (tidx * 2 + 1 < sliceSize_) {
+      const unsigned idx = tidx * 2 + 1;
+      mode_index[1] =
+          c10::load(&input_[linearOffset + idx]) == mode_[0] ? idx : 0u;
+    }
+
+    struct MaxIndexOp {
+      inline unsigned combine(unsigned a, unsigned b) const {
+        return b > a ? b : a;
+      }
+    } max_index_op;
+
+    int64_t index = reduceGroupWithNThreadLocalReductions<2>(
+        item,
+        reinterpret_cast<unsigned*>(
+            shmem_.template get_multi_ptr<sycl::access::decorated::no>().get()),
+        mode_index,
+        sliceSize_,
+        max_index_op,
+        0u);
+
+    // Finally, we have the mode, and an index where it occurs. We use a single
+    // thread to place this in the appropriate output position
+    if (tidx == 0) {
+      unsigned int outputOffset =
+          at::xpu::detail::IndexToOffset<T, unsigned int>::get(
+              groupId, values_);
+      values_.data[outputOffset] = mode_[0];
+      indices_.data[outputOffset] = index;
+    }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     shmem_ = sycl_local_acc_t<char>(memsize_, cgh);
+    mode_ = sycl_local_acc_t<T>(1, cgh);
   }
 
   ComputeModeKernelFunctor(
@@ -259,6 +462,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   int64_t slices_;
   int64_t memsize_;
   sycl_local_acc_t<char> shmem_;
+  sycl_local_acc_t<T> mode_;
 };
 
 template <int64_t size, typename scalar_t>
@@ -363,6 +567,10 @@ void mode_kernel(
   int64_t slice_size = ensure_nonempty_size(self, dim);
   int64_t slices = self.numel() / slice_size;
 
+  bool use_fast_path = slice_size <= 2 * MAX_GROUP_SIZE &&
+      slices <= MAX_GRID_SIZE * MAX_GRID_SIZE * MAX_GRID_SIZE &&
+      canUse32BitIndexMath(self);
+
   // Resize output value, index Tensors to appropriate sizes (i.e. the same as
   // the input Tensor, except at dim=dimension, the size is 1)
   assert(0 <= dim && static_cast<size_t>(dim) < self_sizes.size());
@@ -391,6 +599,23 @@ void mode_kernel(
     return;
   }
 
+  if (!use_fast_path) {
+    const auto empty_cpu = [](const Tensor& t) {
+      return at::empty({0}, t.options().device(kCPU).pinned_memory(true));
+    };
+    auto values_ = empty_cpu(values);
+    auto indices_ = empty_cpu(indices);
+    const auto self_ = self.to(self.options().device(kCPU).pinned_memory(true));
+    mode_stub(self_.device().type(), values_, indices_, self_, dim, keepdim);
+    if (!keepdim) {
+      values.squeeze_(dim);
+      indices.squeeze_(dim);
+    }
+    values.copy_(values_, /*non_blocking*/ true);
+    indices.copy_(indices_, /*non_blocking*/ true);
+    return;
+  }
+
   // Beginning our optimized implementation. First thing we want to do is to
   // transpose the input Tensor along the sort dimension, and then make it
   // contiguous.
@@ -405,24 +630,16 @@ void mode_kernel(
 
   // Requirements for fused kernel implementation:
   //
-  // 1. sliceSize <= 2 * max threads per block
-  // 2. uses one block per slice, so number of slices must be less than the
-  // maximum number of blocks for a kernel launch
+  // 1. sliceSize <= 2 * max threads per group
+  // 2. uses one group per slice, so number of slices must be less than the
+  // maximum number of groups for a kernel launch
   // 3. Can use 32-bit index math for indexing (mainly just for implementation
   // conciseness, could be changed)
   //
-  if (slice_size <= 2 * MAX_GROUP_SIZE &&
-      slices <= MAX_GRID_SIZE * MAX_GRID_SIZE * MAX_GRID_SIZE &&
-      canUse32BitIndexMath(self)) {
+  TORCH_INTERNAL_ASSERT(use_fast_path == true);
+  {
     launch_fused_mode_kernel(
         values_transposed, indices_transposed, contiguous, slice_size, slices);
-  } else {
-    if (transposed.is_same(contiguous)) {
-      contiguous = contiguous.clone();
-    }
-
-    // launch_apply_mode_kernel(
-    //     values_transposed, indices_transposed, contiguous, dim, ndim);
   }
 
   if (!keepdim) {
