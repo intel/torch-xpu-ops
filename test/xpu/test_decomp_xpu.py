@@ -2,7 +2,7 @@
 
 import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, skipIfCrossRef, _getDefaultRtolAndAtol
+from torch.testing._internal.common_utils import run_tests, skipIfCrossRef
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -11,7 +11,7 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     import test_decomp
-    from test_decomp import TestDecomp,DecompOneOffTests
+    from test_decomp import TestDecomp,DecompOneOffTests, _getDefaultRtolAndAtol
 
 def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs):
     assert orig.dtype == decomp.dtype, f"{i} Operation:  {op}"
