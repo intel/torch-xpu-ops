@@ -1105,10 +1105,6 @@ skip_dict = {
         "test_transformerencoderlayer_xpu_float32",
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
-        "test_TransformerEncoder_empty_xpu",
-        "test_Transformer_empty_xpu",
-        "test_TransformerDecoder_empty_xpu",
-        "test_TransformerDecoderLayer_empty_xpu",
         "test_TransformerDecoderLayer_empty_xpu",
         "test_TransformerDecoder_empty_xpu",
         "test_TransformerEncoder_empty_xpu",
