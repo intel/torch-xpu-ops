@@ -36,11 +36,6 @@ skip_dict = {
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
 
-        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
-        # https://github.com/intel/torch-xpu-ops/issues/357
-        "test_compare_cpu_to_sparse_xpu_float32",
-        "test_variant_consistency_eager_to_sparse_xpu_float32",
-
         # RuntimeError: sparse_dim expected sparse or strided tensor layout but got Sparse
         # Issue https://github.com/intel/torch-xpu-ops/issues/357
         "test_variant_consistency_eager_to_sparse_xpu_complex64",
@@ -638,11 +633,6 @@ skip_dict = {
         "test_conj_view_nn_functional_conv_transpose3d_xpu_complex64",
         "test_neg_view_nn_functional_conv_transpose2d_xpu_float64",
         "test_neg_view_nn_functional_conv_transpose3d_xpu_float64",
-        ### Error #2 in TestMathBitsXPU , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend.
-        # https://github.com/intel/torch-xpu-ops/issues/242 and https://github.com/intel/torch-xpu-ops/issues/240
-        "test_conj_view_to_sparse_xpu_complex64",
-        "test_neg_conj_view_to_sparse_xpu_complex128",
-        "test_neg_view_to_sparse_xpu_float64",
         # Op impl aligns with CUDA on the supported dtypes.
         # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
         # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
@@ -718,25 +708,11 @@ skip_dict = {
     ),
 
     "test_scatter_gather_ops_xpu.py": (
-        # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
-        # https://github.com/intel/torch-xpu-ops/issues/484
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float32",
-        "test_gather_backward_with_empty_index_tensor_sparse_grad_True_xpu_float64",
-        "test_scatter_add__xpu_complex64",
-        "test_scatter_add__xpu_float16",
-        "test_scatter_add__xpu_float32",
-        "test_scatter_add_mult_index_base_xpu_float32",
-        "test_scatter_reduce_mean_xpu_bfloat16",
-        "test_scatter_reduce_mean_xpu_float16",
-        "test_scatter_reduce_mean_xpu_float32",
+        # AssertionError: Tensor-likes are not equal!
+        # Mismatched elements: 2 / 1870 (0.1%)
+        # Greatest absolute difference: 2.220446049250313e-16 at index (14, 9, 4)
+        # Greatest relative difference: 1.7039539596977877e-16 at index (15, 7, 6)
         "test_scatter_reduce_mean_xpu_float64",
-        "test_scatter_reduce_mean_xpu_int16",
-        "test_scatter_reduce_mean_xpu_int32",
-        "test_scatter_reduce_mean_xpu_int64",
-        "test_scatter_reduce_mean_xpu_int8",
-        "test_scatter_reduce_mean_xpu_uint8",
-        "test_gather_backward_deterministic_path_xpu",
-        "test_scatter_add_one_dim_deterministic_xpu",
     ),
 
     "test_autograd_fallback_xpu.py": None,
@@ -3537,19 +3513,7 @@ skip_dict = {
         "test_meta_outplace_unique_consecutive_xpu_bfloat16",
     ),
 
-    "test_type_promotion_xpu.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/357
-        "test_sparse_add_xpu",
-        "test_sparse_div_promotion_xpu_bool",
-        "test_sparse_div_promotion_xpu_int16",
-        "test_sparse_div_promotion_xpu_int16",
-        "test_sparse_div_promotion_xpu_int32",
-        "test_sparse_div_promotion_xpu_int64",
-        "test_sparse_div_promotion_xpu_uint8",
-        "test_sparse_div_xpu",
-        "test_sparse_mul_xpu",
-        "test_sparse_sub_xpu",
-    ),
+    "test_type_promotion_xpu.py": None,
 
     "test_distributions_xpu.py": None,
 
