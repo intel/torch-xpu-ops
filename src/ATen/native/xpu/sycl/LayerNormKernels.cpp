@@ -22,12 +22,12 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
   typedef NormForward<scalar_t, mean_t, weight_t> NF;
   LayerNormForward() = delete;
   LayerNormForward(
-      scalar_t* X_data,
+      const scalar_t* X_data,
       scalar_t* Y_data,
       mean_t* mean_data,
       mean_t* var_data,
-      weight_t* gamma_data,
-      weight_t* beta_data,
+      const weight_t* gamma_data,
+      const weight_t* beta_data,
       accscalar_t eps,
       int64_t M,
       int64_t N)
@@ -73,17 +73,17 @@ class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
-        vec_t X_val = *(
-            reinterpret_cast<vec_t*>(NF::X_data + group_offset + plane_offset));
+        vec_t X_val = *(reinterpret_cast<const vec_t*>(
+            NF::X_data + group_offset + plane_offset));
         weight_vec_t gamma_val, beta_val;
         vec_t Y_val;
         if (NF::gamma_data != nullptr) {
-          gamma_val =
-              *(reinterpret_cast<weight_vec_t*>(NF::gamma_data + plane_offset));
+          gamma_val = *(reinterpret_cast<const weight_vec_t*>(
+              NF::gamma_data + plane_offset));
         }
         if (NF::beta_data != nullptr) {
-          beta_val =
-              *(reinterpret_cast<weight_vec_t*>(NF::beta_data + plane_offset));
+          beta_val = *(reinterpret_cast<const weight_vec_t*>(
+              NF::beta_data + plane_offset));
         }
 
         for (int v = 0; v < vec_size; ++v) {
@@ -120,12 +120,12 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   LayerNormBackward() = delete;
   LayerNormBackward(
-      scalar_t* X_data,
-      scalar_t* dY_data,
+      const scalar_t* X_data,
+      const scalar_t* dY_data,
       scalar_t* dX_data,
-      mean_t* mean_data,
-      mean_t* var_data,
-      weight_t* gamma_data,
+      const mean_t* mean_data,
+      const mean_t* var_data,
+      const weight_t* gamma_data,
       int64_t M,
       int64_t N)
       : NormBackward<scalar_t, mean_t, weight_t>(
@@ -143,12 +143,12 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
   }
 
   LayerNormBackward(
-      scalar_t* X_data,
-      scalar_t* dY_data,
+      const scalar_t* X_data,
+      const scalar_t* dY_data,
       scalar_t* dX_data,
-      mean_t* mean_data,
-      mean_t* var_data,
-      weight_t* gamma_data,
+      const mean_t* mean_data,
+      const mean_t* var_data,
+      const weight_t* gamma_data,
       accscalar_t* a_data,
       accscalar_t* b_data,
       int64_t M,
@@ -190,13 +190,13 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
       if (plane_offset < cfg.problem_size) {
         weight_vec_t gamma_val;
         if (NB::gamma_data != nullptr) {
-          gamma_val =
-              *(reinterpret_cast<weight_vec_t*>(NB::gamma_data + plane_offset));
+          gamma_val = *(reinterpret_cast<const weight_vec_t*>(
+              NB::gamma_data + plane_offset));
         }
-        vec_t dY_val = *(reinterpret_cast<vec_t*>(
+        vec_t dY_val = *(reinterpret_cast<const vec_t*>(
             NB::dY_data + group_offset + plane_offset));
-        vec_t X_val = *(
-            reinterpret_cast<vec_t*>(NB::X_data + group_offset + plane_offset));
+        vec_t X_val = *(reinterpret_cast<const vec_t*>(
+            NB::X_data + group_offset + plane_offset));
         for (int v = 0; v < vec_size; ++v) {
           accscalar_t value = (NB::gamma_data == nullptr)
               ? static_cast<accscalar_t>(dY_val[v])
@@ -239,14 +239,14 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
          j += cfg.workgroup_size * vec_size) {
       index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
       if (plane_offset < (index_t)cfg.problem_size) {
-        vec_t dY_val = *(reinterpret_cast<vec_t*>(
+        vec_t dY_val = *(reinterpret_cast<const vec_t*>(
             NB::dY_data + group_offset + plane_offset));
-        vec_t X_val = *(
-            reinterpret_cast<vec_t*>(NB::X_data + group_offset + plane_offset));
+        vec_t X_val = *(reinterpret_cast<const vec_t*>(
+            NB::X_data + group_offset + plane_offset));
         weight_vec_t gamma_val;
         if (NB::gamma_data != nullptr) {
-          gamma_val =
-              *(reinterpret_cast<weight_vec_t*>(NB::gamma_data + plane_offset));
+          gamma_val = *(reinterpret_cast<const weight_vec_t*>(
+              NB::gamma_data + plane_offset));
         }
 
         vec_t dX_val;
@@ -283,12 +283,14 @@ void _layer_norm_kernel(
   TORCH_CHECK(!gamma.defined() || gamma.numel() == N);
   TORCH_CHECK(!beta.defined() || beta.numel() == N);
 
-  scalar_t* X_data = X.data_ptr<scalar_t>();
+  const scalar_t* X_data = X.const_data_ptr<scalar_t>();
   scalar_t* Y_data = Y.data_ptr<scalar_t>();
   mean_t* mean_data = mean.data_ptr<mean_t>();
   mean_t* var_data = rstd.data_ptr<mean_t>();
-  weight_t* gamma_data = gamma.defined() ? gamma.data_ptr<weight_t>() : nullptr;
-  weight_t* beta_data = beta.defined() ? beta.data_ptr<weight_t>() : nullptr;
+  const weight_t* gamma_data =
+      gamma.defined() ? gamma.const_data_ptr<weight_t>() : nullptr;
+  const weight_t* beta_data =
+      beta.defined() ? beta.const_data_ptr<weight_t>() : nullptr;
 
   auto config = NormConfig(M, N, 1, sizeof(scalar_t));
   bool can_use_32bit_index = canUse32BitIndexMath(X);
@@ -338,8 +340,8 @@ struct GammaBetaBackwardSimpleKernelFunctor
           (group_id * cfg.workgroup_size + local_col_id) * vec_size;
       if (plane_offset < cfg.problem_size) {
         auto offset = row_id * cfg.problem_size + plane_offset;
-        vec_t X_val = *(reinterpret_cast<vec_t*>(X_data + offset));
-        vec_t dY_val = *(reinterpret_cast<vec_t*>(dY_data + offset));
+        vec_t X_val = *(reinterpret_cast<const vec_t*>(X_data + offset));
+        vec_t dY_val = *(reinterpret_cast<const vec_t*>(dY_data + offset));
 #pragma unroll(vec_size)
         for (int v = 0; v < vec_size; ++v) {
           dg_sum1[v] += (dg_data == nullptr)
@@ -411,8 +413,8 @@ struct GammaBetaBackwardSimpleKernelFunctor
       const mean_t* mean_data_,
       const mean_t* var_data_,
       NormConfig cfg_,
-      scalar_t* dY_data_,
-      scalar_t* X_data_,
+      const scalar_t* dY_data_,
+      const scalar_t* X_data_,
       weight_t* dg_data_,
       weight_t* db_data_)
       : mean_data(mean_data_),
@@ -429,8 +431,8 @@ struct GammaBetaBackwardSimpleKernelFunctor
   const mean_t* mean_data;
   const mean_t* var_data;
   NormConfig cfg;
-  scalar_t* dY_data;
-  scalar_t* X_data;
+  const scalar_t* dY_data;
+  const scalar_t* X_data;
   weight_t* dg_data;
   weight_t* db_data;
   sycl_local_acc_t<accscalar_t, 3> local_sum1;
@@ -451,8 +453,8 @@ void vec_gamma_beta_bwd_simple_kernel(
     Tensor& dgamma,
     Tensor& dbeta,
     NormConfig& cfg) {
-  scalar_t* dY_data = dY.data_ptr<scalar_t>();
-  scalar_t* X_data = X.data_ptr<scalar_t>();
+  const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
+  const scalar_t* X_data = X.const_data_ptr<scalar_t>();
   weight_t* dg_data = dgamma.defined() ? dgamma.data_ptr<weight_t>() : nullptr;
   weight_t* db_data = dbeta.defined() ? dbeta.data_ptr<weight_t>() : nullptr;
 
@@ -536,14 +538,15 @@ void _layer_norm_backward_kernel(
   TORCH_CHECK(rstd.numel() == M);
 
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  mean_t* mean_data = mean.data_ptr<mean_t>();
-  mean_t* var_data = rstd.data_ptr<mean_t>();
-  weight_t* gamma_data = gamma.defined() ? gamma.data_ptr<weight_t>() : nullptr;
+  const mean_t* mean_data = mean.const_data_ptr<mean_t>();
+  const mean_t* var_data = rstd.const_data_ptr<mean_t>();
+  const weight_t* gamma_data =
+      gamma.defined() ? gamma.const_data_ptr<weight_t>() : nullptr;
 
   if (grad_input_mask[0]) {
     // backward data
-    scalar_t* X_data = X.data_ptr<scalar_t>();
-    scalar_t* dY_data = dY.data_ptr<scalar_t>();
+    const scalar_t* X_data = X.const_data_ptr<scalar_t>();
+    const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
     scalar_t* dX_data = dX.data_ptr<scalar_t>();
 
     auto config = NormConfig(M, N, 1, sizeof(scalar_t));

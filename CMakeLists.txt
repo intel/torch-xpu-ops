@@ -23,7 +23,9 @@ cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 set(PROJECT_NAME "torch-xpu-ops")
 set(PROJECT_VERSION "2.3.0")
 # Avoid SYCL compiler error
-string(APPEND CMAKE_CXX_FLAGS " -Wno-error=comment")
+if(NOT WIN32)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
+endif()
 
 cmake_policy(SET CMP0048 NEW)
 project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)

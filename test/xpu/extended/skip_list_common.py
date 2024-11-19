@@ -62,7 +62,9 @@ skip_dict = {
     # XPU Tensor fails in copy-on-write cases
     # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
     # https://github.com/intel/torch-xpu-ops/issues/281
-    "test_cow_input",
+    "test_cow_input_addr_xpu_float32",
+    "test_cow_input_cdist_xpu_float32",
+    "test_cow_input_nn_functional_multi_head_attention_forward_xpu_float32",
     # XPU implementation is correct.
     # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
     # std::exp{-inf, inf}, the result is (±0,±0) (signs are unspecified)
@@ -116,10 +118,6 @@ skip_dict = {
     "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_bfloat16",
     # RuntimeError: "compute_index_ranges_weights" not implemented for 'Half'
     "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float16",
-    # AssertionError: False is not true : Argument 0 during forward call unexpectedly materializes. Either set `supports_cow_input_no_materialize_forward=False...
-    "test_cow_input_nn_functional_interpolate_bilinear_xpu_float32",
-    "test_cow_input_nn_functional_interpolate_linear_xpu_float32",
-    "test_cow_input_nn_functional_interpolate_trilinear_xpu_float32",
     #The results of XPU and CUDA are consistent, but the results of CPU and CUDA are inconsistent
     "test_compare_cpu_nn_functional_interpolate_linear_xpu_bfloat16",
     "test_compare_cpu_nn_functional_interpolate_linear_xpu_float16",
@@ -132,8 +130,7 @@ skip_dict = {
     "test_compare_cpu_nn_functional_interpolate_area_xpu_float16",
     # Not all operators are implemented for XPU tested in the case.
     # Retrieve it once the operator is implemented.
-    # Error: The operator 'aten::glu_jvp' is not currently implemented for the XPU device.
-    "test_forward_ad_nn_functional_glu_xpu_float32",
+
     # Precision error.
     # Mismatched elements: 1 / 812 (0.1%)
     # Greatest absolute difference: 0.03125 at index (610,) (up to 0.001 allowed)
