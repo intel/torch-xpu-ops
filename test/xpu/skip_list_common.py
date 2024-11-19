@@ -721,22 +721,6 @@ skip_dict = {
 
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float16",
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float32",
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int32_float64",
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float16",
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float32",
-        "test_EmbeddingBag_per_sample_weights_and_no_offsets_xpu_int64_float64",
-        "test_embedding_backward_xpu_float16",
-        "test_embedding_backward_xpu_float64",
-        "test_embedding_bag_1D_padding_idx_xpu_bfloat16",
-        "test_embedding_bag_1D_padding_idx_xpu_float16",
-        "test_embedding_bag_2D_padding_idx_xpu_bfloat16",
-        "test_embedding_bag_2D_padding_idx_xpu_float16",
-        "test_embedding_bag_bfloat16_xpu_int32_int32",
-        "test_embedding_bag_bfloat16_xpu_int32_int64",
-        "test_embedding_bag_bfloat16_xpu_int64_int32",
-        "test_embedding_bag_bfloat16_xpu_int64_int64",
         "test_embedding_bag_device_xpu_int32_int32_float16",
         "test_embedding_bag_device_xpu_int32_int32_float32",
         "test_embedding_bag_device_xpu_int32_int32_float64",
@@ -749,10 +733,6 @@ skip_dict = {
         "test_embedding_bag_device_xpu_int64_int64_float16",
         "test_embedding_bag_device_xpu_int64_int64_float32",
         "test_embedding_bag_device_xpu_int64_int64_float64",
-        "test_embedding_bag_half_xpu_int32_int32",
-        "test_embedding_bag_half_xpu_int32_int64",
-        "test_embedding_bag_half_xpu_int64_int32",
-        "test_embedding_bag_half_xpu_int64_int64",
         # CUDA implementation has no such functionality due to performance consideration.
         # skipped by CUDA for performance
         # @skipCUDAIf(True, "no out-of-bounds check on CUDA for perf.")
@@ -1072,9 +1052,6 @@ skip_dict = {
         "test_type",
         # rnn fallback to cpu
         "test_cudnn_weight_format",
-        # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build).
-        "test_EmbeddingBag_sparse_cuda",
-        "test_Embedding_sparse_cuda",
         # AssertionError: MultiheadAttention does not support NestedTensor outside of its fast path. The fast path was not hit because some Tensor argument's device is neither one of cpu, cuda or privateuseone
         "test_TransformerEncoderLayer_empty_xpu",
         "test_transformerencoderlayer_xpu_float16",
@@ -1177,12 +1154,6 @@ skip_dict = {
         # c10::NotImplementedError
         "test_autograd_composite_implicit_and_dispatch_registration_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
-        # NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend。
-        "test_sparse_mask_autograd_xpu",
-        "test_sparse_ctor_getter_backward_xpu_float64",
-        "test_sparse_ctor_getter_backward_xpu_complex128",
-        "test_sparse_backward_xpu_float64",
-        "test_sparse_backward_xpu_complex128",
         # AttributeError: module 'torch.xpu' has no attribute
         "test_graph_save_on_cpu_cuda",
         "test_checkpointing_without_reentrant_memory_savings",
@@ -1304,7 +1275,7 @@ skip_dict = {
         "test_mask_layout_sparse_coo_masked_prod_xpu_int64",
         "test_mask_layout_sparse_coo_masked_prod_xpu_int8",
         "test_mask_layout_sparse_coo_masked_prod_xpu_uint8",
-        # NotImplementedError: Could not run 'aten::_values' with arguments from the 'SparseXPU' backend.
+        # NotImplementedError: Could not run 'aten::_to_sparse_csr' with arguments from the 'SparseXPU' backend.
         "test_mask_layout_sparse_coo_masked_sum_xpu_bfloat16",
         "test_mask_layout_sparse_coo_masked_sum_xpu_bool",
         "test_mask_layout_sparse_coo_masked_sum_xpu_complex128",
@@ -1359,7 +1330,7 @@ skip_dict = {
         "test_mask_layout_strided_masked_mean_xpu_float16",
         "test_mask_layout_strided_masked_mean_xpu_float32",
         "test_mask_layout_strided_masked_mean_xpu_float64",
-        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
+        # NotImplementedError: Could not run 'aten::_to_sparse_csr' with arguments from the 'SparseXPU' backend.
         "test_mask_layout_strided_masked_amax_xpu_bfloat16",
         "test_mask_layout_strided_masked_amax_xpu_float16",
         "test_mask_layout_strided_masked_amax_xpu_float32",
@@ -1905,9 +1876,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # NotImplementedError: Could not run 'aten::_to_dense' with arguments from the 'SparseXPU' backend.
-        "test_fn_fwgrad_bwgrad_to_sparse_xpu_float64",
-        "test_forward_mode_AD_to_sparse_xpu_float64",
 
         # issue: https://github.com/intel/torch-xpu-ops/issues/809 
         "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
@@ -2452,9 +2420,6 @@ skip_dict = {
         "test_fn_gradgrad_index_reduce_prod_xpu_float64",
         "test_inplace_gradgrad_index_reduce_mean_xpu_float64",
         "test_inplace_gradgrad_index_reduce_prod_xpu_float64",
-        ### Error #7 in TestBwdGradientsXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
-        "test_fn_grad_to_sparse_xpu_float64",
-        "test_fn_gradgrad_to_sparse_xpu_float64",
 
         # issue: https://github.com/intel/torch-xpu-ops/issues/809
         "test_fn_gradgrad_nn_functional_conv3d_xpu_complex128",
@@ -2499,9 +2464,6 @@ skip_dict = {
         "test_grad_scaling_autocast_foreach2_fused_True_AdamW_xpu_float32",
         "test_grad_scaling_autocast_foreach2_fused_True_Adam_xpu_float32",
         "test_grad_scaling_autocast_foreach2_fused_True_SGD_xpu_float32",
-        ### Error #14 in TestTorchDeviceTypeXPU , totally 2 , NotImplementedError: Could not run 'aten::_sparse_coo_tensor_with_dims_and_tensors' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::_sparse_coo_tensor_with_dims_and_tensors' is only available for these backends: [XPU, Meta, SparseCPU, SparseMeta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastXPU, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
-        "test_grad_scaling_unscale_sparse_xpu_float32",
-        "test_memory_format_empty_like_xpu",
         ### Error #15 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Tensor-likes are not close!
         "test_gradient_all_xpu_float32",
         "test_index_put_non_accumulate_deterministic_xpu",
