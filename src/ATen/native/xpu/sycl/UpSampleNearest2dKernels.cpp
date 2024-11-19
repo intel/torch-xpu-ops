@@ -279,8 +279,8 @@ void upsample_nearest2d_backward_kernel(
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
-          const scalar_t* go = grad_output.data_ptr<scalar_t>();
-          scalar_t* gi = grad_input.data_ptr<scalar_t>();
+          const scalar_t* go = grad_output.const_data_ptr<scalar_t>();
+          scalar_t* gi = grad_input.mutable_data_ptr<scalar_t>();
           if (is_exact) {
             upsample_nearest2d_backward_channels_last_frame<
                 scalar_t,
@@ -331,8 +331,8 @@ void upsample_nearest2d_backward_kernel(
         [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
-          auto idata = grad_input_c.data_ptr<scalar_t>();
-          auto odata = grad_output.data_ptr<scalar_t>();
+          auto idata = grad_input_c.mutable_data_ptr<scalar_t>();
+          auto odata = grad_output.const_data_ptr<scalar_t>();
           if (is_exact) {
             upsample_nearest2d_backward_frame<scalar_t, accscalar_t>(
                 n,
@@ -626,8 +626,8 @@ void upsample_nearest2d_kernel(
         input.scalar_type(),
         "upsample_nearest2d_channels_last_xpu",
         [&] {
-          const scalar_t* idata = input.data_ptr<scalar_t>();
-          scalar_t* odata = output.data_ptr<scalar_t>();
+          const scalar_t* idata = input.const_data_ptr<scalar_t>();
+          scalar_t* odata = output.mutable_data_ptr<scalar_t>();
           if (is_exact) {
             upsample_nearest2d_channels_last_frame<scalar_t>(
                 idata,
@@ -672,8 +672,8 @@ void upsample_nearest2d_kernel(
         input.scalar_type(),
         "upsample_nearest2d_xpu",
         [&] {
-          auto idata = input.data_ptr<scalar_t>();
-          auto odata = output_c.data_ptr<scalar_t>();
+          auto idata = input.const_data_ptr<scalar_t>();
+          auto odata = output_c.mutable_data_ptr<scalar_t>();
           if (is_exact) {
             upsample_nearest2d_frame<scalar_t>(
                 idata,

@@ -56,7 +56,7 @@ class IndexSelectScalarFunctor {
  public:
   void operator()(
       ValType* dst,
-      ValType* src,
+      const ValType* src,
       int64_t dst_off,
       int64_t src_off,
       int64_t idx,
@@ -75,7 +75,7 @@ static inline void _index_select_kernel(
     DstInfo& dst_info,
     IdxInfo& index_info,
     int64_t dim) {
-  using scalar_t = typename SrcInfo::scalar_t;
+  using scalar_t = typename DstInfo::scalar_t;
   using IdxConfig = IndexKernelConfig<
       SrcInfo,
       DstInfo,
@@ -157,8 +157,8 @@ void index_select_kernel(
       "index_select(): Source and result must have the same scalar type");
 
   AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "index_select", [&] {
-    TensorInfo<index_t, int64_t> index_info =
-        tensorInfoIfScalar(getTensorInfo<index_t, int64_t>(indices));
+    TensorInfo<const index_t, int64_t> index_info =
+        tensorInfoIfScalar(getTensorInfo<const index_t, int64_t>(indices));
     index_info.collapseDims();
 
     auto new_size = src.sizes().vec();
@@ -180,13 +180,13 @@ void index_select_kernel(
         AT_WRAP([&] {
           TensorInfo<scalar_t, int64_t> dst_info =
               tensorInfoIfScalar(getTensorInfo<scalar_t, int64_t>(dst));
-          TensorInfo<scalar_t, int64_t> src_info = tensorInfoIfScalar(
-              getTensorInfo<scalar_t, int64_t>(src.contiguous()));
+          TensorInfo<const scalar_t, int64_t> src_info = tensorInfoIfScalar(
+              getTensorInfo<const scalar_t, int64_t>(src.contiguous()));
           int new_indexing_dim = src_info.collapseDims(dim);
 
-          using SrcInfo = TensorInfo<scalar_t, int64_t>;
+          using SrcInfo = TensorInfo<const scalar_t, int64_t>;
           using DstInfo = TensorInfo<scalar_t, int64_t>;
-          using IdxInfo = TensorInfo<index_t, int64_t>;
+          using IdxInfo = TensorInfo<const index_t, int64_t>;
 
           // Improve efficiency of generated native instructions for contiguous.
           // See comm/TensorInfo.h
@@ -207,6 +207,7 @@ void index_select_kernel(
         }),
         AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+	AT_EXPAND(AT_FLOAT8_TYPES),
         kComplexHalf,
         kHalf,
         kBool,
@@ -301,7 +302,7 @@ template <typename ValType>
 struct IndexAddScalarFunctor {
   void operator()(
       ValType* dst,
-      ValType* src,
+      const ValType* src,
       int64_t dst_off,
       int64_t src_off,
       int64_t idx,
@@ -314,7 +315,7 @@ template <>
 struct IndexAddScalarFunctor<bool> {
   void operator()(
       bool* dst,
-      bool* src,
+      const bool* src,
       int64_t dst_off,
       int64_t src_off,
       int64_t idx,
@@ -392,12 +393,12 @@ void index_add_kernel(
       "index_add_xpu",
       [&] {
         AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
-          TensorInfo<index_t, int64_t> index_info =
-              getTensorInfo<index_t, int64_t>(index);
+          TensorInfo<const index_t, int64_t> index_info =
+              getTensorInfo<const index_t, int64_t>(index);
           index_info.collapseDims();
 
-          TensorInfo<scalar_t, int64_t> src_info =
-              getTensorInfo<scalar_t, int64_t>(source_);
+          TensorInfo<const scalar_t, int64_t> src_info =
+              getTensorInfo<const scalar_t, int64_t>(source_);
 
           TensorInfo<scalar_t, int64_t> dst_info =
               getTensorInfo<scalar_t, int64_t>(self_);
@@ -427,7 +428,7 @@ template <typename ValType>
 struct IndexFillScalarFunctor {
   void operator()(
       ValType* dst,
-      ValType* src,
+      const ValType* src,
       int64_t dst_off,
       int64_t src_off,
       int64_t idx,
@@ -478,8 +479,8 @@ void index_fill_kernel(
       self_restrided.scalar_type(),
       "index_fill_xpu",
       [&] {
-        TensorInfo<int64_t, int64_t> index_info =
-            getTensorInfo<int64_t, int64_t>(index);
+        TensorInfo<const int64_t, int64_t> index_info =
+            getTensorInfo<const int64_t, int64_t>(index);
         index_info.collapseDims();
 
         TensorInfo<scalar_t, int64_t> dst_info =
@@ -487,7 +488,7 @@ void index_fill_kernel(
         int new_indexing_dim = dst_info.collapseDims(dim);
 
         // No used in index kernel frame for index_fill.
-        auto src_info = TensorInfo<scalar_t, int64_t>();
+        auto src_info = TensorInfo<const scalar_t, int64_t>();
 
         using IdxConfig = IndexKernelConfig<
             decltype(src_info),
@@ -510,18 +511,25 @@ void index_fill_kernel(
 
 template <typename scalar_t>
 struct IndexPutAccumulateFunctor {
-  void operator()(char* out_data, char* in_data, int64_t offset) const {
-    sycl_global_ptr<scalar_t> out_ptr =
-        sycl_global_ptr<scalar_t>((scalar_t*)(out_data + offset));
-    auto in = *(scalar_t*)in_data;
+  void operator()(
+      char* const out_data,
+      const char* const in_data,
+      int64_t offset) const {
+    sycl_global_ptr<scalar_t> out_ptr = sycl_global_ptr<scalar_t>(
+        reinterpret_cast<scalar_t*>(out_data + offset));
+    auto in = *reinterpret_cast<const scalar_t*>(in_data);
     atomicAdd(out_ptr, in);
   }
 };
 
 template <typename scalar_t>
 struct IndexPutFunctor {
-  void operator()(char* out_data, char* in_data, int64_t offset) const {
-    *(scalar_t*)(out_data + offset) = *(scalar_t*)in_data;
+  void operator()(
+      char* const out_data,
+      const char* const in_data,
+      int64_t offset) const {
+    *reinterpret_cast<scalar_t*>(out_data + offset) =
+        *reinterpret_cast<const scalar_t*>(in_data);
   }
 };
 
@@ -626,7 +634,7 @@ void index_put_deterministic_kernel(
         orig_indices.data_ptr<int64_t>() + linearIndex.numel(),
         (int64_t)0);
     pstl::sort<int64_t, int64_t>(
-        linearIndex.data_ptr<int64_t>(),
+        linearIndex.const_data_ptr<int64_t>(),
         sorted_indices.data_ptr<int64_t>(),
         orig_indices.data_ptr<int64_t>(),
         linearIndex.numel(),
@@ -646,10 +654,10 @@ void index_put_deterministic_kernel(
         "index_put_deterministic_kernel",
         [&] {
           launch_index_put_deterministic_kernel<scalar_t>(
-              sorted_indices.data_ptr<int64_t>(),
-              orig_indices.data_ptr<int64_t>(),
-              expandedValue.data_ptr<scalar_t>(),
-              src_.data_ptr<scalar_t>(),
+              sorted_indices.mutable_data_ptr<int64_t>(),
+              orig_indices.mutable_data_ptr<int64_t>(),
+              expandedValue.const_data_ptr<scalar_t>(),
+              src_.mutable_data_ptr<scalar_t>(),
               num_indices,
               sliceSize,
               strideBefore,
@@ -757,7 +765,7 @@ class IndexCopyScalarFunctor {
  public:
   void operator()(
       ValType* dst,
-      ValType* src,
+      const ValType* src,
       int64_t dst_off,
       int64_t src_off,
       int64_t idx,
@@ -772,7 +780,7 @@ static inline void _index_copy_kernel(
     DstInfo& dst_info,
     IdxInfo& index_info,
     int64_t dim) {
-  using scalar_t = typename SrcInfo::scalar_t;
+  using scalar_t = typename DstInfo::scalar_t;
   using IdxConfig = IndexKernelConfig<
       SrcInfo,
       DstInfo,
@@ -822,12 +830,12 @@ static inline void index_copy_impl(
     return;
   }
 
-  TensorInfo<int64_t, int64_t> indices_info =
-      getTensorInfo<int64_t, int64_t>(indices);
+  TensorInfo<const int64_t, int64_t> indices_info =
+      getTensorInfo<const int64_t, int64_t>(indices);
   indices_info.collapseDims();
 
-  TensorInfo<scalar_t, int64_t> src_info =
-      getTensorInfo<scalar_t, int64_t>(source);
+  TensorInfo<const scalar_t, int64_t> src_info =
+      getTensorInfo<const scalar_t, int64_t>(source);
 
   TensorInfo<scalar_t, int64_t> dst_info =
       getTensorInfo<scalar_t, int64_t>(dst);
@@ -1055,10 +1063,10 @@ struct TakeFunctor {
   void operator()(scalar_t& iterated, const index_t offset) const {
     iterated = indexed_ptr_[offset];
   }
-  TakeFunctor(scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
+  TakeFunctor(const scalar_t* indexed_ptr) : indexed_ptr_(indexed_ptr) {}
 
  private:
-  scalar_t* indexed_ptr_;
+  const scalar_t* indexed_ptr_;
 };
 
 void take_kernel(TensorIterator& iter, const TensorBase& input) {
@@ -1073,7 +1081,7 @@ void take_kernel(TensorIterator& iter, const TensorBase& input) {
             canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
             "take_xpu_index",
             [&] {
-              scalar_t* indexed_ptr = input.template data_ptr<scalar_t>();
+              const scalar_t* indexed_ptr = input.template const_data_ptr<scalar_t>();
               TakeFunctor<scalar_t, index_t> f(indexed_ptr);
               take_put_kernel_template<scalar_t, index_t>(iter, input, f);
             });
