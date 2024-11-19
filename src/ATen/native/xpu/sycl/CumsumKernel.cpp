@@ -17,7 +17,7 @@ void launch_cumsum_kernel(
       "cumsum_xpu",
       [&]() {
         scalar_t init = 0;
-        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
+        scan<INCLUSIVE_TYPE, const scalar_t, scalar_t>(
             result, self, dim, init, std::plus<scalar_t>());
       });
 }

@@ -17,7 +17,7 @@ void launch_cumprod_kernel(
       "cumprod_xpu",
       [&]() {
         scalar_t init = 1;
-        scan<INCLUSIVE_TYPE, scalar_t, scalar_t>(
+        scan<INCLUSIVE_TYPE, const scalar_t, scalar_t>(
             result, self, dim, init, std::multiplies<scalar_t>());
       });
 }

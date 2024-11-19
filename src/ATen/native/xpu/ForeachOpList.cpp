@@ -76,7 +76,7 @@ FOREACH_BINARY_OP_LIST(clamp_min, true);
 FOREACH_BINARY_OP_LIST(pow, true);
 
 #define FOREACH_POINTWISE_OP_TENSOR(NAME)                                  \
-  std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_xpu(             \
+  std::vector<Tensor> foreach_tensor_##NAME##_tensor_xpu(                  \
       TensorList input,                                                    \
       TensorList tensors1,                                                 \
       TensorList tensors2,                                                 \
@@ -95,7 +95,7 @@ FOREACH_BINARY_OP_LIST(pow, true);
         input, tensors1, tensors2, scalars);                               \
   }                                                                        \
                                                                            \
-  void foreach_tensor_##NAME##_list_kernel_xpu_(                           \
+  void foreach_tensor_##NAME##_tensor_xpu_(                                \
       TensorList input,                                                    \
       TensorList tensors1,                                                 \
       TensorList tensors2,                                                 \

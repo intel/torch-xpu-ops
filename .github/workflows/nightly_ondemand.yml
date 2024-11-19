@@ -82,7 +82,11 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:

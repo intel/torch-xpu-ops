@@ -30,6 +30,31 @@ void glu_kernel(TensorIteratorBase& iter) {
       [&] { gpu_kernel(iter, GluFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct GluJvpFunctor {
+  using opmath_t = at::opmath_type<scalar_t>;
+  scalar_t operator()(scalar_t res_, scalar_t b_, scalar_t da_, scalar_t db_)
+      const {
+    const opmath_t res = res_;
+    const opmath_t b = b_;
+    const opmath_t da = da_;
+    const opmath_t db = db_;
+    const opmath_t one = opmath_t(1);
+
+    const opmath_t sig_b = one / (one + std::exp(-b));
+    return (da * sig_b + res * (db - sig_b * db));
+  }
+};
+
+void glu_jvp_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::BFloat16,
+      at::ScalarType::Half,
+      iter.dtype(),
+      "glu_xpu",
+      [&] { gpu_kernel(iter, GluJvpFunctor<scalar_t>()); });
+}
+
 // Byte offsets don't require multiplication by sizeof(T), so are slightly
 // cheaper. For fixed offsets, this removes all penalty from 64-bit indexing.
 template <typename T>
