@@ -1222,6 +1222,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/731
         "test_profiler",
         "test_record_function",
+        # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
+        # https://github.com/intel/torch-xpu-ops/issues/1071
+        "test_reentrant_parent_error_on_cpu_xpu",
         # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
         "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
@@ -3502,12 +3505,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_dispatch_symbolic_meta_outplace_nn_functional_local_response_norm_xpu_int64",
         "test_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        # _embedding_bag_forward_only: RuntimeError: output 2: meta disagrees with real impl:
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_meta_outplace_nn_functional_embedding_bag_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_embedding_bag_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_embedding_bag_xpu_float",
         # RuntimeError: output 0: meta disagrees with real impl:
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
