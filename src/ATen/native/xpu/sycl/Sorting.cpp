@@ -290,11 +290,11 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     index_t indicesSliceStartIndex =
         IndexToOffset<int64_t, index_t>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
-    scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
+    const scalar_t* inputSliceStart = in_data_ + inputSliceStartIndex;
 
     // Find the k-th highest element in our input
     scalar_t kValue = static_cast<scalar_t>(0);
@@ -303,7 +303,7 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         typename TopKTypeConfig<scalar_t>::RadixType,
         index_t,
         false>(
-        (sycl_global_ptr<scalar_t>)inputSliceStart,
+        inputSliceStart,
         k,
         inputSliceSize_,
         inputWithinSliceStride_,
@@ -342,12 +342,12 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   GatherKthValueKernelFunctor(
       TensorInfo<scalar_t, index_t> values,
       TensorInfo<int64_t, index_t> indices,
-      TensorInfo<scalar_t, index_t> input,
+      TensorInfo<const scalar_t, index_t> input,
       index_t inputSliceSize,
       index_t numInputSlices,
       index_t inputWithinSliceStride,
       index_t k,
-      scalar_t* in_data,
+      const scalar_t* in_data,
       scalar_t* values_data,
       int64_t* indices_data)
       : values_(values),
@@ -364,12 +364,12 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   TensorInfo<scalar_t, index_t> values_;
   TensorInfo<int64_t, index_t> indices_;
-  TensorInfo<scalar_t, index_t> input_;
+  TensorInfo<const scalar_t, index_t> input_;
   index_t inputSliceSize_;
   index_t numInputSlices_;
   index_t inputWithinSliceStride_;
   index_t k;
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   scalar_t* values_data_;
   int64_t* indices_data_;
   sycl_local_acc_t<int> smem_;
@@ -411,7 +411,7 @@ void gatherMedian(
 // Finds the rank k element, and its index, of the values along dimension dim
 template <typename scalar_t, typename index_t, int Dim>
 void gatherKthValue(
-    TensorInfo<scalar_t, index_t> input,
+    TensorInfo<const scalar_t, index_t> input,
     index_t inputSliceSize,
     index_t k,
     index_t numInputSlices,
@@ -478,7 +478,7 @@ struct KthValueLauncher {
       int collapse_values_dim,
       TensorInfo<int64_t, index_t> indices_info,
       int collapse_indices_dim,
-      TensorInfo<scalar_t, index_t> self_info,
+      TensorInfo<const scalar_t, index_t> self_info,
       int collapse_self_dim,
       int64_t num_slices,
       int64_t slice_size) {
@@ -536,7 +536,7 @@ void launch_kthvalue_kernel(
                     canUse32BitIndexMath(indices)
                 ? ScalarType::Int
                 : ScalarType::Long,
-            "kth_value_launcher",
+            "kth_value_launcher_xpu",
             [&] {
               run_launcher<scalar_t, index_t>(
                   values, indices, self, dim, KthValueLauncher(k));
