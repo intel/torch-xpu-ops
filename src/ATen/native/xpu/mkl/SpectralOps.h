@@ -2,13 +2,13 @@
 
 namespace at::native::xpu {
 
-Tensor _fft_c2c_mkl(
+TORCH_XPU_API Tensor _fft_c2c_mkl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward);
 
-Tensor& _fft_c2c_mkl_out(
+TORCH_XPU_API Tensor& _fft_c2c_mkl_out(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,

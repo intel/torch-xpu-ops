@@ -49,7 +49,7 @@ if((ONEMKL_INCLUDE_DIR STREQUAL "ONEMKL_INCLUDE_DIR-NOTFOUND")
 endif()
 
 if(WIN32)
-  set(MKL_LIB_NAMES "mkl_intel_lp64" "mkl_intel_thread" "mkl_core" "mkl_sycl")
+  set(MKL_LIB_NAMES "mkl_sycl" "mkl_intel_lp64" "mkl_intel_thread" "mkl_core")
 else()
   set(MKL_LIB_NAMES "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core" "mkl_sycl_dft")
 endif()
@@ -57,7 +57,7 @@ endif()
 foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
   find_library(
     ${LIB_NAME}_library
-    NAMES ${LIB_NAME}
+    NAMES ${LIB_NAME}.lib
     HINTS ${ONEMKL_LIB_DIR}
     NO_CMAKE_PATH NO_CMAKE_ENVIRONMENT_PATH)
   list(APPEND ONEMKL_LIBRARIES ${${LIB_NAME}_library})
