@@ -418,16 +418,16 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
 
-    if (output_x >= output_width_ || output_y >= output_height_) {
-      return;
-    }
+    // if (output_x >= output_width_ || output_y >= output_height_) {
+    //   return;
+    // }
 
     const int interp_height = (int)ceilf(support_h_) * 2 + 1;
     const int interp_width = (int)ceilf(support_w_) * 2 + 1;
 
     // threadIdx.x + blockIdx.x * blockDim.x;
     // item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    auto ptr = shared_.template get_multi_ptr<sycl::access::decorated::no>().get();
+    auto ptr = (scalar_t*) shared_.template get_multi_ptr<sycl::access::decorated::no>().get();
     scalar_t* wx = ptr + interp_width * item.get_local_id(2);
     scalar_t* wy = ptr + interp_width * item.get_local_range(2) + interp_height * item.get_local_id(1);
     const int offset = interp_width * item.get_local_range(2) + interp_height * item.get_local_range(1);
@@ -435,12 +435,15 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     int xmin, xsize, ymin, ysize;
     accscalar_t xcenter, ycenter;
-    upsample_antialias::_compute_weights_span(
-      output_x, input_width_, width_scale_, support_w_, xmin, xsize, xcenter);
-    upsample_antialias::_compute_weights_span(
-      output_y, input_height_, height_scale_, support_h_, ymin, ysize, ycenter);
 
-    if (item.get_local_id(1) == 0)
+    if (output_x < output_width_ && output_y < output_height_) {
+      upsample_antialias::_compute_weights_span(
+        output_x, input_width_, width_scale_, support_w_, xmin, xsize, xcenter);
+      upsample_antialias::_compute_weights_span(
+        output_y, input_height_, height_scale_, support_h_, ymin, ysize, ycenter);
+    }
+
+    if (output_x < output_width_ && output_y < output_height_ && item.get_local_id(1) == 0)
     {
       // All threadIdx.y have the same wx weights
       upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
@@ -452,7 +455,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           xsize);
     }
 
-    if (item.get_local_id(2) == 0)
+    if (output_x < output_width_ && output_y < output_height_ && item.get_local_id(2) == 0)
     {
       // All threadIdx.x have the same wy weights
       upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
@@ -466,23 +469,25 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     item.barrier(sycl_local_fence);
 
-    const scalar_t * buffer1;
-    auto odata = odata_;
+    if (output_x < output_width_ && output_y < output_height_) {
+      const scalar_t * buffer1;
+      auto odata = odata_;
 
-    // Parallelized across batch/channels
-    for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
-      int n = i / channels_;
-      int c = i % channels_;
-      // interpolate on y-axis for ymin to ymin + ysize
-      for (int y = 0; y < ysize; y++) {
-        buffer1 = &(idata_[n][c][ymin + y][xmin]);
-        buffer2[y] = static_cast<scalar_t>(
+      // Parallelized across batch/channels
+      for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
+        int n = i / channels_;
+        int c = i % channels_;
+        // interpolate on y-axis for ymin to ymin + ysize
+        for (int y = 0; y < ysize; y++) {
+          buffer1 = &(idata_[n][c][ymin + y][xmin]);
+          buffer2[y] = static_cast<scalar_t>(
             upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
                 buffer1, wx, xsize));
-      }
-      odata[n][c][output_y][output_x] = static_cast<scalar_t>(
+        }
+        odata[n][c][output_y][output_x] = static_cast<scalar_t>(
           upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
               buffer2, wy, ysize));
+      }
     }
   }
 
@@ -596,7 +601,7 @@ void upsample_gen2d_aa_frame(
         channels,
         support_h,
         support_w,
-        shmem_size);
+        weights_per_block);
 
   sycl_kernel_submit(
     sycl::range<3>(grid_z, grid_y, grid_x),
@@ -631,7 +636,7 @@ void upsample_gen2d_aa_out_kernel(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       input.scalar_type(),
-      "upsample_gen2d_aa_xpu",
+      "upsample_bilinear2d_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         auto idata = input.packed_accessor64<const scalar_t, 4>();
