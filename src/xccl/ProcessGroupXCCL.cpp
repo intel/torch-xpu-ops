@@ -2,7 +2,7 @@
 
 #include <comm/XPUGuard.h>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
-#include <torch/csrc/distributed/c10d/ProcessGroupXCCL.hpp>
+#include <xccl/ProcessGroupXCCL.hpp>
 
 namespace c10d {
 
@@ -1792,4 +1792,3 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
 } // namespace c10d
 
 #endif // USE_C10D_XCCL
-

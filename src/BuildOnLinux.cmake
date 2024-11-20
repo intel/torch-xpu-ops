@@ -33,6 +33,7 @@ if(BUILD_SEPARATE_OPS)
         ${xccl_lib}
         SHARED
         CXX_SOURCES ${xccl_src})  
+      target_compile_definitions(${xccl_lib} PRIVATE USE_C10D_XCCL)
       target_link_libraries(torch_xpu_ops PUBLIC ${xccl_lib})
       list(APPEND TORCH_XPU_OPS_LIBRARIES ${xccl_lib})
       install(TARGETS ${xccl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}") 
@@ -123,6 +124,7 @@ else()
       ${xccl_lib}
       SHARED
       CXX_SOURCES ${ATen_XPU_XCCL_SRCS})
+    target_compile_definitions(${xccl_lib} PRIVATE USE_C10D_XCCL)
     target_link_libraries(torch_xpu_ops PUBLIC ${xccl_lib})
     target_link_libraries(torch_xpu_ops PRIVATE torch::xccl)
     install(TARGETS ${xccl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")

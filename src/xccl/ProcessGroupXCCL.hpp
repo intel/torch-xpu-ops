@@ -368,5 +368,30 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 };
 } // namespace c10d
 
+namespace {
+inline std::string reduceOpToString(c10d::ReduceOp op) {
+  switch (op) {
+    case c10d::ReduceOp::SUM:
+      return "SUM";
+    case c10d::ReduceOp::PRODUCT:
+      return "PRODUCT";
+    case c10d::ReduceOp::MIN:
+      return "MIN";
+    case c10d::ReduceOp::MAX:
+      return "MAX";
+    case c10d::ReduceOp::BAND:
+      return "BAND";
+    case c10d::ReduceOp::BOR:
+      return "BOR";
+    case c10d::ReduceOp::BXOR:
+      return "BXOR";
+    case c10d::ReduceOp::AVG:
+      return "AVG";
+    case c10d::ReduceOp::PREMUL_SUM:
+      return "PREMUL_SUM";
+    default:
+      return "UNKNOWN";
+  }
+}
+} // namespace
 #endif // USE_C10D_XCCL
-
