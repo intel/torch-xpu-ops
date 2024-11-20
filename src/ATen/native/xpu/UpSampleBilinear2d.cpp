@@ -6,7 +6,9 @@
 
 #include <xpu/ATen/ops/upsample_bilinear2d_backward_native.h>
 #include <xpu/ATen/ops/upsample_bilinear2d_native.h>
+#include <xpu/ATen/ops/_upsample_bilinear2d_aa_backward_native.h>
 #include <xpu/ATen/ops/_upsample_bilinear2d_aa_native.h>
+#include <xpu/ATen/ops/_upsample_bicubic2d_aa_backward_native.h>
 #include <xpu/ATen/ops/_upsample_bicubic2d_aa_native.h>
 
 namespace at {

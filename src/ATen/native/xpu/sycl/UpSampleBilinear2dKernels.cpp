@@ -591,6 +591,7 @@ struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTIO
 
     if (output_x < output_width_ && output_y < output_height_) {
       // Parallelized across batch/channels
+      auto idata = idata_;
       for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
         int n = i / channels_;
         int c = i % channels_;
@@ -598,7 +599,7 @@ struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTIO
         for (int y = 0; y < ysize; y++) {
           for (int x = 0; x < xsize; x++) {
             upsample_increment_value_bounded<scalar_t, accscalar_t>(
-                idata_,
+                idata,
                 n,
                 c,
                 input_height_,
@@ -686,8 +687,8 @@ void launch_upsample_gen2d_aa_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   auto total_threads = syclMaxWorkItemsPerTile();
-  // TODO: test if 256 really works better
-  int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
+  int maxThreadsPerBlock = syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>();
+  // int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
   int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
 
   int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
@@ -750,8 +751,8 @@ void launch_upsample_gen2d_aa_backward_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   auto total_threads = syclMaxWorkItemsPerTile();
-  // TODO: test if 256 really works better
-  int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
+  int maxThreadsPerBlock = syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>();
+  // int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
   int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
   int block_y = maxThreadsPerBlock / block_x;
 
@@ -873,8 +874,8 @@ void upsample_gen2d_aa_backward_out_kernel(
   int output_width = output_size[1];
   int input_height = input_size[2];
   int input_width = input_size[3];
-  int nbatch = input.size[0];
-  int channels = input.size[1];
+  int nbatch = input_size[0];
+  int channels = input_size[1];
 
   Tensor grad_output = grad_output_.contiguous();
   grad_input.zero_();
@@ -887,12 +888,12 @@ void upsample_gen2d_aa_backward_out_kernel(
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
-      input.scalar_type(),
+      grad_output.scalar_type(),
       "upsample_bilinear2d_xpu",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        auto idata = input.packed_accessor64<scalar_t, 4>();
-        auto odata = output_c.packed_accessor64<const scalar_t, 4>();
+        auto idata = grad_input.packed_accessor64<scalar_t, 4>();
+        auto odata = grad_output.packed_accessor64<const scalar_t, 4>();
 
         const accscalar_t height_scale = area_pixel_compute_scale<accscalar_t>(
             input_height, output_height, align_corners, scales_h);
@@ -934,7 +935,7 @@ void _upsample_bilinear2d_aa_out_kernel(
 
 void _upsample_bilinear2d_aa_backward_out_kernel(
     const Tensor& grad_input,
-    const Tensor& grad_output_,
+    const Tensor& grad_output,
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
@@ -957,7 +958,7 @@ void _upsample_bicubic2d_aa_out_kernel(
 
 void _upsample_bicubic2d_aa_backward_out_kernel(
     const Tensor& grad_input,
-    const Tensor& grad_output_,
+    const Tensor& grad_output,
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
