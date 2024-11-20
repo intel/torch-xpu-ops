@@ -53,7 +53,7 @@ endif()
 
 if(NOT WIN32 AND BUILD_WITH_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
-  set(USE_C10D_XCCL)
+  set(USE_C10D_XCCL ON)
 endif()
 
 if(BUILD_TEST)

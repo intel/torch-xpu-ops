@@ -29,14 +29,14 @@ if(BUILD_SEPARATE_OPS)
     foreach(xccl_src ${ATen_XPU_XCCL_SRCS})
       get_filename_component(name ${xccl_src} NAME_WLE REALPATH)
       set(xccl_lib torch-xpu-ops-xccl-${name})
-      target_link_libraries(xccl_lib PRIVATE torch::xccl)
       sycl_add_library(
         ${xccl_lib}
         SHARED
         CXX_SOURCES ${xccl_src})  
       target_link_libraries(torch_xpu_ops PUBLIC ${xccl_lib})
       list(APPEND TORCH_XPU_OPS_LIBRARIES ${xccl_lib})
-      install(TARGETS ${xccl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")  
+      install(TARGETS ${xccl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}") 
+    target_link_libraries(torch_xpu_ops PRIVATE torch::xccl)
     endforeach()
   endif()
 else()
@@ -119,12 +119,12 @@ else()
   install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   if(USE_C10D_XCCL)
     set(xccl_lib torch_xpu_ops_xccl)
-    target_link_libraries(xccl_lib PRIVATE torch::xccl)
     sycl_add_library(
       ${xccl_lib}
       SHARED
       CXX_SOURCES ${ATen_XPU_XCCL_SRCS})
     target_link_libraries(torch_xpu_ops PUBLIC ${xccl_lib})
+    target_link_libraries(torch_xpu_ops PRIVATE torch::xccl)
     install(TARGETS ${xccl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endif()
 endif()

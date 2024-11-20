@@ -9,7 +9,9 @@ set(ATen_XPU_XCCL_SRCS)
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Include directory")
 
 add_subdirectory(ATen)
-
+if(USE_C10D_XCCL)
+  add_subdirectory(xccl)
+endif()
 # With the increasement of bin size, we have to split libtorch_xpu.so into
 # multiple libraries. Because of strict linkage requirements on Windows,
 # we add extra logics to resolve, 1) Cyclic dependence, 2) Make symbols visible.
