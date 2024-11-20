@@ -93,6 +93,7 @@ _xpu_computation_op_list = [
     "masked_select",
     "isin",
     "isnan",
+    "kthvalue",
     "lcm",
     "le",
     "log",
