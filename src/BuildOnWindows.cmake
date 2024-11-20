@@ -47,7 +47,6 @@ else()
   set(ATen_XPU_SYCL_POLY_SRCS)
   set(ATen_XPU_SYCL_DISTRIBUTION_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
-  
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
     string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
@@ -91,7 +90,6 @@ else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
     endif()
   endforeach()
-  
   # Binary kernel lib
   set(sycl_binary_lib torch_xpu_ops_sycl_binary_kernels)
   sycl_add_library(
