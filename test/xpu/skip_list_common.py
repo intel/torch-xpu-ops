@@ -1230,6 +1230,8 @@ skip_dict = {
     "test_unary_ufuncs_xpu.py": (
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
+        # CPU Fallback fails: Tensor-likes are not close!
+        "test_reference_numerics_large_tanh_xpu_complex32",
         # For extreme value processing, Numpy and XPU results are inconsistent
         # std operations get different behavior on std::complex operarands for extremal cases
         "test_reference_numerics_extremal__refs_log_xpu_complex64",
@@ -1289,6 +1291,10 @@ skip_dict = {
 
         # CUDA XFAIL
         "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
+        
+        # Compiler issue in handling tanh with real or imag inf.
+        # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
+        "test_reference_numerics_large__refs_tanh_xpu_complex32",
     ),
 
     "test_masked_xpu.py": (
