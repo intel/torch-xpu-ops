@@ -200,10 +200,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_to_sparse",
     "_to_sparse_csr",
     "triangular_solve.X",
-    "_upsample_bilinear2d_aa_backward.grad_input",
     "_validate_compressed_sparse_indices",
     "vdot",
-    "_upsample_bicubic2d_aa_backward.grad_input",
   };
   for (auto& op_name : fallback_list) {
     m.impl(
