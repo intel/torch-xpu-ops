@@ -226,6 +226,8 @@ Tensor quantized_max_pool2d_kernel(
       ", ",
       dW,
       ")");
+  TORCH_CHECK(
+      ndim == 3 || ndim == 4, "Expecting the input tensor of rank 3 or 4.");
 
   int64_t nbatch = input.ndimension() == 4 ? input.size(-4) : 1;
   int64_t iC = input.size(-3);
