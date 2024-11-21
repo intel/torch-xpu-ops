@@ -3094,6 +3094,14 @@
   dispatch:
     CompositeExplicitAutograd: _foreach_copy
 
+- func: _foreach_max(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_max_slow
+    XPU: foreach_tensor_max_xpu
+  autogen: _foreach_max.out
+
 - func: kthvalue(Tensor self, int k, int dim=-1, bool keepdim=False) -> (Tensor values, Tensor indices)
   variants: function, method
   dispatch:
