@@ -358,7 +358,7 @@ void run_launcher(
     const TensorBase& self,
     int64_t dim,
     Launcher l) {
-  auto self_info = getTensorInfo<scalar_t, index_t>(self);
+  auto self_info = getTensorInfo<const scalar_t, index_t>(self);
   auto values_info = getTensorInfo<scalar_t, index_t>(values);
   auto indices_info = getTensorInfo<int64_t, index_t>(indices);
 

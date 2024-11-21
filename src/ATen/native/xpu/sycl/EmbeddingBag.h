@@ -57,6 +57,7 @@ struct EmbeddingBagKernelFunctor {
         for (index_t off = start; off < end; off++) {
           index_t index_off = off;
           index_t vec_idx = index_[index_off];
+          SYCL_KERNEL_ASSERT(vec_idx < num_row_);
 
           if (walk_on_bag && desc.glb_problem == 0) {
             offset2bag_[index_off] = off_off;
@@ -134,22 +135,23 @@ struct EmbeddingBagKernelFunctor {
     } while (cfg_.next(item, desc));
   }
   EmbeddingBagKernelFunctor(
-      index_t* const index,
-      index_t* const offset,
+      const index_t* const index,
+      const index_t* const offset,
       index_t* const offset2bag,
       index_t* const bag_size,
       index_t* const max_index,
-      scalar_t* const per_sample_weights,
+      const scalar_t* const per_sample_weights,
       int64_t index_size,
       int64_t bag_num,
       int64_t vec_len,
       index_t padding_idx,
       bool ignore_offsets,
       vec_t* o_vec,
-      vec_t* w_vec,
+      const vec_t* w_vec,
       vec_idx_t* max_idx_vec,
       BatchKernelConfig cfg,
-      index_t fixing_bag_size)
+      index_t fixing_bag_size,
+      index_t num_row)
       : index_(index),
         offset_(offset),
         offset2bag_(offset2bag),
@@ -165,25 +167,27 @@ struct EmbeddingBagKernelFunctor {
         w_vec_(w_vec),
         max_idx_vec_(max_idx_vec),
         cfg_(cfg),
-        fixing_bag_size_(fixing_bag_size) {}
+        fixing_bag_size_(fixing_bag_size),
+        num_row_(num_row) {}
 
  private:
-  index_t* const index_;
-  index_t* const offset_;
+  const index_t* const index_;
+  const index_t* const offset_;
   index_t* const offset2bag_;
   index_t* const bag_size_;
   index_t* const max_index_;
-  scalar_t* const per_sample_weights_;
+  const scalar_t* const per_sample_weights_;
   int64_t index_size_;
   int64_t bag_num_;
   int64_t vec_len_;
   index_t padding_idx_;
   bool ignore_offsets_;
   vec_t* o_vec_;
-  vec_t* w_vec_;
+  const vec_t* w_vec_;
   vec_idx_t* max_idx_vec_;
   BatchKernelConfig cfg_;
   index_t fixing_bag_size_;
+  index_t num_row_;
 };
 
 template <typename index_t>

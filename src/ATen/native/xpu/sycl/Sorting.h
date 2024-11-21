@@ -19,4 +19,11 @@ TORCH_XPU_API void launch_median_kernel(
     int64_t dim,
     bool ignore_nan);
 
+TORCH_XPU_API void launch_kthvalue_kernel(
+    const TensorBase& values,
+    const TensorBase& indices,
+    const TensorBase& self,
+    int64_t dim,
+    int64_t k);
+
 } // namespace at::native::xpu
