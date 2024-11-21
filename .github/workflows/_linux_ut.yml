@@ -97,7 +97,7 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh
-          pip install mkl-static mkl-include
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           cd ../pytorch
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
