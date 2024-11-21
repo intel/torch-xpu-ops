@@ -2,6 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/UpSampleBicubic2dKernels.h>
+#include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
 #include <comm/RegisterUtils.h>
 
 #include <xpu/ATen/ops/upsample_bicubic2d_backward_native.h>
