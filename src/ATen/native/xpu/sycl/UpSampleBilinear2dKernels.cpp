@@ -8,8 +8,8 @@
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/ceil_div.h>
-#include <comm/xpu_aten.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
+#include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -421,25 +421,41 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int interp_height = (int)ceilf(support_h_) * 2 + 1;
     const int interp_width = (int)ceilf(support_w_) * 2 + 1;
 
-    // threadIdx.x + blockIdx.x * blockDim.x;
-    // item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    auto ptr = (scalar_t*) shared_.template get_multi_ptr<sycl::access::decorated::no>().get();
+    auto ptr =
+        (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()
+            .get();
     scalar_t* wx = ptr + interp_width * item.get_local_id(2);
-    scalar_t* wy = ptr + interp_width * item.get_local_range(2) + interp_height * item.get_local_id(1);
-    const int offset = interp_width * item.get_local_range(2) + interp_height * item.get_local_range(1);
-    scalar_t *buffer2 = ptr + offset + interp_height * (item.get_local_id(2) + item.get_local_id(1) * item.get_local_range(2));
+    scalar_t* wy = ptr + interp_width * item.get_local_range(2) +
+        interp_height * item.get_local_id(1);
+    const int offset = interp_width * item.get_local_range(2) +
+        interp_height * item.get_local_range(1);
+    scalar_t* buffer2 = ptr + offset +
+        interp_height *
+            (item.get_local_id(2) +
+             item.get_local_id(1) * item.get_local_range(2));
 
     int xmin, xsize, ymin, ysize;
     accscalar_t xcenter, ycenter;
 
     if (output_x < output_width_ && output_y < output_height_) {
       upsample_antialias::_compute_weights_span(
-        output_x, input_width_, width_scale_, support_w_, xmin, xsize, xcenter);
+          output_x,
+          input_width_,
+          width_scale_,
+          support_w_,
+          xmin,
+          xsize,
+          xcenter);
       upsample_antialias::_compute_weights_span(
-        output_y, input_height_, height_scale_, support_h_, ymin, ysize, ycenter);
+          output_y,
+          input_height_,
+          height_scale_,
+          support_h_,
+          ymin,
+          ysize,
+          ycenter);
 
-      if (item.get_local_id(1) == 0)
-      {
+      if (item.get_local_id(1) == 0) {
         // All threadIdx.y have the same wx weights
         upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
             wx,
@@ -450,8 +466,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             xsize);
       }
 
-      if (item.get_local_id(2) == 0)
-      {
+      if (item.get_local_id(2) == 0) {
         // All threadIdx.x have the same wy weights
         upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
             wy,
@@ -466,23 +481,26 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     item.barrier(sycl_local_fence);
 
     if (output_x < output_width_ && output_y < output_height_) {
-      const scalar_t * buffer1;
+      const scalar_t* buffer1;
       auto odata = odata_;
 
       // Parallelized across batch/channels
-      for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
+      for (int i = item.get_group(0); i < batchsize_ * channels_;
+           i += item.get_global_range(0)) {
         int n = i / channels_;
         int c = i % channels_;
         // interpolate on y-axis for ymin to ymin + ysize
         for (int y = 0; y < ysize; y++) {
           buffer1 = &(idata_[n][c][ymin + y][xmin]);
           buffer2[y] = static_cast<scalar_t>(
-            upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
-                buffer1, wx, xsize));
+              upsample_antialias::
+                  interpolate_aa_single_dim<scalar_t, accscalar_t>(
+                      buffer1, wx, xsize));
         }
         odata[n][c][output_y][output_x] = static_cast<scalar_t>(
-          upsample_antialias::interpolate_aa_single_dim<scalar_t, accscalar_t>(
-              buffer2, wy, ysize));
+            upsample_antialias::
+                interpolate_aa_single_dim<scalar_t, accscalar_t>(
+                    buffer2, wy, ysize));
       }
     }
   }
@@ -540,7 +558,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 };
 
 template <typename scalar_t, typename accscalar_t, typename InterpFilter>
-struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+struct UpsampleGen2dAaBackwardKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
     const int output_x = item.get_global_id(2);
     const int output_y = item.get_global_id(1);
@@ -548,22 +567,34 @@ struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTIO
     const int interp_height = (int)ceilf(support_h_) * 2 + 1;
     const int interp_width = (int)ceilf(support_w_) * 2 + 1;
 
-    // threadIdx.x + blockIdx.x * blockDim.x;
-    // item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
-    auto ptr = (scalar_t*) shared_.template get_multi_ptr<sycl::access::decorated::no>().get();
+    auto ptr =
+        (scalar_t*)shared_.template get_multi_ptr<sycl::access::decorated::no>()
+            .get();
     scalar_t* wx = ptr + interp_width * item.get_local_id(2);
-    scalar_t* wy = ptr + interp_width * item.get_local_range(2) + interp_height * item.get_local_id(1);
+    scalar_t* wy = ptr + interp_width * item.get_local_range(2) +
+        interp_height * item.get_local_id(1);
 
     int xmin, xsize, ymin, ysize;
     accscalar_t xcenter, ycenter;
     if (output_x < output_width_ && output_y < output_height_) {
       upsample_antialias::_compute_weights_span(
-        output_x, input_width_, width_scale_, support_w_, xmin, xsize, xcenter);
+          output_x,
+          input_width_,
+          width_scale_,
+          support_w_,
+          xmin,
+          xsize,
+          xcenter);
       upsample_antialias::_compute_weights_span(
-        output_y, input_height_, height_scale_, support_h_, ymin, ysize, ycenter);
+          output_y,
+          input_height_,
+          height_scale_,
+          support_h_,
+          ymin,
+          ysize,
+          ycenter);
 
-      if (item.get_local_id(1) == 0)
-      {
+      if (item.get_local_id(1) == 0) {
         // All threadIdx.y have the same wx weights
         upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
             wx,
@@ -574,8 +605,7 @@ struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTIO
             xsize);
       }
 
-      if (item.get_local_id(2) == 0)
-      {
+      if (item.get_local_id(2) == 0) {
         // All threadIdx.x have the same wy weights
         upsample_antialias::_compute_weights<scalar_t, accscalar_t>(
             wy,
@@ -592,7 +622,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTIO
     if (output_x < output_width_ && output_y < output_height_) {
       // Parallelized across batch/channels
       auto idata = idata_;
-      for (int i = item.get_group(0); i < batchsize_ * channels_; i += item.get_global_range(0)) {
+      for (int i = item.get_group(0); i < batchsize_ * channels_;
+           i += item.get_global_range(0)) {
         int n = i / channels_;
         int c = i % channels_;
         scalar_t out_value = odata_[n][c][output_y][output_x];
@@ -687,18 +718,25 @@ void launch_upsample_gen2d_aa_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   auto total_threads = syclMaxWorkItemsPerTile();
-  int maxThreadsPerBlock = syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>();
-  // int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
-  int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
+  int maxThreadsPerBlock = std::min<int>(
+      syclMaxWorkGroupSize<
+          UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
+      256); // 256 performs better
+  int block_x = syclMaxSubGroupSize();
 
-  int numer = sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
+  int numer =
+      sharedMemPerBlock * 1.0 / sizeof(scalar_t) - interp_width * block_x;
   int denom = interp_height * (block_x + 1);
-  int block_y = lastPow2((unsigned int) (numer / denom));
+  int block_y = lastPow2((unsigned int)(numer / denom));
   block_y = std::min<int>(maxThreadsPerBlock / block_x, block_y);
 
-  int grid_x = std::min<int>(total_threads, (output_width + block_x - 1) / block_x * block_x);
-  int grid_y = std::min<int>(total_threads / grid_x, (output_height + block_y - 1) / block_y * block_y);
-  int grid_z = std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
+  int grid_x = std::min<int>(
+      total_threads, (output_width + block_x - 1) / block_x * block_x);
+  int grid_y = std::min<int>(
+      total_threads / grid_x,
+      (output_height + block_y - 1) / block_y * block_y);
+  int grid_z =
+      std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
 
   int64_t weights_per_block = interp_width * block_x + interp_height * block_y;
   weights_per_block += interp_height * block_y * block_x;
@@ -707,29 +745,31 @@ void launch_upsample_gen2d_aa_kernel(
       shmem_size <= sharedMemPerBlock,
       "Provided interpolation parameters can not be handled with current algorithm implementation. ",
       "Please reduce the scale factor. Too much shared memory required: ",
-      shmem_size, " vs ", sharedMemPerBlock);
+      shmem_size,
+      " vs ",
+      sharedMemPerBlock);
 
   UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter> kfn(
-        height_scale,
-        width_scale,
-        idata,
-        odata,
-        interp_filter,
-        input_height,
-        input_width,
-        output_height,
-        output_width,
-        nbatch,
-        channels,
-        support_h,
-        support_w,
-        weights_per_block);
+      height_scale,
+      width_scale,
+      idata,
+      odata,
+      interp_filter,
+      input_height,
+      input_width,
+      output_height,
+      output_width,
+      nbatch,
+      channels,
+      support_h,
+      support_w,
+      weights_per_block);
 
   sycl_kernel_submit(
-    sycl::range<3>(grid_z, grid_y, grid_x),
-    sycl::range<3>(1, block_y, block_x),
-    queue,
-    kfn);
+      sycl::range<3>(grid_z, grid_y, grid_x),
+      sycl::range<3>(1, block_y, block_x),
+      queue,
+      kfn);
 }
 
 template <typename scalar_t, typename accscalar_t, typename InterpFilter>
@@ -751,14 +791,20 @@ void launch_upsample_gen2d_aa_backward_kernel(
 
   auto sharedMemPerBlock = syclLocalMemSize();
   auto total_threads = syclMaxWorkItemsPerTile();
-  int maxThreadsPerBlock = syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>();
-  // int maxThreadsPerBlock = std::min<int>(syclMaxWorkGroupSize<UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(), 256);
-  int block_x = syclMaxSubGroupSize();  // TODO: tune subgroup size (and fix it), or merge x,y
+  int maxThreadsPerBlock = std::min<int>(
+      syclMaxWorkGroupSize<
+          UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
+      256); // 256 performs better
+  int block_x = syclMaxSubGroupSize();
   int block_y = maxThreadsPerBlock / block_x;
 
-  int grid_x = std::min<int>(total_threads, (output_width + block_x - 1) / block_x * block_x);
-  int grid_y = std::min<int>(total_threads / grid_x, (output_height + block_y - 1) / block_y * block_y);
-  int grid_z = std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
+  int grid_x = std::min<int>(
+      total_threads, (output_width + block_x - 1) / block_x * block_x);
+  int grid_y = std::min<int>(
+      total_threads / grid_x,
+      (output_height + block_y - 1) / block_y * block_y);
+  int grid_z =
+      std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
 
   const int interp_height = (int)ceilf(support_h) * 2 + 1;
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
@@ -769,32 +815,34 @@ void launch_upsample_gen2d_aa_backward_kernel(
       shmem_size <= sharedMemPerBlock,
       "Provided interpolation parameters can not be handled with current algorithm implementation. ",
       "Please reduce the scale factor. Too much shared memory required: ",
-      shmem_size, " vs ", sharedMemPerBlock);
+      shmem_size,
+      " vs ",
+      sharedMemPerBlock);
 
   UpsampleGen2dAaBackwardKernelFunctor<scalar_t, accscalar_t, InterpFilter> kfn(
-        height_scale,
-        width_scale,
-        idata,
-        odata,
-        interp_filter,
-        input_height,
-        input_width,
-        output_height,
-        output_width,
-        nbatch,
-        channels,
-        support_h,
-        support_w,
-        weights_per_block);
+      height_scale,
+      width_scale,
+      idata,
+      odata,
+      interp_filter,
+      input_height,
+      input_width,
+      output_height,
+      output_width,
+      nbatch,
+      channels,
+      support_h,
+      support_w,
+      weights_per_block);
 
   sycl_kernel_submit(
-    sycl::range<3>(grid_z, grid_y, grid_x),
-    sycl::range<3>(1, block_y, block_x),
-    queue,
-    kfn);
+      sycl::range<3>(grid_z, grid_y, grid_x),
+      sycl::range<3>(1, block_y, block_x),
+      queue,
+      kfn);
 }
 
-template<typename InterpFilter>
+template <typename InterpFilter>
 void upsample_gen2d_aa_out_kernel(
     const Tensor& output,
     const Tensor& input_,
@@ -805,8 +853,11 @@ void upsample_gen2d_aa_out_kernel(
   TensorArg input_arg{input_, "input_", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
-  // TODO: remove this when the kernel is updated to support the channels_last memory format.
-  auto output_c = output.is_contiguous() ? output : at::empty(output.sizes(), output.options());
+  // TODO: remove this when the kernel is updated to support the channels_last
+  // memory format.
+  auto output_c = output.is_contiguous()
+      ? output
+      : at::empty(output.sizes(), output.options());
   auto input = input_.contiguous();
   int output_height = output_size[0];
   int output_width = output_size[1];
@@ -832,9 +883,11 @@ void upsample_gen2d_aa_out_kernel(
 
         auto interp_filter = InterpFilter();
         const accscalar_t support_h = static_cast<accscalar_t>(
-            (height_scale >= 1.0) ? (interp_filter.size * 0.5) * height_scale : interp_filter.size * 0.5);
+            (height_scale >= 1.0) ? (interp_filter.size * 0.5) * height_scale
+                                  : interp_filter.size * 0.5);
         const accscalar_t support_w = static_cast<accscalar_t>(
-            (width_scale >= 1.0) ? (interp_filter.size * 0.5) * width_scale : interp_filter.size * 0.5);
+            (width_scale >= 1.0) ? (interp_filter.size * 0.5) * width_scale
+                                 : interp_filter.size * 0.5);
         launch_upsample_gen2d_aa_kernel<scalar_t, accscalar_t>(
             height_scale,
             width_scale,
@@ -852,11 +905,11 @@ void upsample_gen2d_aa_out_kernel(
       });
 
   if (!output.is_contiguous()) {
-       output.copy_(output_c);
+    output.copy_(output_c);
   }
 }
 
-template<typename InterpFilter>
+template <typename InterpFilter>
 void upsample_gen2d_aa_backward_out_kernel(
     const Tensor& grad_input,
     const Tensor& grad_output_,
@@ -902,9 +955,11 @@ void upsample_gen2d_aa_backward_out_kernel(
 
         auto interp_filter = InterpFilter();
         const accscalar_t support_h = static_cast<accscalar_t>(
-            (height_scale >= 1.0) ? (interp_filter.size * 0.5) * height_scale : interp_filter.size * 0.5);
+            (height_scale >= 1.0) ? (interp_filter.size * 0.5) * height_scale
+                                  : interp_filter.size * 0.5);
         const accscalar_t support_w = static_cast<accscalar_t>(
-            (width_scale >= 1.0) ? (interp_filter.size * 0.5) * width_scale : interp_filter.size * 0.5);
+            (width_scale >= 1.0) ? (interp_filter.size * 0.5) * width_scale
+                                 : interp_filter.size * 0.5);
         launch_upsample_gen2d_aa_backward_kernel<scalar_t, accscalar_t>(
             height_scale,
             width_scale,
@@ -929,8 +984,9 @@ void _upsample_bilinear2d_aa_out_kernel(
     bool align_corners,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  return upsample_gen2d_aa_out_kernel<upsample_antialias::BilinearFilterFunctor>(
-        output, input, output_size, align_corners, scales_h, scales_w);
+  return upsample_gen2d_aa_out_kernel<
+      upsample_antialias::BilinearFilterFunctor>(
+      output, input, output_size, align_corners, scales_h, scales_w);
 }
 
 void _upsample_bilinear2d_aa_backward_out_kernel(
@@ -941,8 +997,15 @@ void _upsample_bilinear2d_aa_backward_out_kernel(
     bool align_corners,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  return upsample_gen2d_aa_backward_out_kernel<upsample_antialias::BilinearFilterFunctor>(
-    grad_input, grad_output, output_size, input_size, align_corners, scales_h, scales_w);
+  return upsample_gen2d_aa_backward_out_kernel<
+      upsample_antialias::BilinearFilterFunctor>(
+      grad_input,
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
 }
 
 void _upsample_bicubic2d_aa_out_kernel(
@@ -953,7 +1016,7 @@ void _upsample_bicubic2d_aa_out_kernel(
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
-        output, input, output_size, align_corners, scales_h, scales_w);
+      output, input, output_size, align_corners, scales_h, scales_w);
 }
 
 void _upsample_bicubic2d_aa_backward_out_kernel(
@@ -964,8 +1027,15 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
     bool align_corners,
     c10::optional<double> scales_h,
     c10::optional<double> scales_w) {
-  return upsample_gen2d_aa_backward_out_kernel<upsample_antialias::BicubicFilterFunctor>(
-    grad_input, grad_output, output_size, input_size, align_corners, scales_h, scales_w);
+  return upsample_gen2d_aa_backward_out_kernel<
+      upsample_antialias::BicubicFilterFunctor>(
+      grad_input,
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
 }
 
 } // namespace at::native::xpu

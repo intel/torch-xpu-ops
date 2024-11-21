@@ -322,7 +322,6 @@ namespace upsample_antialias {
 // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
 // src/libImaging/Resample.c#L20-L29
 struct BilinearFilterFunctor {
-
   template <typename accscalar_t>
   accscalar_t operator()(accscalar_t x) const {
     if (x < 0) {
@@ -341,7 +340,6 @@ struct BilinearFilterFunctor {
 // https://github.com/python-pillow/Pillow/blob/6812205f18ca4ef54372e87e1a13ce4a859434df/
 // src/libImaging/Resample.c#L46-L62
 struct BicubicFilterFunctor {
-
   template <typename accscalar_t>
   accscalar_t operator()(accscalar_t x) const {
     // https://en.wikipedia.org/wiki/Bicubic_interpolation#Bicubic_convolution_algorithm
@@ -371,8 +369,13 @@ static inline void _compute_weights_span(
     int& xsize,
     accscalar_t& center) {
   center = scale * (i + static_cast<accscalar_t>(0.5));
-  xmin = max(static_cast<int>(center - support + static_cast<accscalar_t>(0.5)), static_cast<int>(0));
-  xsize = min(static_cast<int>(center + support + static_cast<accscalar_t>(0.5)), input_size) - xmin;
+  xmin =
+      max(static_cast<int>(center - support + static_cast<accscalar_t>(0.5)),
+          static_cast<int>(0));
+  xsize =
+      min(static_cast<int>(center + support + static_cast<accscalar_t>(0.5)),
+          input_size) -
+      xmin;
 }
 
 template <typename scalar_t, typename accscalar_t, typename interp_filter_t>
@@ -383,12 +386,12 @@ static inline void _compute_weights(
     const interp_filter_t& interp_filter,
     accscalar_t xmin_m_center,
     int xsize) {
-
   accscalar_t invscale = (scale >= 1.0) ? 1.0 / scale : 1.0;
   accscalar_t total_w = 0.0;
   int j = 0;
   for (j = 0; j < xsize; j++) {
-    accscalar_t w = interp_filter((j + xmin_m_center + static_cast<accscalar_t>(0.5)) * invscale);
+    accscalar_t w = interp_filter(
+        (j + xmin_m_center + static_cast<accscalar_t>(0.5)) * invscale);
     wt_ptr[j] = static_cast<scalar_t>(w);
     total_w += w;
   }
@@ -420,6 +423,6 @@ static inline accscalar_t interpolate_aa_single_dim(
   return output;
 }
 
-}
+} // namespace upsample_antialias
 
 } // namespace at::native::xpu
