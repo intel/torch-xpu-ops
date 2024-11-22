@@ -90,7 +90,7 @@ class TestSYCLInt4Linear(TestCase):
             weight, scales, zero_points, group_size).cpu()
         # check gemm
         zero_points = torch.Tensor([8]).to(torch.int8).to("xpu")
-        weight_ba = weight.transpose(0, 1).contiguous().transpose(0, 1)
+        weight_ba = weight.transpose(0, 1).contiguous()
 
         out_onednn =torch._weight_int4pack_mm_with_scales_and_zeros(
             input, weight_ba, scales, zero_points, group_size
