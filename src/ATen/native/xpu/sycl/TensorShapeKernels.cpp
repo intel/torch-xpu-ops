@@ -49,22 +49,21 @@ bool all_contiguous(TensorList tensors) {
 
 struct SplitWithSizesCopyOutContiguousNoCastFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto sg = item.get_sub_group();
-    const int64_t split_idx = block_idx_to_split_idx[sg.get_group_id()[0]];
+    const int64_t split_idx = block_idx_to_split_idx[item.get_group(2)];
     const int64_t split_blocks =
         blocks_cumsums[split_idx + 1] - blocks_cumsums[split_idx];
-    const int64_t split_threads = split_blocks * item.get_local_range(0);
+    const int64_t split_threads = split_blocks * item.get_local_range(2);
     const int64_t split_thread_idx =
-        (sg.get_group_id()[0] - blocks_cumsums[split_idx]) *
-            item.get_local_range(0) +
-        item.get_local_id(0);
+        (item.get_group(2) - blocks_cumsums[split_idx]) *
+            item.get_local_range(2) +
+        item.get_local_id(2);
     const int64_t split_chunk_size = split_chunk_sizes[split_idx];
 
     char* dst_base_addr = dst_base_addrs[split_idx];
     char* src_base_addr = src_base_addrs[split_idx];
 
-    for (int64_t i = sg.get_group_id()[1]; i < num_chunks;
-         i += item.get_global_range()[1]) {
+    for (int64_t i = item.get_group(1); i < num_chunks;
+         i += item.get_group_range(1)) {
       copy_chunk(
           dst_base_addr + i * split_chunk_size,
           src_base_addr + i * src_stride,
@@ -137,16 +136,15 @@ std::pair<at::Tensor, std::vector<int64_t*>> pack_vecs(
 template <typename dst_t, typename src_t>
 struct ChunkCatFunctor {
   void operator()(sycl::nd_item<3> item) const {
-    auto sg = item.get_sub_group();
-    const int64_t slice_idx = sg.get_group_id()[2];
-    const int64_t chunk_idx = sg.get_group_id()[1];
-    const int64_t tensor_idx = block_idx_to_tensor_idx[sg.get_group_id()[0]];
+    const int64_t slice_idx = item.get_group(0);
+    const int64_t chunk_idx = item.get_group(1);
+    const int64_t tensor_idx = block_idx_to_tensor_idx[item.get_group(2)];
     const int64_t tile_idx =
-        sg.get_group_id()[0] - start_block_idx_per_tensor_chunk[tensor_idx];
+        item.get_group(2) - start_block_idx_per_tensor_chunk[tensor_idx];
     // Number of threads for the `tensor_idx`-th tensor chunk.
     const int64_t num_threads =
         num_blocks_per_tensor_chunk[tensor_idx] * BLOCK_SIZE;
-    const int64_t thread_idx = tile_idx * BLOCK_SIZE + item.get_local_id(0);
+    const int64_t thread_idx = tile_idx * BLOCK_SIZE + item.get_local_id(2);
     char* src_addr = reinterpret_cast<char**>(src)[tensor_idx] +
         slice_idx * actual_tensor_sizes[tensor_idx] +
         chunk_idx * pad_tensor_chunk_sizes[tensor_idx] / dst_to_src_ratio;
@@ -261,6 +259,7 @@ get_chunk_cat_metadata(
     // Number of blocks required to process this tensor chunk.
     const int64_t num_blocks = div_up(pad_tensor_chunk_size, BYTES_PER_BLOCK);
     num_blocks_per_tensor_chunk.push_back(num_blocks);
+
     start_block_idx_per_tensor_chunk.push_back(
         start_block_idx_per_tensor_chunk.back() + num_blocks);
     block_idx_to_tensor_idx.insert(
@@ -269,6 +268,7 @@ get_chunk_cat_metadata(
         tensor_idx_to_start_tensor_bytes.back() + pad_tensor_chunk_size);
     actual_tensor_sizes.push_back(sizes[dim] * trailing_numel * src_elem_size);
   }
+
   const int64_t num_blocks_per_chunk = start_block_idx_per_tensor_chunk.back();
   const int64_t slice_size = num_chunks * chunk_size;
   return std::make_tuple(
@@ -294,6 +294,7 @@ void _chunk_cat_out_xpu_contiguous(
     int64_t dst_elem_size,
     int64_t src_elem_size) {
   const auto device = tensors[0].device();
+
   // `get_chunk_cat_metadata` must return vectors and `pack_vecs` cannot be
   // moved into `get_chunk_cat_metadata`. Otherwise `packed` would point to
   // vectors allocated inside `get_chunk_cat_metadata` which become out of local
@@ -326,10 +327,10 @@ void _chunk_cat_out_xpu_contiguous(
   at::native::resize_output(out, view_sizes);
 
   sycl::range<3> global_range{
-      (size_t)num_blocks_per_chunk,
+      (size_t)(leading_dim),
       (size_t)(num_chunks),
-      (size_t)(leading_dim)};
-  sycl::range<3> local_range{(size_t)BLOCK_SIZE, (size_t)1, (size_t)1};
+      (size_t)(num_blocks_per_chunk * BLOCK_SIZE)};
+  sycl::range<3> local_range{(size_t)1, (size_t)1, (size_t)BLOCK_SIZE};
 
   ChunkCatFunctor<dst_t, src_t> kfn(
       /*srcs=*/reinterpret_cast<src_t**>(packed.second[0]),
@@ -343,6 +344,7 @@ void _chunk_cat_out_xpu_contiguous(
       slice_size,
       chunk_size,
       dst_elem_size / src_elem_size);
+
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
@@ -402,10 +404,10 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   }
 
   sycl::range<3> global_range{
-      (size_t)blocks_cumsums.back(),
+      (size_t)(1),
       (size_t)(num_chunks / chunks_per_block),
-      (size_t)(1)};
-  sycl::range<3> local_range{(size_t)BLOCK_SIZE, (size_t)1, (size_t)1};
+      (size_t)blocks_cumsums.back()};
+  sycl::range<3> local_range{(size_t)1, (size_t)1, (size_t)BLOCK_SIZE};
 
   auto [_, ptrs] = pack_vecs(
       {&dst_base_addrs,
@@ -495,7 +497,7 @@ void split_with_sizes_copy_out_xpu_kernel(
           out[i].device(),
           " instead");
     }
-    xpu::split_with_sizes_copy_out_xpu_contiguous_no_cast(
+    split_with_sizes_copy_out_xpu_contiguous_no_cast(
         self, split_sizes, dim, out);
   } else {
     at::native::split_with_sizes_copy_out(self, split_sizes, dim, out);
@@ -511,16 +513,15 @@ Tensor _chunk_cat_xpu_kernel(
     // Return a tensor with the same dtype as input tensors
     int64_t elem_size = tensors[0].element_size();
     int64_t chunk_size = get_chunk_size(tensors, dim, num_chunks, elem_size);
-    int64_t leading_dim =
-        at::native::xpu::get_leading_dim(tensors[0].sizes(), dim);
-    auto view_sizes = at::native::xpu::get_chunk_cat_out_sizes(
+    int64_t leading_dim = get_leading_dim(tensors[0].sizes(), dim);
+    auto view_sizes = get_chunk_cat_out_sizes(
         tensors[0].sizes(), dim, num_chunks, chunk_size, elem_size);
     Tensor out =
         tensors[0]
             .new_empty(chunk_size * num_chunks * leading_dim / elem_size)
             .view(view_sizes);
     // Type-agnostic copy since out and input tensors have the same type.
-    xpu::_chunk_cat_out_xpu_contiguous<char, char>(
+    _chunk_cat_out_xpu_contiguous<char, char>(
         tensors, dim, num_chunks, out, elem_size, elem_size);
     return out;
   } else {
@@ -545,7 +546,7 @@ Tensor& _chunk_cat_out_xpu_kernel(
     // _chunk_cat_out_xpu_contiguous should also support other types, thanks to
     // static_cast_with_inter_type. Here, we dispatch to BFloat16 in and float32
     // out since it is the only known use case.
-    xpu::_chunk_cat_out_xpu_contiguous<float, BFloat16>(
+    _chunk_cat_out_xpu_contiguous<float, BFloat16>(
         tensors,
         dim,
         num_chunks,
@@ -555,7 +556,7 @@ Tensor& _chunk_cat_out_xpu_kernel(
   } else if (
       both_input_output_contiguous && tensors[0].dtype() == out.dtype()) {
     // Type-agnostic copy since out and input tensors have the same type.
-    xpu::_chunk_cat_out_xpu_contiguous<char, char>(
+    _chunk_cat_out_xpu_contiguous<char, char>(
         tensors,
         dim,
         num_chunks,
