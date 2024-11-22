@@ -7237,6 +7237,10 @@
     XPU: range_xpu_out
   cpp_no_default_args: ['step']
 
+- func: _convert_weight_to_int4pack(Tensor self, int innerKTiles) -> Tensor
+  dispatch:
+    XPU: _convert_weight_to_int4pack_xpu
+
 - func: special_chebyshev_polynomial_t(Tensor x, Tensor n) -> Tensor
   device_check: NoCheck
   python_module: special
