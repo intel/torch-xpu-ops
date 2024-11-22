@@ -68,7 +68,7 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 }
 
 template <typename T, typename Y, typename U, typename... ArgTypes>
-struct MultiTensorApplyKernelFunctor {
+struct MultiTensorApplyKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     // Expand the tuple elements manually and call the callable
     expandAndCall(item_id, std::index_sequence_for<ArgTypes...>());
@@ -84,6 +84,12 @@ struct MultiTensorApplyKernelFunctor {
         tlWGMeta(tlWGMeta_),
         callable(callable_),
         args(std::make_tuple(args_...)) {}
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, U>) {
+      callable.sycl_ker_config_convention(cgh);
+    }
+  }
 
  private:
   template <std::size_t... Indices>
@@ -117,7 +123,6 @@ void launch_multi_tensor_apply_kernel(
     U callable,
     int num_wg,
     ArgTypes... args) {
-
   auto& q = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
   int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
@@ -226,7 +231,6 @@ void multi_tensor_apply(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
     T callable,
     ArgTypes... args) {
-
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
