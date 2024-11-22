@@ -406,7 +406,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
   sycl::range<3> global_range{
       (size_t)(1),
       (size_t)(num_chunks / chunks_per_block),
-      (size_t)blocks_cumsums.back()};
+      (size_t)blocks_cumsums.back() * BLOCK_SIZE};
   sycl::range<3> local_range{(size_t)1, (size_t)1, (size_t)BLOCK_SIZE};
 
   auto [_, ptrs] = pack_vecs(
