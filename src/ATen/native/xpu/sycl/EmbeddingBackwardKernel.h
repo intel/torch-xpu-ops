@@ -173,11 +173,11 @@ struct ComputeGradWeightBagsKernelFunctor {
       int64_t per_sample_weights_stride,
       acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
       index_t* indices_data,
-      scalar_t* gradoutput_data,
+      const scalar_t* gradoutput_data,
       index_t* offset2bag_data,
       index_t* count_data,
       index_t* bag_size_data,
-      scalar_t* per_sample_weights_data,
+      const scalar_t* per_sample_weights_data,
       index_t* segment_offsets_data)
       : numel_(numel),
         stride_(stride),
@@ -207,11 +207,11 @@ struct ComputeGradWeightBagsKernelFunctor {
   int64_t per_sample_weights_stride_;
   acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
   index_t* indices_data_;
-  scalar_t* gradoutput_data_;
+  const scalar_t* gradoutput_data_;
   index_t* offset2bag_data_;
   index_t* count_data_;
   index_t* bag_size_data_;
-  scalar_t* per_sample_weights_data_;
+  const scalar_t* per_sample_weights_data_;
   index_t* segment_offsets_data_;
 };
 
@@ -238,7 +238,7 @@ void compute_grad_weight_bags(
       grad_weight_per_segment
           .template data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto indices_data = indices.template data_ptr<index_t>();
-  auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
+  auto gradOutput_data = gradOutput.const_data_ptr<scalar_t>();
   auto offset2bag_data = offset2bag.data_ptr<index_t>();
   auto count_data = count_defined
       ? count.data_ptr<index_t>()
@@ -246,7 +246,7 @@ void compute_grad_weight_bags(
                          // buffer.
   auto bag_size_data = bag_size.data_ptr<index_t>();
   auto per_sample_weights_data = per_sample_weight_defined
-      ? per_sample_weights.data_ptr<scalar_t>()
+      ? per_sample_weights.const_data_ptr<scalar_t>()
       : gradOutput_data; // ise the gradOutput_data handler as the dummy
                          // buffer.
   auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
@@ -323,7 +323,7 @@ struct ComputeGradWeightKernelFunctor {
       bool count_defined,
       acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
       index_t* indices_data,
-      scalar_t* grad_output_data,
+      const scalar_t* grad_output_data,
       index_t* count_data,
       index_t* segment_offsets_data)
       : numel_(numel),
@@ -345,7 +345,7 @@ struct ComputeGradWeightKernelFunctor {
   bool count_defined_;
   acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
   index_t* indices_data_;
-  scalar_t* grad_output_data_;
+  const scalar_t* grad_output_data_;
   index_t* count_data_;
   index_t* segment_offsets_data_;
 };
@@ -365,7 +365,7 @@ void compute_grad_weight(
   auto grad_weight_per_segment_data =
       grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto indices_data = indices.data_ptr<index_t>();
-  auto grad_output_data = grad_output.data_ptr<scalar_t>();
+  auto grad_output_data = grad_output.const_data_ptr<scalar_t>();
   auto count_data = count_defined
       ? count.data_ptr<index_t>()
       : indices_data; // use the indices_data handler as the dummy buffer.

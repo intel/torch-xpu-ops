@@ -5,6 +5,7 @@
 namespace at::native::xpu {
 
 TORCH_XPU_API void glu_kernel(TensorIteratorBase& iter);
+TORCH_XPU_API void glu_jvp_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void glu_backward_kernel(
     const TensorIteratorBase& iter,

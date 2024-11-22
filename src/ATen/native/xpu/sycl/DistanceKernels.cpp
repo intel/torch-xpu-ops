@@ -263,10 +263,10 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int64_t j = k % r2_;
     const size_t stride = item_id.get_local_range().size();
 
-    scalar_t* start = x1_ptr + l * l1_size_ + i * m_;
-    scalar_t* end = start + m_;
-    scalar_t* a = start + local_id;
-    scalar_t* b = x2_ptr + l * l2_size_ + j * m_ + local_id;
+    const scalar_t* const start = x1_ptr + l * l1_size_ + i * m_;
+    const scalar_t* const end = start + m_;
+    const scalar_t* a = start + local_id;
+    const scalar_t* b = x2_ptr + l * l2_size_ + j * m_ + local_id;
 
     scalar_t agg = 0.0f;
     for (; a < end; a += stride, b += stride) {
@@ -295,8 +295,8 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const int64_t l2_size,
       accscalar_t p_val,
       scalar_t* out_data,
-      scalar_t* x1_data,
-      scalar_t* x2_data,
+      const scalar_t* x1_data,
+      const scalar_t* x2_data,
       const int64_t wgroup_size)
       : r1_(r1),
         r2_(r2),
@@ -319,8 +319,8 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const int64_t l2_size_;
   accscalar_t p_val_;
   scalar_t* out_data_;
-  scalar_t* x1_data_;
-  scalar_t* x2_data_;
+  const scalar_t* x1_data_;
+  const scalar_t* x2_data_;
   sycl_local_acc_t<scalar_t, 1> shared_;
   const int64_t wgroup_size_;
 };
@@ -341,9 +341,9 @@ static void launch_cdist_forward_kernel(
   auto wgroup_size = 32;
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   auto p_val = static_cast<accscalar_t>(p);
-  auto out_data = result.data_ptr<scalar_t>();
-  auto x1_data = x1.data_ptr<scalar_t>();
-  auto x2_data = x2.data_ptr<scalar_t>();
+  auto out_data = result.mutable_data_ptr<scalar_t>();
+  auto x1_data = x1.const_data_ptr<scalar_t>();
+  auto x2_data = x2.const_data_ptr<scalar_t>();
 
   CdistForwardKernelFunctor<scalar_t, F, p_type, accscalar_t> kfn(
       r1,
@@ -493,10 +493,10 @@ struct CdistBackwardKernelImplFunctor {
       accscalar_t p_val,
       const int group_num_z,
       scalar_t* buff_data,
-      scalar_t* grad_data,
-      scalar_t* dist_data,
-      scalar_t* x1_data,
-      scalar_t* x2_data)
+      const scalar_t* grad_data,
+      const scalar_t* dist_data,
+      const scalar_t* x1_data,
+      const scalar_t* x2_data)
       : r1_(r1),
         r2_(r2),
         m_(m),
@@ -529,10 +529,10 @@ struct CdistBackwardKernelImplFunctor {
   accscalar_t p_val_;
   const int group_num_z_;
   scalar_t* buff_data_;
-  scalar_t* grad_data_;
-  scalar_t* dist_data_;
-  scalar_t* x1_data_;
-  scalar_t* x2_data_;
+  const scalar_t* grad_data_;
+  const scalar_t* dist_data_;
+  const scalar_t* x1_data_;
+  const scalar_t* x2_data_;
 };
 
 template <typename scalar_t, typename F, int p_type>
@@ -569,11 +569,11 @@ static void cdist_backward_kernel_impl(
   sycl::range<3> local_range(group_size_x, group_size_y, 1);
   sycl::nd_range<3> work_load(global_range, local_range);
 
-  auto buff_data = buffer.data_ptr<scalar_t>();
-  auto grad_data = grad.data_ptr<scalar_t>();
-  auto dist_data = dist.data_ptr<scalar_t>();
-  auto x1_data = x1.data_ptr<scalar_t>();
-  auto x2_data = x2.data_ptr<scalar_t>();
+  auto buff_data = buffer.mutable_data_ptr<scalar_t>();
+  auto grad_data = grad.const_data_ptr<scalar_t>();
+  auto dist_data = dist.const_data_ptr<scalar_t>();
+  auto x1_data = x1.const_data_ptr<scalar_t>();
+  auto x2_data = x2.const_data_ptr<scalar_t>();
 
   CdistBackwardKernelImplFunctor<scalar_t, F, p_type, accscalar_t> kfn(
       r1,
@@ -763,7 +763,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       accscalar_t n2_val,
       accscalar_t n2_squared_minus_1_val,
       scalar_t* out_data,
-      scalar_t* in_data,
+      const scalar_t* in_data,
       const int64_t wgroup_size)
       : n_(n),
         m_(m),
@@ -781,7 +781,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   accscalar_t n2_val_;
   accscalar_t n2_squared_minus_1_val_;
   scalar_t* out_data_;
-  scalar_t* in_data_;
+  const scalar_t* in_data_;
   sycl_local_acc_t<scalar_t, 1> shared_;
   const int64_t wgroup_size_;
 };
@@ -808,8 +808,8 @@ static void pdist_kernel_impl(
   auto n2_val = static_cast<accscalar_t>(n2);
   auto n2_squared_minus_1_val = static_cast<accscalar_t>(n2_squared_minus_1);
 
-  auto out_data = result.data_ptr<scalar_t>();
-  auto in_data = self.data_ptr<scalar_t>();
+  auto out_data = result.mutable_data_ptr<scalar_t>();
+  auto in_data = self.const_data_ptr<scalar_t>();
 
   auto kfn = KernelClass(
       n,
