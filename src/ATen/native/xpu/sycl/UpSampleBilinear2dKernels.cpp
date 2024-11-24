@@ -608,7 +608,7 @@ void upsample_bilinear2d_out_kernel(
               output.numel());
         } else {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-          auto idata_acc = input.packed_accessor64<scalar_t, 4>();
+          auto idata_acc = input.packed_accessor64<const scalar_t, 4>();
           auto odata_acc = output.packed_accessor64<scalar_t, 4>();
 
           const accscalar_t rheight = area_pixel_compute_scale<accscalar_t>(
