@@ -7,6 +7,7 @@
 
 #include <ATen/native/xpu/sycl/ForeachTernaryOpListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpScalarKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarListKernels.h>
 
 namespace at::native::xpu {
 
