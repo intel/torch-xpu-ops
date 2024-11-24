@@ -24,6 +24,8 @@ static void xpu_fallback_impl(
 
 namespace native::xpu {
 Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
+Tensor roi_align(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t sampling_ratio, bool aligned);
+Tensor _roi_align_backward(const Tensor& grad, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width, int64_t sampling_ratio, bool aligned);
 }
 
 // Register op's implementation lazily since sometimes the op is not defined,
@@ -34,8 +36,8 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
 // <operator_name: string, is_cpu_fallback: bool>
 static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
   {"torchvision::nms", false},
-  {"torchvision::roi_align", true},
-  {"torchvision::_roi_align_backward", true},
+  {"torchvision::roi_align", false},
+  {"torchvision::_roi_align_backward", false},
 };
 
 // Return:
@@ -51,11 +53,9 @@ static bool lazy_registration_and_redispatch(
         // suppose ops of torchvision are all defined (`import torchvision`).
         m.impl(TORCH_SELECTIVE_NAME("torchvision::nms"), TORCH_FN(at::native::xpu::nms));
         m.impl(
-            TORCH_SELECTIVE_NAME("torchvision::roi_align"),
-            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+            TORCH_SELECTIVE_NAME("torchvision::roi_align"),TORCH_FN(at::native::xpu::roi_align));
         m.impl(
-            TORCH_SELECTIVE_NAME("torchvision::_roi_align_backward"),
-            torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+            TORCH_SELECTIVE_NAME("torchvision::_roi_align_backward"),TORCH_FN(at::native::xpu::_roi_align_backward));
       };
 
   static const torch::detail::TorchLibraryInit
