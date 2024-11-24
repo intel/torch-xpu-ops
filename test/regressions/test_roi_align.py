@@ -5,7 +5,6 @@ import math
 import numpy as np
 
 
-
 def bilinear_interpolate(data, y, x, snap_border=False):
     height, width = data.shape
     if snap_border:
@@ -135,6 +134,7 @@ def expected_grad_fn(
                                         grad_input[batch_idx, channel, yp, xp] += wx * wy * grad_val
     return grad_input
 
+
 class TestNNMethod(TestCase):
     def roi_align_forward_(self, dtype_):
         device = torch.device("xpu")
@@ -170,7 +170,6 @@ class TestNNMethod(TestCase):
         )
         tol = 1e-2 if (x_dtype is torch.half or rois_dtype is torch.half) else 1e-5
         torch.testing.assert_close(gt_y.cpu(), y.cpu(), rtol=tol, atol=tol)
-
 
     def roi_align_backward_(self, dtype_):
         device = torch.device("xpu")
@@ -211,10 +210,10 @@ class TestNNMethod(TestCase):
         tol = 1e-2 if (x_dtype is torch.half or rois_dtype is torch.half) else 1e-5
         torch.testing.assert_close(gt_grad.cpu(), x.grad.cpu(), rtol=tol, atol=tol)
 
-
     def test_roi_align_forward(self):
         for dtype in [torch.float, torch.half]:
             self.roi_align_forward_(dtype)
+
     def test_roi_align_backward(self):
         for dtype in [torch.float, torch.half]:
             self.roi_align_backward_(dtype)
