@@ -98,7 +98,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install mkl-static mkl-include
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
