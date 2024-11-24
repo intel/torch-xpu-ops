@@ -84,8 +84,8 @@ std::tuple<Tensor&, Tensor&> log_sigmoid_forward_out_xpu(
 }
 
 std::tuple<Tensor, Tensor> log_sigmoid_forward_xpu(const Tensor& input) {
-  auto result = at::empty_like(input);
-  auto buffer = at::empty({0}, input.options());
+  auto result = at::empty_like(input, at::MemoryFormat::Contiguous);
+  auto buffer = at::empty_like(input, at::MemoryFormat::Contiguous);
   log_sigmoid_forward_out_xpu(input, result, buffer);
   return std::forward_as_tuple(result, buffer);
 }
