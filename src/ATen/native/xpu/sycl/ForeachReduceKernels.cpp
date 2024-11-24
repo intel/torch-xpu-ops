@@ -10,10 +10,12 @@
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
 
+namespace at::native::xpu {
+
 enum class NormType { L1, L2, LInf };
 #define SIMD16 16
 #define SIMD32 32
-namespace at::native::xpu {
+
 template <
     typename T,
     NormType norm_type,
