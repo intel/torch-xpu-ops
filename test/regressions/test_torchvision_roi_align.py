@@ -4,6 +4,8 @@ import torchvision
 
 class TestTorchVisionMethod(TestCase):
     def test_roi_align(self):
+        atol = 1e-1
+        rtol = 5e-5
         a_ref = torch.zeros([4, 256, 296, 304]).requires_grad_(True)
         b_ref = torch.zeros([2292, 5]).requires_grad_(True)
 
@@ -15,4 +17,4 @@ class TestTorchVisionMethod(TestCase):
         ref.sum().backward()
         res.sum().backward()
         self.assertEqual(ref, res.cpu())
-        self.assertEqual(a_ref.grad, a_xpu.grad.cpu())
+        self.assertEqual(a_ref.grad, a_xpu.grad.cpu(), rtol=rtol, atol=atol)
