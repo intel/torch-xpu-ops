@@ -25,6 +25,7 @@
 #include <ATen/ops/_foreach_neg_native.h>
 #include <ATen/ops/_foreach_reciprocal_native.h>
 #include <ATen/ops/_foreach_round_native.h>
+#include <ATen/ops/_foreach_rsqrt_native.h>
 #include <ATen/ops/_foreach_sigmoid_native.h>
 #include <ATen/ops/_foreach_sign_native.h>
 #include <ATen/ops/_foreach_sin_native.h>
@@ -93,6 +94,7 @@ FOREACH_UNARY_OP(round);
 FOREACH_UNARY_OP(frac);
 FOREACH_UNARY_OP(reciprocal);
 FOREACH_UNARY_OP(sign);
+FOREACH_UNARY_OP(rsqrt);
 
 std::vector<Tensor> foreach_tensor_neg_xpu(TensorList tensors) {
   at::native::check_foreach_api_restrictions(tensors);
