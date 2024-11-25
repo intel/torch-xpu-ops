@@ -8,8 +8,12 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/IndexKernel.h>
 #include <ATen/native/TensorAdvancedIndexing.h>
+#include <ATen/native/ReductionType.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
+//#include <ATen/native/TensorFactories.cpp>
+#include <ATen/ops/zeros_like.h>
+#include <ATen/ops/ones_like.h>
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <comm/RegisterUtils.h>
@@ -18,6 +22,9 @@
 
 #include <ATen/ops/index_add_meta.h>
 #include <xpu/ATen/ops/index_add_native.h>
+//missing some libraries here?
+#include <ATen/ops/index_reduce_meta.h>
+#include <xpu/ATen/ops/index_reduce_native.h> //generated
 
 namespace at {
 
@@ -42,6 +49,7 @@ REGISTER_XPU_DISPATCH(index_fill_stub, &xpu::index_fill_kernel);
 REGISTER_XPU_DISPATCH(index_copy_stub, &xpu::index_copy_kernel);
 REGISTER_XPU_DISPATCH(put_stub, &xpu::put_kernel);
 REGISTER_XPU_DISPATCH(take_stub, &xpu::take_kernel);
+//REGISTER_XPU_DISPATCH(index_reduce_stub, &xpu::index_reduce_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
@@ -124,6 +132,56 @@ Tensor& masked_fill__xpu(
 
 Tensor count_nonzero_xpu(const Tensor& self, IntArrayRef dims) {
   return (self != 0).sum(dims);
+}
+
+TORCH_IMPL_FUNC(index_reduce_xpu_out)
+(const Tensor& self,
+ int64_t dim,
+ const Tensor& index,
+ const Tensor& source,
+ const c10::string_view reduce,
+ bool include_self,
+ const Tensor& result){
+    std::optional<Device> common_device = std::nullopt;
+    c10::impl::check_and_update_common_device(
+        common_device, self, "xpu::index_reduce_out", "self");
+    c10::impl::check_and_update_common_device(
+        common_device, index, "xpu::index_reduce_out", "index");
+    c10::impl::check_and_update_common_device(
+        common_device, source, "xpu::index_reduce_out", "source");
+    dim = maybe_wrap_dim(dim, self.dim());
+    int reduce_type = 0; 
+    reduce == "prod"? reduce_type = 1 : reduce_type = 0;
+    reduce == "mean"? reduce_type = 2 : reduce_type = 0;
+    reduce == "amax"? reduce_type = 3 : reduce_type = 0;
+    reduce == "amin"? reduce_type = 4 : reduce_type = 0;
+    switch(reduce_type){
+        case 0: //invalid 
+            TORCH_CHECK(false, "reduce argument must be one of the following choices: prod, mean, amax or amin. The choice was ", reduce, ".");
+            break;
+        case 1: //prod
+            //index_reduce_kernel(self, dim, index, source, include_self, ReductionType::PROD, reduce_multiply, result);
+            xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::PROD, result);
+            break;
+        case 2: //mean
+            xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MEAN, result);
+            auto counts = include_self ? ones_like(result) : zeros_like(result);
+            counts.index_add_(dim, index, ones_like(source));
+            counts.masked_fill_(counts == 0, 1);     
+            if (result.is_floating_point() || result.is_complex()) {
+                result.div_(counts);
+            } 
+            else {
+                result.div_(counts, "floor");
+            }       
+            break;
+        // case 3: //amax
+        //     xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MAX, result);
+        //     break;
+        // case 4: //amin
+        //     xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MIN, result);
+        //     break;
+    }
 }
 
 } // namespace native

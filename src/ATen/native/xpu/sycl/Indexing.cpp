@@ -1129,6 +1129,153 @@ void put_kernel(
       });
 }
 
+template <typename scalar_t>
+struct IndexReduceMultiplyFunctor {
+  void operator()(
+      scalar_t* dst,
+      scalar_t* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx,
+      scalar_t alpha) const{
+    atomicMul((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
+  }
+};
+
+template <typename scalar_t>
+struct IndexReduceMaxFunctor {
+  void operator()(
+      scalar_t* dst,
+      const scalar_t* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx) const{
+    atomicMax((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
+  }
+};
+template <typename scalar_t>
+struct IndexReduceMinFunctor {
+  void operator()(
+      scalar_t* dst,
+      const scalar_t* src,
+      int64_t dst_off,
+      int64_t src_off,
+      int64_t idx) const{
+    atomicMin((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
+  }
+};
+
+void index_reduce_kernel(
+  const Tensor& self,
+  int64_t dim,
+  const Tensor& index,
+  const Tensor& source,
+  bool include_self,
+  const ReductionType& reduce,
+  const Tensor& result) {
+  if (!result.is_same(self)) result.copy_(self);
+  // Scalars are treated as 1-d tensor
+  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
+  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+  //Perform checkings
+  int srcDims = source.dim() == 0 ? 1 : source.dim();
+  int dstDims = result.dim();
+  int idxDims = index.dim();
+  TORCH_CHECK(
+      srcDims <= XPU_MAX_TENSORINFO_DIMS,
+      "source tensor dim should be < ",
+      XPU_MAX_TENSORINFO_DIMS);
+  TORCH_CHECK(
+      dstDims <= XPU_MAX_TENSORINFO_DIMS,
+      "result tensor dim should be < ",
+      XPU_MAX_TENSORINFO_DIMS);
+  TORCH_CHECK(
+      idxDims <= XPU_MAX_TENSORINFO_DIMS,
+      "index tensor dim should be < ",
+      XPU_MAX_TENSORINFO_DIMS);
+
+  if (!include_self) {            
+    AT_DISPATCH_ALL_TYPES_AND2(
+      at::ScalarType::Half, at::ScalarType::BFloat16,
+      self.scalar_type(), "index_reduce_func_xpu_exclude_input_init", [&] {
+      scalar_t init_val;
+      switch (reduce) {
+        case ReductionType::PROD:
+          init_val = (scalar_t) 1;
+          //using reduceFunctor = IndexReduceMultiplyFunctor<scalar_t>;
+          break;
+        case ReductionType::MAX:
+          init_val = std::numeric_limits<scalar_t>::has_infinity ? 
+                     -std::numeric_limits<scalar_t>::infinity()
+                     : std::numeric_limits<scalar_t>::lowest();
+          //reduceFunctor = IndexReduceMaxFunctor<scalar_t>;
+          break;
+        case ReductionType::MIN:
+          init_val = std::numeric_limits<scalar_t>::has_infinity ? 
+                     std::numeric_limits<scalar_t>::infinity()
+                     : std::numeric_limits<scalar_t>::max();
+          //reduceFunctor = IndexReduceMinFunctor<scalar_t>;
+          break;
+        default:
+          init_val = (scalar_t) 0;
+          break;
+      }
+      // index_fill_ requires index to be a LongTensor
+      self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
+    });
+  }
+
+  ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
+  Scalar alpha = 0;
+
+  // uint64_t sourceTotalSize = source.numel();
+  // uint64_t selfReduceDimSize = self_.size(dim);
+  // uint64_t numIndex = index.numel();
+  // uint64_t selfNumel = self_.numel();
+  //early exit
+  if (sliceSize == 0) {return;}
+  //AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+  AT_DISPATCH_ALL_TYPES_AND2(
+    at::ScalarType::Half,
+    at::ScalarType::BFloat16,
+    result.scalar_type(),
+    "index_reduce", [&] {
+        AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_reduce_xpu", [&]() {
+          TensorInfo<index_t, int64_t> index_info =
+              getTensorInfo<index_t, int64_t>(index);
+          index_info.collapseDims();
+
+          TensorInfo<scalar_t, int64_t> src_info =
+              getTensorInfo<scalar_t, int64_t>(source_);
+
+          TensorInfo<scalar_t,int64_t> dst_info =
+              getTensorInfo<scalar_t, int64_t>(self_);
+          int new_indexing_dim = dst_info.collapseDims(dim);
+          //What is the meaning of this?
+          //Create a config / abstraction to contain metadata for tensors + hardware configurations (workgroup, policy etc)
+          //for calculating the grid/problems. It inherits the BatchKernelConfig.
+          
+          //using reduceFunctor = IndexReduceMultiplyFunctor<scalar_t>;          
+          using IdxConfig = IndexKernelConfig<
+              decltype(src_info),
+              decltype(dst_info),
+              decltype(index_info),
+              IndexReduceMultiplyFunctor<scalar_t>>;
+          using KernelClass = IndexKernel<IdxConfig, false, false>;
+          
+          auto cfg = IdxConfig::template make_config<KernelClass>(
+              src_info,
+              dst_info,
+              index_info,
+              alpha.to<scalar_t>(),
+              new_indexing_dim,
+              true,
+              IndexReduceMultiplyFunctor<scalar_t>());
+          launch_index_kernel(cfg);
+        });
+      });  
+}
+
 } // namespace at::native::xpu
 
 #pragma GCC diagnostic pop
