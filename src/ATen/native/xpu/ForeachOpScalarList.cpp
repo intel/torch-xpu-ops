@@ -6,12 +6,15 @@
 #include <ATen/ops/_foreach_clamp_max_native.h>
 #include <ATen/ops/_foreach_clamp_min_native.h>
 #include <ATen/ops/_foreach_div_native.h>
+#include <ATen/ops/_foreach_lerp_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_pow_native.h>
 #include <ATen/ops/_foreach_sub_native.h>
+#include <ATen/ops/empty_like.h>
 
 #include <ATen/native/xpu/sycl/ForeachBinaryOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
+#include <ATen/native/xpu/sycl/ForeachTernaryOpScalarListKernels.h>
 
 #include <xpu/ATen/ops/_foreach_add_native.h>
 #include <xpu/ATen/ops/_foreach_mul_native.h>
@@ -117,6 +120,39 @@ FOREACH_BINARY_OP_SCALARLIST(pow, true);
 
 FOREACH_POINTWISE_OP_SCALARLIST(addcmul)
 FOREACH_POINTWISE_OP_SCALARLIST(addcdiv)
+
+std::vector<at::Tensor> foreach_tensor_lerp_scalarlist_xpu(
+    TensorList tensors1,
+    TensorList tensors2,
+    at::ArrayRef<Scalar> scalars) {
+  check_foreach_api_restrictions(tensors1, tensors2, scalars);
+  if (!can_use_fast_route({tensors1, tensors2}, scalars, true)) {
+    return foreach_tensor_lerp_scalarlist_kernel_slow(
+        tensors1, tensors2, scalars);
+  }
+
+  std::vector<at::Tensor> vec_res;
+  vec_res.reserve(tensors1.size());
+  for (const auto& t : tensors1) {
+    vec_res.emplace_back(at::empty_like(t));
+  }
+
+  xpu::foreach_lerp_scalarlist_kernel(tensors1, tensors2, scalars, vec_res);
+  return vec_res;
+}
+
+void foreach_tensor_lerp_scalarlist_xpu_(
+    TensorList tensors1,
+    TensorList tensors2,
+    at::ArrayRef<Scalar> scalars) {
+  check_foreach_api_restrictions(tensors1, tensors2, scalars);
+  if (!can_use_fast_route({tensors1, tensors2}, scalars, true)) {
+    return foreach_tensor_lerp_scalarlist_kernel_slow_(
+        tensors1, tensors2, scalars);
+  }
+
+  xpu::foreach_lerp_scalarlist_kernel_(tensors1, tensors2, scalars);
+}
 
 }; // namespace native
 } // namespace at

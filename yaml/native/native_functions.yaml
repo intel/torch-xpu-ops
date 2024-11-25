@@ -3094,6 +3094,29 @@
   dispatch:
     CompositeExplicitAutograd: _foreach_copy
 
+- func: _foreach_max(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_max_slow
+    XPU: foreach_tensor_max_xpu
+  autogen: _foreach_max.out
+
+- func: _foreach_rsqrt(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_rsqrt_slow
+    XPU: foreach_tensor_rsqrt_xpu
+
+- func: _foreach_rsqrt_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_rsqrt_slow_
+    XPU: foreach_tensor_rsqrt_xpu_
+  autogen: _foreach_rsqrt.out
+
 - func: kthvalue(Tensor self, int k, int dim=-1, bool keepdim=False) -> (Tensor values, Tensor indices)
   variants: function, method
   dispatch:
@@ -3687,6 +3710,22 @@
   dispatch:
     XPU: foreach_tensor_lerp_list_xpu_
   autogen: _foreach_lerp.Scalar_out
+
+- func: _foreach_lerp.ScalarList(Tensor[] self, Tensor[] tensors1, Scalar[] weight) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensors are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lerp_scalarlist_kernel_slow
+    XPU: foreach_tensor_lerp_scalarlist_xpu
+  autogen: _foreach_lerp.ScalarList_out
+
+- func: _foreach_lerp_.ScalarList(Tensor(a!)[] self, Tensor[] tensors1, Scalar[] weight) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensors are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lerp_scalarlist_kernel_slow_
+    XPU: foreach_tensor_lerp_scalarlist_xpu_
+  autogen: _foreach_lerp.ScalarList_out
 
 - func: acos(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
