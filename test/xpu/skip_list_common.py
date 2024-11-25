@@ -679,6 +679,10 @@ skip_dict = {
         # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
         # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
         "test_dtypes__refs_nn_functional_pdist_xpu",
+
+        # 2025 bundle std::pow complex result is different on host and device
+        "test_python_ref__refs_square_xpu_complex64",
+        "test_python_ref_torch_fallback__refs_square_xpu_complex64",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -1245,6 +1249,15 @@ skip_dict = {
         # Compiler issue in handling tanh with real or imag inf.
         # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
         "test_reference_numerics_large__refs_tanh_xpu_complex32",
+
+        # 2025 bundle std::pow complex result is different on host and device
+        "test_exp_xpu_complex64",
+        "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
+        "test_reference_numerics_extremal__refs_exp_xpu_complex64",
+        "test_reference_numerics_extremal_exp2_xpu_complex64",
+        "test_reference_numerics_extremal_exp_xpu_complex64",
+        "test_reference_numerics_large__refs_exp_xpu_complex32",
+        "test_reference_numerics_large_exp_xpu_complex32",
     ),
 
     "test_masked_xpu.py": (
