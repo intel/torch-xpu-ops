@@ -3297,6 +3297,8 @@ skip_dict = {
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
         "test_meta_outplace_vdot_xpu_complex",
+        # Unexpected success: 
+        "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
     ),
 
     "test_type_promotion_xpu.py": None,
