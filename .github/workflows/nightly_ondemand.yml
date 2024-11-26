@@ -151,7 +151,6 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          /tree/
           TRITON_REPO="https://github.com/jianyizh/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
