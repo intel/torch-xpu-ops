@@ -688,13 +688,6 @@ skip_dict = {
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
         "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
-        # fail in complex_exponents=[-1.0 - 1.5j, 3.3j]
-        # Mismatched elements: 33 / 100 (33.0%)
-        # Greatest absolute difference: 0.00038337233127094805 at index (4,) (up to 1e-05 allowed)
-        # Greatest relative difference: 1.9085073290625587e-06 at index (6,) (up to 1.3e-06 allowed)
-        "test_pow_xpu_int16",
-        "test_pow_xpu_int32",
-        "test_pow_xpu_int64",
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
         # nextafter: Numeric error due to `std::nextafter` difference between CPU (GCC) and XPU (SYCL)
@@ -1184,7 +1177,6 @@ skip_dict = {
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
         # CPU Fallback fails: Tensor-likes are not close!
-        "test_reference_numerics_extremal__refs_nn_functional_tanhshrink_xpu_complex64",
         "test_reference_numerics_large_tanh_xpu_complex32",
         # For extreme value processing, Numpy and XPU results are inconsistent
         # std operations get different behavior on std::complex operarands for extremal cases
