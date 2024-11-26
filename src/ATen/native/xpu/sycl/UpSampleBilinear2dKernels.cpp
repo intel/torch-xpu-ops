@@ -711,8 +711,8 @@ void upsample_bilinear2d_backward_out_kernel(
               : at::zeros(grad_input.sizes(), grad_input.options());
           Tensor grad_output = grad_output_.contiguous();
 
-          scalar_t* idata = grad_input_c.data_ptr<scalar_t>();
-          scalar_t* odata = grad_output.data_ptr<scalar_t>();
+          scalar_t* idata = grad_input_c.mutable_data_ptr<scalar_t>();
+          const scalar_t* odata = grad_output.const_data_ptr<scalar_t>();
 
           const accscalar_t rheight = area_pixel_compute_scale<scalar_t>(
               input_height, output_height, align_corners, scales_h);

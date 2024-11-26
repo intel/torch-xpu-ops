@@ -660,9 +660,6 @@ skip_dict = {
         # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported"
         "test_errors_histogramdd_xpu",
 
-        # https://github.com/intel/torch-xpu-ops/issues/922
-        "test_dtypes_isin_xpu",
-
         # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
         "test_view_replay_multinomial_xpu_float32",
 
@@ -2558,14 +2555,26 @@ skip_dict = {
     "test_meta_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/774
         "_jiterator_",
-        # segment fault
+
+
+        # RuntimeError: Short is not supported in oneDNN! Need oneDNN's support, suggest to keep skip.
         "test_dispatch_meta_outplace_nn_functional_linear_xpu_int16",
-        "test_dispatch_meta_outplace_nn_functional_linear_xpu_int64",
         "test_dispatch_symbolic_meta_outplace_nn_functional_linear_xpu_int16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_linear_xpu_int64",
         "test_meta_outplace_nn_functional_linear_xpu_int16",
+
+        # RuntimeError: Long is not supported in oneDNN! Need oneDNN's support, suggest to keep skip.
+        "test_dispatch_meta_outplace_nn_functional_linear_xpu_int64",
+        "test_dispatch_symbolic_meta_outplace_nn_functional_linear_xpu_int64",
         "test_meta_outplace_nn_functional_linear_xpu_int64",
+
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+
+        "test_dispatch_meta_inplace_addbmm_xpu_complex",
+        "test_dispatch_meta_outplace_addbmm_xpu_complex",
+        "test_dispatch_symbolic_meta_inplace_addbmm_xpu_complex",
+        "test_dispatch_symbolic_meta_outplace_addbmm_xpu_complex",
+        "test_meta_inplace_addbmm_xpu_complex",
+        "test_meta_outplace_addbmm_xpu_complex",
         "test_dispatch_meta_inplace_addbmm_xpu_float64",
         "test_dispatch_meta_inplace_addmm_decomposed_xpu_complex",
         "test_dispatch_meta_inplace_addmm_decomposed_xpu_float64",
@@ -3284,72 +3293,12 @@ skip_dict = {
         "test_meta_outplace_nn_functional_conv_transpose3d_xpu_bfloat16",
         "test_meta_outplace_nn_functional_conv_transpose3d_xpu_complex",
         "test_meta_outplace_nn_functional_conv_transpose3d_xpu_float",
-        # _foreach_norm: RuntimeError: output 1: meta disagrees with real impl:
-        "test_dispatch_meta_outplace__foreach_norm_xpu_bfloat16",
-        "test_dispatch_meta_outplace__foreach_norm_xpu_float",
-        "test_dispatch_symbolic_meta_outplace__foreach_norm_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace__foreach_norm_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_all_strides__foreach_norm_xpu_float32",
-        "test_meta_outplace__foreach_norm_xpu_bfloat16",
-        "test_meta_outplace__foreach_norm_xpu_float",
-        # RuntimeError: value cannot be converted to type float without overflow
-        "test_dispatch_meta_inplace_addbmm_xpu_complex",
-        "test_dispatch_meta_outplace_addbmm_xpu_complex",
-        "test_dispatch_symbolic_meta_inplace_addbmm_xpu_complex",
-        "test_dispatch_symbolic_meta_outplace_addbmm_xpu_complex",
-        "test_meta_inplace_addbmm_xpu_complex",
-        "test_meta_outplace_addbmm_xpu_complex",
-        # RuntimeError: false INTERNAL ASSERT FAILED at "pytorch/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
-        "test_dispatch_meta_outplace_nanmean_xpu",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nanmean_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_nanmean_xpu",
-        "test_meta_outplace_nanmean_xpu",
-        # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'
-        # run dtype of cpu. It should run dtypeifcuda. add 'nn.functional.avg_pool1d' and 'nn.functional.local_response_norm' to '_xpu_computation_op_list' will skip these case
-        "test_dispatch_meta_outplace_nn_functional_avg_pool1d_xpu_int64",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_avg_pool1d_xpu_int64",
-        "test_meta_outplace_nn_functional_avg_pool1d_xpu_int64",
-        "test_dispatch_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        "test_meta_outplace_nn_functional_local_response_norm_xpu_int64",
-        # RuntimeError: output 0: meta disagrees with real impl:
+        # Not implemented, try these cases after implementing vdot
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
         "test_meta_outplace_vdot_xpu_complex",
         # Unexpected success: 
-        "test_dispatch_meta_inplace__foreach_lgamma_xpu_bfloat16",
-        "test_dispatch_meta_inplace__foreach_sigmoid_xpu_complex",
-        "test_dispatch_meta_outplace__foreach_lgamma_xpu_bfloat16",
-        "test_dispatch_meta_outplace__foreach_sigmoid_xpu_complex",
-        "test_dispatch_symbolic_meta_inplace__foreach_lgamma_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_inplace__foreach_sigmoid_xpu_complex",
-        "test_dispatch_symbolic_meta_outplace__foreach_lgamma_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace__foreach_sigmoid_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_channel_shuffle_xpu_float32",
-        "test_meta_inplace__foreach_lgamma_xpu_bfloat16",
-        "test_meta_inplace__foreach_sigmoid_xpu_complex",
-        "test_meta_outplace__foreach_lgamma_xpu_bfloat16",
-        "test_meta_outplace__foreach_sigmoid_xpu_complex",
-        # adaptive_max_pool2d: Expected out tensor to have dtype c10::BFloat16/c10::Half/float/double, but got long int instead
-        "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_bfloat16",
-        "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
-        "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_bfloat16",
-        "test_dispatch_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_adaptive_max_pool1d_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_all_strides_nn_functional_adaptive_max_pool2d_xpu_float32",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool1d_xpu_float",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_nn_functional_adaptive_max_pool2d_xpu_float",
-
-        # https://github.com/intel/torch-xpu-ops/issues/922
-        "test_dispatch_meta_outplace_isin_xpu_bfloat16",
-        "test_dispatch_meta_outplace_unique_consecutive_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_isin_xpu_bfloat16",
-        "test_dispatch_symbolic_meta_outplace_unique_consecutive_xpu_bfloat16",
-        "test_meta_outplace_isin_xpu_bfloat16",
-        "test_meta_outplace_unique_consecutive_xpu_bfloat16",
     ),
 
     "test_type_promotion_xpu.py": None,
