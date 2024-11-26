@@ -59,7 +59,23 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
 fi
 
 ulimit -n 1048576
+
+if [[ "$TEST_TRITON_EFFICIENCY" == "1" ]]; then
+  export XPU_TRITON_KERNEL_DUMP=$WORKSPACE/inductor_log/${SUITE}/${DT}/${MODE}
+  export TORCHINDUCTOR_BENCHMARK_KERNEL=1
+  export TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1
+  export TORCHINDUCTOR_FORCE_DISABLE_CACHES=1
+fi
+echo $XPU_TRITON_KERNEL_DUMP
 ZE_AFFINITY_MASK=${CARD} \
     python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n10 ${DT_extra} ${Mode_extra} \
     ${Shape_extra} ${partition_flags} ${Model_only_extra} --backend=inductor --cold-start-latency --timeout=10800 \
     --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
+
+rm -f ${LOG_DIR}/kernel_efficiency_${MODE}_card${CARD}.csv
+for dir in ${LOG_DIR}/${MODE}/*; do
+  if [ -d "$dir" ] && [ -f "$dir/kernel.py" ]; then
+    ZE_AFFINITY_MASK=0 python "$dir/kernel.py" -k | tee -a ${LOG_DIR}/kernel_efficiency_${MODE}_card${CARD}.csv
+  fi
+done
+sed -i '/^(I):/d' ${LOG_DIR}/kernel_efficiency_${MODE}_card${CARD}.csv
