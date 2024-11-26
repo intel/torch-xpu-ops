@@ -130,7 +130,7 @@ _xpu_computation_op_list = [
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
-    "nn.functional.local_response_norm"
+    "nn.functional.local_response_norm",
     "nextafter",
     "heaviside",
     "nonzero",
