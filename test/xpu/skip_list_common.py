@@ -55,15 +55,6 @@ skip_dict = {
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
 
-        # RuntimeError: false INTERNAL ASSERT FAILED at "/home/gta/daisyden/pytorch4/aten/src/ATen/native/DispatchStub.cpp":220, please report a bug to PyTorch. DispatchStub: missing kernel for xpu
-        "test_out_nanmean_xpu_float32",
-        "test_out_warning_nanmean_xpu",
-
-        # NameError: name 'nanj' is not defined. Did you mean: 'nan'?
-        # https://github.com/intel/torch-xpu-ops/issues/768
-        "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex128",
-        "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex64",
-
         # RuntimeError: could not create a primitive descriptor for a deconvolution 
         # https://github.com/intel/torch-xpu-ops/issues/253
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
@@ -77,7 +68,6 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_zeta_xpu_float32",  
 
          # XFAIL of CUDA and XPU, unexpected success in fallback
         "test_out_cholesky_inverse_xpu_float32",
@@ -103,9 +93,6 @@ skip_dict = {
 
         # Cuda skipped it
         "test_non_standard_bool_values_sort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "sort" not implemented for 'Bool'.
-
-        # Cuda skipped it
-        "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
 
         # Cuda XFAIL (stock pytorch commit: e7cf7d0)
         "test_non_standard_bool_values_argsort_xpu_bool",
@@ -635,47 +622,15 @@ skip_dict = {
         "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
 
-        #AssertionError: The supported dtypes for unique_consecutive on device type xpu are incorrect!
-        #The following dtypes worked in forward but are not listed by the OpInfo: {torch.bfloat16}.
-        # XPU supports bfloat16, CUDA doesn't support it.
-        "test_dtypes_unique_xpu",
         # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
         # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
         #"test_dtypes_polar_xpu",
         # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
         # but test_dtypes infrastructure leverage CUDA supported datatypes
         "test_dtypes_histogram_xpu",
-        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.float16}.
-        # Align with CPU implementation since,
-        # 1. most cases of nextafter require Half dtype.
-        # 2. Half dtype is a common dtype in workloads.
-        # So far CUDA doesn't support Half, so that XPU fails as we aligned claimed dtypes with CUDA in test infra.
-        # https://github.com/intel/torch-xpu-ops/issues/623
-        "test_dtypes_nextafter_xpu",
 
-        # AssertionError: The supported dtypes for argsort on device type xpu are incorrect!
-        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.bool}.
-        # CUDA does not have torch.bool support on argsort.
-        "test_dtypes_argsort_xpu",
         # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported"
         "test_errors_histogramdd_xpu",
-
-        # NotImplementedError: The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
-        "test_view_replay_multinomial_xpu_float32",
-
-        # AssertionError: The supported dtypes for nn.functional.max_unpool3d on device type xpu are incorrect!
-        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64}.
-        "test_dtypes_nn_functional_max_unpool3d_grad_xpu",
-        "test_dtypes_nn_functional_max_unpool3d_xpu",
-
-        # Unknown error with indexSelectBackward
-        # AssertionError: The supported dtypes for _refs.nn.functional.pdist on device type xpu are incorrect!
-        # The following dtypes did not work in forward but are listed by the OpInfo: {torch.float64}.
-        # Unexpected failures raised the following errors:
-        # torch.float64 - Native API failed. Native API returns: -5 (PI_ERROR_OUT_OF_RESOURCES) -5 (PI_ERROR_OUT_OF_RESOURCES)
-        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
-        # FATAL: Unexpected page fault from GPU at 0x0, ctx_id: 1 (CCS) type: 0 (NotPresent), level: 3 (PML4), access: 0 (Read), banned: 1, aborting.
-        "test_dtypes__refs_nn_functional_pdist_xpu",
 
         # 2025 bundle std::pow complex result is different on host and device
         "test_python_ref__refs_square_xpu_complex64",
