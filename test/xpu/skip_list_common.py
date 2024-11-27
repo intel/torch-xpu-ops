@@ -915,14 +915,6 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
-        # Unexpected success:
-        "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
-        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
-        # CPU fallback could not cover these
-        # CUDA xfails
-        # Failed: Unexpected success
-        "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
-        "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         "test_save_load_nn_GRU_eval_mode_xpu_float32",
@@ -3280,7 +3272,7 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
     ),
-    
+
     "test_sparse_xpu.py": (
         "test_bmm_deterministic_xpu_float64", # - AssertionError: Torch not compiled with CUDA enabled
         "test_bmm_oob_xpu", # - NotImplementedError: Could not run 'aten::bmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was ...
