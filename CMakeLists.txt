@@ -38,20 +38,20 @@ list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
-option(BUILD_WITH_XCCL "Build with XCCL support" ON)
-if (DEFINED ENV{BUILD_WITH_XCCL})
-  string(TOLOWER "$ENV{BUILD_WITH_XCCL}" BUILD_WITH_XCCL_LOWER)
+option(USE_XCCL "Build with XCCL support" ON)
+if (DEFINED ENV{USE_XCCL})
+  string(TOLOWER "$ENV{USE_XCCL}" USE_XCCL_LOWER)
 
-  if (NOT (BUILD_WITH_XCCL_LOWER STREQUAL "1" OR
-          BUILD_WITH_XCCL_LOWER STREQUAL "on" OR
-          BUILD_WITH_XCCL_LOWER STREQUAL "yes"))
-    set(BUILD_WITH_XCCL OFF CACHE BOOL "Build with XCCL support" FORCE)
+  if (NOT (USE_XCCL_LOWER STREQUAL "1" OR
+          USE_XCCL_LOWER STREQUAL "on" OR
+          USE_XCCL_LOWER STREQUAL "yes"))
+    set(USE_XCCL OFF CACHE BOOL "Build with XCCL support" FORCE)
   else()
-    set(BUILD_WITH_XCCL ON CACHE BOOL "Build with XCCL support" FORCE)
+    set(USE_XCCL ON CACHE BOOL "Build with XCCL support" FORCE)
   endif()
 endif()
 
-if(NOT WIN32 AND BUILD_WITH_XCCL)
+if(NOT WIN32 AND USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
   set(USE_C10D_XCCL ON)
 endif()
