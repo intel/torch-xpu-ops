@@ -54,6 +54,7 @@ endif()
 if(NOT WIN32 AND USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
   set(USE_C10D_XCCL ON)
+  set(USE_C10D_XCCL ${USE_C10D_XCCL} PARENT_SCOPE)
 endif()
 
 if(BUILD_TEST)
