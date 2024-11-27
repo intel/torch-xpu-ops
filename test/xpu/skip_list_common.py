@@ -631,6 +631,10 @@ skip_dict = {
 
         # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported"
         "test_errors_histogramdd_xpu",
+
+        # 2025 bundle std::pow complex result is different on host and device
+        "test_python_ref__refs_square_xpu_complex64",
+        "test_python_ref_torch_fallback__refs_square_xpu_complex64",
     ),
 
     "test_binary_ufuncs_xpu.py": (
