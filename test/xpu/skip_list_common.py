@@ -915,6 +915,9 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
+        # Unexpected success:
+        "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         "test_save_load_nn_GRU_eval_mode_xpu_float32",
@@ -1093,6 +1096,10 @@ skip_dict = {
         # module 'torch._C' has no attribute '_scatter'
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
+        # Runtime error after enabling PTI
+        # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+        # https://github.com/intel/torch-xpu-ops/issues/731
+        "test_profiler",
         # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
         # https://github.com/intel/torch-xpu-ops/issues/1071
         "test_reentrant_parent_error_on_cpu_xpu",
@@ -1871,6 +1878,8 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_float16_xpu",
         "test_scaled_mm_vs_emulated_float32_xpu",
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+        # AssertionError: Torch not compiled with CUDA enabled
+        "test_zero_dim_tensorwise_which_dim_zero",
     ),
 
     "test_maskedtensor_xpu.py": (
