@@ -1982,6 +1982,14 @@ skip_dict = {
         "test_reduction_all_sum_layout2_xpu_float64",
     ),
 
+    "quantization/core/test_quantized_op_xpu.py": (
+        # AssertionError: Torch not compiled with CUDA enabled
+        "test_qgelu_xpu",
+        "test_qrelu_xpu",
+        # AttributeError: 'TestQuantizedOpsXPU' object has no attribute 'test_qsoftmax'
+        "test_qsoftmax_qnnpack_xpu",
+    ),
+
     "quantization/core/test_workflow_ops_xpu.py": (
         # AssertionError: Not equal to tolerance rtol=1e-06, atol=1e-06
         # Max absolute difference among violations: 1.731507e+10
