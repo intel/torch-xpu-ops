@@ -189,10 +189,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_thnn_fused_gru_cell",
     "_to_sparse_csr",
     "triangular_solve.X",
-    "_upsample_bilinear2d_aa.out",
     "_validate_compressed_sparse_indices",
     "vdot",
-    "_upsample_bicubic2d_aa.out",
   };
   for (auto& op_name : fallback_list) {
     m.impl(
