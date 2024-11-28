@@ -1100,6 +1100,7 @@ skip_dict = {
         # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
         # https://github.com/intel/torch-xpu-ops/issues/731
         "test_profiler",
+        "test_record_function",
         # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
         # https://github.com/intel/torch-xpu-ops/issues/1071
         "test_reentrant_parent_error_on_cpu_xpu",
