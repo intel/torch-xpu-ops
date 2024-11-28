@@ -28,6 +28,9 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         lda(lda),
         ldb(ldb),
         ldc(ldc) {}
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    // local_scan_ = sycl_local_acc_t<T>(N_, cgh);
+  }
 
   void operator()(sycl::nd_item<1> item) const {
     int constexpr Unroll = 2;
@@ -132,8 +135,8 @@ void linear_int4_kernel(
   int64_t k = output.size(1);
   int constexpr Unroll = 2;
   int constexpr SgSize = 16;
-  sycl::range<1> group{SgSize};
-  sycl::range<1> problem{static_cast<size_t>(n) * SgSize};
+  sycl::range<1> local_range{SgSize};
+  sycl::range<1> global_range{static_cast<size_t>(n) * SgSize};
   int lda = k;
   int ldb = n;
   int ldc = n;
@@ -145,7 +148,7 @@ void linear_int4_kernel(
 
     scalar_t* output_data = output.data_ptr<scalar_t>();
     scalar_t* weight_scale_data = weight_scale_zero_point.data_ptr<scalar_t>();
-    auto kfn = LinearInt4KernelFunctor<scalar_t, 16>(
+    LinearInt4KernelFunctor<scalar_t, 16> kfn(
         input_data,
         weight_data,
         output_data,
@@ -158,9 +161,8 @@ void linear_int4_kernel(
         n,
         n);
 
-    sycl_kernel_submit(::sycl::nd_range<1>(problem, group), sycl_queue, kfn);
+    sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
   }
 }
-
 
 } // namespace at::native::xpu
