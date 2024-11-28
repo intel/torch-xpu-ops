@@ -12,6 +12,7 @@ TensorBase empty_xpu(
     ScalarType dtype,
     c10::optional<Device> device_opt,
     c10::optional<c10::MemoryFormat> memory_format_opt) {
+  at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_xpu());
   const c10::DeviceGuard device_guard(device);

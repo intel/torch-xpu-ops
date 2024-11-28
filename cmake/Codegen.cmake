@@ -59,9 +59,9 @@ function(GEN_XPU file_yaml)
 
   # Codegen prepare process
   if(WIN32)
-    string(REPLACE "/" "\\" LinkPATH "${CODEGEN_TEMPLATE}templates")
-    string(REPLACE "/" "\\" TargetPATH "${CMAKE_SOURCE_DIR}/aten/src/ATen/templates")
-    execute_process(COMMAND cmd /c mklink /D ${LinkPATH} ${TargetPATH})
+    string(REPLACE "/" "\\" DestPATH "${CODEGEN_TEMPLATE}templates")
+    string(REPLACE "/" "\\" SrcPATH "${CMAKE_SOURCE_DIR}/aten/src/ATen/templates")
+    execute_process(COMMAND cmd /c xcopy ${SrcPATH} ${DestPATH} /E /H /C /I /Y > nul)
     string(REPLACE "/" "\\" RegisterXPU_PATH_BACKSLASH "${RegisterXPU_PATH}")
     string(REPLACE "/" "\\" XPUFallback_PATH_BACKSLASH "${XPUFallback_PATH}")
     set(REGISTER_FALLBACK_CMD ${FILE_DISPLAY_CMD} ${XPUFallback_PATH_BACKSLASH} ">>" ${RegisterXPU_PATH_BACKSLASH})
@@ -96,10 +96,20 @@ function(GEN_XPU file_yaml)
     ${SIMPLE_TRACE} 
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
-  ${depended_files}
+    ${depended_files}
     ${TORCH_XPU_OPS_ROOT}/yaml/native/${file_yaml}
     ${XPUFallback_PATH}
   )
+
+  # Post codegen delete the copied templates folder only on Windows.
+  if(WIN32)
+    add_custom_target(DELETE_TEMPLATES ALL DEPENDS ${generated_files})
+    add_custom_command(
+      TARGET DELETE_TEMPLATES
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
+    )
+  endif()
 endfunction(GEN_XPU)
 
 # GEN_BACKEND(
