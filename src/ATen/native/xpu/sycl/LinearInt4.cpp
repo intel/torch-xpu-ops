@@ -9,12 +9,33 @@ void linear_int4_kernel(
     const std::optional<Tensor>& weight_bias,
     Tensor& output,
     int block_size) {
-  int64_t M = input[0];
-  int64_t K = input[1];
-  int64_t N = output[1];
+  auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
+  int64_t m = input[0];
+  int64_t n = input[1];
+  int64_t k = output[1];
+  int constexpr Unroll = 2;
+  int constexpr SgSize = 16;
+  sycl::range<1> group{SgSize};
+  sycl::range<1> problem{static_cast<size_t>(n) * SgSize};
+  int lda = k;
+  int ldb = n;
+  int ldc = n;
   scalar_t* input_data = input.data_ptr<scalar_t>();
   int4x8* weight_data = weight.data_ptr<int4x8>();
+  scalar_t* output_data = output.data_ptr<scalar_t>();
   scalar_t* weight_scale_data = weight_scale.data_ptr<scalar_t>();
+  auto kfn = LinearInt4KernelFunctor<sycl::half, 16>(
+      input_data,
+      weight_data,
+      output_data,
+      weight_scale_data,
+      nullptr,
+      m,
+      n,
+      k,
+      n,
+      n);
+  sycl_kernel_submit(::sycl::nd_range<1>(problem, group), sycl_queue, kfn);
 }
 
 template <typename scalar_t, int block_size>
