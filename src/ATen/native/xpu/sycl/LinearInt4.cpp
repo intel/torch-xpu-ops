@@ -1,48 +1,13 @@
 #include <ATen/native/xpu/sycl/LinearInt4.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
-void linear_int4_kernel(
-    const Tensor& input,
-    const Tensor& weight,
-    const Tensor& weight_scale_zero_point,
-    const std::optional<Tensor>& weight_bias,
-    Tensor& output,
-    int block_size) {
-  auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
-  int64_t m = input[0];
-  int64_t n = input[1];
-  int64_t k = output[1];
-  int constexpr Unroll = 2;
-  int constexpr SgSize = 16;
-  sycl::range<1> group{SgSize};
-  sycl::range<1> problem{static_cast<size_t>(n) * SgSize};
-  int lda = k;
-  int ldb = n;
-  int ldc = n;
-  scalar_t* input_data = input.data_ptr<scalar_t>();
-  int4x8* weight_data = weight.data_ptr<int4x8>();
-  scalar_t* output_data = output.data_ptr<scalar_t>();
-  scalar_t* weight_scale_data = weight_scale.data_ptr<scalar_t>();
-  auto kfn = LinearInt4KernelFunctor<sycl::half, 16>(
-      input_data,
-      weight_data,
-      output_data,
-      weight_scale_data,
-      nullptr,
-      m,
-      n,
-      k,
-      n,
-      n);
-  sycl_kernel_submit(::sycl::nd_range<1>(problem, group), sycl_queue, kfn);
-}
-
-template <typename scalar_t, int block_size>
+template <typename scalar_t = at::Half, int block_size = 16>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       scalar_t* A,
-      int4x8* B,
+      uint32_t* B,
       scalar_t* C,
       scalar_t* B_scale,
       scalar_t* B_zero_point,
@@ -87,7 +52,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          scale_t scale = *(sptr + sg_id * TileK / blocksize);
+          scalar_t scale = *(sptr + sg_id * TileK / blocksize);
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             sycl::half2 tmpA = *(sycl::half2*)&aptr[sg_id * TileK + ikk];
@@ -117,12 +82,12 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          scale_t scale = *(sptr + sg_id * TileK / blocksize);
+          scalar_t scale = *(sptr + sg_id * TileK / blocksize);
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk += 2) {
-            tmpAcc += scale_t(aptr[sg_id * TileK + ikk]) *
+            tmpAcc += scalar_t(aptr[sg_id * TileK + ikk]) *
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8) * scale;
-            tmpAcc += scale_t(aptr[sg_id * TileK + ikk + 1]) *
+            tmpAcc += scalar_t(aptr[sg_id * TileK + ikk + 1]) *
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8) * scale;
           }
           sptr += GroupK / blocksize;
@@ -142,7 +107,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
  private:
   scalar_t* A;
-  int4x8* B;
+  uint32_t* B;
   scalar_t* C;
   scalar_t* B_scale;
   scalar_t* B_zero_point;
@@ -153,4 +118,49 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   int ldb;
   int ldc;
 };
+
+void linear_int4_kernel(
+    const Tensor& input,
+    const Tensor& weight,
+    const Tensor& weight_scale_zero_point,
+    const std::optional<Tensor>& weight_bias,
+    Tensor& output,
+    int block_size) {
+  auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
+  int64_t m = input.size(0);
+  int64_t n = input.size(1);
+  int64_t k = output.size(1);
+  int constexpr Unroll = 2;
+  int constexpr SgSize = 16;
+  sycl::range<1> group{SgSize};
+  sycl::range<1> problem{static_cast<size_t>(n) * SgSize};
+  int lda = k;
+  int ldb = n;
+  int ldc = n;
+  if (input.scalar_type() == at::kHalf) {
+    using scalar_t = at::Half;
+    // const auto scalar_t = input.scalar_type();
+    scalar_t* input_data = input.data_ptr<scalar_t>();
+    uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
+
+    scalar_t* output_data = output.data_ptr<scalar_t>();
+    scalar_t* weight_scale_data = weight_scale_zero_point.data_ptr<scalar_t>();
+    auto kfn = LinearInt4KernelFunctor<scalar_t, 16>(
+        input_data,
+        weight_data,
+        output_data,
+        weight_scale_data,
+        nullptr,
+        m,
+        n,
+        k,
+        k,
+        n,
+        n);
+
+    sycl_kernel_submit(::sycl::nd_range<1>(problem, group), sycl_queue, kfn);
+  }
+}
+
+
 } // namespace at::native::xpu
