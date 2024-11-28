@@ -962,6 +962,7 @@ class XPUPatchForImport:
         ]
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
+        common_cuda.TEST_CUDNN_VERSION = 0
         cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
 
