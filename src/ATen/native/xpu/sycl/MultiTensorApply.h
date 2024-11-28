@@ -3,6 +3,7 @@
 #include <comm/xpu_aten.h>
 #include <vector>
 
+#include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <comm/SYCLContext.h>
@@ -48,14 +49,12 @@ struct TLMetaForWG {
   uint32_t wg_to_chunk;
 };
 
-template <class KernelClass>
-static int64_t multi_tensor_apply_kernel_get_wg_size() {
-  return syclMaxWorkGroupSize<KernelClass>();
+static int64_t multi_tensor_apply_kernel_get_wg_size(int simd) {
+  return get_group_reduce_group_size(simd);
 }
 
-template <class KernelClass>
-static int64_t multi_tensor_apply_kernel_get_chunk_size() {
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size<KernelClass>();
+static int64_t multi_tensor_apply_kernel_get_chunk_size(int simd) {
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
   return max_wg_size * kElementPerThread;
 }
 
@@ -69,7 +68,7 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 }
 
 template <typename T, typename Y, typename U, typename... ArgTypes>
-struct MultiTensorApplyKernelFunctor {
+struct MultiTensorApplyKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
     // Expand the tuple elements manually and call the callable
     expandAndCall(item_id, std::index_sequence_for<ArgTypes...>());
@@ -85,6 +84,12 @@ struct MultiTensorApplyKernelFunctor {
         tlWGMeta(tlWGMeta_),
         callable(callable_),
         args(std::make_tuple(args_...)) {}
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, U>) {
+      callable.sycl_ker_config_convention(cgh);
+    }
+  }
 
  private:
   template <std::size_t... Indices>
@@ -118,18 +123,18 @@ void launch_multi_tensor_apply_kernel(
     U callable,
     int num_wg,
     ArgTypes... args) {
-  using KernelClass = MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...>;
-
   auto& q = getCurrentSYCLQueue();
-  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size<KernelClass>();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
+  int64_t simd = syclMaxSubGroupSize();
+  int64_t max_wg_size = multi_tensor_apply_kernel_get_wg_size(simd);
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   if constexpr (fused_kernel) {
     max_wg_size = multi_tensor_apply_fused_kernel_get_wg_size();
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  KernelClass kfn(kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+  MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
+      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
 
   sycl_kernel_submit(
       sycl::range<1>(num_wg * max_wg_size),
@@ -145,19 +150,14 @@ void multi_tensor_apply(
     T callable,
     ArgTypes... args) {
   using scalar_vals_t = typename T::opmath_t;
-  using KernelClass = MultiTensorApplyKernelFunctor<
-      TLMetaForAddressScalar<scalar_vals_t, depth>*,
-      TLMetaForWG*,
-      T,
-      ArgTypes...>;
-
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
+  int64_t simd = syclMaxSubGroupSize();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddressScalar<scalar_vals_t, depth>) * n_tensors)},
@@ -231,19 +231,14 @@ void multi_tensor_apply(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
     T callable,
     ArgTypes... args) {
-  using KernelClass = MultiTensorApplyKernelFunctor<
-      TLMetaForAddress<depth>*,
-      TLMetaForWG*,
-      T,
-      ArgTypes...>;
-
   TORCH_CHECK(
       tensor_lists.size() == depth,
       "Number of tensor lists has to match he depth");
   size_t n_tensors = tensor_lists[0].size();
 
   auto& q = getCurrentSYCLQueue();
-  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size<KernelClass>();
+  int64_t simd = syclMaxSubGroupSize();
+  int64_t kChunkSize = multi_tensor_apply_kernel_get_chunk_size(simd);
 
   auto addressStorage = at::empty(
       {(int)(sizeof(TLMetaForAddress<depth>) * n_tensors)},
