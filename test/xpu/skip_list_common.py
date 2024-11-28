@@ -918,11 +918,6 @@ skip_dict = {
         # Unexpected success:
         "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
         "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
-        # CPU fallback could not cover these
-        # CUDA xfails
-        # Failed: Unexpected success
-        "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float32",
-        "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         "test_save_load_nn_GRU_eval_mode_xpu_float32",
@@ -1042,10 +1037,6 @@ skip_dict = {
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
-        # RuntimeError: "multilabel_margin_loss_forward_out_frame" not implemented for 'Half'
-        "test_MultiLabelMarginLoss_no_batch_dim_mean_cuda_half",
-        "test_MultiLabelMarginLoss_no_batch_dim_none_cuda_half",
-        "test_MultiLabelMarginLoss_no_batch_dim_sum_cuda_half",
     ),
 
     "test_indexing_xpu.py": (
@@ -1099,9 +1090,6 @@ skip_dict = {
         "test_autograd_composite_implicit_and_dispatch_registration_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
         # AttributeError: module 'torch.xpu' has no attribute
-        "test_graph_save_on_cpu_cuda",
-        "test_checkpointing_without_reentrant_memory_savings",
-        "test_flops_and_mem",
         "test_profiler_emit_nvtx_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
         "test_mv_grad_stride_0_xpu",
@@ -1891,6 +1879,8 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_float16_xpu",
         "test_scaled_mm_vs_emulated_float32_xpu",
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+        # AssertionError: Torch not compiled with CUDA enabled
+        "test_zero_dim_tensorwise_which_dim_zero",
     ),
 
     "test_maskedtensor_xpu.py": (
@@ -2351,7 +2341,6 @@ skip_dict = {
         "test_grad_scaler_pass_itself_xpu",
         "test_pickle_gradscaler_xpu",
         ### Error #15 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: Tensor-likes are not close!
-        "test_gradient_all_xpu_float32",
         "test_index_put_non_accumulate_deterministic_xpu",
         ### Error #17 in TestTorchDeviceTypeXPU , totally 2 , AssertionError: False is not true
         "test_sync_warning_xpu",
@@ -2364,7 +2353,6 @@ skip_dict = {
         "test_nondeterministic_alert_MaxPool3d_xpu",
         "test_nondeterministic_alert_NLLLoss_xpu",
         "test_nondeterministic_alert_interpolate_bilinear_xpu",
-        "test_nondeterministic_alert_kthvalue_xpu_float64",
         "test_nondeterministic_alert_put_accumulate_xpu",
         ### Error #24 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'TestTorchDeviceTypeXPU' object has no attribute 'check_device_nondeterministic_alert'
         "test_nondeterministic_alert_AvgPool3d_xpu",
@@ -3302,6 +3290,7 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
     ),
+
     "test_sparse_xpu.py": (
         "test_bmm_deterministic_xpu_float64", # - AssertionError: Torch not compiled with CUDA enabled
         "test_bmm_oob_xpu", # - NotImplementedError: Could not run 'aten::bmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was ...
