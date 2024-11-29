@@ -2,30 +2,37 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
-        # Need to revisit when the ops are enabled
-        # AssertionError: The supported dtypes for xxx on device type xpu are incorrect!
+        # AssertionError: The supported dtypes for __rmod__ on device type xpu are incorrect!
+        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}.
         "test_dtypes___rmod___xpu",
+        
+        # Data type is not supported in oneDNN!
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
         "test_dtypes_nn_functional_conv3d_xpu",
         "test_dtypes_nn_functional_conv_transpose1d_xpu",
         "test_dtypes_nn_functional_conv_transpose2d_xpu",
         "test_dtypes_nn_functional_conv_transpose3d_xpu",
+
+        # AssertionError: The supported dtypes for nn.functional.softsign on device type xpu are incorrect!
         "test_dtypes_nn_functional_softsign_xpu",
+
+        # AssertionError: The supported dtypes for sparse.sampled_addmm on device type xpu are incorrect! - OPs not supported
         "test_dtypes_sparse_sampled_addmm_xpu",
-        # AssertionError: RuntimeError not raised
+        
+        # OPs not supported
         "test_errors_dot_xpu",
-        "test_errors_kthvalue_xpu",
         "test_errors_vdot_xpu",
-        # Fallback cases with skipCPUIfNoLapack, AssertionError: Tensor-likes are not close!
+
+        # Linalg OPs not supported
         "test_noncontiguous_samples_linalg_det_xpu_float32",
         "test_noncontiguous_samples_linalg_slogdet_xpu_float32",
         "test_noncontiguous_samples_linalg_solve_ex_xpu_float32",
         "test_noncontiguous_samples_linalg_solve_xpu_float32",
         "test_noncontiguous_samples_linalg_tensorsolve_xpu_float32",
         "test_noncontiguous_samples_logdet_xpu_float32",
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_complex64",
 
+        # Sparse CSR OPs not supported
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
         "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
@@ -51,6 +58,7 @@ skip_dict = {
         "test_noncontiguous_samples_nn_functional_conv1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv2d_xpu_int64",
 
+        # Linalg OPs not supported
         # RuntimeError: mode only supports CPU AND CUDA device type, got: xpu
         # Issue https://github.com/intel/torch-xpu-ops/issues/327
         "test_numpy_ref_linalg_tensorinv_xpu_float64",
@@ -62,18 +70,22 @@ skip_dict = {
         "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_conv_transpose3d_xpu_float32",
 
-        # Need revisit when the op is enabled
-        # Unexpected success, xpu passed because it compares to cpu
+        # Linalg OPs not supported
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
+
+        # hang
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
 
-         # XFAIL of CUDA and XPU, unexpected success in fallback
+        # XFAIL of CUDA and XPU, unexpected success in fallback
+        # Linalg OPs not supported
         "test_out_cholesky_inverse_xpu_float32",
         "test_out_geqrf_xpu_float32",
-        "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
+        
+        # XFAIL of CUDA and XPU, Unexpected success
+        "test_out_narrow_copy_xpu_float32",
         "test_out_histc_xpu_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
@@ -87,6 +99,7 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_pow_xpu_complex32",
 
         # unexpected success because of cpu fallback
+        # Linalg OPs not supported
         "test_out_triangular_solve_xpu_float32",
 
         # Newly added:
@@ -107,15 +120,17 @@ skip_dict = {
         "_jiterator_",
         # https://github.com/intel/torch-xpu-ops/issues/157
         # Segfault:
-        "test_dtypes_nn_functional_linear_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
         "test_dtypes_nn_functional_multi_head_attention_forward_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
+
+        # Linalg OPs not supported
         "test_dtypes_pca_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
         "test_dtypes_svd_lowrank_xpu",  # https://github.com/intel/torch-xpu-ops/issues/157
+
+        # RuntimeError: Long is not supported in oneDNN!
         "test_noncontiguous_samples_nn_functional_linear_xpu_int64",  # https://github.com/intel/torch-xpu-ops/issues/157
+
         # https://github.com/intel/torch-xpu-ops/issues/157
-        # Failures:
-        "test_compare_cpu_addmm_xpu_float32",
-        "test_compare_cpu_addmv_xpu_float32",
+        # Datatype not supported in oneDNN
         "test_dtypes_addmm_decomposed_xpu",
         "test_dtypes_addmm_xpu",
         "test_dtypes_addmv_xpu",
@@ -395,11 +410,13 @@ skip_dict = {
         "test_variant_consistency_eager_svd_xpu_complex64",
         "test_variant_consistency_eager_tensordot_xpu_complex64",
         "test_variant_consistency_eager_triangular_solve_xpu_complex64",
+
         # oneDNN issues
         # RuntimeError: value cannot be converted to type float without overflow
         # https://github.com/intel/torch-xpu-ops/issues/683
         "test_conj_view_addbmm_xpu_complex64",
         "test_neg_conj_view_addbmm_xpu_complex128",
+
         ### Error #0 in TestMathBitsXPU , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         # https://github.com/intel/torch-xpu-ops/issues/254
         "test_conj_view___rmatmul___xpu_complex64",
@@ -609,27 +626,20 @@ skip_dict = {
         "test_conj_view_svd_lowrank_xpu_complex64",
         "test_neg_conj_view_pca_lowrank_xpu_complex128",
         "test_neg_conj_view_svd_lowrank_xpu_complex128",
+        
+        # oneDNN issues
         ### Error #1 in TestMathBitsXPU , RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # https://github.com/intel/torch-xpu-ops/issues/253
         "test_conj_view_nn_functional_conv_transpose2d_xpu_complex64",
         "test_conj_view_nn_functional_conv_transpose3d_xpu_complex64",
         "test_neg_view_nn_functional_conv_transpose2d_xpu_float64",
         "test_neg_view_nn_functional_conv_transpose3d_xpu_float64",
-        # Op impl aligns with CUDA on the supported dtypes.
-        # RuntimeError: "avg_pool2d_xpu" not implemented for 'Long'.
-        # Retrieve the case, once avg_pool1d is supported. Test infra will change claimed dtypes in test case once the op is listed
-        # in XPU supported operators. Then the case will work.
-        "test_noncontiguous_samples_nn_functional_avg_pool1d_xpu_int64",
-        "test_noncontiguous_samples_nn_functional_local_response_norm_xpu_int64",
 
-        # RuntimeError: Expected both inputs to be Half, Float or Double tensors but got BFloat16 and BFloat16.
-        # Polar's backward is calculated using complex(), which does not support bfloat16. CUDA fails with same error.
-        #"test_dtypes_polar_xpu",
         # implemented aten::histogram to align MPS operators coverage, CUDA doesn't support
         # but test_dtypes infrastructure leverage CUDA supported datatypes
         "test_dtypes_histogram_xpu",
 
-        # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported"
+        # Unexpected success, CUDA got XFAIL because CUDA does not have historgramadd supported
         "test_errors_histogramdd_xpu",
 
         # 2025 bundle std::pow complex result is different on host and device
