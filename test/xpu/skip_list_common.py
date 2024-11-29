@@ -2367,16 +2367,6 @@ skip_dict = {
         "test_sync_warning_xpu",
         ### Error #19 in TestTorchDeviceTypeXPU , totally 1 , RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
-        ### Error #23 in TestTorchDeviceTypeXPU , totally 26 , AssertionError: RuntimeError not raised : expected a non-deterministic error, but it was not raised
-        "test_nondeterministic_alert_AdaptiveAvgPool2d_xpu",
-        "test_nondeterministic_alert_CTCLoss_xpu",
-        "test_nondeterministic_alert_EmbeddingBag_max_xpu",
-        "test_nondeterministic_alert_MaxPool3d_xpu",
-        "test_nondeterministic_alert_NLLLoss_xpu",
-        "test_nondeterministic_alert_interpolate_bilinear_xpu",
-        "test_nondeterministic_alert_put_accumulate_xpu",
-        ### Error #24 in TestTorchDeviceTypeXPU , totally 1 , AttributeError: 'TestTorchDeviceTypeXPU' object has no attribute 'check_device_nondeterministic_alert'
-        "test_nondeterministic_alert_AvgPool3d_xpu",
 
         # 'torch.xpu' has no attribute ...
         ### Error #30 in TestTorchDeviceTypeXPU , totally 2 , AttributeError: module 'torch.xpu' has no attribute 'BoolStorage'
