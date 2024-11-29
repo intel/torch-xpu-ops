@@ -544,17 +544,37 @@ void max_pool2d_with_indices_kernel(
   const int64_t outputWidth = output.size(-1);
   if (outputHeight == 1 && outputWidth == 1 && inputHeight <= kH &&
       inputWidth <= kW) {
+    bool is_3d = input_.ndimension() == 3;
+    Tensor indices_, output_;
+    if (is_3d) {
+      indices_ = indices.contiguous();
+      output_ = output.contiguous();
+    } else {
+      indices_ = indices.contiguous(smf);
+      output_ = output.contiguous(smf);
+    }
     if (input.ndimension() == 4) {
       input_.resize_({nbatch, nInputPlane, 1, inputHeight * inputWidth}, smf);
-      output.resize_({nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
-      indices.resize_(
+      output_.resize_(
+          {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+      indices_.resize_(
           {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
     }
-    at::max_outf(input_, 3, true, output, indices);
+    at::max_outf(input_, 3, true, output_, indices_);
     if (input.ndimension() == 4) {
       input_.resize_({nbatch, nInputPlane, inputHeight, inputWidth}, smf);
-      output.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
-      indices.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+      output_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+      indices_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+    }
+
+    if ((is_3d && !indices.is_contiguous()) ||
+        (!is_3d && !indices.is_contiguous(smf))) {
+      indices.copy_(indices_);
+    }
+
+    if ((is_3d && !output.is_contiguous()) ||
+        (!is_3d && !output.is_contiguous(smf))) {
+      output.copy_(output_);
     }
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
