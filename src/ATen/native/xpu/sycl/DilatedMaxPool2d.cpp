@@ -5,9 +5,10 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
-#include <comm/xpu_aten.h>
+#include <xpu/ATen/ops/max.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -541,58 +542,73 @@ void max_pool2d_with_indices_kernel(
 
   const int64_t outputHeight = output.size(-2);
   const int64_t outputWidth = output.size(-1);
-
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
-        switch (smf) {
-          case MemoryFormat::ChannelsLast: {
-            launch_max_pool2d_kernel<scalar_t, true>(
-                output.mutable_data_ptr<scalar_t>(),
-                indices.mutable_data_ptr<int64_t>(),
-                input.const_data_ptr<scalar_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
-            break;
+  if (outputHeight == 1 && outputWidth == 1 && inputHeight <= kH &&
+      inputWidth <= kW) {
+    if (input.ndimension() == 4) {
+      input_.resize_({nbatch, nInputPlane, 1, inputHeight * inputWidth}, smf);
+      output.resize_({nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+      indices.resize_(
+          {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+    }
+    at::max_outf(input_, 3, true, output, indices);
+    if (input.ndimension() == 4) {
+      input_.resize_({nbatch, nInputPlane, inputHeight, inputWidth}, smf);
+      output.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+      indices.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+    }
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
+          switch (smf) {
+            case MemoryFormat::ChannelsLast: {
+              launch_max_pool2d_kernel<scalar_t, true>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+              break;
+            }
+            case MemoryFormat::Contiguous: {
+              launch_max_pool2d_kernel<scalar_t, false>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+              break;
+            }
+            default:
+              TORCH_CHECK(
+                  false,
+                  "Unsupported memory format. Supports only ChannelsLast, Contiguous");
           }
-          case MemoryFormat::Contiguous: {
-            launch_max_pool2d_kernel<scalar_t, false>(
-                output.mutable_data_ptr<scalar_t>(),
-                indices.mutable_data_ptr<int64_t>(),
-                input.const_data_ptr<scalar_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
-            break;
-          }
-          default:
-            TORCH_CHECK(
-                false,
-                "Unsupported memory format. Supports only ChannelsLast, Contiguous");
-        }
-      });
+        });
+  }
 }
 
 void max_pool2d_with_indices_backward_kernel(
