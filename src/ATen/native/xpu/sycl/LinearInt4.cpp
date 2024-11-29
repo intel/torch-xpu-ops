@@ -125,10 +125,9 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 void linear_int4_kernel(
     const Tensor& input,
     const Tensor& weight,
+    int qGroupSize,
     const Tensor& weight_scale_zero_point,
-    const std::optional<Tensor>& weight_bias,
-    Tensor& output,
-    int block_size) {
+    Tensor& output) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   int64_t m = input.size(0);
   int64_t n = input.size(1);
