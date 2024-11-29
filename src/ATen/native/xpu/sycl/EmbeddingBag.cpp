@@ -531,6 +531,8 @@ Tensor embedding_bag_backward_xpu_max(
     const Tensor& max_indices_t,
     int64_t num_weights,
     int64_t padding_idx) {
+  globalContext().alertNotDeterministic("embedding_bag_backward_xpu_max");
+
   auto max_indices = max_indices_t.contiguous();
   auto grad_weight = at::zeros({num_weights, grad.size(1)}, grad.options());
   int64_t stride = grad_weight.stride(0);
