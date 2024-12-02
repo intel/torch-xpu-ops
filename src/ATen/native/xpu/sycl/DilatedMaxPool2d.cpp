@@ -543,7 +543,7 @@ void max_pool2d_with_indices_kernel(
   const int64_t outputHeight = output.size(-2);
   const int64_t outputWidth = output.size(-1);
   if (outputHeight == 1 && outputWidth == 1 && inputHeight <= kH &&
-      inputWidth <= kW) {
+      inputWidth <= kW && padH == 0 && padW == 0) {
     bool is_3d = input_.ndimension() == 3;
     Tensor indices_, output_;
     if (is_3d) {
@@ -553,16 +553,19 @@ void max_pool2d_with_indices_kernel(
       indices_ = indices.contiguous(smf);
       output_ = output.contiguous(smf);
     }
-    if (input.ndimension() == 4) {
-      input_.resize_({nbatch, nInputPlane, 1, inputHeight * inputWidth}, smf);
+    if (!is_3d) {
+      input.resize_({nbatch, nInputPlane, 1, inputHeight * inputWidth}, smf);
       output_.resize_(
           {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
       indices_.resize_(
           {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+      at::max_outf(input, 3, true, output_, indices_);
+    } else {
+      at::max_outf(input, 2, true, output_, indices_);
     }
-    at::max_outf(input_, 3, true, output_, indices_);
-    if (input.ndimension() == 4) {
-      input_.resize_({nbatch, nInputPlane, inputHeight, inputWidth}, smf);
+
+    if (!is_3d) {
+      input.resize_({nbatch, nInputPlane, inputHeight, inputWidth}, smf);
       output_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
       indices_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
     }
