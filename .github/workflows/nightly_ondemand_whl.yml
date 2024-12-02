@@ -277,6 +277,7 @@ jobs:
           repo="${{ github.repository }}"
           TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_BRANCH_ID }}"
           TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_COMMIT_ID }}"
+          TORCH_XPU_OPS_COMMIT="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_XPU_OPS_COMMIT }}"
           DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.DRIVER_VERSION }}"
           KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.KERNEL_VERSION }}"
           BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.BUNDLE_VERSION }}"
