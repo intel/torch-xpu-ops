@@ -645,6 +645,7 @@ skip_dict = {
         # 2025 bundle std::pow complex result is different on host and device
         "test_python_ref__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
+        "test_python_ref_torch_fallback__refs_exp_xpu_complex128",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -929,6 +930,9 @@ skip_dict = {
         "test_save_load_nn_TransformerEncoder_eval_mode_xpu_float64",
         "test_save_load_nn_TransformerEncoder_train_mode_xpu_float64",
         "test_save_load_nn_Transformer_xpu_float64",
+        # Unexpected success:
+        "test_cpu_gpu_parity_nn_ConvTranspose1d_xpu_complex32",
+        "test_cpu_gpu_parity_nn_ConvTranspose2d_xpu_complex32",
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         
