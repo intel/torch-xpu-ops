@@ -150,13 +150,6 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
     c10::impl::check_and_update_common_device(
         common_device, source, "xpu::index_reduce_out", "source");
     dim = maybe_wrap_dim(dim, self.dim());
-    int reduce_type = 0; //hard code to test reduce index
-
-    // if (reduce == "prod") {reduce_type = 1;}
-    // if (reduce == "mean") {reduce_type = 2;}
-    // if (reduce == "amax") {reduce_type = 3;}
-    // if (reduce == "amin") {reduce_type = 4;}
-
 
     if (reduce == "prod") {
         xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::PROD, result);
@@ -181,35 +174,6 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
     } else {
         TORCH_CHECK(false, "Only support prod, mean, amax or amin reduce operator. Input was ", reduce, ".");
     }
- 
-
-    // switch(reduce_type){
-    //     case 0: //invalid 
-    //         TORCH_CHECK(false, "reduce argument must be one of the following choices: prod, mean, amax or amin. The choice was ", reduce, ".");
-    //         break;
-    //     case 1: //prod
-    //         //index_reduce_kernel(self, dim, index, source, include_self, ReductionType::PROD, reduce_multiply, result);
-    //         xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::PROD, result);
-    //         break;
-    //     case 2: //mean
-    //         xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MEAN, result);
-    //         auto counts = include_self ? ones_like(result) : zeros_like(result);
-    //         counts.index_add_(dim, index, ones_like(source));
-    //         counts.masked_fill_(counts == 0, 1);     
-    //         if (result.is_floating_point() || result.is_complex()) {
-    //             result.div_(counts);
-    //         } 
-    //         else {
-    //             result.div_(counts, "floor");
-    //         }       
-    //         break;
-    //     case 3: //amax
-    //          xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MAX, result);
-    //          break;
-    //     case 4: //amin
-    //         xpu::index_reduce_kernel(self, dim, index, source, include_self, ReductionType::MIN, result);
-    //         break;
-    // }
 }
 
 } // namespace native
