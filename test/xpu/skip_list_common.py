@@ -1089,7 +1089,7 @@ skip_dict = {
         # c10::NotImplementedError
         "test_autograd_composite_implicit_and_dispatch_registration_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
-        # AttributeError: module 'torch.xpu' has no attribute
+        # only for CUDA，XPU case is test_profiler_emit_itt
         "test_profiler_emit_nvtx_xpu",
         # Double and complex datatype matmul is not supported in oneDNN
         "test_mv_grad_stride_0_xpu",
