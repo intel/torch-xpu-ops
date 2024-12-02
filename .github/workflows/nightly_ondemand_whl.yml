@@ -75,19 +75,20 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
-      TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
-      TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
-      DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
-      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
-      BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
-      OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
-      GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
+      TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
+      TORCH_COMMIT_ID: ${{ steps.installed.outputs.TORCH_COMMIT_ID }}
+      TORCH_XPU_OPS_COMMIT: ${{ steps.installed.outputs.TORCH_XPU_OPS_COMMIT }}
       TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
       TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
       TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
       TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
       TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
+      DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
+      BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
+      OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
+      GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
       - name: Checkout torch-xpu-ops
@@ -101,32 +102,37 @@ jobs:
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
+        id: installed
         run: |
           pwd
           source activate e2e_ci
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           source .github/scripts/env.sh
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |sed 's/^nightly_wheel$/nightly/')
+          cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           pip install -r requirements.txt
-          cd ../
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          echo "TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          rm -rf third_party/torch-xpu-ops
+          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
       - name: Identify pinned versions
         id: pinned
         run: |
           source activate e2e_ci
           source .github/scripts/env.sh
+          echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ../pytorch
-          echo "TRITON_COMMIT_ID=$(pip list |grep -w pytorch-triton-xpu |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_BRANCH_ID=nightly" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(pip list |grep -w torch |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(pip list |grep -w torchvision |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(pip list |grep -w torchaudio |awk '{print $2}')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -271,6 +277,7 @@ jobs:
           repo="${{ github.repository }}"
           TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_BRANCH_ID }}"
           TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_COMMIT_ID }}"
+          TORCH_XPU_OPS_COMMIT="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_XPU_OPS_COMMIT }}"
           DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.DRIVER_VERSION }}"
           KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.KERNEL_VERSION }}"
           BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.BUNDLE_VERSION }}"
@@ -307,7 +314,7 @@ jobs:
           fi
           # Test report
           echo -e "**${test_status}** $test_type WHL Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
-          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
+          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${TORCH_XPU_OPS_COMMIT:0:7} on pinned | " >> ${{ github.workspace }}/report.txt
           printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Transformers | Timm | Torchbench | Torchvision | Torchaudio\n--- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
