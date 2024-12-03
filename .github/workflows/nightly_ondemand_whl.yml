@@ -106,7 +106,7 @@ jobs:
         run: |
           pwd
           source activate e2e_ci
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           source .github/scripts/env.sh
