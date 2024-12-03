@@ -174,8 +174,12 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
         value.view({value.size(0), -1, num_head, dim_per_head}).transpose(1, 2);
 
     sdp::sdp_params kernel_params{q, k, v, mask, 0.0, false, false};
-    auto backend = static_cast<sdp::SDPBackend>(_fused_sdp_choice_stub(
-        q.device().type(), q, k, v, mask, 0.0, false, std::nullopt, false));
+
+    sdp::SDPBackend backend = sdp::SDPBackend::math;
+    if (_fused_sdp_choice_stub.is_device_supported(query_.device().type())) {
+      backend = static_cast<sdp::SDPBackend>(_fused_sdp_choice_stub(
+          q.device().type(), q, k, v, mask, 0.0, false, std::nullopt, false));
+    }
 
     // strides from packed projection for nested tensors when seq_len is 1 will
     // be and will trigger a contiguous call in the kernel, so we prevent this
