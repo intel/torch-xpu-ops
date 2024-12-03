@@ -63,10 +63,10 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
-      runner: pvc_rolling
+      runner: e2e_internal
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_rolling
+    runs-on: e2e_internal
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
@@ -95,17 +95,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Prepare Conda ENV
         run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
+          rm -rf myvenv-e2e
+          /usr/bin/python3.10 -m venv myvenv-e2e
+          source myvenv-e2e/bin/activate
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
         run: |
           pwd
-          source activate e2e_ci
+          source myvenv-e2e/bin/activate
           pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -126,7 +125,7 @@ jobs:
       - name: Identify pinned versions
         id: pinned
         run: |
-          source activate e2e_ci
+          source myvenv-e2e/bin/activate
           source .github/scripts/env.sh
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
