@@ -66,7 +66,34 @@ TORCH_XPU_API void put_kernel(
 
 TORCH_XPU_API void take_kernel(TensorIterator& iter, const TensorBase& input);
 
-TORCH_XPU_API void index_reduce_kernel(
+TORCH_XPU_API void index_reduce_prod_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result);
+
+TORCH_XPU_API void index_reduce_mean_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result);
+
+TORCH_XPU_API void index_reduce_amax_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result);
+
+TORCH_XPU_API void index_reduce_amin_kernel(
     const Tensor& self,
     int64_t dim,
     const Tensor& index,
