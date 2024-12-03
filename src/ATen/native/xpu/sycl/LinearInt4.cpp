@@ -6,11 +6,11 @@ namespace at::native::xpu {
 template <typename scalar_t = at::Half, int block_size = 16>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
-      scalar_t* A,
-      uint32_t* B,
+      const scalar_t* A,
+      const uint32_t* B,
       scalar_t* C,
-      scalar_t* B_scale,
-      scalar_t* B_zero_point,
+      const scalar_t* B_scale,
+      const scalar_t* B_zero_point,
       int m,
       int n,
       int k,
@@ -49,10 +49,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto cptr = C + g_n;
     if constexpr (std::is_same_v<scalar_t, sycl::half>) {
       sycl::half2 tmpAcc = {0.f, 0.f};
+      uint8_t tmps8[TileK / 2];
       for (int i = 0; i < k; i += GroupK * Unroll) {
 #pragma unroll
         for (int iu = 0; iu < Unroll; iu++) {
-          uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
           scalar_t scale = *(sptr + sg_id * TileK / blocksize);
@@ -109,11 +109,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
  private:
-  scalar_t* A;
-  uint32_t* B;
+  const scalar_t* A;
+  const uint32_t* B;
   scalar_t* C;
-  scalar_t* B_scale;
-  scalar_t* B_zero_point;
+  const scalar_t* B_scale;
+  const scalar_t* B_zero_point;
   int m;
   int n;
   int k;
@@ -142,7 +142,7 @@ void linear_int4_kernel(
   if (input.scalar_type() == at::kHalf) {
     using scalar_t = at::Half;
     // const auto scalar_t = input.scalar_type();
-    scalar_t* input_data = input.data_ptr<scalar_t>();
+    const scalar_t* input_data = input.data_ptr<scalar_t>();
     uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
 
     scalar_t* output_data = output.data_ptr<scalar_t>();
