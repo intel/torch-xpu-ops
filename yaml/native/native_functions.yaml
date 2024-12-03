@@ -8473,4 +8473,6 @@
 - func: _weight_int4pack_mm_with_scales_and_zeros(Tensor self, Tensor mat2, int qGroupSize, Tensor qScaleAndZeros) -> Tensor
   dispatch:
     XPU: linear_int4_xpu
+  autogen: _weight_int4pack_mm_with_scales_and_zeros.out
+  tags: core
 
