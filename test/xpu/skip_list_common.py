@@ -1096,6 +1096,10 @@ skip_dict = {
         # module 'torch._C' has no attribute '_scatter'
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
+        # Runtime error after enabling PTI
+        # RuntimeError: Fail to enable Kineto Profiler on XPU due to error code: 200
+        # https://github.com/intel/torch-xpu-ops/issues/731
+        "test_profiler",
         # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
         # https://github.com/intel/torch-xpu-ops/issues/1071
         "test_reentrant_parent_error_on_cpu_xpu",
