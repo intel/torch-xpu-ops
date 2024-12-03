@@ -176,7 +176,7 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
     sdp::sdp_params kernel_params{q, k, v, mask, 0.0, false, false};
 
     sdp::SDPBackend backend = sdp::SDPBackend::math;
-    if (_fused_sdp_choice_stub.is_device_supported(query_.device().type())) {
+    if (_fused_sdp_choice_stub.is_device_supported(q.device().type())) {
       backend = static_cast<sdp::SDPBackend>(_fused_sdp_choice_stub(
           q.device().type(), q, k, v, mask, 0.0, false, std::nullopt, false));
     }
