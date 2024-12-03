@@ -2,6 +2,12 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
+        # To be removed from this file.
+        # CUDA and XPU both XFAIL now.
+        "test_out_narrow_copy_xpu_float32", 
+        # This case is marked as skip but XPU failed. However, CUDA and XPU throw the same runtime error.
+        "test_out_histc_xpu_float32",
+
         # AssertionError: The supported dtypes for __rmod__ on device type xpu are incorrect!
         # The following dtypes worked in forward but are not listed by the OpInfo: {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}.
         "test_dtypes___rmod___xpu",
@@ -75,7 +81,8 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
 
-        # hang
+        # XPU hang. CUDA hang as well. 
+        # https://github.com/pytorch/pytorch/issues/79528
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
 
         # XFAIL of CUDA and XPU, unexpected success in fallback
@@ -83,10 +90,6 @@ skip_dict = {
         "test_out_cholesky_inverse_xpu_float32",
         "test_out_geqrf_xpu_float32",
         "test_out_ormqr_xpu_float32",
-        
-        # XFAIL of CUDA and XPU, Unexpected success
-        "test_out_narrow_copy_xpu_float32",
-        "test_out_histc_xpu_float32",
         
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
@@ -1037,7 +1040,8 @@ skip_dict = {
         "test_rnn_retain_variables_xpu_float64",
         "test_transformerencoderlayer_xpu_float64",
         "test_variable_sequence_xpu_float64",
-        # upsamplingNearest2d: Failed: Unexpected success
+        # Unexpected success: CUDA only test case, launch grid_y == 2**16 (larger than CUDA maximum y-dimension limit 65535) and expect fail.
+        # SYCL don't have this limitation and hence can pass.
         "test_upsamplingNearest2d_launch_fail_xpu",
         # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
         "test_RNN_cudnn_weight_norm",
@@ -1166,7 +1170,7 @@ skip_dict = {
         # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
         "test_reference_numerics_normal__refs_asinh_xpu_complex64",
         "test_reference_numerics_normal_asinh_xpu_complex64",
-        # Failed: Unexpected success
+        # Unexpected success: CUDA uses thrust::sqrt and has accuracy issue. XPU use std::sqrt and has no issue.
         "test_reference_numerics_large_rsqrt_xpu_complex32",
         # Numeric difference
         # https://github.com/intel/torch-xpu-ops/issues/544
