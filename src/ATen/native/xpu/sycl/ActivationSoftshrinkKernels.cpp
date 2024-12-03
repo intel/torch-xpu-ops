@@ -1,16 +1,17 @@
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/TensorIterator.h>
-
-#include <ATen/native/xpu/sycl/Loops.h>
-
 #include <ATen/native/xpu/sycl/ActivationSoftshrinkKernels.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native::xpu {
 
 template <typename scalar_t>
 struct SoftshrinkFunctor {
   scalar_t operator()(scalar_t a) const {
-    return a > lambd_ ? a - lambd_ : (a < -lambd_ ? a + lambd_ : scalar_t(0));
+    return at::_isnan(a)
+        ? a
+        : (a > lambd_ ? a - lambd_ : (a < -lambd_ ? a + lambd_ : scalar_t(0)));
   }
 
   SoftshrinkFunctor(scalar_t lambd) : lambd_(lambd) {}

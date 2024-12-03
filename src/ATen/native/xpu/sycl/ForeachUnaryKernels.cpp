@@ -7,6 +7,7 @@
 #include <ATen/native/xpu/sycl/ForeachUnaryKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
+#include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
 
 namespace at::native::xpu {
@@ -391,6 +392,29 @@ struct Sign {
   }
 };
 
+template <typename T>
+struct Rsqrt {
+  T operator()(T t) const {
+    return c10::xpu::compat::rsqrt(t);
+  }
+};
+
+template <>
+struct Rsqrt<c10::complex<float>> {
+  c10::complex<float> operator()(c10::complex<float> t) const {
+    const auto one = c10::complex<float>(1.0, 0);
+    return one / std::sqrt(t);
+  }
+};
+
+template <>
+struct Rsqrt<c10::complex<double>> {
+  c10::complex<double> operator()(c10::complex<double> t) const {
+    const auto one = c10::complex<double>(1.0, 0);
+    return one / std::sqrt(t);
+  }
+};
+
 FOREACH_UNARY_INPLACE_KERNEL(sigmoid) {
   return floating_complex_half_bfloat16_<Sigmoid>(tensors);
 }
@@ -424,6 +448,13 @@ FOREACH_UNARY_INPLACE_KERNEL(sign) {
 }
 FOREACH_UNARY_KERNEL(sign) {
   return floating_half_bfloat16<Sign>(tensors);
+}
+
+FOREACH_UNARY_INPLACE_KERNEL(rsqrt) {
+  return floating_complex_half_bfloat16_<Rsqrt>(tensors);
+}
+FOREACH_UNARY_KERNEL(rsqrt) {
+  return floating_complex_half_bfloat16<Rsqrt>(tensors);
 }
 
 FOREACH_UNARY_INPLACE_KERNEL(neg) {
