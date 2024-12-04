@@ -4,7 +4,6 @@ skip_dict = {
 
         # Need to revisit when the ops are enabled
         # AssertionError: The supported dtypes for xxx on device type xpu are incorrect!
-        "test_dtypes___rmod___xpu",
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
         "test_dtypes_nn_functional_conv3d_xpu",
