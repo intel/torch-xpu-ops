@@ -5969,12 +5969,6 @@
     XPU: native_multi_head_attention_xpu
   autogen: _native_multi_head_attention.out
 
-# This aten function is kept so that we can test the choice function from Python
-- func: _fused_sdp_choice(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, float dropout_p=0.0, bool is_causal=False, *, float? scale=None, bool enable_gqa=False) -> int
-  dispatch:
-    XPU: _fused_sdp_choice_xpu
-  tags: nondeterministic_seeded
-
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
   structured_delegate: argmin.out
   device_check: NoCheck   # TensorIterator

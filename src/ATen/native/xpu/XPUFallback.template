@@ -184,7 +184,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "lu_unpack.out",
     "ormqr",
-    "_scaled_dot_product_efficient_attention",
     "_scaled_mm",
     "_thnn_fused_gru_cell",
     "_to_sparse_csr",
