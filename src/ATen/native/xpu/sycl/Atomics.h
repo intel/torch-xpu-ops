@@ -354,85 +354,12 @@ static inline void atomicAdd(
   atomicAdd(&address->imag_, val.imag_);
 }
 
-
-// static inline void atomicMul(const sycl_global_ptr<float>& address, float val) {
-//   sycl_atomic_ref_rlx_dev_global_t<float> target(*address);
-//   float assumed = *address; 
-//   float newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// static inline void atomicMul(const sycl_global_ptr<double>& address, double val) {
-//   sycl_atomic_ref_rlx_dev_global_t<double> target(*address);
-//   double assumed = *address; 
-//   double newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// static inline void atomicMul(const sycl_global_ptr<int>& address, int val) {
-//   sycl_atomic_ref_rlx_dev_global_t<int> target(*address);
-//   int assumed = *address; 
-//   int newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// static inline void atomicMul(const sycl_global_ptr<int64_t>& address, int64_t val) {
-//   sycl_atomic_ref_rlx_dev_global_t<int64_t> target(*address);
-//   int64_t assumed = *address; 
-//   int64_t newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// static inline void atomicMul(const sycl_global_ptr<uint32_t>& address, uint32_t val) {
-//   sycl_atomic_ref_rlx_dev_global_t<uint32_t> target(*address);
-//   uint32_t assumed = *address; 
-//   uint32_t newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// static inline void atomicMul(const sycl_global_ptr<uint64_t>& address, uint64_t val) {
-//   sycl_atomic_ref_rlx_dev_global_t<uint64_t> target(*address);
-//   uint64_t assumed = *address; 
-//   uint64_t newval;
-
-//   do {
-//     newval = val * assumed;
-//   } while (!target.compare_exchange_strong(assumed, newval)); 
-// }
-
-// template <typename T>
-// static inline void atomicMul(
-//     const sycl_global_ptr<c10::complex<T>>& address,
-//     c10::complex<T> val) {
-//   atomicMul(&address->real_, val.real_);
-//   atomicMul(&address->imag_, val.imag_);
-// }
-
-
 // Atomic multiplication implementation.
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint8_t>()(a, b), uint8_t)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int8_t>()(a, b), int8_t)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int16_t>()(a, b), int16_t)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int32_t>()(a, b), int32_t)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int64_t>()(a, b), int64_t)
-
-//New add
-//SYCL_ATOMIC_INTEGER(Mul, std::multiplies<int>()(a, b), int)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint32_t>()(a, b), uint32_t)
 SYCL_ATOMIC_INTEGER(Mul, std::multiplies<uint64_t>()(a, b), uint64_t)
 

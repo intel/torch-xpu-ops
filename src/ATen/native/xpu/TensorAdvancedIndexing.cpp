@@ -155,16 +155,16 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
         xpu::index_reduce_prod_kernel(self, dim, index, source, include_self, ReductionType::PROD, result);
     } 
     else if (reduce == "mean") {
-            // xpu::index_reduce_mean_kernel(self, dim, index, source, include_self, ReductionType::MEAN, result);
-            // auto counts = include_self ? ones_like(result) : zeros_like(result);
-            // counts.index_add_(dim, index, ones_like(source));
-            // counts.masked_fill_(counts == 0, 1);     
-            // if (result.is_floating_point() || result.is_complex()) {
-            //     result.div_(counts);
-            // } 
-            // else {
-            //     result.div_(counts, "floor");
-            // }     
+            xpu::index_reduce_mean_kernel(self, dim, index, source, include_self, ReductionType::MEAN, result);
+            auto counts = include_self ? ones_like(result) : zeros_like(result);
+            counts.index_add_(dim, index, ones_like(source));
+            counts.masked_fill_(counts == 0, 1);     
+            if (result.is_floating_point() || result.is_complex()) {
+                result.div_(counts);
+            } 
+            else {
+                result.div_(counts, "floor");
+            }     
         }
     else if (reduce == "amax") {
             xpu::index_reduce_amax_kernel(self, dim, index, source, include_self, ReductionType::MAX, result);
