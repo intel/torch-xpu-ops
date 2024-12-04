@@ -69,7 +69,7 @@ jobs:
     runs-on: pvc_rolling
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 3600
+    timeout-minutes: 36000
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}

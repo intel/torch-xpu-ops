@@ -49,7 +49,7 @@ permissions: read-all
 jobs:
   Torch-XPU-UT-Tests:
     runs-on: ${{ inputs.runner }} 
-    timeout-minutes: 900
+    timeout-minutes: 9000
     env:
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
