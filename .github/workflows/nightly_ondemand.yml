@@ -93,7 +93,7 @@ jobs:
     runs-on: pvc_e2e
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    timeout-minutes: 3600
+    timeout-minutes: 36000
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
