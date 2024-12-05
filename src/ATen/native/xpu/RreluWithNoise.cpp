@@ -6,7 +6,7 @@ namespace native {
 
 Tensor& rrelu_with_noise_out_xpu(
     const Tensor& self,
-    const Tensor& noise,
+    Tensor& noise,
     const Scalar& lower,
     const Scalar& upper,
     bool training,
@@ -18,7 +18,7 @@ Tensor& rrelu_with_noise_out_xpu(
 
 Tensor rrelu_with_noise_xpu(
     const Tensor& self,
-    const Tensor& noise,
+    Tensor& noise,
     const Scalar& lower,
     const Scalar& upper,
     bool training,
@@ -30,7 +30,7 @@ Tensor rrelu_with_noise_xpu(
 
 Tensor& rrelu_with_noise_xpu_(
     Tensor& self,
-    const Tensor& noise,
+    Tensor& noise,
     const Scalar& lower,
     const Scalar& upper,
     bool training,
