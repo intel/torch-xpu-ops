@@ -140,7 +140,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
     int size)
-    : Backend(rank, size), store_(store) {
+    : Backend(rank, size), store_(store), xcclCommCounter_(0) {
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   init();
 }
