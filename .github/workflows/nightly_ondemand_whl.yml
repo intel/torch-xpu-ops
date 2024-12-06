@@ -101,7 +101,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          # pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
@@ -111,6 +111,7 @@ jobs:
           pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_COMMIT_ID="$(python -c 'import torch; print(torch.version.git_version)')"
           source .github/scripts/env.sh
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
@@ -121,6 +122,7 @@ jobs:
           git status && git show -s
           pip install -r requirements.txt
           echo "TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_XPU_OPS_COMMIT="$(<third_party/xpu.txt)"
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
