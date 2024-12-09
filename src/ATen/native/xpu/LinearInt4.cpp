@@ -8,7 +8,7 @@
 #include <comm/xpu_aten.h>
 
 namespace at::native {
-Tensor& linear_int4_xpu(
+Tensor& _weight_int4pack_mm_with_scales_and_zeros_xpu(
     const Tensor& input,
     const Tensor& weight,
     int qGroupSize,
