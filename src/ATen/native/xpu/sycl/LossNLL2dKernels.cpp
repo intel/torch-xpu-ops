@@ -186,7 +186,7 @@ void nll_loss2d_forward_kernel(
     int64_t reduction,
     int64_t ignore_index) {
   if (reduction != at::Reduction::None) {
-    at::globalContext().alertNotDeterministic("nll_loss2d_forward_kernel");
+    at::globalContext().alertNotDeterministic("nll_loss2d_forward_xpu");
   }
 
   total_weight.resize_({});

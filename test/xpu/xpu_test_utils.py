@@ -209,6 +209,7 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.interpolate",
     "nn.functional.upsample_bilinear",
+    "_upsample_bilinear2d_aa",
     "nn.functional.upsample_nearest",
     "nn.functional.nll_loss",
     "nn.functional.smooth_l1_loss",

@@ -29,7 +29,7 @@ Tensor adaptive_avg_pool2d_backward_xpu(
       (input.ndimension() == 3 || input.ndimension() == 4),
       "non-empty 3D or 4D (batch mode) tensor expected for input");
 
-  globalContext().alertNotDeterministic("_adaptive_avg_pool2d_backward");
+  globalContext().alertNotDeterministic("adaptive_avg_pool2d_backward_xpu");
 
   Tensor grad_input;
   if (input.numel() != 0) {
