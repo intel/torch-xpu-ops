@@ -247,8 +247,8 @@ void launch_avg_pool2d_channels_last_kernel(
     const int divisor_override,
     const bool count_include_pad,
     const bool use_divisor) {
-  scalar_t* top_data = output.data_ptr<scalar_t>();
-  const scalar_t* bottom_data = input.data_ptr<scalar_t>();
+  scalar_t* top_data = output.mutable_data_ptr<scalar_t>();
+  const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
@@ -295,8 +295,8 @@ void launch_avg_pool2d_kernel(
     const int divisor_override,
     const bool count_include_pad,
     const bool use_divisor) {
-  scalar_t* top_data = output.data_ptr<scalar_t>();
-  const scalar_t* bottom_data = input.data_ptr<scalar_t>();
+  scalar_t* top_data = output.mutable_data_ptr<scalar_t>();
+  const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
@@ -552,8 +552,8 @@ void launch_avg_pool2d_backward_channels_last_kernel(
     const int divisor_override,
     bool count_include_pad,
     bool use_divisor) {
-  const scalar_t* top_data = grad_output.data_ptr<scalar_t>();
-  scalar_t* bottom_data = grad_input.data_ptr<scalar_t>();
+  const scalar_t* top_data = grad_output.const_data_ptr<scalar_t>();
+  scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
@@ -603,8 +603,8 @@ void launch_avg_pool2d_backward_kernel(
     const int divisor_override,
     bool count_include_pad,
     bool use_divisor) {
-  const scalar_t* top_data = grad_output.data_ptr<scalar_t>();
-  scalar_t* bottom_data = grad_input.data_ptr<scalar_t>();
+  const scalar_t* top_data = grad_output.const_data_ptr<scalar_t>();
+  scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());

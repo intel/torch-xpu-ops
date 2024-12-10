@@ -66,6 +66,8 @@ _xpu_computation_op_list = [
     "copy",
     "cumprod",
     "cumsum",
+    "cummax",
+    "cummin",
     "equal",
     "eq",
     "exp",
@@ -91,6 +93,7 @@ _xpu_computation_op_list = [
     "masked_select",
     "isin",
     "isnan",
+    "kthvalue",
     "lcm",
     "le",
     "log",
@@ -99,6 +102,7 @@ _xpu_computation_op_list = [
     "log2",
     "logaddexp",
     "logaddexp2",
+    "logcumsumexp",
     "logit",
     "lt",
     "logical_and",
@@ -120,11 +124,13 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.leaky_relu",
     "nn.functional.prelu",
+    "nn.functional.rrelu",
     "nn.functional.threshold",
     "nn.functional.silu",
     "nn.functional.hardsigmoid",
     "nn.functional.softplus",
     "nn.functional.softshrink",
+    "nn.functional.local_response_norm",
     "nextafter",
     "heaviside",
     "nonzero",
@@ -141,7 +147,8 @@ _xpu_computation_op_list = [
     "acos",
     "acosh",
     "sin",
-    "sinh`",
+    "sinc",
+    "sinh",
     "asin",
     "asinh",
     "tan",
@@ -194,6 +201,7 @@ _xpu_computation_op_list = [
     "nn.functional.max_pool3d",
     "nn.functional.adaptive_avg_pool2d",
     "nn.functional.adaptive_avg_pool3d",
+    "nn.functional.avg_pool1d",
     "nn.functional.avg_pool2d",
     "nn.functional.avg_pool3d",
     "nn.functional.embedding",
@@ -201,6 +209,7 @@ _xpu_computation_op_list = [
     "nn.functional.pad",
     "nn.functional.interpolate",
     "nn.functional.upsample_bilinear",
+    "_upsample_bilinear2d_aa",
     "nn.functional.upsample_nearest",
     "nn.functional.nll_loss",
     "nn.functional.smooth_l1_loss",
@@ -264,6 +273,7 @@ _xpu_computation_op_list = [
     "min",
     "floor",
     "floor_divide",
+    "frexp",
     "copysign",
     "count_nonzero",
     "nan_to_num",
@@ -283,6 +293,7 @@ _xpu_computation_op_list = [
     "log_normal",
     "take",
     "put",
+    "_segment_reduce",
 ]
 
 _ops_without_cuda_support = [
@@ -300,7 +311,6 @@ _cuda_xfail_xpu_pass = [
     ("_batch_norm_with_update", "test_noncontiguous_samples"),
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
     ("histc", "test_out"),
-    ("logcumsumexp", "test_out_warning"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
@@ -737,10 +747,12 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
 
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
+        test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
         self.test_package = (
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/nn",
-            os.path.dirname(os.path.abspath(__file__)) + "/../../../../test/distributions",
+            test_dir,
+            os.path.join(test_dir, "nn"),
+            os.path.join(test_dir, "distributions"),
+            os.path.join(test_dir, "quantization/core"),
         )
         self.patch_test_case = patch_test_case
         self.original_path = sys.path.copy()
@@ -951,6 +963,7 @@ class XPUPatchForImport:
         ]
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
+        common_cuda.TEST_CUDNN_VERSION = 0
         cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
 

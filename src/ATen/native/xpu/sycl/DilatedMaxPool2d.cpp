@@ -5,9 +5,10 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
-#include <comm/xpu_aten.h>
+#include <xpu/ATen/ops/max.h>
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -95,7 +96,7 @@ struct MaxPool2dKernelFunctor {
   MaxPool2dKernelFunctor(
       scalar_t* output,
       int64_t* indices,
-      scalar_t* input,
+      const scalar_t* input,
       int numPlane,
       int inputSizeH,
       int inputSizeW,
@@ -133,7 +134,7 @@ struct MaxPool2dKernelFunctor {
  private:
   scalar_t* output_;
   int64_t* indices_;
-  scalar_t* input_;
+  const scalar_t* input_;
   int numPlane_;
   int inputSizeH_;
   int inputSizeW_;
@@ -181,8 +182,8 @@ struct MaxPool2dBackwardKernelFunctor {
   }
   MaxPool2dBackwardKernelFunctor(
       scalar_t* gradInput,
-      scalar_t* gradOutput,
-      int64_t* indices,
+      const scalar_t* gradOutput,
+      const int64_t* indices,
       int numPlane,
       int gradInputSizeH,
       int gradInputSizeW,
@@ -211,8 +212,8 @@ struct MaxPool2dBackwardKernelFunctor {
 
  private:
   scalar_t* gradInput_;
-  scalar_t* gradOutput_;
-  int64_t* indices_;
+  const scalar_t* gradOutput_;
+  const int64_t* indices_;
   int numPlane_;
   int gradInputSizeH_;
   int gradInputSizeW_;
@@ -280,8 +281,8 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
   }
   MaxPool2dBackwardDeterministicKernelFunctor(
       scalar_t* gradInput,
-      scalar_t* gradOutput,
-      int64_t* indices,
+      const scalar_t* gradOutput,
+      const int64_t* indices,
       int numPlane,
       int gradInputSizeH,
       int gradInputSizeW,
@@ -326,8 +327,8 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
 
  private:
   scalar_t* gradInput_;
-  scalar_t* gradOutput_;
-  int64_t* indices_;
+  const scalar_t* gradOutput_;
+  const int64_t* indices_;
   int numPlane_;
   int gradInputSizeH_;
   int gradInputSizeW_;
@@ -353,7 +354,7 @@ template <typename scalar_t, bool is_channels_last>
 void launch_max_pool2d_kernel(
     scalar_t* output,
     int64_t* indices,
-    scalar_t* input,
+    const scalar_t* input,
     int numBatch,
     int numPlane,
     int inputSizeH,
@@ -400,8 +401,8 @@ void launch_max_pool2d_kernel(
 template <typename scalar_t, bool is_channels_last>
 void launch_max_pool2d_backward_kernel(
     scalar_t* gradInput,
-    scalar_t* gradOutput,
-    int64_t* indices,
+    const scalar_t* gradOutput,
+    const int64_t* indices,
     int numBatch,
     int numPlane,
     int gradInputSizeH,
@@ -498,31 +499,22 @@ void max_pool2d_with_indices_kernel(
     IntArrayRef padding,
     IntArrayRef dilation,
     bool ceil_mode,
-    const Tensor& output_,
-    const Tensor& indices_) {
+    const Tensor& output,
+    const Tensor& indices) {
   NoNamesGuard guard;
 
-  TensorArg output_arg{output_, "output", 1};
-  TensorArg indices_arg{indices_, "indices", 2};
+  TensorArg output_arg{output, "output", 1};
+  TensorArg indices_arg{indices, "indices", 2};
   TensorArg input_arg{input_, "input_", 3};
 
   checkAllSameGPU(__func__, {output_arg, indices_arg, input_arg});
-  if (output_.numel() == 0) {
+  if (output.numel() == 0) {
     return;
   }
 
   auto smf = input_.suggest_memory_format();
-  bool is_3d = input_.ndimension() == 3;
-  Tensor input, indices, output;
-  if (is_3d) {
-    input = input_.contiguous();
-    indices = indices_.contiguous();
-    output = output_.contiguous();
-  } else {
-    input = input_.contiguous(smf);
-    indices = indices_.contiguous(smf);
-    output = output_.contiguous(smf);
-  }
+
+  Tensor input = input_.contiguous(smf);
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
@@ -550,72 +542,100 @@ void max_pool2d_with_indices_kernel(
 
   const int64_t outputHeight = output.size(-2);
   const int64_t outputWidth = output.size(-1);
+  if (outputHeight == 1 && outputWidth == 1 && inputHeight <= kH &&
+      inputWidth <= kW && padH == 0 && padW == 0) {
+    bool is_3d = input_.ndimension() == 3;
+    Tensor indices_, output_;
+    if (is_3d) {
+      indices_ = indices.contiguous();
+      output_ = output.contiguous();
+    } else {
+      indices_ = indices.contiguous(smf);
+      output_ = output.contiguous(smf);
+    }
+    if (!is_3d) {
+      input.resize_({nbatch, nInputPlane, 1, inputHeight * inputWidth}, smf);
+      output_.resize_(
+          {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+      indices_.resize_(
+          {nbatch, nInputPlane, 1, outputHeight * outputWidth}, smf);
+      at::max_outf(input, 3, true, output_, indices_);
+    } else {
+      at::max_outf(input, 2, true, output_, indices_);
+    }
 
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
-        switch (smf) {
-          case MemoryFormat::ChannelsLast: {
-            launch_max_pool2d_kernel<scalar_t, true>(
-                output.data_ptr<scalar_t>(),
-                indices.data_ptr<int64_t>(),
-                input.data_ptr<scalar_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
-            break;
+    if (!is_3d) {
+      input.resize_({nbatch, nInputPlane, inputHeight, inputWidth}, smf);
+      output_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+      indices_.resize_({nbatch, nInputPlane, outputHeight, outputWidth}, smf);
+    }
+
+    if ((is_3d && !indices.is_contiguous()) ||
+        (!is_3d && !indices.is_contiguous(smf))) {
+      indices.copy_(indices_);
+    }
+
+    if ((is_3d && !output.is_contiguous()) ||
+        (!is_3d && !output.is_contiguous(smf))) {
+      output.copy_(output_);
+    }
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
+          switch (smf) {
+            case MemoryFormat::ChannelsLast: {
+              launch_max_pool2d_kernel<scalar_t, true>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+              break;
+            }
+            case MemoryFormat::Contiguous: {
+              launch_max_pool2d_kernel<scalar_t, false>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+              break;
+            }
+            default:
+              TORCH_CHECK(
+                  false,
+                  "Unsupported memory format. Supports only ChannelsLast, Contiguous");
           }
-          case MemoryFormat::Contiguous: {
-            launch_max_pool2d_kernel<scalar_t, false>(
-                output.data_ptr<scalar_t>(),
-                indices.data_ptr<int64_t>(),
-                input.data_ptr<scalar_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
-            break;
-          }
-          default:
-            TORCH_CHECK(
-                false,
-                "Unsupported memory format. Supports only ChannelsLast, Contiguous");
-        }
-      });
-
-  if ((is_3d && !indices_.is_contiguous()) ||
-      (!is_3d && !indices_.is_contiguous(smf))) {
-    indices_.copy_(indices);
-  }
-
-  if ((is_3d && !output_.is_contiguous()) ||
-      (!is_3d && !output_.is_contiguous(smf))) {
-    output_.copy_(output);
+        });
   }
 }
 
 void max_pool2d_with_indices_backward_kernel(
-    const Tensor& gradInput_,
+    const Tensor& gradInput,
     const Tensor& gradOutput_,
     const Tensor& input_,
     const Tensor& indices_,
@@ -625,7 +645,7 @@ void max_pool2d_with_indices_backward_kernel(
     IntArrayRef dilation,
     bool ceil_mode) {
   NoNamesGuard guard;
-  TensorArg gradInput_arg{gradInput_, "gradInput", 1};
+  TensorArg gradInput_arg{gradInput, "gradInput", 1};
   TensorArg gradOutput_arg{gradOutput_, "gradOutput", 2};
   TensorArg input_arg{input_, "input", 3};
   TensorArg indices_arg{indices_, "indices", 4};
@@ -633,19 +653,11 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto smf = input_.suggest_memory_format();
-  bool is_3d = input_.ndimension() == 3;
-  Tensor input, gradOutput, indices, gradInput;
-  if (is_3d) {
-    input = input_.contiguous();
-    gradOutput = gradOutput_.contiguous();
-    indices = indices_.contiguous();
-    gradInput = gradInput_.contiguous();
-  } else {
-    input = input_.contiguous(smf);
-    gradOutput = gradOutput_.contiguous(smf);
-    indices = indices_.contiguous(smf);
-    gradInput = gradInput_.contiguous(smf);
-  }
+  Tensor input, gradOutput, indices;
+
+  input = input_.contiguous(smf);
+  gradOutput = gradOutput_.contiguous(smf);
+  indices = indices_.contiguous(smf);
   gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
@@ -684,9 +696,9 @@ void max_pool2d_with_indices_backward_kernel(
         switch (smf) {
           case at::MemoryFormat::ChannelsLast:
             launch_max_pool2d_backward_kernel<scalar_t, true>(
-                gradInput.data_ptr<scalar_t>(),
-                gradOutput.data_ptr<scalar_t>(),
-                indices.data_ptr<int64_t>(),
+                gradInput.mutable_data_ptr<scalar_t>(),
+                gradOutput.const_data_ptr<scalar_t>(),
+                indices.const_data_ptr<int64_t>(),
                 nbatch,
                 nInputPlane,
                 inputHeight,
@@ -704,9 +716,9 @@ void max_pool2d_with_indices_backward_kernel(
             break;
           case at::MemoryFormat::Contiguous:
             launch_max_pool2d_backward_kernel<scalar_t, false>(
-                gradInput.data_ptr<scalar_t>(),
-                gradOutput.data_ptr<scalar_t>(),
-                indices.data_ptr<int64_t>(),
+                gradInput.mutable_data_ptr<scalar_t>(),
+                gradOutput.const_data_ptr<scalar_t>(),
+                indices.const_data_ptr<int64_t>(),
                 nbatch,
                 nInputPlane,
                 inputHeight,
@@ -728,11 +740,6 @@ void max_pool2d_with_indices_backward_kernel(
                 "Unsupported memory format. Supports only ChannelsLast, Contiguous");
         }
       });
-
-  if ((is_3d && !gradInput_.is_contiguous()) ||
-      (!is_3d && !gradInput_.is_contiguous(smf))) {
-    gradInput_.copy_(gradInput);
-  }
 }
 
 } // namespace at::native::xpu
