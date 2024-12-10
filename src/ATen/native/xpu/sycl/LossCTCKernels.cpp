@@ -1248,7 +1248,7 @@ Tensor ctc_loss_backward_kernel(
     bool zero_infinity) {
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("ctc_loss_backward_kernel");
+  globalContext().alertNotDeterministic("ctc_loss_backward_xpu");
   return AT_DISPATCH_FLOATING_TYPES(
       log_probs.scalar_type(), "ctc_loss_backward_xpu", [&] {
         if (targets.scalar_type() == kLong) {

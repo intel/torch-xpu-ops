@@ -30,6 +30,7 @@ TORCH_IMPL_FUNC(upsample_bilinear2d_backward_out_xpu)
  std::optional<double> scales_h,
  std::optional<double> scales_w,
  const Tensor& grad_input) {
+  globalContext().alertNotDeterministic("upsample_bilinear2d_backward_out_xpu");
   xpu::upsample_bilinear2d_backward_out_kernel(
       grad_input,
       grad_output,
