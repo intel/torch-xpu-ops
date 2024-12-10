@@ -8,10 +8,10 @@
 #include <comm/xpu_aten.h>
 
 namespace at::native {
-Tensor& _weight_int4pack_mm_with_scales_and_zeros_xpu(
+Tensor _weight_int4pack_mm_with_scales_and_zeros_xpu(
     const Tensor& input,
     const Tensor& weight,
-    int qGroupSize,
+    int64_t qGroupSize,
     const Tensor& weight_scale_zero_point) {
   auto M = input.size(0);
   auto N = weight.size(0);
