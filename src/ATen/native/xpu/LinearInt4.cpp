@@ -50,13 +50,19 @@ Tensor _weight_int4pack_mm_with_scales_and_zeros_xpu(
 
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
-      common_device, input, "xpu::linear_int4", "input");
+      common_device,
+      input,
+      "xpu::_weight_int4pack_mm_with_scales_and_zeros",
+      "input");
   c10::impl::check_and_update_common_device(
-      common_device, weight, "xpu::linear_int4", "weight");
+      common_device,
+      weight,
+      "xpu::_weight_int4pack_mm_with_scales_and_zeros",
+      "weight");
   c10::impl::check_and_update_common_device(
       common_device,
       weight_scale_zero_point,
-      "xpu::linear_int4",
+      "xpu::_weight_int4pack_mm_with_scales_and_zeros",
       "weight_scale_zero_point");
   Tensor output = at::empty({M, N}, input.options());
 

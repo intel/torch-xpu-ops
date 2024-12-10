@@ -139,29 +139,58 @@ void linear_int4_kernel(
   int lda = k;
   int ldb = n;
   int ldc = n;
-  if (input.scalar_type() == at::kHalf) {
-    using scalar_t = at::Half;
-    // const auto scalar_t = input.scalar_type();
-    const scalar_t* input_data = input.data_ptr<scalar_t>();
-    uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
 
-    scalar_t* output_data = output.data_ptr<scalar_t>();
-    scalar_t* weight_scale_data = weight_scale_zero_point.data_ptr<scalar_t>();
-    LinearInt4KernelFunctor<scalar_t, 16> kfn(
-        input_data,
-        weight_data,
-        output_data,
-        weight_scale_data,
-        nullptr,
-        m,
-        n,
-        k,
-        k,
-        n,
-        n);
+  AT_DISPATCH_FLOATING_TYPES_AND(
+      at::ScalarType::Half, input.scalar_type(), "linear_int4_kernel", [&]() {
+        using scalar_t = at::Half;
+        const scalar_t* input_data = input.data_ptr<scalar_t>();
+        uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
 
-    sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
-  }
+        scalar_t* output_data = output.data_ptr<scalar_t>();
+        scalar_t* weight_scale_data =
+            weight_scale_zero_point.data_ptr<scalar_t>();
+        LinearInt4KernelFunctor<scalar_t, 16> kfn(
+            input_data,
+            weight_data,
+            output_data,
+            weight_scale_data,
+            nullptr,
+            m,
+            n,
+            k,
+            k,
+            n,
+            n);
+
+        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+      });
+  AT_DISPATCH_FLOATING_TYPES_AND(
+      at::ScalarType::BFloat16,
+      input.scalar_type(),
+      "linear_int4_kernel",
+      [&]() {
+        using scalar_t = at::BFloat16;
+        const scalar_t* input_data = input.data_ptr<scalar_t>();
+        uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
+
+        scalar_t* output_data = output.data_ptr<scalar_t>();
+        scalar_t* weight_scale_data =
+            weight_scale_zero_point.data_ptr<scalar_t>();
+        LinearInt4KernelFunctor<scalar_t, 16> kfn(
+            input_data,
+            weight_data,
+            output_data,
+            weight_scale_data,
+            nullptr,
+            m,
+            n,
+            k,
+            k,
+            n,
+            n);
+
+        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+      });
 }
 
 } // namespace at::native::xpu
