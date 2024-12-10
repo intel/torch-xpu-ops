@@ -5,14 +5,13 @@ set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
 # Walk around cyclic dependence
 # libtorch_xpu.so links to libtorch_xpu_ops.a
-# libtorch_xpu_ops.a dlopens libtorch_xpu_ops_aten.so (Break cycle)
+# Load libtorch_xpu_ops_aten.so explicitly by torch/__init__.py:_load_dll_libraries (Break cycle)
 # libtorch_xpu_ops_aten.so links to libtorch_xpu_ops_sycl_unary_binary_kernels.so and libtorch_xpu_ops_sycl_kernels.so
 # libtorch_xpu_ops_sycl_unary_binary_kernels.so and libtorch_xpu_ops_sycl_kernels.so links to libtorch_xpu.so
 add_library(
   torch_xpu_ops
   STATIC
-  ${ATen_XPU_CPP_SRCS}
-  "bridge.cpp")
+  ${ATen_XPU_CPP_SRCS})
 set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
 target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
