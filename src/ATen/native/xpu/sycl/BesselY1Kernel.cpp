@@ -1,7 +1,7 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/MathExtensions.h>
 #include <c10/core/Scalar.h>
 
 #include <ATen/native/xpu/sycl/BesselY1Kernel.h>
@@ -21,4 +21,4 @@ void bessel_y1_kernel(TensorIteratorBase& iter) {
   });
 }
 
-}
+} // namespace at::native::xpu

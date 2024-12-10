@@ -119,6 +119,9 @@ skip_dict = {
         # Cuda skipped it
         "test_non_standard_bool_values_msort_xpu_bool",  # The implementation aligns with CUDA, RuntimeError: "msort" not implemented for 'Bool'.
 
+        # Cuda XFAIL (stock pytorch commit: e7cf7d0)
+        "test_non_standard_bool_values_argsort_xpu_bool",
+
         # Unexpected success
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",  # Didn't align with CUDA, Unexpected success
 
@@ -2608,8 +2611,54 @@ skip_dict = {
         "test_multihead_attention_dtype_batch_first_xpu_float64",
         "test_multihead_attention_dtype_xpu_float64",
         "test_multihead_attn_fast_path_query_and_bias_have_different_dtypes_xpu_float64",
+        "test_multihead_attn_fast_path_small_test_xpu_float64",
         "test_multihead_attn_in_proj_bias_none_xpu_float64",
         "test_multihead_attn_in_proj_weight_none_xpu_float64",
+    ),
+
+    "test_native_mha_xpu.py": (
+        # NotImplementedError: Could not run 'aten::_native_multi_head_attention' with arguments from the 'NestedTensorXPU' backend.
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_False_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_False_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_False_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_False_fused_True_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_False_xpu_float32",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float16",
+        "test_native_multihead_self_attention_use_nt_True_use_padding_True_pad_all_True_need_weights_False_average_attn_weights_True_fused_True_xpu_float32",
+        "test_transform_bias_rescale_qkv_nested_xpu_float32",
     ),
 
     "test_comparison_utils_xpu.py": None,
@@ -3475,4 +3524,37 @@ skip_dict = {
     ),
 
     "test_distributions_xpu.py": None,
+
+    "test_optim_xpu.py": (
+        # oneDNN issues
+        # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_foreach_matches_forloop_ASGD_xpu_float64",
+        "test_foreach_matches_forloop_Adadelta_xpu_float64",
+        "test_foreach_matches_forloop_Adafactor_xpu_float64",
+        "test_foreach_matches_forloop_Adagrad_xpu_float64",
+        "test_foreach_matches_forloop_AdamW_xpu_float64",
+        "test_foreach_matches_forloop_Adam_xpu_float64",
+        "test_foreach_matches_forloop_Adamax_xpu_float64",
+        "test_foreach_matches_forloop_NAdam_xpu_float64",
+        "test_foreach_matches_forloop_RAdam_xpu_float64",
+        "test_foreach_matches_forloop_RMSprop_xpu_float64",
+        "test_foreach_matches_forloop_Rprop_xpu_float64",
+        "test_foreach_matches_forloop_SGD_xpu_float64",
+        "test_fused_cpu_matches_cuda_AdamW_xpu_float64",
+        "test_fused_cpu_matches_cuda_Adam_xpu_float64",
+        "test_fused_matches_forloop_AdamW_xpu_float64",
+        "test_fused_matches_forloop_Adam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_ASGD_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adadelta_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adafactor_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adagrad_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_AdamW_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Adamax_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_NAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RAdam_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
+        "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
+    ),
 }

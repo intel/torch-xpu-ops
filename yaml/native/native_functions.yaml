@@ -185,6 +185,25 @@
   tags: pointwise
 # multiply, alias for mul
 
+- func: mvlgamma.out(Tensor self, int p, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: mvlgamma_out
+  tags: pointwise
+
+- func: mvlgamma(Tensor self, int p) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma
+  tags: pointwise
+
+- func: mvlgamma_(Tensor(a!) self, int p) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  variants: method
+  dispatch:
+    CompositeExplicitAutograd: mvlgamma_
+  tags: pointwise
+
 - func: div.Tensor(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
@@ -1964,6 +1983,51 @@
     XPU: foreach_tensor_add_scalar_kernel_xpu_
   autogen: _foreach_add.Scalar_out
 
+- func: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalar_kernel_slow
+    XPU: foreach_tensor_sub_scalar_kernel_xpu
+
+- func: _foreach_sub_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalar_kernel_slow_
+    XPU: foreach_tensor_sub_scalar_kernel_xpu_
+  autogen: _foreach_sub.Scalar_out
+
+- func: _foreach_sub.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_list_kernel_slow
+    XPU: foreach_tensor_sub_list_kernel_xpu
+
+- func: _foreach_sub_.List(Tensor(a!)[] self, Tensor[] other, *, Scalar alpha=1) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_list_kernel_slow_
+    XPU: foreach_tensor_sub_list_kernel_xpu_
+  autogen: _foreach_sub.List_out
+
+- func: _foreach_sub.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalarlist_kernel_slow
+    XPU: foreach_tensor_sub_scalarlist_kernel_xpu
+
+- func: _foreach_sub_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_sub_scalarlist_kernel_slow_
+    XPU: foreach_tensor_sub_scalarlist_kernel_xpu_
+  autogen: _foreach_sub.ScalarList_out
+  
 - func: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -2925,6 +2989,54 @@
     XPU: _embedding_bag_xpu
   autogen: _embedding_bag.out
   tags: core
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool2d.output(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples, *, Tensor(a!) output, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: fractional_max_pool2d_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool2d(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: fractional_max_pool2d.output
+
+- func: fractional_max_pool2d_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] output_size, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: fractional_max_pool2d_backward_xpu
+
+- func: fractional_max_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] output_size, Tensor indices) -> Tensor
+  python_module: nn
+  structured_delegate: fractional_max_pool2d_backward.grad_input
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool3d.output(Tensor self, int[3] kernel_size, int[3] output_size, Tensor random_samples, *, Tensor(a!) output, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  precomputed:
+  - kernel_size -> int poolSizeT, int poolSizeH, int poolSizeW
+  - output_size -> int outputT, int outputH, int outputW
+  - int numBatch, int numPlanes, int inputT, int inputH, int inputW
+  dispatch:
+    XPU: fractional_max_pool3d_out_xpu
+
+# Return: (Tensor output, Tensor indices)
+- func: fractional_max_pool3d(Tensor self, int[3] kernel_size, int[3] output_size, Tensor random_samples) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: fractional_max_pool3d.output
+
+- func: fractional_max_pool3d_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] output_size, Tensor indices, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  dispatch:
+    XPU: fractional_max_pool3d_backward_out_xpu
+
+- func: fractional_max_pool3d_backward(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] output_size, Tensor indices) -> Tensor
+  python_module: nn
+  dispatch:
+    XPU: fractional_max_pool3d_backward_xpu
 
 # Return: (Tensor output, Tensor indices)
 - func: max_pool2d_with_indices.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False, *, Tensor(a!) out, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
@@ -4026,6 +4138,40 @@
   variants: method
   tags: pointwise
 
+- func: igamma.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igamma_out
+  tags: pointwise
+
+- func: igamma(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igamma.out
+  variants: method, function
+  tags: pointwise
+
+- func: igamma_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igamma.out
+  variants: method
+  tags: pointwise
+
+- func: igammac.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: igammac_out
+  tags: pointwise
+
+- func: igammac(Tensor self, Tensor other) -> Tensor
+  structured_delegate: igammac.out
+  variants: method, function
+  tags: pointwise
+
+- func: igammac_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  structured_delegate: igammac.out
+  variants: method
+  tags: pointwise
+
 - func: _efficientzerotensor(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
   dispatch:
     XPU: _efficientzerotensor_xpu
@@ -4632,6 +4778,38 @@
   dispatch:
     XPU: multinomial
   tags: nondeterministic_seeded
+
+- func: _fused_adam_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] exp_avgs, Tensor(d!)[] exp_avg_sqs, Tensor(e!)[] max_exp_avg_sqs, Tensor[] state_steps, *, float lr, float beta1, float beta2, float weight_decay, float eps, bool amsgrad, bool maximize, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  variants: function
+  dispatch:
+    XPU: _fused_adam_kernel_xpu_
+  autogen: _fused_adam, _fused_adam.out
+
+- func: _fused_adam_.tensor_lr(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] exp_avgs, Tensor(d!)[] exp_avg_sqs, Tensor(e!)[] max_exp_avg_sqs, Tensor[] state_steps, *, Tensor lr, float beta1, float beta2, float weight_decay, float eps, bool amsgrad, bool maximize, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now),
+  # but still skip the device check as the Tensor LR can be on CPU
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    XPU: _fused_adam_kernel_xpu_
+  autogen: _fused_adam.tensor_lr, _fused_adam.tensor_lr_out
+
+- func: _fused_adamw_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] exp_avgs, Tensor(d!)[] exp_avg_sqs, Tensor(e!)[] max_exp_avg_sqs, Tensor[] state_steps, *, float lr, float beta1, float beta2, float weight_decay, float eps, bool amsgrad, bool maximize, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now).
+  variants: function
+  dispatch:
+    XPU: _fused_adamw_kernel_xpu_
+  autogen: _fused_adamw, _fused_adamw.out
+
+- func: _fused_adamw_.tensor_lr(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] exp_avgs, Tensor(d!)[] exp_avg_sqs, Tensor(e!)[] max_exp_avg_sqs, Tensor[] state_steps, *, Tensor lr, float beta1, float beta2, float weight_decay, float eps, bool amsgrad, bool maximize, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  # Unlike "foreach" functions, lists of tensors should be guaranteed to be on the same device (for now),
+  # but still skip the device check as the Tensor LR can be on CPU
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    XPU: _fused_adamw_kernel_xpu_
+  autogen: _fused_adamw.tensor_lr, _fused_adamw.tensor_lr_out
 
 - func: huber_loss.out(Tensor self, Tensor target, int reduction=Mean, float delta=1.0, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
@@ -5272,6 +5450,19 @@
   tags: nondeterministic_seeded
   autogen: binomial.out
 
+- func: _standard_gamma_grad(Tensor self, Tensor output) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _standard_gamma_grad_xpu
+  autogen: _standard_gamma_grad.out
+
+- func: _standard_gamma(Tensor self, Generator? generator=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _s_gamma_xpu
+  tags: nondeterministic_seeded
+  autogen: _standard_gamma.out
+
 - func: _sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor
   tags: nondeterministic_seeded
   variants: function
@@ -5283,6 +5474,24 @@
   dispatch:
     XPU: _dirichlet_grad_xpu
   autogen: _dirichlet_grad.out
+
+# Fused implementation detail for transformers. Adds in-projection bias to QKV and divides Q by sqrt(D/num_heads).
+- func: _transform_bias_rescale_qkv(Tensor qkv, Tensor qkv_bias, int num_heads) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: transform_bias_rescale_qkv_xpu
+  autogen: _transform_bias_rescale_qkv.out
+
+- func: _native_multi_head_attention(Tensor query, Tensor key, Tensor value, int embed_dim, int num_head, Tensor qkv_weight, Tensor qkv_bias, Tensor proj_weight, Tensor proj_bias, Tensor? mask=None, bool need_weights=True, bool average_attn_weights=True, int? mask_type=None) -> (Tensor, Tensor)
+  variants: function
+  dispatch:
+    XPU: native_multi_head_attention_xpu
+  autogen: _native_multi_head_attention.out
+
+# This aten function is kept so that we can test the choice function from Python
+- func: _fused_sdp_choice(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, float dropout_p=0.0, bool is_causal=False, *, float? scale=None, bool enable_gqa=False) -> int
+  dispatch:
+    XPU: _fused_sdp_choice_xpu
+  tags: nondeterministic_seeded
 
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
   structured_delegate: argmin.out
@@ -6702,6 +6911,21 @@
     XPU: angle_out
   tags: pointwise
 
+- func: special_airy_ai(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_airy_ai.out
+  variants: function
+  tags: pointwise
+
+- func: special_airy_ai.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_airy_ai_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
 - func: special_bessel_j0(Tensor self) -> Tensor
   python_module: special
   structured_delegate: special_bessel_j0.out
@@ -6837,6 +7061,99 @@
   variants: function
   tags: pointwise
 
+- func: special_scaled_modified_bessel_k0(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_scaled_modified_bessel_k0.out
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k0.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_scaled_modified_bessel_k0_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k1(Tensor x) -> Tensor
+  python_module: special
+  structured_delegate: special_scaled_modified_bessel_k1.out
+  variants: function
+  tags: pointwise
+
+- func: special_scaled_modified_bessel_k1.out(Tensor x, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: special_scaled_modified_bessel_k1_out
+  python_module: special
+  structured_inherits: TensorIteratorBase
+  structured: True
+  variants: function
+  tags: pointwise 
+
+- func: special_xlog1py(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  python_module: special
+  variants: function
+  structured_delegate: special_xlog1py.out
+  tags: pointwise
+
+- func: special_xlog1py.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_xlog1py_out
+  tags: pointwise
+
+- func: special_zeta(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  python_module: special
+  variants: function
+  structured_delegate: special_zeta.out
+  tags: pointwise
+
+- func: special_zeta.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_zeta_out
+  tags: pointwise
+
+- func: special_entr(Tensor self) -> Tensor
+  structured_delegate: special_entr.out
+  python_module: special
+  variants: function
+  tags: pointwise
+
+- func: special_entr.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  python_module: special
+  variants: function
+  dispatch:
+    XPU: special_entr_out
+  tags: pointwise
+
+- func: special_erfcx(Tensor self) -> Tensor
+  python_module: special
+  variants: function
+  structured_delegate: special_erfcx.out
+  tags: pointwise
+
+- func: special_erfcx.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: special
+  structured: True
+  structured_inherits: TensorIteratorBase
+  dispatch:
+    XPU: special_erfcx_out
+  tags: pointwise
+
 - func: poisson(Tensor self, Generator? generator=None) -> Tensor
   device_check: NoCheck   # TensorIterator
   dispatch:
@@ -6870,6 +7187,11 @@
 
 - func: index_copy.dimname(Tensor self, Dimname dim, Tensor index, Tensor source) -> Tensor
   variants: function, method
+
+- func: record_stream(Tensor(a!) self, Stream s) -> ()
+  variants: method
+  dispatch:
+    XPU: record_stream_xpu
 
 - func: i0(Tensor self) -> Tensor
   structured_delegate: i0.out
