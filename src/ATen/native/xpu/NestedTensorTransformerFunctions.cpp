@@ -1,8 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/native/nested/NestedTensorTransformerFunctions.h>
-
-#include <ATen/native/xpu/sycl/NestedTensorTransformerFunctionsKernels.h>
+#include <ATen/native/xpu/NestedTensorTransformerFunctions.h>
 
 namespace at::native {
 namespace {
@@ -58,7 +57,7 @@ Tensor nested_from_padded_xpu(
 
     if (padded.dtype() == at::kFloat) {
       if (do_transform_0213) {
-        xpu::remove_padding_transform0213_kernelLauncher(
+        xpu::launch_remove_padding_transform0213_kernel(
             padded_contiguous.data_ptr<float>(),
             output.data_ptr<float>(),
             offsets_ptr,
@@ -67,7 +66,7 @@ Tensor nested_from_padded_xpu(
             padded_contiguous.dim() - 2,
             padded_contiguous.sizes()[0]);
       } else {
-        xpu::remove_padding_kernelLauncher(
+        xpu::launch_remove_padding_kernel(
             padded_contiguous.data_ptr<float>(),
             output.data_ptr<float>(),
             offsets_ptr,
@@ -78,7 +77,7 @@ Tensor nested_from_padded_xpu(
       }
     } else if (padded.dtype() == at::kHalf) {
       if (do_transform_0213) {
-        xpu::remove_padding_transform0213_kernelLauncher(
+        xpu::launch_remove_padding_transform0213_kernel(
             padded_contiguous.data_ptr<c10::Half>(),
             output.data_ptr<c10::Half>(),
             offsets_ptr,
@@ -87,7 +86,7 @@ Tensor nested_from_padded_xpu(
             padded_contiguous.dim() - 2,
             padded_contiguous.sizes()[0]);
       } else {
-        xpu::remove_padding_kernelLauncher(
+        xpu::launch_remove_padding_kernel(
             padded_contiguous.data_ptr<c10::Half>(),
             output.data_ptr<c10::Half>(),
             offsets_ptr,

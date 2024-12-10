@@ -1,4 +1,5 @@
 #include <comm/SYCLContext.h>
+#include <ATen/native/xpu/NestedTensorTransformerFunctions.h>
 
 // keep align with cuda, global range0 is set to output_batch_size, global_range
 // for dim1 is set to 16,
@@ -179,7 +180,7 @@ struct remove_padding_transform0213_functor {
 };
 
 template <typename T>
-void remove_padding_transform0213_kernelLauncher(
+void launch_remove_padding_transform0213_kernel(
     const T* input,
     T* output,
     const int* offsets,
@@ -208,7 +209,7 @@ void remove_padding_transform0213_kernelLauncher(
 }
 
 template <typename T>
-void remove_padding_kernelLauncher(
+void launch_remove_padding_kernel(
     const T* input,
     T* output,
     const int* offsets,
@@ -249,5 +250,41 @@ void remove_padding_kernelLauncher(
     sycl_kernel_submit(global_range, local_range, queue, kfn);
   }
 }
+
+template void launch_remove_padding_kernel<float>(
+    const float* input,
+    float* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    int batch_size);
+
+template void launch_remove_padding_kernel<c10::Half>(
+    const c10::Half* input,
+    c10::Half* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    int batch_size);
+
+template void launch_remove_padding_transform0213_kernel<float>(
+    const float* input,
+    float* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    const int batch_size);
+
+template void launch_remove_padding_transform0213_kernel<c10::Half>(
+    const c10::Half* input,
+    c10::Half* output,
+    const int* offsets,
+    const int* input_sizes,
+    const int* output_sizes,
+    int output_dim,
+    const int batch_size);
 
 } // namespace at::native::xpu
