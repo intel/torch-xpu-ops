@@ -7,7 +7,7 @@ namespace at::native::xpu {
 
 TORCH_XPU_API Tensor& rrelu_with_noise_kernel(
     const Tensor& self,
-    const Tensor& noise,
+    Tensor& noise,
     const Scalar& lower,
     const Scalar& upper,
     bool training,
