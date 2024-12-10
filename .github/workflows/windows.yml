@@ -69,6 +69,7 @@ jobs:
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install pyyaml requests
           call conda install -y libuv
+          call conda install -y rust 
           git config --system core.longpaths true
           git status 
           git show -s 
@@ -115,7 +116,7 @@ jobs:
           )
           echo "[INFO] the torch version is %TORCH_WHL%"
           python -m pip install %TORCH_WHL%
-          pip install -r .ci/docker/requirements-ci.txt
+          pip install -r .ci\docker\requirements-ci.txt
       - name: Torch Config
         shell: cmd
         run: |
