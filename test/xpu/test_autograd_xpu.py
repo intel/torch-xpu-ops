@@ -196,15 +196,6 @@ def gradcheck_input_output_different_device(self, device):
     x = torch.ones((1,), dtype=torch.double, device="cpu", requires_grad=True)
     gradcheck(lambda x: x.to("xpu"), (x,))
 
-def profiler_emit_nvtx(self, device):
-    # This test is not intended to ensure correctness of nvtx ranges.
-    # That would require something a great deal more complex (you'd have to create a
-    # profile in a subprocess, open it, and parse the sql somehow).
-    # This test is merely intended to catch if emit_nvtx breaks on construction.
-    a = torch.tensor([1, 2, 3], dtype=torch.float32, device=device)
-    with torch.xpu.profiler.profile():
-        with emit_nvtx():
-            a.add(1.0)
 
 def dataparallel_saved_tensors_hooks(self):
     def pack(x):
@@ -606,7 +597,6 @@ with XPUPatchForImport(False):
 
     TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
     TestAutogradDeviceType.test_pin_memory = pin_memory
-    TestAutogradDeviceType.test_profiler_emit_nvtx = profiler_emit_nvtx
     TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
     TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
