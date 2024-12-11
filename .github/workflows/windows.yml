@@ -152,4 +152,4 @@ jobs:
           call "C:\Program Files (x86)\Intel\oneAPI\ocloc\2024.2\env\vars.bat"
           set PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          timeout 10000 python run_test_with_skip.py
+          python run_test_with_skip.py
