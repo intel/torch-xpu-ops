@@ -57,15 +57,29 @@ struct LerpScalarFunctor {
   opmath_t weight_val_;
 };
 
+void lerp_scalar_kernel(
+    at::TensorIteratorBase& iter,
+    const c10::Scalar& weight);
+
 void lerp_tensor_kernel(at::TensorIteratorBase& iter) {
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES_AND(kComplexHalf, dtype, "lerp_xpu", [&] {
+      if (iter.is_cpu_scalar(3)) {
+        auto weight_val = iter.scalar_value<scalar_t>(3);
+        iter.remove_operand(3);
+        return lerp_scalar_kernel(iter, weight_val);
+      }
       gpu_kernel(iter, LerpTensorComplexFunctor<scalar_t>());
     });
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half, at::ScalarType::BFloat16, dtype, "lerp_xpu", [&] {
+          if (iter.is_cpu_scalar(3)) {
+            auto weight_val = iter.scalar_value<scalar_t>(3);
+            iter.remove_operand(3);
+            return lerp_scalar_kernel(iter, weight_val);
+          }
           gpu_kernel(iter, LerpTensorFunctor<scalar_t>());
         });
   }
