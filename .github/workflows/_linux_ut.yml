@@ -65,19 +65,21 @@ jobs:
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ inputs.pytorch }} |sed 's/^nightly_wheel$/nightly/')
-          # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          git submodule sync && git submodule update --init --recursive
-          if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+          git clone https://github.com/pytorch/pytorch pytorch
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            # apply PRs for stock pytorch
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git status && git show -s
+            git submodule sync && git submodule update --init --recursive
+            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+              echo "Don't replace torch-xpu-ops!"
+            else
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+              # Workaround for torch-xpu-ops ci test
+              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            fi
           fi
       - name: Triton Installation
         run: |
