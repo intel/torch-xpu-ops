@@ -244,11 +244,18 @@ def _int4_mm(self, device, m, k, n):
         return b_int4pack, b_scales_and_zeros
 
     def weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros):
-        self.assertTrue(b_int4pack.dtype is torch.int32)
-        # self.assertTrue(b_int4pack.dim() == 4)
-        return torch._weight_int4pack_mm(
-            a, b_int4pack, q_group, b_scales_and_zeros
-        )
+        if self.device_type == 'cpu':
+            self.assertTrue(b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dim() == 2)
+            return torch._weight_int4pack_mm_for_cpu(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
+        else:
+            self.assertTrue(b_int4pack.dtype is torch.int32)
+            self.assertTrue(b_int4pack.dim() == 4)
+            return torch._weight_int4pack_mm(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
     
     dtype = torch.bfloat16
     q_group = 32
@@ -256,31 +263,18 @@ def _int4_mm(self, device, m, k, n):
 
     torch.manual_seed(1)
     a_bf16 = torch.rand((m, k), dtype=dtype, device=device)
-    b_int4 = rand_int4(k * n, torch.int32, "xpu").reshape(k // 8, n)
-    group_num = int(k / q_group)
-
-    scales = torch.rand([group_num, n], device="xpu", dtype=dtype)
-    zero_points = rand_int4(group_num * n, torch.int32, "xpu").reshape(
-        group_num, n // 8
-    )
- 
-    b_bf16 = dequantize(b_int4, scales, zero_points, q_group).cpu()
-
-    # b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+    b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
 
     for dtype in [torch.bfloat16] + ([torch.float16, torch.float32] if device == "cpu" else []):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
-        # b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
-        res = weight_int4pack_mm(a, b_int4, scales)
-        ref = torch.mm(a_bf16, b_bf16)
+        b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
+        ref = torch.mm(a, b)
+        res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
 
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
-
-    
-
-
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
 @setBlasBackendsToDefaultFinally

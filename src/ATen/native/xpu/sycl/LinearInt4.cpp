@@ -7,7 +7,7 @@ template <typename scalar_t = at::Half, int block_size = 16>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       const scalar_t* A,
-      const uint32_t* B,
+      const int32_t* B,
       scalar_t* C,
       const scalar_t* B_scale,
       const scalar_t* B_zero_point,
@@ -71,7 +71,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       sycl::half2 sum = {0.f, 0.f};
       for (int i = 0; i < SgSize; i += 1) {
-        sum += sg.shuffle(tmpAcc, i);
+        sum += group_broadcast(sg, tmpAcc, i);
       }
       if (sg_id == 0) {
         *cptr = sum[0] + sum[1];
@@ -100,7 +100,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
       float sum = 0.f;
       for (int i = 0; i < SgSize; i += 1) {
-        sum += sg.shuffle(tmpAcc, i);
+        sum += group_broadcast(sg, tmpAcc, i);
       }
       if (sg_id == 0) {
         *cptr = sum;
@@ -110,7 +110,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
  private:
   const scalar_t* A;
-  const uint32_t* B;
+  const int32_t* B;
   scalar_t* C;
   const scalar_t* B_scale;
   const scalar_t* B_zero_point;
@@ -123,15 +123,15 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 };
 
 void linear_int4_kernel(
-    const Tensor& input,
-    const Tensor& weight,
+    const Tensor& A,
+    const Tensor& B,
     int qGroupSize,
-    const Tensor& weight_scale_zero_point,
-    Tensor& output) {
+    const Tensor& qScaleAndZeros,
+    Tensor& C) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
-  int64_t m = input.size(0);
-  int64_t n = input.size(1);
-  int64_t k = output.size(1);
+  int64_t m = A.size(0);
+  int64_t n = A.size(1);
+  int64_t k = C.size(1);
   int constexpr Unroll = 2;
   int constexpr SgSize = 16;
   sycl::range<1> local_range{SgSize};
@@ -140,57 +140,55 @@ void linear_int4_kernel(
   int ldb = n;
   int ldc = n;
 
-  AT_DISPATCH_FLOATING_TYPES_AND(
-      at::ScalarType::Half, input.scalar_type(), "linear_int4_kernel", [&]() {
-        using scalar_t = at::Half;
-        const scalar_t* input_data = input.data_ptr<scalar_t>();
-        uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
+  // AT_DISPATCH_FLOATING_TYPES_AND(
+  //     at::ScalarType::Half, A.scalar_type(), "linear_int4_kernel", [&]() {
+  if (A.scalar_type() == at::ScalarType::Half) {
+    using scalar_t = at::Half;
+    const scalar_t* input_data = A.data_ptr<scalar_t>();
+    int32_t* weight_data = B.data_ptr<int32_t>(); // int4x8
 
-        scalar_t* output_data = output.data_ptr<scalar_t>();
-        scalar_t* weight_scale_data =
-            weight_scale_zero_point.data_ptr<scalar_t>();
-        LinearInt4KernelFunctor<scalar_t, 16> kfn(
-            input_data,
-            weight_data,
-            output_data,
-            weight_scale_data,
-            nullptr,
-            m,
-            n,
-            k,
-            k,
-            n,
-            n);
+    scalar_t* output_data = C.data_ptr<scalar_t>();
+    scalar_t* weight_scale_data = qScaleAndZeros.data_ptr<scalar_t>();
+    LinearInt4KernelFunctor<scalar_t, 16> kfn(
+        input_data,
+        weight_data,
+        output_data,
+        weight_scale_data,
+        nullptr,
+        m,
+        n,
+        k,
+        k,
+        n,
+        n);
 
-        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
-      });
-  AT_DISPATCH_FLOATING_TYPES_AND(
-      at::ScalarType::BFloat16,
-      input.scalar_type(),
-      "linear_int4_kernel",
-      [&]() {
-        using scalar_t = at::BFloat16;
-        const scalar_t* input_data = input.data_ptr<scalar_t>();
-        uint32_t* weight_data = weight.data_ptr<uint32_t>(); // int4x8
+    sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+  }
+  // AT_DISPATCH_FLOATING_TYPES_AND(
+  //     at::ScalarType::BFloat16, A.scalar_type(), "linear_int4_kernel", [&]()
+  //     {
+  else if (A.scalar_type() == at::ScalarType::BFloat16) {
+    using scalar_t = at::BFloat16;
+    const scalar_t* input_data = A.data_ptr<scalar_t>();
+    int32_t* weight_data = B.data_ptr<int32_t>(); // int4x8
 
-        scalar_t* output_data = output.data_ptr<scalar_t>();
-        scalar_t* weight_scale_data =
-            weight_scale_zero_point.data_ptr<scalar_t>();
-        LinearInt4KernelFunctor<scalar_t, 16> kfn(
-            input_data,
-            weight_data,
-            output_data,
-            weight_scale_data,
-            nullptr,
-            m,
-            n,
-            k,
-            k,
-            n,
-            n);
+    scalar_t* output_data = C.data_ptr<scalar_t>();
+    scalar_t* weight_scale_data = qScaleAndZeros.data_ptr<scalar_t>();
+    LinearInt4KernelFunctor<scalar_t, 16> kfn(
+        input_data,
+        weight_data,
+        output_data,
+        weight_scale_data,
+        nullptr,
+        m,
+        n,
+        k,
+        k,
+        n,
+        n);
 
-        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
-      });
+    sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+  }
 }
 
 } // namespace at::native::xpu
