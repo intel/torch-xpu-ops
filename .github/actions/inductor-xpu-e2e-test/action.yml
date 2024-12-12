@@ -51,7 +51,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        source .github/scripts/env.sh
+        source .github/scripts/env.sh ${{ inputs.pytorch }}
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
@@ -94,7 +94,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        source .github/scripts/env.sh
+        source .github/scripts/env.sh ${{ inputs.pytorch }}
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
 
