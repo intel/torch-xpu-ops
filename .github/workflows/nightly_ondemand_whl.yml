@@ -108,7 +108,8 @@ jobs:
           source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           source .github/scripts/env.sh
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
@@ -118,7 +119,8 @@ jobs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           pip install -r requirements.txt
-          echo "TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
