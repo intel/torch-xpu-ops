@@ -18,11 +18,6 @@ on:
         type: string
         default: ''
         description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
-      abi:
-        required: false
-        type: string
-        default: 1
-        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -31,8 +26,13 @@ on:
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
+        default: 'Windows_CI'
         description: Runner label
+      xpu_version:
+        required: false
+        type: string
+        default: '2025.0'
+        description: Python version
 
 permissions: read-all
 
@@ -40,17 +40,18 @@ env:
     USE_XPU: 1
 
 jobs:
-  Torch-XPU-Windows-Build:
+  Torch-XPU-Windows-UT:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      # - name: Install oneAPI bundle and pti
-      #   shell: cmd
-      #   run: |
-      #     call .github\scripts\install_xpu.bat
-      #     if errorlevel 1 exit /b 1
+      - name: Install oneAPI
+        shell: cmd
+        run: |
+          set XPU_VERSION=${{ inputs.xpu_version }}
+          call .github\scripts\install_xpu.bat
+          if errorlevel 1 exit /b 1
       - name: Prepare Stock Pytorch
         shell: cmd
         run: |
@@ -90,8 +91,8 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\2024.2\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
@@ -100,13 +101,6 @@ jobs:
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
-          if ${{ inputs.abi }} == '0' (
-            set _GLIBCXX_USE_CXX11_ABI=0
-            echo "ABI=0"
-          ) else (
-            set _GLIBCXX_USE_CXX11_ABI=1
-            echo "ABI=1"
-          )
           python setup.py clean
           set MAX_JOBS=4
           python setup.py bdist_wheel > build_torch_wheel_log.log
@@ -122,8 +116,7 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\2024.2\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -148,8 +141,7 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\pytorch-gpu-dev-0.5\oneapi-vars.bat"
-          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\2024.2\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           set PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip.py
