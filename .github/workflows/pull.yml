@@ -36,7 +36,7 @@ jobs:
       ut: op_extended
       runner: linux.idc.xpu
   
-  preci-windows-build:
+  preci-windows:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/windows.yml
