@@ -272,8 +272,9 @@ def _int4_mm(self, device, m, k, n):
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
         ref = torch.mm(a, b)
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
-
         mean_err = ((res - ref).abs() / ref).mean()
+        print(ref)
+        print(res)
         self.assertTrue(mean_err < 0.05)
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
