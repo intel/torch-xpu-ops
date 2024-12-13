@@ -12,11 +12,9 @@ if (NOT EXISTS "${XCCL_ROOT}")
   set(XCCL_ROOT $ENV{CCL_ROOT})
 endif()
 
-string(COMPARE EQUAL "${XCCL_ROOT}" "" nocclfound)
-if(nocclfound)
+if(NOT DEFINED $ENV{CCL_ROOT})
   set(XCCL_FOUND False)
-  set(XCCL_REASON_FAILURE "OneCCL library not found!!")
-  set(XCCL_NOT_FOUND_MESSAGE "${XCCL_REASON_FAILURE}")
+  set(XCCL_NOT_FOUND_MESSAGE "OneCCL library not found!!")
   return()
 endif()
 
@@ -56,8 +54,7 @@ find_library(
 
 if((NOT XCCL_INCLUDE_DIR) OR (NOT XCCL_LIBRARY_DIR) OR (NOT XCCL_LIBRARY))
   set(XCCL_FOUND False)
-  set(XCCL_REASON_FAILURE "OneCCL library not found!!")
-  set(XCCL_NOT_FOUND_MESSAGE "${XCCL_REASON_FAILURE}")
+  set(XCCL_NOT_FOUND_MESSAGE "OneCCL library not found!!")
   return()
 endif()
 
@@ -65,6 +62,6 @@ find_package_handle_standard_args(
   XCCL
   FOUND_VAR XCCL_FOUND
   REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY
-  REASON_FAILURE_MESSAGE "${XCCL_REASON_FAILURE}"
+  REASON_FAILURE_MESSAGE "${XCCL_NOT_FOUND_MESSAGE}"
 )
 

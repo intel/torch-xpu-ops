@@ -15,6 +15,8 @@ if(NOT __XCCL_INCLUDED)
     set_property(
       TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
       ${XCCL_LIBRARY})
+    set(USE_C10D_XCCL ON)
+    set(USE_C10D_XCCL ${USE_C10D_XCCL} PARENT_SCOPE)
   endif()
 endif()
 
