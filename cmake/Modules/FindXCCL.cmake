@@ -12,12 +12,6 @@ if (NOT EXISTS "${XCCL_ROOT}")
   set(XCCL_ROOT $ENV{CCL_ROOT})
 endif()
 
-if(NOT DEFINED $ENV{CCL_ROOT})
-  set(XCCL_FOUND False)
-  set(XCCL_NOT_FOUND_MESSAGE "OneCCL library not found!!")
-  return()
-endif()
-
 # Find include path from binary.
 find_file(
   XCCL_INCLUDE_DIR
@@ -64,4 +58,3 @@ find_package_handle_standard_args(
   REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY
   REASON_FAILURE_MESSAGE "${XCCL_NOT_FOUND_MESSAGE}"
 )
-

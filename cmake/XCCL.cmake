@@ -4,7 +4,7 @@ if(NOT __XCCL_INCLUDED)
   # XCCL_ROOT, XCCL_LIBRARY_DIR, XCCL_INCLUDE_DIR are handled by FindXCCL.cmake.
   find_package(XCCL REQUIRED)
   if(NOT XCCL_FOUND)
-    message("${XCCL_NOT_FOUND_MESSAGE")
+    message("${XCCL_NOT_FOUND_MESSAGE}")
     return()
   endif()
   if(XCCL_FOUND)
@@ -19,4 +19,3 @@ if(NOT __XCCL_INCLUDED)
     set(USE_C10D_XCCL ${USE_C10D_XCCL} PARENT_SCOPE)
   endif()
 endif()
-
