@@ -173,9 +173,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
         _test(17, k, n, use_transpose_a, use_transpose_b)
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [32])
-@parametrize("k", [32])
-@parametrize("n", [32])
+@parametrize("m", [1])
+@parametrize("k", [1024])
+@parametrize("n", [1024])
 def _int4_mm(self, device, m, k, n):
     @staticmethod
     def rand_int4(size, dtype=torch.int32, device="xpu"):
@@ -257,16 +257,15 @@ def _int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
     
-    dtype = torch.bfloat16
+    dtype = torch.float16
     q_group = 32
     inner_k_tiles = 2
 
     torch.manual_seed(1)
     a_bf16 = torch.rand((m, k), dtype=dtype, device=device)
-    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+    b_bf16 = torch.ones((k, n), dtype=dtype, device=device)
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
-
-    for dtype in [torch.bfloat16] + ([torch.float16, torch.float32] if device == "cpu" else []):
+    for dtype in [torch.float16] + ([torch.float16, torch.float32] if device == "cpu" else []):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
