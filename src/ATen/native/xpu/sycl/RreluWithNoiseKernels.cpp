@@ -86,7 +86,7 @@ template <typename scalar_t>
 inline void _rrelu_with_noise_xpu_train(
     Tensor& output,
     const Tensor& input_,
-    const Tensor& noise_,
+    Tensor& noise_,
     const Scalar& lower_,
     const Scalar& upper_,
     std::optional<Generator> generator) {
@@ -153,7 +153,7 @@ inline void _rrelu_with_noise_xpu_train(
 
 Tensor& rrelu_with_noise_kernel(
     const Tensor& self,
-    const Tensor& noise,
+    Tensor& noise,
     const Scalar& lower,
     const Scalar& upper,
     bool training,
