@@ -75,10 +75,10 @@ jobs:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
+      runner: shwde-mlp-arc03
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: shwde-mlp-arc03
+    runs-on: [ shwde-mlp-arc03 ]
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
     timeout-minutes: 3600
@@ -276,7 +276,7 @@ jobs:
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
-    runs-on: [ self-hosted, Linux ]
+    runs-on: [ shwde-mlp-arc03, Linux ]
     permissions:
       issues: write
     env:
