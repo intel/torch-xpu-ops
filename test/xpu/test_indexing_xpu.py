@@ -13,6 +13,7 @@ with XPUPatchForImport(False):
     from test_indexing import NumpyTests,TestIndexing
     import torch
 
+    torch.Tensor.is_cuda = torch.Tensor.is_xpu
     
     def __test_index_put_accumulate_with_optional_tensors(self, device):
         # TODO: replace with a better solution.
