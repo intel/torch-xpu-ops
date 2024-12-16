@@ -14,7 +14,7 @@ Tensor _weight_int4pack_mm_xpu(
     int64_t qGroupSize,
     const Tensor& qScaleAndZeros) {
   auto M = A.size(0);
-  auto N = B.size(1);
+  auto N = B.size(0) * 8;
   auto K = A.size(1);
   TORCH_CHECK(
       A.dtype() == kBFloat16 || A.dtype() == kHalf || A.dtype() == kFloat,
