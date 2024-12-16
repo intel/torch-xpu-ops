@@ -8,8 +8,8 @@ include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 set(XCCL_ROOT "/opt/intel/oneapi/ccl/latest")
 if (NOT EXISTS "${XCCL_ROOT}")
-  message(STATUS "Default OneCCL not found, using current environment OneCCL")
-  set(XCCL_ROOT $ENV{CCL_ROOT})
+  message(STATUS "Default OneCCL not found, using current environment OneAPI")
+  set(XCCL_ROOT $ENV{ONEAPI_ROOT}/ccl/latest)
 endif()
 
 # Find include path from binary.
