@@ -57,6 +57,7 @@ struct EmbeddingBagKernelFunctor {
         for (index_t off = start; off < end; off++) {
           index_t index_off = off;
           index_t vec_idx = index_[index_off];
+          SYCL_KERNEL_ASSERT(vec_idx < num_row_);
 
           if (walk_on_bag && desc.glb_problem == 0) {
             offset2bag_[index_off] = off_off;
@@ -149,7 +150,8 @@ struct EmbeddingBagKernelFunctor {
       const vec_t* w_vec,
       vec_idx_t* max_idx_vec,
       BatchKernelConfig cfg,
-      index_t fixing_bag_size)
+      index_t fixing_bag_size,
+      index_t num_row)
       : index_(index),
         offset_(offset),
         offset2bag_(offset2bag),
@@ -165,7 +167,8 @@ struct EmbeddingBagKernelFunctor {
         w_vec_(w_vec),
         max_idx_vec_(max_idx_vec),
         cfg_(cfg),
-        fixing_bag_size_(fixing_bag_size) {}
+        fixing_bag_size_(fixing_bag_size),
+        num_row_(num_row) {}
 
  private:
   const index_t* const index_;
@@ -184,6 +187,7 @@ struct EmbeddingBagKernelFunctor {
   vec_idx_t* max_idx_vec_;
   BatchKernelConfig cfg_;
   index_t fixing_bag_size_;
+  index_t num_row_;
 };
 
 template <typename index_t>

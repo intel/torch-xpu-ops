@@ -12,9 +12,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         # Fallback to CPU for XPU FP64
         "https://github.com/pytorch/pytorch/pull/126516",
         # Modify the tolerance level in TIMM benchmark
-        "https://github.com/pytorch/pytorch/pull/129735",
-        # Allow XPU device in LSTMCell operators
-        "https://github.com/pytorch/pytorch/pull/140246",
+        # "https://github.com/pytorch/pytorch/pull/129735",
+        "https://github.com/mengfei25/pytorch/pull/21",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
@@ -59,7 +58,7 @@ def appyly_pr(pr_info, re_apply_msg):
     pr_file = pr_info["diff_url"].split("/")[-1]
     urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
     # apply diff
-    apply_cmd = "git apply --3way " + pr_file + " && rm -f " + pr_file
+    apply_cmd = "git apply --3way " + pr_file
     apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     apply_message = apply_info.communicate()[0].decode("utf-8")
     apply_status = apply_info.returncode

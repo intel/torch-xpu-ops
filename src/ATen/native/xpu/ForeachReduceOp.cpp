@@ -1,6 +1,7 @@
 #include <ATen/native/ForeachUtils.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
+#include <xpu/ATen/ops/_foreach_max_native.h>
 #include <xpu/ATen/ops/_foreach_norm_native.h>
 
 namespace at {
@@ -61,7 +62,8 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
             at::isComplexType(scalar_type);
       });
   if (!at::native::can_use_fast_route(tensors) || has_int_or_complex ||
-      !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
+      !(p == static_cast<double>(1) || p == static_cast<double>(2) ||
+        p == std::numeric_limits<double>::infinity())) {
     return at::native::foreach_tensor_norm_slow(tensors, ord, dtype);
   }
   check_foreach_norm_dtype(
@@ -69,5 +71,23 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
 
   return native::xpu::foreach_norm_kernel(tensors, ord, p, dtype);
 }
+
+std::vector<Tensor> foreach_tensor_max_xpu(TensorList tensors) {
+  check_foreach_api_restrictions(tensors);
+  if (!can_use_fast_route(tensors)) {
+    return foreach_tensor_max_slow(tensors);
+  }
+
+  // for parity with max in ReduceAllOps.cpp, as max(empty) is ???
+  TORCH_CHECK(
+      std::all_of(
+          tensors.begin(),
+          tensors.end(),
+          [](const auto& t) { return t.numel() > 0; }),
+      "max(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument.");
+
+  return at::native::xpu::foreach_max_kernel(tensors);
+}
+
 } // namespace native
 } // namespace at

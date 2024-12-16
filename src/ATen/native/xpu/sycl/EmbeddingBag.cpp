@@ -48,7 +48,8 @@ void embedding_bag(
     int64_t bag_num,
     int64_t vec_len,
     index_t padding_idx,
-    bool ignore_offsets) {
+    bool ignore_offsets,
+    int64_t num_row) {
   using vec_t = at::detail::Array<scalar_t, vec_size>;
   using vec_acc_t = at::detail::Array<accscalar_t, vec_size>;
   using vec_idx_t = at::detail::Array<index_t, vec_size>;
@@ -87,7 +88,8 @@ void embedding_bag(
       w_vec,
       max_idx_vec,
       cfg,
-      fixing_bag_size);
+      fixing_bag_size,
+      num_row);
   sycl_kernel_submit(
       cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
 }
@@ -110,7 +112,8 @@ void embedding_bag(
     bag_num,                                                     \
     vec_len,                                                     \
     padding_idx,                                                 \
-    ignore_offsets)                                              \
+    ignore_offsets,                                              \
+    num_row)                                                     \
   embedding_bag<scalar_t, accscalar_t, index_t, mode, vec_size>( \
       output.mutable_data_ptr<scalar_t>(),                       \
       weight.const_data_ptr<scalar_t>(),                         \
@@ -126,7 +129,8 @@ void embedding_bag(
       bag_num,                                                   \
       vec_len,                                                   \
       padding_idx,                                               \
-      ignore_offsets)
+      ignore_offsets,                                            \
+      num_row)
 
 #define EMBBAG_KERNEL_NO_ACC(                                 \
     scalar_t,                                                 \
@@ -145,7 +149,8 @@ void embedding_bag(
     bag_num,                                                  \
     vec_len,                                                  \
     padding_idx,                                              \
-    ignore_offsets)                                           \
+    ignore_offsets,                                           \
+    num_row)                                                  \
   embedding_bag<scalar_t, scalar_t, index_t, mode, vec_size>( \
       output.mutable_data_ptr<scalar_t>(),                    \
       weight.const_data_ptr<scalar_t>(),                      \
@@ -161,7 +166,8 @@ void embedding_bag(
       bag_num,                                                \
       vec_len,                                                \
       padding_idx,                                            \
-      ignore_offsets)
+      ignore_offsets,                                         \
+      num_row)
 
 void embedding_bag_sum_template(
     const Tensor& indices,
@@ -177,6 +183,7 @@ void embedding_bag_sum_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_SUM_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_ACC(                           \
       scalar_t,                                \
@@ -196,7 +203,8 @@ void embedding_bag_sum_template(
       bag_num,                                 \
       vec_len,                                 \
       padding_idx,                             \
-      ignore_offsets)
+      ignore_offsets,                          \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -243,6 +251,7 @@ void embedding_bag_mean_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_MEAN_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_ACC(                            \
       scalar_t,                                 \
@@ -262,7 +271,8 @@ void embedding_bag_mean_template(
       bag_num,                                  \
       vec_len,                                  \
       padding_idx,                              \
-      ignore_offsets)
+      ignore_offsets,                           \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -309,6 +319,7 @@ void embedding_bag_max_template(
     int64_t vec_len,
     int64_t padding_idx,
     bool ignore_offsets) {
+  uint64_t num_row = weights.size(0);
 #define EXTEND_EMBBAG_MAX_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_NO_ACC(                        \
       scalar_t,                                \
@@ -327,7 +338,8 @@ void embedding_bag_max_template(
       bag_num,                                 \
       vec_len,                                 \
       padding_idx,                             \
-      ignore_offsets)
+      ignore_offsets,                          \
+      num_row)
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -519,6 +531,8 @@ Tensor embedding_bag_backward_xpu_max(
     const Tensor& max_indices_t,
     int64_t num_weights,
     int64_t padding_idx) {
+  globalContext().alertNotDeterministic("embedding_bag_backward_xpu_max");
+
   auto max_indices = max_indices_t.contiguous();
   auto grad_weight = at::zeros({num_weights, grad.size(1)}, grad.options());
   int64_t stride = grad_weight.stride(0);
@@ -620,7 +634,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_kernel(
     numBags -= 1;
   }
 
-  auto bag_size = at::empty(numBags, indices.options());
+  auto bag_size = at::empty(offsets.sizes(), indices.options());
   auto offset2bag = at::empty({indices.size(0)}, indices.options());
   auto output = at::empty({numBags, weight.size(1)}, weight.options());
 

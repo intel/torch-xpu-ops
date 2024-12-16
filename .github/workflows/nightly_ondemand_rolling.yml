@@ -82,7 +82,10 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
 
@@ -122,7 +125,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install mkl-static mkl-include
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |

@@ -146,6 +146,12 @@ skip_dict = {
     "test_compare_cpu_sub_xpu_float16",
     # different results for value index due to unstable sort.
     # XPU and CUDA have the same result.
+    "test_compare_cpu_kthvalue_xpu_bfloat16",
+    "test_compare_cpu_kthvalue_xpu_int16",
+    "test_compare_cpu_kthvalue_xpu_int32",
+    "test_compare_cpu_kthvalue_xpu_int64",
+    "test_compare_cpu_kthvalue_xpu_int8",
+    "test_compare_cpu_kthvalue_xpu_uint8",
     "test_compare_cpu_median_xpu_int16",
     "test_compare_cpu_median_xpu_int32",
     "test_compare_cpu_median_xpu_int64",
@@ -174,10 +180,6 @@ skip_dict = {
     # The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
     "test_operator_multinomial_xpu_float32",
     "test_view_replay_multinomial_xpu_float32"
-
-    # https://github.com/intel/torch-xpu-ops/issues/922
-    "test_compare_cpu_isin_xpu_bfloat16",
-    "test_compare_cpu_unique_consecutive_xpu_bfloat16",
 
     # returned index is dependent on input data and implementation detail, and no
     # specification is given to uniquely identify the correct index 
