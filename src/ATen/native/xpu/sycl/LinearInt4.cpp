@@ -14,14 +14,13 @@ static inline size_t padto_le(size_t src, int padding) {
   return src / size_t(padding) * size_t(padding);
 }
 
-template <typename scalar_t = sycl::half, int block_size = 16>
+template <typename scalar_t = sycl::half, int block_size = 32>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       const scalar_t* A,
       const uint8_t* B,
       scalar_t* C,
-      const scalar_t* B_scale,
-      const scalar_t* B_zero_point,
+      const scalar_t* ScaleAndZeros,
       int m,
       int n,
       int k,
@@ -32,8 +31,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       : A(A),
         B(B),
         C(C),
-        B_scale(B_scale),
-        B_zero_point(B_zero_point),
+        ScaleAndZeros(ScaleAndZeros),
         m(m),
         n(n),
         k(k),
@@ -52,16 +50,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int constexpr SgSize = 16;
     int constexpr TileK = 32;
     int constexpr GroupK = SgSize * TileK;
-    int constexpr blocksize = 16;
+    int constexpr blocksize = block_size;
 
-    // int g_idx = item.get_group(0);
-    // auto sg = item.get_sub_group();
-    // int sg_id = sg.get_local_id()[0];
-    // int g_n = g_idx;
-    // auto sptr = B_scale + g_n * ldb;
-    // auto bptr = B + g_n * k / 2;
-    // auto aptr = A;
-    // auto cptr = C + g_n;
     if (k % (SgSize * 32 * Unroll) == 0) {
       int constexpr TileK = 32;
       int constexpr GroupK = SgSize * TileK;
@@ -70,7 +60,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = B_scale + g_n * ldb;
+      auto sptr = ScaleAndZeros + g_n * ldb;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -82,17 +72,17 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             uint8_t tmps8[TileK / 2];
             *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
                 *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-            scalar_t scale = 1.f;
-            // scalar_t scale = *(sptr + sg_id * TileK / blocksize);
+            scalar_t scale = *(sptr + sg_id * (TileK / blocksize) * 2);
+            scalar_t zero_point = *(sptr + sg_id * (TileK / blocksize) * 2 + 1);
 #pragma unroll
             for (int ikk = 0; ikk < TileK; ikk += 2) {
               sycl::half2 tmpA = *(sycl::half2*)&aptr[sg_id * TileK + ikk];
-              sycl::half2 tmpB = {1.f, 1.f};
-              // static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-              // static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+              sycl::half2 tmpB = {
+                  static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - zero_point),
+                  static_cast<int8_t>((tmps8[ikk / 2] >> 4) - zero_point)};
               tmpAcc += tmpA * tmpB * scale;
             }
-            sptr += GroupK / blocksize;
+            sptr += (GroupK / blocksize) * 2;
             aptr += GroupK;
             bptr += GroupK / 2;
           }
@@ -145,7 +135,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = B_scale + g_n * ldb;
+      auto sptr = ScaleAndZeros + g_n * ldb;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -290,8 +280,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const scalar_t* A;
   const uint8_t* B;
   scalar_t* C;
-  const scalar_t* B_scale;
-  const scalar_t* B_zero_point;
+  const scalar_t* ScaleAndZeros;
   int m;
   int n;
   int k;
@@ -329,26 +318,25 @@ void linear_int4_kernel(
 
     scalar_sycl_t* output_data =
         reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
-    scalar_sycl_t* weight_scale_data =
+    scalar_sycl_t* scale_zeros_data =
         reinterpret_cast<scalar_sycl_t*>(qScaleAndZeros.data_ptr<scalar_t>());
 
     auto cgf = [&](::sycl::handler& cgh) {
       auto os = sycl::stream(1024, 768, cgh);
-      LinearInt4KernelFunctor<scalar_sycl_t, 16> kfn(
+      LinearInt4KernelFunctor<scalar_sycl_t, 32> kfn(
           input_data,
           weight_data,
           output_data,
-          weight_scale_data,
-          nullptr,
+          scale_zeros_data,
           m,
           n,
           k,
           k,
-          n,
+          (k / qGroupSize) * 2, // scale and zero point combined
           n,
           os);
       kfn.sycl_ker_config_convention(cgh);
-      cgh.parallel_for<LinearInt4KernelFunctor<scalar_sycl_t, 16>>(
+      cgh.parallel_for<LinearInt4KernelFunctor<scalar_sycl_t, 32>>(
           ::sycl::nd_range<1>(global_range, local_range), kfn);
     };
     sycl_queue.submit(cgf);
