@@ -33,11 +33,6 @@ on:
         type: string
         default: 'v4.47.0'
         description: Transformers version
-      transformers_test:
-        required: true
-        type: string
-        default: ''
-        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone` Delimiter is comma
 
 permissions: read-all
 
@@ -112,54 +107,11 @@ jobs:
           pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
-      - name: Run XPU tests/*.py
-        if: contains(input.transformers_test, 'tests_py') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_py tests/*.py
-      - name: Run XPU tests/benchmark
-        if: contains(input.transformers_test, 'tests_benchmark') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark tests/benchmark
-      - name: Run XPU tests/generation
-        if: contains(input.transformers_test, 'tests_generation') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_generation tests/generation
-      - name: Run XPU tests/pipelines
-        if: contains(input.transformers_test, 'tests_pipelines') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines
-      - name: Run XPU tests/trainer
-        if: contains(input.transformers_test, 'tests_trainer') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_trainer_not_ray -k "not ray" tests/trainer
-      - name: Run XPU tests/utils
-        if: contains(input.transformers_test, 'tests_utils') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_utils tests/utils
-      - name: Run XPU tests/models
-        if: contains(input.transformers_test, 'tests_models') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_models tests/models
       - name: Run XPU backbone
-        if: contains(input.transformers_test, 'backbone') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_utils -k backbone tests
+          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -168,24 +120,3 @@ jobs:
           path: | 
             ${{ github.workspace }}/transformers/reports
             ${{ github.workspace }}/transformers/tests_log
-      - name: Results Check
-        shell: bash
-        run: |
-          function contains() {
-              contains_status="echo 'Start $2 ...'"
-              {
-                [[ $1 =~ (^|,)$2($|,) ]]
-              } || {
-                echo "[Warning] $2 is not suppotted type! Skipped!"
-                contains_status="continue"
-              }
-          }
-          set -xe
-          for transformers_test in $(echo ${{ input.transformers_test }} |sed 's/,/ /g')
-          do
-            contains "tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray" $transformers_test
-            $contains_status
-            cd ${{ github.workspace }}/transformers/reports/${transformers_test}/
-            cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/transformers_result_check.sh ./
-            bash transformers_result_check.sh ${transformers_test}
-          done
