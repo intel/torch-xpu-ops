@@ -1,6 +1,11 @@
 name: Linux Transformers Test
 
 on:
+  pull:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/_linux_transformers.yml'
   workflow_call:
     inputs:
       pytorch:
@@ -43,11 +48,11 @@ permissions: read-all
 
 jobs:
   Torch-XPU-Transformers-Tests:
-    runs-on: ${{ inputs.runner }} 
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
+      pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -66,7 +71,7 @@ jobs:
           source activate huggingface_transformers_test
           cd ..
           git clone https://github.com/huggingface/transformers.git
-          cd transformers && git checkout $(echo ${{ inputs.transformers }})
+          #cd transformers && git checkout $(echo ${{ inputs.transformers }})
           pip install -e .
           pip install -e ".[dev-torch,testing,video]"
           mkdir -p tests_log
@@ -76,7 +81,7 @@ jobs:
         run: |
           pwd
           source activate huggingface_transformers_test
-          if [ -z ${{ inputs.nightly_whl }} ]; then
+         if [ -z "${{ inputs.nightly_whl" }} ]; then
             pip install torch torchvision torchaudio --force --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           else
             pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --force --pre --index-url https://download.pytorch.org/whl/nightly/xpu
