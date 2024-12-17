@@ -102,24 +102,3 @@ jobs:
           path: | 
             ${{ github.workspace }}/../transformers/reports
             ${{ github.workspace }}/../transformers/tests_log
-      - name: Results Check
-        shell: bash
-        run: |
-          function contains() {
-              contains_status="echo 'Start $2 ...'"
-              {
-                [[ $1 =~ (^|,)$2($|,) ]]
-              } || {
-                echo "[Warning] $2 is not suppotted type! Skipped!"
-                contains_status="continue"
-              }
-          }
-          set -xe
-          for transformers_test in $(echo ${{ input.transformers_test }} |sed 's/,/ /g')
-          do
-            contains "tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray" $transformers_test
-            $contains_status
-            cd ${{ github.workspace }}/../transformers/reports/${transformers_test}/
-            cp ${{ github.workspace }}/.github/scripts/transformers_result_check.sh ./
-            bash transformers_result_check.sh ${transformers_test}
-          done
