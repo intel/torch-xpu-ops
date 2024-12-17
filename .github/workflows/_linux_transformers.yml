@@ -81,9 +81,8 @@ jobs:
         run: |
           which conda && conda clean -ay
           conda remove --all -y -n huggingface_transformers_test || rm -rf $(dirname ${CONDA_EXE})/../envs/huggingface_transformers_test
-          conda create -n huggingface_transformers_test python=${{ env.python }} cmake ninja -y
+          conda create -y -n huggingface_transformers_test python=${{ env.python }}
           source activate huggingface_transformers_test
-          pip install pandas scipy tqdm
       - name: Prepare Stock XPU Pytorch
         run: |
           pwd
