@@ -47,9 +47,6 @@ case ${transformers_test} in
     backbone)
     let expected_fail_number=0
     ;;
-    tests_trainer_not_ray)
-    let expected_fail_number=3
-    ;;
 esac
 
 if [[ "$num_failed" -gt "$expected_fail_number" ]] || [[ "$num_passed -le 0" ]] || [[ "$num_errors -ne 0" ]]; then

@@ -57,7 +57,7 @@ on:
         required: false
         type: string
         default: 'backbone'
-        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray` Delimiter is comma
+        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone` Delimiter is comma
 
 permissions: read-all
 

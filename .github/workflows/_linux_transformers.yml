@@ -37,7 +37,7 @@ on:
         required: true
         type: string
         default: ''
-        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray` Delimiter is comma
+        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone` Delimiter is comma
 
 permissions: read-all
 
@@ -138,12 +138,6 @@ jobs:
           python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines
       - name: Run XPU tests/trainer
         if: contains(input.transformers_test, 'tests_trainer') || github.event_name == 'schedule'
-        run: |
-          source activate huggingface_transformers_test
-          cd transformers
-          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer
-      - name: Run XPU tests/trainer "not ray"
-        if: contains(input.transformers_test, 'tests_trainer_not_ray') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
