@@ -84,6 +84,15 @@ jobs:
           conda create -n huggingface_transformers_test python=${{ env.python }} cmake ninja -y
           source activate huggingface_transformers_test
           pip install pandas scipy tqdm
+      - name: Prepare Stock XPU Pytorch
+        run: |
+          pwd
+          source activate huggingface_transformers_test
+          if [ -z "${{ inputs.nightly_whl }}" ]; then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          else
+            pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          fi
       - name: Prepare Transformers
         run: |
           pwd
@@ -94,15 +103,6 @@ jobs:
           rm -rf tests_log && mkdir -p tests_log
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          source activate huggingface_transformers_test
-          if [ -z "${{ inputs.nightly_whl }}" ]; then
-            pip install torch torchvision torchaudio --force --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          else
-            pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --force --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          fi
       - name: Report installed versions
         id: installed
         run: |
