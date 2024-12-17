@@ -92,7 +92,6 @@ jobs:
           mkdir -p tests_log
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Prepare Stock Pytorch
-        id: installed
         run: |
           pwd
           source activate huggingface_transformers_test
@@ -101,11 +100,16 @@ jobs:
           else
             pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --force --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           fi
+      - name: Report installed versions
+        id: installed
+        run: |
+          source activate huggingface_transformers_test
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          pip install pytest-pspec accelerate==1.1.1 timm sentencepiece librosa soundfile
-          pip list >> ${{ github.workspace }}/transformers/tests_log/pip_list.txt
-          cat /sys/class/drm/render*/device/device >> ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
+          echo "pip installed packages:"
+          pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
+          echo "GPU render nodes:"
+          cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
       - name: Run XPU tests/*.py
         if: contains(input.transformers_test, 'tests_py') || github.event_name == 'schedule'
         run: |
