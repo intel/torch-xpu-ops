@@ -6,21 +6,7 @@
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-SET(DEFAULT_INTEL_CCL_DIR "/opt/intel/ccl")
-SET(DEFAULT_INTEL_ONEAPI_DIR "/opt/intel/oneapi")
-if (EXISTS "${DEFAULT_INTEL_ONEAPI_DIR}")
-  if (EXISTS "${DEFAULT_INTEL_ONEAPI_DIR}/ccl/latest")
-    SET(DEFAULT_INTEL_CCL_DIR "${DEFAULT_INTEL_ONEAPI_DIR}/ccl/latest")
-  endif()
-endif()
-
-SET(XCCL_ROOT "${DEFAULT_INTEL_CCL_DIR}" CACHE STRING
-  "Root directory of the Intel CCL (standalone)")
-
-if (NOT EXISTS "${XCCL_ROOT}")
-  message(STATUS "Default OneCCL not found, using current environment OneAPI")
-  set(XCCL_ROOT $ENV{ONEAPI_ROOT}/ccl/latest)
-endif()
+set(XCCL_ROOT $ENV{ONEAPI_ROOT}/ccl/latest)
 
 # Find include path from binary.
 find_file(
