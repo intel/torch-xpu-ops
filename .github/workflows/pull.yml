@@ -8,6 +8,7 @@ on:
       - reopened
       - converted_to_draft
       - ready_for_review
+      - labeled
     branches:
       - main
       - release/*
@@ -38,7 +39,7 @@ jobs:
   
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && (github.event.label.name == 'os:Windows')}}
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
