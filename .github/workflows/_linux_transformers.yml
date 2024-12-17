@@ -113,6 +113,14 @@ jobs:
           pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
+      - name: Sanitry check installed packages
+        run: |
+          source activate huggingface_transformers_test
+          # These checks are to exit earlier if for any reason Transformers
+          # reinstalled torch packages back to CUDA versions (not expected).
+          pip show torch | grep Version | grep xpu
+          pip show torchaudio | grep Version | grep xpu
+          pip show torchvision | grep Version | grep xpu
       - name: Run XPU backbone
         run: |
           source activate huggingface_transformers_test
