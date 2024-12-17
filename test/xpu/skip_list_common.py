@@ -3339,6 +3339,7 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_RMSprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
+    ),
 
     "test_spectral_ops_xpu.py": (
         # CUDA specific case
