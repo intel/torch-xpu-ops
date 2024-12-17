@@ -90,7 +90,8 @@ jobs:
           cd transformers
           pip install -e .
           pip install -e ".[dev-torch,testing,video]"
-          mkdir -p tests_log
+          rm -rf tests_log && mkdir -p tests_log
+          rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Prepare Stock Pytorch
         run: |
@@ -116,55 +117,55 @@ jobs:
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_py tests/*.py | tee tests_log/tests_py.log
+          python3 -m pytest -rsf --make-reports=tests_py tests/*.py
       - name: Run XPU tests/benchmark
         if: contains(input.transformers_test, 'tests_benchmark') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark tests/benchmark | tee tests_log/tests_benchmark.log
+          python3 -m pytest -rsf --make-reports=tests_benchmark tests/benchmark
       - name: Run XPU tests/generation
         if: contains(input.transformers_test, 'tests_generation') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_generation tests/generation | tee tests_log/tests_generation.log
+          python3 -m pytest -rsf --make-reports=tests_generation tests/generation
       - name: Run XPU tests/pipelines
         if: contains(input.transformers_test, 'tests_pipelines') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines | tee tests_log/tests_pipelines.log
+          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines
       - name: Run XPU tests/trainer
         if: contains(input.transformers_test, 'tests_trainer') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer | tee tests_log/tests_trainer.log
+          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer
       - name: Run XPU tests/trainer "not ray"
         if: contains(input.transformers_test, 'tests_trainer_not_ray') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_trainer_not_ray -k "not ray" tests/trainer | tee tests_log/tests_trainer_not_ray.log
+          python3 -m pytest -rsf --make-reports=tests_trainer_not_ray -k "not ray" tests/trainer
       - name: Run XPU tests/utils
         if: contains(input.transformers_test, 'tests_utils') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_utils tests/utils | tee tests_log/tests_utils.log
+          python3 -m pytest -rsf --make-reports=tests_utils tests/utils
       - name: Run XPU tests/models
         if: contains(input.transformers_test, 'tests_models') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_models tests/models | tee tests_log/tests_models.log
+          python3 -m pytest -rsf --make-reports=tests_models tests/models
       - name: Run XPU backbone
         if: contains(input.transformers_test, 'backbone') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_utils -k backbone tests | tee tests_log/backbone.log
+          python3 -m pytest -rsf --make-reports=tests_utils -k backbone tests
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
