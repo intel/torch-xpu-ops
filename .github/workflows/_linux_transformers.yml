@@ -130,7 +130,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Transformers-Log-${{ github.event.pull_request.number || github.sha }}
           path: | 
             ${{ github.workspace }}/transformers/reports
             ${{ github.workspace }}/transformers/tests_log
