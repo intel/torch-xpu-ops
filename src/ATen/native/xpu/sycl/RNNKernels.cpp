@@ -17,10 +17,21 @@
 #include <ATen/native/xpu/sycl/RNNKernels.h>
 
 namespace at::native::xpu {
+
 using at::native::canUse32BitIndexMath;
 using at::xpu::detail::getTensorInfo;
 using at::xpu::detail::IndexToOffset;
 using at::xpu::detail::TensorInfo;
+
+std::tuple<int64_t, int64_t> rnn_get_launch_config(
+    int64_t max_threads_per_group,
+    int64_t numel) {
+  int64_t num_groups =
+      (numel + max_threads_per_group - 1) / max_threads_per_group;
+  auto hw_max_groups = syclMaxWorkItemsPerTile() / max_threads_per_group;
+  num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
+  return std::make_tuple(num_groups, max_threads_per_group);
+}
 
 // Factor will be 3 for GRU and 4 for LSTM
 void checkSizes(
@@ -77,58 +88,54 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
 #define F2H(input) static_cast<scalar_t>(input)
 
 template <typename T>
-T sigmoid(T in) {
+inline T sigmoid(T in) {
   T one = static_cast<T>(1.0);
   return one / (one + std::exp(-in));
 }
 
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_type,
-    int indexing_kind>
+template <typename scalar_t, typename accscalar_t, typename index_type>
 struct LstmCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_bias = bias1.data != nullptr;
+    bool has_bias = bias1_.data != nullptr;
 
-    for (index_type linearIndex = item.get_local_id(0);
-         linearIndex < totalElements;
-         linearIndex += item.get_local_range(0)) {
-      index_type offset = (linearIndex / hsz) * 4 * hsz + linearIndex % hsz;
+    for (index_type linearIndex = item.get_global_id(0);
+         linearIndex < totalElements_;
+         linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz_) * 4 * hsz_ + linearIndex % hsz_;
 
-      scalar_t iig = DEVICE_LINEAR_GET(input, offset + 0 * hsz);
-      scalar_t ifg = DEVICE_LINEAR_GET(input, offset + 1 * hsz);
-      scalar_t icg = DEVICE_LINEAR_GET(input, offset + 2 * hsz);
-      scalar_t iog = DEVICE_LINEAR_GET(input, offset + 3 * hsz);
+      scalar_t iig = DEVICE_LINEAR_GET(input_, offset + 0 * hsz_);
+      scalar_t ifg = DEVICE_LINEAR_GET(input_, offset + 1 * hsz_);
+      scalar_t icg = DEVICE_LINEAR_GET(input_, offset + 2 * hsz_);
+      scalar_t iog = DEVICE_LINEAR_GET(input_, offset + 3 * hsz_);
 
-      scalar_t hig = DEVICE_LINEAR_GET(hidden, offset + 0 * hsz);
-      scalar_t hfg = DEVICE_LINEAR_GET(hidden, offset + 1 * hsz);
-      scalar_t hcg = DEVICE_LINEAR_GET(hidden, offset + 2 * hsz);
-      scalar_t hog = DEVICE_LINEAR_GET(hidden, offset + 3 * hsz);
+      scalar_t hig = DEVICE_LINEAR_GET(hidden_, offset + 0 * hsz_);
+      scalar_t hfg = DEVICE_LINEAR_GET(hidden_, offset + 1 * hsz_);
+      scalar_t hcg = DEVICE_LINEAR_GET(hidden_, offset + 2 * hsz_);
+      scalar_t hog = DEVICE_LINEAR_GET(hidden_, offset + 3 * hsz_);
 
-      scalar_t* wig = &DEVICE_LINEAR_GET(workspace, offset + 0 * hsz);
-      scalar_t* wfg = &DEVICE_LINEAR_GET(workspace, offset + 1 * hsz);
-      scalar_t* wcg = &DEVICE_LINEAR_GET(workspace, offset + 2 * hsz);
-      scalar_t* wog = &DEVICE_LINEAR_GET(workspace, offset + 3 * hsz);
+      scalar_t* wig = &DEVICE_LINEAR_GET(workspace_, offset + 0 * hsz_);
+      scalar_t* wfg = &DEVICE_LINEAR_GET(workspace_, offset + 1 * hsz_);
+      scalar_t* wcg = &DEVICE_LINEAR_GET(workspace_, offset + 2 * hsz_);
+      scalar_t* wog = &DEVICE_LINEAR_GET(workspace_, offset + 3 * hsz_);
 
-      scalar_t cx = DEVICE_LINEAR_GET(_cx, linearIndex);
+      scalar_t cx = DEVICE_LINEAR_GET(_cx_, linearIndex);
 
-      scalar_t* hy = &DEVICE_LINEAR_GET(_hy, linearIndex);
-      scalar_t* cy = &DEVICE_LINEAR_GET(_cy, linearIndex);
+      scalar_t* hy = &DEVICE_LINEAR_GET(_hy_, linearIndex);
+      scalar_t* cy = &DEVICE_LINEAR_GET(_cy_, linearIndex);
 
       scalar_t b1i, b1f, b1c, b1o;
       scalar_t b2i, b2f, b2c, b2o;
 
       if (has_bias) {
-        b1i = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 0 * hsz);
-        b1f = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 1 * hsz);
-        b1c = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 2 * hsz);
-        b1o = DEVICE_BIAS_GET(bias1, linearIndex % hsz + 3 * hsz);
+        b1i = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 0 * hsz_);
+        b1f = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 1 * hsz_);
+        b1c = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 2 * hsz_);
+        b1o = DEVICE_BIAS_GET(bias1_, linearIndex % hsz_ + 3 * hsz_);
 
-        b2i = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 0 * hsz);
-        b2f = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 1 * hsz);
-        b2c = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 2 * hsz);
-        b2o = DEVICE_BIAS_GET(bias2, linearIndex % hsz + 3 * hsz);
+        b2i = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 0 * hsz_);
+        b2f = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 1 * hsz_);
+        b2c = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 2 * hsz_);
+        b2o = DEVICE_BIAS_GET(bias2_, linearIndex % hsz_ + 3 * hsz_);
       } else {
         b1i = F2H(0.0);
         b1f = F2H(0.0);
@@ -145,11 +152,11 @@ struct LstmCellForwardFunctor {
 
       ig = sigmoid(H2F(iig) + H2F(hig) + H2F(b1i) + H2F(b2i));
       fg = sigmoid(H2F(ifg) + H2F(hfg) + H2F(b1f) + H2F(b2f));
-      cg = ::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
+      cg = std::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
       og = sigmoid(H2F(iog) + H2F(hog) + H2F(b1o) + H2F(b2o));
 
       f_cy = (fg * H2F(cx)) + (ig * cg);
-      f_hy = og * ::tanh(f_cy);
+      f_hy = og * std::tanh(f_cy);
 
       *hy = F2H(f_hy);
       *cy = F2H(f_cy);
@@ -174,69 +181,65 @@ struct LstmCellForwardFunctor {
       TensorInfo<scalar_t, index_type> workspace,
       index_type hsz,
       index_type totalElements)
-      : input(input),
-        hidden(hidden),
-        bias1(bias1),
-        bias2(bias2),
-        _cx(_cx),
-        _hy(_hy),
-        _cy(_cy),
-        workspace(workspace),
-        hsz(hsz),
-        totalElements(totalElements) {}
+      : input_(input),
+        hidden_(hidden),
+        bias1_(bias1),
+        bias2_(bias2),
+        _cx_(_cx),
+        _hy_(_hy),
+        _cy_(_cy),
+        workspace_(workspace),
+        hsz_(hsz),
+        totalElements_(totalElements) {}
 
  private:
-  TensorInfo<scalar_t, index_type> input;
-  TensorInfo<scalar_t, index_type> hidden;
-  TensorInfo<scalar_t, index_type> bias1;
-  TensorInfo<scalar_t, index_type> bias2;
-  TensorInfo<scalar_t, index_type> _cx;
-  TensorInfo<scalar_t, index_type> _hy;
-  TensorInfo<scalar_t, index_type> _cy;
-  TensorInfo<scalar_t, index_type> workspace;
-  index_type hsz;
-  index_type totalElements;
+  TensorInfo<scalar_t, index_type> input_;
+  TensorInfo<scalar_t, index_type> hidden_;
+  TensorInfo<scalar_t, index_type> bias1_;
+  TensorInfo<scalar_t, index_type> bias2_;
+  TensorInfo<scalar_t, index_type> _cx_;
+  TensorInfo<scalar_t, index_type> _hy_;
+  TensorInfo<scalar_t, index_type> _cy_;
+  TensorInfo<scalar_t, index_type> workspace_;
+  index_type hsz_;
+  index_type totalElements_;
 };
 
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_type,
-    int indexing_kind>
+template <typename scalar_t, typename accscalar_t, typename index_type>
 struct LstmCellBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_gradoutput = gradoutput.data != nullptr;
-    bool has_gradoutputcell = gradoutputcell.data != nullptr;
+    bool has_gradoutput = gradoutput_.data != nullptr;
+    bool has_gradoutputcell = gradoutputcell_.data != nullptr;
 
-    for (index_type linearIndex = item.get_local_id(0);
-         linearIndex < totalElements;
-         linearIndex += item.get_local_range(0)) {
-      index_type offset = (linearIndex / hsz) * 4 * hsz + linearIndex % hsz;
+    for (index_type linearIndex = item.get_global_id(0);
+         linearIndex < totalElements_;
+         linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz_) * 4 * hsz_ + linearIndex % hsz_;
 
-      scalar_t ig = DEVICE_LINEAR_GET(storage, offset + 0 * hsz);
-      scalar_t fg = DEVICE_LINEAR_GET(storage, offset + 1 * hsz);
-      scalar_t cg = DEVICE_LINEAR_GET(storage, offset + 2 * hsz);
-      scalar_t og = DEVICE_LINEAR_GET(storage, offset + 3 * hsz);
+      scalar_t ig = DEVICE_LINEAR_GET(storage_, offset + 0 * hsz_);
+      scalar_t fg = DEVICE_LINEAR_GET(storage_, offset + 1 * hsz_);
+      scalar_t cg = DEVICE_LINEAR_GET(storage_, offset + 2 * hsz_);
+      scalar_t og = DEVICE_LINEAR_GET(storage_, offset + 3 * hsz_);
 
-      scalar_t* ih = &DEVICE_LINEAR_GET(gradInGates, offset + 0 * hsz);
-      scalar_t* fh = &DEVICE_LINEAR_GET(gradInGates, offset + 1 * hsz);
-      scalar_t* ch = &DEVICE_LINEAR_GET(gradInGates, offset + 2 * hsz);
-      scalar_t* oh = &DEVICE_LINEAR_GET(gradInGates, offset + 3 * hsz);
+      scalar_t* ih = &DEVICE_LINEAR_GET(gradInGates_, offset + 0 * hsz_);
+      scalar_t* fh = &DEVICE_LINEAR_GET(gradInGates_, offset + 1 * hsz_);
+      scalar_t* ch = &DEVICE_LINEAR_GET(gradInGates_, offset + 2 * hsz_);
+      scalar_t* oh = &DEVICE_LINEAR_GET(gradInGates_, offset + 3 * hsz_);
 
       // will return hidden grads here
-      scalar_t cx = DEVICE_LINEAR_GET(_cx, linearIndex);
-      scalar_t cy = DEVICE_LINEAR_GET(_cy, linearIndex);
+      scalar_t cx = DEVICE_LINEAR_GET(_cx_, linearIndex);
+      scalar_t cy = DEVICE_LINEAR_GET(_cy_, linearIndex);
 
-      scalar_t* gi = &DEVICE_LINEAR_GET(gradInputCx, linearIndex);
+      scalar_t* gi = &DEVICE_LINEAR_GET(gradInputCx_, linearIndex);
 
       accscalar_t go = has_gradoutput
-          ? H2F(DEVICE_LINEAR_GET(gradoutput, linearIndex))
+          ? H2F(DEVICE_LINEAR_GET(gradoutput_, linearIndex))
           : 0.f;
       accscalar_t goc = has_gradoutputcell
-          ? H2F(DEVICE_LINEAR_GET(gradoutputcell, linearIndex))
+          ? H2F(DEVICE_LINEAR_GET(gradoutputcell_, linearIndex))
           : 0.f;
 
-      accscalar_t gcx = ::tanh(H2F(cy));
+      accscalar_t gcx = std::tanh(H2F(cy));
 
       accscalar_t gog = go * gcx;
       gcx = go * H2F(og) * (1 - gcx * gcx) + goc;
@@ -271,62 +274,58 @@ struct LstmCellBackwardFunctor {
       TensorInfo<scalar_t, index_type> gradInputCx,
       index_type hsz,
       index_type totalElements)
-      : storage(storage),
-        gradInGates(gradInGates),
-        _cx(_cx),
-        _cy(_cy),
-        gradoutput(gradoutput),
-        gradoutputcell(gradoutputcell),
-        gradInputCx(gradInputCx),
-        hsz(hsz),
-        totalElements(totalElements) {}
+      : storage_(storage),
+        gradInGates_(gradInGates),
+        _cx_(_cx),
+        _cy_(_cy),
+        gradoutput_(gradoutput),
+        gradoutputcell_(gradoutputcell),
+        gradInputCx_(gradInputCx),
+        hsz_(hsz),
+        totalElements_(totalElements) {}
 
  private:
-  TensorInfo<scalar_t, index_type> storage;
-  TensorInfo<scalar_t, index_type> gradInGates;
-  TensorInfo<scalar_t, index_type> _cx;
-  TensorInfo<scalar_t, index_type> _cy;
-  TensorInfo<scalar_t, index_type> gradoutput;
-  TensorInfo<scalar_t, index_type> gradoutputcell;
-  TensorInfo<scalar_t, index_type> gradInputCx;
-  index_type hsz;
-  index_type totalElements;
+  TensorInfo<scalar_t, index_type> storage_;
+  TensorInfo<scalar_t, index_type> gradInGates_;
+  TensorInfo<scalar_t, index_type> _cx_;
+  TensorInfo<scalar_t, index_type> _cy_;
+  TensorInfo<scalar_t, index_type> gradoutput_;
+  TensorInfo<scalar_t, index_type> gradoutputcell_;
+  TensorInfo<scalar_t, index_type> gradInputCx_;
+  index_type hsz_;
+  index_type totalElements_;
 };
 
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_type,
-    int indexing_kind>
+template <typename scalar_t, typename accscalar_t, typename index_type>
 struct GruCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    bool has_bias = Bias1.data != nullptr;
+    bool has_bias = Bias1_.data != nullptr;
 
-    for (index_type linearIndex = item.get_local_id(0);
-         linearIndex < totalElements;
-         linearIndex += item.get_local_range(0)) {
-      index_type offset = (linearIndex / hsz) * 3 * hsz + linearIndex % hsz;
+    for (index_type linearIndex = item.get_global_id(0);
+         linearIndex < totalElements_;
+         linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz_) * 3 * hsz_ + linearIndex % hsz_;
 
-      scalar_t ir = DEVICE_LINEAR_GET(Input, offset + 0 * hsz);
-      scalar_t ii = DEVICE_LINEAR_GET(Input, offset + 1 * hsz);
-      scalar_t in = DEVICE_LINEAR_GET(Input, offset + 2 * hsz);
-      scalar_t hr = DEVICE_LINEAR_GET(Hidden, offset + 0 * hsz);
-      scalar_t hi = DEVICE_LINEAR_GET(Hidden, offset + 1 * hsz);
-      scalar_t hn = DEVICE_LINEAR_GET(Hidden, offset + 2 * hsz);
+      scalar_t ir = DEVICE_LINEAR_GET(Input_, offset + 0 * hsz_);
+      scalar_t ii = DEVICE_LINEAR_GET(Input_, offset + 1 * hsz_);
+      scalar_t in = DEVICE_LINEAR_GET(Input_, offset + 2 * hsz_);
+      scalar_t hr = DEVICE_LINEAR_GET(Hidden_, offset + 0 * hsz_);
+      scalar_t hi = DEVICE_LINEAR_GET(Hidden_, offset + 1 * hsz_);
+      scalar_t hn = DEVICE_LINEAR_GET(Hidden_, offset + 2 * hsz_);
 
-      scalar_t hx = DEVICE_LINEAR_GET(_hx, linearIndex);
-      scalar_t* hy = &DEVICE_LINEAR_GET(_hy, linearIndex);
+      scalar_t hx = DEVICE_LINEAR_GET(_hx_, linearIndex);
+      scalar_t* hy = &DEVICE_LINEAR_GET(_hy_, linearIndex);
 
       scalar_t b1r, b1i, b1n, b2r, b2i, b2n;
 
       if (has_bias) {
-        b1r = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 0 * hsz);
-        b1i = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 1 * hsz);
-        b1n = DEVICE_BIAS_GET(Bias1, linearIndex % hsz + 2 * hsz);
+        b1r = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 0 * hsz_);
+        b1i = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 1 * hsz_);
+        b1n = DEVICE_BIAS_GET(Bias1_, linearIndex % hsz_ + 2 * hsz_);
 
-        b2r = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 0 * hsz);
-        b2i = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 1 * hsz);
-        b2n = DEVICE_BIAS_GET(Bias2, linearIndex % hsz + 2 * hsz);
+        b2r = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 0 * hsz_);
+        b2i = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 1 * hsz_);
+        b2n = DEVICE_BIAS_GET(Bias2_, linearIndex % hsz_ + 2 * hsz_);
       } else {
         b1r = F2H(0.0);
         b1i = F2H(0.0);
@@ -336,23 +335,23 @@ struct GruCellForwardFunctor {
         b2n = F2H(0.0);
       }
 
-      offset = (linearIndex / hsz) * 5 * hsz + linearIndex % hsz;
+      offset = (linearIndex / hsz_) * 5 * hsz_ + linearIndex % hsz_;
 
       accscalar_t rg, ig, ng;
 
-      rg = sigmoid(H2F(ir) + H2F(hr) + H2F(b1r) + H2F(b2r));
-      ig = sigmoid(H2F(ii) + H2F(hi) + H2F(b1i) + H2F(b2i));
+      rg = sigmoid<accscalar_t>(H2F(ir) + H2F(hr) + H2F(b1r) + H2F(b2r));
+      ig = sigmoid<accscalar_t>(H2F(ii) + H2F(hi) + H2F(b1i) + H2F(b2i));
 
       ng = H2F(in) + H2F(b1n) + rg * (H2F(hn) + H2F(b2n));
-      ng = ::tanh(ng);
+      ng = std::tanh(ng);
       *hy = F2H(ng + ig * (H2F(hx) - ng));
 
       // SAVE FOR BACKWARDS
-      DEVICE_LINEAR_GET(storage, offset + 0 * hsz) = F2H(rg);
-      DEVICE_LINEAR_GET(storage, offset + 1 * hsz) = F2H(ig);
-      DEVICE_LINEAR_GET(storage, offset + 2 * hsz) = F2H(ng);
-      DEVICE_LINEAR_GET(storage, offset + 3 * hsz) = hx;
-      DEVICE_LINEAR_GET(storage, offset + 4 * hsz) = F2H(H2F(hn) + H2F(b2n));
+      DEVICE_LINEAR_GET(storage_, offset + 0 * hsz_) = F2H(rg);
+      DEVICE_LINEAR_GET(storage_, offset + 1 * hsz_) = F2H(ig);
+      DEVICE_LINEAR_GET(storage_, offset + 2 * hsz_) = F2H(ng);
+      DEVICE_LINEAR_GET(storage_, offset + 3 * hsz_) = hx;
+      DEVICE_LINEAR_GET(storage_, offset + 4 * hsz_) = F2H(H2F(hn) + H2F(b2n));
     }
   }
 
@@ -366,49 +365,45 @@ struct GruCellForwardFunctor {
       const TensorInfo<scalar_t, index_type> storage,
       const index_type hsz,
       const index_type totalElements)
-      : Input(Input),
-        Hidden(Hidden),
-        Bias1(Bias1),
-        Bias2(Bias2),
-        _hx(_hx),
-        _hy(_hy),
-        storage(storage),
-        hsz(hsz),
-        totalElements(totalElements) {}
+      : Input_(Input),
+        Hidden_(Hidden),
+        Bias1_(Bias1),
+        Bias2_(Bias2),
+        _hx_(_hx),
+        _hy_(_hy),
+        storage_(storage),
+        hsz_(hsz),
+        totalElements_(totalElements) {}
 
  private:
-  TensorInfo<scalar_t, index_type> Input;
-  const TensorInfo<scalar_t, index_type> Hidden;
-  const TensorInfo<scalar_t, index_type> Bias1;
-  const TensorInfo<scalar_t, index_type> Bias2;
-  const TensorInfo<scalar_t, index_type> _hx;
-  const TensorInfo<scalar_t, index_type> _hy;
-  const TensorInfo<scalar_t, index_type> storage;
-  const index_type hsz;
-  const index_type totalElements;
+  TensorInfo<scalar_t, index_type> Input_;
+  const TensorInfo<scalar_t, index_type> Hidden_;
+  const TensorInfo<scalar_t, index_type> Bias1_;
+  const TensorInfo<scalar_t, index_type> Bias2_;
+  const TensorInfo<scalar_t, index_type> _hx_;
+  const TensorInfo<scalar_t, index_type> _hy_;
+  const TensorInfo<scalar_t, index_type> storage_;
+  const index_type hsz_;
+  const index_type totalElements_;
 };
 
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_type,
-    int indexing_kind>
+template <typename scalar_t, typename accscalar_t, typename index_type>
 struct GruCellBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    for (index_type linearIndex = item.get_local_id(0);
-         linearIndex < totalElements;
-         linearIndex += item.get_local_range(0)) {
-      index_type offset = (linearIndex / hsz) * 5 * hsz + linearIndex % hsz;
+    for (index_type linearIndex = item.get_global_id(0);
+         linearIndex < totalElements_;
+         linearIndex += item.get_group_range(0) * item.get_local_range(0)) {
+      index_type offset = (linearIndex / hsz_) * 5 * hsz_ + linearIndex % hsz_;
 
-      scalar_t rg = DEVICE_LINEAR_GET(storage, offset + 0 * hsz);
-      scalar_t ig = DEVICE_LINEAR_GET(storage, offset + 1 * hsz);
-      scalar_t ng = DEVICE_LINEAR_GET(storage, offset + 2 * hsz);
-      scalar_t hx = DEVICE_LINEAR_GET(storage, offset + 3 * hsz);
-      scalar_t hn = DEVICE_LINEAR_GET(storage, offset + 4 * hsz);
+      scalar_t rg = DEVICE_LINEAR_GET(storage_, offset + 0 * hsz_);
+      scalar_t ig = DEVICE_LINEAR_GET(storage_, offset + 1 * hsz_);
+      scalar_t ng = DEVICE_LINEAR_GET(storage_, offset + 2 * hsz_);
+      scalar_t hx = DEVICE_LINEAR_GET(storage_, offset + 3 * hsz_);
+      scalar_t hn = DEVICE_LINEAR_GET(storage_, offset + 4 * hsz_);
 
-      scalar_t go = DEVICE_LINEAR_GET(gradOutput, linearIndex);
+      scalar_t go = DEVICE_LINEAR_GET(gradOutput_, linearIndex);
 
-      offset = (linearIndex / hsz) * 3 * hsz + linearIndex % hsz;
+      offset = (linearIndex / hsz_) * 3 * hsz_ + linearIndex % hsz_;
 
       accscalar_t gig = H2F(go) * (H2F(hx) - H2F(ng)) * (1 - H2F(ig)) * H2F(ig);
       accscalar_t ghx = H2F(go) * H2F(ig);
@@ -416,14 +411,14 @@ struct GruCellBackwardFunctor {
       accscalar_t ghn = gin * H2F(rg);
       accscalar_t grg = gin * H2F(hn) * (1 - H2F(rg)) * H2F(rg);
 
-      DEVICE_LINEAR_GET(gradInInput, offset + 0 * hsz) = F2H(grg);
-      DEVICE_LINEAR_GET(gradInInput, offset + 1 * hsz) = F2H(gig);
-      DEVICE_LINEAR_GET(gradInInput, offset + 2 * hsz) = F2H(gin);
+      DEVICE_LINEAR_GET(gradInInput_, offset + 0 * hsz_) = F2H(grg);
+      DEVICE_LINEAR_GET(gradInInput_, offset + 1 * hsz_) = F2H(gig);
+      DEVICE_LINEAR_GET(gradInInput_, offset + 2 * hsz_) = F2H(gin);
 
-      DEVICE_LINEAR_GET(gradInHidden, offset + 0 * hsz) = F2H(grg);
-      DEVICE_LINEAR_GET(gradInHidden, offset + 1 * hsz) = F2H(gig);
-      DEVICE_LINEAR_GET(gradInHidden, offset + 2 * hsz) = F2H(ghn);
-      DEVICE_LINEAR_GET(gradInputHx, linearIndex) = F2H(ghx);
+      DEVICE_LINEAR_GET(gradInHidden_, offset + 0 * hsz_) = F2H(grg);
+      DEVICE_LINEAR_GET(gradInHidden_, offset + 1 * hsz_) = F2H(gig);
+      DEVICE_LINEAR_GET(gradInHidden_, offset + 2 * hsz_) = F2H(ghn);
+      DEVICE_LINEAR_GET(gradInputHx_, linearIndex) = F2H(ghx);
     }
   }
 
@@ -435,22 +430,22 @@ struct GruCellBackwardFunctor {
       TensorInfo<scalar_t, index_type> storage,
       index_type hsz,
       index_type totalElements)
-      : gradInInput(gradInInput),
-        gradInHidden(gradInHidden),
-        gradOutput(gradOutput),
-        gradInputHx(gradInputHx),
-        storage(storage),
-        hsz(hsz),
-        totalElements(totalElements) {}
+      : gradInInput_(gradInInput),
+        gradInHidden_(gradInHidden),
+        gradOutput_(gradOutput),
+        gradInputHx_(gradInputHx),
+        storage_(storage),
+        hsz_(hsz),
+        totalElements_(totalElements) {}
 
  private:
-  TensorInfo<scalar_t, index_type> gradInInput;
-  TensorInfo<scalar_t, index_type> gradInHidden;
-  TensorInfo<scalar_t, index_type> gradOutput;
-  TensorInfo<scalar_t, index_type> gradInputHx;
-  TensorInfo<scalar_t, index_type> storage;
-  index_type hsz;
-  index_type totalElements;
+  TensorInfo<scalar_t, index_type> gradInInput_;
+  TensorInfo<scalar_t, index_type> gradInHidden_;
+  TensorInfo<scalar_t, index_type> gradOutput_;
+  TensorInfo<scalar_t, index_type> gradInputHx_;
+  TensorInfo<scalar_t, index_type> storage_;
+  index_type hsz_;
+  index_type totalElements_;
 };
 
 #undef DEVICE_LINEAR_GET
@@ -474,9 +469,11 @@ void lstm_forward_impl(
   if (numel == 0)
     return;
 
-  auto max_wg_size = syclDeviceMaxWorkGroupSize();
-  auto local_range = max_wg_size;
-  auto global_range = (numel + 512 - 1) / 512;
+  using KernelT = LstmCellForwardFunctor<scalar_t, accscalar_t, index_type>;
+  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+  auto config = rnn_get_launch_config(max_wg_size, numel);
+  auto nwg = std::get<0>(config);
+  auto local_range = std::get<1>(config);
 
   auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
   auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
@@ -506,7 +503,7 @@ void lstm_forward_impl(
         hyI,
         cyI,
         workspaceI);
-    LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+    KernelT kfn(
         input_gatesI,
         hidden_gatesI,
         input_biasI,
@@ -518,9 +515,9 @@ void lstm_forward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
-    LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+    KernelT kfn(
         input_gatesI,
         hidden_gatesI,
         input_biasI,
@@ -532,7 +529,7 @@ void lstm_forward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 
@@ -551,9 +548,11 @@ void lstm_backward_impl(
   if (numel == 0)
     return;
 
-  auto max_wg_size = syclDeviceMaxWorkGroupSize();
-  auto local_range = max_wg_size;
-  auto global_range = (numel + 512 - 1) / 512;
+  using KernelT = LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type>;
+  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+  auto config = rnn_get_launch_config(max_wg_size, numel);
+  auto nwg = std::get<0>(config);
+  auto local_range = std::get<1>(config);
 
   auto grad_hyI = tryGetTensorInfo<scalar_t, index_type>(grad_hy);
   auto grad_cyI = tryGetTensorInfo<scalar_t, index_type>(grad_cy);
@@ -568,7 +567,7 @@ void lstm_backward_impl(
           {grad_hy, grad_cy, cx, cy, workspace, grad_gates, grad_cx})) {
     collapseDims(
         grad_hyI, grad_cyI, cxI, cyI, workspaceI, grad_gatesI, grad_cxI);
-    LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+    KernelT kfn(
         workspaceI,
         grad_gatesI,
         cxI,
@@ -579,9 +578,9 @@ void lstm_backward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
-    LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+    KernelT kfn(
         workspaceI,
         grad_gatesI,
         cxI,
@@ -592,7 +591,7 @@ void lstm_backward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 
@@ -611,9 +610,11 @@ void gru_forward_impl(
   if (numel == 0)
     return;
 
-  auto max_wg_size = syclDeviceMaxWorkGroupSize();
-  auto local_range = max_wg_size;
-  auto global_range = (numel + 512 - 1) / 512;
+  using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type>;
+  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+  auto config = rnn_get_launch_config(max_wg_size, numel);
+  auto nwg = std::get<0>(config);
+  auto local_range = std::get<1>(config);
 
   auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
   auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
@@ -640,7 +641,7 @@ void gru_forward_impl(
         hxI,
         hyI,
         workspaceI);
-    GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+    KernelT kfn(
         input_gatesI,
         hidden_gatesI,
         input_biasI,
@@ -651,9 +652,9 @@ void gru_forward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
-    GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+    KernelT kfn(
         input_gatesI,
         hidden_gatesI,
         input_biasI,
@@ -664,7 +665,7 @@ void gru_forward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 
@@ -681,9 +682,11 @@ void gru_backward_impl(
   if (numel == 0)
     return;
 
-  auto max_wg_size = syclDeviceMaxWorkGroupSize();
-  auto local_range = max_wg_size;
-  auto global_range = (numel + 512 - 1) / 512;
+  using KernelT = GruCellBackwardFunctor<scalar_t, accscalar_t, index_type>;
+  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+  auto config = rnn_get_launch_config(max_wg_size, numel);
+  auto nwg = std::get<0>(config);
+  auto local_range = std::get<1>(config);
 
   auto grad_hyI = getTensorInfo<scalar_t, index_type>(grad_hy);
   auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
@@ -698,7 +701,7 @@ void gru_backward_impl(
           {grad_hy, workspace, grad_input_gates, grad_hidden_gates, grad_hx})) {
     collapseDims(
         grad_hyI, workspaceI, grad_input_gatesI, grad_hidden_gatesI, grad_hxI);
-    GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1> kfn(
+    KernelT kfn(
         grad_input_gatesI,
         grad_hidden_gatesI,
         grad_hyI,
@@ -707,9 +710,9 @@ void gru_backward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
-    GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2> kfn(
+    KernelT kfn(
         grad_input_gatesI,
         grad_hidden_gatesI,
         grad_hyI,
@@ -718,7 +721,7 @@ void gru_backward_impl(
         hidden_size,
         numel);
     sycl_kernel_submit(
-        global_range * local_range, local_range, getCurrentSYCLQueue(), kfn);
+        nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
 
