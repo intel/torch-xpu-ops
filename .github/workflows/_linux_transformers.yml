@@ -51,6 +51,14 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Checkout Transformers
+        uses: actions/checkout@v4
+        with:
+          repository: huggingface/transformers
+          ref: ${{ inputs.transformers }}
+          path: transformers
       - name: Prepare OS environment
         run: |
           sudo apt-get update
@@ -77,13 +85,11 @@ jobs:
         run: |
           pwd
           source activate huggingface_transformers_test
-          cd ..
-          git clone https://github.com/huggingface/transformers.git
-          cd transformers && git checkout $(echo ${{ inputs.transformers }})
+          cd transformers
           pip install -e .
           pip install -e ".[dev-torch,testing,video]"
           mkdir -p tests_log
-          cp ${{ github.workspace }}/.github/scripts/spec.py ./
+          cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Prepare Stock Pytorch
         id: installed
         run: |
@@ -97,61 +103,61 @@ jobs:
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           pip install pytest-pspec accelerate==1.1.1 timm sentencepiece librosa soundfile
-          pip list >> ${{ github.workspace }}/../transformers/tests_log/pip_list.txt
-          cat /sys/class/drm/render*/device/device >> ${{ github.workspace }}/../transformers/tests_log/device_IDs.txt
+          pip list >> ${{ github.workspace }}/transformers/tests_log/pip_list.txt
+          cat /sys/class/drm/render*/device/device >> ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
       - name: Run XPU tests/*.py
         if: contains(input.transformers_test, 'tests_py') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_py tests/*.py | tee tests_log/tests_py.log
       - name: Run XPU tests/benchmark
         if: contains(input.transformers_test, 'tests_benchmark') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_benchmark tests/benchmark | tee tests_log/tests_benchmark.log
       - name: Run XPU tests/generation
         if: contains(input.transformers_test, 'tests_generation') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_generation tests/generation | tee tests_log/tests_generation.log
       - name: Run XPU tests/pipelines
         if: contains(input.transformers_test, 'tests_pipelines') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines | tee tests_log/tests_pipelines.log
       - name: Run XPU tests/trainer
         if: contains(input.transformers_test, 'tests_trainer') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer | tee tests_log/tests_trainer.log
       - name: Run XPU tests/trainer "not ray"
         if: contains(input.transformers_test, 'tests_trainer_not_ray') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_trainer_not_ray -k "not ray" tests/trainer | tee tests_log/tests_trainer_not_ray.log
       - name: Run XPU tests/utils
         if: contains(input.transformers_test, 'tests_utils') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_utils tests/utils | tee tests_log/tests_utils.log
       - name: Run XPU tests/models
         if: contains(input.transformers_test, 'tests_models') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_models tests/models | tee tests_log/tests_models.log
       - name: Run XPU backbone
         if: contains(input.transformers_test, 'backbone') || github.event_name == 'schedule'
         run: |
           source activate huggingface_transformers_test
-          cd ../transformers
+          cd transformers
           TRANSFORMERS_TEST_DEVICE_SPEC=spec.py python3 -m pytest -rsf --make-reports=tests_utils -k backbone tests | tee tests_log/backbone.log
       - name: Upload Test log
         if: ${{ ! cancelled() }}
@@ -159,8 +165,8 @@ jobs:
         with:
           name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
           path: | 
-            ${{ github.workspace }}/../transformers/reports
-            ${{ github.workspace }}/../transformers/tests_log
+            ${{ github.workspace }}/transformers/reports
+            ${{ github.workspace }}/transformers/tests_log
       - name: Results Check
         shell: bash
         run: |
@@ -178,7 +184,7 @@ jobs:
           do
             contains "tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray" $transformers_test
             $contains_status
-            cd ${{ github.workspace }}/../transformers/reports/${transformers_test}/
-            cp ${{ github.workspace }}/.github/scripts/transformers_result_check.sh ./
+            cd ${{ github.workspace }}/transformers/reports/${transformers_test}/
+            cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/transformers_result_check.sh ./
             bash transformers_result_check.sh ${transformers_test}
           done
