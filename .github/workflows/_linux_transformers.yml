@@ -47,6 +47,7 @@ jobs:
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
     steps:
       - name: Checkout torch-xpu-ops
