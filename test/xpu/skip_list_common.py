@@ -939,11 +939,6 @@ skip_dict = {
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         
-        # TODO: AssertionError: Tensor-likes are not close!
-        "test_cpu_gpu_parity_nn_GRUCell_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float32",
-
         # AssertionError: False is not true
         "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",
