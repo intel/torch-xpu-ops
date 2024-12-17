@@ -28,10 +28,10 @@ std::tuple<at::Tensor, at::Tensor> _thnn_fused_gru_cell_xpu(
     const Tensor& input_gates,
     const Tensor& hidden_gates,
     const Tensor& hx,
-    const std::optional<at::Tensor>& input_bias = {},
-    const std::optional<at::Tensor>& hidden_bias = {}) {
+    const std::optional<at::Tensor>& input_bias,
+    const std::optional<at::Tensor>& hidden_bias) {
   return native::xpu::_thnn_fused_gru_cell_kernel(
-      input_gates, hidden_gates, hx, input_bias, input_bias);
+      input_gates, hidden_gates, hx, input_bias, hidden_bias);
 }
 
 std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor>
