@@ -174,68 +174,21 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [1])
-@parametrize("k", [1024])
-@parametrize("n", [1024])
+@parametrize("k", [1024, 2048])
+@parametrize("n", [48, 64])
 def _int4_mm(self, device, m, k, n):
-    @staticmethod
-    def rand_int4(size, dtype=torch.int32, device="xpu"):
-        rand = torch.randint(-128, 128, [size // 2], device=device).to(torch.int8)
-        return rand.view(dtype=dtype)
-    
-    @staticmethod
-    def unpack_weight(qweight, scales, qzeros, q_config):
-        group_size = q_config["group_size"]
-        bits = q_config["bits"]
-        s32_bits = 32
-
-        assert bits == 4
-        # Int32 can store 8 * 4bits data. This is the offset for each data.
-        wf = (
-            torch.tensor(list(range(0, s32_bits, bits)), dtype=torch.int32)
-            .unsqueeze(0)
-            .to("xpu")
-        )
-        zeros = torch.bitwise_right_shift(
-            torch.unsqueeze(qzeros, 2).expand(-1, -1, 32 // bits), wf.unsqueeze(0)
-        ).to(torch.int16 if bits == 8 else torch.int8)
-        torch.bitwise_and(zeros, (2**bits) - 1, out=zeros)
-
-        zeros = zeros + 1
-        zeros = zeros.reshape(scales.shape)
-
-        weight = torch.bitwise_right_shift(
-            torch.unsqueeze(qweight, 1).expand(-1, 32 // bits, -1), wf.unsqueeze(-1)
-        ).to(torch.int16 if bits == 8 else torch.int8)
-        torch.bitwise_and(weight, (2**bits) - 1, out=weight)
-
-        return weight, scales, zeros
-    
-    @staticmethod
-    def dequantize(qweight, scales, qzeros, group_size):
-        q_config = {"group_size": group_size, "bits": 4}
-        weight, gptq_scales, gptq_zeros = unpack_weight(
-            qweight, scales, qzeros, q_config
-        )
-        gptq_zeros = (torch.ones_like(gptq_zeros) * 8).to("xpu")  # TODO: hard code zp
-        if len(weight.shape) > 2:
-            weight = weight.reshape(-1, weight.shape[-1])
-        infeatures = weight.shape[0]
-        g_idx = torch.tensor(
-            [i // q_config["group_size"] for i in range(infeatures)],
-            dtype=torch.int32,
-        )
-        scale_zeros = gptq_zeros * gptq_scales
-        weight = gptq_scales[g_idx.long()] * weight - scale_zeros[g_idx.long()]
-        return weight
-    
     def convert_weight_to_int4pack(b):
         b_tmp, b_scales_and_zeros = _group_quantize_tensor(
             b, n_bit=4, q_group_size=q_group
         )
+        
         if self.device_type == 'cpu':
             b_int4pack = torch._convert_weight_to_int4pack_for_cpu(
                 b_tmp, inner_k_tiles
             )
+        elif self.device_type == 'xpu':
+            # b_int4pack = b_tmp.view(torch.int32)
+            b_int4pack = b_tmp
         else:
             b_int4pack = torch._convert_weight_to_int4pack(
                 b_tmp, inner_k_tiles
@@ -250,6 +203,12 @@ def _int4_mm(self, device, m, k, n):
             return torch._weight_int4pack_mm_for_cpu(
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
+        elif self.device_type == 'xpu':
+            self.assertTrue(b_int4pack.dtype is torch.int32 or b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dim() == 2)
+            return torch._weight_int4pack_mm(
+                a, b_int4pack, q_group, b_scales_and_zeros
+            )
         else:
             self.assertTrue(b_int4pack.dtype is torch.int32)
             self.assertTrue(b_int4pack.dim() == 4)
@@ -257,23 +216,23 @@ def _int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
     
-    dtype = torch.float16
     q_group = 32
     inner_k_tiles = 2
 
     torch.manual_seed(1)
-    a_bf16 = torch.rand((m, k), dtype=dtype, device=device)
-    b_bf16 = torch.ones((k, n), dtype=dtype, device=device)
+    a_bf16 = torch.rand((m, k), dtype=torch.bfloat16, device=device)
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
+
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
+    
     for dtype in [torch.float16] + ([torch.float16, torch.float32] if device == "cpu" else []):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
         ref = torch.mm(a, b)
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
+  
         mean_err = ((res - ref).abs() / ref).mean()
-        print(ref)
-        print(res)
         self.assertTrue(mean_err < 0.05)
 
 @dtypes(torch.float, torch.complex64)  # Integer matmul just supported on CPU
