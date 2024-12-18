@@ -136,7 +136,7 @@ jobs:
       - name: Identify pinned versions
         id: pinned
         run: |
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           cd ../pytorch
           if [ -z ${{ inputs.triton }} ]; then
             echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -164,7 +164,8 @@ jobs:
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          echo "Skip triton installation!"
+          # pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"

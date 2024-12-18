@@ -69,15 +69,18 @@ jobs:
           cd pytorch && git checkout $(echo ${{ inputs.pytorch }} |sed 's/^nightly_wheel$/nightly/')
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          git submodule sync && git submodule update --init --recursive
+          
+          # git status && git show -s
+          # git submodule sync && git submodule update --init --recursive
           if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
+            cd third_party
+            git clone https://github.com/intel/torch-xpu-ops.git
+            cd torch-xpu-ops
+            TORCH_XPU_OPS_COMMIT=$(<pytorch/third_party/xpu.txt)
+            echo "==============> torch-xpu-ops pin commit is - $TORCH_XPU_OPS_COMMIT"
+            git checkout $TORCH_XPU_OPS_COMMIT
           else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            echo "Don't replace torch-xpu-ops!"
           fi
       - name: Triton Installation
         run: |
@@ -90,34 +93,36 @@ jobs:
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-          fi
+          # if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+          #   pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          # fi
       - name: Build Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          # source .github/scripts/env.sh
           cd ../pytorch
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
           else
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-            pip install -r requirements.txt
-            WERROR=1 python setup.py bdist_wheel
-            pip install --force-reinstall dist/*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          else
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          fi
+          pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install pandas psutil pyyaml scipy tqdm pytest
+          # if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+          #   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+          #   pip install -r requirements.txt
+          #   WERROR=1 python setup.py bdist_wheel
+          #   pip install --force-reinstall dist/*.whl
+          #   git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          # else
+          #   pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
+          #   pip install pandas psutil pyyaml scipy tqdm pytest
+          # fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -132,7 +137,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           xpu-smi discovery
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           cd test/regressions
@@ -143,7 +148,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           xpu-smi discovery
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
@@ -155,7 +160,7 @@ jobs:
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
@@ -163,7 +168,7 @@ jobs:
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           export PYTORCH_TEST_WITH_SLOW=1
@@ -177,7 +182,7 @@ jobs:
       - name: Run Torch XPU UT
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
-          source .github/scripts/env.sh
+          # source .github/scripts/env.sh
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
           TEST_REPORTS_DIR=$(pwd)/test/test-reports
