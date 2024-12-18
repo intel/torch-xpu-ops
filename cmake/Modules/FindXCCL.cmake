@@ -6,7 +6,8 @@
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-set(XCCL_ROOT $ENV{ONEAPI_ROOT}/ccl/latest)
+# we need source OneCCL environment before building.
+set(XCCL_ROOT $ENV{CCL_ROOT})
 
 # Find include path from binary.
 find_file(
