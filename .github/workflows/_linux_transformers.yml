@@ -120,11 +120,24 @@ jobs:
           pip show torch | grep Version | grep xpu
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
-      - name: Run XPU backbone
+      - name: Run XPU backbone tests
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+      - name: Run XPU trainer tests
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Some ray tests hang, reason unknown
+          # * torch.distributed.* not yet supported by XPU
+          pattern=" \
+            not ray and \
+            not TestTrainerDistributed and \
+            not TestTrainerDistributedXPU and \
+            not TestFSDPTrainer"
+          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
