@@ -126,7 +126,7 @@ void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
 
 template <typename scalar_t, typename accscalar_t>
 struct GammaTensorApplyFunctor {
-  void operator()(
+  [[clang::optnone]] void operator()(
       sycl::nd_item<1> item,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
