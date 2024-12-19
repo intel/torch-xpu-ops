@@ -1,0 +1,135 @@
+name: Linux Transformers Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/spec.py'
+      - '.github/workflows/_linux_transformers.yml'
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'nightly'
+        description: Pytorch branch/commit
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Runner label
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
+      nightly_whl:
+        required: false
+        type: string
+        default: ''
+        description: Pytorch nightly wheel version
+      transformers:
+        required: false
+        type: string
+        default: 'v4.47.0'
+        description: Transformers version
+
+permissions: read-all
+
+jobs:
+  Torch-XPU-Transformers-Tests:
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    env:
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      python: ${{ inputs.python != '' && inputs.python || '3.10' }}
+      pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
+      TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Checkout Transformers
+        uses: actions/checkout@v4
+        with:
+          repository: huggingface/transformers
+          ref: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
+          path: transformers
+      - name: Prepare OS environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            espeak-ng \
+            git-lfs \
+            pkg-config \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavfilter-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswresample-dev \
+            libswscale-dev
+          git lfs install
+      - name: Prepare Conda ENV
+        run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n huggingface_transformers_test || rm -rf $(dirname ${CONDA_EXE})/../envs/huggingface_transformers_test
+          conda create -y -n huggingface_transformers_test python=${{ env.python }}
+          source activate huggingface_transformers_test
+      - name: Prepare Stock XPU Pytorch
+        run: |
+          pwd
+          source activate huggingface_transformers_test
+          if [ -z "${{ inputs.nightly_whl }}" ]; then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          else
+            pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          fi
+      - name: Prepare Transformers
+        run: |
+          pwd
+          source activate huggingface_transformers_test
+          cd transformers
+          pip install -e .
+          pip install -e ".[dev-torch,testing,video]"
+          rm -rf tests_log && mkdir -p tests_log
+          rm -rf reports
+          cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
+      - name: Report installed versions
+        id: installed
+        run: |
+          source activate huggingface_transformers_test
+          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "pip installed packages:"
+          pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
+          echo "GPU render nodes:"
+          cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
+      - name: Sanitry check installed packages
+        run: |
+          source activate huggingface_transformers_test
+          # These checks are to exit earlier if for any reason Transformers
+          # reinstalled torch packages back to CUDA versions (not expected).
+          pip show torch | grep Version | grep xpu
+          pip show torchaudio | grep Version | grep xpu
+          pip show torchvision | grep Version | grep xpu
+      - name: Run XPU backbone
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+      - name: Upload Test log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Transformers-Log-${{ github.event.pull_request.number || github.sha }}
+          path: | 
+            ${{ github.workspace }}/transformers/reports
+            ${{ github.workspace }}/transformers/tests_log
