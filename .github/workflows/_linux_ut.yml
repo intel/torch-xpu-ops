@@ -231,7 +231,7 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
-           function contains() {
+          function contains() {
               contains_status="echo 'Start $2 ...'"
               {
                 [[ $1 =~ (^|,)$2($|,) ]]
@@ -239,7 +239,7 @@ jobs:
                 echo "[Warning] $2 is not suppotted type! Skipped!"
                 contains_status="continue"
               }
-            }
+          }
           set -xe
           for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
