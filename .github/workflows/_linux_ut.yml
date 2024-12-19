@@ -227,7 +227,7 @@ jobs:
           if [ -f "test/test_xpu.py" ]; then
             test_cmd="${test_cmd} test_xpu.py"
           fi
-          eval $test_cmd 2>&1 | tee ${{ github.workspace }}/ut_log/torch_xpu/Inductor_ut_torch_xpu_test.log
+          eval $test_cmd 2>&1 | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
       - name: UT Test Results Check
         shell: bash
         run: |
