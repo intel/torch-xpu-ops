@@ -150,7 +150,7 @@ jobs:
               }
           }
           set -xe
-          for transformers_test in $(echo ${{ input.transformers_test }} |sed 's/,/ /g')
+          for transformers_test in $(echo ${{ inputs.transformers_test }} |sed 's/,/ /g')
           do
             contains "test_py,benchmark,generation,models,pipelines,trainer,utils,backbone,trainer_not_ray" $transformers_test
             $contains_status
