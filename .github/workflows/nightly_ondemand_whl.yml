@@ -48,11 +48,6 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      nightly_whl:
-        required: false
-        type: string
-        default: ''
-        description: Pytorch nightly wheel version
 
 permissions: read-all
 
@@ -262,15 +257,6 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-
-  Linux-Nightly-Ondemand-Transformers-WHL-Tests:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/_linux_transformers.yml
-    with:
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      pytorch: nightly_wheel
-      nightly_whl: ${{ github.event_name == 'schedule' && '' || inputs.nightly_whl }}
-      runner: linux.idc.xpu
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}

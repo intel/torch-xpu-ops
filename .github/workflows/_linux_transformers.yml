@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/scripts/spec.py'
       - '.github/workflows/_linux_transformers.yml'
-  workflow_call:
+  workflow_dispatch:
     inputs:
       pytorch:
         required: false
@@ -39,6 +39,11 @@ on:
         type: string
         default: 'v4.47.0'
         description: Transformers version
+      transformers_test:
+        required: true
+        type: string
+        default: ''
+        description: Test scope. `test_py,benchmark,generation,models,pipelines,trainer,utils,backbone,trainer_not_ray` Delimiter is comma
 
 permissions: read-all
 
@@ -125,6 +130,38 @@ jobs:
           source activate huggingface_transformers_test
           cd transformers
           python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+      # On-demand launch
+      - name: OnDemand Test (${transformers_test})
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+
+          # check param
+          function contains() {
+              contains_status="echo 'Start $2 ...'"
+              {
+                [[ $1 =~ (^|,)$2($|,) ]]
+              } || {
+                echo "[Warning] $2 is not suppotted type! Skipped!"
+                contains_status="continue"
+              }
+          }
+          set -xe
+          for transformers_test in $(echo ${{ input.transformers_test }} |sed 's/,/ /g')
+          do
+            contains "test_py,benchmark,generation,models,pipelines,trainer,utils,backbone,trainer_not_ray" $transformers_test
+            $contains_status
+            if [ "${transformers_test}" == "test_py" ];then
+              python3 -m pytest -rsf --make-reports=tests_py tests/*.py
+            elif [ "${transformers_test}" == "trainer_not_ray" ];then
+              python3 -m pytest -rsf --make-reports=tests_trainer_not_ray -k "not ray" tests/trainer
+            elif [ "${transformers_test}" == "backbone" ];then
+              python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+            else
+              python3 -m pytest -rsf --make-reports=tests_${transformers_test} tests/${transformers_test}
+            fi
+          done
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
