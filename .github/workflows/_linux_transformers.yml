@@ -50,6 +50,7 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
+      transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
       TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
     steps:
       - name: Checkout torch-xpu-ops
@@ -60,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: huggingface/transformers
-          ref: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
+          ref: ${{ env.transformers }}
           path: transformers
       - name: Prepare OS environment
         run: |
@@ -106,12 +107,51 @@ jobs:
         id: installed
         run: |
           source activate huggingface_transformers_test
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "pip installed packages:"
           pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
+          echo "lspci gpu devices:"
+          lspci -d ::0380 | tee ${{ github.workspace }}/transformers/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
+          # printing annotations for the key packages
+          echo "### Annotations" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |" >> $GITHUB_STEP_SUMMARY
+          echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |" >> $GITHUB_STEP_SUMMARY
+          echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ') |" >> $GITHUB_STEP_SUMMARY
+          packages=" \
+            level-zero \
+            libigc1 \
+            libigc2 \
+            libze1 \
+            libze-intel-gpu1 \
+            intel-i915-dkms \
+            intel-level-zero-gpu \
+            intel-opencl-icd"
+          for package in $packages; do
+            package_version=$(dpkg -l | grep $package | grep ii | head -1 | sed "s/  */ /g" | cut -f3 -d" ")
+            echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |" >> $GITHUB_STEP_SUMMARY
+          done
+          packages="accelerate \
+            numpy \
+            torch \
+            torchaudio \
+            torchvision \
+            transformers"
+          for package in $packages; do
+            package_version=$(python -c "import $package; print($package.__version__)")
+            echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |" >> $GITHUB_STEP_SUMMARY
+          done
+          # printing annotations for GPU cards
+          var="[$(cat /sys/class/drm/render*/device/vendor)]"
+          echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed "s/ /,/g") |" >> $GITHUB_STEP_SUMMARY
+          var="[$(cat /sys/class/drm/render*/device/device)]"
+          echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed "s/ /,/g") |" >> $GITHUB_STEP_SUMMARY
+          var=$(python -c "import torch; print(torch.version.xpu)")
+          echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |" >> $GITHUB_STEP_SUMMARY
+          var=$(python -c "import torch; print(torch.xpu.device_count())")
+          echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |" >> $GITHUB_STEP_SUMMARY
       - name: Sanitry check installed packages
         run: |
           source activate huggingface_transformers_test
