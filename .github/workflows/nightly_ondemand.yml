@@ -129,7 +129,7 @@ jobs:
             cd third_party
             git clone https://github.com/intel/torch-xpu-ops.git
             cd torch-xpu-ops
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            TORCH_XPU_OPS_COMMIT=$(<xpu.txt)
             echo "==============> torch-xpu-ops pin commit is - $TORCH_XPU_OPS_COMMIT"
             git checkout $TORCH_XPU_OPS_COMMIT
           else
