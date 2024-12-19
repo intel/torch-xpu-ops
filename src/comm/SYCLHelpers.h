@@ -50,8 +50,10 @@ static inline void sycl_kernel_submit(
     ::sycl::range<dim> range,
     ::sycl::queue q,
     ker_t ker) {
-  auto cgf = [&](::sycl::handler& cgh) { cgh.parallel_for<ker_t>(range, ker); };
-  q.submit(cgf);
+  auto cgf = [&](::sycl::handler& cgh) {
+    ::sycl::ext::oneapi::experimental::parallel_for<ker_t>(cgh, range, ker);
+  };
+  ::sycl::ext::oneapi::experimental::submit(q, cgf);
 }
 
 // Additional convention of SYCL kernel configuration. Besides construct kernel
@@ -80,10 +82,10 @@ sycl_kernel_submit(
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<dim>(global_range, local_range), ker);
+    ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
+        cgh, ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
-  q.submit(cgf);
+  ::sycl::ext::oneapi::experimental::submit(q, cgf);
 }
 
 template <typename ker_t, int dim>
@@ -96,10 +98,10 @@ sycl_kernel_submit(
     ::sycl::queue q,
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
-    cgh.parallel_for<ker_t>(
-        ::sycl::nd_range<dim>(global_range, local_range), ker);
+    ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
+        cgh, ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
-  q.submit(cgf);
+  ::sycl::ext::oneapi::experimental::submit(q, cgf);
 }
 
 template <typename ker_t>
@@ -113,12 +115,13 @@ sycl_kernel_submit(
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
-    cgh.parallel_for<ker_t>(
+    ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
+        cgh,
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
-  q.submit(cgf);
+  ::sycl::ext::oneapi::experimental::submit(q, cgf);
 }
 
 template <typename ker_t>
@@ -131,10 +134,11 @@ sycl_kernel_submit(
     ::sycl::queue q,
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
-    cgh.parallel_for<ker_t>(
+    ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
+        cgh,
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
-  q.submit(cgf);
+  ::sycl::ext::oneapi::experimental::submit(q, cgf);
 }
