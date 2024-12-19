@@ -9,7 +9,7 @@ if [[ ${ut_suite} == 'op_regression' || ${ut_suite} == 'op_regression_dev1' || $
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
     cat ./${ut_suite}_failed.log
-    if [[ $num_failed -gt 0 ]] && [[ $num_passed -lt 0 ]]; then
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
@@ -35,7 +35,7 @@ if [[ ${ut_suite} == 'op_ut' ]]; then
     num_passed_with_skip=$(cat ./${ut_suite}_with_skip_test_passed.log | wc -l)
     num_passed_with_only=$(cat ./${ut_suite}_with_only_test_passed.log | wc -l)
     let num_passed=num_passed_with_skip+num_passed_with_only
-    if [[ $num_failed -gt 0 ]] && [[ $num_passed -lt 0 ]]; then
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
@@ -65,7 +65,7 @@ if [[ ${ut_suite} == 'torch_xpu' ]]; then
     num_failed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_${ut_suite}_failed_summary.log)
     num_passed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_${ut_suite}_passed_summary.log)
     let num_failed=num_failed_binary_ut
-    if [[ $num_failed -gt 0 ]] && [[ $num_passed_binary_ut -lt 0 ]]; then
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed_binary_ut -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
