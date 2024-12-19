@@ -111,6 +111,7 @@ jobs:
           cd pytorch && git checkout onednn_graph_sdpa
           # apply PRs for stock pytorch
           pip install requests
+          pip install botocore
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
