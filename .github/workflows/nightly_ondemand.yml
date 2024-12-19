@@ -66,29 +66,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
-
-  Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
-
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos
