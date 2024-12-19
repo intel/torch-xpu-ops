@@ -2017,6 +2017,10 @@
   dispatch:
     XPU: softmax_xpu_out
 
+- func: _safe_softmax(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
+  dispatch:
+    XPU: _safe_softmax_xpu
+
 - func: _softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
   structured_delegate: _softmax_backward_data.out
 

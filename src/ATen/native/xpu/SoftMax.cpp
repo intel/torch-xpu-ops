@@ -76,6 +76,17 @@ TORCH_IMPL_FUNC(log_softmax_xpu_out)
   xpu::_log_softmax_kernel(input, dim, half_to_float, output);
 }
 
+Tensor _safe_softmax_xpu(
+    const Tensor& self,
+    int64_t dim,
+    std::optional<ScalarType> dtype) {
+  // TODO: uncomment after XPU softmax support half_to_float=true
+  // if (self.scalar_type() == ScalarType::Half && dtype == ScalarType::Float)
+  //   return xpu::_safe_softmax_kernel(self, dim_, true);
+  Tensor converted = dtype.has_value() ? self.toType(dtype.value()) : self;
+  return xpu::_safe_softmax_kernel(converted, dim, false);
+}
+
 Tensor masked_softmax_xpu(
     const Tensor& input_,
     const Tensor& mask_,
