@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/scripts/spec.py'
       - '.github/workflows/_linux_transformers.yml'
-  workflow_dispatch:
+  workflow_call:
     inputs:
       pytorch:
         required: false
@@ -39,6 +39,8 @@ on:
         type: string
         default: 'v4.47.0'
         description: Transformers version
+  workflow_dispatch:
+    inputs:
       transformers_test:
         required: true
         type: string
