@@ -53,11 +53,6 @@ on:
         type: string
         default: ''
         description: Pytorch nightly wheel version
-      transformers_test:
-        required: false
-        type: string
-        default: 'backbone'
-        description: Test scope. `tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray` Delimiter is comma
 
 permissions: read-all
 
@@ -269,10 +264,9 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   Linux-Nightly-Ondemand-Transformers-WHL-Tests:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4' || ${{ inputs.transformers_test }}
+    if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_linux_transformers.yml
     with:
-      transformers_test: ${{ github.event_name == 'schedule' && 'tests_py,tests_benchmark,tests_generation,tests_models,tests_pipelines,tests_trainer,tests_utils,backbone,tests_trainer_not_ray' || inputs.transformers_test }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
       nightly_whl: ${{ github.event_name == 'schedule' && '' || inputs.nightly_whl }}
