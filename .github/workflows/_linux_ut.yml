@@ -75,9 +75,11 @@ jobs:
           if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
             cd third_party
             git clone https://github.com/intel/torch-xpu-ops.git
-            cd torch-xpu-ops
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            echo "Current path: $(pwd)"
+            TORCH_XPU_OPS_COMMIT=$(<xpu.txt)
             echo "==============> torch-xpu-ops pin commit is - $TORCH_XPU_OPS_COMMIT"
+
+            cd torch-xpu-ops
             git checkout $TORCH_XPU_OPS_COMMIT
           else
             echo "Don't replace torch-xpu-ops!"
