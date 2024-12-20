@@ -185,7 +185,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "lu_unpack.out",
     "ormqr",
     "_scaled_mm",
-    "_thnn_fused_gru_cell",
     "_to_sparse_csr",
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
