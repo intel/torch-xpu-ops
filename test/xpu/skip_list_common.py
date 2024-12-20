@@ -649,6 +649,14 @@ skip_dict = {
         "test_python_ref__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_exp_xpu_complex128",
+
+        # Failed on rolling driver, passed on preci
+        "test_python_ref__refs_div_trunc_rounding_xpu_float64",
+        "test_python_ref_executor__refs_div_trunc_rounding_executor_aten_xpu_float64",
+        "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
+
+        # TODO: passed from source code building version, investigate
+        "test_python_ref__refs_log2_xpu_complex128",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -3267,7 +3275,10 @@ skip_dict = {
 
     "test_type_promotion_xpu.py": None,
 
-    "test_distributions_xpu.py": None,
+    "test_distributions_xpu.py": (
+        # TODO: Passed on lts driver version, but failed on rolling driver version
+        "test_gamma_gpu_sample_xpu",
+    ),
 
     "test_optim_xpu.py": (
         # oneDNN issues
