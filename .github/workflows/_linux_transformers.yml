@@ -104,7 +104,6 @@ jobs:
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
-        id: installed
         run: |
           source activate huggingface_transformers_test
           echo "pip installed packages:"
@@ -113,50 +112,6 @@ jobs:
           lspci -d ::0380 | tee ${{ github.workspace }}/transformers/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
-          # printing annotations for the key packages
-          {
-            echo "### Annotations"
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
-            echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
-            echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ') |"
-            packages=" \
-              level-zero \
-              libigc1 \
-              libigc2 \
-              libze1 \
-              libze-intel-gpu1 \
-              intel-i915-dkms \
-              intel-level-zero-gpu \
-              intel-opencl-icd"
-            for package in $packages; do
-              package_version=$(dpkg -l | grep $package | grep ii | head -1 | sed "s/  */ /g" | cut -f3 -d" ")
-              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
-            done
-            packages="accelerate \
-              numpy \
-              torch \
-              torchaudio \
-              torchvision \
-              transformers"
-            for package in $packages; do
-              package_version=$(python -c "import $package; print($package.__version__)")
-              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
-            done
-            # printing annotations for GPU cards
-            var="[$(cat /sys/class/drm/render*/device/vendor)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed "s/ /,/g") |"
-            var="[$(cat /sys/class/drm/render*/device/device)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed "s/ /,/g") |"
-            var=$(python -c "import torch; print(torch.version.xpu)")
-            echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
-            var=$(python -c "import torch; print(torch.xpu.device_count())")
-            echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
-            # printing annotations with key environment variables
-            echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
-            echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
-          } >> $GITHUB_STEP_SUMMARY
       - name: Sanitry check installed packages
         run: |
           source activate huggingface_transformers_test
@@ -244,6 +199,53 @@ jobs:
               comment="<pre>$(echo $line | cut -f3- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
               echo "| $file | $error | $comment |"
             done <_failures_uniq.txt
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Print annotations
+        if: ${{ ! cancelled() }}
+        run: |
+          source activate huggingface_transformers_test
+          {
+            echo "### Annotations"
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
+            echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
+            echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ') |"
+            packages=" \
+              level-zero \
+              libigc1 \
+              libigc2 \
+              libze1 \
+              libze-intel-gpu1 \
+              intel-i915-dkms \
+              intel-level-zero-gpu \
+              intel-opencl-icd"
+            for package in $packages; do
+              package_version=$(dpkg -l | grep $package | grep ii | head -1 | sed "s/  */ /g" | cut -f3 -d" ")
+              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+            done
+            packages="accelerate \
+              numpy \
+              torch \
+              torchaudio \
+              torchvision \
+              transformers"
+            for package in $packages; do
+              package_version=$(python -c "import $package; print($package.__version__)")
+              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+            done
+            # printing annotations for GPU cards
+            var="[$(cat /sys/class/drm/render*/device/vendor)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed "s/ /,/g") |"
+            var="[$(cat /sys/class/drm/render*/device/device)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed "s/ /,/g") |"
+            var=$(python -c "import torch; print(torch.version.xpu)")
+            echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
+            var=$(python -c "import torch; print(torch.xpu.device_count())")
+            echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
+            # printing annotations with key environment variables
+            echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
+            echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
           } >> $GITHUB_STEP_SUMMARY
       - name: Upload Test log
         if: ${{ ! cancelled() }}
