@@ -152,6 +152,9 @@ jobs:
           echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |" >> $GITHUB_STEP_SUMMARY
           var=$(python -c "import torch; print(torch.xpu.device_count())")
           echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |" >> $GITHUB_STEP_SUMMARY
+          # printing annotations with key environment variables
+          echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |" >> $GITHUB_STEP_SUMMARY
+          echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |" >> $GITHUB_STEP_SUMMARY
       - name: Sanitry check installed packages
         run: |
           source activate huggingface_transformers_test
