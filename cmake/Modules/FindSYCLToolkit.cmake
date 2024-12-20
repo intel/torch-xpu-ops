@@ -35,7 +35,6 @@ endif()
 if(SYCLTOOLKIT_FOUND)
   return()
 endif()
-
 set(SYCLTOOLKIT_FOUND TRUE)
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
