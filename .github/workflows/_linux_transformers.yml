@@ -169,6 +169,13 @@ jobs:
           source activate huggingface_transformers_test
           cd transformers
           python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+      - name: Run tests/pipelines
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Some tests are known to fail w/o clear pattern
+          # TODO: drop ||true after triage and fixes
+          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines || true
       - name: Run tests/trainer
         run: |
           source activate huggingface_transformers_test
