@@ -120,11 +120,50 @@ jobs:
           pip show torch | grep Version | grep xpu
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
-      - name: Run XPU backbone
+      - name: Run XPU backbone tests
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+      - name: Run XPU trainer tests
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Some ray tests hang, reason unknown
+          # * torch.distributed.* not yet supported by XPU
+          pattern=" \
+            not ray and \
+            not TestTrainerDistributed and \
+            not TestTrainerDistributedXPU and \
+            not TestFSDPTrainer"
+          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
+      - name: Run XPU pipelines tests
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Some ray tests hang, reason unknown
+          # * torch.distributed.* not yet supported by XPU
+          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines || true
+      - name: Check for expected results
+        run: |
+          function parse_stat() {
+            stat=$(cat $1 | grep $2 | sed "s/.* \([0-9]*\) $2.*/\1/")
+            if [ -n "$stat" ]; then echo $stat; else echo "0"; fi
+          }
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Test group | Errors | Failed | Passed | Skipped |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- | --- | --- | --- |" >> $GITHUB_STEP_SUMMARY
+          for stat in $(find reports -name stats.txt); do
+            test_group=$(echo $stat | cut -f 2 -d/)
+            failed=$(parse_stat $stat failed)
+            passed=$(parse_stat $stat passed)
+            skipped=$(parse_stat $stat skipped)
+            warnings=$(parse_stat $stat warnings)
+            errors=$(parse_stat $stat errors)
+            echo "| $test_group | $errors | $failed | $passed | $skiped |" >> $GITHUB_STEP_SUMMARY
+          done
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
