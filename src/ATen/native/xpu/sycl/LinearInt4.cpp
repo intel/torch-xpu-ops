@@ -197,7 +197,6 @@ void linear_int4_kernel(
   int64_t m = A.size(0);
   int64_t n = C.size(1);
   int64_t k = A.size(1);
-  int constexpr Unroll = 2;
   int constexpr SgSize = 16;
   sycl::range<1> local_range{SgSize};
   sycl::range<1> global_range{static_cast<size_t>(n) * SgSize};
