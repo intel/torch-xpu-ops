@@ -122,18 +122,25 @@ jobs:
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run -k backbone tests
+        env:
+          TEST_CASE: 'tests_backbone'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+          python3 -m pytest -rsf --make-reports=$TEST_CASE -k backbone tests || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
       - name: Run tests/pipelines
+        env:
+          TEST_CASE: 'tests_pipelines'
         run: |
           source activate huggingface_transformers_test
           cd transformers
           # Some tests are known to fail w/o clear pattern
           # TODO: drop ||true after triage and fixes
-          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines || true
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/pipelines || true
       - name: Run tests/trainer
+        env:
+          TEST_CASE: 'tests_trainer'
         run: |
           source activate huggingface_transformers_test
           cd transformers
@@ -145,15 +152,24 @@ jobs:
             not TestTrainerDistributed and \
             not TestTrainerDistributedXPU and \
             not TestFSDPTrainer"
-          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/trainer -k "$pattern" || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
       - name: Run tests/utils
+        env:
+          TEST_CASE: 'tests_utils'
         run: |
           source activate huggingface_transformers_test
           cd transformers
           # Excluding tests due to:
           # * Network proxy connection issue, reason unknown
           pattern="not test_load_img_url_timeout"
-          python3 -m pytest -rsf --make-reports=tests_utils tests/utils -k "$pattern"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/utils -k "$pattern" || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Check for errors in tests
+        run: |
+          FAILED_CASES=$(echo $FAILED_CASES | sed 's/^,//')
+          echo "Failed cases: [$(echo $FAILED_CASES | sed 's/,/, /g')]"
+          test -z "$FAILED_CASES"
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |
