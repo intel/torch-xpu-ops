@@ -146,6 +146,14 @@ jobs:
             not TestTrainerDistributedXPU and \
             not TestFSDPTrainer"
           python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
+      - name: Run tests/utils
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Network proxy connection issue, reason unknown
+          pattern="not test_load_img_url_timeout"
+          python3 -m pytest -rsf --make-reports=tests_utils tests/utils -k "$pattern"
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |
