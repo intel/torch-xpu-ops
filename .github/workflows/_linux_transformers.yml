@@ -164,11 +164,11 @@ jobs:
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
-      - name: Run XPU backbone
+      - name: Run -k backbone tests
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
