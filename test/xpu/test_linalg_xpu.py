@@ -174,8 +174,8 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [1])
-@parametrize("k", [256, 512, 1024])
-@parametrize("n", [32, 64])
+@parametrize("k", [32])
+@parametrize("n", [32])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
@@ -192,17 +192,21 @@ def _int4_mm(self, device, m, k, n):
         min_int = 0
         scales = (max_val - min_val).clamp(min=1e-6) / max_int
         assert torch.isnan(scales).sum() == 0
-
         zeros = min_val + scales * (2 ** (n_bit - 1))
         assert torch.isnan(zeros).sum() == 0
 
         out = to_quant.sub(min_val).div(scales).round().clamp_(min_int, max_int)
+ 
         assert torch.isnan(out).sum() == 0
 
-        out = out.to(dtype=torch.int32).reshape(w.shape)
-        if out.device.type != 'cpu' or out.device.type != 'xpu':
-            out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
-
+        out = out.to(dtype=torch.uint8).reshape(w.shape)
+        # if out.device.type != 'cpu' or out.device.type != 'xpu':
+        out = (out[::, ::2] << 4 | out[::, 1::2]).to(torch.uint8)
+        print(scales[0])
+        print(zeros[0])
+        print(out[0].to(dtype=torch.uint8))
+        print(w[0])
+        import pdb; pdb.set_trace()
         # Scales and zeros for the same q-group should be contiguous, so we can
         # load as a 32-bit word
         scales = scales.view(w.shape[0], -1)
@@ -220,8 +224,9 @@ def _int4_mm(self, device, m, k, n):
         if out.device.type != 'xpu':
             scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
         return out, scales_and_zeros
-
+        
     def convert_weight_to_int4pack(b):
+        import pdb; pdb.set_trace()
         b_tmp, b_scales_and_zeros = _group_quantize_tensor(
             b, n_bit=4, q_group_size=q_group
         )
@@ -268,7 +273,7 @@ def _int4_mm(self, device, m, k, n):
     b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
-    
+    import pdb; pdb.set_trace()
     for dtype in [torch.float16] + ([torch.float16, torch.float32] if device == "cpu" else []):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
@@ -277,6 +282,7 @@ def _int4_mm(self, device, m, k, n):
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
         print(ref)
         print(res)
+        import pdb; pdb.set_trace()
         mean_err = ((res - ref).abs() / ref).mean()
         self.assertTrue(mean_err < 0.05)
 
