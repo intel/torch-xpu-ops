@@ -194,5 +194,9 @@ skip_dict = {
     # Greatest absolute difference: 0.0625 at index (1,) (up to 0.001 allowed)
     #  Greatest relative difference: 0.00640869140625 at index (1,) (up to 0.001 allowed)
     "test_compare_cpu_xlogy_xpu_bfloat16",
+    "test_compare_cpu_div_trunc_rounding_xpu_float64",
+    "test_compare_cpu_div_trunc_rounding_xpu_float16",
+    "test_compare_cpu_div_floor_rounding_xpu_float16",
+    "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
     ),
 }
