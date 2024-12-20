@@ -231,17 +231,17 @@ jobs:
               torchvision \
               transformers"
             for package in $packages; do
-              package_version=$(python -c "import $package; print($package.__version__)")
+              package_version=$(python -c "import $package; print($package.__version__)" || true)
               echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
             done
             # printing annotations for GPU cards
-            var="[$(cat /sys/class/drm/render*/device/vendor)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed "s/ /,/g") |"
-            var="[$(cat /sys/class/drm/render*/device/device)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed "s/ /,/g") |"
-            var=$(python -c "import torch; print(torch.version.xpu)")
+            var="[$(cat /sys/class/drm/render*/device/vendor || true)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed 's/ /,/g') |"
+            var="[$(cat /sys/class/drm/render*/device/device || true)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed 's/ /,/g') |"
+            var=$(python -c "import torch; print(torch.version.xpu)" || true)
             echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
-            var=$(python -c "import torch; print(torch.xpu.device_count())")
+            var=$(python -c "import torch; print(torch.xpu.device_count())" || true)
             echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
             # printing annotations with key environment variables
             echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
