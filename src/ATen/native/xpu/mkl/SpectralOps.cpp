@@ -102,10 +102,10 @@ void _mkl_dft(
       {(long)(workspaceSizeBytes / sizeof(double))},
       input.options().dtype(at::kDouble),
       c10::nullopt);
-  desc.set_workspace((double*)workspaceBuf.data_ptr());
+  desc.set_workspace((double*)workspaceBuf.mutable_data_ptr());
 
-  auto in_data = (scalar_t*)input.data_ptr();
-  auto out_data = (scalar_t*)output.data_ptr();
+  auto in_data = (scalar_t*)input.const_data_ptr();
+  auto out_data = (scalar_t*)output.mutable_data_ptr();
 
   sycl::event event;
   if (!inverse) {
