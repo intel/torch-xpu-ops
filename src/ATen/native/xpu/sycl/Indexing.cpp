@@ -207,7 +207,7 @@ void index_select_kernel(
         }),
         AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
-	AT_EXPAND(AT_FLOAT8_TYPES),
+        AT_EXPAND(AT_FLOAT8_TYPES),
         kComplexHalf,
         kHalf,
         kBool,
@@ -1081,7 +1081,8 @@ void take_kernel(TensorIterator& iter, const TensorBase& input) {
             canUse32BitIndexMath(input) ? ScalarType::Int : ScalarType::Long,
             "take_xpu_index",
             [&] {
-              const scalar_t* indexed_ptr = input.template const_data_ptr<scalar_t>();
+              const scalar_t* indexed_ptr =
+                  input.template const_data_ptr<scalar_t>();
               TakeFunctor<scalar_t, index_t> f(indexed_ptr);
               take_put_kernel_template<scalar_t, index_t>(iter, input, f);
             });
@@ -1114,6 +1115,14 @@ void put_kernel(
     TensorIterator& iter,
     const TensorBase& output,
     const bool accumulate) {
+  // Nondeterministic when index contains duplicate entries and we do not
+  // accumulate If we accumulate on GPU, we use atomicGPUAdd, which is
+  // non-deterministic
+  if (!accumulate ||
+      (accumulate && iter.tensor(1).device().type() == DeviceType::XPU)) {
+    at::globalContext().alertNotDeterministic("put_");
+  }
+
   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
