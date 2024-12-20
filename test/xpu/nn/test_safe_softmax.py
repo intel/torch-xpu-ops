@@ -18,3 +18,27 @@ class TestSafeSoftMax(TestCase):
             r_cpu = torch.ops.aten._safe_softmax(x_cpu, -1)
             r_xpu = torch.ops.aten._safe_softmax(x_xpu, -1)
             self.assertEqual(r_xpu.to(cpu_device), r_cpu)
+
+            x_cpu = torch.randn(128,128,128).to(dtype)
+            x_xpu = x_cpu.to(xpu_device)
+            r_cpu = torch.ops.aten._safe_softmax(x_cpu, 1)
+            r_xpu = torch.ops.aten._safe_softmax(x_xpu, 1)
+            self.assertEqual(r_xpu.to(cpu_device), r_cpu)
+            x_cpu[0,:,0] = -float("inf")
+            x_xpu = x_cpu.to(xpu_device)
+            r_cpu = torch.ops.aten._safe_softmax(x_cpu, 1)
+            r_xpu = torch.ops.aten._safe_softmax(x_xpu, 1)
+            self.assertEqual(r_xpu.to(cpu_device), r_cpu)
+
+            x_cpu = torch.randn(128,128,128).to(dtype)
+            x_xpu = x_cpu.to(xpu_device)
+            r_cpu = torch.ops.aten._safe_softmax(x_cpu, 0)
+            r_xpu = torch.ops.aten._safe_softmax(x_xpu, 0)
+            self.assertEqual(r_xpu.to(cpu_device), r_cpu)
+            x_cpu[:,0,0] = -float("inf")
+            x_xpu = x_cpu.to(xpu_device)
+            r_cpu = torch.ops.aten._safe_softmax(x_cpu, 0)
+            r_xpu = torch.ops.aten._safe_softmax(x_xpu, 0)
+            self.assertEqual(r_xpu.to(cpu_device), r_cpu)
+
+

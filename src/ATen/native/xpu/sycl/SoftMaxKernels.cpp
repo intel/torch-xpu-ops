@@ -470,7 +470,6 @@ bool dispatch_softmax_forward_kernel(
         DummyFunctor,
         vec_t,
         is_safe_softmax>;
-
     int sub_group_num, global_size_row, local_size_row, range, local_size;
     int max_group_size =
         get_wgroup_size<SIMD, vec_size, outer_loop, KernelClass>(
@@ -762,7 +761,7 @@ struct SpatialSoftmaxForwardKernelFunctor
                 static_cast<scalar_t>(in_val[j] - max_value[j] - sum_value[j]);
           else if (
               is_safe_softmax &&
-              max_value[j] == std::numeric_limits<accscalar_t>::lowest())
+              max_value[j] == -std::numeric_limits<scalar_t>::infinity())
             in_val[j] = static_cast<scalar_t>(0);
           else
             in_val[j] = static_cast<scalar_t>(
@@ -858,7 +857,6 @@ void spatial_softmax_forward(
       local_size,
       block_row,
       group_num);
-
   auto& queue = getCurrentSYCLQueue();
   sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
