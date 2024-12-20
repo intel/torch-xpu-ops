@@ -1439,8 +1439,10 @@ else:
         res = module(input)
         grad = torch.ones_like(res)
 
-        self.check_device_nondeterministic_alert(grad, 'avg_pool3d_backward')
-
+        self.check_nondeterministic_alert(
+            lambda: res.backward(grad, retain_graph=True),
+            'avg_pool3d_backward_' + torch.device(device).type,
+            torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu')
 
     @skipIfMPS
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
@@ -1478,7 +1480,7 @@ else:
 
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
-            'max_pool3d_with_indices_backward' + torch.device(device).type,
+            'max_pool3d_with_indices_backward_' + torch.device(device).type,
             torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu')
 
     @skipIfMPS
@@ -1770,10 +1772,9 @@ else:
         input = torch.randn(2, 3, 5, 5, device=device)
         target = torch.rand(2, 5, 5, device=device).mul(3).floor().long()
 
-
         self.check_nondeterministic_alert(
             lambda: module(input, target),
-            'nll_loss2d_forward_out_' + torch.device(device).type + '_template',
+            'nll_loss2d_forward_' + torch.device(device).type,
             torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu')
 
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
@@ -1788,7 +1789,7 @@ else:
 
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
-            'ctc_loss_backward_gpu',
+            'ctc_loss_backward_' + torch.device(device).type,
             torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu')
 
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")

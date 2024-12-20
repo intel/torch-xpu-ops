@@ -3098,6 +3098,29 @@
   dispatch:
     CompositeExplicitAutograd: _foreach_copy
 
+- func: _foreach_max(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_max_slow
+    XPU: foreach_tensor_max_xpu
+  autogen: _foreach_max.out
+
+- func: _foreach_rsqrt(Tensor[] self) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_rsqrt_slow
+    XPU: foreach_tensor_rsqrt_xpu
+
+- func: _foreach_rsqrt_(Tensor(a!)[] self) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_rsqrt_slow_
+    XPU: foreach_tensor_rsqrt_xpu_
+  autogen: _foreach_rsqrt.out
+
 - func: kthvalue(Tensor self, int k, int dim=-1, bool keepdim=False) -> (Tensor values, Tensor indices)
   variants: function, method
   dispatch:
@@ -3425,6 +3448,11 @@
   autogen: _adaptive_avg_pool2d_backward.out
   tags: core
 
+- func: quantized_max_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, int[2] dilation=1, bool ceil_mode=False) -> Tensor
+  dispatch:
+    XPU: quantized_max_pool2d_xpu
+  autogen: quantized_max_pool2d.out
+
 - func: embedding_dense_backward(Tensor grad_output, Tensor indices, SymInt num_weights, SymInt padding_idx, bool scale_grad_by_freq) -> Tensor
   dispatch:
     XPU: embedding_dense_backward_xpu
@@ -3691,6 +3719,22 @@
   dispatch:
     XPU: foreach_tensor_lerp_list_xpu_
   autogen: _foreach_lerp.Scalar_out
+
+- func: _foreach_lerp.ScalarList(Tensor[] self, Tensor[] tensors1, Scalar[] weight) -> Tensor[]
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensors are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lerp_scalarlist_kernel_slow
+    XPU: foreach_tensor_lerp_scalarlist_xpu
+  autogen: _foreach_lerp.ScalarList_out
+
+- func: _foreach_lerp_.ScalarList(Tensor(a!)[] self, Tensor[] tensors1, Scalar[] weight) -> ()
+  device_check: NoCheck   # foreach kernels fall back to slow path when tensors are on different devices
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_lerp_scalarlist_kernel_slow_
+    XPU: foreach_tensor_lerp_scalarlist_xpu_
+  autogen: _foreach_lerp.ScalarList_out
 
 - func: acos(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -4728,6 +4772,26 @@
   python_module: nn
   structured_delegate: upsample_bicubic2d_backward.grad_input
 
+- func: _upsample_bicubic2d_aa.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: _upsample_bicubic2d_aa_out_xpu
+
+- func: _upsample_bicubic2d_aa(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bicubic2d_aa.out
+
+- func: _upsample_bicubic2d_aa_backward.grad_input(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: _upsample_bicubic2d_aa_backward_out_xpu
+
+- func: _upsample_bicubic2d_aa_backward(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bicubic2d_aa_backward.grad_input
+
 - func: upsample_bilinear2d.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
   structured: True
@@ -4747,6 +4811,26 @@
 - func: upsample_bilinear2d_backward(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: upsample_bilinear2d_backward.grad_input
+
+- func: _upsample_bilinear2d_aa.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: _upsample_bilinear2d_aa_out_xpu
+
+- func: _upsample_bilinear2d_aa(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bilinear2d_aa.out
+
+- func: _upsample_bilinear2d_aa_backward.grad_input(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    XPU: _upsample_bilinear2d_aa_backward_out_xpu
+
+- func: _upsample_bilinear2d_aa_backward(Tensor grad_output, SymInt[2] output_size, SymInt[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bilinear2d_aa_backward.grad_input
 
 - func: native_norm(Tensor self, Scalar p=2) -> Tensor
   dispatch:
@@ -5888,12 +5972,6 @@
   dispatch:
     XPU: native_multi_head_attention_xpu
   autogen: _native_multi_head_attention.out
-
-# This aten function is kept so that we can test the choice function from Python
-- func: _fused_sdp_choice(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, float dropout_p=0.0, bool is_causal=False, *, float? scale=None, bool enable_gqa=False) -> int
-  dispatch:
-    XPU: _fused_sdp_choice_xpu
-  tags: nondeterministic_seeded
 
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
   structured_delegate: argmin.out
@@ -7498,6 +7576,34 @@
   dispatch:
     XPU: ctc_loss_backward_tensor
 
+- func: lstm_cell(Tensor input, Tensor[] hx, Tensor w_ih, Tensor w_hh, Tensor? b_ih=None, Tensor? b_hh=None) -> (Tensor, Tensor)
+
+- func: gru_cell(Tensor input, Tensor hx, Tensor w_ih, Tensor w_hh, Tensor? b_ih=None, Tensor? b_hh=None) -> Tensor
+
+# Fused RNN kernels
+- func: _thnn_fused_lstm_cell(Tensor input_gates, Tensor hidden_gates, Tensor cx, Tensor? input_bias=None, Tensor? hidden_bias=None) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_lstm_cell_xpu
+  autogen: _thnn_fused_lstm_cell.out
+
+# NB: The composite version of this function below is a simple wrapper that duplicates some of the outputs
+#     It is necessary to avoid triggering TensorImpl use count checks in debug mode
+# NB: this is function is NOT differentiable
+- func: _thnn_fused_lstm_cell_backward_impl(Tensor? grad_hy, Tensor? grad_cy, Tensor cx, Tensor cy, Tensor workspace, bool has_bias) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_lstm_cell_backward_xpu
+  autogen: _thnn_fused_lstm_cell_backward_impl.out
+
+- func: _thnn_fused_gru_cell(Tensor input_gates, Tensor hidden_gates, Tensor hx, Tensor? input_bias=None, Tensor? hidden_bias=None) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_gru_cell_xpu
+  autogen: _thnn_fused_gru_cell.out
+
+- func: _thnn_fused_gru_cell_backward(Tensor grad_hy, Tensor workspace, bool has_bias) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_gru_cell_backward_xpu
+  autogen: _thnn_fused_gru_cell_backward.out
+
 - func: hardshrink.out(Tensor self, Scalar lambd=0.5, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
@@ -8110,17 +8216,18 @@
   variants: function
   tags: pointwise
 
-- func: rrelu_with_noise.out(Tensor self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None, *, Tensor(a!) out) -> Tensor(a!)
+- func: rrelu_with_noise.out(Tensor self, Tensor(b!) noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
   tags: nondeterministic_seeded
   dispatch:
     XPU: rrelu_with_noise_out_xpu
 
-- func: rrelu_with_noise(Tensor self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor
+- func: rrelu_with_noise(Tensor self, Tensor(b!) noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor
   python_module: nn
   dispatch:
     XPU: rrelu_with_noise_xpu
   tags: nondeterministic_seeded
+  autogen: rrelu_with_noise_functional
 
 - func: rrelu_with_noise_backward(Tensor grad_output, Tensor self, Tensor noise, Scalar lower, Scalar upper, bool training, bool self_is_result) -> Tensor
   python_module: nn
@@ -8128,7 +8235,7 @@
     CompositeExplicitAutograd: rrelu_with_noise_backward
   autogen: rrelu_with_noise_backward.out
 
-- func: rrelu_with_noise_(Tensor(a!) self, Tensor noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor(a!)
+- func: rrelu_with_noise_(Tensor(a!) self, Tensor(b!) noise, Scalar lower=0.125, Scalar upper=0.3333333333333333, bool training=False, Generator? generator=None) -> Tensor(a!)
   python_module: nn
   tags: nondeterministic_seeded
   dispatch:
