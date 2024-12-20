@@ -175,7 +175,7 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [1])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32])
+@parametrize("n", [32, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
@@ -233,8 +233,7 @@ def _int4_mm(self, device, m, k, n):
                 b_tmp, inner_k_tiles
             )
         elif self.device_type == 'xpu':
-            # b_int4pack = b_tmp.view(torch.int32)
-            b_int4pack = b_tmp
+            b_int4pack = b_tmp.view(torch.int32)
         else:
             b_int4pack = torch._convert_weight_to_int4pack(
                 b_tmp, inner_k_tiles
@@ -250,7 +249,7 @@ def _int4_mm(self, device, m, k, n):
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
         elif self.device_type == 'xpu':
-            self.assertTrue(b_int4pack.dtype is torch.int32 or b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dtype is torch.int32) # or b_int4pack.dtype is torch.uint8)
             self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm(
                 a, b_int4pack, q_group, b_scales_and_zeros
@@ -271,7 +270,6 @@ def _int4_mm(self, device, m, k, n):
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
     for dtype in [torch.bfloat16] + ([torch.float16, torch.float32] if device == "cpu" else [torch.float16] if "xpu" in device else []):
-    # for dtype in [torch.float16]:
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
         b_scales_and_zeros = b_scales_and_zeros_bf16.to(dtype=dtype)
