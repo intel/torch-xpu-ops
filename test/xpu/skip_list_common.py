@@ -976,33 +976,7 @@ skip_dict = {
         "test_memory_format_nn_AdaptiveAvgPool2d_xpu_float64",
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
-        "test_save_load_nn_GRU_eval_mode_xpu_float32",
-        "test_save_load_nn_GRUCell_xpu_float32",
-        "test_save_load_nn_GRU_train_mode_xpu_float32",
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "_LSTM_",
-        "_LSTMCell_",
-        # CPU fallback fails
-        # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
-        "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
-        "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
-        "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
-        "test_cpu_gpu_parity_nn_GRUCell_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float32",
-        "test_forward_nn_GRUCell_xpu_float32",
-        "test_forward_nn_GRU_eval_mode_xpu_float32",
-        "test_forward_nn_GRU_train_mode_xpu_float32",
-        "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float32",
-        "test_memory_format_nn_GRUCell_xpu_float32",
-        "test_memory_format_nn_GRU_eval_mode_xpu_float32",
-        "test_memory_format_nn_GRU_train_mode_xpu_float32",
-        "test_multiple_device_transfer_nn_GRUCell_xpu_float32",
-        "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float32",
-        "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
+        
         # AssertionError: False is not true
         "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",
@@ -1167,8 +1141,6 @@ skip_dict = {
         # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
         # https://github.com/intel/torch-xpu-ops/issues/1071
         "test_reentrant_parent_error_on_cpu_xpu",
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
 
     "test_reductions_xpu.py": (
