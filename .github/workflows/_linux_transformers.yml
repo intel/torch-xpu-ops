@@ -136,6 +136,16 @@ jobs:
           source activate huggingface_transformers_test
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE tests/benchmark || true
+      - name: Run tests/generation
+        env:
+          TEST_CASE: 'tests_generation'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * torch.distributed.* not yet supported by XPU
+          pattern="not TestFSDPGeneration"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/generation -k "$pattern" || true
       - name: Run tests/pipelines
         env:
           TEST_CASE: 'tests_pipelines'
