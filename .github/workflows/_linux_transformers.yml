@@ -129,6 +129,13 @@ jobs:
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE -k backbone tests || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Run tests/benchmark
+        env:
+          TEST_CASE: 'tests_benchmark'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/benchmark || true
       - name: Run tests/pipelines
         env:
           TEST_CASE: 'tests_pipelines'
@@ -204,24 +211,27 @@ jobs:
           cd transformers
           {
             echo "### Failure lines"
-            echo "| File | Error | Comment |"
-            echo "| --- | --- | --- |"
+            echo "| Test group |File | Error | Comment |"
+            echo "| --- | --- | --- | --- |"
             rm -rf _failures.txt
             for failure in $(find reports -name failures_line.txt); do
-              tail -n +2 $failure >> _failures.txt
+              # Each failure_line.txt is located in: reports/$test_group/failure_line.txt
+              test_group=$(echo $failure | cut -f2 -d/)
+              tail -n +2 $failure | sed "s/^/$test_group /" >> _failures.txt
             done
             # failures_line.txt file does not have test case information,
             # so we can just sort the output and report uniq values
             sort _failures.txt | uniq > _failures_uniq.txt
             while read line; do
-              file=$(echo $line | cut -f1 -d" " | sed "s/\(.*\):$/\1/")
-              error=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
+              test_group=$(echo $line | cut -f1 -d" ")
+              file=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
+              error=$(echo $line | cut -f3 -d" " | sed "s/\(.*\):$/\1/")
               # Failure comments often contain special characters which complicate
               # parsing failure lines. But fortunately we know for sure where comments
               # start. So we just output all contents starting from this position and
               # wrap everything in <pre></pre> to avoid collisions with Markdown formatting.
-              comment="<pre>$(echo $line | cut -f3- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
-              echo "| $file | $error | $comment |"
+              comment="<pre>$(echo $line | cut -f4- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
+              echo "| $test_group | $file | $error | $comment |"
             done <_failures_uniq.txt
           } >> $GITHUB_STEP_SUMMARY
       - name: Print annotations
