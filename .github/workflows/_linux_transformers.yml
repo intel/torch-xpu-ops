@@ -201,18 +201,19 @@ jobs:
           cd transformers
           {
             echo "### Results"
-            echo "| Test group | Errors | Failed | Passed | Skipped |"
-            echo "| --- | --- | --- | --- | --- |"
+            echo "| Test group | Errors | Failed | Deselected | Passed | Skipped |"
+            echo "| --- | --- | --- | --- | --- | --- |"
             for stat in $(find reports -name stats.txt); do
               # Each stat.txt is located in: reports/$test_group/stats.txt
               test_group=$(echo $stat | cut -f 2 -d/)
               # Get failed, passed, skipped, etc. counters
               failed=$(parse_stat $stat failed)
               passed=$(parse_stat $stat passed)
+              deselected=$(parse_stat $stat deselected)
               skipped=$(parse_stat $stat skipped)
               warnings=$(parse_stat $stat warnings)
               errors=$(parse_stat $stat errors)
-              echo "| $test_group | $errors | $failed | $passed | $skipped |"
+              echo "| $test_group | $errors | $failed | $deselected | $passed | $skipped |"
             done
           } >> $GITHUB_STEP_SUMMARY
       - name: Print failure lines
