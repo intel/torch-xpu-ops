@@ -153,6 +153,21 @@ jobs:
           # * torch.distributed.* not yet supported by XPU
           pattern="not TestFSDPGeneration"
           python3 -m pytest -rsf --make-reports=$TEST_CASE tests/generation -k "$pattern" || true
+      - name: Run tests/models
+        env:
+          TEST_CASE: 'tests_models'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * https://github.com/huggingface/transformers/issues/35252 (CUDA specific tests)
+          # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
+          pattern=" \
+            not test_model_parallelization and \
+            not test_model_parallel_equal_results and \
+            not test_resize_embeddings_untied and \
+            not test_resize_tokens_embeddings"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/models -k "$pattern" || true
       - name: Run tests/pipelines
         env:
           TEST_CASE: 'tests_pipelines'
