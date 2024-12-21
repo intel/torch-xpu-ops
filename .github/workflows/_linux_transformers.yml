@@ -129,6 +129,13 @@ jobs:
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE -k backbone tests || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Run tests/*.py
+        env:
+          TEST_CASE: 'tests_py'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/*.py || true
       - name: Run tests/benchmark
         env:
           TEST_CASE: 'tests_benchmark'
