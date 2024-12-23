@@ -107,8 +107,8 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone https://github.com/DDEle/pytorch
-          cd pytorch && git checkout onednn_graph_sdpa
+          git clone https://github.com/DDEle/pytorch pytorch
+          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
           pip install botocore
