@@ -92,6 +92,8 @@ jobs:
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
+      - name: Output Inputs
+        run: echo "${{ toJSON(github.event.inputs) }}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Conda ENV
