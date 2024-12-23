@@ -49,9 +49,9 @@ if((ONEMKL_INCLUDE_DIR STREQUAL "ONEMKL_INCLUDE_DIR-NOTFOUND")
 endif()
 
 if(WIN32)
-  set(MKL_LIB_NAMES "mkl_intel_lp64" "mkl_intel_thread" "mkl_core" "mkl_sycl")
+  set(MKL_LIB_NAMES "mkl_sycl" "mkl_intel_lp64" "mkl_intel_thread" "mkl_core")
 else()
-  set(MKL_LIB_NAMES "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core" "mkl_sycl_dft")
+  set(MKL_LIB_NAMES "mkl_sycl_dft" "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core")
 endif()
 
 foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
