@@ -127,6 +127,9 @@ jobs:
 
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             cd third_party
+            if [ -d torch-xpu-ops ]; then
+              rm -rf torch-xpu-ops
+            fi
             git clone https://github.com/intel/torch-xpu-ops.git
             cd torch-xpu-ops
             TORCH_XPU_OPS_COMMIT=$(<xpu.txt)
