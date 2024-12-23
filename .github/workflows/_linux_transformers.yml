@@ -50,6 +50,7 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
+      transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
       TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
     steps:
       - name: Checkout torch-xpu-ops
@@ -60,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: huggingface/transformers
-          ref: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
+          ref: ${{ env.transformers }}
           path: transformers
       - name: Prepare OS environment
         run: |
@@ -103,13 +104,12 @@ jobs:
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
-        id: installed
         run: |
           source activate huggingface_transformers_test
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "pip installed packages:"
           pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
+          echo "lspci gpu devices:"
+          lspci -d ::0380 | tee ${{ github.workspace }}/transformers/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
       - name: Sanitry check installed packages
@@ -120,11 +120,133 @@ jobs:
           pip show torch | grep Version | grep xpu
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
-      - name: Run XPU backbone
+          python -c 'import torch; exit(not torch.xpu.is_available())'
+      - name: Run -k backbone tests
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_benchmark -k backbone tests
+          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+      - name: Run tests/pipelines
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Some tests are known to fail w/o clear pattern
+          # TODO: drop ||true after triage and fixes
+          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines || true
+      - name: Run tests/trainer
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Some ray tests hang, reason unknown
+          # * torch.distributed.* not yet supported by XPU
+          pattern=" \
+            not ray and \
+            not TestTrainerDistributed and \
+            not TestTrainerDistributedXPU and \
+            not TestFSDPTrainer"
+          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
+      - name: Print results table
+        if: ${{ ! cancelled() }}
+        run: |
+          # Helper function to return number preceeding given pattern, i.e:
+          #   === 25 failed, 11 warnings, 0 errors ===
+          # Call as follows:
+          #   parse_stat $line "failed"
+          function parse_stat() {
+            stat=$(cat $1 | grep $2 | sed "s/.* \([0-9]*\) $2.*/\1/")
+            if [ -n "$stat" ]; then echo $stat; else echo "0"; fi
+          }
+          cd transformers
+          {
+            echo "### Results"
+            echo "| Test group | Errors | Failed | Passed | Skipped |"
+            echo "| --- | --- | --- | --- | --- |"
+            for stat in $(find reports -name stats.txt); do
+              # Each stat.txt is located in: reports/$test_group/stats.txt
+              test_group=$(echo $stat | cut -f 2 -d/)
+              # Get failed, passed, skipped, etc. counters
+              failed=$(parse_stat $stat failed)
+              passed=$(parse_stat $stat passed)
+              skipped=$(parse_stat $stat skipped)
+              warnings=$(parse_stat $stat warnings)
+              errors=$(parse_stat $stat errors)
+              echo "| $test_group | $errors | $failed | $passed | $skipped |"
+            done
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Print failure lines
+        if: ${{ ! cancelled() }}
+        run: |
+          cd transformers
+          {
+            echo "### Failure lines"
+            echo "| File | Error | Comment |"
+            echo "| --- | --- | --- |"
+            rm -rf _failures.txt
+            for failure in $(find reports -name failures_line.txt); do
+              tail -n +2 $failure >> _failures.txt
+            done
+            # failures_line.txt file does not have test case information,
+            # so we can just sort the output and report uniq values
+            sort _failures.txt | uniq > _failures_uniq.txt
+            while read line; do
+              file=$(echo $line | cut -f1 -d" " | sed "s/\(.*\):$/\1/")
+              error=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
+              # Failure comments often contain special characters which complicate
+              # parsing failure lines. But fortunately we know for sure where comments
+              # start. So we just output all contents starting from this position and
+              # wrap everything in <pre></pre> to avoid collisions with Markdown formatting.
+              comment="<pre>$(echo $line | cut -f3- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
+              echo "| $file | $error | $comment |"
+            done <_failures_uniq.txt
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Print annotations
+        if: ${{ ! cancelled() }}
+        run: |
+          source activate huggingface_transformers_test
+          {
+            echo "### Annotations"
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
+            echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
+            echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ') |"
+            packages=" \
+              level-zero \
+              libigc1 \
+              libigc2 \
+              libze1 \
+              libze-intel-gpu1 \
+              intel-i915-dkms \
+              intel-level-zero-gpu \
+              intel-opencl-icd"
+            for package in $packages; do
+              package_version=$(dpkg -l | grep $package | grep ii | head -1 | sed "s/  */ /g" | cut -f3 -d" ")
+              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+            done
+            packages="accelerate \
+              numpy \
+              torch \
+              torchaudio \
+              torchvision \
+              transformers"
+            for package in $packages; do
+              package_version=$(python -c "import $package; print($package.__version__)" || true)
+              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+            done
+            # printing annotations for GPU cards
+            var="[$(cat /sys/class/drm/render*/device/vendor || true)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed 's/ /,/g') |"
+            var="[$(cat /sys/class/drm/render*/device/device || true)]"
+            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed 's/ /,/g') |"
+            var=$(python -c "import torch; print(torch.version.xpu)" || true)
+            echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
+            var=$(python -c "import torch; print(torch.xpu.device_count())" || true)
+            echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
+            # printing annotations with key environment variables
+            echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
+            echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
+          } >> $GITHUB_STEP_SUMMARY
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
