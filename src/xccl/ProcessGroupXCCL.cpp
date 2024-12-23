@@ -359,7 +359,6 @@ void ProcessGroupXCCL::groupEnd() {
   --xcclActiveGroupCounter_;
 }
 
-// TODO: wait p2p enable
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
   if (coalescing_state_ & CoalP2P) {
@@ -1562,7 +1561,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
         static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
   }
 
-  // todo: use barrier instead of allreduce
   TORCH_CHECK_WITH(
       ValueError,
       barDevIdx >= 0,
