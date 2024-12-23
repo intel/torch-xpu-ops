@@ -80,7 +80,7 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [ shwde-mlp-arc03 ]
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: github.repository_owner == 'libohao1201'
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
