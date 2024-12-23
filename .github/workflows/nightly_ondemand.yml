@@ -128,6 +128,8 @@ jobs:
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             cd third_party
             if [ -d torch-xpu-ops ]; then
+              echo "torch-xpu-xps exists, remove it!"
+              echo "current path is: $(pwd)"
               rm -rf torch-xpu-ops
             fi
             git clone https://github.com/intel/torch-xpu-ops.git
