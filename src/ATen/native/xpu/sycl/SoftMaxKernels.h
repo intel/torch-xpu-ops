@@ -32,6 +32,9 @@ TORCH_XPU_API void _log_softmax_backward_kernel(
     bool half_to_float,
     const Tensor& grad_input);
 
+TORCH_XPU_API Tensor
+_safe_softmax_kernel(const Tensor& self, int64_t dim, const bool half_to_float);
+
 TORCH_XPU_API Tensor masked_softmax_kernel(
     const Tensor& input_,
     const Tensor& mask_,
