@@ -12,8 +12,7 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         # Fallback to CPU for XPU FP64
         "https://github.com/pytorch/pytorch/pull/126516",
         # Modify the tolerance level in TIMM benchmark
-        # "https://github.com/pytorch/pytorch/pull/129735",
-        "https://github.com/mengfei25/pytorch/pull/21",
+        "https://github.com/pytorch/pytorch/pull/143739",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
