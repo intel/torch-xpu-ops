@@ -145,7 +145,7 @@
   structured: True
   device_check: NoCheck   # TensorIterator
   dispatch:
-    XPU : cumsum_out
+    XPU: cumsum_out
 
 - func: cumprod(Tensor self, int dim, *, ScalarType? dtype=None) -> Tensor
   structured_delegate: cumprod.out
@@ -2161,7 +2161,7 @@
     CompositeExplicitAutograd: foreach_tensor_clamp_min_scalarlist_kernel_slow_
     XPU: foreach_tensor_clamp_min_scalarlist_kernel_xpu_
   autogen: _foreach_clamp_min.ScalarList_out
-  
+
 - func: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -2258,7 +2258,7 @@
     CompositeExplicitAutograd: foreach_tensor_sub_scalarlist_kernel_slow_
     XPU: foreach_tensor_sub_scalarlist_kernel_xpu_
   autogen: _foreach_sub.ScalarList_out
-  
+
 - func: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
@@ -7707,7 +7707,7 @@
   structured_inherits: TensorIteratorBase
   structured: True
   variants: function
-  tags: pointwise 
+  tags: pointwise
 
 - func: special_xlog1py(Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
