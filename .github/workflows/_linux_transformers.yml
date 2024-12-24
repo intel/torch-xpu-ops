@@ -112,6 +112,8 @@ jobs:
           lspci -d ::0380 | tee ${{ github.workspace }}/transformers/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
+          echo "xpu-smi output:"
+          xpu-smi discovery -y --json --dump -1
       - name: Sanitry check installed packages
         run: |
           source activate huggingface_transformers_test
