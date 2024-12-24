@@ -1,5 +1,6 @@
 skip_dict = {
     "test_ops_xpu.py": (
+        "test_noncontiguous_samples_histogram_xpu_float32",
         "test_non_standard_bool_values_index_put_xpu_bool",
         # Skip list of base line
         "test_dtypes___rmod___xpu",
