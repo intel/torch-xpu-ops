@@ -7572,6 +7572,34 @@
   dispatch:
     XPU: ctc_loss_backward_tensor
 
+- func: lstm_cell(Tensor input, Tensor[] hx, Tensor w_ih, Tensor w_hh, Tensor? b_ih=None, Tensor? b_hh=None) -> (Tensor, Tensor)
+
+- func: gru_cell(Tensor input, Tensor hx, Tensor w_ih, Tensor w_hh, Tensor? b_ih=None, Tensor? b_hh=None) -> Tensor
+
+# Fused RNN kernels
+- func: _thnn_fused_lstm_cell(Tensor input_gates, Tensor hidden_gates, Tensor cx, Tensor? input_bias=None, Tensor? hidden_bias=None) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_lstm_cell_xpu
+  autogen: _thnn_fused_lstm_cell.out
+
+# NB: The composite version of this function below is a simple wrapper that duplicates some of the outputs
+#     It is necessary to avoid triggering TensorImpl use count checks in debug mode
+# NB: this is function is NOT differentiable
+- func: _thnn_fused_lstm_cell_backward_impl(Tensor? grad_hy, Tensor? grad_cy, Tensor cx, Tensor cy, Tensor workspace, bool has_bias) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_lstm_cell_backward_xpu
+  autogen: _thnn_fused_lstm_cell_backward_impl.out
+
+- func: _thnn_fused_gru_cell(Tensor input_gates, Tensor hidden_gates, Tensor hx, Tensor? input_bias=None, Tensor? hidden_bias=None) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_gru_cell_xpu
+  autogen: _thnn_fused_gru_cell.out
+
+- func: _thnn_fused_gru_cell_backward(Tensor grad_hy, Tensor workspace, bool has_bias) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
+  dispatch:
+    XPU: _thnn_fused_gru_cell_backward_xpu
+  autogen: _thnn_fused_gru_cell_backward.out
+
 - func: hardshrink.out(Tensor self, Scalar lambd=0.5, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   structured_inherits: TensorIteratorBase
