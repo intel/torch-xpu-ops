@@ -24,6 +24,7 @@ jobs:
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/_linux_ut.yml
     with: 
+      pytorch: release/2.5
       ut: op_example,op_extended,op_ut
       runner: linux.idc.xpu
 
@@ -32,6 +33,7 @@ jobs:
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     uses: ./.github/workflows/_linux_ut.yml
     with: 
+      pytorch: release/2.5
       abi: 0
       ut: op_extended
       runner: linux.idc.xpu
@@ -57,7 +59,7 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b main https://github.com/pytorch/pytorch pytorch
+          git clone -b release/2.5 https://github.com/pytorch/pytorch pytorch
           cd pytorch
           # apply PRs for stock pytorch
           pip install requests

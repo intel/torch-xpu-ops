@@ -77,7 +77,7 @@ endif()
 
 # Function to write a test case to verify SYCL features.
 
-function(SYCL_CMPLR_TEST_WRITE src)
+function(SYCL_CMPLR_TEST_WRITE src macro_name)
 
   set(cpp_macro_if "#if")
   set(cpp_macro_endif "#endif")
@@ -88,8 +88,8 @@ function(SYCL_CMPLR_TEST_WRITE src)
 
   # Feature tests goes here
 
-  string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_if} defined(SYCL_LANGUAGE_VERSION)\n")
-  string(APPEND SYCL_CMPLR_TEST_CONTENT "cout << \"SYCL_LANGUAGE_VERSION=\"<<SYCL_LANGUAGE_VERSION<<endl;\n")
+  string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_if} defined(${macro_name})\n")
+  string(APPEND SYCL_CMPLR_TEST_CONTENT "cout << \"${macro_name}=\"<<${macro_name}<<endl;\n")
   string(APPEND SYCL_CMPLR_TEST_CONTENT "${cpp_macro_endif}\n")
 
   string(APPEND SYCL_CMPLR_TEST_CONTENT "return 0;}\n")
@@ -103,6 +103,7 @@ endfunction()
 function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
 
   set(SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS}")
+  string(REPLACE "-Wno-stringop-overflow" "" SYCL_CXX_FLAGS_LIST "${SYCL_CXX_FLAGS_LIST}")
   separate_arguments(SYCL_CXX_FLAGS_LIST)
 
   execute_process(
@@ -150,19 +151,19 @@ function(SYCL_CMPLR_TEST_RUN error TEST_EXE)
 
 endfunction()
 
-function(SYCL_CMPLR_TEST_EXTRACT test_output)
+function(SYCL_CMPLR_TEST_EXTRACT test_output macro_name)
 
   string(REGEX REPLACE "\n" ";" test_output_list "${test_output}")
 
-  set(SYCL_LANGUAGE_VERSION "")
+  set(${macro_name} "")
   foreach(strl ${test_output_list})
-     if(${strl} MATCHES "^SYCL_LANGUAGE_VERSION=([A-Za-z0-9_]+)$")
-       string(REGEX REPLACE "^SYCL_LANGUAGE_VERSION=" "" extracted_sycl_lang "${strl}")
-       set(SYCL_LANGUAGE_VERSION ${extracted_sycl_lang})
+     if(${strl} MATCHES "^${macro_name}=([A-Za-z0-9_]+)$")
+       string(REGEX REPLACE "^${macro_name}=" "" extracted_sycl_lang "${strl}")
+       set(${macro_name} ${extracted_sycl_lang})
      endif()
   endforeach()
 
-  set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" PARENT_SCOPE)
+  set(${macro_name} "${extracted_sycl_lang}" PARENT_SCOPE)
 endfunction()
 
 set(SYCL_FLAGS "")
@@ -189,7 +190,7 @@ if(${has_werror} EQUAL -1)
   # Create the test source file
   set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/sycl_features.cpp")
   set(TEST_EXE "${TEST_SRC_FILE}.exe")
-  SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE})
+  SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "SYCL_LANGUAGE_VERSION")
 
   # Build the test and create test executable
   SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
@@ -204,7 +205,7 @@ if(${has_werror} EQUAL -1)
   endif()
 
   # Extract test output for information
-  SYCL_CMPLR_TEST_EXTRACT(${test_output})
+  SYCL_CMPLR_TEST_EXTRACT(${test_output} "SYCL_LANGUAGE_VERSION")
 
   # As per specification, all the SYCL compatible compilers should
   # define macro  SYCL_LANGUAGE_VERSION
@@ -220,6 +221,39 @@ if(${has_werror} EQUAL -1)
   # Include in Cache
   set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
+
+# Create a clean working directory.
+set(SYCL_CMPLR_TEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/TESTSYCLCMPLR")
+file(REMOVE_RECURSE ${SYCL_CMPLR_TEST_DIR})
+file(MAKE_DIRECTORY ${SYCL_CMPLR_TEST_DIR})
+# Create the test source file
+set(TEST_SRC_FILE "${SYCL_CMPLR_TEST_DIR}/llvm_features.cpp")
+set(TEST_EXE "${TEST_SRC_FILE}.exe")
+SYCL_CMPLR_TEST_WRITE(${TEST_SRC_FILE} "__INTEL_LLVM_COMPILER")
+# Build the test and create test executable
+SYCL_CMPLR_TEST_BUILD(error ${TEST_SRC_FILE} ${TEST_EXE})
+if(error)
+  message(FATAL_ERROR "Can not build SYCL_CMPLR_TEST")
+endif()
+# Execute the test to extract information
+SYCL_CMPLR_TEST_RUN(error ${TEST_EXE})
+if(error)
+  message(FATAL_ERROR "Can not run SYCL_CMPLR_TEST")
+endif()
+# Extract test output for information
+SYCL_CMPLR_TEST_EXTRACT(${test_output} "__INTEL_LLVM_COMPILER")
+
+# Check whether the value of __INTEL_LLVM_COMPILER macro was successfully extracted
+string(COMPARE EQUAL "${__INTEL_LLVM_COMPILER}" "" nosycllang)
+if(nosycllang)
+  set(SYCLTOOLKIT_FOUND False)
+  set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
+  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
+endif()
+
+
+# Include in Cache
+set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")

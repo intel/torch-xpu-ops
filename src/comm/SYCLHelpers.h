@@ -50,10 +50,16 @@ static inline void sycl_kernel_submit(
     ::sycl::range<dim> range,
     ::sycl::queue q,
     ker_t ker) {
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::parallel_for<ker_t>(cgh, range, ker);
   };
   ::sycl::ext::oneapi::experimental::submit(q, cgf);
+#else
+  auto cgf = [&](::sycl::handler& cgh) { cgh.parallel_for<ker_t>(range, ker); };
+  q.submit(cgf);
+#endif
 }
 
 // Additional convention of SYCL kernel configuration. Besides construct kernel
@@ -80,12 +86,22 @@ sycl_kernel_submit(
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
         cgh, ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
   ::sycl::ext::oneapi::experimental::submit(q, cgf);
+#else
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), ker);
+  };
+  q.submit(cgf);
+#endif
 }
 
 template <typename ker_t, int dim>
@@ -97,11 +113,20 @@ sycl_kernel_submit(
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
         cgh, ::sycl::nd_range<dim>(global_range, local_range), ker);
   };
   ::sycl::ext::oneapi::experimental::submit(q, cgf);
+#else
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range), ker);
+  };
+  q.submit(cgf);
+#endif
 }
 
 template <typename ker_t>
@@ -113,6 +138,8 @@ sycl_kernel_submit(
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
@@ -122,6 +149,16 @@ sycl_kernel_submit(
         ker);
   };
   ::sycl::ext::oneapi::experimental::submit(q, cgf);
+#else
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        ker);
+  };
+  q.submit(cgf);
+#endif
 }
 
 template <typename ker_t>
@@ -133,6 +170,8 @@ sycl_kernel_submit(
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
+#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
+    __INTEL_LLVM_COMPILER_VERSION >= 20250000
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
         cgh,
@@ -141,4 +180,13 @@ sycl_kernel_submit(
         ker);
   };
   ::sycl::ext::oneapi::experimental::submit(q, cgf);
+#else
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        ker);
+  };
+  q.submit(cgf);
+#endif
 }
