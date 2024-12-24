@@ -122,18 +122,64 @@ jobs:
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run -k backbone tests
+        env:
+          TEST_CASE: 'tests_backbone'
         run: |
           source activate huggingface_transformers_test
           cd transformers
-          python3 -m pytest -rsf --make-reports=tests_backbone -k backbone tests
+          python3 -m pytest -rsf --make-reports=$TEST_CASE -k backbone tests || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Run tests/*.py
+        env:
+          TEST_CASE: 'tests_py'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/*.py || true
+      - name: Run tests/benchmark
+        env:
+          TEST_CASE: 'tests_benchmark'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/benchmark || true
+      - name: Run tests/generation
+        env:
+          TEST_CASE: 'tests_generation'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * torch.distributed.* not yet supported by XPU
+          pattern="not TestFSDPGeneration"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/generation -k "$pattern" || true
+      - name: Run tests/models
+        env:
+          TEST_CASE: 'tests_models'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * https://github.com/huggingface/transformers/issues/35252 (CUDA specific tests)
+          # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
+          pattern=" \
+            not test_model_parallelization and \
+            not test_model_parallel_equal_results and \
+            not test_resize_embeddings_untied and \
+            not test_resize_tokens_embeddings"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/models -k "$pattern" || true
       - name: Run tests/pipelines
+        env:
+          TEST_CASE: 'tests_pipelines'
         run: |
           source activate huggingface_transformers_test
           cd transformers
           # Some tests are known to fail w/o clear pattern
           # TODO: drop ||true after triage and fixes
-          python3 -m pytest -rsf --make-reports=tests_pipelines tests/pipelines || true
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/pipelines || true
       - name: Run tests/trainer
+        env:
+          TEST_CASE: 'tests_trainer'
         run: |
           source activate huggingface_transformers_test
           cd transformers
@@ -145,7 +191,24 @@ jobs:
             not TestTrainerDistributed and \
             not TestTrainerDistributedXPU and \
             not TestFSDPTrainer"
-          python3 -m pytest -rsf --make-reports=tests_trainer tests/trainer -k "$pattern"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/trainer -k "$pattern" || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Run tests/utils
+        env:
+          TEST_CASE: 'tests_utils'
+        run: |
+          source activate huggingface_transformers_test
+          cd transformers
+          # Excluding tests due to:
+          # * Network proxy connection issue, reason unknown
+          pattern="not test_load_img_url_timeout"
+          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/utils -k "$pattern" || \
+            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+      - name: Check for errors in tests
+        run: |
+          FAILED_CASES=$(echo $FAILED_CASES | sed 's/^,//')
+          echo "Failed cases: [$(echo $FAILED_CASES | sed 's/,/, /g')]"
+          test -z "$FAILED_CASES"
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |
@@ -160,18 +223,19 @@ jobs:
           cd transformers
           {
             echo "### Results"
-            echo "| Test group | Errors | Failed | Passed | Skipped |"
-            echo "| --- | --- | --- | --- | --- |"
+            echo "| Test group | Errors | Failed | Deselected | Passed | Skipped |"
+            echo "| --- | --- | --- | --- | --- | --- |"
             for stat in $(find reports -name stats.txt); do
               # Each stat.txt is located in: reports/$test_group/stats.txt
               test_group=$(echo $stat | cut -f 2 -d/)
               # Get failed, passed, skipped, etc. counters
               failed=$(parse_stat $stat failed)
               passed=$(parse_stat $stat passed)
+              deselected=$(parse_stat $stat deselected)
               skipped=$(parse_stat $stat skipped)
               warnings=$(parse_stat $stat warnings)
               errors=$(parse_stat $stat errors)
-              echo "| $test_group | $errors | $failed | $passed | $skipped |"
+              echo "| $test_group | $errors | $failed | $deselected | $passed | $skipped |"
             done
           } >> $GITHUB_STEP_SUMMARY
       - name: Print failure lines
@@ -180,24 +244,27 @@ jobs:
           cd transformers
           {
             echo "### Failure lines"
-            echo "| File | Error | Comment |"
-            echo "| --- | --- | --- |"
+            echo "| Test group |File | Error | Comment |"
+            echo "| --- | --- | --- | --- |"
             rm -rf _failures.txt
             for failure in $(find reports -name failures_line.txt); do
-              tail -n +2 $failure >> _failures.txt
+              # Each failure_line.txt is located in: reports/$test_group/failure_line.txt
+              test_group=$(echo $failure | cut -f2 -d/)
+              tail -n +2 $failure | sed "s/^/$test_group /" >> _failures.txt
             done
             # failures_line.txt file does not have test case information,
             # so we can just sort the output and report uniq values
             sort _failures.txt | uniq > _failures_uniq.txt
             while read line; do
-              file=$(echo $line | cut -f1 -d" " | sed "s/\(.*\):$/\1/")
-              error=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
+              test_group=$(echo $line | cut -f1 -d" ")
+              file=$(echo $line | cut -f2 -d" " | sed "s/\(.*\):$/\1/")
+              error=$(echo $line | cut -f3 -d" " | sed "s/\(.*\):$/\1/")
               # Failure comments often contain special characters which complicate
               # parsing failure lines. But fortunately we know for sure where comments
               # start. So we just output all contents starting from this position and
               # wrap everything in <pre></pre> to avoid collisions with Markdown formatting.
-              comment="<pre>$(echo $line | cut -f3- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
-              echo "| $file | $error | $comment |"
+              comment="<pre>$(echo $line | cut -f4- -d' ' | sed 's/\(.*\):$/\1/')</pre>"
+              echo "| $test_group | $file | $error | $comment |"
             done <_failures_uniq.txt
           } >> $GITHUB_STEP_SUMMARY
       - name: Print annotations
