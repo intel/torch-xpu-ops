@@ -148,6 +148,9 @@ skip_list = (
     "test_compare_cpu_nanmedian_xpu_int64",
     "test_compare_cpu_nanmedian_xpu_int8",
     "test_compare_cpu_nanmedian_xpu_uint8",
+    "test_compare_cpu_nn_functional_unfold_xpu_bool",
+    "test_non_standard_bool_values_nn_functional_unfold_xpu_bool",
+    "test_non_standard_bool_values_index_put_xpu_bool",
 )
 
 

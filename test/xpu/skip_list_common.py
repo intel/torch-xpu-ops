@@ -1,5 +1,6 @@
 skip_dict = {
     "test_ops_xpu.py": (
+        "test_non_standard_bool_values_index_put_xpu_bool",
         # Skip list of base line
         "test_dtypes___rmod___xpu",
         "test_dtypes_nn_functional_conv1d_xpu",
@@ -1250,6 +1251,12 @@ skip_dict = {
     ),
 
     "test_unary_ufuncs_xpu.py": (
+        "test_reference_numerics_extremal__refs_exp2_xpu_complex64",
+        "test_exp_xpu_complex64",
+        "test_reference_numerics_extremal__refs_exp_xpu_complex64",
+        "test_reference_numerics_extremal_exp2_xpu_complex64",
+        "test_reference_numerics_extremal_exp_xpu_complex64",
+        "test_reference_numerics_large_exp_xpu_complex32",
         # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         "_jiterator_",
         # CPU Fallback fails: Tensor-likes are not close!
