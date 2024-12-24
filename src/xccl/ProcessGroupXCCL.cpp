@@ -40,7 +40,7 @@ bool check_same_size(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
-void check_xpu_single_tensor(
+void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
 ) {
@@ -62,7 +62,7 @@ void check_xpu_single_tensor(
   }
 }
 
-int64_t check_xpu_tensors_same_device(const std::vector<at::Tensor>& tensors) {
+int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
   TORCH_CHECK_WITH(
       ValueError, tensors.size() != 0, "Tensor list must be nonempty");
 
@@ -109,7 +109,7 @@ ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
       // Map sum to max for bool tensors to avoid overflow issues with sum.
       return ccl::reduction::max;
     }
-    // WA due to oneCCL not support AVG
+    // Use SUM emu AVG due to oneCCL not support AVG
     if (reduceOp == ReduceOp::AVG) {
       return ccl::reduction::sum;
     }
@@ -453,7 +453,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -469,7 +469,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
     const AllreduceOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
-  check_xpu_single_tensor(tensor);
+  checkSingleTensor(tensor);
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA(
@@ -506,7 +506,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -520,7 +520,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
     std::vector<at::Tensor>& tensors,
     const AllreduceCoalescedOptions& opts) {
-  auto total_numel = check_xpu_tensors_same_device(tensors);
+  auto total_numel = checkTensorOnSameDevice(tensors);
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA(
@@ -557,7 +557,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -573,7 +573,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
     const BroadcastOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
-  check_xpu_single_tensor(tensor);
+  checkSingleTensor(tensor);
 
   // @lint-ignore CLANGTIDY
   RECORD_PARAM_COMMS_DATA(
@@ -675,7 +675,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
             root,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -693,7 +693,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
   TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto inputTensor = inputTensors.back();
-  check_xpu_single_tensor(inputTensor);
+  checkSingleTensor(inputTensor);
   // @lint-ignore CLANGTIDY
   std::vector<at::Tensor>& outputTensors_ = outputTensors.back();
 
@@ -772,8 +772,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
     at::Tensor& output_tensor,
     at::Tensor& input_tensor,
     const AllgatherOptions& opts) {
-  check_xpu_single_tensor(input_tensor);
-  check_xpu_single_tensor(output_tensor);
+  checkSingleTensor(input_tensor);
+  checkSingleTensor(output_tensor);
 
   TORCH_CHECK_WITH(
       TypeError,
@@ -856,7 +856,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
   TORCH_CHECK(outputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto outputTensor = outputTensors.back();
-  check_xpu_single_tensor(outputTensor);
+  checkSingleTensor(outputTensor);
   // @lint-ignore CLANGTIDY
   auto inputTensors_ = inputTensors.back();
 
@@ -900,7 +900,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               xcclReduceOp,
               comm,
               ccl::create_stream(stream.queue()));
-          // WA due to oneCCL not support AVG
+          // Use SUM emu AVG due to oneCCL not support AVG
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
             output.div_(divisor);
@@ -988,7 +988,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -1022,7 +1022,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
+        // Use SUM emu AVG due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
