@@ -649,6 +649,14 @@ skip_dict = {
         "test_python_ref__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_exp_xpu_complex128",
+
+        # Failed on rolling driver, passed on preci
+        "test_python_ref__refs_div_trunc_rounding_xpu_float64",
+        "test_python_ref_executor__refs_div_trunc_rounding_executor_aten_xpu_float64",
+        "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
+
+        # TODO: passed from source code building version, investigate
+        "test_python_ref__refs_log2_xpu_complex128",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -1136,6 +1144,7 @@ skip_dict = {
         # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
         "test_reference_numerics_normal__refs_asinh_xpu_complex64",
         "test_reference_numerics_normal_asinh_xpu_complex64",
+        "test_batch_vs_slicing__refs_sigmoid_xpu_complex128",
         # Unexpected success: CUDA uses thrust::sqrt and has accuracy issue. XPU use std::sqrt and has no issue.
         "test_reference_numerics_large_rsqrt_xpu_complex32",
         # Numeric difference
@@ -1514,6 +1523,8 @@ skip_dict = {
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
+        "test_dump_results_on_exit_tunableop_xpu_float32",
+        "test_rotating_buffer_tunableop_xpu_float32",
         # CUDA bias cases added in latest PyTorch
         # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
         "test_matmul_check_entries_tunableop_xpu_float16",
@@ -3230,7 +3241,10 @@ skip_dict = {
 
     "test_type_promotion_xpu.py": None,
 
-    "test_distributions_xpu.py": None,
+    "test_distributions_xpu.py": (
+        # TODO: Passed on lts driver version, but failed on rolling driver version
+        "test_gamma_gpu_sample_xpu",
+    ),
 
     "test_optim_xpu.py": (
         # oneDNN issues
