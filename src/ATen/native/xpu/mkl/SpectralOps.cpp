@@ -398,5 +398,61 @@ Tensor& _fft_c2c_mkl_out(
       out, result, normalization, result.sizes(), dim);
 }
 
+Tensor _fft_c2r_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto input = self;
+
+  auto in_sizes = input.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c_mkl(
+        self,
+        c2c_dims,
+        static_cast<int64_t>(fft_norm_mode::none),
+        /*forward=*/false);
+    //dim = dim.slice(dim.size() - 1);
+  }
+
+  // auto in_sizes = input.sizes();
+  // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  // out_sizes[dim.back()] = last_dim_size;
+
+  auto out = at::empty(
+      out_sizes,
+      self.options().dtype(c10::toRealValueType(self.scalar_type())));
+
+  impl::_exec_fft(
+      out,
+      input,
+      out_sizes,
+      dim.back(),//dim,
+      /*onesided=*/true,
+      /*forward=*/false);
+
+  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+}
+
+Tensor& _fft_c2r_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size,
+    Tensor& out) {
+  auto result = _fft_c2c_mkl(
+      self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
+  at::native::resize_output(out, result.sizes());
+  return impl::_fft_apply_normalization_out(out, result, normalization, result.sizes(), dim);
+}
+
 } // namespace at::native::xpu
 #endif // USE_ONEMKL
