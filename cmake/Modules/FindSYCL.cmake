@@ -215,10 +215,17 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
   set(SYCL_flags "")
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
 
+  set(library_name)
+  if(${sycl_target} STREQUAL "xpu_ops_kernels")
+    set(library_name torch_xpu_ops_sycl_kernels)
+  else()
+    set(library_name ${sycl_target})
+  endif()
+  
   set(SYCL_include_dirs "${SYCL_INCLUDE_DIR}")
-  list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${sycl_target},INCLUDE_DIRECTORIES>")
+  list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${library_name},INCLUDE_DIRECTORIES>")
 
-  set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
+  set(SYCL_compile_definitions "$<TARGET_PROPERTY:${library_name},COMPILE_DEFINITIONS>")
 
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
@@ -264,7 +271,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       get_filename_component( basename ${file} NAME )
       set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
-      set(generated_file_basename "${sycl_target}_generated_${basename}${generated_extension}")
+      set(generated_file_basename "${sycl_target}_gen_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
       set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
       set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
@@ -434,6 +441,16 @@ macro(SYCL_ADD_LIBRARY sycl_target)
     ${ARGN})
 
   SYCL_BUILD_SHARED_LIBRARY(_sycl_shared_flag ${ARGN})
+  
+  # For one library, in which case the sycl_target should be shorter to fit the 
+  # character limit of Windows batch files, and the library_name is set to be 
+  # more recognizable.
+  set(library_name)
+  if(${sycl_target} STREQUAL "xpu_ops_kernels")
+    set(library_name torch_xpu_ops_sycl_kernels)
+  else()
+    set(library_name ${sycl_target})
+  endif()
 
   if(_sycl_sources)
     # Compile sycl sources
@@ -455,24 +472,24 @@ macro(SYCL_ADD_LIBRARY sycl_target)
       ${${sycl_target}_sycl_objects})
 
     add_library(
-      ${sycl_target}
+      ${library_name}
       ${_cmake_options}
       ${_cxx_sources}
       ${${sycl_target}_sycl_objects}
       ${device_object})
   else()
     add_library(
-      ${sycl_target}
+      ${library_name}
       ${_cmake_options}
       ${_cxx_sources})
   endif()
 
   target_link_libraries(
-    ${sycl_target}
+    ${library_name}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
     ${SYCL_LIBRARY})
 
-  set_target_properties(${sycl_target}
+  set_target_properties(${library_name}
     PROPERTIES
     LINKER_LANGUAGE ${SYCL_C_OR_CXX})
 
