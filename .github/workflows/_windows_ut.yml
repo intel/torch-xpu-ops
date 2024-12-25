@@ -75,10 +75,15 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
+          echo "1111111111111"
           cd ../torch-xpu-ops
+          echo "2222222222222"
           git rev-parse HEAD >> commit.txt
-          for /F %i in ('type commit.txt') do ( set commit=%i)
+          echo "3333333333333"
+          for /F %%i in ('type commit.txt') do ( set commit=%%i)
+          echo "4444444444444"
           echo %commit%
+          echo "555555555555"
           cd ../pytorch
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
