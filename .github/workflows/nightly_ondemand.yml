@@ -108,7 +108,11 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          if [ -d $(dirname ${CONDA_EXE})/../envs/e2e_ci ]; then
+            echo "e2e_ci exists, remove it!"
+            conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          fi
+          
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
           pip install --pre torch==2.6.0.dev20241202+xpu torchvision==0.20.0.dev20241202+xpu torchaudio==2.5.0.dev20241202+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
