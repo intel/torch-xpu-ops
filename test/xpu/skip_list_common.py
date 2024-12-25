@@ -649,6 +649,14 @@ skip_dict = {
         "test_python_ref__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_square_xpu_complex64",
         "test_python_ref_torch_fallback__refs_exp_xpu_complex128",
+
+        # Failed on rolling driver, passed on preci
+        "test_python_ref__refs_div_trunc_rounding_xpu_float64",
+        "test_python_ref_executor__refs_div_trunc_rounding_executor_aten_xpu_float64",
+        "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
+
+        # TODO: passed from source code building version, investigate
+        "test_python_ref__refs_log2_xpu_complex128",
     ),
 
     "test_binary_ufuncs_xpu.py": (
@@ -939,38 +947,6 @@ skip_dict = {
         # CPU fallback fails
         # RuntimeError: view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
         
-        # aten::_thnn_fused_gru_cell not support XPU backend
-        "test_save_load_nn_GRU_eval_mode_xpu_float32",
-        "test_save_load_nn_GRUCell_xpu_float32",
-        "test_save_load_nn_GRU_train_mode_xpu_float32",
-        
-        # aten::_thnn_fused_lstm_cell not support XPU backend
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "_LSTM_",
-        "_LSTMCell_",
-
-        # aten::_thnn_fused_gru_cell not support XPU backend
-        # CPU fallback fails
-        # Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend.
-        "test_to_nn_GRUCell_swap_True_set_grad_False_xpu_float32",
-        "test_to_nn_GRU_eval_mode_swap_True_set_grad_False_xpu_float32",
-        "test_to_nn_GRU_train_mode_swap_True_set_grad_False_xpu_float32 ",
-        "test_cpu_gpu_parity_nn_GRUCell_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_eval_mode_xpu_float32",
-        "test_cpu_gpu_parity_nn_GRU_train_mode_xpu_float32",
-        "test_forward_nn_GRUCell_xpu_float32",
-        "test_forward_nn_GRU_eval_mode_xpu_float32",
-        "test_forward_nn_GRU_train_mode_xpu_float32",
-        "test_if_train_and_eval_modes_differ_nn_GRUCell_xpu_float32",
-        "test_memory_format_nn_GRUCell_xpu_float32",
-        "test_memory_format_nn_GRU_eval_mode_xpu_float32",
-        "test_memory_format_nn_GRU_train_mode_xpu_float32",
-        "test_multiple_device_transfer_nn_GRUCell_xpu_float32",
-        "test_multiple_device_transfer_nn_GRU_eval_mode_xpu_float32",
-        "test_multiple_device_transfer_nn_GRU_train_mode_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRUCell_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRU_eval_mode_xpu_float32",
-        "test_non_contiguous_tensors_nn_GRU_train_mode_xpu_float32",
         # AssertionError: False is not true
         "test_to_nn_BatchNorm1d_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_BatchNorm1d_train_mode_swap_True_set_grad_True_xpu_float32",
@@ -1118,8 +1094,6 @@ skip_dict = {
         # Sometimes, will raise AssertionError: "Simulate error" does not match "grad can be implicitly created only for scalar outputs"
         # https://github.com/intel/torch-xpu-ops/issues/1071
         "test_reentrant_parent_error_on_cpu_xpu",
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "test_rnn_backward_to_input_but_not_parameters_xpu",
     ),
 
     "test_reductions_xpu.py": (
@@ -1170,6 +1144,7 @@ skip_dict = {
         # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
         "test_reference_numerics_normal__refs_asinh_xpu_complex64",
         "test_reference_numerics_normal_asinh_xpu_complex64",
+        "test_batch_vs_slicing__refs_sigmoid_xpu_complex128",
         # Unexpected success: CUDA uses thrust::sqrt and has accuracy issue. XPU use std::sqrt and has no issue.
         "test_reference_numerics_large_rsqrt_xpu_complex32",
         # Numeric difference
@@ -1548,6 +1523,8 @@ skip_dict = {
         # XPU does not support tunable.
         "test_bmm_tunableop_rocm_xpu_float32",
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
+        "test_dump_results_on_exit_tunableop_xpu_float32",
+        "test_rotating_buffer_tunableop_xpu_float32",
         # CUDA bias cases added in latest PyTorch
         # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
         "test_matmul_check_entries_tunableop_xpu_float16",
@@ -3264,7 +3241,10 @@ skip_dict = {
 
     "test_type_promotion_xpu.py": None,
 
-    "test_distributions_xpu.py": None,
+    "test_distributions_xpu.py": (
+        # TODO: Passed on lts driver version, but failed on rolling driver version
+        "test_gamma_gpu_sample_xpu",
+    ),
 
     "test_optim_xpu.py": (
         # oneDNN issues
