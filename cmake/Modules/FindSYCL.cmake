@@ -215,17 +215,10 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
   set(SYCL_flags "")
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
 
-  set(library_name)
-  if(${sycl_target} STREQUAL "xpu_ops_kernels")
-    set(library_name torch_xpu_ops_sycl_kernels)
-  else()
-    set(library_name ${sycl_target})
-  endif()
-  
   set(SYCL_include_dirs "${SYCL_INCLUDE_DIR}")
-  list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${library_name},INCLUDE_DIRECTORIES>")
+  list(APPEND SYCL_include_dirs "$<TARGET_PROPERTY:${sycl_target},INCLUDE_DIRECTORIES>")
 
-  set(SYCL_compile_definitions "$<TARGET_PROPERTY:${library_name},COMPILE_DEFINITIONS>")
+  set(SYCL_compile_definitions "$<TARGET_PROPERTY:${sycl_target},COMPILE_DEFINITIONS>")
 
   SYCL_GET_SOURCES_AND_OPTIONS(
     _sycl_sources
@@ -441,16 +434,6 @@ macro(SYCL_ADD_LIBRARY sycl_target)
     ${ARGN})
 
   SYCL_BUILD_SHARED_LIBRARY(_sycl_shared_flag ${ARGN})
-  
-  # For one library, in which case the sycl_target should be shorter to fit the 
-  # character limit of Windows batch files, and the library_name is set to be 
-  # more recognizable.
-  set(library_name)
-  if(${sycl_target} STREQUAL "xpu_ops_kernels")
-    set(library_name torch_xpu_ops_sycl_kernels)
-  else()
-    set(library_name ${sycl_target})
-  endif()
 
   if(_sycl_sources)
     # Compile sycl sources
@@ -472,24 +455,24 @@ macro(SYCL_ADD_LIBRARY sycl_target)
       ${${sycl_target}_sycl_objects})
 
     add_library(
-      ${library_name}
+      ${sycl_target}
       ${_cmake_options}
       ${_cxx_sources}
       ${${sycl_target}_sycl_objects}
       ${device_object})
   else()
     add_library(
-      ${library_name}
+      ${sycl_target}
       ${_cmake_options}
       ${_cxx_sources})
   endif()
 
   target_link_libraries(
-    ${library_name}
+    ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
     ${SYCL_LIBRARY})
 
-  set_target_properties(${library_name}
+  set_target_properties(${sycl_target}
     PROPERTIES
     LINKER_LANGUAGE ${SYCL_C_OR_CXX})
 
