@@ -109,7 +109,7 @@ jobs:
         run: |
           echo "current path is: $(pwd)"
           which conda && conda clean -ay
-          if [ -d $(dirname ${CONDA_EXE})/../envs/e2e_ci ]; then
+          if [ -d "$(dirname ${CONDA_EXE})/../envs/e2e_ci" ]; then
             echo "e2e_ci exists, remove it!"
             conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           fi
