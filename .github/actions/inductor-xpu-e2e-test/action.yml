@@ -125,15 +125,24 @@ runs:
               do
                 contains "accuracy,performance" $scenario
                 $contains_status
-                if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{print $1 - 1":"NR - 1}'))
-                  for xpu_id in ${xpu_list[*]}
-                  do
-                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
-                  done
+                # if [ "${MODEL_ONLY_NAME}" == "" ];then
+                #   xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{print $1 - 1":"NR - 1}'))
+                #   for xpu_id in ${xpu_list[*]}
+                #   do
+                #     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
+                #   done
+                # else
+                #   bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
+                # fi
+
+                if [ "${MODEL_ONLY_NAME}" == "" ];then       
+                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &  
                 else
                   bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
                 fi
+                
+
+
                 wait
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
