@@ -78,6 +78,7 @@ jobs:
           cd ../torch-xpu-ops
           git rev-parse HEAD >> commit.txt
           for /F %i in ('type commit.txt') do ( set commit=%i)
+          echo %commit%
           cd ../pytorch
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
@@ -96,6 +97,7 @@ jobs:
                 echo %str%>>third_party\xpu_tmp.txt
             )
             move third_party\xpu_tmp.txt third_party\xpu.txt
+            type third_party\xpu.txt
           )
       - name: Build Pytorch XPU
         shell: cmd
