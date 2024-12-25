@@ -132,14 +132,15 @@ jobs:
 
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             cd third_party
+            echo "current path is: $(pwd)"
             if [ -d torch-xpu-ops ]; then
               echo "torch-xpu-xps exists, remove it!"
-              echo "current path is: $(pwd)"
               rm -rf torch-xpu-ops
             fi
+            
             git clone https://github.com/intel/torch-xpu-ops.git
             cd torch-xpu-ops
-            TORCH_XPU_OPS_COMMIT=$(<xpu.txt)
+            TORCH_XPU_OPS_COMMIT=$(<${{ github.workspace }}/pytorch/third_party/xpu.txt)
             echo "==============> torch-xpu-ops pin commit is - $TORCH_XPU_OPS_COMMIT"
             git checkout $TORCH_XPU_OPS_COMMIT
           else
