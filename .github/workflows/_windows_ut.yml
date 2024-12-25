@@ -75,32 +75,23 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
-          echo "1111111111111"
           cd ../torch-xpu-ops
-          echo "2222222222222"
           git rev-parse HEAD >> commit.txt
-          echo "3333333333333"
           for /F %%i in ('type commit.txt') do ( set commit=%%i)
-          echo "4444444444444"
+          echo %commit% >> ..\pytorch\third_party\xpu_tmp.txt
           echo %commit%
-          echo "555555555555"
-          cd ../pytorch
+          type ..\pytorch\third_party\xpu_tmp.txt
+          cd ../pytorch 
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
             echo "Replace torch-xpu-ops!"
             cd third_party
             if exist "torch-xpu-ops" (
-              rmdir /s /q torch-xpu-ops 
+              rmdir /s /q torch-xpu-ops
             )
-            cd ..
             Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
-            for /f "delims=" %%i in (third_party\xpu.txt) do (
-                set str=%%i
-                echo %str%
-                set "str=%commit%"
-                echo %str%>>third_party\xpu_tmp.txt
-            )
+            cd ..
             move third_party\xpu_tmp.txt third_party\xpu.txt
             type third_party\xpu.txt
           )
