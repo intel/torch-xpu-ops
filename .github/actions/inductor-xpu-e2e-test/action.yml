@@ -99,7 +99,7 @@ runs:
         cd ../pytorch
 
         export https_proxy='http://child-ir.intel.com:912'
-        export http_proxy='http://child-ir.intel.com:912
+        export http_proxy='http://child-ir.intel.com:912'
 
         # check param
         function contains() {
