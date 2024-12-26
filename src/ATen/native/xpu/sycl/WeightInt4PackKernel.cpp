@@ -21,7 +21,6 @@ struct WeightToInt4PackKernelFunctor {
     vec_t output;
 #pragma unroll
     for (int i = 0; i < 4; i++) {
-      // output[i] = input[3 - i];
       output[i] = input[i];
     }
     *reinterpret_cast<vec_t*>(&weight_packed_[out_y * K_div_8 + out_x]) = output;
