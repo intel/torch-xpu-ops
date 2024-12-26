@@ -15,6 +15,7 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_log2_xpu_complex128",
         "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
         "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
+        "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
 
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
