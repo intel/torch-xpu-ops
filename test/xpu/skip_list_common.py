@@ -7,6 +7,7 @@ skip_dict = {
         "float8",
 
         # workarounds for the following tests
+        # https://github.com/intel/torch-xpu-ops/issues/1214
         "test_python_ref__refs_exp_xpu_complex128”,
         "test_python_ref__refs_sigmoid_xpu_complex128",
         "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
