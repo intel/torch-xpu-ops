@@ -2,6 +2,10 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
+        # XPU implementation doesn't claimn FP8 now
+        # https://github.com/intel/torch-xpu-ops/issues/461
+        "float8",
+
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
         "test_out_narrow_copy_xpu_float32", 
@@ -1301,6 +1305,9 @@ skip_dict = {
         # Compiler issue in handling tanh with real or imag inf.
         # https://github.com/intel/torch-xpu-ops/issues/184, https://jira.devtools.intel.com/browse/CMPLRLIBS-34974
         "test_reference_numerics_large__refs_tanh_xpu_complex32",
+
+        # AssertionError: Torch not compiled with CUDA enabled, case need an update
+        "test_nonzero_static_large_xpu",
     ),
 
     "test_masked_xpu.py": (
