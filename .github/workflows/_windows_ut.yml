@@ -75,13 +75,6 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
-          cd ../torch-xpu-ops
-          git rev-parse HEAD >> commit.txt
-          for /F %%i in ('type commit.txt') do ( set commit=%%i)
-          echo %commit% >> ..\pytorch\third_party\xpu_tmp.txt
-          echo %commit%
-          type ..\pytorch\third_party\xpu_tmp.txt
-          cd ../pytorch 
           if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
@@ -92,8 +85,7 @@ jobs:
             )
             cd ..
             Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
-            move third_party\xpu_tmp.txt third_party\xpu.txt
-            type third_party\xpu.txt
+            powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
           )
       - name: Build Pytorch XPU
         shell: cmd
