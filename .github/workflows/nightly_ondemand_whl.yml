@@ -53,11 +53,11 @@ permissions: read-all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
+    if: github.event_name == 'schedule' || ${{ inputs.ut }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
@@ -108,17 +108,18 @@ jobs:
           source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          source .github/scripts/env.sh
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           pip install -r requirements.txt
-          echo "TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
@@ -127,7 +128,6 @@ jobs:
         id: pinned
         run: |
           source activate e2e_ci
-          source .github/scripts/env.sh
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -138,7 +138,7 @@ jobs:
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(pip list |grep cmplr |head -n 1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
