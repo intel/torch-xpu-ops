@@ -86,8 +86,7 @@ sycl_kernel_submit(
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
-#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
-    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS == 1
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
@@ -113,8 +112,7 @@ sycl_kernel_submit(
     ::sycl::range<dim> local_range,
     ::sycl::queue q,
     ker_t ker) {
-#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
-    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS == 1
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
         cgh, ::sycl::nd_range<dim>(global_range, local_range), ker);
@@ -138,8 +136,7 @@ sycl_kernel_submit(
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
-#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
-    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS == 1
   auto cgf = [&](::sycl::handler& cgh) {
     ker.sycl_ker_config_convention(cgh);
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
@@ -170,8 +167,7 @@ sycl_kernel_submit(
     int64_t local_range,
     ::sycl::queue q,
     ker_t ker) {
-#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
-    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS == 1
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::nd_launch<ker_t>(
         cgh,
