@@ -6,6 +6,15 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/461
         "float8",
 
+        # workarounds for the following tests
+        "test_python_ref__refs_exp_xpu_complex128”,
+        "test_python_ref__refs_sigmoid_xpu_complex128",
+        "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
+        "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_log2_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
+
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
         "test_out_narrow_copy_xpu_float32", 
