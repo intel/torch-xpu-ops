@@ -90,8 +90,8 @@ jobs:
             if exist "torch-xpu-ops" (
               rmdir /s /q torch-xpu-ops
             )
-            Xcopy ..\..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
             cd ..
+            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
             move third_party\xpu_tmp.txt third_party\xpu.txt
             type third_party\xpu.txt
           )
