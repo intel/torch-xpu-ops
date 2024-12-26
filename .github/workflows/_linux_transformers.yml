@@ -51,6 +51,7 @@ jobs:
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.0' }}
+      PYTORCH_DEBUG_XPU_FALLBACK: '1'
       TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
     steps:
       - name: Checkout torch-xpu-ops
@@ -269,6 +270,32 @@ jobs:
               echo "| $test_group | $file | $error | $comment |"
             done <_failures_uniq.txt
           } >> $GITHUB_STEP_SUMMARY
+      - name: Print not implemented XPU backend ops
+        run: |
+          cd transformers
+          {
+            echo "### Not implemented ops"
+            echo "| Test group | Operator | Status |"
+            echo "| --- | --- | --- |"
+            rm -rf _ops.txt && touch _ops.txt
+            for log in $(find reports -name failures_line.txt); do
+              # Each failure_line.txt is located in: reports/$test_group/failure_line.txt
+              test_group=$(echo $log | cut -f2 -d/)
+              ops=$(grep NotImplementedError $log | grep "for the XPU device" | sed "s/.*The operator '\(.*\)' is not.*/\1/")
+              for op in $ops; do
+                echo "| $test_group | <pre>$op</pre> | not implemented |" >> _ops.txt
+              done
+            done
+            for log in $(find reports -name warnings.txt); do
+              # Each warnings.txt is located in: reports/$test_group/warnings.txt
+              test_group=$(echo $log | cut -f2 -d/)
+              ops=$(grep UserWarning $log | grep "on the XPU backend" | sed "s/.*The operator '\(.*\) on the XPU.*/\1/")
+              for op in $ops; do
+                echo "| $test_group | <pre>$op</pre> | fallback to CPU happens |" >> _ops.txt
+              done
+            done
+            sort _ops.txt | uniq
+          } >> $GITHUB_STEP_SUMMARY
       - name: Print annotations
         if: ${{ ! cancelled() }}
         run: |
@@ -315,6 +342,8 @@ jobs:
             # printing annotations with key environment variables
             echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
             echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
+            echo "| jobs.$GITHUB_JOB.env.PYTORCH_ENABLE_XPU_FALLBACK | $PYTORCH_ENABLE_XPU_FALLBACK |"
+            echo "| jobs.$GITHUB_JOB.env.PYTORCH_DEBUG_XPU_FALLBACK | $PYTORCH_DEBUG_XPU_FALLBACK |"
           } >> $GITHUB_STEP_SUMMARY
       - name: Upload Test log
         if: ${{ ! cancelled() }}
