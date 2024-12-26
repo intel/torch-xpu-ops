@@ -98,6 +98,9 @@ runs:
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
 
+        export https_proxy='http://child-ir.intel.com:912'
+        export http_proxy='http://child-ir.intel.com:912
+
         # check param
         function contains() {
             contains_status="echo 'Start $2 ...'"
