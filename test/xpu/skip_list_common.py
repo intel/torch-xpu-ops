@@ -2,6 +2,21 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
+        # XPU implementation doesn't claimn FP8 now
+        # https://github.com/intel/torch-xpu-ops/issues/461
+        "float8",
+
+        # workarounds for the following tests
+        # https://github.com/intel/torch-xpu-ops/issues/1214
+        "test_python_ref__refs_exp_xpu_complex128",
+        "test_python_ref__refs_sigmoid_xpu_complex128",
+        "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
+        "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_log2_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
+        "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
+
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
         "test_out_narrow_copy_xpu_float32", 
