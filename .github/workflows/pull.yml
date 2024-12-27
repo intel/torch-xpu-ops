@@ -90,7 +90,7 @@ jobs:
           cd ../pytorch
           echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
