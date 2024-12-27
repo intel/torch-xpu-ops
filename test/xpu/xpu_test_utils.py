@@ -405,6 +405,21 @@ _xpu_tolerance_override = {
 }
 
 
+ARC_DEVICE_MAPPING = [
+    "Intel(R) Arc(TM) Pro A60 Graphics",
+    "Intel(R) Arc(TM) A770 Graphics",
+    "Intel(R) Arc(TM) A750 Graphics",
+]
+MTL_DEVICE_MAPPING = [
+    "Intel(R) Arc(TM) Graphics",
+]
+
+
+def get_device_name():
+    dev = torch.xpu.get_device_name()
+    return "ARC" if dev in ARC_DEVICE_MAPPING else "MTL" if dev in MTL_DEVICE_MAPPING else "PVC"
+
+
 def get_wrapped_fn(fn):
     if hasattr(fn, "__wrapped__"):
         wrapped = fn.__wrapped__
