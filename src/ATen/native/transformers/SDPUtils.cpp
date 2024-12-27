@@ -4,6 +4,8 @@
 
 namespace sdp {
 
+using c10::array_of;
+
 bool check_all_tensors_on_device(sdp_params const& params, bool debug) {
   // Check that all tensors are on the GPU device
   // This should be handled by the stub dispatch, but whe call
