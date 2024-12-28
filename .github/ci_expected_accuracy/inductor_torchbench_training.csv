@@ -102,5 +102,5 @@ torch_multimodal_clip,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
 tts_angular,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 vgg16,pass,pass,pass,pass,pass
 vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
-yolov3,pass,pass,pass,pass,pass
+yolov3,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 hf_Roberta_base,pass,pass,pass,pass,pass
