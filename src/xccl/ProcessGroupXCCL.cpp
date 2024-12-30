@@ -31,7 +31,7 @@ const std::map<at::ScalarType, ccl::datatype> xcclDatatypes = {
     {at::kFloat8_e5m2fnuz, ccl::datatype::uint8},
 };
 
-bool check_same_size(const std::vector<at::Tensor>& input_tensors) {
+bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   for (const auto& input_tensor : input_tensors) {
     if (!input_tensors[0].is_same_size(input_tensor)) {
       return false;
@@ -109,7 +109,8 @@ ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
       // Map sum to max for bool tensors to avoid overflow issues with sum.
       return ccl::reduction::max;
     }
-    // Use SUM emu AVG due to oneCCL not support AVG
+    // Use SUM emu AVG due to oneCCL not support AVG.
+    // oneCCL is expected to support avg in basekit 2025.2 release.
     if (reduceOp == ReduceOp::AVG) {
       return ccl::reduction::sum;
     }
@@ -454,6 +455,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -507,6 +509,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -558,6 +561,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -676,6 +680,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -715,7 +720,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
       -1, // globalRankStride
       this->getSize()); // worldSize
 
-  bool same_size = check_same_size(outputTensors_);
+  bool same_size = checkSameSize(outputTensors_);
   if (same_size) {
     // Flatten a vector of tensors into a single, stacked tensor.
     at::Tensor outputFlattened = newLikeFlat(outputTensors_);
@@ -877,7 +882,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
       -1, // globalRankStride
       this->getSize()); // worldSize
 
-  bool same_size = check_same_size(inputTensors_);
+  bool same_size = checkSameSize(inputTensors_);
   if (same_size) {
     // Flatten a vector of tensors into a single, stacked tensor.
     at::Tensor inputFlattened = newLikeFlat(inputTensors_);
@@ -901,6 +906,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               comm,
               ccl::create_stream(stream.queue()));
           // Use SUM emu AVG due to oneCCL not support AVG
+          // oneCCL is expected to support avg in basekit 2025.2 release.
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
             output.div_(divisor);
@@ -989,6 +995,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
@@ -1023,6 +1030,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             comm,
             ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
+        // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
           output.div_(divisor);
