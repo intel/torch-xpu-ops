@@ -560,7 +560,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto tensor = tensors.back();
-  check_xpu_single_tensor(tensor, true);
+  checkSingleTensor(tensor, true);
 
   RECORD_PARAM_COMMS_DATA(
       static_cast<int>(
@@ -608,7 +608,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto tensor = tensors.back();
-  check_xpu_single_tensor(tensor, true);
+  checkSingleTensor(tensor, true);
 
   RECORD_PARAM_COMMS_DATA(
       static_cast<int>(
@@ -1097,7 +1097,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
     const ReduceOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
-  check_xpu_single_tensor(tensor);
+  checkSingleTensor(tensor);
 
   RECORD_PARAM_COMMS_DATA(
       static_cast<int>(
@@ -1584,8 +1584,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
     std::vector<int64_t>& outputSplitSizes,
     std::vector<int64_t>& inputSplitSizes,
     const AllToAllOptions& /* unused */) {
-  check_xpu_single_tensor(outputTensor, true);
-  check_xpu_single_tensor(inputTensor, true);
+  checkSingleTensor(outputTensor, true);
+  checkSingleTensor(inputTensor, true);
   if (outputSplitSizes.size() == 0 && inputSplitSizes.size() == 0) {
     RECORD_PARAM_COMMS_DATA(
         static_cast<int>(
@@ -1702,8 +1702,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
   auto device = outputTensors[0].device();
   int64_t total_numel = 0;
   for (const auto r : c10::irange(outputTensors.size())) {
-    check_xpu_single_tensor(outputTensors[r], true);
-    check_xpu_single_tensor(inputTensors[r], true);
+    checkSingleTensor(outputTensors[r], true);
+    checkSingleTensor(inputTensors[r], true);
     TORCH_CHECK(
         device == outputTensors[r].device() &&
             device == inputTensors[r].device(),
