@@ -132,7 +132,7 @@ runs:
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
                   done
                 else
-                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
+                  ONEDNN_VERBOSE=1 bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
                 fi
                 wait
                 # summarize pass rate
