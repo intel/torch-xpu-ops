@@ -16,14 +16,14 @@ args = parser.parse_args()
 
 
 # load csv files
-test_data= pd.read_csv(args.csv_file)
+test_data= pd.read_csv(args.csv_file, comment='#')
 # test_data = test_data.reset_index()  # make sure indexes pair with number of rows
 # test_data = test_data.sort_values(by=["name"], ascending=True)
 test_names = [row["name"] for index, row in test_data.iterrows()]
 
 current_path = pathlib.Path(__file__).parent.resolve()
 refer_file = str(current_path) + "/" + args.category + "_" + args.suite + "_" + args.mode + ".csv"
-refer_data= pd.read_csv(refer_file)
+refer_data= pd.read_csv(refer_file, comment='#')
 # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
 # refer_data = refer_data.sort_values(by=["name"], ascending=True)
 refer_names = [row["name"] for index, row in refer_data.iterrows()]
