@@ -1287,7 +1287,7 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
     } else {
       invstd =
           static_cast<stat_accscalar_t>(1) /
-          device_sqrt(
+          std::sqrt(
               static_cast<stat_accscalar_t>(var_or_invstd_[plane]) + epsilon_);
     }
 
@@ -1459,7 +1459,7 @@ void batch_norm_elemt_template(
   auto output_ptr = (char*)output_reshaped.data_ptr();
   if (output_reshaped.is_contiguous() &&
       memory::can_vectorize_up_to<input_scalar_t>(output_ptr) >= 4 &&
-      sizeof(input_scalar_t) < sizeof(float)) {
+      sizeof(input_scalar_t) < sizeof(float) && input.size(2) % 4 == 0) {
     auto kfn = BatchNormTransformInputVectorizedKernelFunctor<
         4,
         input_scalar_t,
