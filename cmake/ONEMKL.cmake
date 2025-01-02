@@ -1,0 +1,11 @@
+find_package(ONEMKL)
+if(NOT ONEMKL_FOUND)
+  message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
+endif()
+
+set(TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR ${ONEMKL_INCLUDE_DIR})
+
+set(TORCH_XPU_OPS_ONEMKL_LIBRARIES ${ONEMKL_LIBRARIES})
+
+list(INSERT TORCH_XPU_OPS_ONEMKL_LIBRARIES 1 "-Wl,--start-group")
+list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--end-group")
