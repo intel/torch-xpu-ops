@@ -50,8 +50,7 @@ static inline void sycl_kernel_submit(
     ::sycl::range<dim> range,
     ::sycl::queue q,
     ker_t ker) {
-#if defined(__INTEL_LLVM_COMPILER_VERSION) && \
-    __INTEL_LLVM_COMPILER_VERSION >= 20250000
+#if SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS == 1
   auto cgf = [&](::sycl::handler& cgh) {
     ::sycl::ext::oneapi::experimental::parallel_for<ker_t>(cgh, range, ker);
   };
