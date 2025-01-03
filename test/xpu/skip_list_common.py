@@ -2411,6 +2411,20 @@ skip_dict = {
         # internally uses index_put deterministic implementation
         # dependent on "test_index_put_non_accumulate_deterministic"
         "test_index_copy_deterministic",
+
+        # scatter_add needs handle XPU deterministic
+        # https://github.com/intel/torch-xpu-ops/issues/906
+        "test_gather_backward_deterministic_path_xpu",
+        "test_scatter_add_one_dim_deterministic_xpu",
+
+        # Precision error
+        # Fail occasionally
+        # Mismatched elements: 1 / 60 (1.7%)
+        # Greatest absolute difference: 0.0625 at index (2, 1, 4) (up to 1e-05 allowed)
+        # Greatest relative difference: 0.001125335693359375 at index (2, 1, 4) (up to 0.001 allowed)
+        "test_index_reduce_reduce_mean_xpu_bfloat16",
+        "test_index_rSeduce_reduce_mean_xpu_float16",
+        "test_index_reduce_reduce_prod_xpu_float16",
     ),
 
     "nn/test_multihead_attention_xpu.py": (
