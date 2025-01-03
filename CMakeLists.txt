@@ -38,6 +38,12 @@ list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
+option(USE_XCCL "Build with XCCL support" ON)
+
+if(NOT WIN32 AND USE_XCCL)
+  include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
+endif()
+
 if(BUILD_TEST)
   add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/sycl ${CMAKE_BINARY_DIR}/test_sycl)
 endif()
