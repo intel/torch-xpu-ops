@@ -114,16 +114,16 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 else()
   sycl_add_library(
-    xpu-sycl
+    xpu_sycl
     STATIC
     CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
-  add_library(torch_xpu_ops ALIAS xpu-sycl)
-  set_target_properties(xpu-sycl PROPERTIES OUTPUT_NAME torch_xpu_ops)
-  set(SYCL_TARGET xpu-sycl)
+  add_library(torch_xpu_ops ALIAS xpu_sycl)
+  set_target_properties(xpu_sycl PROPERTIES OUTPUT_NAME torch_xpu_ops)
+  set(SYCL_TARGET xpu_sycl)
 
-  install(TARGETS xpu-sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu-sycl)
+  install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_sycl)
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
