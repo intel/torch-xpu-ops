@@ -65,4 +65,9 @@ TORCH_XPU_API void put_kernel(
 
 TORCH_XPU_API void take_kernel(TensorIterator& iter, const TensorBase& input);
 
+TORCH_XPU_API Tensor index_select_sparse_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index);
+
 } // namespace at::native::xpu
