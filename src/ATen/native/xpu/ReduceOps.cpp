@@ -14,10 +14,10 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMaxValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
-#include <ATen/native/xpu/sycl/ScanKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
@@ -289,6 +289,31 @@ std::tuple<Tensor, Tensor> std_mean_xpu(
   Tensor result2 = at::empty({0}, self.options());
   return std_var_mean_out(
       "std_mean", result1, result2, self, dim, correction, keepdim, true);
+}
+
+void cummax_helper_xpu(
+    const Tensor& self,
+    Tensor& values,
+    Tensor& indices,
+    int64_t dim) {
+  at::native::xpu::cummax_kernel(self, values, indices, dim);
+}
+
+void cummin_helper_xpu(
+    const Tensor& self,
+    Tensor& values,
+    Tensor& indices,
+    int64_t dim) {
+  at::native::xpu::cummin_kernel(self, values, indices, dim);
+}
+
+Tensor& _logcumsumexp_out_xpu(const Tensor& self, int64_t dim, Tensor& result) {
+  return at::native::xpu::logcumsumexp_kernel(self, dim, result);
+}
+
+Tensor _logcumsumexp_xpu(const Tensor& self, int64_t dim) {
+  Tensor result = at::empty_like(self, MemoryFormat::Contiguous);
+  return _logcumsumexp_out_xpu(self, dim, result);
 }
 
 void aminmax_impl(

@@ -745,3 +745,5 @@ supported:
   - put_
   - take
   - take.out
+  - segment_reduce
+  - _segment_reduce_backward

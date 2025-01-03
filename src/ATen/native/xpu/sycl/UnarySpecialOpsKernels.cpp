@@ -306,4 +306,26 @@ void erfcx_kernel(TensorIteratorBase& iter) {
   });
 }
 
+template <typename scalar_t>
+struct SincFunctor {
+  scalar_t operator()(scalar_t a) const {
+    if (a == scalar_t(0)) {
+      return scalar_t(1);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      opmath_t product = c10::detail::pi<opmath_t>() * opmath_t{a};
+      return static_cast<scalar_t>(std::sin(product) / product);
+    }
+  }
+};
+
+void sinc_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      iter.common_dtype(),
+      "sinc_xpu",
+      [&]() { gpu_kernel(iter, SincFunctor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu

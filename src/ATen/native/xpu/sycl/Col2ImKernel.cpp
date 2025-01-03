@@ -236,7 +236,7 @@ void col2im_kernel(
           output_n = output.select(0, elt);
 
           col2im_kernel<scalar_t>(
-              input_n.data_ptr<scalar_t>(),
+              input_n.const_data_ptr<scalar_t>(),
               n_output_plane,
               output_height,
               output_width,

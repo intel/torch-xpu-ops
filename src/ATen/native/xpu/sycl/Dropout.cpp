@@ -107,7 +107,7 @@ struct FusedDropoutVecFunctor {
     }
   }
   FusedDropoutVecFunctor(
-      TensorInfo<scalar_t, IndexType> a,
+      TensorInfo<const scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
@@ -121,7 +121,7 @@ struct FusedDropoutVecFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<scalar_t, IndexType> a_;
+  TensorInfo<const scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
@@ -165,7 +165,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<scalar_t, IndexType>::get(li, a_);
+              IndexToOffset<const scalar_t, IndexType>::get(li, a_);
           src[ii] = a_.data[aOffset];
         }
       }
@@ -182,7 +182,7 @@ struct FusedDropoutUnrollFunctor {
     }
   }
   FusedDropoutUnrollFunctor(
-      TensorInfo<scalar_t, IndexType> a,
+      TensorInfo<const scalar_t, IndexType> a,
       TensorInfo<scalar_t, IndexType> b,
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
@@ -196,7 +196,7 @@ struct FusedDropoutUnrollFunctor {
         philox_args_(philox_args) {}
 
  private:
-  TensorInfo<scalar_t, IndexType> a_;
+  TensorInfo<const scalar_t, IndexType> a_;
   TensorInfo<scalar_t, IndexType> b_;
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
@@ -278,7 +278,7 @@ inline void launcher(
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
         accscalar_t pa = (accscalar_t)(p);
-        auto self_info = getTensorInfo<scalar_t, index_type>(self);
+        auto self_info = getTensorInfo<const scalar_t, index_type>(self);
         auto ret_info = getTensorInfo<scalar_t, index_type>(ret);
         auto mask_info = getTensorInfo<mask_t, index_type>(mask);
         self_info.collapseDims();
