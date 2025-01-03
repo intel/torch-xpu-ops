@@ -9,19 +9,21 @@ namespace at::native::xpu {
 struct WeightToInt4PackKernelFunctor {
   void operator()(sycl::item<1> item) const {
     auto idx = item.get_linear_id();
-    int out_y = idx / N_;
-    int out_x = idx % N_;
-    int in_y = out_x;
-    int in_x = out_y * 4;
     int K_div_2 = K_ / 2;
+    int K_div_8 = K_ / 8;
+    int out_y = idx / K_div_8;
+    int out_x = idx % K_div_8;
+    int in_y = out_y;
+    int in_x = out_x * 4;
+
     using vec_t = memory::aligned_vector<uint8_t, 4>;
     vec_t input = *reinterpret_cast<vec_t*>(&weight_[in_y * K_div_2 + in_x]);
     vec_t output;
 #pragma unroll
     for (int i = 0; i < 4; i++) {
-      output[i] = input[3 - i];
+      output[i] = input[i];
     }
-    *reinterpret_cast<vec_t*>(&weight_packed_[out_y * N_ + out_x]) = output;
+    *reinterpret_cast<vec_t*>(&weight_packed_[out_y * K_div_8 + out_x]) = output;
   }
   WeightToInt4PackKernelFunctor(
       uint32_t* weight_packed,
