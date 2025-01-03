@@ -39,9 +39,9 @@ void _mkl_dft(
     bool complex_output,
     bool inverse,
     IntArrayRef checked_signal_sizes,
-    bool onesided,
-    int64_t batch) {
+    bool onesided) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
+  int64_t batch = checked_signal_sizes[0];
   std::vector<int64_t> mkl_signal_sizes(
       checked_signal_sizes.begin() + 1, checked_signal_sizes.end());
 
@@ -126,7 +126,6 @@ void _fft_with_size(
     bool inverse,
     IntArrayRef checked_signal_sizes,
     bool onesided) {
-  int64_t batch = self.size(0);
   Tensor input_ = self;
   // real/imag dimension must aligned when viewed as of complex type
 
@@ -152,8 +151,7 @@ void _fft_with_size(
       bool,
       bool,
       class c10::ArrayRef<int64_t>,
-      bool,
-      int64_t);
+      bool);
   Tensor input = input_;
 
   if (input.scalar_type() == ScalarType::Float ||
@@ -179,8 +177,7 @@ void _fft_with_size(
       complex_output,
       inverse,
       checked_signal_sizes,
-      onesided,
-      batch);
+      onesided);
 }
 
 // Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
@@ -231,7 +228,7 @@ Tensor& _exec_fft(
   DimVector signal_size(signal_ndim + 1);
   signal_size[0] = batch_size;
 
-  for (int64_t i = 0; i < signal_ndim; ++i) {
+  for (const auto i : c10::irange(signal_ndim)) {
     auto in_size = input.sizes()[i + 1];
     auto out_size = out_sizes[dim[i]];
     signal_size[i + 1] = std::max(in_size, out_size);
@@ -246,7 +243,7 @@ Tensor& _exec_fft(
   batched_sizes[0] = batch_size;
   DimVector batched_out_sizes(batched_sizes.begin(), batched_sizes.end());
 
-  for (size_t i = 0; i < dim.size(); ++i) {
+  for (const auto i : c10::irange(dim.size())) {
     batched_out_sizes[i + 1] = out_sizes[dim[i]];
   }
 
@@ -273,7 +270,7 @@ Tensor& _exec_fft(
     batch_numel *= out_sizes[dim_permute[i]];
   }
 
-  for (int64_t i = batch_dims; i < ndim; ++i) {
+  for (const auto i : c10::irange(batch_dims, ndim)) {
     out_strides[dim_permute[i]] = out.strides()[1 + (i - batch_dims)];
   }
 
