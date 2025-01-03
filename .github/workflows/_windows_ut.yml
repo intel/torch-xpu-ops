@@ -1,0 +1,148 @@
+name: Windows Test
+
+on:
+  workflow_call:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'main'
+        description: Pytorch branch/commit
+      keep_torch_xpu_ops:
+        required: false
+        type: string
+        default: 'false'
+        description: Keep torch-xpu-ops pin. `true` means use pined commit
+      ut:
+        required: true
+        type: string
+        default: ''
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'Windows_CI'
+        description: Runner label
+      xpu_version:
+        required: false
+        type: string
+        default: '2025.0'
+        description: Python version
+
+permissions: read-all
+
+env: 
+    USE_XPU: 1
+
+jobs:
+  Torch-XPU-Windows-UT:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 900
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Install oneAPI
+        shell: cmd
+        run: |
+          set XPU_VERSION=${{ inputs.xpu_version }}
+          call .github\scripts\install_xpu.bat
+          if errorlevel 1 exit /b 1
+      - name: Prepare Stock Pytorch
+        shell: cmd
+        run: |
+          echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
+          echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda clean -ay
+          call conda remove --all -y -n windows_ci
+          call conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
+          call conda activate windows_ci
+          cd ..
+          if exist "pytorch" (
+            rmdir /s /q pytorch
+          )
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && git checkout ${{ inputs.pytorch }} 
+          pip install pyyaml requests
+          call conda install -y libuv
+          call conda install -y rust 
+          git config --system core.longpaths true
+          git status 
+          git show -s 
+          git submodule sync && git submodule update --init --recursive
+          if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
+            echo "Don't replace torch-xpu-ops!"
+          ) else (
+            echo "Replace torch-xpu-ops!"
+            cd third_party
+            if exist "torch-xpu-ops" (
+              rmdir /s /q torch-xpu-ops
+            )
+            cd ..
+            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
+            powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
+          )
+      - name: Build Pytorch XPU
+        shell: cmd
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
+          call conda activate windows_ci
+          cd ../pytorch
+          pip install -r requirements.txt
+          pip install cmake setuptools==72.1.0 clang-format
+          set USE_KINETO=0
+          set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
+          set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
+          set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
+          python setup.py clean
+          set MAX_JOBS=4
+          python setup.py bdist_wheel > build_torch_wheel_log.log
+          echo "[INFO] begin to install torch whls"
+          for /r C:\runner\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
+            set TORCH_WHL=%%i
+          )
+          echo "[INFO] the torch version is %TORCH_WHL%"
+          python -m pip install %TORCH_WHL%
+          pip install -r .ci\docker\requirements-ci.txt
+      - name: Torch Config
+        shell: cmd
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda activate windows_ci
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+
+      - name: Upload Windows build log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
+          path: 'C:\runner\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
+
+      - name: Upload Windows binary
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
+          path: 'C:\runner\actions-runner\_work\torch-xpu-ops\pytorch\dist'
+
+      - name: Run XPU OP Extended UT
+        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        shell: cmd
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call conda activate windows_ci
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          set PYTORCH_TEST_WITH_SLOW=1
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
+          python run_test_with_skip_mtl.py
