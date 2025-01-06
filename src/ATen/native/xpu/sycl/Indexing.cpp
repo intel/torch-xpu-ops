@@ -1153,7 +1153,10 @@ void put_kernel(
 
 // ForwardIt: only legacy random access iterator is supported.
 template <class ForwardIt, class T, bool is_lower = true>
-static ForwardIt find_bound(ForwardIt first, ForwardIt last, const T& value) {
+static inline ForwardIt find_bound(
+    ForwardIt first,
+    ForwardIt last,
+    const T& value) {
   ForwardIt it;
   typename std::iterator_traits<ForwardIt>::difference_type count, step;
   // NOTE: std::distance(first, last) compiles but produces wrong results here,
@@ -1180,40 +1183,40 @@ template <typename index_t>
 struct IndexSelectSparse1Functor {
   index_t operator()(index_t idx) const {
     SYCL_KERNEL_ASSERT(
-        idx >= -size && idx < size && "index_select(): index out of bounds");
-    return idx < 0 ? idx + size : idx;
+        idx >= -size_ && idx < size_ && "index_select(): index out of bounds");
+    return idx < 0 ? idx + size_ : idx;
   }
-  IndexSelectSparse1Functor(index_t size) : size(size) {}
+  IndexSelectSparse1Functor(index_t size) : size_(size) {}
 
  private:
-  index_t size;
+  index_t size_;
 };
 
 template <typename index_t>
 struct IndexSelectSparse2Functor {
   index_t operator()(index_t idx_val, index_t idx_idx) const {
     auto* lb = find_bound<const index_t*, index_t, true>(
-        ptr_sorted_dim_indices, ptr_sorted_dim_indices + nnz, idx_val);
+        ptr_sorted_dim_indices_, ptr_sorted_dim_indices_ + nnz_, idx_val);
     auto* ub = find_bound<const index_t*, index_t, false>(
-        ptr_sorted_dim_indices, ptr_sorted_dim_indices + nnz, idx_val);
+        ptr_sorted_dim_indices_, ptr_sorted_dim_indices_ + nnz_, idx_val);
     const auto idx_count = ub - lb;
-    ptr_intrsc_counts_nneg_index[idx_idx] = idx_count;
+    ptr_intrsc_counts_nneg_index_[idx_idx] = idx_count;
 
-    return lb - ptr_sorted_dim_indices;
+    return lb - ptr_sorted_dim_indices_;
   }
 
   IndexSelectSparse2Functor(
       index_t* ptr_intrsc_counts_nneg_index,
       const index_t* ptr_sorted_dim_indices,
       int64_t nnz)
-      : ptr_intrsc_counts_nneg_index(ptr_intrsc_counts_nneg_index),
-        ptr_sorted_dim_indices(ptr_sorted_dim_indices),
-        nnz(nnz) {}
+      : ptr_intrsc_counts_nneg_index_(ptr_intrsc_counts_nneg_index),
+        ptr_sorted_dim_indices_(ptr_sorted_dim_indices),
+        nnz_(nnz) {}
 
  private:
-  index_t* ptr_intrsc_counts_nneg_index;
-  const index_t* ptr_sorted_dim_indices;
-  int64_t nnz;
+  index_t* ptr_intrsc_counts_nneg_index_;
+  const index_t* ptr_sorted_dim_indices_;
+  int64_t nnz_;
 };
 
 template <typename index_t>
@@ -1224,11 +1227,11 @@ struct IndexSelectSparse3Functor {
       index_t offset,
       index_t first_match) const {
     index_t* __restrict__ ptr_res_dim_indices_out =
-        ptr_res_dim_indices + offset;
+        ptr_res_dim_indices_ + offset;
     const index_t* __restrict__ ptr_argsort_dim_indices_in =
-        ptr_argsort_dim_indices + first_match;
+        ptr_argsort_dim_indices_ + first_match;
     index_t* __restrict__ ptr_selected_dim_indices_out =
-        ptr_selected_dim_indices + offset;
+        ptr_selected_dim_indices_ + offset;
     for (index_t i = 0; i < count; ++i) {
       *ptr_res_dim_indices_out++ = idx_idx;
       *ptr_selected_dim_indices_out++ = *ptr_argsort_dim_indices_in++;
@@ -1240,14 +1243,14 @@ struct IndexSelectSparse3Functor {
       index_t* ptr_res_dim_indices,
       index_t* ptr_selected_dim_indices,
       const index_t* ptr_argsort_dim_indices)
-      : ptr_res_dim_indices(ptr_res_dim_indices),
-        ptr_selected_dim_indices(ptr_selected_dim_indices),
-        ptr_argsort_dim_indices(ptr_argsort_dim_indices) {}
+      : ptr_res_dim_indices_(ptr_res_dim_indices),
+        ptr_selected_dim_indices_(ptr_selected_dim_indices),
+        ptr_argsort_dim_indices_(ptr_argsort_dim_indices) {}
 
  private:
-  index_t* ptr_res_dim_indices;
-  index_t* ptr_selected_dim_indices;
-  const index_t* ptr_argsort_dim_indices;
+  index_t* ptr_res_dim_indices_;
+  index_t* ptr_selected_dim_indices_;
+  const index_t* ptr_argsort_dim_indices_;
 };
 
 Tensor index_select_sparse_kernel(
