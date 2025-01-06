@@ -297,6 +297,8 @@ _xpu_computation_op_list = [
     "take",
     "put",
     "_segment_reduce",
+    "_chunk_cat",
+    "split_with_sizes_copy",
 ]
 
 _ops_without_cuda_support = [

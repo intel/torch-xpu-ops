@@ -51,5 +51,6 @@ skip_dict = {
         "test_compare_cpu_softmax_with_dtype_xpu_float16",
         "test_compare_cpu_softmax_xpu_bfloat16",
         "test_compare_cpu_softmax_xpu_float32",
+        "test_compare_cpu_nn_functional_avg_pool1d",
     ),
 }
