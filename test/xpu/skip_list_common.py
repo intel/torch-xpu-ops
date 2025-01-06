@@ -2,6 +2,8 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
+
+
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
         "float8",
@@ -21,16 +23,13 @@ skip_dict = {
         # TODO: Fix the following tests
         "test_out_warning_torch__scaled_mm_xpu",
 
+
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
         "test_out_narrow_copy_xpu_float32", 
         # This case is marked as skip but XPU failed. However, CUDA and XPU throw the same runtime error.
         "test_out_histc_xpu_float32",
 
-        # AssertionError: The supported dtypes for __rmod__ on device type xpu are incorrect!
-        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}.
-        "test_dtypes___rmod___xpu",
-        
         # Data type is not supported in oneDNN!
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
