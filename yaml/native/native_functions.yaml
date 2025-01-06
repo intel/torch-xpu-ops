@@ -6126,7 +6126,6 @@
   precomputed:
   - dim -> int dim
   dispatch:
-    CPU: index_reduce_cpu_out
     XPU: index_reduce_xpu_out
 
 - func: index_reduce_(Tensor(a!) self, int dim, Tensor index, Tensor source, str reduce, *, bool include_self=True) -> Tensor(a!)
