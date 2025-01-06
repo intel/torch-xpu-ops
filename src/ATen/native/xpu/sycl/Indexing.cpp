@@ -1146,8 +1146,121 @@ void put_kernel(
       });
 }
 
-template <typename scalar_t>
+template <typename func_t>
+void index_reduce_func_xpu_template(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const func_t& reduce_func,
+    const Tensor& result) {
+  globalContext().alertNotDeterministic("index_reduce_xpu");
+
+  if (!result.is_same(self))
+    result.copy_(self);
+
+  // Scalars are treated as 1-d tensor
+  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
+  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+
+  TORCH_CHECK(
+      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      source.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+
+  if (!include_self) {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        self.scalar_type(),
+        "index_reduce_func_xpu_exclude_input_init",
+        [&] {
+          scalar_t init_val;
+          switch (reduce) {
+            case ReductionType::PROD:
+              init_val = (scalar_t)1;
+              break;
+            case ReductionType::MAX:
+              init_val = std::numeric_limits<scalar_t>::has_infinity
+                  ? -std::numeric_limits<scalar_t>::infinity()
+                  : std::numeric_limits<scalar_t>::lowest();
+              break;
+            case ReductionType::MIN:
+              init_val = std::numeric_limits<scalar_t>::has_infinity
+                  ? std::numeric_limits<scalar_t>::infinity()
+                  : std::numeric_limits<scalar_t>::max();
+              break;
+            default:
+              init_val = (scalar_t)0;
+              break;
+          }
+          // index_fill_ requires index to be a LongTensor
+          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
+        });
+  }
+
+  uint64_t sliceSize = getSliceSize(self_, dim, index, source_);
+  if (sliceSize == 0) {
+    return;
+  }
+
+  {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        self.scalar_type(),
+        "index_reduce",
+        [&] {
+          TensorInfo<scalar_t, int64_t> dst_info =
+              getTensorInfo<scalar_t, int64_t>(self_);
+          int selfReduceDim = dst_info.collapseDims(dim);
+          auto alpha_value = (scalar_t)1;
+
+          TensorInfo<const scalar_t, int64_t> src_info =
+              getTensorInfo<const scalar_t, int64_t>(source_);
+
+          AT_DISPATCH_INDEX_TYPES(
+              index.scalar_type(), "index_reduce_xpu", [&]() {
+                TensorInfo<const index_t, int64_t> index_info =
+                    getTensorInfo<const index_t, int64_t>(index);
+                index_info.collapseDims();
+
+                using IdxConfig = IndexKernelConfig<
+                    decltype(src_info),
+                    decltype(dst_info),
+                    decltype(index_info),
+                    func_t>;
+                using KernelClass = IndexKernel<IdxConfig, false, false>;
+
+                auto cfg = IdxConfig::template make_config<KernelClass>(
+                    src_info,
+                    dst_info,
+                    index_info,
+                    alpha_value,
+                    selfReduceDim,
+                    true,
+                    reduce_func);
+                launch_index_kernel(cfg);
+              });
+        });
+  }
+}
+
 struct IndexReduceMultiplyFunctor {
+  template <typename scalar_t>
   void operator()(
       scalar_t* dst,
       const scalar_t* src,
@@ -1158,9 +1271,10 @@ struct IndexReduceMultiplyFunctor {
     atomicMul((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
   }
 };
+static IndexReduceMultiplyFunctor index_reduce_multiply;
 
-template <typename scalar_t>
 struct IndexReduceMeanFunctor {
+  template <typename scalar_t>
   void operator()(
       scalar_t* dst,
       const scalar_t* src,
@@ -1171,9 +1285,10 @@ struct IndexReduceMeanFunctor {
     atomicAdd((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
   }
 };
+static IndexReduceMeanFunctor index_reduce_mean;
 
-template <typename scalar_t>
 struct IndexReduceMaxFunctor {
+  template <typename scalar_t>
   void operator()(
       scalar_t* dst,
       const scalar_t* src,
@@ -1184,9 +1299,10 @@ struct IndexReduceMaxFunctor {
     atomicMax((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
   }
 };
+static IndexReduceMaxFunctor index_reduce_max;
 
-template <typename scalar_t>
 struct IndexReduceMinFunctor {
+  template <typename scalar_t>
   void operator()(
       scalar_t* dst,
       const scalar_t* src,
@@ -1197,6 +1313,7 @@ struct IndexReduceMinFunctor {
     atomicMin((sycl_global_ptr<scalar_t>)(dst + dst_off), src[src_off]);
   }
 };
+static IndexReduceMinFunctor index_reduce_min;
 
 void index_reduce_prod_kernel(
     const Tensor& self,
@@ -1206,86 +1323,15 @@ void index_reduce_prod_kernel(
     bool include_self,
     const ReductionType& reduce,
     const Tensor& result) {
-  if (!result.is_same(self))
-    result.copy_(self);
-  // Scalars are treated as 1-d tensor
-  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
-  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
-  // Perform checkings
-  int srcDims = source.dim() == 0 ? 1 : source.dim();
-  int dstDims = result.dim();
-  int idxDims = index.dim();
-  TORCH_CHECK(
-      srcDims <= XPU_MAX_TENSORINFO_DIMS,
-      "source tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      dstDims <= XPU_MAX_TENSORINFO_DIMS,
-      "result tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      idxDims <= XPU_MAX_TENSORINFO_DIMS,
-      "index tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-
-  if (!include_self) {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        self.scalar_type(),
-        "index_reduce_prod_func_xpu_exclude_input_init",
-        [&] {
-          scalar_t init_val;
-          init_val = (scalar_t)1;
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
-        });
-  }
-
-  ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
-  Scalar alpha = 0;
-
-  if (sliceSize == 0) {
-    return;
-  }
-  // AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      result.scalar_type(),
-      "index_reduce_prod",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            index.scalar_type(), "index_reduce_prod_xpu", [&]() {
-              TensorInfo<const index_t, int64_t> index_info =
-                  getTensorInfo<const index_t, int64_t>(index);
-              index_info.collapseDims();
-
-              TensorInfo<const scalar_t, int64_t> src_info =
-                  getTensorInfo<const scalar_t, int64_t>(source_);
-
-              TensorInfo<scalar_t, int64_t> dst_info =
-                  getTensorInfo<scalar_t, int64_t>(self_);
-              int new_indexing_dim = dst_info.collapseDims(dim);
-
-              using IdxConfig = IndexKernelConfig<
-                  decltype(src_info),
-                  decltype(dst_info),
-                  decltype(index_info),
-                  IndexReduceMultiplyFunctor<scalar_t>>;
-              using KernelClass = IndexKernel<IdxConfig, false, false>;
-
-              auto cfg = IdxConfig::template make_config<KernelClass>(
-                  src_info,
-                  dst_info,
-                  index_info,
-                  alpha.to<scalar_t>(),
-                  new_indexing_dim,
-                  true,
-                  IndexReduceMultiplyFunctor<scalar_t>());
-              launch_index_kernel(cfg);
-            });
-      });
+  index_reduce_func_xpu_template(
+      self,
+      dim,
+      index,
+      source,
+      include_self,
+      reduce,
+      index_reduce_multiply,
+      result);
 }
 
 void index_reduce_mean_kernel(
@@ -1296,86 +1342,15 @@ void index_reduce_mean_kernel(
     bool include_self,
     const ReductionType& reduce,
     const Tensor& result) {
-  if (!result.is_same(self))
-    result.copy_(self);
-  // Scalars are treated as 1-d tensor
-  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
-  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
-  // Perform checkings
-  int srcDims = source.dim() == 0 ? 1 : source.dim();
-  int dstDims = result.dim();
-  int idxDims = index.dim();
-  TORCH_CHECK(
-      srcDims <= XPU_MAX_TENSORINFO_DIMS,
-      "source tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      dstDims <= XPU_MAX_TENSORINFO_DIMS,
-      "result tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      idxDims <= XPU_MAX_TENSORINFO_DIMS,
-      "index tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-
-  if (!include_self) {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        self.scalar_type(),
-        "index_reduce_func_xpu_exclude_input_init",
-        [&] {
-          scalar_t init_val;
-          init_val = (scalar_t)0;
-
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
-        });
-  }
-
-  ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
-  Scalar alpha = 0;
-
-  if (sliceSize == 0) {
-    return;
-  }
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      result.scalar_type(),
-      "index_reduce_mean",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            index.scalar_type(), "index_reduce_mean_xpu", [&]() {
-              TensorInfo<const index_t, int64_t> index_info =
-                  getTensorInfo<const index_t, int64_t>(index);
-              index_info.collapseDims();
-
-              TensorInfo<const scalar_t, int64_t> src_info =
-                  getTensorInfo<const scalar_t, int64_t>(source_);
-
-              TensorInfo<scalar_t, int64_t> dst_info =
-                  getTensorInfo<scalar_t, int64_t>(self_);
-              int new_indexing_dim = dst_info.collapseDims(dim);
-
-              using IdxConfig = IndexKernelConfig<
-                  decltype(src_info),
-                  decltype(dst_info),
-                  decltype(index_info),
-                  IndexReduceMeanFunctor<scalar_t>>;
-              using KernelClass = IndexKernel<IdxConfig, false, false>;
-
-              auto cfg = IdxConfig::template make_config<KernelClass>(
-                  src_info,
-                  dst_info,
-                  index_info,
-                  alpha.to<scalar_t>(),
-                  new_indexing_dim,
-                  true,
-                  IndexReduceMeanFunctor<scalar_t>());
-              launch_index_kernel(cfg);
-            });
-      });
+  index_reduce_func_xpu_template(
+      self,
+      dim,
+      index,
+      source,
+      include_self,
+      reduce,
+      index_reduce_mean,
+      result);
 }
 
 void index_reduce_amax_kernel(
@@ -1386,88 +1361,8 @@ void index_reduce_amax_kernel(
     bool include_self,
     const ReductionType& reduce,
     const Tensor& result) {
-  if (!result.is_same(self))
-    result.copy_(self);
-  // Scalars are treated as 1-d tensor
-  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
-  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
-  // Perform checkings
-  int srcDims = source.dim() == 0 ? 1 : source.dim();
-  int dstDims = result.dim();
-  int idxDims = index.dim();
-  TORCH_CHECK(
-      srcDims <= XPU_MAX_TENSORINFO_DIMS,
-      "source tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      dstDims <= XPU_MAX_TENSORINFO_DIMS,
-      "result tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      idxDims <= XPU_MAX_TENSORINFO_DIMS,
-      "index tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-
-  if (!include_self) {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        self.scalar_type(),
-        "index_reduce_amax_func_xpu_exclude_input_init",
-        [&] {
-          scalar_t init_val;
-          init_val = std::numeric_limits<scalar_t>::has_infinity
-              ? -std::numeric_limits<scalar_t>::infinity()
-              : std::numeric_limits<scalar_t>::lowest();
-
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
-        });
-  }
-
-  ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
-  Scalar alpha = 0;
-
-  if (sliceSize == 0) {
-    return;
-  }
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      result.scalar_type(),
-      "index_reduce_amax",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            index.scalar_type(), "index_reduce_amax_xpu", [&]() {
-              TensorInfo<const index_t, int64_t> index_info =
-                  getTensorInfo<const index_t, int64_t>(index);
-              index_info.collapseDims();
-
-              TensorInfo<const scalar_t, int64_t> src_info =
-                  getTensorInfo<const scalar_t, int64_t>(source_);
-
-              TensorInfo<scalar_t, int64_t> dst_info =
-                  getTensorInfo<scalar_t, int64_t>(self_);
-              int new_indexing_dim = dst_info.collapseDims(dim);
-
-              using IdxConfig = IndexKernelConfig<
-                  decltype(src_info),
-                  decltype(dst_info),
-                  decltype(index_info),
-                  IndexReduceMaxFunctor<scalar_t>>;
-              using KernelClass = IndexKernel<IdxConfig, false, false>;
-
-              auto cfg = IdxConfig::template make_config<KernelClass>(
-                  src_info,
-                  dst_info,
-                  index_info,
-                  alpha.to<scalar_t>(),
-                  new_indexing_dim,
-                  true,
-                  IndexReduceMaxFunctor<scalar_t>());
-              launch_index_kernel(cfg);
-            });
-      });
+  index_reduce_func_xpu_template(
+      self, dim, index, source, include_self, reduce, index_reduce_max, result);
 }
 
 void index_reduce_amin_kernel(
@@ -1478,89 +1373,8 @@ void index_reduce_amin_kernel(
     bool include_self,
     const ReductionType& reduce,
     const Tensor& result) {
-  if (!result.is_same(self))
-    result.copy_(self);
-  // Scalars are treated as 1-d tensor
-  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
-  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
-  // Perform checkings
-  int srcDims = source.dim() == 0 ? 1 : source.dim();
-  int dstDims = result.dim();
-  int idxDims = index.dim();
-  TORCH_CHECK(
-      srcDims <= XPU_MAX_TENSORINFO_DIMS,
-      "source tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      dstDims <= XPU_MAX_TENSORINFO_DIMS,
-      "result tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-  TORCH_CHECK(
-      idxDims <= XPU_MAX_TENSORINFO_DIMS,
-      "index tensor dim should be < ",
-      XPU_MAX_TENSORINFO_DIMS);
-
-  if (!include_self) {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        self.scalar_type(),
-        "index_reduce_amin_func_xpu_exclude_input_init",
-        [&] {
-          scalar_t init_val;
-
-          init_val = std::numeric_limits<scalar_t>::has_infinity
-              ? std::numeric_limits<scalar_t>::infinity()
-              : std::numeric_limits<scalar_t>::max();
-
-          // index_fill_ requires index to be a LongTensor
-          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
-        });
-  }
-
-  ptrdiff_t sliceSize = getSliceSize(self_, dim, index, source_);
-  Scalar alpha = 0;
-
-  if (sliceSize == 0) {
-    return;
-  }
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      result.scalar_type(),
-      "index_reduce_amin",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            index.scalar_type(), "index_reduce_amin_xpu", [&]() {
-              TensorInfo<const index_t, int64_t> index_info =
-                  getTensorInfo<const index_t, int64_t>(index);
-              index_info.collapseDims();
-
-              TensorInfo<const scalar_t, int64_t> src_info =
-                  getTensorInfo<const scalar_t, int64_t>(source_);
-
-              TensorInfo<scalar_t, int64_t> dst_info =
-                  getTensorInfo<scalar_t, int64_t>(self_);
-              int new_indexing_dim = dst_info.collapseDims(dim);
-
-              using IdxConfig = IndexKernelConfig<
-                  decltype(src_info),
-                  decltype(dst_info),
-                  decltype(index_info),
-                  IndexReduceMinFunctor<scalar_t>>;
-              using KernelClass = IndexKernel<IdxConfig, false, false>;
-
-              auto cfg = IdxConfig::template make_config<KernelClass>(
-                  src_info,
-                  dst_info,
-                  index_info,
-                  alpha.to<scalar_t>(),
-                  new_indexing_dim,
-                  true,
-                  IndexReduceMinFunctor<scalar_t>());
-              launch_index_kernel(cfg);
-            });
-      });
+  index_reduce_func_xpu_template(
+      self, dim, index, source, include_self, reduce, index_reduce_min, result);
 }
 
 } // namespace at::native::xpu
