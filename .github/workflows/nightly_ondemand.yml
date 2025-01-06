@@ -67,7 +67,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ inputs.ut_suite }}
+    if: ${{ inputs.ut }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
