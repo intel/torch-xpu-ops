@@ -7,22 +7,22 @@
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/IndexKernel.h>
-#include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/ReductionType.h>
+#include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
 //#include <ATen/native/TensorFactories.cpp>
-#include <ATen/ops/zeros_like.h>
-#include <ATen/ops/ones_like.h>
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
+#include <ATen/ops/ones_like.h>
+#include <ATen/ops/zeros_like.h>
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
 #include <ATen/ops/index_add_meta.h>
-#include <xpu/ATen/ops/index_add_native.h>
 #include <ATen/ops/index_reduce_meta.h>
+#include <xpu/ATen/ops/index_add_native.h>
 #include <xpu/ATen/ops/index_reduce_native.h> //generated
 //#include <xpu/ATen/ops/index_reduce_prod_native.h> //generated
 
@@ -49,7 +49,7 @@ REGISTER_XPU_DISPATCH(index_fill_stub, &xpu::index_fill_kernel);
 REGISTER_XPU_DISPATCH(index_copy_stub, &xpu::index_copy_kernel);
 REGISTER_XPU_DISPATCH(put_stub, &xpu::put_kernel);
 REGISTER_XPU_DISPATCH(take_stub, &xpu::take_kernel);
-//REGISTER_XPU_DISPATCH(index_reduce_stub, &xpu::index_reduce_kernel);
+// REGISTER_XPU_DISPATCH(index_reduce_stub, &xpu::index_reduce_kernel);
 
 TORCH_IMPL_FUNC(index_add_xpu_out)
 (const Tensor& self,
@@ -141,39 +141,36 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
  const Tensor& source,
  const c10::string_view reduce,
  bool include_self,
- const Tensor& result){
-    std::optional<Device> common_device = std::nullopt;
-    c10::impl::check_and_update_common_device(
-        common_device, self, "xpu::index_reduce_out", "self");
-    c10::impl::check_and_update_common_device(
-        common_device, index, "xpu::index_reduce_out", "index");
-    c10::impl::check_and_update_common_device(
-        common_device, source, "xpu::index_reduce_out", "source");
-    dim = maybe_wrap_dim(dim, self.dim());
-
-    if (reduce == "prod") {
-        xpu::index_reduce_prod_kernel(self, dim, index, source, include_self, ReductionType::PROD, result);
-    } 
-    else if (reduce == "mean") {
-            xpu::index_reduce_mean_kernel(self, dim, index, source, include_self, ReductionType::MEAN, result);
-            auto counts = include_self ? ones_like(result) : zeros_like(result);
-            counts.index_add_(dim, index, ones_like(source));
-            counts.masked_fill_(counts == 0, 1);     
-            if (result.is_floating_point() || result.is_complex()) {
-                result.div_(counts);
-            } 
-            else {
-                result.div_(counts, "floor");
-            }     
-        }
-    else if (reduce == "amax") {
-            xpu::index_reduce_amax_kernel(self, dim, index, source, include_self, ReductionType::MAX, result);
-        } 
-    else if (reduce == "amin") {
-            xpu::index_reduce_amin_kernel(self, dim, index, source, include_self, ReductionType::MIN, result);
+ const Tensor& result) {
+  TORCH_WARN_ONCE(
+      "index_reduce() is in beta and the API may change at any time.");
+  if (reduce == "prod") {
+    xpu::index_reduce_prod_kernel(
+        self, dim, index, source, include_self, ReductionType::PROD, result);
+  } else if (reduce == "mean") {
+    xpu::index_reduce_mean_kernel(
+        self, dim, index, source, include_self, ReductionType::MEAN, result);
+    auto counts = include_self ? ones_like(result) : zeros_like(result);
+    counts.index_add_(dim, index, ones_like(source));
+    counts.masked_fill_(counts == 0, 1);
+    if (result.is_floating_point() || result.is_complex()) {
+      result.div_(counts);
     } else {
-        TORCH_CHECK(false, "Only support prod, mean, amax or amin reduce operator. Input was ", reduce, ".");
+      result.div_(counts, "floor");
     }
+  } else if (reduce == "amax") {
+    xpu::index_reduce_amax_kernel(
+        self, dim, index, source, include_self, ReductionType::MAX, result);
+  } else if (reduce == "amin") {
+    xpu::index_reduce_amin_kernel(
+        self, dim, index, source, include_self, ReductionType::MIN, result);
+  } else {
+    TORCH_CHECK(
+        false,
+        "Only support prod, mean, amax or amin reduce operator. Input was ",
+        reduce,
+        ".");
+  }
 }
 
 } // namespace native
