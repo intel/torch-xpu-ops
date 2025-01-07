@@ -123,5 +123,13 @@ Tensor& masked_select_out_xpu(
   namedinference::compute_broadcast_outnames(self, mask);
   return masked_select_out_impl(result, self, mask);
 }
+
+Tensor index_select_sparse_xpu(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index) {
+  return xpu::index_select_sparse_kernel(self, dim, index);
+}
+
 } // namespace native
 } // namespace at
