@@ -796,6 +796,7 @@
   variants: method, function
   dispatch:
     XPU: index_select_xpu_
+    SparseXPU: index_select_sparse_xpu
   tags: core
 
 - func: gcd.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
