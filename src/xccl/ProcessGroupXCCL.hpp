@@ -190,6 +190,16 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         fn,
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
+          // There are two types of coalesce that require `group_start/end`:
+          // 1. **Fast Pass for Operations**: For example,
+          // `allreduce_coalesced`. In this case, the backend has control, so
+          // the initial group API `ccl::group` is called.
+          // 2. **User-Specified Groups**: The user specifies a series of
+          // operations as a group in the frontend by calling the coalesce
+          // manager. To avoid incorrect judgments of the p2p state, the
+          // `xcclActiveGroupCounter_` is introduced to track group calls made
+          // in the frontend. In this scenario, the `groupStart` wrap API is
+          // used.
           ccl::group_start();
         },
         [](at::xpu::XPUStream&,
