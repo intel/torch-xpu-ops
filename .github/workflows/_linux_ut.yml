@@ -138,7 +138,7 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
-      - name: Run XPU OP Examples
+      - name: Run XPU OP Regression
         if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
         run: |
           cd ${{ github.workspace }}
@@ -185,12 +185,12 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_ut
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          timeout 10000 python run_test_with_skip.py 2>{{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+          timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
           # test_foreach, test_decomp
-          timeout 10000 python run_test_with_only.py 2>{{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
+          timeout 10000 python run_test_with_only.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
       - name: Run Torch XPU UT
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
