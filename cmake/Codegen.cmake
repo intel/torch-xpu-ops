@@ -7,7 +7,7 @@ set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU.cpp
+set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU.cpp)
 set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 
