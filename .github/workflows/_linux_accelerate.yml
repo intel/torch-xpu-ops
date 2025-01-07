@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/scripts/parse-junitxml.py'
+      - '.github/actions/print-environment/action.yml'
       - '.github/workflows/_linux_accelerate.yml'
   workflow_dispatch:
     inputs:
@@ -137,55 +138,12 @@ jobs:
             echo "### Skipped"
             python3 $PARSE_JUNIT reports/accelerate.xml --skipped
           } >> $GITHUB_STEP_SUMMARY
-      - name: Print annotations
+      - name: Print environment
         if: ${{ ! cancelled() }}
-        run: |
-          source activate $CONDA_ENV_NAME
-          {
-            echo "### Annotations"
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
-            echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
-            echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ') |"
-            packages=" \
-              level-zero \
-              libigc1 \
-              libigc2 \
-              libze1 \
-              libze-intel-gpu1 \
-              intel-i915-dkms \
-              intel-level-zero-gpu \
-              intel-opencl-icd"
-            for package in $packages; do
-              package_version=$(dpkg -l | grep $package | grep ii | head -1 | sed "s/  */ /g" | cut -f3 -d" ")
-              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
-            done
-            packages="accelerate \
-              numpy \
-              torch \
-              torchaudio \
-              torchvision \
-              accelerate"
-            for package in $packages; do
-              package_version=$(python -c "import $package; print($package.__version__)" || true)
-              echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
-            done
-            # printing annotations for GPU cards
-            var="[$(cat /sys/class/drm/render*/device/vendor || true)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed 's/ /,/g') |"
-            var="[$(cat /sys/class/drm/render*/device/device || true)]"
-            echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed 's/ /,/g') |"
-            var=$(python -c "import torch; print(torch.version.xpu)" || true)
-            echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
-            var=$(python -c "import torch; print(torch.xpu.device_count())" || true)
-            echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
-            # printing annotations with key environment variables
-            echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
-            echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
-            echo "| jobs.$GITHUB_JOB.env.PYTORCH_ENABLE_XPU_FALLBACK | $PYTORCH_ENABLE_XPU_FALLBACK |"
-            echo "| jobs.$GITHUB_JOB.env.PYTORCH_DEBUG_XPU_FALLBACK | $PYTORCH_DEBUG_XPU_FALLBACK |"
-          } >> $GITHUB_STEP_SUMMARY
+        uses: ./torch-xpu-ops/.github/actions/print-environment
+        with:
+          conda: $CONDA_ENV_NAME
+          pip_packages: 'accelerate transformers'
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
