@@ -30,7 +30,7 @@ class ReduceMultiply {
       const scalar_t* src_data) const {
     atomicMul((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
-  
+
   template <typename scalar_t>
   constexpr void operator()(scalar_t* self_data, const scalar_t* src_data)
       const {
