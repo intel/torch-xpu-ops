@@ -1473,6 +1473,8 @@ void index_reduce_amin_kernel(
     const Tensor& result) {
   index_reduce_func_xpu_template(
       self, dim, index, source, include_self, reduce, index_reduce_min, result);
+}
+
 // ForwardIt: only legacy random access iterator is supported.
 template <class ForwardIt, class T, bool is_lower = true>
 static inline ForwardIt find_bound(
