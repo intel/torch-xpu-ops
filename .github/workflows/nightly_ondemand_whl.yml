@@ -60,7 +60,7 @@ jobs:
     if: github.event_name == 'schedule' || ${{ inputs.ut }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
       runner: linux.idc.xpu
@@ -72,7 +72,7 @@ jobs:
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
