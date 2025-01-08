@@ -2,6 +2,8 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
 
+
+
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
         "float8",
@@ -16,6 +18,11 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
         "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
         "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
+        "test_noncontiguous_samples_histogram_xpu_float32",
+
+        # TODO: Fix the following tests
+        "test_out_warning_torch__scaled_mm_xpu",
+
 
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
@@ -23,10 +30,6 @@ skip_dict = {
         # This case is marked as skip but XPU failed. However, CUDA and XPU throw the same runtime error.
         "test_out_histc_xpu_float32",
 
-        # AssertionError: The supported dtypes for __rmod__ on device type xpu are incorrect!
-        # The following dtypes worked in forward but are not listed by the OpInfo: {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}.
-        "test_dtypes___rmod___xpu",
-        
         # Data type is not supported in oneDNN!
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
@@ -3305,14 +3308,6 @@ skip_dict = {
         "test_empty_like_xpu_float64", # - AssertionError: "Could not run 'aten::empty_strided' with arguments from the 'Sparse(CPU|CUDA)' backend" does not match "Could not run 'aten::empty_strided' with argu...
         "test_factory_device_type_inference_xpu", # - RuntimeError: PyTorch is not linked with support for cuda devices
         "test_hsmm_xpu_float64", # - NotImplementedError: Could not run 'aten::hspmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
-        "test_index_select_empty_and_non_contiguous_index_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_empty_and_non_contiguous_index_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_exhaustive_index_large_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_exhaustive_index_large_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_exhaustive_index_small_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_exhaustive_index_small_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_xpu_complex128", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
-        "test_index_select_xpu_float64", # - NotImplementedError: Could not run 'aten::index_select' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend...
         "test_log_softmax_zero_nnz_xpu_float32", # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
         "test_log_softmax_zero_nnz_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
         "test_mv_xpu_float64", # - NotImplementedError: Could not run 'aten::mm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was o...

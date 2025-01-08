@@ -8,7 +8,13 @@ add_library(
   STATIC
   ${ATen_XPU_CPP_SRCS}
   ${ATen_XPU_NATIVE_CPP_SRCS}
-  ${ATen_XPU_GEN_SRCS})
+  ${ATen_XPU_GEN_SRCS}
+  ${ATen_XPU_XCCL_SRCS})
+
+if(USE_C10D_XCCL)
+  target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+  target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+endif()
 
 if(BUILD_SEPARATE_OPS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})

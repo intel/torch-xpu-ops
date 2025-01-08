@@ -13,6 +13,7 @@ CamemBert,pass,pass,pass,pass,pass
 DebertaForMaskedLM,pass,pass,pass,pass,pass
 DebertaForQuestionAnswering,pass,pass,pass,pass,pass
 DebertaV2ForMaskedLM,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
+# Skip DebertaV2ForQuestionAnswering issue: https://github.com/intel/torch-xpu-ops/issues/1216
 DebertaV2ForQuestionAnswering,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
 DistilBertForMaskedLM,pass,pass,pass,pass,pass
 DistilBertForQuestionAnswering,pass,pass,pass,pass,pass
