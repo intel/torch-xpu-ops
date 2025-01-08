@@ -10,6 +10,7 @@ exclude_patterns = [
     'docs/**',
     'test/xpu/skip_list_*.py',
     'test/xpu/test_torch_xpu.py',
+    'test/regressions/test_unary.py',
     'tools/codegen/remove_headers.py',
     '.github/scripts/*.py',
 ]
