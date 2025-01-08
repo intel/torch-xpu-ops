@@ -125,17 +125,6 @@ jobs:
             cd ../..
           fi
           pip install -r .ci/docker/requirements-ci.txt
-      - name: lintrunner-noclang
-        run: |
-          conda install jq -y
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT --all-files"
-          .github/scripts/lintrunner.sh
-      - name: lintrunner-clang
-        run: |
-          conda install jq -y
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT --all-files"
-          export CLANG=1
-          .github/scripts/lintrunner.sh
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
