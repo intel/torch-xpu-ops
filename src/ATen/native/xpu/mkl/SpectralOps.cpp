@@ -143,6 +143,9 @@ void _fft_with_size(
   }
 
   bool complex_type = inverse ? complex_output : complex_input;
+  printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+  printf("complex_input = %d complex_output = %d inverse = %d\n", complex_input, complex_output, inverse);
+  printf("complex_type = %d\n", complex_type);
 
   void (*dft_func)(
       const class at::Tensor&,
@@ -407,11 +410,26 @@ Tensor _fft_c2r_mkl(
     return self.clone();
   }
 
-  auto input = self;
+  Tensor input = self;
+  Tensor input_cpu = input.to(at::kCPU);
+  auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
+  printf("%ld\n", input_cpu.numel());
+  data[0].imag(0.0f);
+  data[input.numel() - 1].imag(0.0f);
+  for (int i = 0; i < input_cpu.numel(); ++i)
+    printf("%f %f ", data[i].real(), data[i].imag());
+  printf("\n");
+  //data[1] = static_cast<float>(0);
+  //data[tensor.numel() - 2] = = static_cast<float>(0);
+  input.copy_(input_cpu);
 
   auto in_sizes = input.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
+
+  auto out = at::empty(
+      out_sizes,
+      self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
   if (dim.size() > 1) {
     auto c2c_dims = dim.slice(0, dim.size() - 1);
@@ -426,10 +444,6 @@ Tensor _fft_c2r_mkl(
   // auto in_sizes = input.sizes();
   // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   // out_sizes[dim.back()] = last_dim_size;
-
-  auto out = at::empty(
-      out_sizes,
-      self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
   impl::_exec_fft(
       out,
