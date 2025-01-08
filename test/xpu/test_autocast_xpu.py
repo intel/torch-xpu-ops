@@ -1,10 +1,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_utils import (
-    run_tests,
-    TestCase,
-)
+from torch.testing._internal.common_utils import run_tests, TestCase
 from torch.utils._python_dispatch import TorchDispatchMode
 
 

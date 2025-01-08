@@ -8,6 +8,9 @@ exclude_patterns = [
     '.git/**',
     'build/**',
     'docs/**',
+    'test/xpu/skip_list_*.py',
+    'test/xpu/test_torch_xpu.py',
+    'tools/codegen/remove_headers.py',
 ]
 command = [
     'python3',
@@ -378,8 +381,11 @@ command = [
 [[linter]]
 code = 'ERROR_PRONE_ISINSTANCE'
 include_patterns = [
-    '**/*.py',
+    'src/comm/*.py',
+    'src/Aten/**/**/*.py',
+    'src/Aten/**/**/**/*.py',
 ]
+
 command = [
     'python3',
     'tools/linter/adapters/grep_linter.py',
@@ -466,7 +472,6 @@ exclude_patterns = [
 ]
 command = [
     'python3',
-    'tools/linter/adapters/exec_linter.py',
     '--',
     '@{{PATHSFILE}}',
 ]
@@ -842,7 +847,14 @@ command = [
 
 [[linter]]
 code = 'RUFF'
-include_patterns = ['**/*.py', '**/*.pyi']
+include_patterns = [
+    'src/comm/*.h',
+    'src/comm/*.cpp',
+    'src/Aten/**/**/*.h',
+    'src/Aten/**/**/*.cpp',
+    'src/Aten/**/**/**/*.h',
+    'src/Aten/**/**/**/*.cpp',
+]
 #exclude_patterns = [
 #    'caffe2/**',
 #    'functorch/docs/**',
@@ -943,7 +955,10 @@ command = [
     '@{{PATHSFILE}}'
 ]
 include_patterns = [
-    "**/*.py",
+    'src/comm/*.py',
+    'src/Aten/**/**/*.py',
+    'src/Aten/**/**/**/*.py',
+
 ]
 is_formatter = true
 

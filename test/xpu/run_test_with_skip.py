@@ -4,7 +4,6 @@ import sys
 from skip_list_common import skip_dict
 from xpu_test_utils import launch_test
 
-
 res = 0
 fail_test = []
 

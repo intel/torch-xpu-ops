@@ -1,4 +1,3 @@
-
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_utils import run_tests
@@ -11,5 +10,5 @@ except Exception as e:
 with XPUPatchForImport(False):
     pass
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_tests()

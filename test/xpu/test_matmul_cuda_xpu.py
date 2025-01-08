@@ -1,40 +1,50 @@
-
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests,
-    dtypes,
-    toleranceOverride,
-    tol as xtol,
-    )
-from torch.testing._internal.common_utils import run_tests, TestCase, parametrize, IS_WINDOWS
-import torch
-from functools import partial
-from torch.testing import make_tensor
 import unittest
+from functools import partial
+
+import torch
+from torch.testing import make_tensor
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+    tol as xtol,
+    toleranceOverride,
+)
+from torch.testing._internal.common_utils import (
+    IS_WINDOWS,
+    parametrize,
+    run_tests,
+    TestCase,
+)
+from torch.utils._ordered_set import OrderedSet
 
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
+
 def get_device_capability(device=None):
-    return (9,0)
-torch.cuda.get_device_capability=get_device_capability
-torch.testing._internal.common_cuda.SM90OrLater=True
+    return (9, 0)
+
+
+torch.cuda.get_device_capability = get_device_capability
+torch.testing._internal.common_cuda.SM90OrLater = True
 
 with XPUPatchForImport(False):
     from test_matmul_cuda import (
-        TestMixedDtypesLinearCuda,
-        TestMatmulCuda,
-        TestFP8MatmulCuda,
-        f8_msg,
         e4m3_type,
-        tensor_to_scale,
-        to_fp8_saturated,
+        f8_msg,
         mm_float8,
         mm_float8_emulated,
-        )
+        tensor_to_scale,
+        TestFP8MatmulCuda,
+        TestMatmulCuda,
+        TestMixedDtypesLinearCuda,
+        to_fp8_saturated,
+    )
+
 
 def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = False):
     #
@@ -48,8 +58,12 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     # which fail the threshold check
     orig_bf16 = torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
     orig_fp16 = torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
-    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = reduced_precision
-    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = reduced_precision
+    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = (
+        reduced_precision
+    )
+    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = (
+        reduced_precision
+    )
     # Make random tensors on CPU (seed set on common_utils.py import)
     # (Not using numpy because it does not support bfloat16)
     make_arg = partial(make_tensor, dtype=dtype, device="cpu")
@@ -91,27 +105,36 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = orig_bf16
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = orig_fp16
 
+
 @toleranceOverride({torch.float16: xtol(atol=1e-3, rtol=2e-3)})
 @dtypes(torch.float16)
 def cublas_addmm_alignment(self, dtype):
-    device = 'xpu'
+    device = "xpu"
     # perturb X, A, or B alignment
     for idx in range(0, 3):
         for offset in range(1, 3):
             offsets = [0, 0, 0]
             offsets[idx] = offset
             x_offset, a_offset, b_offset = offsets
-            A = torch.rand((5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device)
+            A = torch.rand(
+                (5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device
+            )
             A = A[a_offset:].reshape(5120, 2560)
-            X = torch.rand((26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device)
+            X = torch.rand(
+                (26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device
+            )
             X = X[x_offset:].reshape(26, 1, 2560)
-            B = torch.rand((5120 + b_offset), requires_grad=True, dtype=dtype, device=device)
+            B = torch.rand(
+                (5120 + b_offset), requires_grad=True, dtype=dtype, device=device
+            )
             B = B[b_offset:].reshape(5120)
             out = torch.nn.functional.linear(X, A, B)
             self.assertEqual(out, torch.matmul(X, A.transpose(1, 0)) + B)
 
-TestMatmulCuda.cublas_addmm=cublas_addmm
-TestMatmulCuda.test_cublas_addmm_alignment=cublas_addmm_alignment
+
+TestMatmulCuda.cublas_addmm = cublas_addmm
+TestMatmulCuda.test_cublas_addmm_alignment = cublas_addmm_alignment
+
 
 @parametrize("base_dtype", [torch.float16, torch.bfloat16, torch.float32])
 def _test_scaled_mm_vs_emulated(self, base_dtype):
@@ -131,21 +154,11 @@ def _test_scaled_mm_vs_emulated(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8,
-        y_fp8,
-        a_scale=x_scale,
-        b_scale=y_scale,
-        output_dtype=output_dtype
+        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(
-        x_fp8,
-        x_scale,
-        y_fp8,
-        y_scale,
-        output_dtype
-    )
+    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -154,13 +167,16 @@ def _test_scaled_mm_vs_emulated(self, base_dtype):
         out_emulated = out_emulated.to(compare_type)
         out_emulated = out_emulated / tensor_to_scale(out_emulated, input_dtype)
 
-    if base_dtype in {torch.bfloat16, torch.float16}:
+    if base_dtype in OrderedSet([torch.bfloat16, torch.float16]):
         atol, rtol = 7e-2, 7e-2
     else:
         atol, rtol = 3e-3, 3e-3
 
     torch.testing.assert_close(out_scaled_mm, out_emulated, atol=atol, rtol=rtol)
-TestFP8MatmulCuda.test_scaled_mm_vs_emulated=_test_scaled_mm_vs_emulated
+
+
+TestFP8MatmulCuda.test_scaled_mm_vs_emulated = _test_scaled_mm_vs_emulated
+
 
 @parametrize("base_dtype", [torch.float16, torch.bfloat16, torch.float32])
 def _test_scaled_mm_change_stride(self, base_dtype):
@@ -180,21 +196,11 @@ def _test_scaled_mm_change_stride(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8,
-        y_fp8,
-        a_scale=x_scale,
-        b_scale=y_scale,
-        output_dtype=output_dtype
+        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(
-        x_fp8,
-        x_scale,
-        y_fp8,
-        y_scale,
-        output_dtype
-    )
+    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -203,13 +209,16 @@ def _test_scaled_mm_change_stride(self, base_dtype):
         out_emulated = out_emulated.to(compare_type)
         out_emulated = out_emulated / tensor_to_scale(out_emulated, input_dtype)
 
-    if base_dtype in {torch.bfloat16, torch.float16}:
+    if base_dtype in OrderedSet([torch.bfloat16, torch.float16]):
         atol, rtol = 7e-2, 7e-2
     else:
         atol, rtol = 3e-3, 3e-3
 
     torch.testing.assert_close(out_scaled_mm, out_emulated, atol=atol, rtol=rtol)
-TestFP8MatmulCuda.test_scaled_mm_change_stride=_test_scaled_mm_change_stride
+
+
+TestFP8MatmulCuda.test_scaled_mm_change_stride = _test_scaled_mm_change_stride
+
 
 @unittest.skipIf(IS_WINDOWS, f8_msg)
 def _test_float8_error_messages(self, device) -> None:
@@ -279,7 +288,10 @@ def _test_float8_error_messages(self, device) -> None:
             scale_b=torch.ones((N), device="xpu"),
             out_dtype=torch.bfloat16,
         )
-TestFP8MatmulCuda.test_float8_error_messages=_test_float8_error_messages
+
+
+TestFP8MatmulCuda.test_float8_error_messages = _test_float8_error_messages
+
 
 @unittest.skipIf(IS_WINDOWS, f8_msg)
 @parametrize("base_dtype", [torch.bfloat16])
@@ -307,22 +319,32 @@ def _test_scaled_mm_vs_emulated_row_wise(self, base_dtype):
         x_fp8, x_scales[:, None], y_fp8, y_scales[None, :], output_dtype
     )
 
-    if base_dtype in {torch.bfloat16, torch.float16}:
+    if base_dtype in OrderedSet([torch.bfloat16, torch.float16]):
         atol, rtol = 7e-2, 7e-2
     else:
         atol, rtol = 2e-3, 2e-3
 
     torch.testing.assert_close(out_scaled_mm, out_emulated, atol=atol, rtol=rtol)
-TestFP8MatmulCuda.test_scaled_mm_vs_emulated_row_wise=_test_scaled_mm_vs_emulated_row_wise
+
+
+TestFP8MatmulCuda.test_scaled_mm_vs_emulated_row_wise = (
+    _test_scaled_mm_vs_emulated_row_wise
+)
 
 TestMixedDtypesLinearCuda._default_dtype_check_enabled = True
 TestFP8MatmulCuda._default_dtype_check_enabled = True
 TestMatmulCuda._default_dtype_check_enabled = True
-instantiate_device_type_tests(TestMixedDtypesLinearCuda, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestMixedDtypesLinearCuda, globals(), only_for=("xpu"), allow_xpu=True
+)
 
-instantiate_device_type_tests(TestFP8MatmulCuda, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestFP8MatmulCuda, globals(), only_for=("xpu"), allow_xpu=True
+)
 
-instantiate_device_type_tests(TestMatmulCuda, globals(), only_for=("xpu"), allow_xpu=True)
-if __name__ == '__main__':
+instantiate_device_type_tests(
+    TestMatmulCuda, globals(), only_for=("xpu"), allow_xpu=True
+)
+if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True
     run_tests()

@@ -9,12 +9,9 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
-    from test_ops import (
+    from test_ops import (  # TestCompositeCompliance,; TestFakeTensor,; TestTags,
         TestCommon,
-        # TestCompositeCompliance,
-        # TestFakeTensor,
         TestMathBits,
-        # TestTags,
     )
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
