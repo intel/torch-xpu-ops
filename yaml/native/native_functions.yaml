@@ -796,6 +796,7 @@
   variants: method, function
   dispatch:
     XPU: index_select_xpu_
+    SparseXPU: index_select_sparse_xpu
   tags: core
 
 - func: gcd.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -8614,3 +8615,9 @@
   dispatch:
     SparseXPU: copy_sparse_
   autogen: copy_sparse_to_sparse, copy_sparse_to_sparse.out
+
+- func: _weight_int4pack_mm(Tensor self, Tensor mat2, int qGroupSize, Tensor qScaleAndZeros) -> Tensor
+  dispatch:
+    XPU: _weight_int4pack_mm_xpu
+  # autogen: _weight_int4pack_mm.out
+  # tags: core

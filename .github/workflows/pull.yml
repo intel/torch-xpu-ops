@@ -8,6 +8,7 @@ on:
       - reopened
       - converted_to_draft
       - ready_for_review
+      - labeled
     branches:
       - main
       - release/*
@@ -35,6 +36,14 @@ jobs:
       abi: 0
       ut: op_extended
       runner: linux.idc.xpu
+  
+  preci-windows:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    uses: ./.github/workflows/_windows_ut.yml
+    with: 
+      ut: op_extended
+      runner: Windows_CI
 
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e

@@ -102,4 +102,9 @@ TORCH_XPU_API void index_reduce_amin_kernel(
     const ReductionType& reduce,
     const Tensor& result);
 
+TORCH_XPU_API Tensor index_select_sparse_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index);
+
 } // namespace at::native::xpu
