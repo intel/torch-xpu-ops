@@ -3,7 +3,7 @@
 #include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
 
 #include <comm/RegisterUtils.h>
-#include "ATen/core/ATen_fwd.h"
+#include <ATen/core/ATen_fwd.h>
 
 #include <xpu/ATen/ops/upsample_linear1d_backward_native.h>
 #include <xpu/ATen/ops/upsample_linear1d_native.h>

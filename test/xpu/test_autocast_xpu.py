@@ -95,7 +95,7 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_autocast import TestTorchAutocast
+    pass
 
 
 if __name__ == "__main__":

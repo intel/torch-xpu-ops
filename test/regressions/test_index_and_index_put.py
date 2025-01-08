@@ -1,6 +1,8 @@
+# Owner(s): ["module: unknown"]
+
+import numpy as np
 import torch
 from torch.testing._internal.common_utils import TestCase
-import numpy as np
 
 np.set_printoptions(threshold=np.inf)
 

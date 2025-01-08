@@ -5,7 +5,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
-#include "comm/Runtime.h"
+#include <comm/Runtime.h>
 
 #include <ATen/native/xpu/sycl/WeightNormKernels.h>
 

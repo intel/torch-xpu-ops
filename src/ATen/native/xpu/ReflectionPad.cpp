@@ -12,7 +12,7 @@
 #include <xpu/ATen/ops/reflection_pad2d_native.h>
 #include <xpu/ATen/ops/reflection_pad3d_backward_native.h>
 #include <xpu/ATen/ops/reflection_pad3d_native.h>
-#include "ATen/TensorMeta.h"
+#include <ATen/TensorMeta.h>
 
 namespace at {
 namespace native {

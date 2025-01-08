@@ -13,7 +13,7 @@ with XPUPatchForImport(False):
     from test_indexing import NumpyTests,TestIndexing
     import torch
 
-    
+
     def __test_index_put_accumulate_with_optional_tensors(self, device):
         # TODO: replace with a better solution.
         # Currently, here using torchscript to put None into indices.
@@ -24,7 +24,7 @@ with XPUPatchForImport(False):
             idx = [None, i]
             x.index_put_(idx, v, accumulate=True)
             return x
-        
+
         n = 4
         t = torch.arange(n * 2, dtype=torch.float32).reshape(n, 2)
         t_dev = t.to(device)

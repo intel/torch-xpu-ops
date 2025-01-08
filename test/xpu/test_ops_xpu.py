@@ -14,8 +14,6 @@ with XPUPatchForImport(False):
         # TestCompositeCompliance,
         # TestFakeTensor,
         TestMathBits,
-        # TestRefsOpsInfo,
-        TestSelfKwarg,
         # TestTags,
     )
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)

@@ -25,8 +25,8 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command   = "pytest -v "  + test_case  + exe_options
         return os.system(test_command)
     else:
-        test_command   = "pytest -v " + test_case  
-        return os.system(test_command)     
+        test_command   = "pytest -v " + test_case
+        return os.system(test_command)
 
 res = 0
 
@@ -43,6 +43,6 @@ res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
 
 if os.name == "nt":
     sys.exit(res)
-else:    
+else:
     exit_code = os.WEXITSTATUS(res)
     sys.exit(exit_code)

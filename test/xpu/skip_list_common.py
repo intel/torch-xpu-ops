@@ -64,7 +64,7 @@ skip_dict = {
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_logaddexp_executor_aten_xpu_complex64",
 
-        # RuntimeError: could not create a primitive descriptor for a deconvolution 
+        # RuntimeError: could not create a primitive descriptor for a deconvolution
         # https://github.com/intel/torch-xpu-ops/issues/253
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_complex64",
         "test_variant_consistency_eager_nn_functional_conv_transpose2d_xpu_float32",
@@ -77,7 +77,7 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
         "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_zeta_xpu_float32",  
+        "test_compare_cpu_special_zeta_xpu_float32",
 
          # XFAIL of CUDA and XPU, unexpected success in fallback
         "test_out_cholesky_inverse_xpu_float32",
@@ -85,7 +85,7 @@ skip_dict = {
         "test_out_narrow_copy_xpu_float32",
         "test_out_ormqr_xpu_float32",
         "test_out_histc_xpu_float32",
-        
+
         # XFAIL of CUDA, XPU got unexpected success
         "test_python_ref__refs_div_no_rounding_mode_xpu_complex32",
         "test_python_ref__refs_pow_xpu_complex32",
@@ -1104,7 +1104,7 @@ skip_dict = {
         # It is kernel assert on XPU implementation not exception on host.
         # We are same as CUDA implementation. And CUDA skips these cases.
         "test_trivial_fancy_out_of_bounds_xpu",
-        # index boundary should be checked. 
+        # index boundary should be checked.
         # https://github.com/intel/torch-xpu-ops/issues/783
         "test_advancedindex_xpu_float64",
         # XPU implementation doesn't claimn FP8 now
@@ -1906,7 +1906,7 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
 
-        # issue: https://github.com/intel/torch-xpu-ops/issues/809 
+        # issue: https://github.com/intel/torch-xpu-ops/issues/809
         "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
         "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_float64",
     ),
@@ -3311,7 +3311,7 @@ skip_dict = {
         "test_dispatch_meta_outplace_vdot_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_vdot_xpu_complex",
         "test_meta_outplace_vdot_xpu_complex",
-        # Unexpected success: 
+        # Unexpected success:
         "test_dispatch_meta_inplace__foreach_lgamma_xpu_bfloat16",
         "test_dispatch_meta_inplace__foreach_sigmoid_xpu_complex",
         "test_dispatch_meta_outplace__foreach_lgamma_xpu_bfloat16",

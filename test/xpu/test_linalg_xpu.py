@@ -11,7 +11,6 @@ import unittest
 import itertools
 from functools import partial
 import torch
-import numpy as np
 import math
 try:
     from xpu_test_utils import XPUPatchForImport

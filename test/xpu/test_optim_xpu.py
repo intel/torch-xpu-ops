@@ -16,9 +16,6 @@ with XPUPatchForImport(False):
 import torch
 from torch.nn import Parameter
 from copy import deepcopy
-from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests
-)
 from torch.testing._internal.common_dtype import floating_types_and
 from torch.testing._internal.common_optimizers import (
     _get_optim_inputs_including_global_cliquey_kwargs,

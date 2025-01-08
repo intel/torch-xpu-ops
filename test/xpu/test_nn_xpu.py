@@ -18,7 +18,6 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
 )
 from torch.testing._internal.common_dtype import integral_types,get_all_math_dtypes
-from torch.testing._internal.common_nn import ctcloss_reference
 from torch.testing._internal.common_utils import (
     IS_PPC,
     subtest,
@@ -36,7 +35,7 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
-    from test_nn import TestFusionEval, TestConstantPadNd, TestAddRelu, TestNN, TestNNDeviceType, TestFunctionalPickle, TestFusionEval, TestUtils
+    from test_nn import TestNN, TestNNDeviceType
 
 # Some cases named with "cuda" will pass, but they actully run on xpu in this UT. These cases are added by "add_test" in test_nn.py
 torch.Tensor.cuda=torch.Tensor.xpu
@@ -652,7 +651,7 @@ def _test_batchnorm_xpu_nhwc(self):
 
     input = torch.randint(1, 10, (4, 8, 2, 2), dtype=torch.float32, device="xpu")
     input = input.contiguous(memory_format=torch.channels_last).detach().requires_grad_()
-    
+
 
     grad = torch.randint(1, 10, (4, 8, 2, 2), dtype=torch.float32, device="xpu")
     grad = grad.contiguous(memory_format=torch.channels_last)

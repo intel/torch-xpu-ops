@@ -18,6 +18,6 @@ for key in skip_dict:
 
 if os.name == "nt":
     sys.exit(res)
-else:    
+else:
     exit_code = os.WEXITSTATUS(res)
     sys.exit(exit_code)

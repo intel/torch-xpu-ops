@@ -11,8 +11,8 @@
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
-#include "ATen/Context.h"
-#include "ATen/core/TensorBase.h"
+#include <ATen/Context.h>
+#include <ATen/core/TensorBase.h>
 
 #include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
 

@@ -21,7 +21,6 @@ from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import (
     BinaryUfuncInfo,
     DecorateInfo,
-    OpInfo,
     ReductionOpInfo,
     ShapeFuncInfo,
     SpectralFuncInfo,
@@ -479,7 +478,7 @@ def ModuleTest_test_xpu(self, test_case):
             xpu_gradInput = test_case._backward(
                 xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
             )
-            
+
             test_case.assertEqual(
                 cpu_gradInput,
                 xpu_gradInput,
@@ -825,7 +824,7 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if ( opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list 
+            if ( opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list
                 if db == common_methods_invocations.python_ref_db else True)) or opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIfXPU = opinfo.dtypes
             else:

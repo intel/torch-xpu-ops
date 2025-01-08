@@ -38,8 +38,7 @@ from torch.testing._internal.common_utils import (  # type: ignore[attr-defined]
     IS_WINDOWS, IS_FILESYSTEM_UTF8_ENCODING, NO_MULTIPROCESSING_SPAWN,
     IS_SANDCASTLE, IS_FBCODE, IS_REMOTE_GPU, skipIfTorchInductor, load_tests, slowTest, slowTestIf,
     TEST_WITH_CROSSREF, skipIfTorchDynamo, skipRocmIfTorchInductor, set_default_dtype,
-    skipCUDAMemoryLeakCheckIf, BytesIOContext,
-    skipIfRocm, skipIfNoSciPy, TemporaryFileName, TemporaryDirectoryName,
+    skipCUDAMemoryLeakCheckIf, skipIfRocm, skipIfNoSciPy, TemporaryFileName, TemporaryDirectoryName,
     wrapDeterministicFlagAPITest, DeterministicGuard, CudaSyncGuard,
     skipIfNotRegistered, bytes_to_scalar, parametrize, skipIfMPS, noncontiguous_like,
     AlwaysWarnTypedStorageRemoval, TEST_WITH_TORCHDYNAMO, TEST_XPU)
@@ -48,7 +47,7 @@ from torch.testing._internal.common_device_type import (
     expectedFailureMeta,
     expectedFailureXLA,
     instantiate_device_type_tests,
-    onlyCUDA, onlyXPU, onlyCPU,
+    onlyXPU, onlyCPU,
     dtypes, dtypesIfCUDA, dtypesIfCPU, deviceCountAtLeast,
     skipMeta, PYTORCH_CUDA_MEMCHECK, largeTensorTest, onlyNativeDeviceTypes,
     get_all_device_types, skipXLA)
@@ -202,7 +201,7 @@ class TestTorchDeviceType(TestCase):
             shape.append(random.randint(min_size, max_size))
         return tuple(shape)
 
-        
+
     # Validates that mathematical constants are defined properly, as required by
     # the Python Array API (https://data-apis.org/array-api/latest/API_specification/constants.html)
     @onlyCPU
@@ -275,7 +274,7 @@ class TestTorchDeviceType(TestCase):
         if torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu' :
             if dtype in [torch.quint8, torch.qint8, torch.qint32, torch.quint4x2]:
                 return
-            
+
         storage_type_name = torch.storage._dtype_to_storage_type_map()[dtype]
         if torch.device(device).type == 'cuda':
             storage_type = eval('torch.cuda.' + storage_type_name)
@@ -1453,7 +1452,7 @@ else:
         self.check_nondeterministic_alert(
                 lambda: res.backward(grad, retain_graph=True),
                 'adaptive_avg_pool2d_backward_' + torch.device(device).type,
-                torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu') 
+                torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu')
 
     @skipIfMPS
     @skipIfTorchInductor("https://github.com/pytorch/pytorch/issues/113707")
@@ -1895,7 +1894,7 @@ else:
                     lambda: test_func('function'),
                     'kthvalue XPU',
                     torch.device(device).type == 'xpu')
-            else:             
+            else:
                 self.check_nondeterministic_alert(
                     lambda: test_func('function'),
                     'kthvalue CUDA',
@@ -2046,7 +2045,7 @@ else:
             assert src.grad is not None
             grad = src.grad.detach().clone()
 
-            if torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu': 
+            if torch.device(device).type == 'cuda' or torch.device(device).type == 'xpu':
                 for _ in range(2):
                     src.grad.data.zero_()
                     res = torch.gather(src, dim, idx)
@@ -4215,7 +4214,7 @@ else:
         self.assertEqual([(0, 1, 3, 0)], [z.shape for z in torch.split(x, 1, dim=0)])
         self.assertEqual([(0, 1, 3, 0)], [z.shape for z in torch.split(x, 0, dim=0)])
 
-  
+
     # functions that operate over a dimension but don't reduce.
     def test_dim_function_empty(self, device):
         shape = (0, 1, 2, 0)
@@ -4326,7 +4325,7 @@ else:
 
         c = torch.randn((0, 1, 2), device=device)
         c_clone = c.clone()
-        
+
         self.assertEqual(c_clone, c.index_fill_(0, ind_empty, -1))
         self.assertEqual(c_clone, c.index_copy_(0, ind_empty, torch.empty((0, 1, 2), device=device)))
         # skip due to issue #302
@@ -7870,7 +7869,7 @@ class TestTorch(TestCase):
 
                 with self.assertRaisesRegex(RuntimeError, r'Not available for XPU storage'):
                     storage_class._new_shared_filename(0, 0, 0)
-        else:        
+        else:
             storage_classes = [
                 torch.cuda.ByteStorage,
                 torch.cuda.FloatStorage,
@@ -8374,7 +8373,7 @@ tensor([ 0.0000e+00, 9.8813e-324, 9.8813e-323, 1.0000e+307, 1.0000e+308,
             y = torch.tensor([123], device='cpu')
             self.assertEqual(y.__repr__(), str(y))
             self.assertExpectedInline(str(y), '''tensor([123], device='cpu')''')
-        
+
         if torch.xpu.is_available():
             x = torch.tensor([123], device='xpu:0')
             self.assertEqual(x.__repr__(), str(x))
@@ -8747,7 +8746,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertRaisesRegex(TypeError, msg, lambda: torch.cuda.FloatTensor())
         self.assertRaisesRegex(TypeError, msg, lambda: torch.set_default_tensor_type(torch.cuda.FloatTensor))
         self.assertRaisesRegex(AssertionError, msg, lambda: torch.tensor([1]).to(device="cuda"))
-    
+
     # # Skipped due to issue #302
     # # NB: we must not be built with CUDA; if we are built with CUDA but no CUDA
     # # is available, we get a different error.

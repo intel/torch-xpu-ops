@@ -6,13 +6,12 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     toleranceOverride,
     tol as xtol,
-    ) 
+    )
 from torch.testing._internal.common_utils import run_tests, TestCase, parametrize, IS_WINDOWS
 import torch
 from functools import partial
 from torch.testing import make_tensor
 import unittest
-from itertools import product
 
 try:
     from xpu_test_utils import XPUPatchForImport

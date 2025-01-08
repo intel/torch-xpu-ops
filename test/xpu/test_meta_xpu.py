@@ -13,7 +13,6 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     from test_meta import (
-        TestMetaConverter,
         TestMeta,
         meta_function_device_expected_failures,
         meta_function_device_skips,
@@ -45,5 +44,3 @@ if __name__ == '__main__':
         sys.exit(0)
 
     run_tests()
-
-

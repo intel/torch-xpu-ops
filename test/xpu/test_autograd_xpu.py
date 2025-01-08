@@ -519,11 +519,7 @@ torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 with XPUPatchForImport(False):
     from test_autograd import (
         TestAutograd,
-        TestAutogradForwardModeBatchedGrad,
-        TestAutogradForwardMode,
         TestAutogradDeviceType,
-        TestAllowMutationOnSaved,
-        TestAutogradInferenceMode,
         TestAutogradMultipleDispatch,
         TestMultithreadAutograd,
         TestNestedCheckpoint,

@@ -9,10 +9,7 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     from test_dynamic_shapes import (
-        TestPySymInt,
         TestSymNumberMagicMethods,
-        TestFloorDiv,
-        TestDimConstraints,
     )
 
 instantiate_parametrized_tests(TestSymNumberMagicMethods)

@@ -1,13 +1,16 @@
+# Owner(s): ["module: unknown"]
 import torch
 from torch.testing._internal.common_utils import TestCase
-import torchvision
+
 
 class TestTorchVisionMethod(TestCase):
     def test_roi_align(self):
         a_ref = torch.zeros([4, 256, 296, 304]).requires_grad_(True)
         b_ref = torch.zeros([2292, 5]).requires_grad_(True)
 
-        a_xpu = torch.zeros([4, 256, 296, 304], device=torch.device("xpu")).requires_grad_(True)
+        a_xpu = torch.zeros(
+            [4, 256, 296, 304], device=torch.device("xpu")
+        ).requires_grad_(True)
         b_xpu = torch.zeros([2292, 5], device=torch.device("xpu")).requires_grad_(True)
 
         ref = torch.ops.torchvision.roi_align(a_ref, b_ref, 0.25, 7, 7, 2, False)
