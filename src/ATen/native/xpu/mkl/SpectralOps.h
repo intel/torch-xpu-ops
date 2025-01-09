@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ATen/core/Tensor.h>
+
 namespace at::native::xpu {
 
 TORCH_XPU_API Tensor _fft_c2c_mkl(
