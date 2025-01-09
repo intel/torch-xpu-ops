@@ -4682,6 +4682,11 @@
   dispatch:
     XPU: std_xpu
 
+- func: std.correction_out(Tensor self, int[1]? dim=None, *, Scalar? correction=None, bool keepdim=False, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
+  dispatch:
+    XPU: std_xpu_out
+
 - func: var(Tensor self, bool unbiased=True) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
@@ -6527,6 +6532,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: floor.out
   variants: function, method
+  dispatch:
+    SparseXPU: floor_sparse_
   tags: pointwise
 
 - func: floor.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
