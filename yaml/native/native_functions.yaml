@@ -8612,3 +8612,32 @@
     XPU: _weight_int4pack_mm_xpu
   # autogen: _weight_int4pack_mm.out
   # tags: core
+
+  - func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
+  variants: function
+  device_check: NoCheck
+  dispatch:
+    XPU: _nested_compute_contiguous_strides_offsets
+
+- func: _nested_tensor_from_mask(Tensor t, Tensor mask, bool mask_check=True) -> Tensor
+  dispatch:
+    XPU: NestedTensor_nested_tensor_from_mask
+  autogen: _nested_tensor_from_mask.out
+
+- func: _nested_tensor_from_mask_left_aligned(Tensor t, Tensor mask) -> bool
+  dispatch:
+    XPU: NestedTensor_nested_tensor_from_mask_left_aligned
+
+- func: _nested_view_from_buffer(Tensor(a) self, Tensor nested_size, Tensor nested_strides, Tensor offsets) -> Tensor(a)
+  variants: function
+  device_check: NoCheck
+  dispatch:
+    XPU: _nested_view_from_buffer
+
+- func: _nested_view_from_buffer_copy(Tensor self, Tensor nested_size, Tensor nested_strides, Tensor offsets) -> Tensor
+  variants: function
+  device_check: NoCheck
+  tags: view_copy
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _nested_view_from_buffer_copy
+  autogen: _nested_view_from_buffer_copy.out
