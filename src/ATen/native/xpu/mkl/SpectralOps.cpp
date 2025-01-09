@@ -411,17 +411,6 @@ Tensor _fft_c2r_mkl(
   }
 
   Tensor input = self;
-  Tensor input_cpu = input.to(at::kCPU);
-  auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
-  printf("%ld\n", input_cpu.numel());
-  data[0].imag(0.0f);
-  data[input.numel() - 1].imag(0.0f);
-  for (int i = 0; i < input_cpu.numel(); ++i)
-    printf("%f %f ", data[i].real(), data[i].imag());
-  printf("\n");
-  //data[1] = static_cast<float>(0);
-  //data[tensor.numel() - 2] = = static_cast<float>(0);
-  input.copy_(input_cpu);
 
   auto in_sizes = input.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
@@ -440,6 +429,30 @@ Tensor _fft_c2r_mkl(
         /*forward=*/false);
     //dim = dim.slice(dim.size() - 1);
   }
+
+  Tensor input_cpu = input.to(at::kCPU);
+  auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
+  printf("%ld\n", input_cpu.numel());
+  int64_t last_in_size = in_sizes[input_cpu.dim() - 1];
+    printf("%ld\n", last_in_size);
+  if (dim.back() == 0) {
+    for (int i = 0; i < last_in_size; ++i) {
+      data[i].imag(0.0f);
+      data[input_cpu.numel() - 1 - i].imag(0.0f);
+    }
+  }
+  if (dim.back() == -1) {
+    for (int i = 0; i < input_cpu.numel(); i += last_in_size) {
+      data[i].imag(0.0f);
+      data[i + last_in_size - 1].imag(0.0f);
+    }
+  }
+  //data[0].imag(0.0f);
+  //data[input.numel() - 1].imag(0.0f);
+  for (int i = 0; i < input_cpu.numel(); ++i)
+    printf("%f %f ", data[i].real(), data[i].imag());
+  printf("\n");
+  input.copy_(input_cpu);
 
   // auto in_sizes = input.sizes();
   // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
