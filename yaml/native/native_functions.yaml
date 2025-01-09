@@ -8,6 +8,7 @@
   device_guard: False
   dispatch:
     SparseXPU: copy_sparse_wrapper_
+    NestedTensorXPU: copy_nested_
   autogen: copy.out
 
 - func: _copy_from(Tensor self, Tensor dst, bool non_blocking=False) -> Tensor
@@ -29,11 +30,14 @@
   variants: function, method
   dispatch:
     SparseXPU: add_sparse
+    NestedTensorXPU: NestedTensor_add_Tensor
   tags: [core, pointwise]
 
 - func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor
   device_check: NoCheck
   device_guard: False
+  dispatch:
+    NestedTensorXPU: _to_copy_nested
   autogen: _to_copy.out
   tags: core
 
@@ -66,6 +70,7 @@
   structured_delegate: add.out
   dispatch:
     SparseXPU: add_sparse_
+    NestedTensorXPU: NestedTensor_add__Tensor
   tags: pointwise
 
 - func: add.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
@@ -214,6 +219,7 @@
   structured_delegate: sub.out
   dispatch:
     SparseXPU: sub_sparse
+    NestedTensorXPU: NestedTensor_sub_Tensor
   tags: [core, pointwise]
 
 - func: sub_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
@@ -243,6 +249,7 @@
   variants: function, method
   dispatch:
     SparseXPU: mul_sparse
+    NestedTensorXPU: NestedTensor_mul_Tensor
   tags: [core, pointwise]
 
 - func: mul_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
@@ -251,6 +258,7 @@
   variants: method
   dispatch:
     SparseXPU: mul_sparse_
+    NestedTensorXPU: NestedTensor_mul__Tensor
   tags: pointwise
 
 - func: mul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -266,11 +274,15 @@
 - func: mul.Scalar(Tensor self, Scalar other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    NestedTensorXPU: NestedTensor_mul_Scalar
   tags: [core, pointwise]
 
 - func: mul_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
+  dispatch:
+    NestedTensorXPU: NestedTensor_mul__Scalar
   autogen: mul.Scalar_out
   tags: pointwise
 # multiply, alias for mul
@@ -312,6 +324,7 @@
   structured_delegate: div.out
   dispatch:
     SparseXPU: div_sparse
+    NestedTensorXPU: NestedTensor_div_Tensor
   tags: [core, pointwise]
 
 - func: div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
@@ -362,7 +375,7 @@
   variants: function, method
   dispatch:
     CompositeExplicitAutograd: div
-    NestedTensorCPU, NestedTensorCUDA: NestedTensor_div_Scalar
+    NestedTensorXPU: NestedTensor_div_Scalar
   tags: [core, pointwise]
 
 - func: div_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
@@ -521,6 +534,8 @@
   structured_delegate: eq.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
+  dispatch:
+    NestedTensorXPU: eq_scalar_nested
   tags: [core, pointwise]
 
 - func: eq.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -535,6 +550,8 @@
   structured_delegate: eq.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
+  dispatch:
+    NestedTensorXPU: eq_tensor_nested
   tags: [core, pointwise]
 
 - func: eq_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
@@ -668,6 +685,8 @@
   structured_delegate: gt.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
+  dispatch:
+    NestedTensorXPU: gt_scalar_nested
   tags: [core, pointwise]
 
 - func: gt.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -706,6 +725,8 @@
   structured_delegate: ge.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
+  dispatch:
+    NestedTensorXPU: ge_scalar_nested
   tags: [core, pointwise]
 
 - func: ge.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
@@ -739,6 +760,7 @@
   dispatch:
     XPU: isnan
     SparseXPU: isnan_sparse
+    NestedTensorXPU: NestedTensor_isnan
   autogen: isnan.out
   tags: [core, pointwise]
 
@@ -752,6 +774,8 @@
 - func: masked_fill.Scalar(Tensor self, Tensor mask, Scalar value) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
+  dispatch:
+    NestedTensorXPU: NestedTensor_masked_fill
   tags: pointwise
 
 - func: masked_fill_.Tensor(Tensor(a!) self, Tensor mask, Tensor value) -> Tensor(a!)
@@ -877,6 +901,7 @@
   structured_delegate: threshold_backward.grad_input
   dispatch:
     SparseXPU: threshold_backward_sparse
+    NestedTensorXPU: threshold_backwards_nested
   tags: pointwise
 
 - func: gelu.out(Tensor self, *, str approximate='none', Tensor(a!) out) -> Tensor(a!)
@@ -891,11 +916,15 @@
   structured_delegate: gelu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
+  dispatch:
+    NestedTensorXPU: NestedTensor_gelu_
 
 - func: gelu(Tensor self, *, str approximate='none') -> Tensor
   structured_delegate: gelu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
+  dispatch:
+    NestedTensorXPU: NestedTensor_gelu
   tags: [core, pointwise]
 
 - func: gelu_backward.grad_input(Tensor grad_output, Tensor self, *, str approximate='none', Tensor(a!) grad_input) -> Tensor(a!)
@@ -908,6 +937,8 @@
 - func: gelu_backward(Tensor grad_output, Tensor self, *, str approximate='none') -> Tensor
   structured_delegate: gelu_backward.grad_input
   python_module: nn
+  dispatch:
+    NestedTensorXPU: gelu_backwards_nested
   tags: pointwise
 
 - func: arange(Scalar end, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
@@ -941,6 +972,7 @@
   variants: function, method
   dispatch:
     SparseXPU: abs_sparse
+    NestedTensorXPU: NestedTensor_abs
   tags: [core, pointwise]
 
 - func: abs_(Tensor(a!) self) -> Tensor(a!)
@@ -948,6 +980,7 @@
   variants: function, method
   dispatch:
     SparseXPU: abs_sparse_
+    NestedTensorXPU: NestedTensor_abs_
 
 - func: sin(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -955,6 +988,7 @@
   variants: function, method
   dispatch:
     SparseXPU: sin_sparse
+    NestedTensorXPU: NestedTensor_sin
   tags: [core, pointwise]
 
 - func: sin_(Tensor(a!) self) -> Tensor(a!)
@@ -996,7 +1030,7 @@
   variants: function, method
   structured_delegate: cos.out
   dispatch:
-    NestedTensorCPU, NestedTensorCUDA: cos_nested
+    NestedTensorXPU: NestedTensor_cos
   tags: [core, pointwise]
 
 - func: cos_(Tensor(a!) self) -> Tensor(a!)
@@ -1039,6 +1073,7 @@
   variants: function, method
   dispatch:
     SparseXPU: sqrt_sparse
+    NestedTensorXPU: NestedTensor_sqrt
   tags: [core, pointwise]
 
 - func: sqrt_(Tensor(a!) self) -> Tensor(a!)
@@ -1084,6 +1119,7 @@
   variants: function, method
   dispatch:
     SparseXPU: tanh_sparse
+    NestedTensorXPU: NestedTensor_tanh
   tags: [core, pointwise]
 
 - func: tanh_(Tensor(a!) self) -> Tensor(a!)
@@ -1092,6 +1128,7 @@
   variants: function, method
   dispatch:
     SparseXPU: tanh_sparse_
+    NestedTensorXPU: NestedTensor_tanh_
   tags: pointwise
 
 - func: tanh.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -1109,6 +1146,7 @@
   variants: function, method
   dispatch:
     SparseXPU: neg_sparse
+    NestedTensorXPU: NestedTensor_neg
   tags: [core, pointwise]
 
 - func: neg_(Tensor(a!) self) -> Tensor(a!)
@@ -1117,6 +1155,7 @@
   variants: function, method
   dispatch:
     SparseXPU: neg_sparse_
+    NestedTensorXPU: NestedTensor_neg_
   tags: pointwise
 
 - func: neg.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -1215,6 +1254,7 @@
   dispatch:
     CompositeExplicitAutograd: empty_like
     SparseXPU: empty_like_sparse_coo
+    NestedTensorXPU: empty_like_nested
   autogen: empty_like.out
 
 - func: new_empty_strided(Tensor self, SymInt[] size, SymInt[] stride, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
@@ -1241,6 +1281,7 @@
   variants: function, method
   dispatch:
     XPU: fill_
+    NestedTensorXPU: fill_nested_
   autogen: fill.Scalar_out
 
 - func: fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)
@@ -1248,6 +1289,7 @@
   variants: function, method
   dispatch:
     XPU: fill_
+    NestedTensorXPU: fill_nested_
   autogen: fill.Tensor_out
 
 - func: resize_as_sparse_(Tensor(a!) self, Tensor the_template) -> Tensor(a!)
@@ -1263,6 +1305,7 @@
   dispatch:
     XPU: zero_
     SparseXPU: zero_sparse_
+    NestedTensorXPU: zero_nested_
   autogen: zero, zero.out
 
 - func: random_.from(Tensor(a!) self, int from, int? to, *, Generator? generator=None) -> Tensor(a!)
@@ -1295,6 +1338,7 @@
   variants: method
   dispatch:
     XPU: normal_
+    NestedTensorXPU: normal_nested_
   autogen: normal.out
 
 # Only used by the functionalization pass.
@@ -1395,12 +1439,14 @@
   variants: function
   dispatch:
     XPU: native_dropout_xpu
+    NestedTensorXPU: native_dropout_nested
   tags: [nondeterministic_seeded, core]
   autogen: native_dropout.out
 
 - func: native_dropout_backward(Tensor grad_output, Tensor mask, float scale) -> Tensor
   dispatch:
     XPU: native_dropout_backward_xpu
+    NestedTensorXPU: native_dropout_backward
   autogen: native_dropout_backward.out
   tags: pointwise
 
@@ -1410,6 +1456,7 @@
   device_guard: False
   dispatch:
     XPU: view
+    NestedTensorXPU: view_nested
   tags: core
 
 - func: view_as_real(Tensor(a) self) -> Tensor(a)
@@ -1685,12 +1732,14 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     XPU: where_self_out
+    NestedTensorXPU: NestedTensor_where_out
 
 - func: where.self(Tensor condition, Tensor self, Tensor other) -> Tensor
   device_check: NoCheck   # TensorIterator
   variants: function, method
   dispatch:
     XPU: where
+    NestedTensorXPU: NestedTensor_where
   tags: [core, pointwise]
 
 - func: clamp(Tensor self, Scalar? min=None, Scalar? max=None) -> Tensor
@@ -2030,6 +2079,8 @@
 
 - func: _softmax(Tensor self, int dim, bool half_to_float) -> Tensor
   structured_delegate: _softmax.out
+  dispatch:
+    NestedTensorXPU: softmax_nested
   tags: core
 
 - func: _softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
@@ -2043,6 +2094,8 @@
 
 - func: _softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
   structured_delegate: _softmax_backward_data.out
+  dispatch:
+    NestedTensorXPU: nested_softmax_backward
 
 - func: _softmax_backward_data.out(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype, *, Tensor(a!) grad_input) -> Tensor(a!)
   structured: True
@@ -2124,6 +2177,7 @@
   structured_delegate: sgn.out
   dispatch:
     SparseXPU: sgn_sparse
+    NestedTensorXPU: NestedTensor_sgn
   tags: pointwise
 
 - func: sgn_(Tensor(a!) self) -> Tensor(a!)
@@ -2131,6 +2185,7 @@
   structured_delegate: sgn.out
   dispatch:
     SparseXPU: sgn_sparse_
+    NestedTensorXPU: NestedTensor_sgn_
   tags: pointwise
 
 - func: sgn.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -3158,12 +3213,14 @@
 - func: native_layer_norm(Tensor input, SymInt[] normalized_shape, Tensor? weight, Tensor? bias, float eps) -> (Tensor, Tensor, Tensor)
   dispatch:
     XPU: layer_norm_xpu
+    NestedTensorXPU: nested_layer_norm
   autogen: native_layer_norm.out
   tags: core
 
 - func: native_layer_norm_backward(Tensor grad_out, Tensor input, SymInt[] normalized_shape, Tensor mean, Tensor rstd, Tensor? weight, Tensor? bias, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
   dispatch:
     XPU: layer_norm_backward_xpu
+    NestedTensorXPU: layer_norm_backward_nested
   autogen: native_layer_norm_backward.out
   tags: core
 
@@ -3274,6 +3331,7 @@
   structured_delegate: cat.out
   dispatch:
     SparseXPU: cat_sparse
+    NestedTensorXPU: cat_nested
   tags: core
 
 - func: cat.out(Tensor[] tensors, int dim=0, *, Tensor(a!) out) -> Tensor(a!)
@@ -3516,11 +3574,15 @@
 - func: silu(Tensor self) -> Tensor
   structured_delegate: silu.out
   python_module: nn
+  dispatch:
+    NestedTensorXPU: NestedTensor_silu
   tags: pointwise
 
 - func: silu_(Tensor(a!) self) -> Tensor(a!)
   structured_delegate: silu.out
   python_module: nn
+  dispatch:
+    NestedTensorXPU: NestedTensor_silu_
   tags: pointwise
 
 - func: silu.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -3544,6 +3606,7 @@
   python_module: nn
   dispatch:
     CompositeImplicitAutograd: math_silu_backward
+    NestedTensorXPU: silu_backward_nested
   tags: pointwise
 
 - func: hardswish.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -3606,6 +3669,7 @@
   dispatch:
     XPU: relu
     SparseXPU: relu_sparse
+    NestedTensorXPU: NestedTensor_relu
   tags: [core, pointwise]
 
 - func: relu_(Tensor(a!) self) -> Tensor(a!)
@@ -3614,6 +3678,7 @@
   dispatch:
     XPU: relu_
     SparseXPU: relu_sparse_
+    NestedTensorXPU: NestedTensor_relu_
   autogen: relu.out
   tags: pointwise
 
@@ -3621,6 +3686,8 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: all.out
   variants: function, method
+  dispatch:
+    NestedTensorXPU: NestedTensor_all
 
 - func: all.dims(Tensor self, int[]? dim=None, bool keepdim=False) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -4333,6 +4400,7 @@
   dispatch:
     CompositeExplicitAutograd: clone
     SparseXPU: clone_sparse
+    NestedTensorXPU: clone_nested
   autogen: clone.out
   tags: [core, pointwise]
 
@@ -5032,7 +5100,7 @@
   variants: function, method
   dispatch:
     CompositeExplicitAutograd: logical_not
-    NestedTensorCPU, NestedTensorCUDA: NestedTensor_logical_not
+    NestedTensorXPU: NestedTensor_logical_not
   tags: [core, pointwise]
 
 - func: logical_not_(Tensor(a!) self) -> Tensor(a!)
@@ -5040,7 +5108,7 @@
   variants: method
   dispatch:
     CompositeExplicitAutograd: logical_not_
-    NestedTensorCPU, NestedTensorCUDA: NestedTensor_logical_not_
+    NestedTensorXPU: NestedTensor_logical_not_
   tags: pointwise
 
 - func: logical_not.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -5989,13 +6057,39 @@
 # Fused implementation detail for transformers. Adds in-projection bias to QKV and divides Q by sqrt(D/num_heads).
 - func: _transform_bias_rescale_qkv(Tensor qkv, Tensor qkv_bias, int num_heads) -> (Tensor, Tensor, Tensor)
   dispatch:
-    XPU: transform_bias_rescale_qkv_xpu
+    XPU, NestedTensorXPU: transform_bias_rescale_qkv_xpu
   autogen: _transform_bias_rescale_qkv.out
+
+# These private functions are temporary. They will be updated/deleted when nested tensors switch to using SymInts for their metadata representation
+- func: _nested_tensor_size(Tensor self) -> Tensor
+  variants: method
+  dispatch:
+    NestedTensorXPU: _nested_tensor_size
+  autogen: _nested_tensor_size.out
+
+- func: _nested_tensor_strides(Tensor self) -> Tensor
+  variants: method
+  dispatch:
+    NestedTensorXPU: _nested_tensor_strides
+  autogen: _nested_tensor_strides.out
+
+- func: _nested_tensor_storage_offsets(Tensor self) -> Tensor
+  variants: method
+  dispatch:
+    NestedTensorXPU: _nested_tensor_storage_offsets
+  autogen: _nested_tensor_storage_offsets.out
+
+# _nested_from_padded is not usable from Python, so
+# _nested_from_padded_and_nested_example is available for testing.
+- func: _nested_from_padded_and_nested_example(Tensor padded, Tensor nt_example) -> Tensor
+  dispatch:
+    NestedTensorXPU: NestedTensor_from_padded_and_nested_example
+  autogen: _nested_from_padded_and_nested_example.out
 
 - func: _native_multi_head_attention(Tensor query, Tensor key, Tensor value, int embed_dim, int num_head, Tensor qkv_weight, Tensor qkv_bias, Tensor proj_weight, Tensor proj_bias, Tensor? mask=None, bool need_weights=True, bool average_attn_weights=True, int? mask_type=None) -> (Tensor, Tensor)
   variants: function
   dispatch:
-    XPU: native_multi_head_attention_xpu
+    XPU, NestedTensorXPU: native_multi_head_attention_xpu
   autogen: _native_multi_head_attention.out
 
 - func: argmin(Tensor self, int? dim=None, bool keepdim=False) -> Tensor
@@ -6721,6 +6815,7 @@
   dispatch:
     CompositeExplicitAutograd: unsqueeze
     SparseXPU: unsqueeze_sparse
+    NestedTensorXPU: unsqueeze_nested
   tags: core
 
 - func: zeros(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
@@ -6899,6 +6994,7 @@
   structured_delegate: isposinf.out
   dispatch:
     SparseXPU: isposinf_sparse
+    NestedTensorXPU: NestedTensor_isposinf
   tags: pointwise
 
 - func: isposinf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -6914,6 +7010,7 @@
   structured_delegate: isneginf.out
   dispatch:
     SparseXPU: isneginf_sparse
+    NestedTensorXPU: NestedTensor_isneginf
   tags: pointwise
 
 - func: isneginf.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
@@ -7966,6 +8063,7 @@
   dispatch:
     CompositeExplicitAutograd: isinf
     SparseXPU: isinf_sparse
+    NestedTensorXPU: NestedTensor_isinf
   autogen: isinf.out
   tags: [core, pointwise]
 
@@ -8594,6 +8692,7 @@
   variants: method
   dispatch:
     SparseXPU: values_sparse
+    NestedTensorXPU: values_nested
   device_check: NoCheck
   device_guard: False
 
@@ -8623,13 +8722,30 @@
     SparseXPU: copy_sparse_
   autogen: copy_sparse_to_sparse, copy_sparse_to_sparse.out
 
+- func: unbind_copy.int(Tensor self, int dim=0) -> Tensor[]
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: unbind_copy_int
+  tags: view_copy
+
+- func: unbind_copy.int_out(Tensor self, int dim=0, *, Tensor(a!)[] out) -> ()
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: unbind_copy_int_out
+
+- func: unbind.int(Tensor(a -> *) self, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: unbind
+    NestedTensorXPU: NestedTensor_unbind
+
 - func: _weight_int4pack_mm(Tensor self, Tensor mat2, int qGroupSize, Tensor qScaleAndZeros) -> Tensor
   dispatch:
     XPU: _weight_int4pack_mm_xpu
   # autogen: _weight_int4pack_mm.out
   # tags: core
 
-  - func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
+- func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
   variants: function
   device_check: NoCheck
   dispatch:
