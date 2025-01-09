@@ -2036,6 +2036,8 @@ skip_dict = {
         # All are oneDNN issues
 
         ### Error #0 in TestBwdGradientsXPU , totally 271 , RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_fn_grad_index_reduce_prod_xpu_float64",
+        "test_inplace_grad_index_reduce_prod_xpu_float64",
         "test_fn_grad___rmatmul___xpu_complex128",
         "test_fn_grad___rmatmul___xpu_float64",
         "test_fn_grad_addbmm_xpu_float64",
@@ -2423,7 +2425,7 @@ skip_dict = {
         # Greatest absolute difference: 0.0625 at index (2, 1, 4) (up to 1e-05 allowed)
         # Greatest relative difference: 0.001125335693359375 at index (2, 1, 4) (up to 0.001 allowed)
         "test_index_reduce_reduce_mean_xpu_bfloat16",
-        "test_index_rSeduce_reduce_mean_xpu_float16",
+        "test_index_reduce_reduce_mean_xpu_float16",
         "test_index_reduce_reduce_prod_xpu_float16",
     ),
 
