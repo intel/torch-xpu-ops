@@ -1,0 +1,144 @@
+name: Linux PyTorch XPU Build
+
+on:
+  workflow_call:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'main'
+        description: Pytorch branch/commit
+      keep_torch_xpu_ops:
+        required: false
+        type: string
+        default: 'false'
+        description: Keep torch-xpu-ops pin. `true` means use pined commit
+      abi:
+        required: false
+        type: string
+        default: 1
+        description: ABI version. Default abi as 1.
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Runner label
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
+    outputs:
+      whl_name:
+        description: The name of the wheel file
+        value: ${{ jobs.Torch-XPU-Build.outputs.whl_name }}
+      torch_commit_id:
+        description: The commit id of the torch build
+        value: ${{ jobs.Torch-XPU-Build.outputs.TORCH_COMMIT_ID }}
+
+permissions: read-all
+
+jobs:
+  Torch-XPU-Build:
+    if: ${{ inputs.pytorch }} != 'nightly_wheel'
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      whl_name: ${{ steps.build_version.outputs.WHL_NAME }}
+      TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
+    timeout-minutes: 900
+    env:
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_build || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
+          conda create -n xpu_build python=${{ inputs.python }} cmake ninja -y
+          source activate xpu_build
+          cd ../ && rm -rf pytorch
+          pip install requests
+          git clone https://github.com/pytorch/pytorch pytorch
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            # apply PRs for stock pytorch
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git status && git show -s
+            git submodule sync && git submodule update --init --recursive
+            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+              echo "Don't replace torch-xpu-ops!"
+            else
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+              # Workaround for torch-xpu-ops ci test
+              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            fi
+          fi
+      - name: Build Pytorch XPU
+        run: |
+          source activate xpu_build
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          if [[ ${{ inputs.abi }} == '0' ]]; then
+            export _GLIBCXX_USE_CXX11_ABI=0
+          else
+            export _GLIBCXX_USE_CXX11_ABI=1
+          fi
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ../pytorch
+            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+            pip install -r requirements.txt
+            WERROR=1 python setup.py bdist_wheel
+            pip install --force-reinstall dist/*.whl
+            cp dist/*.whl ${{ github.workspace }}/
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+            cd ../pytorch
+            git reset --hard && git checkout ${TORCH_COMMIT_ID}
+            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            rm -rf third_party/torch-xpu-ops
+            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+            git checkout ${TORCH_XPU_OPS_COMMIT}
+            cd ../..
+          fi
+      - name: Torch Config
+        run: |
+          source activate xpu_build
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+
+          cd ..
+          python pytorch/torch/utils/collect_env.py
+      - name: Identify Build version
+        id: build_version
+        run: |
+          source .github/scripts/env.sh
+          cd ../pytorch
+          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          . /etc/os-release
+          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo ${GITHUB_ENV}
+      - name: Upload Torch XPU Wheel
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }} 
+          path: ${{ github.workspace }}/torch*.whl

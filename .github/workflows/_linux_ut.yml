@@ -95,7 +95,13 @@ jobs:
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
-      - name: Build Pytorch XPU
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          path: ${{ github.workspace }}
+      - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
@@ -109,8 +115,7 @@ jobs:
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
-            WERROR=1 python setup.py bdist_wheel
-            pip install --force-reinstall dist/*.whl
+            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
