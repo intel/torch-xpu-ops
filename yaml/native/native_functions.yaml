@@ -8729,7 +8729,7 @@
   # autogen: _weight_int4pack_mm.out
   # tags: core
 
-  - func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
+- func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
   variants: function
   device_check: NoCheck
   dispatch:
