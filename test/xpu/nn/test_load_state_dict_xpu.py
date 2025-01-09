@@ -1,6 +1,10 @@
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.common_utils import instantiate_parametrized_tests, run_tests, TestCase
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    run_tests,
+    TestCase,
+)
 
 try:
     from .xpu_test_utils import XPUPatchForImport
