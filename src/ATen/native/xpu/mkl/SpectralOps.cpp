@@ -1,3 +1,4 @@
+#if defined(USE_ONEMKL)
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
@@ -398,3 +399,4 @@ Tensor& _fft_c2c_mkl_out(
 }
 
 } // namespace at::native::xpu
+#endif // USE_ONEMKL

@@ -1,6 +1,8 @@
-#include <ATen/native/Resize.h>
+#if defined(USE_ONEMKL)
 #include <ATen/native/xpu/mkl/SpectralOps.h>
-#include <comm/xpu_aten.h>
+#else
+#include <ATen/ops/_fft_c2c_native.h>
+#endif // USE_ONEMKL
 
 namespace at::native {
 
@@ -11,7 +13,13 @@ Tensor _fft_c2c_xpu(
     bool forward) {
   TORCH_CHECK(self.is_complex());
 
+#if defined(USE_ONEMKL)
   return native::xpu::_fft_c2c_mkl(self, dim, normalization, forward);
+#else
+  Tensor out_cpu = native::_fft_c2c_mkl(
+      self.to(Device(at::kCPU)), dim, normalization, forward);
+  return out_cpu.to(Device(at::kXPU));
+#endif // USE_ONEMKL
 }
 
 Tensor& _fft_c2c_xpu_out(
@@ -22,7 +30,15 @@ Tensor& _fft_c2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_complex());
 
+#if defined(USE_ONEMKL)
   return native::xpu::_fft_c2c_mkl_out(self, dim, normalization, forward, out);
+#else
+  Tensor out_cpu = out.to(Device(at::kCPU));
+  native::_fft_c2c_mkl_out(
+      self.to(Device(at::kCPU)), dim, normalization, forward, out_cpu);
+  out.copy_(out_cpu);
+  return out;
+#endif // USE_ONEMKL
 }
 
 } // namespace at::native
