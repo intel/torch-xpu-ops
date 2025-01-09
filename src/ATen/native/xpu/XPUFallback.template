@@ -163,7 +163,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_fft_r2c",
     "_flash_attention_forward",
     "geqrf",
-    "index_reduce.out",
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
     "linalg_eig",
