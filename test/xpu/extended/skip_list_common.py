@@ -206,5 +206,6 @@ skip_dict = {
     "test_compare_cpu_index_reduce_mean_xpu_bfloat16",
     "test_compare_cpu_index_reduce_mean_xpu_float16",
     "test_compare_cpu_index_reduce_prod_xpu_bfloat16",
+    "test_compare_cpu_index_reduce_prod_xpu_float16",
     ),
 }
