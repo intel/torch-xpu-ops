@@ -56,8 +56,11 @@ Tensor _weight_int4pack_mm_xpu(
       "xpu::_weight_int4pack_mm",
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
-
-  at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  if (M > 1) {
+    
+  } else {
+    at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  }
   return C;
 }
 } // namespace at::native
