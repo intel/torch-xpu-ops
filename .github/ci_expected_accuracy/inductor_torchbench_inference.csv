@@ -1,4 +1,5 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
+# https://github.com/intel/torch-xpu-ops/issues/1221
 torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,fail_to_run,fail_to_run
 BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
@@ -15,6 +16,7 @@ cm3leon_generate,pass,pass,pass,pass,pass
 dcgan,pass,pass,pass,pass,pass
 demucs,pass,pass,pass,pass,pass
 densenet121,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1278
 detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
@@ -46,6 +48,7 @@ hf_Longformer,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1262
 hf_Reformer,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 hf_T5,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1276
 hf_T5_base,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 hf_T5_generate,pass,pass,pass,pass,pass
 hf_T5_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
@@ -55,6 +58,7 @@ hf_distil_whisper,pass,pass,pass,pass,pass
 lennard_jones,pass,pass,pass,pass,pass
 llama,pass,pass,pass,pass,pass
 llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
+# https://github.com/intel/torch-xpu-ops/issues/1277
 llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 maml_omniglot,pass,pass,pass,pass,pass
@@ -92,6 +96,7 @@ soft_actor_critic,pass,fail_accuracy,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,fail_accuracy,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1261
 stable_diffusion_unet,eager_fail_to_run,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
 tacotron2,pass,pass,pass,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load

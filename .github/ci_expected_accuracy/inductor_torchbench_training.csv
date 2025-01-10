@@ -33,7 +33,9 @@ doctr_det_predictor,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_
 doctr_reco_predictor,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/510
 functorch_maml_omniglot,pass,pass,pass,fail_accuracy,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
@@ -71,6 +73,7 @@ nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/509
 phlippe_resnet,pass,fail_accuracy,pass,fail_accuracy,pass
 pyhpc_equation_of_state,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 pyhpc_isoneutral_mixing,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -92,6 +95,7 @@ soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,pass,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1261
 stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 tacotron2,fail_to_run,fail_to_run,fail_to_run,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load

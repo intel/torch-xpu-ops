@@ -6,6 +6,7 @@ cait_m36_384,pass,pass,pass,pass,pass
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1274
 convnext_base,pass,fail_accuracy,fail_accuracy,pass,pass
 crossvit_9_240,pass,pass,pass,pass,pass
 cspdarknet53,pass,pass,pass,pass,pass
@@ -14,9 +15,11 @@ dla102,pass,pass,pass,pass,pass
 dm_nfnet_f0,pass,pass,pass,pass,pass
 dpn107,pass,pass,pass,pass,pass
 eca_botnext26ts_256,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1275
 eca_halonext26ts,pass,pass,pass,fail_accuracy,pass
 ese_vovnet19b_dw,pass,pass,pass,pass,pass
 fbnetc_100,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1275
 fbnetv3_b,pass,pass,pass,fail_accuracy,pass
 gernet_l,pass,pass,pass,pass,pass
 ghostnet_100,pass,pass,pass,pass,pass
