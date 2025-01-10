@@ -46,6 +46,8 @@ jobs:
   Torch-XPU-Transformers-Tests:
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
     env:
+      HF_HOME: ${{ github.workspace }}/.hf_home
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
@@ -115,7 +117,7 @@ jobs:
           cat /sys/class/drm/render*/device/device | tee ${{ github.workspace }}/transformers/tests_log/device_IDs.txt
           echo "xpu-smi output:"
           xpu-smi discovery -y --json --dump -1
-      - name: Sanitry check installed packages
+      - name: Sanity check installed packages
         run: |
           source activate huggingface_transformers_test
           # These checks are to exit earlier if for any reason Transformers
@@ -124,6 +126,9 @@ jobs:
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
+      - name: Clean HF home directory and cache
+        run: |
+          rm -rf ${{ env.HF_HOME }}
       - name: Run -k backbone tests
         env:
           TEST_CASE: 'tests_backbone'
@@ -212,6 +217,11 @@ jobs:
           FAILED_CASES=$(echo $FAILED_CASES | sed 's/^,//')
           echo "Failed cases: [$(echo $FAILED_CASES | sed 's/,/, /g')]"
           test -z "$FAILED_CASES"
+      - name: Clean HF home directory and cache
+        if: ${{ always() }}
+        run: |
+          du -sh ${{ env.HF_HOME }} || true
+          rm -rf ${{ env.HF_HOME }}
       - name: Print results table
         if: ${{ ! cancelled() }}
         run: |

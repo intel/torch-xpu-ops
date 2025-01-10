@@ -87,6 +87,7 @@ _xpu_computation_op_list = [
     "nn.functional.mish",
     "i0",
     "index_add",
+    "index_reduce",
     "index_fill",
     "index_put",
     "index_select",

@@ -60,9 +60,9 @@ struct TensorInfo {
   // See note on [collapse dims].
   int collapseDims(const int excludeDim = -1);
 
-  int outerSize(const int dim);
+  IndexType outerSize(const int dim);
 
-  int innerSize(const int dim);
+  IndexType innerSize(const int dim);
 
   // Contiguous tensors of more than one dimension are collapsed down
   // to one tensor
@@ -104,7 +104,7 @@ TensorInfo<T, IndexType>::TensorInfo(
   TORCH_INTERNAL_ASSERT(dims <= XPU_MAX_TENSORINFO_DIMS);
 
   is_contiguous = true;
-  int z = 1;
+  IndexType z = 1;
   for (int i = dim - 1; i >= 0; i--) {
     sizes[i] = sz[i];
     strides[i] = st[i];
@@ -133,8 +133,8 @@ int TensorInfo<T, IndexType>::collapseDims(const int excludeDim) {
 }
 
 template <typename T, typename IndexType>
-int TensorInfo<T, IndexType>::innerSize(const int exclusive) {
-  int size = 1;
+IndexType TensorInfo<T, IndexType>::innerSize(const int exclusive) {
+  IndexType size = 1;
   for (int i = dims - 1; i > exclusive; i--) {
     size *= sizes[i];
   }
@@ -142,8 +142,8 @@ int TensorInfo<T, IndexType>::innerSize(const int exclusive) {
 }
 
 template <typename T, typename IndexType>
-int TensorInfo<T, IndexType>::outerSize(const int exclusive) {
-  int size = 1;
+IndexType TensorInfo<T, IndexType>::outerSize(const int exclusive) {
+  IndexType size = 1;
   for (int i = 0; i < exclusive; i++) {
     size *= sizes[i];
   }

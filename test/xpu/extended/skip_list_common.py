@@ -198,5 +198,14 @@ skip_dict = {
     "test_compare_cpu_div_trunc_rounding_xpu_float16",
     "test_compare_cpu_div_floor_rounding_xpu_float16",
     "test_compare_cpu_div_floor_rounding_xpu_bfloat16",
+
+    # AssertionError: Tensor-likes are not close!
+    # Mismatched elements: 1 / 125 (0.8%)
+    # Greatest absolute difference: 0.0013427734375 at index (0, 2, 4) (up to 0.001 allowed)
+    # Greatest relative difference: 0.008453369140625 at index (0, 2, 4) (up to 0.001 allowed)
+    "test_compare_cpu_index_reduce_mean_xpu_bfloat16",
+    "test_compare_cpu_index_reduce_mean_xpu_float16",
+    "test_compare_cpu_index_reduce_prod_xpu_bfloat16",
+    "test_compare_cpu_index_reduce_prod_xpu_float16",
     ),
 }
