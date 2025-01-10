@@ -3,8 +3,10 @@ torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-LearningToPaint,pass,pass,pass,pass,pass
-Super_SloMo,eager_two_runs_differ,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1263
+LearningToPaint,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+# https://github.com/intel/torch-xpu-ops/issues/1256
+Super_SloMo,eager_two_runs_differ,pass,pass,eager_two_runs_differ,pass
 alexnet,pass,pass,pass,pass,pass
 basic_gnn_edgecnn,pass,pass,pass,pass,pass
 basic_gnn_gcn,pass,pass,pass,pass,pass
@@ -42,7 +44,8 @@ hf_DistilBert,pass,pass,pass,pass,pass
 hf_GPT2,pass,pass,pass,pass,pass
 hf_GPT2_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 hf_Longformer,pass,pass,pass,pass,pass
-hf_Reformer,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1262
+hf_Reformer,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 hf_T5,pass,pass,pass,pass,pass
 hf_T5_base,pass,pass,pass,pass,pass
 hf_T5_generate,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -64,7 +67,8 @@ mobilenet_v3_large,pass,pass,pass,pass,pass
 moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
-nvidia_deeprecommender,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1260
+nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
 phlippe_resnet,pass,fail_accuracy,pass,fail_accuracy,pass
@@ -101,6 +105,7 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
+# https://github.com/intel/torch-xpu-ops/issues/1264
+vision_maskrcnn,eager_fail_to_run,pass,pass,eager_fail_to_run,eager_fail_to_run
 yolov3,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 hf_Roberta_base,pass,pass,pass,pass,pass
