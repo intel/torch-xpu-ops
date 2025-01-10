@@ -1,24 +1,23 @@
 # Owner(s): ["module: intel"]
 
-import torch
 import unittest
-import torch.autograd.forward_ad as fwAD
 from functools import wraps
 from itertools import product
-from torch import nn
+
+import torch
+import torch.autograd.forward_ad as fwAD
 import torch.nn.functional as F
+from torch import nn
 from torch.testing._internal.common_device_type import (
     disablecuDNN,
     disableMkldnn,
     dtypes,
-    largeTensorTest,
     instantiate_device_type_tests,
+    largeTensorTest,
     onlyXPU,
     skipIf,
 )
-from torch.testing._internal.common_dtype import (
-    floating_and_complex_types_and,
-)
+from torch.testing._internal.common_dtype import floating_and_complex_types_and
 from torch.testing._internal.common_utils import (
     dtype2prec_DONTUSE,
     gradcheck,
@@ -30,15 +29,20 @@ from torch.testing._internal.common_utils import (
     subtest,
 )
 
+
 # Skips a test on XPU if the condition is true.
 class skipXPUIf(skipIf):
-
     def __init__(self, dep, reason):
-        super().__init__(dep, reason, device_type='xpu')
+        super().__init__(dep, reason, device_type="xpu")
+
 
 # Skips a test on XPU if mkldnn is not available.
 def skipXPUIfNoMkldnn(fn):
-    return skipXPUIf(not torch.backends.mkldnn.is_available(), "PyTorch is built without mkldnn support")(fn)
+    return skipXPUIf(
+        not torch.backends.mkldnn.is_available(),
+        "PyTorch is built without mkldnn support",
+    )(fn)
+
 
 def onlyNativeDeviceTypes(fn):
     @wraps(fn)
@@ -50,6 +54,7 @@ def onlyNativeDeviceTypes(fn):
         return fn(self, *args, **kwargs)
 
     return only_fn
+
 
 try:
     from .xpu_test_utils import XPUPatchForImport
@@ -81,14 +86,18 @@ with XPUPatchForImport(False):
 
             offset = 1 * depth_multiplier
 
-            m1 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(device, dtype)
+            m1 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(
+                device, dtype
+            )
             m1.weight.data = m.weight.data[:offset].clone()
             m1.bias.data = m.bias.data[:offset].clone()
             i1 = i.detach()[:, :1].clone().requires_grad_()
             output1 = m1(i1)
             output1.backward(grad_output[:, :offset].contiguous())
 
-            m2 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(device, dtype)
+            m2 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(
+                device, dtype
+            )
             m2.weight.data.copy_(m.weight.data[offset:])
             m2.bias.data.copy_(m.bias.data[offset:])
             i2 = i.detach()[:, 1:].clone().requires_grad_()
@@ -1135,10 +1144,9 @@ with XPUPatchForImport(False):
         padding = 1
 
         input_tensor = torch.ones(1, in_channels, dim, dim, device="xpu").half()
-        model = (
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, device="xpu")
-            .half()
-        )
+        model = nn.Conv2d(
+            in_channels, out_channels, kernel_size, stride, padding, device="xpu"
+        ).half()
         output = model(input_tensor)
         model_cpu = model.cpu().float()
         output_cpu = model(input_tensor.float().cpu())
@@ -1270,11 +1278,8 @@ with XPUPatchForImport(False):
                 atol=1e-1 if dtype == torch.half else dtype2prec_DONTUSE[dtype],
                 rtol=0,
             )
-    @dtypes(
-        *floating_and_complex_types_and(
-            torch.half, torch.bfloat16
-        )
-    )
+
+    @dtypes(*floating_and_complex_types_and(torch.half, torch.bfloat16))
     def conv2d_deterministic_cudnn(self, device, dtype):
         inputs = torch.randn(2, 3, 5, 5, device=device, dtype=dtype, requires_grad=True)
         with torch.backends.mkldnn.flags(enabled=False, deterministic=True):
@@ -1295,10 +1300,15 @@ with XPUPatchForImport(False):
                 conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0
             )
 
-
-    TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = conv2d_depthwise_naive_groups
-    TestConvolutionNNDeviceType.test_Conv3d_depthwise_naive_groups = conv3d_depthwise_naive_groups
-    TestConvolutionNNDeviceType.test_ConvTranspose2d_large_output_padding = convTranspose2d_large_output_padding
+    TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = (
+        conv2d_depthwise_naive_groups
+    )
+    TestConvolutionNNDeviceType.test_Conv3d_depthwise_naive_groups = (
+        conv3d_depthwise_naive_groups
+    )
+    TestConvolutionNNDeviceType.test_ConvTranspose2d_large_output_padding = (
+        convTranspose2d_large_output_padding
+    )
     TestConvolutionNNDeviceType.test_conv_backend = conv_backend
     TestConvolutionNNDeviceType._test_conv_cudnn_nhwc_nchw = _test_conv_xpu_nhwc_nchw
     TestConvolutionNNDeviceType.test_conv_cudnn_ndhwc = conv_xpu_ndhwc
@@ -1310,21 +1320,34 @@ with XPUPatchForImport(False):
     TestConvolutionNNDeviceType.test_conv_large_batch_1 = conv_large_batch_1
     TestConvolutionNNDeviceType.test_conv_large_nosplit = conv_large_nosplit
     TestConvolutionNNDeviceType.test_conv_transposed_large = conv_transposed_large
-    TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = conv2d_deterministic_cudnn
-    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = conv2d_inconsistent_types_on_GPU_with_mkldnn
-    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_without_cudnn = conv2d_inconsistent_types_on_GPU_without_mkldnn
+    TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = (
+        conv2d_deterministic_cudnn
+    )
+    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = (
+        conv2d_inconsistent_types_on_GPU_with_mkldnn
+    )
+    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_without_cudnn = (
+        conv2d_inconsistent_types_on_GPU_without_mkldnn
+    )
     TestConvolutionNN.test_ConvTranspose2d_half_cublas_gemm = convTranspose2d_half_gemm
-    TestConvolutionNN.test_conv_cudnn_memory_layout_dominance = conv_mkldnn_memory_layout_dominance
+    TestConvolutionNN.test_conv_cudnn_memory_layout_dominance = (
+        conv_mkldnn_memory_layout_dominance
+    )
     TestConvolutionNN.test_cudnn_non_contiguous = mkldnn_non_contiguous
     TestConvolutionNN.test_cudnn_noncontiguous_weight = mkldnn_noncontiguous_weight
-    TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = grouped_conv_mkldnn_nhwc_support
-    TestConvolutionNN.test_thnn_conv_strided_padded_dilated = thnn_conv_strided_padded_dilated
-    TestConvolutionNN.test_Conv2d_groups_nobias=Conv2d_groups_nobias
-    TestConvolutionNN.test_Conv2d_groups_nobias_v2=Conv2d_groups_nobias_v2
-instantiate_device_type_tests(TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
+    TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = (
+        grouped_conv_mkldnn_nhwc_support
+    )
+    TestConvolutionNN.test_thnn_conv_strided_padded_dilated = (
+        thnn_conv_strided_padded_dilated
+    )
+    TestConvolutionNN.test_Conv2d_groups_nobias = Conv2d_groups_nobias
+    TestConvolutionNN.test_Conv2d_groups_nobias_v2 = Conv2d_groups_nobias_v2
+instantiate_device_type_tests(
+    TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_parametrized_tests(TestConvolutionNN)
 
 
 if __name__ == "__main__":
     run_tests()
-

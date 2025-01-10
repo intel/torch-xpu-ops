@@ -9,34 +9,30 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
-    from test_optim import (
-        TestOptimRenewed
-    )
+    from test_optim import TestOptimRenewed
+
+from copy import deepcopy
 
 import torch
 from torch.nn import Parameter
-from copy import deepcopy
-from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests
-)
+from torch.testing._internal.common_device_type import TEST_WITH_ROCM
 from torch.testing._internal.common_dtype import floating_types_and
 from torch.testing._internal.common_optimizers import (
     _get_optim_inputs_including_global_cliquey_kwargs,
     optim_db,
     optims,
 )
-from torch.testing._internal.common_device_type import (
-    TEST_WITH_ROCM,
-)
-from torch.testing._internal.common_utils import (
-    TEST_WITH_TORCHDYNAMO,
-)
+from torch.testing._internal.common_utils import TEST_WITH_TORCHDYNAMO
 
 for optim in optim_db:
     for c in [torch.optim.Adam, torch.optim.AdamW, torch.optim.SGD]:
         if optim.optim_cls is c:
-            if "cuda" in optim.supports_fused_on and "xpu" not in optim.supports_fused_on:
+            if (
+                "cuda" in optim.supports_fused_on
+                and "xpu" not in optim.supports_fused_on
+            ):
                 optim.supports_fused_on = ("xpu",) + optim.supports_fused_on
+
 
 @optims(
     [
@@ -73,9 +69,7 @@ def _test_fused_cpu_matches_cuda(self, device, dtype, optim_info):
             # foreach/fused optimizers should be tested with a
             # zero_size tensor as its last param.
             # ref: https://github.com/pytorch/pytorch/issues/100701
-            empty_param = torch.empty(
-                (), device=dev, dtype=dtype, requires_grad=True
-            )
+            empty_param = torch.empty((), device=dev, dtype=dtype, requires_grad=True)
             empty_param.grad = torch.rand_like(empty_param)
             params = list(model.parameters()) + [empty_param]
 
@@ -84,6 +78,7 @@ def _test_fused_cpu_matches_cuda(self, device, dtype, optim_info):
             models.append(model)
             optimizers.append(optimizer)
     self._compare_between(inpts, models, optimizers)
+
 
 TestOptimRenewed.test_fused_cpu_matches_cuda = _test_fused_cpu_matches_cuda
 
@@ -127,9 +122,11 @@ def _test_peak_memory_foreach(self, device, dtype, optim_info):
         nintermediates = 1  # we expect a budget of 1 intermediate most of the time
 
         # Check the param group directly to handle if the compiler set capturable
-        if optimizer.param_groups[0].get(
-            "capturable", False
-        ) or optim_cls.__name__ in ["Adadelta", "ASGD", "RAdam"]:
+        if optimizer.param_groups[0].get("capturable", False) or optim_cls.__name__ in [
+            "Adadelta",
+            "ASGD",
+            "RAdam",
+        ]:
             # with capturable in Adam(W), we have 2 extra intermediates for the bias_corrections
             # with Adadelta, we have 2 extra for (acc_delta + eps) and (square_avg + eps)
             # ASGD allocates axs, 2x mus, 2x etas, and grads at the same time
@@ -178,9 +175,10 @@ def _test_peak_memory_foreach(self, device, dtype, optim_info):
         if TEST_WITH_ROCM:
             expected_max_mem *= 1.02
         else:
-            expected_max_mem *= 1.05 # Patch for XPU testing
+            expected_max_mem *= 1.05  # Patch for XPU testing
 
         self.assertLessEqual(mt_max_mem, expected_max_mem)
+
 
 TestOptimRenewed.test_peak_memory_foreach = _test_peak_memory_foreach
 
@@ -202,16 +200,10 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
         return closure_loss if optim_info.step_requires_closure else None
 
     for optim_input in cpu_optim_inputs:
-        if (
-            "fused" in optim_input.kwargs
-            and "xpu" not in optim_info.supports_fused_on
-        ):
-            self.skipTest(
-                f"xpu is not supported for fused on {optim_cls.__name__}"
-            )
+        if "fused" in optim_input.kwargs and "xpu" not in optim_info.supports_fused_on:
+            self.skipTest(f"xpu is not supported for fused on {optim_cls.__name__}")
         params = [
-            Parameter(torch.randn(2, 3, device="cpu", dtype=dtype))
-            for _ in range(2)
+            Parameter(torch.randn(2, 3, device="cpu", dtype=dtype)) for _ in range(2)
         ]
         for p in params:
             p.grad = torch.randn_like(p)
@@ -256,9 +248,13 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
             optimizer_cuda.step(closure)
             self.assertEqual(params, params_cuda)
             self.assertEqual(optimizer.state_dict(), optimizer_cuda.state_dict())
+
+
 TestOptimRenewed.test_state_dict_with_cuda_params = _test_state_dict_with_cuda_params
 
-instantiate_device_type_tests(TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
