@@ -3,6 +3,7 @@ import argparse
 import pandas as pd
 import pathlib
 
+# Reference last updated is https://github.com/intel/torch-xpu-ops/pull/1223
 
 parser = argparse.ArgumentParser(description="Accuracy Check", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("--category", type=str, default="inductor", help="inductor")
