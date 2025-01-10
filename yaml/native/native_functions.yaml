@@ -2091,6 +2091,7 @@
 - func: _safe_softmax(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
   dispatch:
     XPU: _safe_softmax_xpu
+    NestedTensorXPU: _safe_softmax
 
 - func: _softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
   structured_delegate: _softmax_backward_data.out
@@ -8779,3 +8780,85 @@
   dispatch:
     CompositeExplicitAutogradNonFunctional: _nested_view_from_buffer_copy
   autogen: _nested_view_from_buffer_copy.out
+
+- func: _nested_select_backward(Tensor grad_output, Tensor self, int dim, SymInt index) -> Tensor
+  variants: function
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    NestedTensorXPU: _nested_select_backward_symint
+
+- func: chunk(Tensor(a -> *) self, int chunks, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeImplicitAutograd: chunk
+    NestedTensorXPU: chunk_nested_tensor
+
+- func: embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: embedding_symint
+    NestedTensorXPU: NestedTensor_embedding
+  autogen: embedding.out
+  tags: core
+
+- func: is_same_size(Tensor self, Tensor other) -> bool
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    NestedTensorXPU: nested_is_same_size
+    CompositeExplicitAutograd: is_same_size
+
+- func: linear(Tensor input, Tensor weight, Tensor? bias=None) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeImplicitAutograd: linear
+    NestedTensorXPU: nested_linear
+
+- func: linear_backward(Tensor self, Tensor grad_output, Tensor weight, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    NestedTensorXPU: nested_linear_backward
+  autogen: linear_backward.out
+
+- func: matmul(Tensor self, Tensor other) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeImplicitAutograd: matmul
+    NestedTensorXPU: matmul_nested
+
+- func: matmul_backward(Tensor grad, Tensor self, Tensor other, bool[2] mask) -> (Tensor, Tensor)
+  dispatch:
+    NestedTensorXPU: matmul_backward_nested
+  autogen: matmul_backward.out
+
+- func: matmul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeImplicitAutograd: matmul_out
+    NestedTensorXPU: matmul_out_nested
+
+- func: narrow(Tensor(a) self, int dim, SymInt start, SymInt length) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeImplicitAutograd: narrow_symint
+    NestedTensorXPU: narrow_nested_symint
+
+- func: ones_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    # NB: Although this composite mutates on the inside, it is
+    # non-differentiable so NonFunctional doesn't apply
+    CompositeExplicitAutograd: ones_like
+    NestedTensorXPU: ones_like
+  autogen: ones_like.out
+
+- func: split_with_sizes(Tensor(a -> *) self, SymInt[] split_sizes, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: split_with_sizes
+    NestedTensorXPU: split_with_sizes_nested
+  tags: core
