@@ -13,8 +13,6 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/126516",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/143739",
-        # Fix build error caused by incorrect namespace change by #144014
-        "https://github.com/pytorch/pytorch/pull/144450",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
