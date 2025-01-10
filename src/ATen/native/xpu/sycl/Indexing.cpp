@@ -7,6 +7,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -1149,6 +1150,329 @@ void put_kernel(
               }
             });
       });
+}
+
+template <
+    typename T,
+    typename IndicesType,
+    typename IndexType,
+    bool IndexIsMajor,
+    typename func_t>
+struct IndexFuncLargeIndexFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    // We stride over the output including the indexed dimension
+    // (totalSize), and calculate the destination index point based on that
+    auto local_range = item.get_local_range(0);
+    for (IndexType linearIndex =
+             item.get_group(0) * local_range + item.get_local_id(0);
+         linearIndex < totalSize_;
+         linearIndex += item.get_group_range(0) * local_range) {
+      IndexType srcIndex, elementInSlice;
+      if (IndexIsMajor) {
+        srcIndex = linearIndex / innerSize_;
+        elementInSlice = linearIndex % innerSize_;
+      } else {
+        elementInSlice = linearIndex / innerSize_;
+        srcIndex = linearIndex % innerSize_;
+      }
+
+      // Lua indices begin at 1
+      IndexType dstIndex =
+          indices_.data[IndexToOffset<const IndicesType, IndexType>::get(
+              srcIndex, indices_)];
+      CUDA_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+
+      IndexType dstOffset =
+          IndexToOffset<T, IndexType>::get(elementInSlice, dst_);
+      dstOffset += dstIndex * dst_.strides[dstAddDim_];
+
+      IndexType srcOffset =
+          IndexToOffset<const T, IndexType>::get(elementInSlice, src_);
+      srcOffset += srcIndex * src_.strides[srcAddDim_];
+
+      T val = src_.data[srcOffset] * alpha_;
+      op_(dst_.data, dstOffset, dstNumel_, &val);
+    }
+  }
+  IndexFuncLargeIndexFunctor(
+      TensorInfo<T, IndexType> dst,
+      TensorInfo<const T, IndexType> src,
+      TensorInfo<const IndicesType, IndexType> indices,
+      int dstAddDim,
+      int srcAddDim,
+      IndexType totalSize,
+      IndexType innerSize,
+      int64_t dstAddDimSize,
+      int64_t dstNumel,
+      func_t op,
+      T alpha)
+      : dst_(dst),
+        src_(src),
+        indices_(indices),
+        dstAddDim_(dstAddDim),
+        srcAddDim_(srcAddDim),
+        totalSize_(totalSize),
+        innerSize_(innerSize),
+        dstAddDimSize_(dstAddDimSize),
+        dstNumel_(dstNumel),
+        op_(op),
+        alpha_(alpha) {}
+
+ private:
+  TensorInfo<T, IndexType> dst_;
+  TensorInfo<const T, IndexType> src_;
+  TensorInfo<const IndicesType, IndexType> indices_;
+  int dstAddDim_;
+  int srcAddDim_;
+  IndexType totalSize_;
+  IndexType innerSize_;
+  int64_t dstAddDimSize_;
+  int64_t dstNumel_;
+  func_t op_;
+  T alpha_;
+};
+
+template <typename func_t>
+void index_reduce_func_xpu_template(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const func_t& reduce_func,
+    const Tensor& result) {
+  globalContext().alertNotDeterministic("index_reduce_xpu");
+
+  if (!result.is_same(self))
+    result.copy_(self);
+
+  // Scalars are treated as 1-d tensor
+  Tensor self_ = (result.dim() == 0) ? result.view(1) : result;
+  Tensor source_ = (source.dim() == 0) ? source.view(1) : source;
+
+  TORCH_CHECK(
+      result.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      source.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+  TORCH_CHECK(
+      index.dim() <= XPU_MAX_TENSORINFO_DIMS,
+      "tensor has too many (>",
+      XPU_MAX_TENSORINFO_DIMS,
+      ") dims");
+
+  if (!include_self) {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        self.scalar_type(),
+        "index_reduce_func_xpu_exclude_input_init",
+        [&] {
+          scalar_t init_val;
+          switch (reduce) {
+            case ReductionType::PROD:
+              init_val = (scalar_t)1;
+              break;
+            case ReductionType::MAX:
+              init_val = std::numeric_limits<scalar_t>::has_infinity
+                  ? -std::numeric_limits<scalar_t>::infinity()
+                  : std::numeric_limits<scalar_t>::lowest();
+              break;
+            case ReductionType::MIN:
+              init_val = std::numeric_limits<scalar_t>::has_infinity
+                  ? std::numeric_limits<scalar_t>::infinity()
+                  : std::numeric_limits<scalar_t>::max();
+              break;
+            default:
+              init_val = (scalar_t)0;
+              break;
+          }
+          // index_fill_ requires index to be a LongTensor
+          self_.index_fill_(dim, index.to(at::ScalarType::Long), init_val);
+        });
+  }
+
+  uint64_t sliceSize = getSliceSize(self_, dim, index, source_);
+  uint64_t sourceTotalSize = source.numel();
+  uint64_t selfReduceDimSize = self_.size(dim);
+  // uint64_t numIndex = index.numel();
+  uint64_t selfNumel = self_.numel();
+  if (sliceSize == 0) {
+    return;
+  }
+
+  {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        self.scalar_type(),
+        "index_reduce",
+        [&] {
+          TensorInfo<scalar_t, uint64_t> selfInfo =
+              getTensorInfo<scalar_t, uint64_t>(self_);
+          int selfReduceDim = selfInfo.collapseDims(dim);
+          selfInfo.reduceDim(selfReduceDim);
+          auto alpha_value = (scalar_t)1;
+
+          TensorInfo<const scalar_t, uint64_t> sourceInfo =
+              getTensorInfo<const scalar_t, uint64_t>(source_);
+          int sourceReduceDim = sourceInfo.collapseDims(dim);
+          sourceInfo.reduceDim(sourceReduceDim);
+
+          AT_DISPATCH_INDEX_TYPES(
+              index.scalar_type(), "index_reduce_xpu", [&]() {
+                TensorInfo<const index_t, uint64_t> indexInfo =
+                    getTensorInfo<const index_t, uint64_t>(index);
+                indexInfo.collapseDims();
+                auto caller = IndexFuncLargeIndexFunctor<
+                    scalar_t,
+                    index_t,
+                    uint64_t,
+                    true,
+                    func_t>(
+                    selfInfo,
+                    sourceInfo,
+                    indexInfo,
+                    selfReduceDim,
+                    sourceReduceDim,
+                    sourceTotalSize,
+                    sliceSize,
+                    selfReduceDimSize,
+                    selfNumel,
+                    reduce_func,
+                    alpha_value);
+                int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
+                int sgc = syclMaxNumSubGroups();
+                size_t num_wg = std::min(
+                    ceil_div(sourceTotalSize, (uint64_t)128),
+                    (uint64_t)(sgc * 8));
+                size_t wg_size = (sourceTotalSize < defaultMaxGroupThreads)
+                    ? sourceTotalSize
+                    : defaultMaxGroupThreads;
+                sycl_kernel_submit(
+                    num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
+              });
+        });
+  }
+}
+
+struct IndexReduceMultiplyFunctor {
+  template <typename scalar_t>
+  void operator()(
+      scalar_t* self_data_start,
+      int64_t index,
+      int64_t numel,
+      const scalar_t* src_data) const {
+    (void)numel; // suppress unused warning
+    atomicMul((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+  }
+};
+static IndexReduceMultiplyFunctor index_reduce_multiply;
+
+struct IndexReduceMeanFunctor {
+  template <typename scalar_t>
+  void operator()(
+      scalar_t* self_data_start,
+      int64_t index,
+      int64_t numel,
+      const scalar_t* src_data) const {
+    atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+  }
+};
+static IndexReduceMeanFunctor index_reduce_mean;
+
+struct IndexReduceMaxFunctor {
+  template <typename scalar_t>
+  void operator()(
+      scalar_t* self_data_start,
+      int64_t index,
+      int64_t numel,
+      const scalar_t* src_data) const {
+    (void)numel; // suppress unused warning
+    atomicMax((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+  }
+};
+static IndexReduceMaxFunctor index_reduce_max;
+
+struct IndexReduceMinFunctor {
+  template <typename scalar_t>
+  void operator()(
+      scalar_t* self_data_start,
+      int64_t index,
+      int64_t numel,
+      const scalar_t* src_data) const {
+    (void)numel; // suppress unused warning
+    atomicMin((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+  }
+};
+static IndexReduceMinFunctor index_reduce_min;
+
+void index_reduce_prod_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result) {
+  index_reduce_func_xpu_template(
+      self,
+      dim,
+      index,
+      source,
+      include_self,
+      reduce,
+      index_reduce_multiply,
+      result);
+}
+
+void index_reduce_mean_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result) {
+  index_reduce_func_xpu_template(
+      self,
+      dim,
+      index,
+      source,
+      include_self,
+      reduce,
+      index_reduce_mean,
+      result);
+}
+
+void index_reduce_amax_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result) {
+  index_reduce_func_xpu_template(
+      self, dim, index, source, include_self, reduce, index_reduce_max, result);
+}
+
+void index_reduce_amin_kernel(
+    const Tensor& self,
+    int64_t dim,
+    const Tensor& index,
+    const Tensor& source,
+    bool include_self,
+    const ReductionType& reduce,
+    const Tensor& result) {
+  index_reduce_func_xpu_template(
+      self, dim, index, source, include_self, reduce, index_reduce_min, result);
 }
 
 // ForwardIt: only legacy random access iterator is supported.

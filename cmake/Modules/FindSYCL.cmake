@@ -264,7 +264,7 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
 
       get_filename_component( basename ${file} NAME )
       set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
-      set(generated_file_basename "${sycl_target}_generated_${basename}${generated_extension}")
+      set(generated_file_basename "${sycl_target}_gen_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
       set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
       set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
@@ -386,7 +386,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
         ${SYCL_FLAGS}
         ${SYCL_DEVICE_LINK_FLAGS})
 
-    file(REAL_PATH working_directory "${output_file}")
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
 
     if(SYCL_VERBOSE_BUILD)
