@@ -8862,3 +8862,108 @@
     CompositeExplicitAutograd: split_with_sizes
     NestedTensorXPU: split_with_sizes_nested
   tags: core
+
+- func: select_copy.int(Tensor self, int dim, SymInt index) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: select_copy_symint
+  tags: view_copy
+  autogen: select_copy.int_out
+
+- func: select.int(Tensor(a) self, int dim, SymInt index) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: select_symint
+    NestedTensorXPU: select_nested
+  tags: core
+
+- func: squeeze_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy
+  tags: view_copy
+  autogen: squeeze_copy.out
+
+- func: squeeze_copy.dim(Tensor self, int dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy_dim
+  tags: view_copy
+  autogen: squeeze_copy.dim_out
+
+- func: squeeze_copy.dims(Tensor self, int[] dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy_dims
+  tags: view_copy
+  autogen: squeeze_copy.dims_out
+
+- func: squeeze(Tensor(a) self) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_nested
+
+- func: squeeze.dim(Tensor(a) self, int dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_dim_nested
+  tags: core
+
+- func: squeeze.dims(Tensor(a) self, int[] dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_dim_nested
+  tags: core
+
+- func: detach_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: detach_copy
+  tags: view_copy
+  autogen: detach_copy.out
+
+- func: detach(Tensor(a) self) -> Tensor(a)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: detach
+    NestedTensorXPU: detach
+
+- func: transpose_copy.int(Tensor self, int dim0, int dim1) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: transpose_copy_int
+  tags: view_copy
+  autogen: transpose_copy.int_out
+
+- func: transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: transpose
+    NestedTensorXPU: transpose_nested
+
+- func: alias_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: alias_copy
+  tags: view_copy
+  autogen: alias_copy.out
+
+- func: alias(Tensor(a) self) -> Tensor(a)
+  variants: method, function
+  dispatch:
+    CompositeExplicitAutograd: alias
+    NestedTensorXPU: alias_nested
+  tags: core
