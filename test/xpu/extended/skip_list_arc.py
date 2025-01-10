@@ -40,5 +40,10 @@ skip_dict = {
         "test_operator_nn_functional_pdist_xpu_float32",
         "test_view_replay_logcumsumexp_xpu_float32",
         "test_view_replay_nn_functional_pdist_xpu_float32",
+        "test_cow_input_nn_functional_pdist_xpu_float32",
+        # NotImplementedError: The operator 'aten::_upsample_bilinear2d_aa_backward.grad_input'
+        # is not currently implemented for the XPU device
+        "test_backward__upsample_bilinear2d_aa_xpu_float32",
+        "test_cow_input__upsample_bilinear2d_aa_xpu_float32",
     ),
 }
