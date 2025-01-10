@@ -48,7 +48,7 @@ endfunction(GEN_BACKEND)
 
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
 set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
-set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterCsrSparseXPU.cpp)
+set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 set(XPU_AOTI_INSTALL_DIR ${TORCH_ROOT}/torch/csrc/inductor/aoti_torch/generated/extend)
 function(GEN_XPU file_yaml)
