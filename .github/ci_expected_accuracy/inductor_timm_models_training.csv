@@ -6,7 +6,8 @@ cait_m36_384,pass,pass,pass,pass,pass
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
-convnext_base,pass,pass,fail_accuracy,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1274
+convnext_base,pass,fail_accuracy,fail_accuracy,pass,pass
 crossvit_9_240,pass,pass,pass,pass,pass
 cspdarknet53,pass,pass,pass,pass,pass
 deit_base_distilled_patch16_224,pass,pass,pass,pass,pass
@@ -14,10 +15,12 @@ dla102,pass,pass,pass,pass,pass
 dm_nfnet_f0,pass,pass,pass,pass,pass
 dpn107,pass,pass,pass,pass,pass
 eca_botnext26ts_256,pass,pass,pass,pass,pass
-eca_halonext26ts,pass,pass,fail_to_run,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1275
+eca_halonext26ts,pass,pass,pass,fail_accuracy,pass
 ese_vovnet19b_dw,pass,pass,pass,pass,pass
 fbnetc_100,pass,pass,pass,pass,pass
-fbnetv3_b,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1275
+fbnetv3_b,pass,pass,pass,fail_accuracy,pass
 gernet_l,pass,pass,pass,pass,pass
 ghostnet_100,pass,pass,pass,pass,pass
 gluon_inception_v3,pass,pass,pass,pass,pass
@@ -25,8 +28,8 @@ gmixer_24_224,pass,pass,pass,pass,pass
 gmlp_s16_224,pass,pass,pass,pass,pass
 hrnet_w18,pass,pass,pass,pass,pass
 inception_v3,pass,pass,pass,pass,pass
-jx_nest_base,pass,pass,fail_accuracy,pass,pass
-lcnet_050,pass,pass,fail_accuracy,pass,pass
+jx_nest_base,pass,pass,pass,pass,pass
+lcnet_050,pass,pass,pass,pass,pass
 levit_128,pass,pass,pass,pass,pass
 mixer_b16_224,pass,pass,pass,pass,pass
 mixnet_l,pass,pass,pass,pass,pass
@@ -59,4 +62,4 @@ twins_pcpvt_base,pass,pass,pass,pass,pass
 visformer_small,pass,pass,pass,pass,pass
 vit_base_patch16_224,pass,pass,pass,pass,pass
 volo_d1_224,pass,pass,pass,pass,pass
-xcit_large_24_p8_224,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+xcit_large_24_p8_224,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
