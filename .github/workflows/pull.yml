@@ -23,8 +23,11 @@ jobs:
   preci-linux-build:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    permissions:
+      issues: write
     uses: ./.github/workflows/_linux_build.yml
     with:
+      pytorch: main
       runner: pvc_e2e
 
   preci-ut:
@@ -165,8 +168,11 @@ jobs:
   preci-linux-build-abi-0:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    permissions:
+      issues: write
     uses: ./.github/workflows/_linux_build.yml
     with:
+      pytorch: main
       abi: 0
       runner: pvc_e2e
 

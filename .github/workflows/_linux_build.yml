@@ -41,17 +41,19 @@ on:
         description: The commit id of the torch build
         value: ${{ jobs.Torch-XPU-Build.outputs.TORCH_COMMIT_ID }}
 
-permissions: read-all
+permissions:
+  issues: write
 
 jobs:
   Torch-XPU-Build:
     if: ${{ inputs.pytorch }} != 'nightly_wheel'
     runs-on: ${{ inputs.runner }}
     outputs:
-      whl_name: ${{ steps.build_version.outputs.WHL_NAME }}
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
     env:
+      commit_issue: 1280
+      GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
@@ -93,13 +95,42 @@ jobs:
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            repo="${{ github.repository }}"
+            last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
             cd ../pytorch
+            current_commit=$(git rev-parse HEAD)
+            echo ">>>>>>>>>>>>branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
+
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
-            WERROR=1 python setup.py bdist_wheel
+            WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
+
+            if [ -f dist/torch*.whl ]; then
+              echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
+              gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};" > new_body.txt
+              gh --repo $repo issue edit $commit_issue --body-file new_body.txt
+            else
+              echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
+              gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
+              git clean -df .
+              git checkout $last_commit
+              # apply PRs for stock pytorch
+              python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+              git status && git show -s
+              git submodule sync && git submodule update --init --recursive
+              if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+                echo "Don't replace torch-xpu-ops!"
+              else
+                rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+                # Workaround for torch-xpu-ops ci test
+                sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+              fi
+              WERROR=1 python setup.py bdist_wheel
+            fi
             pip install --force-reinstall dist/*.whl
             cp dist/*.whl ${{ github.workspace }}/
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+            cp pytorch_${current_commit}_build.log ${{ github.workspace }}/
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -142,3 +173,9 @@ jobs:
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }} 
           path: ${{ github.workspace }}/torch*.whl
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          path: ${{ github.workspace }}/pytorch_*.log
