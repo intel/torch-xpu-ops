@@ -45,7 +45,7 @@ permissions:
   issues: write
 
 jobs:
-  Torch-XPU-Build:
+  build:
     if: ${{ inputs.pytorch }} != 'nightly_wheel'
     runs-on: ${{ inputs.runner }}
     outputs:

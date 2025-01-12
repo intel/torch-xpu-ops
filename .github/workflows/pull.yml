@@ -23,6 +23,7 @@ jobs:
   preci-linux-build:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
     permissions:
       issues: write
     uses: ./.github/workflows/_linux_build.yml
@@ -33,6 +34,7 @@ jobs:
   preci-ut:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
     needs: preci-linux-build
     uses: ./.github/workflows/_linux_ut.yml
     with:
@@ -41,6 +43,7 @@ jobs:
       runner: linux.idc.xpu
 
   Inductor-XPU-E2E-CI-Tests:
+    name: preci-linux / e2e_test
     needs: preci-linux-build
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
@@ -168,6 +171,7 @@ jobs:
   preci-linux-build-abi-0:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-abi-0
     permissions:
       issues: write
     uses: ./.github/workflows/_linux_build.yml
@@ -179,6 +183,7 @@ jobs:
   preci-ut-abi-0:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-abi-0
     needs: preci-linux-build-abi-0
     uses: ./.github/workflows/_linux_ut.yml
     with:
@@ -190,6 +195,7 @@ jobs:
   preci-windows:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    name: preci-windows
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended

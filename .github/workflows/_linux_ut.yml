@@ -47,7 +47,7 @@ on:
 permissions: read-all
 
 jobs:
-  Torch-XPU-UT-Tests:
+  ut_test:
     runs-on: ${{ inputs.runner }} 
     timeout-minutes: 900
     env:

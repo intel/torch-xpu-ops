@@ -94,9 +94,10 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
-    name: linux-nightly-ondemand
+    name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
+    needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
@@ -186,7 +187,7 @@ jobs:
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
           path: ${{ github.workspace }}
-      - name: Build Pytorch XPU
+      - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
           source .github/scripts/env.sh

@@ -99,7 +99,7 @@ jobs:
     runs-on: pvc_rolling
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
-    name: linux-nightly-ondemand-rolling
+    name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
     env:
