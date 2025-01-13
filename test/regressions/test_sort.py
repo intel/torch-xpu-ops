@@ -1,10 +1,11 @@
+# Owner(s): ["module: intel"]
+
 import torch
-import random
 from torch.testing._internal.common_utils import TestCase
 
 
 class TestNNMethod(TestCase):
-    def test_sort_large_slice(self, device=torch.device('xpu')):
+    def test_sort_large_slice(self, device=torch.device("xpu")):
         x = torch.randn(4, 1024000, device=device)
         res1val, res1ind = torch.sort(x, stable=True)
         torch.xpu.synchronize()

@@ -159,7 +159,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_foreach_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Tensor kernel lib
   set(sycl_tensor_lib torch_xpu_ops_sycl_tensor_kernels)
   sycl_add_library(
@@ -173,7 +173,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_tensor_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Norm and Loss kernel lib
   set(sycl_norm_loss_lib torch_xpu_ops_sycl_norm_loss_kernels)
   sycl_add_library(
@@ -187,7 +187,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_norm_loss_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Polynomial kernel lib
   set(sycl_poly_lib torch_xpu_ops_sycl_poly_kernels)
   sycl_add_library(
@@ -201,7 +201,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_poly_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Distribution kernel lib
   set(sycl_dist_lib torch_xpu_ops_sycl_dist_kernels)
   sycl_add_library(
@@ -215,7 +215,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_dist_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Other kernel lib
   set(sycl_lib torch_xpu_ops_sycl_kernels)
   sycl_add_library(

@@ -3,9 +3,12 @@
 import numpy as np
 import torch
 from torch.testing import make_tensor
-from torch.testing._internal.common_device_type import dtypes, instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
 from torch.testing._internal.common_dtype import all_types_and
+from torch.testing._internal.common_utils import run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -137,10 +140,14 @@ with XPUPatchForImport(False):
         self.assertEqual(d_trunc, d_ref.trunc().to(dtype))
 
     TestBinaryUfuncs._test_pow = _test_pow
-    TestBinaryUfuncs.test_cpu_tensor_pow_cuda_scalar_tensor = cpu_tensor_pow_xpu_scalar_tensor
+    TestBinaryUfuncs.test_cpu_tensor_pow_cuda_scalar_tensor = (
+        cpu_tensor_pow_xpu_scalar_tensor
+    )
     TestBinaryUfuncs.test_div_rounding_modes = div_rounding_modes
 
-instantiate_device_type_tests(TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

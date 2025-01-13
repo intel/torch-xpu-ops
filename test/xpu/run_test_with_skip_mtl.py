@@ -1,5 +1,6 @@
 import os
 import sys
+
 from skip_list_common import skip_dict
 from skip_list_mtl import skip_dict as skip_dict_specifical
 from skip_list_win import skip_dict as skip_dict_win
@@ -18,6 +19,6 @@ for key in skip_dict:
 
 if os.name == "nt":
     sys.exit(res)
-else:    
+else:
     exit_code = os.WEXITSTATUS(res)
     sys.exit(exit_code)

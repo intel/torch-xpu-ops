@@ -31,9 +31,7 @@ skip_dict = {
         "test_non_contig_index_pow_xpu_complex64",
         "test_non_contig_pow_xpu_complex64",
     ),
-    "test_nn_xpu.py": (
-        "test_adaptiveavg_pool1d_shmem_xpu",
-    ),
+    "test_nn_xpu.py": ("test_adaptiveavg_pool1d_shmem_xpu",),
     "test_unary_ufuncs_xpu.py": (
         "test_batch_vs_slicing__refs_acos_xpu_complex64",
         "test_batch_vs_slicing__refs_acosh_xpu_complex64",

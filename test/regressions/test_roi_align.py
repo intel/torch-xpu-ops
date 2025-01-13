@@ -1,8 +1,10 @@
-import torch
-from torch.testing._internal.common_utils import TestCase
-import torchvision
+# Owner(s): ["module: intel"]
 import math
+
 import numpy as np
+import torch
+import torchvision
+from torch.testing._internal.common_utils import TestCase
 
 
 def bilinear_interpolate(data, y, x, snap_border=False):
@@ -130,8 +132,12 @@ def expected_grad_fn(
                             wx_l = 1 - wx_h
                             for wx, xp in zip((wx_l, wx_h), (x_low, x_high)):
                                 for wy, yp in zip((wy_l, wy_h), (y_low, y_high)):
-                                    if 0 <= yp < in_data.size(2) and 0 <= xp < in_data.size(3):
-                                        grad_input[batch_idx, channel, yp, xp] += wx * wy * grad_val
+                                    if 0 <= yp < in_data.size(
+                                        2
+                                    ) and 0 <= xp < in_data.size(3):
+                                        grad_input[batch_idx, channel, yp, xp] += (
+                                            wx * wy * grad_val
+                                        )
     return grad_input
 
 
@@ -177,7 +183,9 @@ class TestNNMethod(TestCase):
         rois_dtype = dtype_
         pool_size = 5
         n_channels = 2 * (pool_size**2)
-        x = torch.rand(2, n_channels, 10, 10, dtype=x_dtype, device=device, requires_grad=True)
+        x = torch.rand(
+            2, n_channels, 10, 10, dtype=x_dtype, device=device, requires_grad=True
+        )
         rois = torch.tensor(
             [
                 [0, 0, 0, 9, 9],

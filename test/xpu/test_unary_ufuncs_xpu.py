@@ -1,7 +1,10 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_device_type import instantiate_device_type_tests, onlyXPU
+from torch.testing._internal.common_device_type import (
+    instantiate_device_type_tests,
+    onlyXPU,
+)
 from torch.testing._internal.common_utils import run_tests
 
 try:
@@ -42,9 +45,12 @@ with XPUPatchForImport(False):
             res[size_inp // 2 :],
             torch.tensor(-1, device="xpu").expand_as(res[size_inp // 2 :]),
         )
+
     TestUnaryUfuncs.test_nonzero_static_large = _nonzero_static_large
 
-instantiate_device_type_tests(TestUnaryUfuncs, globals(),only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestUnaryUfuncs, globals(), only_for=("xpu"), allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
