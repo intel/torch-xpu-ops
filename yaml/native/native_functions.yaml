@@ -8,6 +8,7 @@
   device_guard: False
   dispatch:
     SparseXPU: copy_sparse_wrapper_
+    SparseCsrXPU: copy_sparse_compressed_
   autogen: copy.out
 
 - func: _copy_from(Tensor self, Tensor dst, bool non_blocking=False) -> Tensor
@@ -29,6 +30,7 @@
   variants: function, method
   dispatch:
     SparseXPU: add_sparse
+    SparseCsrXPU: add_sparse_csr
   tags: [core, pointwise]
 
 - func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor
@@ -8571,6 +8573,7 @@
   variants: method
   dispatch:
     SparseXPU: values_sparse
+    SparseCsrXPU: values_sparse_csr
   device_check: NoCheck
   device_guard: False
 
@@ -8604,6 +8607,45 @@
     SparseXPU: coo_to_sparse_bsr
     SparseCsrXPU: sparse_compressed_to_sparse_bsr
   autogen: _to_sparse_bsr.out
+
+- func: to_sparse_csr(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+
+# Special case of to_sparse_csr with custom derivative
+- func: _to_sparse_csr(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+  dispatch:
+    SparseXPU: coo_to_sparse_csr
+    SparseCsrXPU: sparse_compressed_to_sparse_csr
+  autogen: _to_sparse_csr.out
+
+- func: crow_indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseCsrXPU: crow_indices_sparse_csr
+  device_check: NoCheck
+  device_guard: False
+
+- func: col_indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseCsrXPU: col_indices_sparse_csr
+  device_check: NoCheck
+  device_guard: False
+
+- func: ccol_indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseCsrXPU: ccol_indices_sparse_csr
+  device_check: NoCheck
+  device_guard: False
+
+- func: row_indices(Tensor(a) self) -> Tensor(a)
+  variants: method
+  dispatch:
+    SparseCsrXPU: row_indices_sparse_csr
+  device_check: NoCheck
+  device_guard: False
 
 - func: copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)
   device_check: NoCheck  # Allows copy into different device
