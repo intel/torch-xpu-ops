@@ -1,4 +1,5 @@
 # Owner(s): ["module: nn"]
+import contextlib
 import itertools
 import random
 import unittest
@@ -7,20 +8,19 @@ from itertools import product
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.testing._internal.common_utils import TEST_XPU
 from torch.testing._internal.common_device_type import (
     expectedFailureXLA,
     instantiate_device_type_tests,
 )
-from torch.testing._internal.common_nn import freeze_rng_state, NNTestCase
+from torch.testing._internal.common_nn import NNTestCase
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     run_tests,
     set_default_dtype,
     TEST_PRIVATEUSE1,
+    TEST_XPU,
 )
 
-import contextlib
 
 @contextlib.contextmanager
 def freeze_rng_state():
@@ -51,6 +51,7 @@ def freeze_rng_state():
             if torch.xpu.is_available():
                 torch.xpu.set_rng_state(xpu_rng_state)  # type: ignore[possibly-undefined]
             torch.set_rng_state(rng_state)
+
 
 class TestDropoutNN(NNTestCase):
     def _test_alpha_dropout(self, cls, input):
@@ -343,7 +344,9 @@ class TestDropoutNNDeviceType(NNTestCase):
         self.assertEqual(out.size(), x.size())
 
 
-instantiate_device_type_tests(TestDropoutNNDeviceType, globals(), only_for='xpu', allow_xpu=True)
+instantiate_device_type_tests(
+    TestDropoutNNDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_parametrized_tests(TestDropoutNN)
 
 if __name__ == "__main__":

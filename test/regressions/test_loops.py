@@ -1,6 +1,6 @@
+# Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
-
 
 test_shapes = [
     [[23, 72, 72], [5184, 72, 1], [23, 72, 72], [5184, 72, 1]],
@@ -15,6 +15,7 @@ test_shapes = [
     [[16, 16, 512, 513], [16, 1, 1, 513]],
     [[28, 4096, 9], [36864, 9, 1], [28, 4096, 1], [4096, 1, 1]],
 ]
+
 
 class TestLoopsKernel(TestCase):
     def _test_loops(self, dtype=torch.float):
@@ -51,14 +52,21 @@ class TestLoopsKernel(TestCase):
                 b = torch.randn(shape[1], dtype=torch.half)
             elif len(shape) == 4:
                 a = torch.as_strided(
-                    torch.randn(shape[0][0] * shape[1][0], dtype=torch.float), shape[0], shape[1]
+                    torch.randn(shape[0][0] * shape[1][0], dtype=torch.float),
+                    shape[0],
+                    shape[1],
                 )
                 b = torch.as_strided(
-                    torch.randn(shape[2][0] * shape[3][0], dtype=torch.half), shape[2], shape[3]
+                    torch.randn(shape[2][0] * shape[3][0], dtype=torch.half),
+                    shape[2],
+                    shape[3],
                 )
             a_xpu = a.xpu()
             b_xpu = b.xpu()
-            print(f'a_xpu:{a_xpu.dtype}, {a_xpu.shape}, {a.stride()}; b_xpu:{b_xpu.dtype}, {b_xpu.shape}, {b_xpu.stride()}', flush=True)
+            print(
+                f"a_xpu:{a_xpu.dtype}, {a_xpu.shape}, {a.stride()}; b_xpu:{b_xpu.dtype}, {b_xpu.shape}, {b_xpu.stride()}",
+                flush=True,
+            )
             c = a + b + 1
             c_xpu = a_xpu + b_xpu + 1
             self.assertEqual(c, c_xpu.cpu())

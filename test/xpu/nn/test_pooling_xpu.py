@@ -1,33 +1,22 @@
 # Owner(s): ["module: intel"]
 
-import os
-import sys
 import math
+import os
 import subprocess
+import sys
+
 import torch
 import torch.nn.functional as F
 from torch import inf, nan
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import (
-    run_tests,
-    instantiate_parametrized_tests,
-    parametrize as parametrize_test,
-    subtest,
-)
-
 from torch.testing._internal.common_device_type import (
     dtypes,
-    dtypesIfCUDA,
-    dtypesIfMPS,
-    expectedFailureMeta,
-    expectedFailureMPS,
     instantiate_device_type_tests,
-    largeTensorTest,
-    onlyCPU,
-    onlyCUDA,
-    onlyNativeDeviceTypes,
-    skipCUDAIfRocm,
-    TEST_WITH_ROCM,
+)
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    parametrize as parametrize_test,
+    run_tests,
+    subtest,
 )
 
 try:
@@ -36,7 +25,8 @@ except Exception as e:
     from ..xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_pooling import TestPoolingNNDeviceType, TestPoolingNN, TestAvgPool
+    from test_pooling import TestAvgPool, TestPoolingNN, TestPoolingNNDeviceType
+
 
 def _test_avg_pool1d_ceil_mode(self):
     # Regression test for gh-36977
@@ -54,7 +44,10 @@ def _test_avg_pool1d_ceil_mode(self):
         stride=2,
     )
     self.assertTrue(not torch.isnan(y).any())
-TestAvgPool.test_avg_pool1d_ceil_mode=_test_avg_pool1d_ceil_mode
+
+
+TestAvgPool.test_avg_pool1d_ceil_mode = _test_avg_pool1d_ceil_mode
+
 
 def _test_avg_pool2d_ceil_mode(self):
     # Regression test for gh-36977
@@ -78,7 +71,10 @@ def _test_avg_pool2d_ceil_mode(self):
         stride=2,
     )
     self.assertTrue(not torch.isnan(y).any())
-TestAvgPool.test_avg_pool2d_ceil_mode=_test_avg_pool2d_ceil_mode
+
+
+TestAvgPool.test_avg_pool2d_ceil_mode = _test_avg_pool2d_ceil_mode
+
 
 def _test_avg_pool3d_ceil_mode(self):
     # Regression test for gh-36977
@@ -96,7 +92,10 @@ def _test_avg_pool3d_ceil_mode(self):
         stride=2,
     )
     self.assertTrue(not torch.isnan(y).any())
-TestAvgPool.test_avg_pool3d_ceil_mode=_test_avg_pool3d_ceil_mode
+
+
+TestAvgPool.test_avg_pool3d_ceil_mode = _test_avg_pool3d_ceil_mode
+
 
 def _test_adaptive_pooling_avg_nhwc(self):
     device_list = ["xpu"]
@@ -120,7 +119,10 @@ def _test_adaptive_pooling_avg_nhwc(self):
         self.assertTrue(ref_out.is_contiguous())
         self.assertEqual(out, ref_out)
         self.assertEqual(input.grad, ref_input.grad)
-TestPoolingNN.test_adaptive_pooling_avg_nhwc=_test_adaptive_pooling_avg_nhwc
+
+
+TestPoolingNN.test_adaptive_pooling_avg_nhwc = _test_adaptive_pooling_avg_nhwc
+
 
 def _test_adaptive_pooling_avg_nhwc_non_contiguous(self):
     device_list = ["xpu"]
@@ -146,34 +148,41 @@ def _test_adaptive_pooling_avg_nhwc_non_contiguous(self):
         self.assertTrue(ref_out.is_contiguous())
         self.assertEqual(out, ref_out)
         self.assertEqual(input.grad, ref_input.grad)
-TestPoolingNN.test_adaptive_pooling_avg_nhwc_non_contiguous=_test_adaptive_pooling_avg_nhwc_non_contiguous
+
+
+TestPoolingNN.test_adaptive_pooling_avg_nhwc_non_contiguous = (
+    _test_adaptive_pooling_avg_nhwc_non_contiguous
+)
+
 
 def _test_adaptive_avg_pooling_overflow(self):
-    input = torch.randint(
-        -256, 256, (20, 32, 256, 256), dtype=torch.half, device="xpu"
-    )
+    input = torch.randint(-256, 256, (20, 32, 256, 256), dtype=torch.half, device="xpu")
     avg_pool = torch.nn.AdaptiveAvgPool2d((2, 2))
     out = avg_pool(input)
     self.assertFalse(torch.isinf(out).any())
     self.assertFalse(torch.isnan(out).any())
-TestPoolingNN.test_adaptive_avg_pooling_overflow=_test_adaptive_avg_pooling_overflow
+
+
+TestPoolingNN.test_adaptive_avg_pooling_overflow = _test_adaptive_avg_pooling_overflow
+
 
 def _test_adaptive_avg_pooling_nhwc_overflow(self):
-    input = torch.randint(
-        -256, 256, (20, 32, 256, 256), dtype=torch.half, device="xpu"
-    )
+    input = torch.randint(-256, 256, (20, 32, 256, 256), dtype=torch.half, device="xpu")
     input = input.contiguous(memory_format=torch.channels_last)
     avg_pool = torch.nn.AdaptiveAvgPool2d((2, 2))
     out = avg_pool(input)
     self.assertFalse(torch.isinf(out).any())
     self.assertFalse(torch.isnan(out).any())
-TestPoolingNN.test_adaptive_avg_pooling_nhwc_overflow=_test_adaptive_avg_pooling_nhwc_overflow
+
+
+TestPoolingNN.test_adaptive_avg_pooling_nhwc_overflow = (
+    _test_adaptive_avg_pooling_nhwc_overflow
+)
+
 
 def _test_max_pool2d(self, device):
     def helper(n, c, h, w, ks):
-        x = torch.randn(
-            n, c, h, w, device="xpu", dtype=torch.float, requires_grad=True
-        )
+        x = torch.randn(n, c, h, w, device="xpu", dtype=torch.float, requires_grad=True)
         ref_x = x.detach().clone().cpu().requires_grad_()
 
         pool = torch.nn.MaxPool2d(kernel_size=ks)
@@ -190,7 +199,10 @@ def _test_max_pool2d(self, device):
     helper(2, 8, 4, 4, ks=2)
     helper(1, 100000, 32, 32, ks=4)
     helper(1, 100000, 1, 4, ks=(1, 4))  # test for max_pool1d
-TestPoolingNNDeviceType.test_max_pool2d=_test_max_pool2d
+
+
+TestPoolingNNDeviceType.test_max_pool2d = _test_max_pool2d
+
 
 def _test_max_pool2d_indices(self, device):
     def helper(n, c, h, w, ks):
@@ -221,7 +233,10 @@ def _test_max_pool2d_indices(self, device):
 
     helper(2, 8, 4, 4, ks=2)
     helper(None, 3, 50, 50, ks=5)
-TestPoolingNNDeviceType.test_max_pool2d_indices=_test_max_pool2d_indices
+
+
+TestPoolingNNDeviceType.test_max_pool2d_indices = _test_max_pool2d_indices
+
 
 @parametrize_test(
     "module_name,module_size,output_size,test_index,should_error",
@@ -281,7 +296,9 @@ TestPoolingNNDeviceType.test_max_pool2d_indices=_test_max_pool2d_indices
         ),
     ],
 )
-def _test_MaxUnpool_index_errors(self, device, module_name, module_size, output_size, test_index, should_error):
+def _test_MaxUnpool_index_errors(
+    self, device, module_name, module_size, output_size, test_index, should_error
+):
     # NOTE: XPU tests need to be run in a subprocess because they cause device asserts
     if torch.device(device).type == "xpu":
         error_msgs = {
@@ -320,20 +337,21 @@ torch.xpu.synchronize()
         indices.flatten()[0] = test_index
 
         if should_error:
-            with self.assertRaisesRegex(
-                RuntimeError, r"Found an invalid max index:"
-            ):
+            with self.assertRaisesRegex(RuntimeError, r"Found an invalid max index:"):
                 unpool(output, indices)
         else:
             unpool(output, indices)
+
+
 TestPoolingNNDeviceType.test_MaxUnpool_index_errors = _test_MaxUnpool_index_errors
+
 
 @dtypes(torch.half, torch.float, torch.double)
 def _test_max_pool_nan_inf(self, device, dtype):
     for adaptive in ["", "adaptive_"]:
         for num_dim in [1, 2, 3]:
             fn_name = f"{adaptive}max_pool{num_dim}d"
-            print('fn_name:', fn_name, flush=True)
+            print("fn_name:", fn_name, flush=True)
             fn = getattr(F, fn_name)
 
             x = torch.full(
@@ -363,9 +381,13 @@ def _test_max_pool_nan_inf(self, device, dtype):
             x2.requires_grad_(False)
             res2 = fn(x2, 1 if adaptive else 3)
             self.assertTrue(math.isinf(res2.item()))
+
+
 TestPoolingNNDeviceType.test_max_pool_nan_inf = _test_max_pool_nan_inf
 
-instantiate_device_type_tests(TestPoolingNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestPoolingNNDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_parametrized_tests(TestPoolingNN)
 
 

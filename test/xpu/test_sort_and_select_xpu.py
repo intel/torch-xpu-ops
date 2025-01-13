@@ -2,12 +2,10 @@
 
 import numpy as np
 import torch
-
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
 )
-
 from torch.testing._internal.common_dtype import all_types_and, floating_types_and
 from torch.testing._internal.common_utils import run_tests
 
