@@ -75,9 +75,6 @@ failing_cases = {
     'tests.models.encoder_decoder.test_modeling_encoder_decoder.BartEncoderDecoderModelTest': {
         'test_save_and_load_from_pretrained': { 'flaky': True },
     },
-    'tests.models.fuyu.test_modeling_fuyu.FuyuModelTest': {
-        'test_prompt_lookup_decoding_matches_greedy_search': { 'flaky': True },
-    },
     'tests.models.git.test_modeling_git.GitModelTest': {
         'test_generate_continue_from_past_key_values': { 'flaky': True, 'cuda': 'passed' },
         'test_inputs_embeds_matches_input_ids': { 'cuda': 'passed' },
