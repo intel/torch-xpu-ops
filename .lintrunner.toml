@@ -610,6 +610,9 @@ code = 'SHELLCHECK'
 include_patterns = [
     '**/*.sh'
 ]
+exclude_patterns = [
+   '.github/scripts/lintrunner.sh'
+]
 command = [
     'python3',
     'tools/linter/adapters/shellcheck_linter.py',
