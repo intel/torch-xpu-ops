@@ -17,7 +17,9 @@ from torch.testing._internal import (
 from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
-from torch.testing._internal.common_utils import set_default_dtype
+from torch.testing._internal.common_utils import (set_default_dtype, 
+                                                  skip_but_pass_in_sandcastle, 
+                                                  skip_but_pass_in_sandcastle_if, )
 from torch.testing._internal.opinfo.core import (
     BinaryUfuncInfo,
     DecorateInfo,
@@ -27,6 +29,7 @@ from torch.testing._internal.opinfo.core import (
     SpectralFuncInfo,
     UnaryUfuncInfo,
 )
+import torch.distributed as c10d
 
 _xpu_computation_op_list = [
     "empty",
@@ -751,6 +754,31 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
                         requires_grad=requires_grad)
         yield SampleInput(t, **kwargs)
 
+def _xccl_version():
+        """
+        Returns the version of the XCCL.
+
+
+        This function returns a tuple containing the major, minor, and patch version numbers of the NCCL.
+        The suffix is also included in the tuple if a version suffix exists.
+        Returns:
+            tuple: The version information of the NCCL.
+        """
+        major = 1
+        minor = 0
+        patch = 0
+        suffix = ""
+        if suffix == "":
+            return (major, minor, patch)
+        else:
+            return (major, minor, patch, suffix)
+
+def requires_xccl():
+    return skip_but_pass_in_sandcastle_if(
+        not c10d.is_xccl_available(),
+        "c10d was not compiled with the XCCL backend",
+    )
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
@@ -758,6 +786,7 @@ class XPUPatchForImport:
             test_dir,
             os.path.join(test_dir, "nn"),
             os.path.join(test_dir, "distributions"),
+            os.path.join(test_dir, "distributed"),
             os.path.join(test_dir, "quantization/core"),
         )
         self.patch_test_case = patch_test_case
@@ -786,6 +815,10 @@ class XPUPatchForImport:
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+        self.c10d_is_nccl_available = c10d.is_nccl_available
+        self.requires_nccl_version = torch.testing._internal.common_distributed.requires_nccl_version
+        self.TEST_MULTIGPU = torch.testing._internal.common_cuda.TEST_MULTIGPU
+        self.skip_if_lt_x_gpu = torch.testing._internal.common_distributed.skip_if_lt_x_gpu      
 
 
     def align_db_decorators(self, db):
@@ -868,6 +901,34 @@ class XPUPatchForImport:
                     if opinfo.reference_inputs_func != None and opinfo.reference_inputs_func.__name__ == common_methods_invocations.reference_inputs_cat.__name__:
                         opinfo.reference_inputs_func = reference_inputs_cat_nofp64
 
+   
+
+    def requires_xccl_version(self, version, msg):
+        if not c10d.is_xccl_available():
+            return skip_but_pass_in_sandcastle(
+                "c10d was not compiled with the XCCL backend",
+            )
+        else:
+            return skip_but_pass_in_sandcastle_if(
+                True,
+                f"Test workaround to return True for xccl version check",
+            )
+    
+    def _skip_if_lt_x_gpu(self, x):
+        from functools import wraps
+        from torch.testing._internal.common_distributed import TEST_SKIPS
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                if torch.xpu.is_available() and torch.xpu.device_count() >= x:
+                    return func(*args, **kwargs)
+                sys.exit(TEST_SKIPS[f"multi-gpu-{x}"].exit_code)
+
+            return wrapper
+
+        return decorator
+
+    
     def __enter__(self):
         # Monkey patch until we have a fancy way
 
@@ -970,10 +1031,20 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         common_cuda.TEST_CUDNN_VERSION = 0
+        torch.testing._internal.common_utils.TEST_CUDA = common_cuda.TEST_CUDA
         cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
 
+        c10d.is_nccl_available = c10d.is_xccl_available
+        torch.testing._internal.common_distributed.requires_nccl_version = self.requires_xccl_version
+
+        torch.testing._internal.common_cuda.TEST_MULTIGPU = common_utils.TEST_XPU and torch.xpu.device_count() >= 2
+
         sys.path.extend(self.test_package)
+
+        torch.testing._internal.common_distributed.skip_if_lt_x_gpu = self._skip_if_lt_x_gpu
+
+        torch.cuda.nccl.version = _xccl_version
 
         return self
 
@@ -996,6 +1067,11 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
         cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
+
+        c10d.is_nccl_available = self.c10d_is_nccl_available
+        torch.testing._internal.common_distributed.requires_nccl_version = self.requires_nccl_version
+        torch.testing._internal.common_cuda.TEST_MULTIGPU = self.TEST_MULTIGPU
+        torch.testing._internal.common_distributed.skip_if_lt_x_gpu = self.skip_if_lt_x_gpu
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
