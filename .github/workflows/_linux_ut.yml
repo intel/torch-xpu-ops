@@ -166,7 +166,8 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          timeout 10000 python run_test_with_skip.py
+          # for ARC  only
+          timeout 10000 python run_test_with_skip_arc.py
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
