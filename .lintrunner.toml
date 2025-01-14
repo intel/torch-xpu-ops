@@ -338,7 +338,11 @@ command = [
 [[linter]]
 code = 'INCLUDE'
 include_patterns = [
-    'src/**',
+    'src/comm/**',
+    'src/Aten/**',
+    'src/Aten/**/**',
+    'src/Aten/**/**/**',
+    'src/Aten/**/**/**/**',
 ]
 command = [
     'python3',
@@ -473,6 +477,11 @@ exclude_patterns = [
     '**/*.py',
     '**/*.sh',
     '**/*.bash',
+    '**/git-pre-commit',
+    '**/git-clang-format',
+    '**/gradlew',
+    'fb/**',
+    '**/fb/**',
     '.github/workflows/*.yml',
 ]
 command = [
@@ -864,14 +873,7 @@ command = [
 
 [[linter]]
 code = 'RUFF'
-include_patterns = [
-    'src/comm/*.h',
-    'src/comm/*.cpp',
-    'src/Aten/**/**/*.h',
-    'src/Aten/**/**/*.cpp',
-    'src/Aten/**/**/**/*.h',
-    'src/Aten/**/**/**/*.cpp',
-]
+include_patterns = ['**/*.py', '**/*.pyi']
 #exclude_patterns = [
 #    'caffe2/**',
 #    'functorch/docs/**',
