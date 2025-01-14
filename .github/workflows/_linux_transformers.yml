@@ -82,17 +82,21 @@ jobs:
             libswresample-dev \
             libswscale-dev
           git lfs install
+      - name: Create unique Conda ENV name
+        run: |
+          echo "CONDA_ENV_NAME=hf_transformers_test_${ZE_AFFINITY_MASK}" >> $GITHUB_ENV
       - name: Prepare Conda ENV
         run: |
+          echo "Using Conda ENV name: $CONDA_ENV_NAME"
           which conda && conda clean -ay
-          conda remove --all -y -n huggingface_transformers_test || rm -rf $(dirname ${CONDA_EXE})/../envs/huggingface_transformers_test
-          conda create -y -n huggingface_transformers_test python=${{ env.python }}
-          source activate huggingface_transformers_test
+          conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
+          source activate $CONDA_ENV_NAME
           pip install junitparser
       - name: Prepare Stock XPU Pytorch
         run: |
           pwd
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           if [ -z "${{ inputs.nightly_whl }}" ]; then
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           else
@@ -101,7 +105,7 @@ jobs:
       - name: Prepare Transformers
         run: |
           pwd
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           pip install -e .
           pip install -e ".[dev-torch,testing,video]"
@@ -110,7 +114,7 @@ jobs:
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           echo "pip installed packages:"
           pip list | tee ${{ github.workspace }}/transformers/tests_log/pip_list.txt
           echo "lspci gpu devices:"
@@ -121,7 +125,7 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu
@@ -135,7 +139,7 @@ jobs:
         env:
           TEST_CASE: 'tests_backbone'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml -k backbone tests || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
@@ -143,21 +147,21 @@ jobs:
         env:
           TEST_CASE: 'tests_py'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/*.py || true
       - name: Run tests/benchmark
         env:
           TEST_CASE: 'tests_benchmark'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/benchmark || true
       - name: Run tests/generation
         env:
           TEST_CASE: 'tests_generation'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           # Excluding tests due to:
           # * torch.distributed.* not yet supported by XPU
@@ -167,7 +171,7 @@ jobs:
         env:
           TEST_CASE: 'tests_models'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           # Excluding tests due to:
           # * https://github.com/huggingface/transformers/issues/35252 (CUDA specific tests)
@@ -182,7 +186,7 @@ jobs:
         env:
           TEST_CASE: 'tests_pipelines'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           # Some tests are known to fail w/o clear pattern
           # TODO: drop ||true after triage and fixes
@@ -191,7 +195,7 @@ jobs:
         env:
           TEST_CASE: 'tests_trainer'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           # Excluding tests due to:
           # * Some ray tests hang, reason unknown
@@ -207,7 +211,7 @@ jobs:
         env:
           TEST_CASE: 'tests_utils'
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           cd transformers
           # Excluding tests due to:
           # * Network proxy connection issue, reason unknown
@@ -219,7 +223,7 @@ jobs:
           FAILED_CASES=$(echo $FAILED_CASES | sed 's/^,//')
           echo "Failed cases: [$(echo $FAILED_CASES | sed 's/,/, /g')]"
           test -z "$FAILED_CASES"
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           python3 torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml
       - name: Clean HF home directory and cache
         if: ${{ always() }}
@@ -258,7 +262,7 @@ jobs:
       - name: Print baseline difference
         if: ${{ ! cancelled() }}
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           python3 torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: Print failure lines
         if: ${{ ! cancelled() }}
@@ -318,7 +322,7 @@ jobs:
       - name: Print annotations
         if: ${{ ! cancelled() }}
         run: |
-          source activate huggingface_transformers_test
+          source activate $CONDA_ENV_NAME
           {
             echo "### Annotations"
             echo "| | |"
