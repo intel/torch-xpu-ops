@@ -16,14 +16,14 @@ args = parser.parse_args()
 
 
 # load csv files
-test_data= pd.read_csv(args.csv_file, comment='#')
+test_data = pd.read_csv(args.csv_file, comment='#')
 # test_data = test_data.reset_index()  # make sure indexes pair with number of rows
 # test_data = test_data.sort_values(by=["name"], ascending=True)
 test_names = [row["name"] for index, row in test_data.iterrows()]
 
 current_path = pathlib.Path(__file__).parent.resolve()
 refer_file = str(current_path) + "/" + args.category + "_" + args.suite + "_" + args.mode + ".csv"
-refer_data= pd.read_csv(refer_file, comment='#')
+refer_data = pd.read_csv(refer_file, comment='#')
 # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
 # refer_data = refer_data.sort_values(by=["name"], ascending=True)
 refer_names = [row["name"] for index, row in refer_data.iterrows()]
@@ -37,8 +37,8 @@ new_models = []
 new_pass_models = []
 lost_models = []
 timeout_models = []
-for model_name in model_names:
 # for index, row in refer_data.iterrows():
+for model_name in model_names:
     test_row = next(([i, line] for i, line in test_data.iterrows() if line["name"] == model_name), "N/A")
     refer_row = next(([i, line] for i, line in refer_data.iterrows() if line["name"] == model_name), "N/A")
     test_accuracy = test_row[1]["accuracy"] if test_row != "N/A" else "N/A"
@@ -51,7 +51,7 @@ for model_name in model_names:
         passed_models.append([model_name, test_accuracy])
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
-            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.loc[len(refer_data), :] = "N/A"
             refer_data.at[len(refer_data) - 1, "name"] = model_name
             refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
         elif 'pass' not in refer_accuracy:
@@ -61,14 +61,14 @@ for model_name in model_names:
         timeout_models.append([model_name, test_accuracy])
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
-            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.loc[len(refer_data), :] = "N/A"
             refer_data.at[len(refer_data) - 1, "name"] = model_name
             refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
     else:
         if refer_accuracy == "N/A":
             new_models.append([model_name, test_accuracy])
             real_failed_models.append([model_name, test_accuracy])
-            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.loc[len(refer_data), :] = "N/A"
             refer_data.at[len(refer_data) - 1, "name"] = model_name
             refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
         elif "pass" in refer_accuracy:
