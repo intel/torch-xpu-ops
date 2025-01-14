@@ -6,9 +6,9 @@
 namespace at::native::xpu {
 
 TORCH_XPU_API void dequant_int4_kernel(
-    const Tensor& _weight_int4pack_mm_cuda,
+    const Tensor& weight_int4,
+    Tensor& weight,
     int qGroupSize,
-    const Tensor& weight_scale_zero_point,
-    Tensor& weight_dequant);
+    const Tensor& qScaleAndZeros);
 
 } // namespace at::native::xpu
