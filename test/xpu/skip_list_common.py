@@ -3344,4 +3344,8 @@ skip_dict = {
         "test_sparse_mm_xpu_float64", # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
         "test_sparse_sum_xpu_float64", # - NotImplementedError: Could not run 'aten::_sparse_sum_backward' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this...
     ),
+
+    "distributed/test_c10d_nccl_xpu.py": (
+        "test_init_wo_backend_str",
+    )
 }

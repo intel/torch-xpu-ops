@@ -1,20 +1,19 @@
 # Owner(s): ["module: intel"]
 
+import os
+import datetime
+import pickle
+import math
+from unittest import mock
+
+import torch
 from torch.testing._internal.common_utils import run_tests
 from torch.testing._internal.common_distributed import (
     requires_nccl,
-    requires_nccl_version,
-    init_multigpu_helper,
-    skip_if_lt_x_gpu,
-    skip_if_rocm_multiprocess,
     MultiProcessTestCase,
 )
-import torch
 import torch.distributed as c10d
-from unittest import mock
-import os
 import torch.testing._internal.common_utils as common
-
 from torch.testing._internal.common_utils import (
     retry_on_connect_failures,
     run_tests,
@@ -24,11 +23,6 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.common_cuda import TEST_MULTIGPU
 import torch.distributed as dist
-import threading
-from torch.nn.parallel import DistributedDataParallel
-import datetime
-import pickle
-import math
 
 try:
     from .xpu_test_utils import XPUPatchForImport, requires_xccl
@@ -36,15 +30,18 @@ except Exception as e:
     from ..xpu_test_utils import XPUPatchForImport, requires_xccl
 with XPUPatchForImport(False):
     TEST_CUDA = torch.testing._internal.common_utils.TEST_CUDA
-    from test_c10d_nccl import RendezvousEnvTest, TimeoutTest, ProcessGroupNCCLNoGPUTest, ProcessGroupNCCLInitTest
+    from test_c10d_nccl import (
+        RendezvousEnvTest, 
+        TimeoutTest, 
+        ProcessGroupNCCLNoGPUTest, 
+        ProcessGroupNCCLInitTest
+    )
     
-
     if torch.xpu.is_available:
         ccl_backend = "xccl"
     else:
         ccl_backend = "nccl"
 
-    
     @retry_on_connect_failures
     @requires_nccl()
     @skip_but_pass_in_sandcastle_if(not TEST_CUDA, "No GPUs available, skipping test")
@@ -161,159 +158,11 @@ with XPUPatchForImport(False):
     ProcessGroupNCCLNoGPUTest.test_init_no_gpus = _test_init_no_gpus
 
     def _ProcessGroupNCCLInitTest_setUp(self):
-        #super().setUp()
         super(ProcessGroupNCCLInitTest, self).setUp()
         self._spawn_processes()
 
     ProcessGroupNCCLInitTest.device_type = 'xpu'
     ProcessGroupNCCLInitTest.setUp = _ProcessGroupNCCLInitTest_setUp
-
-    #####################################################################
-    # def __create_process_group_nccl(self, store, opts, device_id=None):
-    #     # create nccl processgroup with opts
-    #     c10d.init_process_group(
-    #         "xccl",
-    #         world_size=self.world_size,
-    #         rank=self.rank,
-    #         store=store,
-    #         pg_options=opts,
-    #         device_id=device_id,
-    #     )
-    #     pg = c10d.distributed_c10d._get_default_group()
-    #     return pg
-
-    # def _opts(self, high_priority_stream=False):
-    #     opts = c10d.ProcessGroupXCCL.Options()
-    #     opts.is_high_priority_stream = high_priority_stream
-    #     return opts
-
-    # @property
-    # def _rank_to_GPU(self):
-    #     # return rank to GPU map
-    #     return init_multigpu_helper(self.world_size, "xccl")
-
-    # @requires_nccl()
-    # @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "NCCL test requires 1 GPU")
-    # @skip_if_lt_x_gpu(1)
-    # def _test_nccl_dist_backend_error(self):
-    #     store = c10d.FileStore(self.file_name, self.world_size)
-    #     self._create_process_group_xccl(store, self.opts())
-
-    #     # Both rank 0 and 1 will use the same CUDA device resulting in ncclInvalidUsage
-    #     with self.assertRaises(dist.DistBackendError) as cm:
-    #         dist.broadcast(torch.tensor([1, 2, 3]).xpu(), 0)
-    #     self.assertTrue(isinstance(cm.exception, dist.DistError))
-
-    #     self.assertIsInstance(cm.exception, RuntimeError)
-
-
-    # def _setUp(self):
-    #     super(ProcessGroupNCCLGroupTest, self).setUp()
-    #     self._spawn_processes()
-
-    # ProcessGroupNCCLGroupTest.device_type = "xpu"
-    # ProcessGroupNCCLGroupTest._test_default_store_timeout_nccl = __test_default_store_timeout_nccl
-    # ProcessGroupNCCLGroupTest._create_process_group_nccl = __create_process_group_nccl
-    # ProcessGroupNCCLGroupTest.opts = _opts
-    # ProcessGroupNCCLGroupTest.rank_to_GPU = _rank_to_GPU
-    # ProcessGroupNCCLGroupTest.test_nccl_dist_backend_error = _test_nccl_dist_backend_error
-    # ProcessGroupNCCLGroupTest.setUp = _setUp
-
-    # def __verify_trace(self, t, include_collectives, timing_enabled, is_json):
-    #     ver = t["version"]
-    #     self.assertEqual(ver, "2.4")
-    #     pg_config = t["pg_config"]
-    #     self.assertEqual(len(pg_config), 1)
-    #     default_pg_info = pg_config["0"]
-    #     self.assertIn("name", default_pg_info)
-    #     self.assertIn("desc", default_pg_info)
-    #     self.assertIn("ranks", default_pg_info)
-    #     pg_status = t["pg_status"]
-    #     self.assertEqual(len(pg_status), 1)
-    #     self.assertEqual(str(pg_status["0"]["last_enqueued_collective"]), "2")
-    #     self.assertEqual(str(pg_status["0"]["last_completed_collective"]), "2")
-    #     self.assertEqual(
-    #         str(pg_status["0"]["last_started_collective"]),
-    #         "2" if timing_enabled else "-1",
-    #     )
-    #     global_ranks = pg_config["0"]["ranks"]
-    #     self.assertEqual(len(json.loads(global_ranks)), self.world_size)
-    #     if include_collectives:
-    #         self.assertEqual(len(t["entries"]), 2)
-    #         t = t["entries"]
-    #         last = t[-1]
-    #         self.assertEqual(last["process_group"], ("0", "default_pg"))
-    #         self.assertEqual(last["state"], "completed")
-    #         s = last["time_discovered_started_ns"]
-    #         f = last["time_discovered_completed_ns"]
-    #         self.assertEqual(last["record_id"], 1)
-    #         self.assertIsNotNone(f)
-    #         if timing_enabled:
-    #             self.assertIsNotNone(s)
-    #             self.assertTrue(s <= f)
-    #         # we don't collect stack traces in JSON at the moment
-    #         if not is_json:
-    #             self.assertIn("test_c10d_nccl_xpu.py", str(last["frames"]))
-    #         self.assertEqual(last["input_sizes"], ((3, 4),))
-    #         self.assertEqual(last["input_dtypes"], ["Float"])
-    #         self.assertEqual(last["output_sizes"], ((3, 4),))
-    #         self.assertEqual(last["output_dtypes"], ["Float"])
-    #         self.assertEqual(last["collective_seq_id"], 2)
-    #         self.assertEqual(last["timeout_ms"], 600000)
-    #         now = datetime.now()
-    #         event_created_time = datetime.fromtimestamp(
-    #             last["time_created_ns"] / 1000000000
-    #         )
-    #         before_test = now - timedelta(minutes=1)
-    #         self.assertTrue(before_test < event_created_time < now)
-    #         if timing_enabled:
-    #             # very loose bounds, measured 0.036 ms on devgpu
-    #             self.assertTrue(0 < last["duration_ms"] < 100)
-    #         else:
-    #             self.assertTrue("duration_ms" not in last)
-    #     else:
-    #         self.assertTrue("entries" not in t)
-    
-    # NCCLTraceTest._verify_trace = __verify_trace
-
-    # @requires_nccl()
-    # @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "NCCL test requires 2+ GPUs")
-    # def _test_long(self):
-    #     os.environ["TORCH_NCCL_TRACE_BUFFER_SIZE"] = "10"
-    #     if self.rank == self.MAIN_PROCESS_RANK:
-    #         return
-    #     pg = self._create_process_group_nccl()
-    #     device = self.local_device
-    #     a = torch.full((3, 4), float(self.rank), device=device)
-    #     for _ in range(2):
-    #         # test some other primitives to make sure
-    #         # their strings are valid
-    #         xs = [torch.ones(3, 4, device=device)]
-    #         pg.broadcast(xs).wait()
-    #         pg.allreduce(xs).wait()
-    #         pg.reduce(xs).wait()
-    #         ys = [[torch.empty(3, 4, device=device) for _ in range(self.world_size)]]
-    #         pg.allgather(ys, xs).wait()
-    #         pg.reduce_scatter(xs, ys).wait()
-    #         f = pg.allreduce(a)
-    #     f.wait()
-    #     torch.cuda.synchronize(device=device)
-    #     t = pickle.loads(torch._C._distributed_c10d._dump_nccl_trace())
-    #     t = t["entries"]
-    #     self.assertEqual(len(t), 10)
-    #     first = t[0]
-    #     last = t[-1]
-    #     self.assertEqual(last["profiling_name"], "nccl:all_reduce")
-    #     self.assertEqual(last["state"], "completed")
-    #     self.assertIn("test_c10d_nccl_xpu.py", str(last["frames"]))
-    #     self.assertEqual(last["input_sizes"], ((3, 4),))
-    #     self.assertEqual(last["input_dtypes"], ["Float"])
-    #     self.assertEqual(last["output_sizes"], ((3, 4),))
-    #     self.assertEqual(last["output_dtypes"], ["Float"])
-    #     self.assertEqual(last["timeout_ms"], 600000)
-    #     self.assertEqual(last["collective_seq_id"] - first["collective_seq_id"], 9)
-    #     dist.destroy_process_group()
-    # NCCLTraceTest.test_long = _test_long
 
 
 def simple_reduce_tests(rank, world_size):
