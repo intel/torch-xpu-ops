@@ -8722,6 +8722,35 @@
     SparseXPU: sparse_coo_to_sparse
   autogen: _to_sparse.out
 
+- func: to_sparse_csr(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+
+# Special case of to_sparse_csr with custom derivative
+- func: _to_sparse_csr(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+  dispatch:
+    XPU: dense_to_sparse_csr
+    SparseXPU: coo_to_sparse_csr
+    SparseCsrXPU: sparse_compressed_to_sparse_csr
+  autogen: _to_sparse_csr.out
+
+- func: to_sparse_csc(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+
+# Special case of to_sparse_csc with custom derivative
+- func: _to_sparse_csc(Tensor self, int? dense_dim=None) -> Tensor
+  variants: method
+  dispatch:
+    XPU: dense_to_sparse_csc
+    SparseXPU: coo_to_sparse_csc
+    SparseCsrXPU: sparse_compressed_to_sparse_csc
+  autogen: _to_sparse_csc.out
+
+# - func: _to_sparse_semi_structured(Tensor dense) -> (Tensor, Tensor)
+#   variants: function
+#   dispatch:
+#     XPU: _to_sparse_semi_structured
+
 - func: copy_sparse_to_sparse_(Tensor(a!) self, Tensor src, bool non_blocking=False) -> Tensor(a!)
   device_check: NoCheck  # Allows copy into different device
   variants: function

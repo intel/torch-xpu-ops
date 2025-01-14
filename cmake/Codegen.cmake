@@ -6,9 +6,9 @@ set(Codegen_GPU_cmake_included true)
 set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
-set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
-set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp)
-set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp)
+set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
+set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 
 if(WIN32)
@@ -49,6 +49,7 @@ endfunction(GEN_BACKEND)
 set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
 set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp)
 set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp)
+set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU_0.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 set(XPU_AOTI_INSTALL_DIR ${TORCH_ROOT}/torch/csrc/inductor/aoti_torch/generated/extend)
 function(GEN_XPU file_yaml)
@@ -79,7 +80,7 @@ function(GEN_XPU file_yaml)
     --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --per-operator-headers
     --static-dispatch-backend
-    --backend-whitelist XPU SparseXPU NestedTensorXPU
+    --backend-whitelist XPU SparseXPU NestedTensorXPU SparseCsrXPU
     # --xpu: generate in-tree RegisterXPU_0.cpp for in-tree OPs
     --xpu
     # --update-aoti-c-shim: generate extend/c_shim_xpu.h
@@ -96,7 +97,8 @@ function(GEN_XPU file_yaml)
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_PATH}
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterNestedTensorXPU_PATH}
-    ${SIMPLE_TRACE}
+    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseCsrXPU_PATH}
+    ${SIMPLE_TRACE} 
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
     ${depended_files}
@@ -126,6 +128,7 @@ GEN_XPU(
   ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp
   ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp
   ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp
+  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU_0.cpp
   ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.h
   ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.cpp
 )
@@ -137,7 +140,7 @@ GEN_XPU(
 # $TORCH_XPU_OPS_INCLUDE_DIRS, so that "#include <ATen/ops/*.h>" works.
 list(APPEND TORCH_XPU_OPS_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/xpu)
 
-list(APPEND xpu_generated_src ${RegisterXPU_PATH} ${RegisterSparseXPU_PATH} ${RegisterNestedTensorXPU_PATH})
+list(APPEND xpu_generated_src ${RegisterXPU_PATH} ${RegisterSparseXPU_PATH} ${RegisterNestedTensorXPU_PATH} ${RegisterSparseCsrXPU_PATH})
 list(APPEND xpu_generated_src ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.cpp)
 add_custom_target(TORCH_XPU_GEN_TARGET DEPENDS ${xpu_generated_src})
 set(ATen_XPU_GEN_SRCS ${xpu_generated_src})
