@@ -60,7 +60,7 @@ skip_dict = {
         "test_compare_cpu__softmax_backward_data_xpu_float16",
         # TestCompositeCompliance::test_cow_input
         # XPU Tensor fails in copy-on-write cases
-        # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes. 
+        # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes.
         # Either set `supports_cow_input_no_materialize_backward=False` in this operation's OpInfo, add the arg to the OpInfo's i
         # `allow_cow_input_materialize_backward` list, or change the implementation to avoid materialization.
         # https://github.com/intel/torch-xpu-ops/issues/281
