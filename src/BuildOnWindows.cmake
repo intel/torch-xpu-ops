@@ -160,8 +160,6 @@ else()
 
  # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary+Reduce+Pow+Copy+Activation+Foreach 2) Foreach.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
-  set(ATen_XPU_SYCL_REDUCE_SRCS)
-  set(ATen_XPU_SYCL_FOREACH_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
