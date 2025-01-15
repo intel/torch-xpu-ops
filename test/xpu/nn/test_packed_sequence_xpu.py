@@ -8,17 +8,19 @@ except Exception as e:
     from ..xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_packed_sequence import PackedSequenceTest
-    import torch
-    import torch.nn.utils.rnn as rnn_utils
     import types
 
-    def myxpu(self, *args, **kwargs):
+    import torch
+    import torch.nn.utils.rnn as rnn_utils
+    from test_packed_sequence import PackedSequenceTest
 
-        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(*args, **kwargs)
-        if ex.device.type == 'xpu':
+    def myxpu(self, *args, **kwargs):
+        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(
+            *args, **kwargs
+        )
+        if ex.device.type == "xpu":
             return self.to(*args, **kwargs)
-        return self.to(*args, device='xpu', **kwargs)
+        return self.to(*args, device="xpu", **kwargs)
 
     rnn_utils.PackedSequence.xpu = types.MethodType(rnn_utils.PackedSequence, myxpu)
 

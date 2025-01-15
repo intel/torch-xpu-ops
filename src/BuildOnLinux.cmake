@@ -10,7 +10,13 @@ if(BUILD_SEPARATE_OPS)
     STATIC
     ${ATen_XPU_CPP_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
+    ${ATen_XPU_GEN_SRCS}
+    ${ATen_XPU_XCCL_SRCS})
+
+  if(USE_C10D_XCCL)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+  endif()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -26,14 +32,18 @@ if(BUILD_SEPARATE_OPS)
     list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   endforeach()
 elseif(BUILD_SPLIT_KERNEL_LIB)
-
   add_library(
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
-  
+    ${ATen_XPU_GEN_SRCS}
+    ${ATen_XPU_XCCL_SRCS})
+
+  if(USE_C10D_XCCL)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+  endif()
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_REDUCE_SRCS)
@@ -116,14 +126,19 @@ else()
   sycl_add_library(
     xpu_sycl
     STATIC
-    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS}
+    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
   add_library(torch_xpu_ops ALIAS xpu_sycl)
   set_target_properties(xpu_sycl PROPERTIES OUTPUT_NAME torch_xpu_ops)
   set(SYCL_TARGET xpu_sycl)
+  if(USE_C10D_XCCL)
+    target_compile_definitions(xpu_sycl PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+  endif()
 
   install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_sycl)
+  
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 

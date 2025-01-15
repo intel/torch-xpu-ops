@@ -386,7 +386,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
         ${SYCL_FLAGS}
         ${SYCL_DEVICE_LINK_FLAGS})
 
-    file(REAL_PATH working_directory "${output_file}")
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
 
     if(SYCL_VERBOSE_BUILD)
