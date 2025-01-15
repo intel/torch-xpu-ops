@@ -133,7 +133,7 @@ else()
   set(SYCL_TARGET xpu_sycl)
   if(USE_C10D_XCCL)
     target_compile_definitions(xpu_sycl PRIVATE USE_C10D_XCCL)
-    target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+    target_link_libraries(xpu_sycl  PUBLIC torch::xccl)
   endif()
 
   install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
