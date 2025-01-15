@@ -2421,7 +2421,6 @@ skip_dict = {
         "test_register_state_dict_post_hook",
     ),
     "nn/test_parametrization_xpu.py": None,
-    "test_segment_reductions_xpu.py": None,
     "test_meta_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/774
         "_jiterator_",
