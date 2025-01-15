@@ -44,6 +44,7 @@ permissions: read-all
 
 jobs:
   Torch-XPU-Transformers-Tests:
+    if: github.repository_owner == 'pytorch'
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
     env:
       HF_HOME: ${{ github.workspace }}/.hf_home

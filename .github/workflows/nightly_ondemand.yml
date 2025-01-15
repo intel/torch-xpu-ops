@@ -67,7 +67,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
+    if: ${{ (github.event_name == 'schedule' || ${{ inputs.ut_suite }}) && github.repository_owner == 'pytorch' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
@@ -78,7 +78,7 @@ jobs:
       runner: linux.idc.xpu
 
   Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+    if: ${{ github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5' && github.repository_owner == 'pytorch' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
@@ -92,7 +92,7 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' && github.repository_owner == 'pytorch' }}
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}

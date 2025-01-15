@@ -79,7 +79,7 @@ for model_name in model_names:
                 refer_data.at[refer_row[0], args.dtype] = test_accuracy
 
 # pass rate
-print("============ Summary for {} {} {} accuracy ============".format(args.suite, args.dtype, args.mode))
+print(f"============ Summary for {args.suite} {args.dtype} {args.mode} accuracy ============")
 print("Total models:", len(model_names))
 print("Passed models:", len(passed_models))
 print("Real failed models:", len(real_failed_models), real_failed_models)
@@ -88,7 +88,7 @@ print("Warning timeout models:", len(timeout_models), timeout_models)
 print("New models:", len(new_models), new_models)
 print("Failed to passed models:", len(new_pass_models), new_pass_models)
 print("Not run/in models:", len(lost_models), lost_models)
-print("Pass rate: {:.2f}%".format(len(passed_models) / len(model_names) * 100))
+print(f"Pass rate: {len(passed_models) / len(model_names) * 100:.2f}%")
 
 if len(new_pass_models + new_models) > 0:
     print("NOTE: New models result, please update the reference", new_pass_models, new_models)

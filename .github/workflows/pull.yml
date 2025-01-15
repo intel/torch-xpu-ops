@@ -22,7 +22,7 @@ permissions: read-all
 jobs:
   preci-ut:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && github.repository_owner == 'pytorch' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       ut: op_regression,op_regression_dev1,op_extended,op_ut
@@ -30,7 +30,7 @@ jobs:
 
   preci-ut-abi-0:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && github.repository_owner == 'pytorch' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
@@ -39,7 +39,7 @@ jobs:
   
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') && github.repository_owner == 'pytorch' }}
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
@@ -48,7 +48,7 @@ jobs:
   Inductor-XPU-E2E-CI-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && github.repository_owner == 'pytorch' }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
