@@ -6,9 +6,9 @@ set(Codegen_GPU_cmake_included true)
 set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
-set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
-set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU.cpp)
+set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp)
+set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 
 if(WIN32)
@@ -46,9 +46,9 @@ function(GEN_BACKEND file_yaml)
 endfunction(GEN_BACKEND)
 
 
-set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
-set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU.cpp)
+set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp)
+set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 set(XPU_AOTI_INSTALL_DIR ${TORCH_ROOT}/torch/csrc/inductor/aoti_torch/generated/extend)
 function(GEN_XPU file_yaml)
@@ -80,7 +80,7 @@ function(GEN_XPU file_yaml)
     --per-operator-headers
     --static-dispatch-backend
     --backend-whitelist XPU SparseXPU NestedTensorXPU
-    # --xpu: generate in-tree RegisterXPU.cpp for in-tree OPs
+    # --xpu: generate in-tree RegisterXPU_0.cpp for in-tree OPs
     --xpu
     # --update-aoti-c-shim: generate extend/c_shim_xpu.h
     --update-aoti-c-shim
@@ -118,14 +118,14 @@ endfunction(GEN_XPU)
 # GEN_BACKEND(
 #   xpu_functions.yaml
 #   XPUNativeFunctions.h
-#   RegisterXPU.cpp)
+#   RegisterXPU_0.cpp)
 
 GEN_XPU(
   native_functions.yaml
   ${BUILD_TORCH_XPU_ATEN_GENERATED}/XPUFunctions.h
-  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp
-  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp
-  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU.cpp
+  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp
+  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp
+  ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp
   ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.h
   ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.cpp
 )
