@@ -1,5 +1,6 @@
 #include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <comm/SYCLContext.h>
+
 namespace at::native::xpu {
 void dequant_int4_kernel(
     const Tensor& weight_int4,

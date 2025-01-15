@@ -5,6 +5,7 @@
 #include <torch/library.h>
 
 #include <ATen/native/xpu/sycl/LinearInt4.h>
+#include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <comm/xpu_aten.h>
 
 namespace at::native {
@@ -57,7 +58,9 @@ Tensor _weight_int4pack_mm_xpu(
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
   if (M > 1) {
-    
+    Tensor B_dequant = at::empty({K, N}, B.options());
+    at::native::xpu::dequant_int4_kernel(B, B_dequant, qGroupSize, qScaleAndZeros);
+    C = B_dequant.matmul(A);
   } else {
     at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
   }
