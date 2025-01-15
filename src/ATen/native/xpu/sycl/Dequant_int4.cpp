@@ -1,21 +1,7 @@
 #include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <comm/SYCLContext.h>
-<<<<<<< HEAD
 
 namespace at::native::xpu {
-void dequant_int4_kernel(
-    const Tensor& weight_int4,
-    Tensor& weight,
-    int qGroupSize,
-    const Tensor& qScaleAndZeros) {
-  int constexpr SgSize = 16;
-  int constexpr TileK = 16;
-  int constexpr TileN = 16;
-=======
->>>>>>> 454bce9 (add M > 1)
-
-namespace at::native::xpu {
-
 template <
     typename scalar_t = sycl::half,
     int blocksize = 32,
