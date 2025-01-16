@@ -5,8 +5,10 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/NonSymbolicBC.h>
 //#include <ATen/native/SparseTensorUtils.h>
+#include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <c10/macros/Macros.h>
 #include <c10/util/accumulate.h>
+
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -19,89 +21,97 @@
 #endif
 
 //#include <ATen/native/sparse/FlattenIndicesCommon.h>
-#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorKernels.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 
 namespace at::native::xpu {
 
-template <typename input_t, typename output_t>
-struct convertIndicesFromCooToCsrFunctor {
-  void operator()(sycl::nd_item<1> itemId) const {
-    auto linear_id = itemId.get_global_linear_id();
-    if (linear_id == 0) {
-      for (int64_t i = 0; i <= data_in[0]; i++)
-        data_out[i] = static_cast<output_t>(0);
-    } else if (linear_id < numel) {
-      for (int64_t i = data_in[linear_id - 1]; i < data_in[linear_id]; i++)
-        data_out[i + 1] = static_cast<output_t>(linear_id);
-    } else if (linear_id == numel) {
-      for (int64_t i = data_in[numel - 1] + 1; i < size + 1; i++)
-        data_out[i] = static_cast<output_t>(numel);
+    template <typename input_t, typename output_t>
+    struct convertIndicesFromCooToCsrFunctor {
+    void operator()(sycl::nd_item<1> itemId) const {
+        auto linear_id = itemId.get_global_linear_id();
+        if (linear_id == 0) {
+        for (int64_t i = 0; i <= data_in[0]; i++)
+            data_out[i] = static_cast<output_t>(0);
+        } else if (linear_id < numel) {
+        for (int64_t i = data_in[linear_id - 1]; i < data_in[linear_id]; i++)
+            data_out[i + 1] = static_cast<output_t>(linear_id);
+        } else if (linear_id == numel) {
+        for (int64_t i = data_in[numel - 1] + 1; i < size + 1; i++)
+            data_out[i] = static_cast<output_t>(numel);
+        }
     }
-  }
-  convertIndicesFromCooToCsrFunctor(
-      int64_t numel_,
-      const input_t* data_in_,
-      output_t* data_out_,
-      const int64_t size_)
-      : numel(numel_), data_in(data_in_), data_out(data_out_), size(size_) {}
+    convertIndicesFromCooToCsrFunctor(
+        int64_t numel_,
+        const input_t* data_in_,
+        output_t* data_out_,
+        const int64_t size_)
+        : numel(numel_), data_in(data_in_), data_out(data_out_), size(size_) {}
 
- private:
-  int64_t numel;
-  const input_t* data_in;
-  output_t* data_out;
-  const int64_t size;
-};
+    private:
+    int64_t numel;
+    const input_t* data_in;
+    output_t* data_out;
+    const int64_t size;
+    };
 
-//With reference to coalesce_sparse_kernel
-Tensor convert_indices_from_coo_to_csr_xpu_kernel(
-    const Tensor& t,
-    const int64_t size,
-    const bool out_int32,
-    const Tensor& result)
+    //Need to add impl
 
-    int64_t numel = input.numel();
-    if (numel == 0) {
-        result.zero_();
-        return;
+
+
+    //With reference to coalesce_sparse_kernel
+    void convert_indices_from_coo_to_csr_xpu_kernel(
+        const Tensor& input,
+        const int64_t size,
+        const bool out_int32,
+        const Tensor& result){
+
+        int64_t numel = input.numel();
+        if (numel == 0) {
+            result.zero_();
+            return;
+        }
+
+        //How to define the global_range and local_range? --numel
+        uint64_t wgroup_size = 64;
+        sycl::range<1> global_range((numel + wgroup_size - 1) / wgroup_size);
+        sycl::range<1> local_range(wgroup_size);
+
+        if (out_int32) {
+            AT_DISPATCH_INTEGRAL_TYPES(
+                input.scalar_type(), 
+                "convert_indices_from_coo_to_csr_xpu", [&] {
+                const scalar_t* data_in = input.data_ptr<scalar_t>();
+                int* data_out = result.data_ptr<int>();
+                auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int>(
+                    numel,
+                    data_in,
+                    data_out, 
+                    size);
+                sycl_kernel_submit(
+                global_range, local_range, getCurrentSYCLQueue(), functor);
+            });
+        } else {
+            AT_DISPATCH_INTEGRAL_TYPES(
+                input.scalar_type(), 
+                "convert_indices_from_coo_to_csr_xpu", [&] {
+                const scalar_t* data_in = input.data_ptr<scalar_t>();
+                int64_t* data_out = result.data_ptr<int64_t>();
+                auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int64_t>(
+                    numel,
+                    data_in,
+                    data_out, 
+                    size);
+                sycl_kernel_submit(
+                global_range, local_range, getCurrentSYCLQueue(), functor);
+            });
+        }
+
     }
 
-    //How to define the global_range and local_range? --numel
-    uint64_t wgroup_size = 64;
-    sycl::range<1> global_range((numel + wgroup_size - 1) / wgroup_size);
-    sycl::range<1> local_range(wgroup_size);
 
-    if (out_int32) {
-        AT_DISPATCH_INTEGRAL_TYPES(
-            input.scalar_type(), 
-            "convert_indices_from_coo_to_csr_xpu", [&] {
-            const input_t* data_in = input.data_ptr<scalar_t>();
-            output_t* data_out = result.data_ptr<int>();
-            auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int>(
-                numel,
-                data_in,
-                data_out, 
-                size);
-            sycl_kernel_submit(
-              global_range, local_range, getCurrentSYCLQueue(), functor);
-        });
-    } else {
-        AT_DISPATCH_INTEGRAL_TYPES(
-            input.scalar_type(), 
-            "convert_indices_from_coo_to_csr_xpu", [&] {
-            const input_t* data_in = input.data_ptr<scalar_t>();
-            output_t* data_out = result.data_ptr<int64_t>();
-            auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int64_t>(
-                numel,
-                data_in,
-                data_out, 
-                size);
-            sycl_kernel_submit(
-              global_range, local_range, getCurrentSYCLQueue(), functor);
-        });
-    }
 
 } // namespace at::native::xpu
 
