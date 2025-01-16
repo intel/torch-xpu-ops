@@ -1,6 +1,9 @@
 name: Linux Transformers Test
 
 on:
+  schedule:
+    # GMT+8 0:00 Sunday
+    - cron: '0 16 * * 6'
   pull_request:
     branches:
       - main
