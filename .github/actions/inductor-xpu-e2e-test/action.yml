@@ -86,6 +86,7 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        pip install pytest
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -152,7 +153,20 @@ runs:
             done
           done
         done
-
+    - name: Distributed UT
+      shell: bash
+      run: |
+        if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+          source activate e2e_ci
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          cd ./test/xpu
+          timeout 1200 python run_distributed.py && export exit_code=0 || export exit_code=1
+          cd ../..
+          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          exit ${exit_code}
+        fi
     - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}

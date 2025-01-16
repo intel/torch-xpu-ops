@@ -21,8 +21,9 @@ if not c10d.is_available() or not c10d.is_xccl_available():
     print("c10d XCCL not available, skipping tests", file=sys.stderr)
     sys.exit(0)
 
-
 import torch.distributed as dist
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import (
     init_multigpu_helper,
     requires_xccl,
