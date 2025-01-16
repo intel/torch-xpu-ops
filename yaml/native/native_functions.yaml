@@ -5232,6 +5232,14 @@
   dispatch:
     XPU: searchsorted_out_xpu
 
+- func: _convert_indices_from_coo_to_csr(Tensor self, int size, *, bool out_int32=False) -> Tensor
+  structured_delegate: _convert_indices_from_coo_to_csr.out
+  
+- func: _convert_indices_from_coo_to_csr.out(Tensor self, int size, *, bool out_int32=False, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    XPU: _convert_indices_from_coo_to_csr_structured_xpu
+
 - func: bucketize.Tensor(Tensor self, Tensor boundaries, *, bool out_int32=False, bool right=False) -> Tensor
   dispatch:
     XPU: bucketize_xpu
