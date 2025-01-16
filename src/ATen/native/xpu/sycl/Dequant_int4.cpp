@@ -40,12 +40,15 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int g_k = g_idx_k * GroupK;
     int ldb = k / blocksize;
     auto sptr = ScaleAndZeros + g_k / blocksize * ldb + g_n;
+    auto zptr = sptr + 1; // ?
     auto bptr = weight_int4 + (g_k * ldb + g_n) / 2;
     auto dbptr = weight_dequant + g_k * n + g_n;
     float tmp[TileK * TileN];
     float scale[TileN];
+    float zero_pt[TileN];
     for (int in = 0; in < TileN; in += 1) {
-      scale[in] = sptr[sg_id * TileN + in];
+      scale[in] = sptr[sg_id * TileN + in];// ?
+      zero_pt[in] = zptr[sg_id * TileN + in]; // ?
     }
     for (int ik = 0; ik < TileK; ik += 1) {
       for (int in = 0; in < TileN; in += 2) {
@@ -58,7 +61,7 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     for (int ik = 0; ik < TileK; ik += 1) {
       for (int in = 0; in < TileN; in += 1) {
-        dbptr[ik * n + sg_id * TileN + in] = tmp[ik * TileN + in];
+        dbptr[ik * n + sg_id * TileN + in] = 1; // tmp[ik * TileN + in];
       }
     }
   }
@@ -80,7 +83,8 @@ void dequant_int4_kernel(
 
   int constexpr SgSize = 16;
   int constexpr TileK = 16;
-  int constexpr TileN = 16;
+  int constexpr TileN = 1;
+  // int constexpr TileN = 2;
   using scalar_t = sycl::half;
   int constexpr GroupN = SgSize * TileN;
   int constexpr GroupK = TileK;
