@@ -1,0 +1,130 @@
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/NonSymbolicBC.h>
+//#include <ATen/native/SparseTensorUtils.h>
+#include <c10/macros/Macros.h>
+#include <c10/util/accumulate.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+//#include <ATen/ops/_coalesce_native.h>
+//#include <ATen/ops/_sparse_coo_tensor_unsafe_native.h>
+//#include <ATen/ops/empty.h>
+//#include <ATen/ops/zeros.h>
+#endif
+
+//#include <ATen/native/sparse/FlattenIndicesCommon.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorKernels.h>
+#include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <comm/SYCLContext.h>
+
+namespace at::native::xpu {
+
+template <typename input_t, typename output_t>
+struct convertIndicesFromCooToCsrFunctor {
+  void operator()(sycl::nd_item<1> itemId) const {
+    auto linear_id = itemId.get_global_linear_id();
+    if (linear_id == 0) {
+      for (int64_t i = 0; i <= data_in[0]; i++)
+        data_out[i] = static_cast<output_t>(0);
+    } else if (linear_id < numel) {
+      for (int64_t i = data_in[linear_id - 1]; i < data_in[linear_id]; i++)
+        data_out[i + 1] = static_cast<output_t>(linear_id);
+    } else if (linear_id == numel) {
+      for (int64_t i = data_in[numel - 1] + 1; i < size + 1; i++)
+        data_out[i] = static_cast<output_t>(numel);
+    }
+  }
+  convertIndicesFromCooToCsrFunctor(
+      int64_t numel_,
+      const input_t* data_in_,
+      output_t* data_out_,
+      const int64_t size_)
+      : numel(numel_), data_in(data_in_), data_out(data_out_), size(size_) {}
+
+ private:
+  int64_t numel;
+  const input_t* data_in;
+  output_t* data_out;
+  const int64_t size;
+};
+
+//With reference to coalesce_sparse_kernel
+Tensor convert_indices_from_coo_to_csr_xpu_kernel(
+    const Tensor& t,
+    const int64_t size,
+    const bool out_int32,
+    const Tensor& result)
+
+    int64_t numel = input.numel();
+    if (numel == 0) {
+        result.zero_();
+        return;
+    }
+
+    //How to define the global_range and local_range? --numel
+    uint64_t wgroup_size = 64;
+    sycl::range<1> global_range((numel + wgroup_size - 1) / wgroup_size);
+    sycl::range<1> local_range(wgroup_size);
+
+    if (out_int32) {
+        AT_DISPATCH_INTEGRAL_TYPES(
+            input.scalar_type(), 
+            "convert_indices_from_coo_to_csr_xpu", [&] {
+            const input_t* data_in = input.data_ptr<scalar_t>();
+            output_t* data_out = result.data_ptr<int>();
+            auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int>(
+                numel,
+                data_in,
+                data_out, 
+                size);
+            sycl_kernel_submit(
+              global_range, local_range, getCurrentSYCLQueue(), functor);
+        });
+    } else {
+        AT_DISPATCH_INTEGRAL_TYPES(
+            input.scalar_type(), 
+            "convert_indices_from_coo_to_csr_xpu", [&] {
+            const input_t* data_in = input.data_ptr<scalar_t>();
+            output_t* data_out = result.data_ptr<int64_t>();
+            auto functor = convertIndicesFromCooToCsrFunctor<scalar_t, int64_t>(
+                numel,
+                data_in,
+                data_out, 
+                size);
+            sycl_kernel_submit(
+              global_range, local_range, getCurrentSYCLQueue(), functor);
+        });
+    }
+
+} // namespace at::native::xpu
+
+
+
+// template <typename input_t, typename output_t>
+// void convertIndicesFromCooToCsrFunctor(
+//     const Tensor& result
+//     const Tensor& input,
+//     const int64_t size,
+//     ) {
+
+
+
+//     // auto cgf = DPCPP_Q_CGF(cgh) {
+//     //     ConvertIndicesFromCooToCsrKernelDpcppFunctor<input_t, output_t> kfn(
+//     //         numel, data_in, data_out, size);
+//     //     cgh.parallel_for<decltype(kfn)>(
+//     //         sycl::nd_range<1>(ngroups * wgroup_size, wgroup_size), kfn);
+//     // };
+//     // DPCPP_Q_SUBMIT(dpcpp_queue, cgf);
+
+
+
+// }
+
