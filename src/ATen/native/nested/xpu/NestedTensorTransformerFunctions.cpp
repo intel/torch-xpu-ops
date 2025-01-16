@@ -1,10 +1,12 @@
 #include <ATen/ATen.h>
 #include <ATen/NestedTensorImpl.h>
+#include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
 #include <ATen/native/nested/NestedTensorTransformerFunctions.h>
-#include <ATen/native/xpu/NestedTensorTransformerFunctions.h>
 
 namespace at::native {
+
 namespace {
+
 int64_t padded_tensor_numel(const Tensor& sizes) {
   const auto sizes_num_rows = sizes.sizes()[0];
   const auto sizes_row_length = sizes.sizes()[1];
@@ -20,7 +22,9 @@ int64_t padded_tensor_numel(const Tensor& sizes) {
   }
   return numel;
 }
+
 } // namespace
+
 Tensor nested_from_padded_xpu(
     const Tensor& padded,
     const Tensor& sizes,
@@ -34,7 +38,7 @@ Tensor nested_from_padded_xpu(
     }
     if (padded.dtype() != at::kFloat && padded.dtype() != kHalf) {
       TORCH_WARN_ONCE(
-          "nested_from_padded CUDA kernels only support fp32/fp16; falling "
+          "nested_from_padded XPU kernels only support fp32/fp16; falling "
           "back to slower generic kernel");
       return at::native::nested_from_padded_generic(
           padded, sizes, do_transform_0213);
@@ -45,19 +49,18 @@ Tensor nested_from_padded_xpu(
     Tensor output = at::empty({padded_tensor_numel(sizes)}, padded.options());
     Tensor target_size_sizes = sizes.reshape(-1);
 
-    target_offsets = target_offsets.to(at::Device(kXPU), at::kInt);
-    padded_sizes_tensor = padded_sizes_tensor.to(at::Device(kXPU), at::kInt);
-    target_size_sizes = target_size_sizes.to(at::Device(kXPU), at::kInt);
+    Tensor metadata =
+        at::cat({target_size_sizes, padded_sizes_tensor, target_offsets});
+    metadata = metadata.to(at::Device(kCUDA), kInt, true, true);
 
-    auto output_size_ptr = target_size_sizes.data_ptr<int>();
-    auto input_size_ptr = padded_sizes_tensor.data_ptr<int>();
-    auto offsets_ptr = target_offsets.data_ptr<int>();
+    auto output_size_ptr = metadata.data_ptr<int>();
+    auto input_size_ptr = output_size_ptr + target_size_sizes.numel();
+    auto offsets_ptr = input_size_ptr + padded_sizes_tensor.numel();
 
     Tensor padded_contiguous = padded.contiguous();
-
     if (padded.dtype() == at::kFloat) {
       if (do_transform_0213) {
-        xpu::launch_remove_padding_transform0213_kernel(
+          xpu::remove_padding_transform0213_kernel_float(
             padded_contiguous.data_ptr<float>(),
             output.data_ptr<float>(),
             offsets_ptr,
@@ -66,7 +69,7 @@ Tensor nested_from_padded_xpu(
             padded_contiguous.dim() - 2,
             padded_contiguous.sizes()[0]);
       } else {
-        xpu::launch_remove_padding_kernel(
+          xpu::remove_padding_kernel_float(
             padded_contiguous.data_ptr<float>(),
             output.data_ptr<float>(),
             offsets_ptr,
@@ -77,7 +80,7 @@ Tensor nested_from_padded_xpu(
       }
     } else if (padded.dtype() == at::kHalf) {
       if (do_transform_0213) {
-        xpu::launch_remove_padding_transform0213_kernel(
+        xpu::remove_padding_transform0213_kernel_half(
             padded_contiguous.data_ptr<c10::Half>(),
             output.data_ptr<c10::Half>(),
             offsets_ptr,
@@ -86,7 +89,7 @@ Tensor nested_from_padded_xpu(
             padded_contiguous.dim() - 2,
             padded_contiguous.sizes()[0]);
       } else {
-        xpu::launch_remove_padding_kernel(
+        xpu::remove_padding_kernel_half(
             padded_contiguous.data_ptr<c10::Half>(),
             output.data_ptr<c10::Half>(),
             offsets_ptr,
@@ -96,7 +99,7 @@ Tensor nested_from_padded_xpu(
             padded_contiguous.sizes()[0]);
       }
     } else {
-      AT_ERROR("Only support fp32/fp16 for padded input");
+      TORCH_CHECK(false, "Only support fp32/fp16 for padded input");
     }
     return at::detail::make_tensor<at::native::NestedTensorImpl>(
         std::move(output), sizes);
