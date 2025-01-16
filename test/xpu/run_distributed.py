@@ -2,8 +2,6 @@ import sys
 import os
 import subprocess
 
-import pdb
-pdb.set_trace()
 def run(test_command):
      result = subprocess.run(test_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
      if "FAILED" in result.stdout or "FAILED" in result.stderr: 
