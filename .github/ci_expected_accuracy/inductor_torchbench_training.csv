@@ -2,7 +2,7 @@ name,float32,bfloat16,float16,amp_bf16,amp_fp16
 
 
 
-torchrec_dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 
 
 
@@ -18,15 +18,17 @@ DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_
 
 
 
-LearningToPaint,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1263
+LearningToPaint,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
+# https://github.com/intel/torch-xpu-ops/issues/1256
 Super_SloMo,eager_two_runs_differ,pass,pass,eager_two_runs_differ,pass
 
 
 
-alexnet,eager_two_runs_differ,pass,pass,pass,pass
+alexnet,pass,pass,pass,pass,pass
 
 
 
@@ -54,7 +56,7 @@ dcgan,pass,pass,pass,pass,pass
 
 
 
-demucs,fail_accuracy,eager_fail_to_run,eager_fail_to_run,fail_accuracy,fail_accuracy
+demucs,eager_two_runs_differ,eager_fail_to_run,eager_fail_to_run,eager_two_runs_differ,eager_two_runs_differ
 
 
 
@@ -110,7 +112,7 @@ detectron2_maskrcnn_r_50_fpn,eager_fail_to_run,eager_fail_to_run,eager_fail_to_r
 
 
 
-dlrm,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+dlrm,pass,pass,pass,pass,pass
 
 
 
@@ -130,10 +132,12 @@ fastNLP_Bert,pass,pass,pass,pass,pass
 
 
 
+# https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
 
 
 
+# https://github.com/intel/torch-xpu-ops/issues/510
 functorch_maml_omniglot,pass,pass,pass,fail_accuracy,pass
 
 
@@ -174,7 +178,8 @@ hf_Longformer,pass,pass,pass,pass,pass
 
 
 
-hf_Reformer,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1262
+hf_Reformer,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 
 
 
@@ -242,7 +247,7 @@ mobilenet_v2,pass,pass,pass,pass,pass
 
 
 
-mobilenet_v2_quantized_qat,fail_accuracy,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+mobilenet_v2_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
@@ -250,7 +255,7 @@ mobilenet_v3_large,pass,pass,pass,pass,pass
 
 
 
-moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
+moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
@@ -262,7 +267,8 @@ nanogpt,pass,pass,pass,pass,pass
 
 
 
-nvidia_deeprecommender,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1260
+nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
@@ -274,6 +280,7 @@ phlippe_densenet,pass,pass,pass,pass,pass
 
 
 
+# https://github.com/intel/torch-xpu-ops/issues/509
 phlippe_resnet,pass,fail_accuracy,pass,fail_accuracy,pass
 
 
@@ -314,7 +321,7 @@ resnet50,pass,pass,pass,pass,pass
 
 
 
-resnet50_quantized_qat,eager_two_runs_differ,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+resnet50_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
@@ -350,7 +357,7 @@ speech_transformer,pass,pass,pass,pass,pass
 
 
 
-squeezenet1_1,pass,fail_accuracy,fail_accuracy,fail_accuracy,pass
+squeezenet1_1,pass,pass,pass,pass,pass
 
 
 
@@ -358,7 +365,8 @@ stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 
 
 
-stable_diffusion_unet,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
+# https://github.com/intel/torch-xpu-ops/issues/1261
+stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
@@ -378,7 +386,7 @@ timm_nfnet,pass,pass,pass,pass,pass
 
 
 
-timm_regnet,pass,fail_accuracy,pass,pass,pass
+timm_regnet,pass,pass,pass,pass,pass
 
 
 
@@ -398,11 +406,11 @@ timm_vovnet,pass,pass,pass,pass,pass
 
 
 
-torch_multimodal_clip,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
+torch_multimodal_clip,pass,pass,pass,pass,pass
 
 
 
-tts_angular,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+tts_angular,pass,pass,pass,pass,pass
 
 
 
@@ -410,11 +418,8 @@ vgg16,pass,pass,pass,pass,pass
 
 
 
-vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
-
-
-
-# Skip yolov3 for known torchbench issue: https://github.com/intel/torch-xpu-ops/issues/1229
+# https://github.com/intel/torch-xpu-ops/issues/1264
+vision_maskrcnn,eager_fail_to_run,pass,pass,eager_fail_to_run,eager_fail_to_run
 
 
 

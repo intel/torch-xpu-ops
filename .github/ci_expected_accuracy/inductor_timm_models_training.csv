@@ -30,7 +30,8 @@ convmixer_768_32,pass,pass,pass,pass,pass
 
 
 
-convnext_base,pass,pass,fail_accuracy,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1274
+convnext_base,pass,fail_accuracy,fail_accuracy,pass,pass
 
 
 
@@ -62,7 +63,9 @@ eca_botnext26ts_256,pass,pass,pass,pass,pass
 
 
 
-eca_halonext26ts,pass,pass,fail_to_run,pass,pass
+
+# https://github.com/intel/torch-xpu-ops/issues/1275
+eca_halonext26ts,pass,pass,pass,fail_accuracy,pass
 
 
 
@@ -74,7 +77,8 @@ fbnetc_100,pass,pass,pass,pass,pass
 
 
 
-fbnetv3_b,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1275
+fbnetv3_b,pass,pass,pass,fail_accuracy,pass
 
 
 
@@ -106,11 +110,11 @@ inception_v3,pass,pass,pass,pass,pass
 
 
 
-jx_nest_base,pass,pass,fail_accuracy,pass,pass
+jx_nest_base,pass,pass,pass,pass,pass
 
 
 
-lcnet_050,pass,pass,fail_accuracy,pass,pass
+lcnet_050,pass,pass,pass,pass,pass
 
 
 
@@ -242,4 +246,4 @@ volo_d1_224,pass,pass,pass,pass,pass
 
 
 
-xcit_large_24_p8_224,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+xcit_large_24_p8_224,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
