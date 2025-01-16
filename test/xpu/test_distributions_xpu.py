@@ -10,27 +10,27 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
     from test_distributions import (
-        TestDistributions,
-        TestRsample,
-        TestDistributionShapes,
-        TestKL,
-        TestConstraints,
-        TestNumericalStability,
-        TestLazyLogitsInitialization,
-        TestAgainstScipy,
-        TestFunctors,
-        TestValidation,
-        TestJit,
         _get_examples,
         pairwise,
+        TestAgainstScipy,
+        TestConstraints,
+        TestDistributions,
+        TestDistributionShapes,
+        TestFunctors,
+        TestJit,
+        TestKL,
+        TestLazyLogitsInitialization,
+        TestNumericalStability,
+        TestRsample,
+        TestValidation,
     )
 
-import scipy
-import numpy as np
 from itertools import product
-from packaging import version
+
+import numpy as np
+import scipy
 import torch
-from torch.nn.functional import softmax
+from packaging import version
 from torch.distributions import (
     Bernoulli,
     Beta,
@@ -38,12 +38,9 @@ from torch.distributions import (
     Categorical,
     Cauchy,
     Chi2,
-    constraints,
     ContinuousBernoulli,
     Dirichlet,
-    Distribution,
     Exponential,
-    ExponentialFamily,
     FisherSnedecor,
     Gamma,
     Geometric,
@@ -52,31 +49,22 @@ from torch.distributions import (
     HalfNormal,
     Independent,
     InverseGamma,
-    kl_divergence,
-    Kumaraswamy,
     Laplace,
-    LKJCholesky,
-    LogisticNormal,
     LogNormal,
     LowRankMultivariateNormal,
-    MixtureSameFamily,
     Multinomial,
     MultivariateNormal,
-    NegativeBinomial,
     Normal,
     OneHotCategorical,
-    OneHotCategoricalStraightThrough,
     Pareto,
     Poisson,
-    RelaxedBernoulli,
-    RelaxedOneHotCategorical,
     StudentT,
-    TransformedDistribution,
     Uniform,
     VonMises,
     Weibull,
     Wishart,
 )
+from torch.nn.functional import softmax
 from torch.testing._internal.common_utils import set_rng_seed
 
 
@@ -161,7 +149,9 @@ TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
 TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
-instantiate_device_type_tests(TestDistributions, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestDistributions, globals(), only_for="xpu", allow_xpu=True
+)
 instantiate_device_type_tests(TestRsample, globals(), only_for="xpu", allow_xpu=True)
 
 
@@ -172,7 +162,9 @@ def setup_TestDistributionShapes(self):
 
 
 TestDistributionShapes.setUp = setup_TestDistributionShapes
-instantiate_device_type_tests(TestDistributionShapes, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestDistributionShapes, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 def setup_TestKL(self):
@@ -204,9 +196,7 @@ def setup_TestKL(self):
     gamma = pairwise(Gamma, [1.0, 2.5, 1.0, 2.5], [1.5, 1.5, 3.5, 3.5])
     gumbel = pairwise(Gumbel, [-2.0, 4.0, -3.0, 6.0], [1.0, 2.5, 1.0, 2.5])
     halfnormal = pairwise(HalfNormal, [1.0, 2.0, 1.0, 2.0])
-    inversegamma = pairwise(
-        InverseGamma, [1.0, 2.5, 1.0, 2.5], [1.5, 1.5, 3.5, 3.5]
-    )
+    inversegamma = pairwise(InverseGamma, [1.0, 2.5, 1.0, 2.5], [1.5, 1.5, 3.5, 3.5])
     laplace = pairwise(Laplace, [-2.0, 4.0, -3.0, 6.0], [1.0, 2.5, 1.0, 2.5])
     lognormal = pairwise(LogNormal, [-2.0, 2.0, -3.0, 3.0], [1.0, 2.0, 1.0, 2.0])
     normal = pairwise(Normal, [-2.0, 2.0, -3.0, 3.0], [1.0, 2.0, 1.0, 2.0])
@@ -378,21 +368,26 @@ def setup_TestKL(self):
 
 TestKL.setUp = setup_TestKL
 instantiate_device_type_tests(TestKL, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestConstraints, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestNumericalStability, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestConstraints, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestNumericalStability, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 def setup_TestLazyLogitsInitialization(self):
     self.examples = [
         e
         for e in _get_examples()
-        if e.Dist
-        in (Categorical, OneHotCategorical, Bernoulli, Binomial, Multinomial)
+        if e.Dist in (Categorical, OneHotCategorical, Bernoulli, Binomial, Multinomial)
     ]
 
 
 TestLazyLogitsInitialization.setUp = setup_TestLazyLogitsInitialization
-instantiate_device_type_tests(TestLazyLogitsInitialization, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestLazyLogitsInitialization, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 def setup_TestAgainstScipy(self):
@@ -451,9 +446,7 @@ def setup_TestAgainstScipy(self):
         (
             # Tests fail 1e-5 threshold if scale > 3
             LogNormal(random_var, positive_var.clamp(max=3)),
-            scipy.stats.lognorm(
-                s=positive_var.clamp(max=3), scale=random_var.exp()
-            ),
+            scipy.stats.lognorm(s=positive_var.clamp(max=3), scale=random_var.exp()),
         ),
         (
             LowRankMultivariateNormal(
@@ -527,8 +520,12 @@ def setup_TestAgainstScipy(self):
             ),
         ),
     ]
+
+
 TestAgainstScipy.setUp = setup_TestAgainstScipy
-instantiate_device_type_tests(TestAgainstScipy, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestAgainstScipy, globals(), only_for="xpu", allow_xpu=True
+)
 
 instantiate_device_type_tests(TestFunctors, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestValidation, globals(), only_for="xpu", allow_xpu=True)

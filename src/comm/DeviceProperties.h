@@ -112,6 +112,12 @@ static inline int64_t syclMaxWorkItemsPerEU(
   return simd_width * hw_threads;
 }
 
+static inline int64_t syclMaxNumSubGroups(
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  return dev_prop->max_num_sub_groups;
+}
+
 static inline int64_t syclMaxDSSNum(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
   // TODO: We need to got this info from DPC++ Runtime

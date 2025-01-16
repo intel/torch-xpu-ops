@@ -9,11 +9,11 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
-    from test_segment_reductions import (
-        TestSegmentReductions,
-    )
+    from test_segment_reductions import TestSegmentReductions
 
-instantiate_device_type_tests(TestSegmentReductions, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestSegmentReductions, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

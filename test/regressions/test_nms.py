@@ -1,6 +1,7 @@
+# Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
 import torchvision
+from torch.testing._internal.common_utils import TestCase
 
 
 class TestNNMethod(TestCase):

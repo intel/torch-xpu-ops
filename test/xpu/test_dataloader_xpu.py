@@ -2,15 +2,13 @@
 
 import os
 import sys
-import torch
 import unittest
+
+import torch
 from torch import multiprocessing as mp
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import parametrize, run_tests
-from torch.utils.data import (
-    DataLoader,
-    IterDataPipe,
-)
+from torch.utils.data import DataLoader, IterDataPipe
 from torch.utils.data.datapipes.iter import IterableWrapper
 
 try:
@@ -26,30 +24,13 @@ test_package = (
 
 
 with XPUPatchForImport(False):
+
     def _set_allocator_settings(device=None):
         pass
-    torch.cuda.memory._set_allocator_settings=_set_allocator_settings
+
+    torch.cuda.memory._set_allocator_settings = _set_allocator_settings
     from test_dataloader import (
-        TestDatasetRandomSplit,
-        TestTensorDataset,
-        TestStackDataset,
-        TestConcatDataset,
-        TestProperExitDataset,
-        TestProperExitIterableDataset,
-        TestWorkerInfoDataset,
-        TestMultiEpochDataset,
-        TestDataLoader,
-        TestDataLoaderDeviceType,
-        TestStringDataLoader,
-        TestDictDataLoader,
-        TestDataLoaderPersistentWorkers,
-        TestNamedTupleDataLoader,
-        TestCustomPinFn,
-        TestWorkerQueueDataset,
-        TestIndividualWorkerQueue,
-        TestSetAffinity,
-        TestConvAfterFork,
-        TEST_CUDA_IPC,
+        _clone_collate,
         collate_into_packed_sequence,
         collate_into_packed_sequence_batch_first,
         collate_wrapper,
@@ -57,7 +38,12 @@ with XPUPatchForImport(False):
         row_processor,
         self_module,
         supported_multiprocessing_contexts,
-        _clone_collate,
+        TEST_CUDA_IPC,
+        TestCustomPinFn,
+        TestDataLoader,
+        TestDataLoaderDeviceType,
+        TestDictDataLoader,
+        TestStringDataLoader,
     )
 
     def _test_multiprocessing_iterdatapipe(self, with_dill):
@@ -142,9 +128,7 @@ with XPUPatchForImport(False):
         loader = DataLoader(self.dataset, batch_size=2, pin_memory_device="xpu")
         for sample in loader:
             self.assertFalse(sample["a_tensor"].is_pinned(device="xpu"))
-            self.assertFalse(
-                sample["another_dict"]["a_number"].is_pinned(device="xpu")
-            )
+            self.assertFalse(sample["another_dict"]["a_number"].is_pinned(device="xpu"))
 
     def custom_batch_pin(self):
         test_cases = [
@@ -231,7 +215,9 @@ with XPUPatchForImport(False):
 
             next(iter(loader))
 
-    TestDataLoader._test_multiprocessing_iterdatapipe = _test_multiprocessing_iterdatapipe
+    TestDataLoader._test_multiprocessing_iterdatapipe = (
+        _test_multiprocessing_iterdatapipe
+    )
     TestDataLoader.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoader.test_shuffle_pin_memory = shuffle_pin_memory
     TestStringDataLoader.test_shuffle_pin_memory = string_shuffle_pin_memory
@@ -239,10 +225,14 @@ with XPUPatchForImport(False):
     TestDictDataLoader.test_pin_memory_device = pin_memory_device
     TestDictDataLoader.test_pin_memory_with_only_device = pin_memory_with_only_device
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
-    TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = nested_tensor_multiprocessing
+    TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = (
+        nested_tensor_multiprocessing
+    )
 
 
-instantiate_device_type_tests(TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 original_path = sys.path.copy()
 sys.path.extend(test_package)
 

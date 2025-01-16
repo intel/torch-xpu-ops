@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
 
@@ -27,7 +28,7 @@ class TestNNMethod(TestCase):
         weight_unpacked = weight_unpack(weight_packed, n, k_div_2)
         self.assertEqual(weight, weight_unpacked)
 
-    def test_convert_weight_to_int4pack(self, device=torch.device('xpu')):
+    def test_convert_weight_to_int4pack(self, device=torch.device("xpu")):
         for n in [512, 1024, 2048, 4096]:
             for k in [128, 4096]:
                 self._test_convert_weight_to_int4pack(n, k, device)
