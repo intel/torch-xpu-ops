@@ -72,7 +72,7 @@ runs:
           pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
-          pip install --no-deps --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
           # if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
