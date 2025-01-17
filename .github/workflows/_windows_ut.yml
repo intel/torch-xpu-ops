@@ -72,6 +72,9 @@ jobs:
           call conda install -y libuv
           call conda install -y rust 
           git config --system core.longpaths true
+          git config --global core.symlinks true
+          git config --global core.fsmonitor false
+          powershell -Command "Set-ItemProperty -Path "HKLM:\\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1"
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
