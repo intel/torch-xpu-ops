@@ -8996,8 +8996,3 @@
   dispatch:
     NestedTensorXPU: NestedTensor_to_padded_tensor_xpu
   autogen: to_padded_tensor.out
-
-- func: _nested_tensor_softmax_with_shape(Tensor self, Tensor query) -> Tensor
-  dispatch:
-    NestedTensorXPU: NestedTensor_softmax_dropout_xpu
-  tags: nondeterministic_seeded
