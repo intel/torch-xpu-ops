@@ -109,6 +109,8 @@ jobs:
             export _GLIBCXX_USE_CXX11_ABI=1
           fi
           pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu
+          pip uninstall -y torch
+          pip install --no-deps /home/ruijie/onednn_37_ww03/torch-2.6.0.dev20250115+xpu-cp310-cp310-linux_x86_64.whl
           # pip install pandas psutil pyyaml scipy tqdm pytest
           pip install -r requirements.txt
           # if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
