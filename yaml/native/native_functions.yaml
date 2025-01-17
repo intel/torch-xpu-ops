@@ -8615,6 +8615,7 @@
 - func: _to_sparse_csr(Tensor self, int? dense_dim=None) -> Tensor
   variants: method
   dispatch:
+    XPU: dense_to_sparse_csr
     SparseXPU: coo_to_sparse_csr
     SparseCsrXPU: sparse_compressed_to_sparse_csr
   autogen: _to_sparse_csr.out
