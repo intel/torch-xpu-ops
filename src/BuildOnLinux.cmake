@@ -17,6 +17,7 @@ if(BUILD_SEPARATE_OPS)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
   endif()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -29,7 +30,6 @@ if(BUILD_SEPARATE_OPS)
 
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-    list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   endforeach()
 elseif(BUILD_SPLIT_KERNEL_LIB)
   add_library(
@@ -44,6 +44,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
   endif()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_REDUCE_SRCS)
@@ -121,7 +122,6 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 else()
   sycl_add_library(
     xpu_sycl
