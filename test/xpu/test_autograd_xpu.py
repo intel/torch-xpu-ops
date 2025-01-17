@@ -530,9 +530,9 @@ torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 
 with XPUPatchForImport(False):
     from autograd.test_complex import TestAutogradComplex  # noqa: F401
-    from autograd.test_functional import (
+    from autograd.test_functional import (  # noqa: F401
         base_and_logging_tensor,
-        TestAutogradFunctional,  # noqa: F401
+        TestAutogradFunctional,
     )
     from autograd.test_logging import TestAutogradLogging  # noqa: F401
     from test_autograd import (

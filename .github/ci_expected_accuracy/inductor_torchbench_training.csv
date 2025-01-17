@@ -19,11 +19,17 @@ DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1263
+
+
+
 LearningToPaint,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1256
+
+
+
 Super_SloMo,eager_two_runs_differ,pass,pass,eager_two_runs_differ,pass
 
 
@@ -133,11 +139,17 @@ fastNLP_Bert,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/508
+
+
+
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
 
 
 
 # https://github.com/intel/torch-xpu-ops/issues/510
+
+
+
 functorch_maml_omniglot,pass,pass,pass,fail_accuracy,pass
 
 
@@ -179,6 +191,9 @@ hf_Longformer,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1262
+
+
+
 hf_Reformer,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 
 
@@ -268,6 +283,9 @@ nanogpt,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1260
+
+
+
 nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -281,6 +299,9 @@ phlippe_densenet,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/509
+
+
+
 phlippe_resnet,pass,fail_accuracy,pass,fail_accuracy,pass
 
 
@@ -366,6 +387,9 @@ stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1261
+
+
+
 stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -419,6 +443,9 @@ vgg16,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1264
+
+
+
 vision_maskrcnn,eager_fail_to_run,pass,pass,eager_fail_to_run,eager_fail_to_run
 
 

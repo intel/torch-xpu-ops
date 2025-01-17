@@ -3,6 +3,9 @@ name,float32,bfloat16,float16,amp_bf16,amp_fp16
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1221
+
+
+
 torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,fail_to_run,fail_to_run
 
 
@@ -20,6 +23,9 @@ DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1263
+
+
+
 LearningToPaint,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -65,6 +71,9 @@ densenet121,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1278
+
+
+
 detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 
 
@@ -178,6 +187,9 @@ hf_Longformer,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1262
+
+
+
 hf_Reformer,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
 
 
@@ -187,6 +199,9 @@ hf_T5,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1276
+
+
+
 hf_T5_base,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -224,6 +239,9 @@ llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_s
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1277
+
+
+
 llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -269,6 +287,9 @@ nanogpt,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1260
+
+
+
 nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 
 
@@ -350,6 +371,9 @@ simple_gpt_tp_manual,model_fail_to_load,model_fail_to_load,model_fail_to_load,mo
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1273
+
+
+
 soft_actor_critic,pass,fail_accuracy,pass,pass,pass
 
 
@@ -367,6 +391,9 @@ stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 
 
 # https://github.com/intel/torch-xpu-ops/issues/1261
+
+
+
 stable_diffusion_unet,eager_fail_to_run,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
 
 

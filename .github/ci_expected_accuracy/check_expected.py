@@ -70,7 +70,7 @@ for model_name in model_names:
             new_models.append([model_name, test_accuracy])
             # Not failed for new models
             expected_failed_models.append([model_name, test_accuracy])
-            refer_data.loc[len(refer_data),:] = "N/A"
+            refer_data.loc[len(refer_data), :] = "N/A"
             refer_data.at[len(refer_data) - 1, "name"] = model_name
             refer_data.at[len(refer_data) - 1, args.dtype] = test_accuracy
         elif "pass" in refer_accuracy:

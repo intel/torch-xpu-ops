@@ -620,7 +620,8 @@ include_patterns = [
     '**/*.sh'
 ]
 exclude_patterns = [
-   '.github/scripts/lintrunner.sh'
+    '.github/scripts/lintrunner.sh',
+    '.github/scripts/env.sh'
 ]
 command = [
     'python3',
@@ -778,6 +779,9 @@ code = 'NO_WORKFLOWS_ON_FORK'
 include_patterns = [
     '.github/**/*.yml',
     '.github/**/*.yaml',
+]
+exclude_patterns = [
+    '.github/workflows/*.yml'
 ]
 command = [
     'python3',
