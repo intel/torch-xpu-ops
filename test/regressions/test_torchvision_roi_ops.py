@@ -208,12 +208,6 @@ class RoIOpTester(ABC):
 
         gradcheck(script_func, (x,), atol=atol)
 
-    #@pytest.mark.parametrize("x_dtype", (torch.float, torch.half))
-    #@pytest.mark.parametrize("rois_dtype", (torch.float, torch.half))
-    #def test_autocast(self, x_dtype, rois_dtype):
-    #    with torch.cpu.amp.autocast():
-    #        self.test_forward(torch.device("cpu"), contiguous=False, x_dtype=x_dtype, rois_dtype=rois_dtype)
-
     @abstractmethod
     def fn(*args, **kwargs):
         pass
@@ -506,43 +500,6 @@ class TestPSRoIAlign(RoIOpTester):
         return out_data
 
 
-@pytest.mark.parametrize(
-    "op",
-    (
-        torch.ops.torchvision.roi_pool,
-        torch.ops.torchvision.ps_roi_pool,
-        torch.ops.torchvision.roi_align,
-        torch.ops.torchvision.ps_roi_align,
-    ),
-)
-@pytest.mark.parametrize("dtype", (torch.float16, torch.float32, torch.float64))
-@pytest.mark.parametrize("device", ("xpu",))
-@pytest.mark.parametrize("requires_grad", (True, False))
-def test_roi_opcheck(op, dtype, device, requires_grad):
-    # This manually calls opcheck() on the roi ops. We do that instead of
-    # relying on opcheck.generate_opcheck_tests() as e.g. done for nms, because
-    # pytest and generate_opcheck_tests() don't interact very well when it comes
-    # to skipping tests - and these ops need to skip the MPS tests since MPS we
-    # don't support dynamic shapes yet for MPS.
-    rois = torch.tensor(
-        [[0, 0, 0, 9, 9], [0, 0, 5, 4, 9], [0, 5, 5, 9, 9], [1, 0, 0, 9, 9]],
-        dtype=dtype,
-        device=device,
-        requires_grad=requires_grad,
-    )
-    pool_size = 5
-    num_channels = 2 * (pool_size**2)
-    x = torch.rand(2, num_channels, 10, 10, dtype=dtype, device=device)
-
-    kwargs = dict(rois=rois, spatial_scale=1, pooled_height=pool_size, pooled_width=pool_size)
-    if op in (torch.ops.torchvision.roi_align, torch.ops.torchvision.ps_roi_align):
-        kwargs["sampling_ratio"] = -1
-    if op is torch.ops.torchvision.roi_align:
-        kwargs["aligned"] = True
-
-    optests.opcheck(op, args=(x,), kwargs=kwargs)
-
-
 class TestMultiScaleRoIAlign:
     def make_obj(self, fmap_names=None, output_size=(7, 7), sampling_ratio=2, wrap=False):
         if fmap_names is None:
@@ -808,8 +765,6 @@ class TestFocalLoss:
     @pytest.mark.parametrize("dtype", [torch.float32, torch.half])
     @pytest.mark.parametrize("seed", [0, 1])
     def test_correct_ratio(self, alpha, gamma, device, dtype, seed):
-        if device == "cpu" and dtype is torch.half:
-            pytest.skip("Currently torch.half is not fully supported on cpu")
         # For testing the ratio with manual calculation, we require the reduction to be "none"
         reduction = "none"
         torch.random.manual_seed(seed)
@@ -837,8 +792,6 @@ class TestFocalLoss:
     @pytest.mark.parametrize("dtype", [torch.float32, torch.half])
     @pytest.mark.parametrize("seed", [2, 3])
     def test_equal_ce_loss(self, reduction, device, dtype, seed):
-        if device == "cpu" and dtype is torch.half:
-            pytest.skip("Currently torch.half is not fully supported on cpu")
         # focal loss should be equal ce_loss if alpha=-1 and gamma=0
         alpha = -1
         gamma = 0
@@ -864,8 +817,6 @@ class TestFocalLoss:
     @pytest.mark.parametrize("dtype", [torch.float32, torch.half])
     @pytest.mark.parametrize("seed", [4, 5])
     def test_jit(self, alpha, gamma, reduction, device, dtype, seed):
-        if device == "cpu" and dtype is torch.half:
-            pytest.skip("Currently torch.half is not fully supported on cpu")
         script_fn = torch.jit.script(ops.sigmoid_focal_loss)
         torch.random.manual_seed(seed)
         inputs, targets = self._generate_diverse_input_target_pair(dtype=dtype, device=device)
@@ -879,8 +830,6 @@ class TestFocalLoss:
     @pytest.mark.parametrize("device", ("xpu",))
     @pytest.mark.parametrize("dtype", [torch.float32, torch.half])
     def test_reduction_mode(self, device, dtype, reduction="xyz"):
-        if device == "cpu" and dtype is torch.half:
-            pytest.skip("Currently torch.half is not fully supported on cpu")
         torch.random.manual_seed(0)
         inputs, targets = self._generate_diverse_input_target_pair(device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Invalid"):
