@@ -89,57 +89,6 @@ void convert_indices_from_coo_to_csr_xpu(
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
 }
 
-
-// //With reference to coalesce_sparse_kernel
-// void convert_indices_from_coo_to_csr_xpu_kernel(
-//     const Tensor& input,
-//     const int64_t size,
-//     const bool out_int32,
-//     const Tensor& result){
-
-//     int64_t numel = input.numel();
-//     if (numel == 0) {
-//         result.zero_();
-//         return;
-//     }
-
-//     //How to define the global_range and local_range? --numel
-//     int64_t wgroup_size = 64;
-//     int64_t ngroups = (numel + wgroup_size - 1) / wgroup_size;
-//     sycl::range<1> global_range(ngroups * wgroup_size);
-//     sycl::range<1> local_range(wgroup_size);
-
-//     if (out_int32) {
-//         AT_DISPATCH_INTEGRAL_TYPES(
-//             input.scalar_type(), 
-//             "convert_indices_from_coo_to_csr_xpu", [&] {
-//             const scalar_t* data_in = input.data_ptr<scalar_t>();
-//             int* data_out = result.data_ptr<int>();
-//             auto functor = convertIndicesFromCooToCsrXPUFunctor<scalar_t, int>(
-//                 numel,
-//                 data_in,
-//                 data_out, 
-//                 size);
-//             sycl_kernel_submit(
-//             global_range, local_range, getCurrentSYCLQueue(), functor);
-//         });
-//     } else {
-//         AT_DISPATCH_INTEGRAL_TYPES(
-//             input.scalar_type(), 
-//             "convert_indices_from_coo_to_csr_xpu", [&] {
-//             const scalar_t* data_in = input.data_ptr<scalar_t>();
-//             int64_t* data_out = result.data_ptr<int64_t>();
-//             auto functor = convertIndicesFromCooToCsrXPUFunctor<scalar_t, int64_t>(
-//                 numel,
-//                 data_in,
-//                 data_out, 
-//                 size);
-//             sycl_kernel_submit(
-//             global_range, local_range, getCurrentSYCLQueue(), functor);
-//         });
-//     }
-// }
-
 TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu) (
     const Tensor& input, 
     const int64_t size, 
@@ -159,17 +108,7 @@ TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu) (
               result, input, size);
         });
   }
-
-    // convert_indices_from_coo_to_csr_xpu_kernel(
-    //     input,
-    //     size,
-    //     out_int32,
-    //     result);
-}   
+}
 
 } // namespace at::native
-
-namespace at::native::xpu {
-} // namespace at::native::xpu
-
 
