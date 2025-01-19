@@ -36,7 +36,7 @@ void min_values_kernel(TensorIterator& iter) {
 void min_kernel(TensorIterator& iter) {
   AT_DISPATCH_ALL_TYPES_AND3(
       kBFloat16, kHalf, kBool, iter.input_dtype(), "min_xpu", [&]() {
-        gpu_reduce_kernel<scalar_t, scalar_t>(
+        gpu_reduce_kernel<scalar_t, scalar_t, 4, 2>(
             iter,
             MinOps<scalar_t>{},
             at::xpu::pair<scalar_t, int64_t>(
