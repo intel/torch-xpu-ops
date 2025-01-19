@@ -59,4 +59,4 @@ twins_pcpvt_base,pass,pass,pass,pass,pass
 visformer_small,pass,pass,pass,pass,pass
 vit_base_patch16_224,pass,pass,pass,pass,pass
 volo_d1_224,pass,pass,pass,pass,pass
-xcit_large_24_p8_224,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+xcit_large_24_p8_224,pass,pass,pass,pass,pass
