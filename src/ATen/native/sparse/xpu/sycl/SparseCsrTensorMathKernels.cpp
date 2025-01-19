@@ -25,10 +25,10 @@
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <comm/SYCLContext.h>
-#include <xpu/ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 
-namespace at::native{
+namespace at::native::xpu{
 
 template <typename input_t, typename output_t>
 struct convertIndicesFromCooToCsrXPUFunctor {
@@ -61,7 +61,7 @@ struct convertIndicesFromCooToCsrXPUFunctor {
 
 
 template <typename input_t, typename output_t>
-void convert_indices_from_coo_to_csr_xpu(
+void launch_convert_indices_from_coo_to_csr_xpu_kernel(
     const Tensor& result,
     const Tensor& input,
     const int64_t size){
@@ -89,7 +89,7 @@ void convert_indices_from_coo_to_csr_xpu(
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
 }
 
-TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu) (
+void convert_indices_from_coo_to_csr_structured_kernel(
     const Tensor& input, 
     const int64_t size, 
     const bool out_int32, 
@@ -98,17 +98,19 @@ TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu) (
   if (out_int32) {
     AT_DISPATCH_INTEGRAL_TYPES(
         input.scalar_type(), "convert_indices_from_coo_to_csr_xpu", [&] {
-          convert_indices_from_coo_to_csr_xpu<scalar_t, int>(
+          launch_convert_indices_from_coo_to_csr_xpu_kernel<scalar_t, int>(
               result, input, size);
         });
   } else {
     AT_DISPATCH_INTEGRAL_TYPES(
         input.scalar_type(), "convert_indices_from_coo_to_csr_xpu", [&] {
-          convert_indices_from_coo_to_csr_xpu<scalar_t, int64_t>(
+          launch_convert_indices_from_coo_to_csr_xpu_kernel<scalar_t, int64_t>(
               result, input, size);
         });
   }
 }
 
-} // namespace at::native
+} // namespace at::native::xpu
+
+
 
