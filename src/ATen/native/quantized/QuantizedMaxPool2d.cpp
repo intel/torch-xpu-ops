@@ -4,6 +4,7 @@
 #include <ATen/native/utils/ParamUtils.h>
 #include <comm/RegisterUtils.h>
 #include <torch/library.h>
+#include "c10/core/ScalarType.h"
 
 namespace at {
 namespace native {
@@ -32,7 +33,7 @@ class QMaxPool_arr_args final {
       bool ceil_mode) {
     // Now we only support Byte, qint is not supported.
     TORCH_CHECK(
-        qx.scalar_type() == c10::ScalarType::Byte,
+        qx.scalar_type() == c10::ScalarType::Byte || qx.scalar_type() == c10::ScalarType::Char,
         "QuantizedMaxPool2d only supports Byte for xpu now");
     return at::native::quantized_max_pool2d_xpu(
         qx, kernel_size, stride, padding, dilation, ceil_mode);
