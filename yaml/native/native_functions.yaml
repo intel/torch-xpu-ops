@@ -2091,6 +2091,7 @@
 - func: _safe_softmax(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
   dispatch:
     XPU: _safe_softmax_xpu
+    NestedTensorXPU: _safe_softmax
 
 - func: _softmax_backward_data(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor
   structured_delegate: _softmax_backward_data.out
@@ -4429,6 +4430,12 @@
   dispatch:
     XPU: roll_xpu
   autogen: roll.out
+
+- func: _nested_from_padded(Tensor padded, Tensor cpu_nested_shape_example, bool fuse_transform_0213=False) -> Tensor
+  device_check: NoCheck # cpu_nested_shape_example will always be on CPU
+  dispatch:
+    XPU: nested_from_padded_xpu
+  autogen: _nested_from_padded.out
 
 - func: avg_pool2d.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None, *, Tensor(a!) out) -> Tensor(a!)
   python_module: nn
@@ -8773,3 +8780,219 @@
   dispatch:
     CompositeExplicitAutogradNonFunctional: _nested_view_from_buffer_copy
   autogen: _nested_view_from_buffer_copy.out
+
+- func: _nested_select_backward(Tensor grad_output, Tensor self, int dim, SymInt index) -> Tensor
+  variants: function
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    NestedTensorXPU: _nested_select_backward_symint
+
+- func: chunk(Tensor(a -> *) self, int chunks, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeImplicitAutograd: chunk
+    NestedTensorXPU: chunk_nested_tensor
+
+- func: embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: embedding_symint
+    NestedTensorXPU: NestedTensor_embedding
+  autogen: embedding.out
+  tags: core
+
+- func: is_same_size(Tensor self, Tensor other) -> bool
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    NestedTensorXPU: nested_is_same_size
+    CompositeExplicitAutograd: is_same_size
+
+- func: linear(Tensor input, Tensor weight, Tensor? bias=None) -> Tensor
+  python_module: nn
+  dispatch:
+    CompositeImplicitAutograd: linear
+    NestedTensorXPU: nested_linear
+
+- func: linear_backward(Tensor self, Tensor grad_output, Tensor weight, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
+  dispatch:
+    NestedTensorXPU: nested_linear_backward
+  autogen: linear_backward.out
+
+- func: matmul(Tensor self, Tensor other) -> Tensor
+  variants: function, method
+  dispatch:
+    CompositeImplicitAutograd: matmul
+    NestedTensorXPU: matmul_nested
+
+- func: matmul_backward(Tensor grad, Tensor self, Tensor other, bool[2] mask) -> (Tensor, Tensor)
+  dispatch:
+    NestedTensorXPU: matmul_backward_nested
+  autogen: matmul_backward.out
+
+- func: matmul.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    CompositeImplicitAutograd: matmul_out
+    NestedTensorXPU: matmul_out_nested
+
+- func: narrow(Tensor(a) self, int dim, SymInt start, SymInt length) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeImplicitAutograd: narrow_symint
+    NestedTensorXPU: narrow_nested_symint
+
+- func: ones_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    # NB: Although this composite mutates on the inside, it is
+    # non-differentiable so NonFunctional doesn't apply
+    CompositeExplicitAutograd: ones_like
+    NestedTensorXPU: ones_like
+  autogen: ones_like.out
+
+- func: split_with_sizes(Tensor(a -> *) self, SymInt[] split_sizes, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: split_with_sizes
+    NestedTensorXPU: split_with_sizes_nested
+  tags: core
+
+- func: select_copy.int(Tensor self, int dim, SymInt index) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: select_copy_symint
+  tags: view_copy
+  autogen: select_copy.int_out
+
+- func: select.int(Tensor(a) self, int dim, SymInt index) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: select_symint
+    NestedTensorXPU: select_nested
+  tags: core
+
+- func: squeeze_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy
+  tags: view_copy
+  autogen: squeeze_copy.out
+
+- func: squeeze_copy.dim(Tensor self, int dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy_dim
+  tags: view_copy
+  autogen: squeeze_copy.dim_out
+
+- func: squeeze_copy.dims(Tensor self, int[] dim) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: squeeze_copy_dims
+  tags: view_copy
+  autogen: squeeze_copy.dims_out
+
+- func: squeeze(Tensor(a) self) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_nested
+
+- func: squeeze.dim(Tensor(a) self, int dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_dim_nested
+  tags: core
+
+- func: squeeze.dims(Tensor(a) self, int[] dim) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: squeeze
+    NestedTensorXPU: squeeze_dim_nested
+  tags: core
+
+- func: detach_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: detach_copy
+  tags: view_copy
+  autogen: detach_copy.out
+
+- func: detach(Tensor(a) self) -> Tensor(a)
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: detach
+    NestedTensorXPU: detach
+
+- func: transpose_copy.int(Tensor self, int dim0, int dim1) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: transpose_copy_int
+  tags: view_copy
+  autogen: transpose_copy.int_out
+
+- func: transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)
+  variants: function, method
+  device_check: NoCheck
+  device_guard: False
+  dispatch:
+    CompositeExplicitAutograd: transpose
+    NestedTensorXPU: transpose_nested
+
+- func: alias_copy(Tensor self) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: alias_copy
+  tags: view_copy
+  autogen: alias_copy.out
+
+- func: alias(Tensor(a) self) -> Tensor(a)
+  variants: method, function
+  dispatch:
+    CompositeExplicitAutograd: alias
+    NestedTensorXPU: alias_nested
+  tags: core
+
+- func: _test_autograd_multiple_dispatch.fullcoverage(Tensor self) -> Tensor
+  dispatch:
+    # the NestedTensor keys are necessary because NestedTensor has been removed
+    # from the CompositeExplicitAutograd keyset see Note [NestedTensor Not Included in Backend Keys]
+    CompositeExplicitAutograd, NestedTensorXPU: _test_autograd_multiple_dispatch_fullcoverage
+  autogen: _test_autograd_multiple_dispatch.fullcoverage_out
+
+# Note: this function is only for testing.
+- func: _test_autograd_multiple_dispatch.ntonly(Tensor self, bool b) -> Tensor
+  dispatch:
+    CompositeImplicitAutograd, NestedTensorXPU: _test_autograd_multiple_dispatch_ntonly
+
+# Apparently, putting "forward" in the name will cause Python bindings to be skipped, so "fwd" it is.
+- func: _transformer_encoder_layer_fwd(Tensor src, int embed_dim, int num_heads, Tensor qkv_weight, Tensor qkv_bias, Tensor proj_weight, Tensor proj_bias, bool use_gelu, bool norm_first, float eps, Tensor norm_weight_1, Tensor norm_bias_1, Tensor norm_weight_2, Tensor norm_bias_2, Tensor ffn_weight_1, Tensor ffn_bias_1, Tensor ffn_weight_2, Tensor ffn_bias_2, Tensor? mask=None, int? mask_type=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU, NestedTensorXPU: transformer_encoder_layer_forward
+  autogen: _transformer_encoder_layer_fwd.out
+
+- func: nested_to_padded_tensor(Tensor self, float padding, int[]? output_size=None) -> Tensor
+  python_module: nested
+  variants: function
+
+- func: to_padded_tensor(Tensor self, float padding, SymInt[]? output_size=None) -> Tensor
+  variants: method
+  dispatch:
+    NestedTensorXPU: NestedTensor_to_padded_tensor_xpu
+  autogen: to_padded_tensor.out
