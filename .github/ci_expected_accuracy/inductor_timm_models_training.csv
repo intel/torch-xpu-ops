@@ -30,7 +30,8 @@ hrnet_w18,pass,pass,pass,pass,pass
 inception_v3,pass,pass,pass,pass,pass
 jx_nest_base,pass,pass,pass,pass,pass
 lcnet_050,pass,pass,pass,pass,pass
-levit_128,pass,pass,pass,pass,pass
+# https://github.com/pytorch/pytorch/pull/145112
+levit_128,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mixer_b16_224,pass,pass,pass,pass,pass
 mixnet_l,pass,pass,pass,pass,pass
 mnasnet_100,pass,pass,pass,pass,pass
