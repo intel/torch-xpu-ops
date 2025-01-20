@@ -49,7 +49,6 @@ jobs:
     needs: preci-linux-build
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
-    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
     steps:
