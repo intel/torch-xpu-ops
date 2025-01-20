@@ -61,8 +61,6 @@ Tensor _weight_int4pack_mm_xpu(
     Tensor B_dequant = at::empty({K, N}, A.options());
     at::native::xpu::dequant_int4_kernel(
         B, B_dequant, qGroupSize, qScaleAndZeros);
-    std::cout << B_dequant << std::endl;
-    std::cout << "M" << M << "N" << N << "K" << K << std::endl;
     C = A.matmul(B_dequant);
   } else {
     at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);

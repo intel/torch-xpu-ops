@@ -232,12 +232,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [32])
-@parametrize("k", [32])
-@parametrize("n", [16])
-# @parametrize("m", [1, 32])
-# @parametrize("k", [32, 64, 128, 256, 512, 1024])
-# @parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("m", [1, 32])
+@parametrize("k", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
@@ -262,7 +259,6 @@ def _int4_mm(self, device, m, k, n):
         assert torch.isnan(out).sum() == 0
 
         out = out.to(dtype=torch.uint8).reshape(w.shape)
-        print(out)
         if out.device.type == "xpu":
             out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
         elif out.device != torch.device("cpu"):
@@ -323,8 +319,6 @@ def _int4_mm(self, device, m, k, n):
     b_bf16 = torch.rand((k, n), dtype=torch.float16, device=device)
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
-    # print(b_int4pack)
-    print(b_scales_and_zeros_bf16)
     # for dtype in [torch.bfloat16] + (
     for dtype in [torch.float16] + (
         [torch.float16, torch.float32]
@@ -339,9 +333,6 @@ def _int4_mm(self, device, m, k, n):
         ref = torch.mm(a, b)
         res = weight_int4pack_mm(a, b_int4pack, b_scales_and_zeros)
         mean_err = ((res - ref).abs() / ref).mean()
-        print(b)
-        # print(res)
-        # print(ref)
         self.assertTrue(mean_err < 0.05)
 
 
