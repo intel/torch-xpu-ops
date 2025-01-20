@@ -259,6 +259,7 @@ def _int4_mm(self, device, m, k, n):
         assert torch.isnan(out).sum() == 0
 
         out = out.to(dtype=torch.uint8).reshape(w.shape)
+
         if out.device.type == "xpu":
             out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
         elif out.device != torch.device("cpu"):
@@ -315,12 +316,11 @@ def _int4_mm(self, device, m, k, n):
     inner_k_tiles = 2
 
     torch.manual_seed(1)
-    a_bf16 = torch.rand((m, k), dtype=torch.float16, device=device)
-    b_bf16 = torch.rand((k, n), dtype=torch.float16, device=device)
+    a_bf16 = torch.rand((m, k), dtype=torch.bfloat16, device=device)
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device)
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
-    # for dtype in [torch.bfloat16] + (
-    for dtype in [torch.float16] + (
+    for dtype in [torch.bfloat16] + (
         [torch.float16, torch.float32]
         if device == "cpu"
         else [torch.float16]

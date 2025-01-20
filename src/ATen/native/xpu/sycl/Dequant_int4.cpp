@@ -89,7 +89,6 @@ void dequant_int4_kernel(
     int qGroupSize,
     const Tensor& qScaleAndZeros) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
-  using scalar_t = sycl::half;
 
   int constexpr SgSize = 16;
   int constexpr TileK = 1;
@@ -99,20 +98,29 @@ void dequant_int4_kernel(
   assert(qGroupSize % TileK == 0);
   static_assert(TileN == SgSize);
   static_assert(TileK == 1);
-  int n = weight.size(1);
   int k = weight.size(0);
+  int n = weight.size(1);
   int nsg_k = k / GroupK;
   int nsg_n = n / GroupN;
   sycl::range<1> global_range{static_cast<size_t>(nsg_n) * nsg_k * SgSize};
   sycl::range<1> local_range{SgSize};
-  DequantInt4KernelFunctor<scalar_t, 32, TileK, TileN, SgSize> kfn =
-      DequantInt4KernelFunctor<scalar_t, 32, TileK, TileN, SgSize>(
-          n,
-          k,
-          reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
-          reinterpret_cast<const scalar_t*>(qScaleAndZeros.data_ptr()),
-          reinterpret_cast<scalar_t*>(weight.data_ptr()));
-  sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+  AT_DISPATCH_REDUCED_FLOATING_TYPES(
+      weight.scalar_type(), "dequant_int4_kernel", [&]() {
+        using scalar_sycl_t = std::conditional_t<
+            std::is_same_v<scalar_t, at::Half>,
+            sycl::half,
+            sycl::ext::oneapi::bfloat16>;
+
+        DequantInt4KernelFunctor<scalar_sycl_t, 32, TileK, TileN, SgSize> kfn =
+            DequantInt4KernelFunctor<scalar_sycl_t, 32, TileK, TileN, SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
+        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+      });
 }
 
 } // namespace at::native::xpu
