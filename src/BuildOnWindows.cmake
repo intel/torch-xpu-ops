@@ -149,6 +149,12 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
 else()
+
+  # On Windows, it is not possible to combine all obj files into one library 
+  # because the obj files of kernels compiled on Windows are much larger than 
+  # those on Linux. If they are combined into one, the library size will exceed 
+  # 4GB, which conflicts with the size limit of a single library on Windows. 
+  # We will combine the libraries on Windows into one after the compiler is fixed.
   add_library(
     torch_xpu_ops
     STATIC
@@ -157,8 +163,7 @@ else()
     ${ATen_XPU_GEN_SRCS})
   install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-
- # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary+Reduce+Pow+Copy+Activation+Foreach 2) Foreach.
+ # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary+Reduce+Pow+Copy+Activation+Foreach 2) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
