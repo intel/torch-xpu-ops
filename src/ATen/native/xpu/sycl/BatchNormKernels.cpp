@@ -1576,11 +1576,16 @@ struct BatchNormTransformInputChannelsLastVectorizedKernelFunctor {
     for (int m_offset = b_id; m_offset < reduction_size_;
          m_offset += m_stride) {
       using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
+      auto address_base = m_offset * stride_ + c_vec_begin;
       vec_t input_vec = *reinterpret_cast<vec_t*>(
-          const_cast<scalar_t*>(&input_[m_offset * stride_ + c_vec_begin]));
-      vec_t output_vec;
-      vec_t weight_vec, shift_vec;
+          const_cast<scalar_t*>(&input_[address_base]));
+      vec_t output_vec, z_vec;
+      if (z_ != nullptr) {
+        z_vec =
+            *reinterpret_cast<vec_t*>(const_cast<scalar_t*>(&z_[address_base]));
+      }
 
+      vec_t weight_vec, shift_vec;
       if constexpr (WEIGHT_VEC) {
         if (weight_ != nullptr) {
           weight_vec = *reinterpret_cast<vec_t*>(
@@ -1595,7 +1600,6 @@ struct BatchNormTransformInputChannelsLastVectorizedKernelFunctor {
 #pragma
       for (int i = 0; i < VEC_SIZE; ++i) {
         auto c_offset = c_vec_begin + i;
-        auto address_base = m_offset * stride_ + c_offset;
         auto m_c = mean_[c_offset];
         auto inv_std_c = static_cast<accscalar_t>(inv_std_[c_offset]);
 
@@ -1618,8 +1622,9 @@ struct BatchNormTransformInputChannelsLastVectorizedKernelFunctor {
         auto tmp = w_c * (static_cast<accscalar_t>(input_vec.val[i]) - m_c) *
                 inv_std_c +
             s_c;
+
         if (z_ != nullptr) {
-          tmp += z_[address_base];
+          tmp += z_vec.val[i];
         }
 
         output_vec.val[i] =
@@ -1672,11 +1677,13 @@ template <typename scalar_t, int VEC_SIZE>
 bool can_use_batch_norm_cnl_vec_kernel(
     char* input,
     char* output,
+    char* z,
     char* weight,
     char* shift,
     int stride) {
   return memory::can_vectorize_up_to<scalar_t>(input) >= VEC_SIZE &&
       memory::can_vectorize_up_to<scalar_t>(output) >= VEC_SIZE &&
+      (z == nullptr || memory::can_vectorize_up_to<scalar_t>(z) >= VEC_SIZE) &&
       (weight == nullptr ||
        memory::can_vectorize_up_to<scalar_t>(weight) >= VEC_SIZE) &&
       (shift == nullptr ||
@@ -1685,9 +1692,14 @@ bool can_use_batch_norm_cnl_vec_kernel(
 }
 
 template <typename scalar_t, int VEC_SIZE>
-bool can_use_batch_norm_cnl_vec_kernel(char* input, char* output, int stride) {
+bool can_use_batch_norm_cnl_vec_kernel(
+    char* input,
+    char* output,
+    char* z,
+    int stride) {
   return memory::can_vectorize_up_to<scalar_t>(input) >= VEC_SIZE &&
       memory::can_vectorize_up_to<scalar_t>(output) >= VEC_SIZE &&
+      (z == nullptr || memory::can_vectorize_up_to<scalar_t>(z) >= VEC_SIZE) &&
       (stride % VEC_SIZE == 0);
 }
 
@@ -1700,7 +1712,7 @@ void batch_norm_elemt_channels_last_template(
     const at::Tensor& inv_std,
     const at::optional<at::Tensor>& z = c10::nullopt, // bias after BN
     const bool fuse_relu = false) {
-  constexpr int VEC_SIZE = 2;
+  constexpr int VEC_SIZE = 4;
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
   int total_vecs = reduction_size * stride / VEC_SIZE;
@@ -1722,9 +1734,14 @@ void batch_norm_elemt_channels_last_template(
 
           auto input_data_ptr = input.const_data_ptr<scalar_t>();
           auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
+          auto z_data_ptr =
+              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
 
           if (can_use_batch_norm_cnl_vec_kernel<scalar_t, VEC_SIZE>(
-                  (char*)input_data_ptr, (char*)output_data_ptr, stride)) {
+                  (char*)input_data_ptr,
+                  (char*)output_data_ptr,
+                  (char*)z_data_ptr,
+                  stride)) {
             auto kfn =
                 BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
                     scalar_t,
@@ -1732,8 +1749,7 @@ void batch_norm_elemt_channels_last_template(
                     accscalar_t,
                     VEC_SIZE>(
                     input_data_ptr,
-                    z.has_value() ? z.value().const_data_ptr<scalar_t>()
-                                  : nullptr,
+                    z_data_ptr,
                     mean.const_data_ptr<accscalar_t>(),
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight.defined() ? weight.const_data_ptr<accscalar_t>()
@@ -1754,7 +1770,7 @@ void batch_norm_elemt_channels_last_template(
               accscalar_t,
               ELEMENTS_PER_ITER>(
               input_data_ptr,
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr,
+              z_data_ptr,
               mean.const_data_ptr<accscalar_t>(),
               inv_std.const_data_ptr<accscalar_t>(),
               weight.defined() ? weight.const_data_ptr<accscalar_t>() : nullptr,
@@ -1780,6 +1796,8 @@ void batch_norm_elemt_channels_last_template(
 
           auto input_data_ptr = input.const_data_ptr<scalar_t>();
           auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
+          auto z_data_ptr =
+              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
           auto weight_data_ptr =
               weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr;
           auto shift_data_ptr =
@@ -1788,6 +1806,7 @@ void batch_norm_elemt_channels_last_template(
           if (can_use_batch_norm_cnl_vec_kernel<scalar_t, VEC_SIZE>(
                   (char*)input_data_ptr,
                   (char*)output_data_ptr,
+                  (char*)z_data_ptr,
                   (char*)weight_data_ptr,
                   (char*)shift_data_ptr,
                   stride)) {
@@ -1798,8 +1817,7 @@ void batch_norm_elemt_channels_last_template(
                     scalar_t,
                     VEC_SIZE>(
                     input_data_ptr,
-                    z.has_value() ? z.value().const_data_ptr<scalar_t>()
-                                  : nullptr,
+                    z_data_ptr,
                     mean.const_data_ptr<accscalar_t>(),
                     inv_std.const_data_ptr<accscalar_t>(),
                     weight_data_ptr,
@@ -1818,7 +1836,7 @@ void batch_norm_elemt_channels_last_template(
               scalar_t,
               ELEMENTS_PER_ITER>(
               input_data_ptr,
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr,
+              z_data_ptr,
               mean.const_data_ptr<accscalar_t>(),
               inv_std.const_data_ptr<accscalar_t>(),
               weight_data_ptr,
