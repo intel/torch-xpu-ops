@@ -1550,11 +1550,11 @@ struct IndexSelectSparse3Functor {
       index_t count,
       index_t offset,
       index_t first_match) const {
-    index_t* __restrict__ ptr_res_dim_indices_out =
+    index_t* RESTRICT ptr_res_dim_indices_out =
         ptr_res_dim_indices_ + offset;
-    const index_t* __restrict__ ptr_argsort_dim_indices_in =
+    const index_t* RESTRICT ptr_argsort_dim_indices_in =
         ptr_argsort_dim_indices_ + first_match;
-    index_t* __restrict__ ptr_selected_dim_indices_out =
+    index_t* RESTRICT ptr_selected_dim_indices_out =
         ptr_selected_dim_indices_ + offset;
     for (index_t i = 0; i < count; ++i) {
       *ptr_res_dim_indices_out++ = idx_idx;
