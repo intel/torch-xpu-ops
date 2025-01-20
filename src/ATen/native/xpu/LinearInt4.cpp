@@ -57,7 +57,7 @@ Tensor _weight_int4pack_mm_xpu(
       "xpu::_weight_int4pack_mm",
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
-  if (M > 0) {
+  if (M > 1) {
     Tensor B_dequant = at::empty({K, N}, A.options());
     at::native::xpu::dequant_int4_kernel(
         B, B_dequant, qGroupSize, qScaleAndZeros);
