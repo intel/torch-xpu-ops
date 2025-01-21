@@ -1,3 +1,4 @@
+#include <cstdint>
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
@@ -6,10 +7,6 @@
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/sparse/ParamUtils.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
-
-// #include <ATen/native/sparse/cuda/SparseCUDABlas.h>
-// #include <ATen/cuda/detail/IndexUtils.cuh>
-// #include <ATen/native/sparse/cuda/SparseCUDAApplyUtils.cuh>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
@@ -41,20 +38,18 @@
 #include <ATen/ops/full.h>
 #include <ATen/ops/log_softmax.h>
 #include <ATen/ops/log_softmax_native.h>
+#include <ATen/ops/ones.h>
+#include <ATen/ops/ones_like.h>
 #include <ATen/ops/softmax.h>
 #include <ATen/ops/softmax_native.h>
+#include <ATen/ops/zeros.h>
+#include <ATen/ops/zeros_like.h>
 #endif
 
 #include <bitset>
 
-// #include <c10/cuda/CUDAMathCompat.h>
-// #include <ATen/cuda/detail/IndexUtils.cuh>
-// #include <ATen/cuda/detail/OffsetCalculator.cuh>
-
 #include <c10/macros/Macros.h>
 #include <comm/Memory.h>
-
-// #include <c10/cuda/CUDAMathCompat.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -62,6 +57,69 @@
 #include <comm/TensorInfo.h>
 
 namespace at::native::xpu {
+
+template <typename T, class InputIt1, class InputIt2, class OutputIt>
+struct MaxRowKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    int64_t curr_pool_size = pool_sizes_ptr[item_id];
+    auto mx_row = mx_buffer_ptr + static_cast<int64_t>(item_id * nvalues);
+    int64_t offset = pool_offsets_ptr[item_id];
+    for (int64_t p = 0; p < curr_pool_size; p++) {
+      int64_t i = *(sorted_indices_ptr + offset + p);
+      auto values_row = values_accessor[i].data();
+      for (int64_t j = 0; j < nvalues; j++) {
+        mx_row[j] = std::max(mx_row[j], values_row[j]);
+      }
+    }
+  }
+
+  MaxRowKernelFunctor(
+      InputIt1 pool_sizes_ptr,
+      InputIt2 values_accessor,
+      InputIt1 sorted_indices_ptr,
+      InputIt1 pool_offsets_ptr,
+      OutputIt mx_buffer_ptr,
+      T nvalues)
+      : pool_sizes_ptr(pool_sizes_ptr),
+        values_accessor(values_accessor),
+        sorted_indices_ptr(sorted_indices_ptr),
+        pool_offsets_ptr(pool_offsets_ptr),
+        mx_buffer_ptr(mx_buffer_ptr),
+        nvalues(nvalues) {}
+
+ private:
+  InputIt1 pool_sizes_ptr;
+  InputIt2 values_accessor;
+  InputIt1 sorted_indices_ptr;
+  InputIt1 pool_offsets_ptr;
+  OutputIt mx_buffer_ptr;
+  T nvalues;
+};
+
+template <typename T, class InputIt1, class InputIt2, class OutputIt>
+OutputIt max_row(
+    InputIt1 pool_sizes_first,
+    InputIt1 pool_sizes_last,
+    InputIt2 values_accessor,
+    InputIt1 sorted_indices_ptr,
+    InputIt1 pool_offsets_ptr,
+    OutputIt mx_buffer_ptr,
+    T nvalues) {
+  RECORD_FUNCTION("max_row_xpu", {});
+  const auto N = std::distance(pool_sizes_first, pool_sizes_last);
+  auto& q = getCurrentSYCLQueue();
+
+  MaxRowKernelFunctor<T, InputIt1, InputIt2, OutputIt> mfn(
+      pool_sizes_first,
+      values_accessor,
+      sorted_indices_ptr,
+      pool_offsets_ptr,
+      mx_buffer_ptr,
+      nvalues);
+  sycl_kernel_submit(sycl::range<1>(N), q, mfn);
+
+  return mx_buffer_ptr;
+}
 
 // Number of threads in a block given an input size up to MAX_BLOCK_SIZE
 static int getNumThreads(int nElem) {
@@ -85,6 +143,23 @@ int64_t get_nvalues(const IntArrayRef& sizes, int64_t sparse_dim) {
    */
   return c10::multiply_integers(sizes.begin() + sparse_dim, sizes.end());
 }
+
+struct PoolFunctor {
+  bool operator()(int64_t x, int64_t y) const {
+    return x < y;
+  }
+};
+
+template <typename T>
+struct ReducePred {
+  bool operator()(const T& x, const T& y) const {
+    return offsets_ptr[x] == offsets_ptr[y];
+  }
+  ReducePred(T* offsets_ptr) : offsets_ptr(offsets_ptr) {}
+
+ private:
+  T* offsets_ptr;
+};
 
 template <typename scalar_t, bool LogSoftMax>
 struct SparseCooSoftmaxFunctor {
@@ -283,11 +358,13 @@ Tensor get_offsets(
     const int64_t dim) {
   /*
     See ATen/native/sparse/SoftMax.cpp:get_offsets for the CPU
-    implementation of get_offsets function that this implementation is based on.
+    implementation of get_offsets function that this implementation is based
+    on.
   */
 
   auto ndim = indices.size(0);
   auto nnz = indices.size(1);
+  std::cout << "indices " << indices << std::endl;
   std::vector<int64_t> host_strides(ndim, 1);
   if (ndim > 1) {
     for (int64_t i = ndim - 2; i >= 0; i--) {
@@ -298,34 +375,38 @@ Tensor get_offsets(
   // auto strides = host_strides;
   auto strides_ptr = strides.data_ptr<int64_t>();
 
-  syclMemcpyAsync(
-      strides_ptr,
-      host_strides.data(),
-      host_strides.size() * sizeof(int64_t),
-      HostToDevice);
+  // syclMemcpyAsync(
+  //     strides_ptr,
+  //     host_strides.data(),
+  //     host_strides.size() * sizeof(int64_t),
+  //     HostToDevice);
+  for (int kk = 0; kk < ndim; kk++) {
+    strides[kk] = host_strides[kk];
+  }
+  std::cout << "strides " << strides << std::endl;
+
+  std::cout << std::endl;
+  std::cout << "after syclMemcpyAsync---" << std::endl;
 
   auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
 
-  Tensor offsets = at::empty({nnz}, indices.options());
+  Tensor offsets = at::zeros({nnz}, indices.options());
+  std::cout << "offsets " << offsets << std::endl;
 
-  auto offsets_ptr = offsets.data_ptr<int64_t>();
-  // pstl::iota<int64_t>(offsets_ptr, offsets_ptr + nnz, (int64_t)0);
+  std::cout << "before transform---" << std::endl;
 
-  std::transform(
-      offsets_ptr,
-      offsets_ptr + nnz,
-      offsets_ptr,
-      [indices_accessor, strides_ptr, dim, ndim](int64_t x) {
-        int64_t pool_index = 0;
-        for (int64_t j = 0; j < ndim; j++) {
-          if (j != dim) {
-            auto indices_row = indices_accessor[j];
-            auto stride = strides_ptr[j];
-            pool_index += stride * indices_row[x];
-          }
-        }
-        return pool_index;
-      });
+  for (int i = 0; i < nnz; i++) {
+    int64_t pool_index = 0;
+    std::cout << "pool_index " << std::endl;
+    for (int64_t j = 0; j < ndim; j++) {
+      std::cout << "i " << i << " j " << j << std::endl;
+      if (j != dim) {
+        offsets[i] += (strides[j] * indices[j][i]);
+        // std::cout << "pool_index " << pool_index << std::endl;
+      }
+    }
+  }
+  std::cout << "end---get_offsets" << std::endl;
   return offsets;
 }
 
@@ -344,55 +425,71 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
     ATen/native/sparse/SoftMax.cpp:cpu_sparse_coo_softmax for the CPU
     implementation that this implementation is based on.
   */
-
+  std::cout << "enter compute_pool_max---" << std::endl;
   auto nnz = indices.size(1);
+  std::cout << "nnz " << nnz << std::endl;
   auto offsets = get_offsets(indices, sizes, dim);
   int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
+  std::cout << "get_offsets done------" << std::endl;
+  // std::vector<int64_t> off_vec(nnz, 1);
+
+  // std::cout<<"offsets " << offsets << std::endl;
+  // for(int kk = 0; kk < nnz; kk++){
+  //   std::cout<<" " << off_vec[kk];
+  // }
+  // std::cout<< std::endl;
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
   // std::sequence(sorted_indices_ptr, sorted_indices_ptr + nnz, 0);
+
+  // for (int i = 0; i < nnz; i++){
+  //   std::cout << sorted_indices[i] << std::endl;
+  // }
+  std::cout << "before iota---sorted_indices " << sorted_indices << std::endl;
+
   pstl::iota<int64_t>(sorted_indices_ptr, sorted_indices_ptr + nnz, (int64_t)0);
 
-  std::sort(
+  std::cout << "before sort---sorted_indices " << sorted_indices << std::endl;
+
+  PoolFunctor pool_functor;
+  pstl::sort<int64_t, int64_t>(
+      sorted_indices_ptr, offsets_ptr, nnz, pool_functor);
+
+  std::cout << "after sort---offsets " << offsets << std::endl;
+  std::cout << "after sort---sorted_indices " << sorted_indices << std::endl;
+
+  auto pool_sizes = at::ones({nnz}, indices.options());
+
+  std::cout << "before_reduce_by_key--- pool_sizes" << pool_sizes << std::endl;
+
+  auto constant_it = at::ones({nnz}, indices.options());
+  auto discard_it = at::zeros({nnz}, indices.options());
+
+  auto new_end = pstl::reduce_by_key<int64_t>(
+      // auto new_end = reduce_by_key<int64_t>(
       sorted_indices_ptr,
       sorted_indices_ptr + nnz,
-      [offsets_ptr](int64_t x, int64_t y) {
-        return offsets_ptr[x] < offsets_ptr[y];
-      });
-  auto pool_sizes = at::empty({nnz}, indices.options());
-  int64_t new_sz = 0;
+      constant_it.data_ptr<int64_t>(),
+      discard_it.data_ptr<int64_t>(),
+      pool_sizes.data_ptr<int64_t>(),
+      ReducePred<int64_t>(offsets_ptr));
+  auto new_sz = std::distance(pool_sizes.data_ptr<int64_t>(), new_end);
 
-  // std::vector<int64_t> tmp_sec(nsz, 1);
-  // std::vector<std::pair<int64_t, int64_t>> tmp(nsz);
-  // pstl::transform(
-  //     sorted_indices_ptr,
-  //     sorted_indices_ptr + nnz,
-  //     tmp_sec.begin(),
-  //     [](int64_t x, int64_t y) { return std::make_pair(x, y); });
-
-  std::for_each(
-      offsets_ptr, offsets_ptr + nnz, [&new_sz, &pool_sizes](const int64_t& x) {
-        pool_sizes[x] += 1;
-        if (x > new_sz)
-          new_sz = x;
-      });
-
-  // auto new_end = std::reduce(
-  //     sorted_indices_ptr,
-  //     sorted_indices_ptr + nnz,
-  //     1,
-  //     [offsets_ptr](int64_t x, int64_t y) {
-  //       return offsets_ptr[x] == offsets_ptr[y];
-  //     });
-  // auto new_sz = std::distance(pool_sizes.data_ptr<int64_t>(),
-  // new_end.second);
   pool_sizes.resize_({new_sz});
+
+  std::cout << "after reduce_by_key--- pool_sizes" << pool_sizes << std::endl;
 
   auto pool_offsets = pool_sizes.clone();
   auto pool_offsets_ptr = pool_offsets.data_ptr<int64_t>();
   pstl::exclusive_scan(
-      pool_offsets_ptr, pool_offsets_ptr + new_sz, pool_offsets_ptr, 0);
+      pool_offsets_ptr,
+      pool_offsets_ptr + new_sz,
+      pool_offsets_ptr,
+      static_cast<int64_t>(0));
+
+  std::cout << "after_exclusive_scan--- pool_offsets" << pool_offsets
+            << std::endl;
 
   Tensor mx_buffer;
   if (requireMxRows) {
@@ -410,27 +507,16 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
     auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
     auto pool_offsets_ptr = pool_offsets.data_ptr<int64_t>();
 
-    std::for_each(
+    max_row<scalar_t>(
         pool_sizes_ptr,
         pool_sizes_ptr + new_sz,
-        [values_accessor,
-         sorted_indices_ptr,
-         pool_sizes_ptr,
-         pool_offsets_ptr,
-         mx_buffer_ptr,
-         nvalues](int64_t index) {
-          int64_t curr_pool_size = pool_sizes_ptr[index];
-          auto mx_row = mx_buffer_ptr + index * nvalues;
-          int64_t offset = pool_offsets_ptr[index];
-          for (int64_t p = 0; p < curr_pool_size; p++) {
-            int64_t i = *(sorted_indices_ptr + offset + p);
-            auto values_row = values_accessor[i].data();
-            for (int64_t j = 0; j < nvalues; j++) {
-              mx_row[j] = std::max(mx_row[j], values_row[j]);
-            }
-          }
-        });
+        values_accessor,
+        sorted_indices_ptr,
+        pool_offsets_ptr,
+        mx_buffer_ptr,
+        nvalues);
   }
+
   return std::make_tuple(sorted_indices, pool_offsets, pool_sizes, mx_buffer);
 }
 
@@ -467,6 +553,7 @@ void xpu_sparse_coo_softmax(
   auto nnz = values.size(0);
   auto sizes = input.sizes();
   auto nvalues = get_nvalues(sizes, sparse_dim);
+  std::cout << "nnz---" << nnz << std::endl;
 
   /* Prepare accessors */
   auto values_2 = values.view({nnz, nvalues});
@@ -478,9 +565,13 @@ void xpu_sparse_coo_softmax(
   auto [sorted_indices, pool_offsets, pool_sizes, mx_buffer] =
       compute_pool_max<scalar_t, true>(indices, values_2, sizes, nvalues, dim);
 
+  std::cout << "exit compute_pool_max " << std::endl;
+
   auto pool_size = pool_offsets.size(0);
   int block_size = getNumThreads(pool_size);
   const int grid_size = (pool_size + block_size - 1) / block_size;
+  std::cout << "nvalues---" << nvalues << std::endl;
+  std::cout << "pool_size---" << pool_size << std::endl;
 
   sycl::range<1> global_range(grid_size * block_size);
   sycl::range<1> local_range(block_size);
@@ -490,6 +581,7 @@ void xpu_sparse_coo_softmax(
   // Further, they will be invalid configuration parameters for the launch. So
   // let's not launch a kernel unless both are non-zero.
   if (nvalues > 0 && pool_size > 0) {
+    std::cout << "before enter functor---" << std::endl;
     auto kfn = SparseCooSoftmaxFunctor<scalar_t, LogSoftMax>(
         sorted_indices.template data_ptr<int64_t>(),
         pool_size,
@@ -502,92 +594,6 @@ void xpu_sparse_coo_softmax(
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
 }
-
-// template <
-//     typename ForwardIterator,
-//     typename StrictWeakOrdering,
-//     typename BinarySearchFunction>
-// struct binary_search_functor {
-//   ForwardIterator begin;
-//   ForwardIterator end;
-//   StrictWeakOrdering comp;
-//   BinarySearchFunction func;
-
-//   binary_search_functor(
-//       ForwardIterator begin,
-//       ForwardIterator end,
-//       StrictWeakOrdering comp,
-//       BinarySearchFunction func)
-//       : begin(begin), end(end), comp(comp), func(func) {}
-
-//   template <typename Tuple>
-//   void operator()(Tuple t) {
-//     std::get<1>(t) = func(begin, end, std::get<0>(t), comp);
-//   }
-// }; // binary_search_functor
-
-// // template <typename Tuple>
-// // void operator()(Tuple t) {
-// //   std::get<1>(t) = std::lower_bound(
-// //       grad_offsets.data_ptr<int64_t>(),
-// //       grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
-// //       thrust::get<0>(t));
-// // }
-
-// template <
-//     typename ForwardIterator,
-//     typename InputIterator,
-//     typename OutputIterator,
-//     typename StrictWeakOrdering,
-//     typename BinarySearchFunction>
-// OutputIterator binary_search(
-//     ForwardIterator begin,
-//     ForwardIterator end,
-//     InputIterator values_begin,
-//     InputIterator values_end,
-//     OutputIterator output,
-//     StrictWeakOrdering comp,
-//     BinarySearchFunction func) {
-//   std::vector<std::tuple<int64_t, int64_t>> grad_vec;
-//   for
-
-//     std::for_each(
-//         boost::make_zip_iterator(std::make_tuple(values_begin, output)),
-//         boost::make_zip_iterator(std::make_tuple(
-//             values_end, output + std::distance(values_begin, values_end))),
-//         binary_search_functor<
-//             ForwardIterator,
-//             StrictWeakOrdering,
-//             BinarySearchFunction>(begin, end, comp, func));
-
-//   return output + std::distance(values_begin, values_end);
-// }
-
-// struct lbf {
-//   template <
-//       typename RandomAccessIterator,
-//       typename T,
-//       typename StrictWeakOrdering>
-//   typename difference_type operator()(
-//       RandomAccessIterator begin,
-//       RandomAccessIterator end,
-//       const T& value,
-//       StrictWeakOrdering comp) {
-//     return lower_bound(begin, end, value, comp) - begin;
-//   }
-// };
-
-// template <typename ForwardIterator, typename T, typename StrictWeakOrdering>
-// ForwardIterator lower_bound(
-//     ForwardIterator begin,
-//     ForwardIterator end,
-//     const T& value,
-//     StrictWeakOrdering comp) {
-//   typedef typename difference_type difference_type;
-
-//   return begin + binary_search<difference_type>(begin, end, value, comp,
-//   lbf());
-// }
 
 template <typename scalar_t, bool LogSoftMax>
 void xpu_sparse_coo_softmax_backward(
@@ -686,45 +692,27 @@ void xpu_sparse_coo_softmax_backward(
   Tensor lower_bound_values =
       at::empty({out_offsets.size(0)}, indices.options());
 
-  // auto t1 = std::make_tuple(
-  //     out_offsets.data_ptr<int64_t>(),
-  //     lower_bound_values.data_ptr<int64_t>());
-  // auto t2 = std::make_tuple(
-  //     out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
-  //     lower_bound_values.data_ptr<int64_t>() +
-  //         std::distance(
-  //             out_offsets.data_ptr<int64_t>(),
-  //             out_offsets.data_ptr<int64_t>() + out_offsets.size(0)));
+  std::cout << "lower_bound_values------" << lower_bound_values << std::endl;
 
-  // pstl::for_each(
-  //     boost::make_zip_iterator(t1),
-  //     boost::make_zip_iterator(t2),
-  //     binary_search_functor<
-  //         ForwardIterator,
-  //         StrictWeakOrdering,
-  //         BinarySearchFunction>(begin, end, comp, func));
+  // pstl::lower_bound_tensor(
+  pstl::lower_bound_tensor<int64_t>(
+      grad_offsets.data_ptr<int64_t>(),
+      grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
+      out_offsets.data_ptr<int64_t>(),
+      out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
+      lower_bound_values.data_ptr<int64_t>());
 
-  // detail::binary_search_functor<
-  //     ForwardIterator,
-  //     StrictWeakOrdering,
-  //     BinarySearchFunction>(begin, end, comp, func));
+  std::cout << "after lower_bound_tensor---" << lower_bound_values << std::endl;
 
-  for (int64_t i = 0; i < out_offsets.size(0); i++) {
-    auto low = std::lower_bound(
-        grad_offsets.data_ptr<int64_t>(),
-        grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
-        out_offsets.data_ptr<int64_t>()[i]);
+  // for (int64_t i = 0; i < out_offsets.size(0); i++) {
+  //   auto low = std::lower_bound(
+  //       grad_offsets.data_ptr<int64_t>(),
+  //       grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
+  //       out_offsets.data_ptr<int64_t>()[i]);
 
-    lower_bound_values.data_ptr<int64_t>()[i] =
-        low - grad_offsets.data_ptr<int64_t>();
-  }
-
-  // lower_bound(
-  //     grad_offsets.data_ptr<int64_t>(),
-  //     grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
-  //     out_offsets.data_ptr<int64_t>(),
-  //     out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
-  //     lower_bound_values.data_ptr<int64_t>());
+  //   lower_bound_values.data_ptr<int64_t>()[i] =
+  //       low - grad_offsets.data_ptr<int64_t>();
+  // }
 
   /* Compute independent pools of indices */
   auto [sorted_indices, pool_offsets, pool_sizes, _] =
@@ -768,6 +756,7 @@ Tensor softmax_sparse_xpu_kernel(
   if (input.numel() == 0) {
     return output;
   }
+  std::cout << "softmax_sparse_xpu_kernel---dispatch" << std::endl;
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "softmax", [&] {
     xpu_sparse_coo_softmax<scalar_t, false>(output, input, dim);
   });

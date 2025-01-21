@@ -23,11 +23,9 @@ inline void memcpyHostToDevice(
   auto& queue = getCurrentSYCLQueue();
   auto e = queue.memcpy(dst, src, n_bytes);
   if (!async) {
-    // auto e = queue.memcpy(dst, src, n_bytes);
     e.wait();
   } else {
     if (is_pinned) {
-      // auto e = queue.memcpy(dst, src, n_bytes);
       at::xpu::CachingHostAllocator_recordEvent(
           const_cast<void*>(src),
           const_cast<void*>(hctx),

@@ -10,6 +10,7 @@ Tensor softmax_sparse_xpu(
     const Tensor& input_,
     const int64_t dim_,
     const bool half_to_float) {
+    std::cout<< "softmax_sparse_xpu---" << std::endl;
   return xpu::softmax_sparse_xpu_kernel(input_, dim_, half_to_float);
 }
 
