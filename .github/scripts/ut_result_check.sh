@@ -72,3 +72,24 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
+if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
+    grep "^FAILED" c10d_ops_xccl_test.log | awk '{print $2}' > ./"${ut_suite}"_ops_xccl_test_failed.log
+    grep "^FAILED" c10d_xccl_test.log | awk '{print $2}' > ./"${ut_suite}"_c10d_xccl_test_failed.log
+    num_failed_ops_xccl=$(wc -l < "./${ut_suite}_ops_xccl_test_failed.log")
+    num_failed_c10d_xccl=$(wc -l < "./${ut_suite}_c10d_xccl_test_failed.log")
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} c10d ops xccl"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_ops_xccl_test_failed.log"
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} c10d xccl"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_c10d_xccl_test_failed.log"
+    ((num_failed=num_failed_ops_xccl+num_failed_c10d_xccl))
+    if [[ $num_failed -gt 0 ]]; then
+      echo -e "[ERROR] UT ${ut_suite} test Fail"
+      exit 1
+    else
+      echo -e "[PASS] UT ${ut_suite} test Pass"
+    fi
+fi
