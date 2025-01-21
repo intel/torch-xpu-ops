@@ -8,6 +8,7 @@ conda activate "${CONDA_ENV}"
 
 # Use uv to speed up lintrunner init
 python3 -m pip install uv==0.1.45
+pip install ruamel.yaml
 
 CACHE_DIRECTORY="/tmp/.lintbin"
 # Try to recover the cached binaries

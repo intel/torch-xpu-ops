@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut }}
+    if: ${{ (github.event_name == 'schedule' || ${{ inputs.ut }}) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
@@ -68,7 +68,7 @@ jobs:
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
     runs-on: pvc_e2e
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
