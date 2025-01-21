@@ -96,7 +96,7 @@ jobs:
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        if: '${{ inputs.pytorch }}' != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
