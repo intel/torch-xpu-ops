@@ -1,5 +1,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <c10/util/BFloat16-math.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
 

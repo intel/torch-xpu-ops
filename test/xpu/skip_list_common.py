@@ -1818,6 +1818,14 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
         # AssertionError: Torch not compiled with CUDA enabled
         "test_zero_dim_tensorwise_which_dim_zero",
+        # New added case in 2.7
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_float16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_float16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_float16",
+        "test_cublas_and_lt_reduced_precision_fp16_accumulate_xpu",
     ),
     "test_maskedtensor_xpu.py": (
         # Summary: SparseCsrXPU OPs are not supported
@@ -3166,6 +3174,8 @@ skip_dict = {
         "test_meta_outplace_vdot_xpu_complex",
         # Unexpected success:
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
+        # New added case in 2.7
+        "test_nonzero_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_distributions_xpu.py": (
