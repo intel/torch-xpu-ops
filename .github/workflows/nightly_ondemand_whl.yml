@@ -124,6 +124,8 @@ jobs:
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
           git checkout ${TORCH_XPU_OPS_COMMIT}
+          cd ../../
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
       - name: Identify pinned versions
         id: pinned
         run: |
