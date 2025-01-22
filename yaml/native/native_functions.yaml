@@ -8365,6 +8365,22 @@
     SparseXPU: new_with_dims_and_tensor_sparse_symint
   autogen: _sparse_coo_tensor_with_dims_and_tensors.out
 
+- func: _sparse_sum(Tensor self) -> Tensor
+
+- func: _sparse_sum.dtype(Tensor self, *, ScalarType dtype) -> Tensor
+
+- func: _sparse_sum.dim(Tensor self, int[1] dim) -> Tensor
+  dispatch:
+    CompositeExplicitAutograd: _sparse_sum
+  autogen: _sparse_sum.dim_out
+
+- func: _sparse_sum.dim_dtype(Tensor self, int[1] dim, *, ScalarType dtype) -> Tensor
+
+- func: _sparse_sum_backward(Tensor grad, Tensor self, int[] dim) -> Tensor
+  dispatch:
+    SparseXPU: _sparse_sum_backward_xpu
+  autogen: _sparse_sum_backward.out
+
 - func: _sparse_softmax.int(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
   python_module: sparse
   variants: function
