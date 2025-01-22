@@ -35,6 +35,13 @@ set(TORCH_XPU_OPS_FOUND FALSE)
 set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
 list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 
+execute_process(
+  COMMAND icpx --version
+  OUTPUT_VARIABLE ICX_VERSION_OUTPUT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REGEX REPLACE ".*\\.([0-9]+)\\).*" "\\1" ICX_DATE ${ICX_VERSION_OUTPUT})
+
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
