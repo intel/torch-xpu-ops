@@ -28,4 +28,3 @@ Here are some tips:
 # Setup PyTorch source project. torch-xpu-ops is included by default.
 python setup.py install
 ```
-
