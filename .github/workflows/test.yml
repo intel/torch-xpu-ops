@@ -32,7 +32,7 @@ jobs:
       run: echo "Hello ${{ inputs.name }}"
 
   checkout-Codes:
-    runs-on: 48a42890d1fb
+    runs-on: [self-hosted,Linux,X64,test]
     steps:
       - name: Check out Code
         uses: actions/checkout@v4
