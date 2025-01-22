@@ -24,11 +24,14 @@ template <
     typename VarTransform,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE,
-    int LOCAL_SIZE,
-    int SG_SIZE>
+    int VEC_SIZE = 4,
+    int SG_SIZE = 32,
+    int NUM_SG = 8>
 struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
+  enum {
+    LOCAL_SIZE = SG_SIZE * NUM_SG,
+  };
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
@@ -40,16 +43,15 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     acc_vec_t m_2_n;
     int_vec_t count;
 #pragma unroll
-    for (int i = 0; i < VEC_SIZE; ++i) {
-      x_mean[i] = acc_t(0);
-      m_2_n[i] = acc_t(0);
-      count[i] = int(0);
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      x_mean[v] = acc_t(0);
+      m_2_n[v] = acc_t(0);
+      count[v] = int(0);
     }
 
     int lx = item.get_local_id(1);
     int gx = item.get_group(1);
     int gy = item.get_group(0);
-    constexpr int NUM_SG = LOCAL_SIZE / SG_SIZE;
     int num_cooperative_groups = item.get_group_range(0);
     auto c_vec_offset = gx * VEC_SIZE;
 
@@ -78,6 +80,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
 #pragma unroll
       for (int sg_id = 1; sg_id < NUM_SG; ++sg_id) {
         auto idx = lx + sg_id * SG_SIZE;
+#pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           welford_merge(
               count[v],
@@ -93,7 +96,9 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     shmem_m2n_[lx] = m_2_n;
     shmem_count_[lx] = count;
     item.barrier(sycl_local_fence);
+#pragma unroll
     for (int i = 1; i < SG_SIZE; i++) {
+#pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         welford_merge(
             count[v],
@@ -170,6 +175,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
 #pragma unroll
           for (int sg_id = 1; sg_id < NUM_SG; ++sg_id) {
             auto idx = lx + sg_id * SG_SIZE;
+#pragma unroll
             for (int v = 0; v < VEC_SIZE; ++v) {
               welford_merge(
                   count[v],
@@ -185,7 +191,9 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         shmem_m2n_[lx] = m_2_n;
         shmem_count_[lx] = count;
         item.barrier(sycl_local_fence);
+#pragma unroll
         for (int i = 1; i < SG_SIZE; i++) {
+#pragma unroll
           for (int v = 0; v < VEC_SIZE; ++v) {
             welford_merge(
                 count[v],
@@ -245,13 +253,13 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         semaphores_(semaphores) {
     auto gy = reduction_size / LOCAL_SIZE;
     if (gy % 8 == 0) {
-      cta_y_ = gy / 8;
+      num_cooperative_groups_ = gy / 8;
     } else if (gy % 4 == 0) {
-      cta_y_ = gy / 4;
+      num_cooperative_groups_ = gy / 4;
     } else if (gy % 2 == 0) {
-      cta_y_ = gy / 2;
+      num_cooperative_groups_ = gy / 2;
     } else {
-      cta_y_ = gy;
+      num_cooperative_groups_ = gy;
     }
   }
 
@@ -263,8 +271,8 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       acc_t* save_invstd) {
     bool valid = true;
     valid = valid && (n_channels % VEC_SIZE == 0);
-    valid = valid && (LOCAL_SIZE % SG_SIZE == 0);
     valid = valid && (reduction_size % LOCAL_SIZE == 0);
+    valid = valid && (reduction_size / n_channels >= 32);
     valid = valid &&
         (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
     valid = valid &&
@@ -279,11 +287,12 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   }
 
   sycl::range<2> global_range() const {
-    return sycl::range<2>(cta_y_, n_channels_ / VEC_SIZE * LOCAL_SIZE);
+    return sycl::range<2>(
+        num_cooperative_groups_, n_channels_ / VEC_SIZE * LOCAL_SIZE);
   }
 
   int staging_size() const {
-    return cta_y_ * n_channels_ * 4;
+    return num_cooperative_groups_ * n_channels_ * 4;
   }
 
   int semaphores_size() const {
@@ -299,7 +308,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   }
 
   int num_cooperative_groups() const {
-    return cta_y_;
+    return num_cooperative_groups_;
   }
 
  private:
@@ -310,8 +319,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   int n_channels_;
   acc_t* staging_data_;
   int* semaphores_;
-  size_t cta_y_;
-  sycl_local_acc_t<vec_t> shmem_x_;
+  size_t num_cooperative_groups_;
   sycl_local_acc_t<acc_vec_t> shmem_mean_;
   sycl_local_acc_t<acc_vec_t> shmem_m2n_;
   sycl_local_acc_t<int_vec_t> shmem_count_;
