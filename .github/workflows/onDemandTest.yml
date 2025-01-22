@@ -1,7 +1,7 @@
-name: Nightly-OnDemand Tests
+name: OnDemand Tests
 
-on:
-  schedule:
+#on:
+  #schedule:
     # GMT+8 21:00 every workday
     # - cron: '0 13 * * 0-4'
     # GMT+8 0:00 Saturday
@@ -66,7 +66,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-Build:
+  Linux-Ondemand-Build:
     if: always()
     name: linux-nightly-ondemand
     permissions:
@@ -79,7 +79,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: pvc_e2e
 
-  Linux-Nightly-Ondemand-UT-Tests:
+  Linux-Ondemand-UT-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
     name: linux-nightly-ondemand
     needs: Linux-Nightly-Ondemand-Build
@@ -92,7 +92,7 @@ jobs:
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
 
-  Linux-Nightly-Ondemand-E2E-Tests:
+  Linux-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
@@ -303,7 +303,7 @@ jobs:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
-  Linux-Nightly-Ondemand-Build-ABI-0:
+  Linux-Ondemand-Build-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
     name: linux-nightly-ondemand-abi0
     permissions:
