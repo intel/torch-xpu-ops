@@ -23,10 +23,23 @@ jobs:
   # This workflow contains a single job called "greet"
   greet:
     # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    runs-on: 48a42890d1fb
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Runs a single command using the runners shell
     - name: Send greeting
       run: echo "Hello ${{ inputs.name }}"
+
+  checkout Codes:
+    runs-on: 48a42890d1fb
+    steps:
+      - name: Check out Code
+        uses: actions/checkout@v4
+        run:
+          which conda && conda clean -ay
+          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          pip install pandas scipy tqdm
