@@ -64,12 +64,13 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     float tmpT[TileN];
     for (int in = 0; in < TileN; in++) {
       for (int is = 0; is < SgSize; is++) {
-        auto shlv = group_broadcast(sg, tmp[in], is);
+        auto shlv = select_from_group(sg, tmp[in], is);
         if (sg_id == in) {
           tmpT[is] = shlv;
         }
       }
     }
+    // weight(int4)(col_major) -> weight(dequant)(row_major)
     for (int in = 0; in < TileN; in++) {
       dbptr[sg_id + in * n] = tmpT[in];
     }
