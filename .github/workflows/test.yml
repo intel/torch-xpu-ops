@@ -31,11 +31,12 @@ jobs:
     - name: Send greeting
       run: echo "Hello ${{ inputs.name }}"
 
-  checkout Codes:
+  checkout-Codes:
     runs-on: 48a42890d1fb
     steps:
       - name: Check out Code
         uses: actions/checkout@v4
+      - name: Prepare Conda Env
         run:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
