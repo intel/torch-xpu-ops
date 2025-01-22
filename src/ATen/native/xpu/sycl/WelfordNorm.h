@@ -204,28 +204,17 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
                 shmem_m2n_[i][v]);
           }
         }
+      }
+    }
 
-        if (lx == 0) {
-          *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = x_mean;
-          acc_vec_t invstd_vec;
+    if (lx == 0 && (num_cooperative_groups == 1 || is_last_group_done_[0])) {
+      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = x_mean;
+      acc_vec_t invstd_vec;
 #pragma unroll
-          for (int i = 0; i < VEC_SIZE; ++i) {
-            invstd_vec[i] = VarTransform{}(m_2_n[i] / count[i], 1e-5);
-          }
-          *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) =
-              invstd_vec;
-        }
+      for (int i = 0; i < VEC_SIZE; ++i) {
+        invstd_vec[i] = VarTransform{}(m_2_n[i] / count[i], 1e-5);
       }
-    } else {
-      if (gy == 0 && lx == 0) {
-        *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = x_mean;
-        acc_vec_t invstd_vec;
-#pragma unroll
-        for (int i = 0; i < VEC_SIZE; ++i) {
-          invstd_vec[i] = VarTransform{}(m_2_n[i] / count[i], 1e-5);
-        }
-        *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) = invstd_vec;
-      }
+      *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) = invstd_vec;
     }
   }
 
@@ -272,7 +261,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     bool valid = true;
     valid = valid && (n_channels % VEC_SIZE == 0);
     valid = valid && (reduction_size % LOCAL_SIZE == 0);
-    valid = valid && (reduction_size / n_channels >= 32);
+    // valid = valid && (reduction_size / n_channels >= 32);
     valid = valid &&
         (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
     valid = valid &&
