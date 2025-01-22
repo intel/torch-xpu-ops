@@ -96,7 +96,7 @@ jobs:
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
@@ -128,6 +128,7 @@ jobs:
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
             cd ../..
+            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config

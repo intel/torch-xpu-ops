@@ -2332,12 +2332,10 @@ skip_dict = {
         # internally uses index_put deterministic implementation
         # dependent on "test_index_put_non_accumulate_deterministic"
         "test_index_copy_deterministic",
-
         # scatter_add needs handle XPU deterministic
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
         "test_scatter_add_one_dim_deterministic_xpu",
-
         # Precision error
         # Fail occasionally
         # Mismatched elements: 1 / 60 (1.7%)
@@ -2431,7 +2429,6 @@ skip_dict = {
         "test_register_state_dict_post_hook",
     ),
     "nn/test_parametrization_xpu.py": None,
-    "test_segment_reductions_xpu.py": None,
     "test_meta_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/774
         "_jiterator_",

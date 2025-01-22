@@ -22,6 +22,7 @@ permissions: read-all
 jobs:
   preci-linux-build:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux
     permissions:
@@ -33,6 +34,7 @@ jobs:
 
   preci-ut:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux
     needs: preci-linux-build
@@ -170,6 +172,7 @@ jobs:
   
   preci-linux-build-abi-0:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux-abi-0
     permissions:
