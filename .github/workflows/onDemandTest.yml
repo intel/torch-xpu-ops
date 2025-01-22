@@ -77,7 +77,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+      runner: kaileiyx
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
@@ -93,7 +93,7 @@ jobs:
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+    runs-on: kaileiyx
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
     if: github.repository_owner == 'intel'
@@ -314,7 +314,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       abi: 0
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+      runner: kaileiyx
 
   Linux-Weekly-UT-Tests-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
