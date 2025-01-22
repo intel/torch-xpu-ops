@@ -1,10 +1,7 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_utils import (
-    run_tests,
-    TestCase,
-)
+from torch.testing._internal.common_utils import run_tests, TestCase
 from torch.utils._python_dispatch import TorchDispatchMode
 
 
@@ -87,15 +84,6 @@ class TestAutocastGPU(TestCase):
 
         finally:
             torch._C._set_cached_tensors_enabled(False)
-
-
-try:
-    from xpu_test_utils import XPUPatchForImport
-except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
-
-with XPUPatchForImport(False):
-    from test_autocast import TestTorchAutocast
 
 
 if __name__ == "__main__":

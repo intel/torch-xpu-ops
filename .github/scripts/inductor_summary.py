@@ -3,6 +3,7 @@ import argparse
 import pandas as pd
 from scipy.stats import gmean
 from styleframe import StyleFrame, Styler, utils
+import numpy as np
 
 parser = argparse.ArgumentParser(description="Generate report")
 parser.add_argument('-s', '--suite', default=["huggingface"], nargs='*', type=str, help='model suite name')
@@ -59,7 +60,7 @@ def get_perf_csv(scenario, precision, mode, suite):
     target_ori_data = pd.read_csv(target_path, header=0, encoding='utf-8')
     target_data = target_ori_data.copy()
     target_data.sort_values(by=['name'])
-    
+
     if args.reference is not None:
         reference_file_path = args.reference + '/inductor_log/' + suite + '/' + precision + '/inductor_' + suite + '_' + precision + '_' + mode + '_xpu_' + scenario + '.csv'
         reference_ori_data = pd.read_csv(reference_file_path, header=0, encoding='utf-8')
@@ -100,20 +101,20 @@ def process(input, scenario, precision, mode):
             data_new['speed_up_new']=data_new['speed_up_new'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             data_new['eager_new'] = data_new['speed_up_new'] * data_new['inductor_new']
             geomean_values['target_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_new, 'speed_up_new', scenario)
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor_new', scenario)        
-            data_old=input[['batch_size_y','speedup_y','abs_latency_y','compilation_latency_y']].rename(columns={'batch_size_y':'batch_size_old','speedup_y':'speed_up_old',"abs_latency_y":'inductor_old',"compilation_latency_y":'compilation_latency_old'}) 
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'inductor_new', scenario)
+            data_old=input[['batch_size_y','speedup_y','abs_latency_y','compilation_latency_y']].rename(columns={'batch_size_y':'batch_size_old','speedup_y':'speed_up_old',"abs_latency_y":'inductor_old',"compilation_latency_y":'compilation_latency_old'})
             data_old['inductor_old']=data_old['inductor_old'].astype(float).div(1000)
             data_old['speed_up_old']=data_old['speed_up_old'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             data_old['eager_old'] = data_old['speed_up_old'] * data_old['inductor_old']
             input['speedup_x']=input['speedup_x'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             input['speedup_y']=input['speedup_y'].apply(pd.to_numeric, errors='coerce').fillna(0.0)
             geomean_values['reference_' + str(precision) + '_' + str(mode)] = caculate_geomean(data_old, 'speed_up_old', scenario)
-            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'inductor_old', scenario)        
+            passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'inductor_old', scenario)
             data_ratio= pd.DataFrame(round(input['speedup_x'] / input['speedup_y'],2),columns=['Ratio Speedup(New/old)'])
             data_ratio['Eager Ratio(old/new)'] = pd.DataFrame(round(data_old['eager_old'] / data_new['eager_new'],2))
             data_ratio['Inductor Ratio(old/new)'] = pd.DataFrame(round(data_old['inductor_old'] / data_new['inductor_new'],2))
             data_ratio['Compilation_latency_Ratio(old/new)'] = pd.DataFrame(round(data_old['compilation_latency_old'] / data_new['compilation_latency_new'],2))
-                
+
             combined_data = pd.DataFrame({
                 'name': list(data_new['name']),
                 'batch_size_new': list(data_new['batch_size_new']),
@@ -130,21 +131,21 @@ def process(input, scenario, precision, mode):
                 'Eager Ratio(old/new)': list(data_ratio['Eager Ratio(old/new)']),
                 'Inductor Ratio(old/new)': list(data_ratio['Inductor Ratio(old/new)']),
                 'Compilation_latency_Ratio(old/new)': list(data_ratio['Compilation_latency_Ratio(old/new)'])
-                }) 
+                })
             processed_data = StyleFrame(combined_data)
             processed_data.set_column_width(1, 10)
-            processed_data.set_column_width(2, 18) 
-            processed_data.set_column_width(3, 18) 
+            processed_data.set_column_width(2, 18)
+            processed_data.set_column_width(3, 18)
             processed_data.set_column_width(4, 18)
             processed_data.set_column_width(5, 15)
             processed_data.set_column_width(6, 20)
             processed_data.set_column_width(7, 18)
-            processed_data.set_column_width(8, 18) 
-            processed_data.set_column_width(9, 18) 
+            processed_data.set_column_width(8, 18)
+            processed_data.set_column_width(9, 18)
             processed_data.set_column_width(10, 15)
             processed_data.set_column_width(11, 20)
             processed_data.set_column_width(12, 28)
-            processed_data.set_column_width(13, 28) 
+            processed_data.set_column_width(13, 28)
             processed_data.set_column_width(14, 28)
             processed_data.set_column_width(15, 32)
             processed_data.apply_style_by_indexes(indexes_to_style=processed_data[processed_data['batch_size_new'] == 0], styler_obj=failure_style)
@@ -155,7 +156,7 @@ def process(input, scenario, precision, mode):
             regression.loc[0] = list(regression.shape[1]*'*')
             new_performance_regression = pd.concat([new_performance_regression,regression])
             processed_data.apply_style_by_indexes(indexes_to_style=processed_data[processed_data['Inductor Ratio(old/new)'] > 1.1],styler_obj=improve_style)
-            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)        
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)
     if input is not None and scenario == 'accuracy':
         if args.reference is None:
             data_new = input[['name', 'batch_size', 'accuracy']].rename(columns={'name': 'name', 'batch_size': 'batch_size', 'accuracy': 'accuracy'})
@@ -170,8 +171,8 @@ def process(input, scenario, precision, mode):
             processed_data.set_row_height(rows=processed_data.row_indexes, height=15)
         else:
             data_new=input[['name','batch_size_x','accuracy_x']].rename(columns={'name':'name','batch_size_x':'batch_size_new','accuracy_x':'accuracy_new'})
-            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy_new', scenario)        
-            data_old=input[['batch_size_y','accuracy_y']].rename(columns={'batch_size_y':'batch_size_old','accuracy_y':'accuracy_old'}) 
+            passrate_values['target_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_new, 'accuracy_new', scenario)
+            data_old=input[['batch_size_y','accuracy_y']].rename(columns={'batch_size_y':'batch_size_old','accuracy_y':'accuracy_old'})
             passrate_values['reference_' + str(precision) + '_' + str(mode)] = caculate_passrate(data_old, 'accuracy_old', scenario)
             data_comp = pd.DataFrame((data_new['accuracy_new'] != 'pass') & (data_old['accuracy_old'] == 'pass'),columns=['Accuracy regression'])
             combined_data = pd.DataFrame({
@@ -184,13 +185,13 @@ def process(input, scenario, precision, mode):
                 })
             processed_data = StyleFrame(combined_data)
             processed_data.set_column_width(1, 10)
-            processed_data.set_column_width(2, 18) 
-            processed_data.set_column_width(3, 18) 
+            processed_data.set_column_width(2, 18)
+            processed_data.set_column_width(3, 18)
             processed_data.set_column_width(4, 18)
             processed_data.set_column_width(5, 15)
             processed_data.set_column_width(6, 20)
             processed_data.apply_style_by_indexes(indexes_to_style=processed_data[(processed_data['Accuracy regression'] == 'regression')],styler_obj=regression_style)
-            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)        
+            processed_data.set_row_height(rows=processed_data.row_indexes, height=15)
     return processed_data
 
 def update_details(scenario, precision, mode, suite, excel):
@@ -378,7 +379,7 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[18:19, 9:10] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 9:10] = geomean_values['reference_float32_training']
-        
+
         if suite == 'torchbench':
             if 'amp_bf16' in args.precision:
                 if 'inference' in args.mode:
@@ -454,10 +455,10 @@ def update_summary(excel, scenario, suite):
                     if 'training' in args.mode:
                         summary.iloc[18:19, 7:8] = passrate_values['reference_float32_training']
                         summary.iloc[19:20, 7:8] = geomean_values['reference_float32_training']
-            
+
         print(f"===================={scenario}Summary=============================")
         print(summary)
-        
+
         sf = StyleFrame(summary)
         for i in range(1, 11):
             sf.set_column_width(i, 22)
@@ -486,7 +487,7 @@ def update_summary(excel, scenario, suite):
                     summary.iloc[0:1, 4:5] = passrate_values['target_amp_bf16_inference']
                 if 'training' in args.mode:
                     summary.iloc[1:2, 4:5] = passrate_values['target_amp_bf16_training']
-                    
+
             if 'amp_fp16' in args.precision:
                 if 'inference' in args.mode:
                     summary.iloc[2:3, 4:5] = passrate_values['target_amp_fp16_inference']
@@ -654,10 +655,10 @@ def update_summary(excel, scenario, suite):
                         summary.iloc[8:9, 6:7] = passrate_values['reference_float32_inference']
                     if 'training' in args.mode:
                         summary.iloc[9:10, 6:7] = passrate_values['reference_float32_training']
-            
+
         print(f"===================={scenario} Summary=============================")
         print(summary)
-        
+
         sf = StyleFrame(summary)
         for i in range(1, 10):
             sf.set_column_width(i, 22)
@@ -665,6 +666,73 @@ def update_summary(excel, scenario, suite):
             sf.set_row_height(j, 30)
         sf.to_excel(sheet_name=suite + '_'  + scenario + '_Summary', excel_writer=excel)
 
+def summary_conclusion(scenario, excel):
+    excel.book.save(excel)
+    df = pd.read_excel(excel, sheet_name = None, header = None)
+    #df = pd.DataFrame(excel)
+    if scenario == 'performance':
+        sheet_names = list(df.keys())
+        sheet_names = [s for s in sheet_names if 'Summary' in s and 'performance' in s]
+        sheet_names.sort()
+        print(f"Merge excel as below:\n{sheet_names}")
+        print("\n")
+        features = [[]] * 21
+        for sheet_name in sheet_names:
+            df_sheet = df[sheet_name]
+            df_sheet = df_sheet.values
+            features = np.hstack((features, df_sheet))
+
+        if len(sheet_names) == 1:
+            print("sheet not merge")
+        elif len(sheet_names) == 2:
+            print("2 sheets merge")
+            if 'huggingface' in sheet_names[0]:
+                features[:, 4:5] = features[:, 14:15]
+                features[:, 6:7] = features[:, 16:17]
+            else:
+                features[:, 4:5] = features[:, 14:15]
+        else:
+            print("3 sheets merge")
+            features[:, 4:5] = features[:, 24:25]
+            features[:, 6:7] = features[:, 16:17]
+
+        df_concat = StyleFrame(pd.DataFrame(features).iloc[:,:10])
+        for i in range(10):
+            df_concat.set_column_width(i, 22)
+        for j in range(1, 23):
+            df_concat.set_row_height(j, 30)
+        df_concat.to_excel(sheet_name='Perf_Summary', excel_writer=excel, index=False)
+    else:
+        sheet_names = list(df.keys())
+        sheet_names = [s for s in sheet_names if 'Summary' in s and 'accuracy' in s]
+        sheet_names.sort()
+        print(f"Merge excel as below:\n{sheet_names}")
+        print("\n")
+        features = [[]] * 11
+        for sheet_name in sheet_names:
+            df_sheet = df[sheet_name]
+            df_sheet = df_sheet.values
+            features = np.hstack((features, df_sheet))
+        if len(sheet_names) == 1:
+            print("sheet not merge")
+        elif len(sheet_names) == 2:
+            print("2 sheets merge")
+            if 'huggingface' in sheet_names[0]:
+                features[:, 3:4] = features[:, 12:13]
+                features[:, 5:6] = features[:, 14:15]
+            else:
+                features[:, 3:4] = features[:, 12:13]
+        else:
+            print("3 sheets merge")
+            features[:, 3:4] = features[:, 21:22]
+            features[:, 5:6] = features[:, 14:15]
+
+        df_concat = StyleFrame(pd.DataFrame(features).iloc[:,:9])
+        for i in range(10):
+            df_concat.set_column_width(i, 22)
+        for j in range(1, 13):
+            df_concat.set_row_height(j, 30)
+        df_concat.to_excel(sheet_name='Acc_Summary', excel_writer=excel, index=False)
 
 def generate_report(excel, scenario_list, precision_list, mode_list, suite_list):
     for sc in scenario_list:
@@ -693,8 +761,19 @@ def excel_postprocess(file, scenario, precison, mode, suite):
                     wdt.merge_cells(start_row=1, end_row=1, start_column=13, end_column=16)
             wb.save(file)
 
+        if len(scenario) == 2:
+            wb.move_sheet("Perf_Summary", -(len(wb.worksheets)-1))
+            wb.move_sheet("Acc_Summary", -(len(wb.worksheets)-1))
+        elif len(scenario) == 1 and sc == 'accuracy':
+            wb.move_sheet("Acc_Summary", -(len(wb.worksheets)-1))
+        else:
+            wb.move_sheet("Perf_Summary", -(len(wb.worksheets)-1))
+
 
 if __name__ == '__main__':
     excel = StyleFrame.ExcelWriter('inductor_log/Inductor_E2E_Test_Report.xlsx')
     generate_report(excel, args.scenario, args.precision, args.mode, args.suite)
+    for sc in args.scenario:
+        summary_conclusion(sc, excel)
     excel_postprocess(excel, args.scenario, args.precision, args.mode, args.suite)
+    excel.close()

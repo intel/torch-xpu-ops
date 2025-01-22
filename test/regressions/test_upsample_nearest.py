@@ -1,9 +1,11 @@
+# Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
 from torch.autograd import Variable
+from torch.testing._internal.common_utils import TestCase
 
 device = torch.device("xpu")
 cpu_device = torch.device("cpu")
+
 
 class TestTorchMethod(TestCase):
     def test_upsample_nearest(self):

@@ -12,9 +12,9 @@ NUM_SHARDS=${8}             # num test shards
 SHARD_ID=${9}               # shard id
 MODEL_ONLY=${10}            # GoogleFnet / T5Small / ...
 
-WORKSPACE=`pwd`
+WORKSPACE=$(pwd)
 LOG_DIR=$WORKSPACE/inductor_log/${SUITE}/${DT}
-mkdir -p ${LOG_DIR}
+mkdir -p "${LOG_DIR}"
 LOG_NAME=inductor_${SUITE}_${DT}_${MODE}_${DEVICE}_${SCENARIO}
 
 Model_only_extra=""
@@ -23,8 +23,8 @@ if [[ -n "$MODEL_ONLY" ]]; then
     Model_only_extra="--only ${MODEL_ONLY}"
 fi
 
-Cur_Ver=`pip list | grep "^torch " | awk '{print $2}' | cut -d"+" -f 1`
-if [ $(printf "${Cur_Ver}\n2.0.2"|sort|head -1) = "${Cur_Ver}" ]; then
+Cur_Ver=$(pip list | grep "^torch " | awk '{print $2}' | cut -d"+" -f 1)
+if [ "$(printf "%s\n2.0.2" "${Cur_Ver}"|sort|head -1)" = "${Cur_Ver}" ]; then
     Mode_extra="";
 else
     # For PT >= 2.1
@@ -60,6 +60,6 @@ fi
 
 ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \
-    python benchmarks/dynamo/${SUITE}.py --${SCENARIO} --${Real_DT} -d ${DEVICE} -n10 ${DT_extra} ${Mode_extra} \
-    ${Shape_extra} ${partition_flags} ${Model_only_extra} --backend=inductor --cold-start-latency --timeout=10800 \
-    --output=${LOG_DIR}/${LOG_NAME}.csv 2>&1 | tee ${LOG_DIR}/${LOG_NAME}_card${CARD}.log
+    eval python benchmarks/dynamo/"${SUITE}".py --"${SCENARIO}" --"${Real_DT}" -d "${DEVICE}" -n10 "${DT_extra}" "${Mode_extra}" \
+    "${Shape_extra}" "${partition_flags}" "${Model_only_extra}" --backend=inductor --cold-start-latency --timeout=10800 \
+         --output="${LOG_DIR}"/"${LOG_NAME}".csv 2>&1 | tee "${LOG_DIR}"/"${LOG_NAME}"_card"${CARD}".log

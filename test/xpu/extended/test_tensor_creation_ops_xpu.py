@@ -6,7 +6,6 @@ import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import NoTest, run_tests, TEST_XPU, TestCase
 
-
 try:
     from xpu_test_utils import copy_tests, XPUPatchForImport
 except Exception as e:
@@ -34,7 +33,9 @@ copy_tests(
     TestTensorCreationBase,
     applicable_list=["test_empty_strided"],
 )
-instantiate_device_type_tests(TestTensorCreationXPU, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestTensorCreationXPU, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

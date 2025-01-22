@@ -8,6 +8,7 @@ on:
       - reopened
       - converted_to_draft
       - ready_for_review
+      - labeled
     branches:
       - main
       - release/*
@@ -19,24 +20,33 @@ concurrency:
 permissions: read-all
 
 jobs:
+  preci-linux-build:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: main
+      runner: pvc_e2e
+
   preci-ut:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
+    needs: preci-linux-build
     uses: ./.github/workflows/_linux_ut.yml
     with:
+      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut
       runner: linux.idc.xpu
 
-  preci-ut-abi-0:
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      ut: op_extended
-      runner: linux.idc.xpu
-
   Inductor-XPU-E2E-CI-Tests:
+    name: preci-linux / e2e_test
+    needs: preci-linux-build
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
@@ -57,8 +67,8 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone -b main https://github.com/pytorch/pytorch pytorch
-          cd pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
           # apply PRs for stock pytorch
           pip install requests
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
@@ -76,21 +86,25 @@ jobs:
           TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
           echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
-      - name: Build Pytorch XPU
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          path: ${{ github.workspace }}
+      - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-          python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Identify pinned versions
         run: |
           cd ../pytorch
           echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHBENCH_COMMIT_ID=$(<third_party/torch-xpu-ops/.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
@@ -144,9 +158,9 @@ jobs:
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
-          failed_case=$(grep "Real failed: models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          failed_case=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
           if [ ${failed_case} -ne 0 ];then
-            grep -E "Real failed: models: [1-9]|Summary for" ${{ github.workspace }}/summary_accuracy.log
+            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
@@ -155,3 +169,37 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+  
+  preci-linux-build-abi-0:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-abi-0
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: main
+      abi: 0
+      runner: pvc_e2e
+
+  preci-ut-abi-0:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-abi-0
+    needs: preci-linux-build-abi-0
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      abi: 0
+      pytorch: ${{ needs.preci-linux-build-abi-0.outputs.torch_commit_id }}
+      ut: op_extended
+      runner: linux.idc.xpu
+  
+  preci-windows:
+    # Don't run on forked repos and draft PRs
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    name: preci-windows
+    uses: ./.github/workflows/_windows_ut.yml
+    with: 
+      ut: op_extended
+      runner: Windows_CI

@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
 
@@ -58,7 +59,7 @@ class TestTorchMethod(TestCase):
         stream_record = torch.xpu.Stream()
         with torch.xpu.stream(stream_record):
             for i in range(30):
-                z = x+y
+                z = x + y
 
         view.record_stream(stream_record)
 
