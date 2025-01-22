@@ -1,24 +1,15 @@
 # Owner(s): ["oncall: distributed"]
 
 import math
-import copy
 import os
 import sys
 import time
-import random
-
 from datetime import timedelta
 from enum import auto, Enum
-from itertools import product
 from unittest import mock
 
 import torch
 import torch.distributed as c10d
-import torch.distributed.algorithms.ddp_comm_hooks.default_hooks as default
-import torch.distributed.algorithms.ddp_comm_hooks.powerSGD_hook as powerSGD
-import torch.nn.functional as F
-from torch import nn
-from torch.nn.parallel import DistributedDataParallel
 
 if not c10d.is_available() or not c10d.is_xccl_available():
     print("c10d XCCL not available, skipping tests", file=sys.stderr)
@@ -26,28 +17,29 @@ if not c10d.is_available() or not c10d.is_xccl_available():
 
 import torch.distributed as dist
 import torch.testing._internal.common_utils as common
-from torch.testing._internal.common_distributed import (
-    MultiProcessTestCase,
-)
+from torch.testing._internal.common_distributed import MultiProcessTestCase
 from torch.testing._internal.common_utils import (
     retry_on_connect_failures,
-    skip_but_pass_in_sandcastle_if,
     run_tests,
+    skip_but_pass_in_sandcastle_if,
     TEST_XPU,
     TestCase,
 )
 
+
 def skip_if_lt_x_gpu(x):
     return skip_but_pass_in_sandcastle_if(
         not torch.xpu.device_count() >= x,
-        "atleast {} GPUs needed".format(x),
+        f"atleast {x} GPUs needed",
     )
+
 
 def requires_xccl():
     return skip_but_pass_in_sandcastle_if(
         not c10d.is_xccl_available(),
         "c10d was not compiled with the XCCL backend",
     )
+
 
 def init_multigpu_helper(world_size: int, backend: str):
     """Multigpu tests are designed to simulate the multi nodes with multi
@@ -68,6 +60,7 @@ def init_multigpu_helper(world_size: int, backend: str):
         for i in range(world_size)
     }
     return rank_to_GPU
+
 
 def simple_reduce_tests(rank, world_size):
     tests = [
@@ -284,7 +277,8 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         time.sleep(2)
         dist.destroy_process_group()
 
-    # todo: https://github.com/pytorch/pytorch/blob/c06b5048ba866e2dd39e5da5399fe8261322c7ca/torch/distributed/distributed_c10d.py#L1862 device agnostic
+    # todo: https://github.com/pytorch/pytorch/blob/c06b5048ba866e2dd39e5da5399fe8261322c7ca/
+    #       torch/distributed/distributed_c10d.py#L1862 device agnostic
     # @requires_xccl()
     # @skip_but_pass_in_sandcastle_if(not TEST_MULTIXPU, "XCCL test requires 2+ GPUs")
     # def test_set_process_group_desc(self):
@@ -316,7 +310,7 @@ class CommTest(MultiProcessTestCase):
     @property
     def world_size(self) -> int:
         return 2
-    
+
     def _test_broadcast_coalesced(self, process_group, device, root_rank):
         half = torch.float16
 
@@ -508,4 +502,3 @@ class SetDeviceMethod(Enum):
 
 if __name__ == "__main__":
     run_tests()
-

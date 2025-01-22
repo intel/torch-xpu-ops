@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 import math
 from abc import ABC, abstractmethod
 
@@ -24,7 +25,9 @@ class DeterministicGuard:
         torch.use_deterministic_algorithms(self.deterministic, warn_only=self.warn_only)
 
     def __exit__(self, exception_type, exception_value, traceback):
-        torch.use_deterministic_algorithms(self.deterministic_restore, warn_only=self.warn_only_restore)
+        torch.use_deterministic_algorithms(
+            self.deterministic_restore, warn_only=self.warn_only_restore
+        )
 
 
 class RoIOpTesterModuleWrapper(nn.Module):
@@ -63,7 +66,15 @@ class RoIOpTester(ABC):
         ),
         ids=str,
     )
-    def test_forward(self, device, contiguous, x_dtype, rois_dtype=None, deterministic=False, **kwargs):
+    def test_forward(
+        self,
+        device,
+        contiguous,
+        x_dtype,
+        rois_dtype=None,
+        deterministic=False,
+        **kwargs,
+    ):
         if device == "mps" and x_dtype is torch.float64:
             pytest.skip("MPS does not support float64")
 
@@ -85,18 +96,33 @@ class RoIOpTester(ABC):
         if not contiguous:
             x = x.permute(0, 1, 3, 2)
         rois = torch.tensor(
-            [[0, 0, 0, 9, 9], [0, 0, 5, 4, 9], [0, 5, 5, 9, 9], [1, 0, 0, 9, 9]],  # format is (xyxy)
+            [
+                [0, 0, 0, 9, 9],
+                [0, 0, 5, 4, 9],
+                [0, 5, 5, 9, 9],
+                [1, 0, 0, 9, 9],
+            ],  # format is (xyxy)
             dtype=rois_dtype,
             device=device,
         )
 
         pool_h, pool_w = pool_size, pool_size
         with DeterministicGuard(deterministic):
-            y = self.fn(x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, **kwargs)
+            y = self.fn(
+                x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, **kwargs
+            )
         # the following should be true whether we're running an autocast test or not.
         assert y.dtype == x.dtype
         gt_y = self.expected_fn(
-            x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, device=device, dtype=x_dtype, **kwargs
+            x,
+            rois,
+            pool_h,
+            pool_w,
+            spatial_scale=1,
+            sampling_ratio=-1,
+            device=device,
+            dtype=x_dtype,
+            **kwargs,
         )
 
         torch.testing.assert_close(gt_y.to(y), y, rtol=tol, atol=tol)
@@ -118,7 +144,12 @@ class RoIOpTester(ABC):
         n_channels = 2 * (pool_size**2)
         x = torch.rand(2, n_channels, 5, 5, dtype=x_dtype, device=device)
         rois = torch.tensor(
-            [[0, 0, 0, 9, 9], [0, 0, 5, 4, 9], [0, 5, 5, 9, 9], [1, 0, 0, 9, 9]],  # format is (xyxy)
+            [
+                [0, 0, 0, 9, 9],
+                [0, 0, 5, 4, 9],
+                [0, 5, 5, 9, 9],
+                [1, 0, 0, 9, 9],
+            ],  # format is (xyxy)
             dtype=rois_dtype,
             device=device,
         )
@@ -138,15 +169,27 @@ class RoIOpTester(ABC):
 
         torch.random.manual_seed(seed)
         pool_size = 2
-        x = torch.rand(1, 2 * (pool_size**2), 5, 5, dtype=dtype, device=device, requires_grad=True)
+        x = torch.rand(
+            1,
+            2 * (pool_size**2),
+            5,
+            5,
+            dtype=dtype,
+            device=device,
+            requires_grad=True,
+        )
         if not contiguous:
             x = x.permute(0, 1, 3, 2)
         rois = torch.tensor(
-            [[0, 0, 0, 4, 4], [0, 0, 2, 3, 4], [0, 2, 2, 4, 4]], dtype=dtype, device=device  # format is (xyxy)
+            [[0, 0, 0, 4, 4], [0, 0, 2, 3, 4], [0, 2, 2, 4, 4]],
+            dtype=dtype,
+            device=device,  # format is (xyxy)
         )
 
         def func(z):
-            return self.fn(z, rois, pool_size, pool_size, spatial_scale=1, sampling_ratio=1)
+            return self.fn(
+                z, rois, pool_size, pool_size, spatial_scale=1, sampling_ratio=1
+            )
 
         script_func = self.get_script_fn(rois, pool_size)
 
@@ -156,19 +199,19 @@ class RoIOpTester(ABC):
         gradcheck(script_func, (x,), atol=atol)
 
     @abstractmethod
-    def fn(*args, **kwargs):
+    def fn(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def make_obj(*args, **kwargs):
+    def make_obj(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def get_script_fn(*args, **kwargs):
+    def get_script_fn(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def expected_fn(*args, **kwargs):
+    def expected_fn(self, *args, **kwargs):
         pass
 
 
@@ -185,20 +228,32 @@ class TestRoiPool(RoIOpTester):
         return lambda x: scriped(x, rois, pool_size)
 
     def expected_fn(
-        self, x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, device=None, dtype=torch.float64
+        self,
+        x,
+        rois,
+        pool_h,
+        pool_w,
+        spatial_scale=1,
+        sampling_ratio=-1,
+        device=None,
+        dtype=torch.float64,
     ):
         if device is None:
             device = torch.device("cpu")
 
         n_channels = x.size(1)
-        y = torch.zeros(rois.size(0), n_channels, pool_h, pool_w, dtype=dtype, device=device)
+        y = torch.zeros(
+            rois.size(0), n_channels, pool_h, pool_w, dtype=dtype, device=device
+        )
 
         def get_slice(k, block):
             return slice(int(np.floor(k * block)), int(np.ceil((k + 1) * block)))
 
         for roi_idx, roi in enumerate(rois):
             batch_idx = int(roi[0])
-            j_begin, i_begin, j_end, i_end = (int(round(x.item() * spatial_scale)) for x in roi[1:])
+            j_begin, i_begin, j_end, i_end = (
+                int(round(x.item() * spatial_scale)) for x in roi[1:]
+            )
             roi_x = x[batch_idx, :, i_begin : i_end + 1, j_begin : j_end + 1]
 
             roi_h, roi_w = roi_x.shape[-2:]
@@ -209,7 +264,9 @@ class TestRoiPool(RoIOpTester):
                 for j in range(0, pool_w):
                     bin_x = roi_x[:, get_slice(i, bin_h), get_slice(j, bin_w)]
                     if bin_x.numel() > 0:
-                        y[roi_idx, :, i, j] = bin_x.reshape(n_channels, -1).max(dim=1)[0]
+                        y[roi_idx, :, i, j] = bin_x.reshape(n_channels, -1).max(dim=1)[
+                            0
+                        ]
         return y
 
 
@@ -228,21 +285,35 @@ class TestPSRoIPool(RoIOpTester):
         return lambda x: scriped(x, rois, pool_size)
 
     def expected_fn(
-        self, x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, device=None, dtype=torch.float64
+        self,
+        x,
+        rois,
+        pool_h,
+        pool_w,
+        spatial_scale=1,
+        sampling_ratio=-1,
+        device=None,
+        dtype=torch.float64,
     ):
         if device is None:
             device = torch.device("cpu")
         n_input_channels = x.size(1)
-        assert n_input_channels % (pool_h * pool_w) == 0, "input channels must be divisible by ph * pw"
+        assert (
+            n_input_channels % (pool_h * pool_w) == 0
+        ), "input channels must be divisible by ph * pw"
         n_output_channels = int(n_input_channels / (pool_h * pool_w))
-        y = torch.zeros(rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device)
+        y = torch.zeros(
+            rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device
+        )
 
         def get_slice(k, block):
             return slice(int(np.floor(k * block)), int(np.ceil((k + 1) * block)))
 
         for roi_idx, roi in enumerate(rois):
             batch_idx = int(roi[0])
-            j_begin, i_begin, j_end, i_end = (int(round(x.item() * spatial_scale)) for x in roi[1:])
+            j_begin, i_begin, j_end, i_end = (
+                int(round(x.item() * spatial_scale)) for x in roi[1:]
+            )
             roi_x = x[batch_idx, :, i_begin : i_end + 1, j_begin : j_end + 1]
 
             roi_height = max(i_end - i_begin, 1)
@@ -296,14 +367,38 @@ def bilinear_interpolate(data, y, x, snap_border=False):
 class TestRoIAlign(RoIOpTester):
     mps_backward_atol = 6e-2
 
-    def fn(self, x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, aligned=False, **kwargs):
+    def fn(
+        self,
+        x,
+        rois,
+        pool_h,
+        pool_w,
+        spatial_scale=1,
+        sampling_ratio=-1,
+        aligned=False,
+        **kwargs,
+    ):
         return ops.RoIAlign(
-            (pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio, aligned=aligned
+            (pool_h, pool_w),
+            spatial_scale=spatial_scale,
+            sampling_ratio=sampling_ratio,
+            aligned=aligned,
         )(x, rois)
 
-    def make_obj(self, pool_h=5, pool_w=5, spatial_scale=1, sampling_ratio=-1, aligned=False, wrap=False):
+    def make_obj(
+        self,
+        pool_h=5,
+        pool_w=5,
+        spatial_scale=1,
+        sampling_ratio=-1,
+        aligned=False,
+        wrap=False,
+    ):
         obj = ops.RoIAlign(
-            (pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio, aligned=aligned
+            (pool_h, pool_w),
+            spatial_scale=spatial_scale,
+            sampling_ratio=sampling_ratio,
+            aligned=aligned,
         )
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
 
@@ -326,13 +421,17 @@ class TestRoIAlign(RoIOpTester):
         if device is None:
             device = torch.device("cpu")
         n_channels = in_data.size(1)
-        out_data = torch.zeros(rois.size(0), n_channels, pool_h, pool_w, dtype=dtype, device=device)
+        out_data = torch.zeros(
+            rois.size(0), n_channels, pool_h, pool_w, dtype=dtype, device=device
+        )
 
         offset = 0.5 if aligned else 0.0
 
         for r, roi in enumerate(rois):
             batch_idx = int(roi[0])
-            j_begin, i_begin, j_end, i_end = (x.item() * spatial_scale - offset for x in roi[1:])
+            j_begin, i_begin, j_end, i_end = (
+                x.item() * spatial_scale - offset for x in roi[1:]
+            )
 
             roi_h = i_end - i_begin
             roi_w = j_end - j_begin
@@ -344,7 +443,9 @@ class TestRoIAlign(RoIOpTester):
                 grid_h = sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_h))
                 for j in range(0, pool_w):
                     start_w = j_begin + j * bin_w
-                    grid_w = sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_w))
+                    grid_w = (
+                        sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_w))
+                    )
 
                     for channel in range(0, n_channels):
                         val = 0
@@ -352,7 +453,12 @@ class TestRoIAlign(RoIOpTester):
                             y = start_h + (iy + 0.5) * bin_h / grid_h
                             for ix in range(0, grid_w):
                                 x = start_w + (ix + 0.5) * bin_w / grid_w
-                                val += bilinear_interpolate(in_data[batch_idx, channel, :, :], y, x, snap_border=True)
+                                val += bilinear_interpolate(
+                                    in_data[batch_idx, channel, :, :],
+                                    y,
+                                    x,
+                                    snap_border=True,
+                                )
                         val /= grid_h * grid_w
 
                         out_data[r, channel, i, j] = val
@@ -360,11 +466,15 @@ class TestRoIAlign(RoIOpTester):
 
     @pytest.mark.parametrize("aligned", (True, False))
     @pytest.mark.parametrize("device", ("xpu",))
-    @pytest.mark.parametrize("x_dtype", (torch.float16, torch.float32, torch.float64))  # , ids=str)
+    @pytest.mark.parametrize(
+        "x_dtype", (torch.float16, torch.float32, torch.float64)
+    )  # , ids=str)
     @pytest.mark.parametrize("contiguous", (True, False))
     @pytest.mark.parametrize("deterministic", (True, False))
-    @pytest.mark.opcheck_only_one()
-    def test_forward(self, device, contiguous, deterministic, aligned, x_dtype, rois_dtype=None):
+    @pytest.mark.opcheck_only_one
+    def test_forward(
+        self, device, contiguous, deterministic, aligned, x_dtype, rois_dtype=None
+    ):
         if deterministic and device == "cpu":
             pytest.skip("cpu is always deterministic, don't retest")
         super().test_forward(
@@ -380,7 +490,7 @@ class TestRoIAlign(RoIOpTester):
     @pytest.mark.parametrize("deterministic", (True, False))
     @pytest.mark.parametrize("x_dtype", (torch.float, torch.half))
     @pytest.mark.parametrize("rois_dtype", (torch.float, torch.half))
-    @pytest.mark.opcheck_only_one()
+    @pytest.mark.opcheck_only_one
     def test_autocast(self, aligned, deterministic, x_dtype, rois_dtype):
         with torch.amp.autocast("xpu"):
             self.test_forward(
@@ -397,10 +507,16 @@ class TestPSRoIAlign(RoIOpTester):
     mps_backward_atol = 5e-2
 
     def fn(self, x, rois, pool_h, pool_w, spatial_scale=1, sampling_ratio=-1, **kwargs):
-        return ops.PSRoIAlign((pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio)(x, rois)
+        return ops.PSRoIAlign(
+            (pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio
+        )(x, rois)
 
-    def make_obj(self, pool_h=5, pool_w=5, spatial_scale=1, sampling_ratio=-1, wrap=False):
-        obj = ops.PSRoIAlign((pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio)
+    def make_obj(
+        self, pool_h=5, pool_w=5, spatial_scale=1, sampling_ratio=-1, wrap=False
+    ):
+        obj = ops.PSRoIAlign(
+            (pool_h, pool_w), spatial_scale=spatial_scale, sampling_ratio=sampling_ratio
+        )
         return RoIOpTesterModuleWrapper(obj) if wrap else obj
 
     def get_script_fn(self, rois, pool_size):
@@ -408,18 +524,32 @@ class TestPSRoIAlign(RoIOpTester):
         return lambda x: scriped(x, rois, pool_size)
 
     def expected_fn(
-        self, in_data, rois, pool_h, pool_w, device, spatial_scale=1, sampling_ratio=-1, dtype=torch.float64
+        self,
+        in_data,
+        rois,
+        pool_h,
+        pool_w,
+        device,
+        spatial_scale=1,
+        sampling_ratio=-1,
+        dtype=torch.float64,
     ):
         if device is None:
             device = torch.device("cpu")
         n_input_channels = in_data.size(1)
-        assert n_input_channels % (pool_h * pool_w) == 0, "input channels must be divisible by ph * pw"
+        assert (
+            n_input_channels % (pool_h * pool_w) == 0
+        ), "input channels must be divisible by ph * pw"
         n_output_channels = int(n_input_channels / (pool_h * pool_w))
-        out_data = torch.zeros(rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device)
+        out_data = torch.zeros(
+            rois.size(0), n_output_channels, pool_h, pool_w, dtype=dtype, device=device
+        )
 
         for r, roi in enumerate(rois):
             batch_idx = int(roi[0])
-            j_begin, i_begin, j_end, i_end = (x.item() * spatial_scale - 0.5 for x in roi[1:])
+            j_begin, i_begin, j_end, i_end = (
+                x.item() * spatial_scale - 0.5 for x in roi[1:]
+            )
 
             roi_h = i_end - i_begin
             roi_w = j_end - j_begin
@@ -431,7 +561,9 @@ class TestPSRoIAlign(RoIOpTester):
                 grid_h = sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_h))
                 for j in range(0, pool_w):
                     start_w = j_begin + j * bin_w
-                    grid_w = sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_w))
+                    grid_w = (
+                        sampling_ratio if sampling_ratio > 0 else int(np.ceil(bin_w))
+                    )
                     for c_out in range(0, n_output_channels):
                         c_in = c_out * (pool_h * pool_w) + pool_w * i + j
 
@@ -440,7 +572,12 @@ class TestPSRoIAlign(RoIOpTester):
                             y = start_h + (iy + 0.5) * bin_h / grid_h
                             for ix in range(0, grid_w):
                                 x = start_w + (ix + 0.5) * bin_w / grid_w
-                                val += bilinear_interpolate(in_data[batch_idx, c_in, :, :], y, x, snap_border=True)
+                                val += bilinear_interpolate(
+                                    in_data[batch_idx, c_in, :, :],
+                                    y,
+                                    x,
+                                    snap_border=True,
+                                )
                         val /= grid_h * grid_w
 
                         out_data[r, c_out, i, j] = val
@@ -448,7 +585,9 @@ class TestPSRoIAlign(RoIOpTester):
 
 
 class TestMultiScaleRoIAlign:
-    def make_obj(self, fmap_names=None, output_size=(7, 7), sampling_ratio=2, wrap=False):
+    def make_obj(
+        self, fmap_names=None, output_size=(7, 7), sampling_ratio=2, wrap=False
+    ):
         if fmap_names is None:
             fmap_names = ["0"]
         obj = ops.poolers.MultiScaleRoIAlign(fmap_names, output_size, sampling_ratio)
