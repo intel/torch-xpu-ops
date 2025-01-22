@@ -13,6 +13,8 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
+#include <ATen/ops/_sparse_sum.h>
+#include <ATen/ops/_sparse_sum_backward_native.h>
 #include <ATen/ops/_sparse_sum_native.h>
 #include <ATen/ops/add_native.h>
 #include <ATen/ops/addmm_native.h>
