@@ -69,7 +69,7 @@ jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
     # Don't run on forked repos
     secrets: inherit
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling
     permissions:
       issues: write
@@ -83,7 +83,7 @@ jobs:
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
     name: linux-nightly-ondemand-rolling
     needs: Linux-Nightly-Ondemand-Build-Rolling
     uses: ./.github/workflows/_linux_ut.yml
@@ -99,7 +99,7 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
