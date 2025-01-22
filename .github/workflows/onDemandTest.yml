@@ -1,5 +1,5 @@
 name: OnDemand Tests
-
+on:
   workflow_dispatch:
     inputs:
       pytorch:
