@@ -16,7 +16,6 @@ import tempfile
 import torch
 import torch.distributed as c10d
 
-
 if not c10d.is_available() or not c10d.is_xccl_available():
     print("c10d XCCL not available, skipping tests", file=sys.stderr)
     sys.exit(0)
@@ -24,18 +23,12 @@ if not c10d.is_available() or not c10d.is_xccl_available():
 import torch.distributed as dist
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from test_c10d_xccl import (
-    init_multigpu_helper,
-    requires_xccl,
-)
+from test_c10d_xccl import init_multigpu_helper, requires_xccl
+from torch.testing._internal.common_distributed import MultiProcContinousTest
 from torch.testing._internal.common_utils import (
     skip_but_pass_in_sandcastle_if,
     TEST_WITH_DEV_DBG_ASAN,
     TEST_XPU,
-)
-
-from torch.testing._internal.common_distributed import (
-    MultiProcContinousTest,
 )
 
 if TEST_WITH_DEV_DBG_ASAN:
@@ -45,6 +38,7 @@ if TEST_WITH_DEV_DBG_ASAN:
     sys.exit(0)
 
 TEST_MULTIGPU = TEST_XPU and torch.xpu.device_count() >= 2
+
 
 class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @classmethod
@@ -257,7 +251,6 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
                     ValueError, "Cannot use " + err + " with XCCL"
                 ):
                     reduce(tensors, self.rank, rt, op)
-
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -712,7 +705,6 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         expected = torch.tensor(prod_val)
         self.assertEqual(expected, output_tensor)
 
-
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_reduce_scatter_base_ops(self):
@@ -832,5 +824,3 @@ if __name__ == "__main__":
             nprocs=world_size,
             args=(world_size, rdvz_file),
         )
-
-
