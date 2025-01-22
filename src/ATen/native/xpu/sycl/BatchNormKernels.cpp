@@ -1079,15 +1079,10 @@ void batch_norm_stats_channels_last_template(
   auto nwg_y = global_range[0] / wg_size_y;
   auto nwg_x = global_range[1] / wg_size_x;
   
-  constexpr int VEC_SIZE = 2;
-  constexpr int WG_SIZE = 256;
   using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
-      accscalar_t,
-      VEC_SIZE,
-      WG_SIZE,
-      16>;
+      accscalar_t>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
