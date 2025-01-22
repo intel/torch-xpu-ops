@@ -12,6 +12,14 @@ add_subdirectory(ATen)
 if(USE_C10D_XCCL)
   add_subdirectory(xccl)
 endif()
+
+execute_process(
+  COMMAND icpx --version
+  OUTPUT_VARIABLE ICX_VERSION_OUTPUT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REGEX REPLACE ".*\\.([0-9]+)\\).*" "\\1" ICX_DATE ${ICX_VERSION_OUTPUT})
+
 # With the increasement of bin size, we have to split libtorch_xpu.so into
 # multiple libraries. Because of strict linkage requirements on Windows,
 # we add extra logics to resolve, 1) Cyclic dependence, 2) Make symbols visible.
