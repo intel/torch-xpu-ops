@@ -81,7 +81,7 @@ jobs:
       runner: pvc_e2e
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != 'skipped' }}
     name: linux-nightly-ondemand
     needs: Linux-Nightly-Ondemand-Build
     uses: ./.github/workflows/_linux_ut.yml

@@ -83,7 +83,7 @@ jobs:
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != 'skipped' }}
     name: linux-nightly-ondemand-rolling
     needs: Linux-Nightly-Ondemand-Build-Rolling
     uses: ./.github/workflows/_linux_ut.yml
