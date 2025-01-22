@@ -1,11 +1,5 @@
 name: OnDemand Tests
 
-#on:
-  #schedule:
-    # GMT+8 21:00 every workday
-    # - cron: '0 13 * * 0-4'
-    # GMT+8 0:00 Saturday
-    # - cron: '0 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
