@@ -72,9 +72,6 @@ failing_cases = {
     'tests.models.dpt.test_modeling_dpt_auto_backbone.DPTModelTest': {
         'test_batching_equivalence': { 'flaky': True, 'cuda': 'passed' },
     },
-    'tests.models.fuyu.test_modeling_fuyu.FuyuModelTest': {
-        'test_prompt_lookup_decoding_matches_greedy_search': { 'flaky': True },
-    },
     'tests.models.git.test_modeling_git.GitModelTest': {
         'test_generate_continue_from_past_key_values': { 'flaky': True, 'cuda': 'passed' },
         'test_inputs_embeds_matches_input_ids': { 'cuda': 'passed' },
