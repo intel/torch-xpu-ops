@@ -46,6 +46,14 @@ if(OCLOC_EXEC)
   endif()
 endif()
 
+# find detailed date of compiler
+execute_process(
+  COMMAND icpx --version
+  OUTPUT_VARIABLE ICX_VERSION_OUTPUT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REGEX REPLACE ".*\\.([0-9]+)\\).*" "\\1" ICX_DATE ${ICX_VERSION_OUTPUT})
+
 find_package(SYCL REQUIRED)
 if(NOT SYCL_FOUND)
   message("Can NOT find SYCL cmake helpers module!")
