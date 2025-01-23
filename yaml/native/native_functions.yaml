@@ -4439,7 +4439,7 @@
 
 - func: _nested_tensor_softmax_with_shape(Tensor self, Tensor query) -> Tensor
   dispatch:
-    NestedTensorXPU: NestedTensor_softmax_dropout
+    NestedTensorXPU: NestedTensor_softmax_dropout_xpu
   tags: nondeterministic_seeded
 
 - func: avg_pool2d.out(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None, *, Tensor(a!) out) -> Tensor(a!)
