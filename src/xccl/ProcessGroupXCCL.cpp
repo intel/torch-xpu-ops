@@ -956,6 +956,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;
@@ -1008,6 +1011,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;
@@ -1142,6 +1148,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
         // WA due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;
@@ -1181,6 +1190,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;
@@ -1407,6 +1419,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
           // oneCCL is expected to support avg in basekit 2025.2 release.
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
+            c10::StreamGuard guard(stream);
+            c10::xpu::XPUCachingAllocator::recordStream(
+                output.storage().data_ptr(), stream);
             output.div_(divisor);
           }
           return;
@@ -1496,6 +1511,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;
@@ -1531,6 +1549,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
         return;

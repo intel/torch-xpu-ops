@@ -1,16 +1,16 @@
 # Torch XPU Operators*
 ===========================
 
-Torch XPU Operators* implements PyTorch ATen operators for Intel GPU devices, aiming to agilely support PyTroch ATen operations and buffer these operations for Intel GPU upstreaming . For more details, refer to [SYCL kernels for ATen Operators RFC](https://github.com/pytorch/pytorch/issues/114835) for more details. 
+Torch XPU Operators* implements PyTorch ATen operators for Intel GPU devices, aiming to agilely support PyTroch ATen operations and buffer these operations for Intel GPU upstreaming . For more details, refer to [SYCL kernels for ATen Operators RFC](https://github.com/pytorch/pytorch/issues/114835) for more details.
 
 ## 1. Overview
 
  <p align="center">
-	 <img src="docs/torch_xpu_ops.jpg" width="100%">
+     <img src="docs/torch_xpu_ops.jpg" width="100%">
  </p>
 
  * SYCL Implementation for XPU Operators: The Operators in this staging branch will finally be upstreamed to PyTorch for Intel GPU.
- 
+
 ## 2. Requirements
 
 #### Hardware Requirements

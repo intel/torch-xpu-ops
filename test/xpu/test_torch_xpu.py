@@ -48,12 +48,9 @@ from torch.testing._internal.common_device_type import (
     dtypesIfCUDA,
     expectedFailureMeta,
     expectedFailureXLA,
-    get_all_device_types,
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
-    onlyCUDA,
-    onlyNativeDeviceTypes,
     onlyXPU,
     PYTORCH_CUDA_MEMCHECK,
     skipMeta,
@@ -79,7 +76,6 @@ from torch.testing._internal.common_optimizers import (
 from torch.testing._internal.common_utils import (  # type: ignore[attr-defined]
     AlwaysWarnTypedStorageRemoval,
     bytes_to_scalar,
-    BytesIOContext,
     CudaSyncGuard,
     DeterministicGuard,
     IS_FBCODE,
@@ -2641,9 +2637,7 @@ else:
         self.assertTrue(isBinary(t))
 
         for p_dtype in floating_types_and(
-            *[torch.half]
-            if (device.startswith("cuda") or device.startswith("xpu"))
-            else []
+            *[torch.half] if (device.startswith(("cuda", "xpu"))) else []
         ):
             p = torch.rand(10, dtype=p_dtype, device=device).expand(10, 10)
             t.fill_(2)
@@ -11721,8 +11715,8 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             # FIXME: All of the following should be marked as expected failures
             # so that it is easier to tell when missing has been added.
             # FIXME: fix all the skipped ones below!
-            test_namespace(
-                torch.randn(1),  # noqa: F821
+            test_namespace(  # noqa: F821
+                torch.randn(1),
                 "as_strided_",
                 re.compile("^clamp_(min|max)_?$"),
                 "is_distributed",

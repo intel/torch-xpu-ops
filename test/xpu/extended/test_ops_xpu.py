@@ -1,9 +1,9 @@
 # Owner(s): ["module: intel"]
 
 import sys
-import pytest
 import unittest
 
+import pytest
 import torch
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
@@ -17,22 +17,34 @@ from torch.testing._internal.common_utils import (
     IS_SANDCASTLE,
     NoTest,
     run_tests,
+    slowTest,
     suppress_warnings,
     TEST_WITH_UBSAN,
     TEST_XPU,
     TestCase,
-    slowTest,
     unMarkDynamoStrictTest,
 )
 
 try:
-    from xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
+    from xpu_test_utils import (
+        _ops_without_cuda_support,
+        _xpu_computation_op_list,
+        get_wrapped_fn,
+        XPUPatchForImport,
+    )
 except Exception as e:
-    from ..xpu_test_utils import get_wrapped_fn, XPUPatchForImport, _xpu_computation_op_list, _ops_without_cuda_support
+    from ..xpu_test_utils import (
+        _ops_without_cuda_support,
+        _xpu_computation_op_list,
+        get_wrapped_fn,
+        XPUPatchForImport,
+    )
 
 with XPUPatchForImport():
-    from test_ops import TestCommon as TestCommonBase
-    from test_ops import TestCompositeCompliance as TestCompositeComplianceBase
+    from test_ops import (
+        TestCommon as TestCommonBase,
+        TestCompositeCompliance as TestCompositeComplianceBase,
+    )
 
 if not TEST_XPU:
     print("XPU not available, skipping tests", file=sys.stderr)
@@ -44,11 +56,35 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
-cpu_xpu_all = (torch.bfloat16, torch.complex64, torch.float16, torch.float32, torch.int16,
-               torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool) \
-               if "has_fp64=0" in str(torch.xpu.get_device_properties(0)) else \
-               (torch.bfloat16, torch.complex128, torch.complex64, torch.float16, torch.float32,
-                torch.float64, torch.int16, torch.int32, torch.int64, torch.int8, torch.uint8, torch.bool)
+cpu_xpu_all = (
+    (
+        torch.bfloat16,
+        torch.complex64,
+        torch.float16,
+        torch.float32,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.int8,
+        torch.uint8,
+        torch.bool,
+    )
+    if "has_fp64=0" in str(torch.xpu.get_device_properties(0))
+    else (
+        torch.bfloat16,
+        torch.complex128,
+        torch.complex64,
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.int8,
+        torch.uint8,
+        torch.bool,
+    )
+)
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
 _xpu_computation_ops = [
@@ -59,6 +95,7 @@ _xpu_computation_ops_no_numpy_ref = [
     op for op in _ops_and_refs_with_no_numpy_ref if op.name in _xpu_computation_op_list
 ]
 
+
 # NB: TestCommonProxy is a nested class. This prevents test runners from picking
 # it up and running it.
 class Namespace:
@@ -67,7 +104,7 @@ class Namespace:
     # Therefore, we build TestCommonProxy by inheriting the TestCommon and TestCase to ensure
     # the same feature set as the TestCommon.
     class TestCommonProxy(TestCase, TestCommonBase):
-        def __init__(self, test_case = None):
+        def __init__(self, test_case=None):
             if test_case:
                 # copy custom accuracy setting
                 self.maxDiff = test_case.maxDiff
@@ -75,7 +112,7 @@ class Namespace:
                 self.rel_tol = test_case.rel_tol
 
     class TestCompositeComplianceProxy(TestCase, TestCompositeComplianceBase):
-        def __init__(self, test_case = None):
+        def __init__(self, test_case=None):
             if test_case:
                 # copy custom accuracy setting
                 self.maxDiff = test_case.maxDiff
@@ -87,19 +124,23 @@ class TestCommon(TestCase):
     @onlyXPU
     @suppress_warnings
     @slowTest
-    #@ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
+    # @ops(_xpu_computation_ops_no_numpy_ref, dtypes=any_common_cpu_xpu_all)
     @ops(_xpu_computation_ops, dtypes=cpu_xpu_all)
     def test_compare_cpu(self, device, dtype, op):
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCommonProxy(self)
-            test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+            test_common_test_fn = get_wrapped_fn(
+                Namespace.TestCommonProxy.test_compare_cpu
+            )
             test_common_test_fn(self.proxy, device, dtype, op)
         # for CUDA doesn't support operators
-        elif (op.name in _ops_without_cuda_support):
+        elif op.name in _ops_without_cuda_support:
             if dtype in op.dtypes:
                 self.proxy = Namespace.TestCommonProxy(self)
-                test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+                test_common_test_fn = get_wrapped_fn(
+                    Namespace.TestCommonProxy.test_compare_cpu
+                )
                 test_common_test_fn(self.proxy, device, dtype, op)
         else:
             pytest.skip(f"{op.name} has not supported {dtype} yet both for cpu and xpu")
@@ -137,7 +178,10 @@ class TestCompositeCompliance(TestCase):
     @unittest.skipIf(
         IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
     )
-    @ops([op for op in _xpu_computation_ops if op.supports_autograd], allowed_dtypes=(torch.float,))
+    @ops(
+        [op for op in _xpu_computation_ops if op.supports_autograd],
+        allowed_dtypes=(torch.float,),
+    )
     def test_backward(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
@@ -182,7 +226,9 @@ class TestCompositeCompliance(TestCase):
 
 
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ all_basic_types = floating_types + integral_types
 all_basic_and_complex_types = floating_types + integral_types + complex_types
 
 
-class Dtypes(object):
-    def __init__(self, include_dtypes, exclude_dtypes=[]):
+class Dtypes:  # noqa: UP004
+    def __init__(self, include_dtypes, exclude_dtypes=[]):  # noqa: B006
         self.include_dtypes = include_dtypes
         self.exclude_dtypes = exclude_dtypes
 

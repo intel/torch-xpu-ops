@@ -1818,6 +1818,14 @@ skip_dict = {
         "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
         # AssertionError: Torch not compiled with CUDA enabled
         "test_zero_dim_tensorwise_which_dim_zero",
+        # New added case in 2.7
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_float16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_float16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_bfloat16",
+        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_float16",
+        "test_cublas_and_lt_reduced_precision_fp16_accumulate_xpu",
     ),
     "test_maskedtensor_xpu.py": (
         # Summary: SparseCsrXPU OPs are not supported
@@ -2324,12 +2332,10 @@ skip_dict = {
         # internally uses index_put deterministic implementation
         # dependent on "test_index_put_non_accumulate_deterministic"
         "test_index_copy_deterministic",
-
         # scatter_add needs handle XPU deterministic
         # https://github.com/intel/torch-xpu-ops/issues/906
         "test_gather_backward_deterministic_path_xpu",
         "test_scatter_add_one_dim_deterministic_xpu",
-
         # Precision error
         # Fail occasionally
         # Mismatched elements: 1 / 60 (1.7%)
@@ -2423,7 +2429,6 @@ skip_dict = {
         "test_register_state_dict_post_hook",
     ),
     "nn/test_parametrization_xpu.py": None,
-    "test_segment_reductions_xpu.py": None,
     "test_meta_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/774
         "_jiterator_",
@@ -3166,6 +3171,8 @@ skip_dict = {
         "test_meta_outplace_vdot_xpu_complex",
         # Unexpected success:
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
+        # New added case in 2.7
+        "test_nonzero_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_distributions_xpu.py": (

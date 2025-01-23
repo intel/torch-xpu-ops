@@ -20,10 +20,25 @@ concurrency:
 permissions: read-all
 
 jobs:
+  preci-lint-check:
+    # Don't run on forked repos and draft PRs
+    if: ${{ github.repository_owner == 'intel' }}
+    name: preci-lint-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Run lint check
+        run: |
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT --all-files"
+          bash .github/scripts/lintrunner.sh
+
   preci-linux-build:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux
+    needs: preci-lint-check
     permissions:
       issues: write
     uses: ./.github/workflows/_linux_build.yml
@@ -33,6 +48,7 @@ jobs:
 
   preci-ut:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux
     needs: preci-linux-build
@@ -170,8 +186,10 @@ jobs:
   
   preci-linux-build-abi-0:
     # Don't run on forked repos and draft PRs
+    secrets: inherit
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     name: preci-linux-abi-0
+    needs: preci-lint-check
     permissions:
       issues: write
     uses: ./.github/workflows/_linux_build.yml
@@ -196,6 +214,7 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
     name: preci-windows
+    needs: preci-lint-check
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
