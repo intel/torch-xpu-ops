@@ -234,6 +234,19 @@ jobs:
             test_cmd="${test_cmd} test_xpu.py"
           fi
           eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+      - name: Run Torch XPU Distributed UT
+        if: contains(inputs.ut, 'xpu_distributed')
+        run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+          pip install pytest
+          cd ${{ github.workspace }}
+          mkdir -p ut_log/torch_xpu_distributed
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
+          timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/torch_xpu_distributed/torch_xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu_distributed/torch_xpu_distributed_test.log
+          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
         shell: bash
         run: |
@@ -249,7 +262,7 @@ jobs:
           set -xe
           for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
-            contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu" $ut_suite
+            contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_distributed" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
