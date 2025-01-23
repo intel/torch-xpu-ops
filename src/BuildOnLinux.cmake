@@ -30,7 +30,7 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-elseif(BUILD_SPLIT_KERNEL_LIB)
+elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_REDUCE_SRCS)
