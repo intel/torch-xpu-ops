@@ -6,9 +6,10 @@ set(Codegen_GPU_cmake_included true)
 set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen/")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
-set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU.cpp)
-set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU.cpp)
-set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU.cpp)
+set(RegisterXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
+set(RegisterSparseXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseXPU_0.cpp)
+set(RegisterNestedTensorXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterNestedTensorXPU_0.cpp)
+set(RegisterSparseCsrXPU_PATH ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterSparseCsrXPU_0.cpp)
 set(XPUFallback_PATH ${TORCH_XPU_OPS_ROOT}/src/ATen/native/xpu/XPUFallback.template)
 
 if(WIN32)

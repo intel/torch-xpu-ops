@@ -60,13 +60,13 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
     string(REGEX MATCH "Activation" IS_ACTIVATION ${sycl_src})
     string(REGEX MATCH "Foreach" IS_FOREACH ${sycl_src})
     string(REGEX MATCH "Reduce" IS_REDUCE ${sycl_src})
-	string(REGEX MATCH "Tensor" IS_TENSOR ${sycl_src})
-	string(REGEX MATCH "Norm" IS_NORM ${sycl_src})
-	string(REGEX MATCH "Loss" IS_LOSS ${sycl_src})
-	string(REGEX MATCH "Polynomial" IS_POLY ${sycl_src})
-	#Move resize kernel to Norm and Loss lib, to resolve symbol.
-	string(REGEX MATCH "Resize" IS_RESIZE ${sycl_src})
-	string(REGEX MATCH "Distribution" IS_DISTRIBUTION ${sycl_src})
+    string(REGEX MATCH "Tensor" IS_TENSOR ${sycl_src})
+    string(REGEX MATCH "Norm" IS_NORM ${sycl_src})
+    string(REGEX MATCH "Loss" IS_LOSS ${sycl_src})
+    string(REGEX MATCH "Polynomial" IS_POLY ${sycl_src})
+    #Move resize kernel to Norm and Loss lib, to resolve symbol.
+    string(REGEX MATCH "Resize" IS_RESIZE ${sycl_src})
+    string(REGEX MATCH "Distribution" IS_DISTRIBUTION ${sycl_src})
 
     if(NOT IS_FOREACH STREQUAL "")
       list(APPEND ATen_XPU_SYCL_FOREACH_SRCS ${sycl_src})
@@ -78,14 +78,14 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
       list(APPEND ATen_XPU_SYCL_REDUCE_SRCS ${sycl_src})
     elseif(NOT IS_ACTIVATION STREQUAL "")
       list(APPEND ATen_XPU_SYCL_ACTIVATION_SRCS ${sycl_src})
-	elseif(NOT IS_TENSOR STREQUAL "")
-	  list(APPEND ATen_XPU_SYCL_TENSOR_SRCS ${sycl_src})
-	elseif(NOT IS_DISTRIBUTION STREQUAL "")
-	  list(APPEND ATen_XPU_SYCL_DISTRIBUTION_SRCS ${sycl_src})
-	elseif(NOT IS_NORM STREQUAL "" OR NOT IS_LOSS STREQUAL "" OR NOT IS_RESIZE STREQUAL "")
-	  list(APPEND ATen_XPU_SYCL_NORM_LOSS_SRCS ${sycl_src})
-	elseif(NOT IS_POLY STREQUAL "")
-	  list(APPEND ATen_XPU_SYCL_POLY_SRCS ${sycl_src})
+    elseif(NOT IS_TENSOR STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_TENSOR_SRCS ${sycl_src})
+    elseif(NOT IS_DISTRIBUTION STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_DISTRIBUTION_SRCS ${sycl_src})
+    elseif(NOT IS_NORM STREQUAL "" OR NOT IS_LOSS STREQUAL "" OR NOT IS_RESIZE STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_NORM_LOSS_SRCS ${sycl_src})
+    elseif(NOT IS_POLY STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_POLY_SRCS ${sycl_src})
     else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
     endif()
@@ -159,7 +159,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_foreach_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Tensor kernel lib
   set(sycl_tensor_lib torch_xpu_ops_sycl_tensor_kernels)
   sycl_add_library(
@@ -173,7 +173,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_tensor_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Norm and Loss kernel lib
   set(sycl_norm_loss_lib torch_xpu_ops_sycl_norm_loss_kernels)
   sycl_add_library(
@@ -187,7 +187,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_norm_loss_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Polynomial kernel lib
   set(sycl_poly_lib torch_xpu_ops_sycl_poly_kernels)
   sycl_add_library(
@@ -201,7 +201,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_poly_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Distribution kernel lib
   set(sycl_dist_lib torch_xpu_ops_sycl_dist_kernels)
   sycl_add_library(
@@ -215,7 +215,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB)
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_dist_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  
+
   # Other kernel lib
   set(sycl_lib torch_xpu_ops_sycl_kernels)
   sycl_add_library(
