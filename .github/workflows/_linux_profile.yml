@@ -1,0 +1,214 @@
+name: Linux Profile Test
+
+on:
+  schedule:
+    # GMT+8 0:00 Sunday
+    - cron: '0 16 * * 6'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'nightly'
+        description: Pytorch branch/commit
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Runner label
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
+      nightly_whl:
+        required: false
+        type: string
+        default: ''
+        description: Pytorch nightly wheel version
+
+permissions: read-all
+
+jobs:
+  Torch-XPU-Profile-Tests:
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' }}
+    env:
+      python: ${{ inputs.python != '' && inputs.python || '3.10' }}
+      pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Create unique Conda ENV name
+        run: |
+          echo "CONDA_ENV_NAME=profile_test_${ZE_AFFINITY_MASK}" >> $GITHUB_ENV
+      - name: Prepare Conda ENV
+        run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          conda create -n $CONDA_ENV_NAME python=${{ env.python }} cmake ninja -y
+          source activate $CONDA_ENV_NAME
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          pip install pandas scipy tqdm
+      - name: Prepare Stock Pytorch
+        id: installed
+        run: |
+          pwd
+          source activate $CONDA_ENV_NAME
+          if [ -z "${{ inputs.nightly_whl }}" ]; then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          else
+            pip install torch==$(echo ${{ inputs.nightly_whl }}) torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          fi
+          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && git checkout ${TORCH_COMMIT_ID}
+          # apply PRs for stock pytorch
+          pip install requests
+          # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git show -s
+          pip install -r requirements.txt
+          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          rm -rf third_party/torch-xpu-ops
+          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
+          cd ../../
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+      - name: Show GITHUB_ENV
+        run: |
+          echo "$GITHUB_ENV"
+          rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_*
+      - name: Model Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
+        run: |
+          source activate $CONDA_ENV_NAME
+          PROFILE=1 python -u .github/scripts/profile/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
+      - name: Official UT Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
+        run: |
+          cd ${{ github.workspace }}
+          rm -rf profile_test && mkdir -p profile_test
+          source activate $CONDA_ENV_NAME
+          cd ../pytorch/test/profiler
+          python -m pytest -vs test_cpp_thread.py | tee ${{ github.workspace }}/profile_test/test_cpp_thread.log
+          python -m pytest -vs test_execution_trace.py | tee ${{ github.workspace }}/profile_test/test_execution_trace.log
+          python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/profile_test/test_memory_profiler.log
+          python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/profile_test/test_profiler_tree.log
+      - name: Issue Reproduce UT Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
+        run: |
+          source activate $CONDA_ENV_NAME
+          mkdir -p profile_test/issue_reproduce
+          python -u torch-xpu-ops/.github/scripts/profile/correlation_id_mixed.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/correlation_id_mixed.log
+          python -u torch-xpu-ops/.github/scripts/profile/reproducer.missing.gpu.kernel.time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+          python -u torch-xpu-ops/.github/scripts/profile/time_precision_in_profile.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/time_precision_in_profile.log
+          python -u torch-xpu-ops/.github/scripts/profile/profile_partial_runtime_ops.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+          python -u torch-xpu-ops/.github/scripts/profile/triton_xpu_ops_time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/triton_xpu_ops_time.log
+      - name: Print model results
+        if: ${{ ! cancelled() }}
+        run: |
+          {
+            sed -i '1d' .github/scripts/profile/profiling.fp32.train.pt
+            head -n -2 .github/scripts/profile/profiling.fp32.train.pt > ${{ github.workspace }}/profile_test/profiling.rn50.fp32.pt
+            echo "### Model Test"
+            echo "| Name | Self CPU % | Self CPU | CPU total % | CPU total | CPU time avg | Self XPU | Self XPU % | XPU total | XPU time avg | of Calls |"
+            echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+            while read line; do
+              if [[ "$(echo $line | cut -f2 -d" ")" =~ [0-9] ]]; then
+                Name=$(echo $line | cut -f1 -d" ")
+              else
+                Name=$(echo $line | cut -f 1,2 -d" ")
+              fi
+              if [[ "$Name" == "$(echo $line | cut -f 1,2 -d" ")" ]]; then
+                Self_CPU_percent=$(echo $line | cut -f3 -d" ")
+                Self_CPU=$(echo $line | cut -f4 -d" ")
+                CPU_total_percent=$(echo $line | cut -f5 -d" ")
+                CPU_total=$(echo $line | cut -f6 -d" ")
+                CPU_time_avg=$(echo $line | cut -f7 -d" ")
+                Self_XPU=$(echo $line | cut -f8 -d" ")
+                Self_XPU_percent=$(echo $line | cut -f9 -d" ")
+                XPU_total=$(echo $line | cut -f10 -d" ")
+                XPU_time_avg=$(echo $line | cut -f11 -d" ")
+                of_Calls=$(echo $line | cut -f12 -d" ")
+              else
+                Self_CPU_percent=$(echo $line | cut -f2 -d" ")
+                Self_CPU=$(echo $line | cut -f3 -d" ")
+                CPU_total_percent=$(echo $line | cut -f4 -d" ")
+                CPU_total=$(echo $line | cut -f5 -d" ")
+                CPU_time_avg=$(echo $line | cut -f6 -d" ")
+                Self_XPU=$(echo $line | cut -f7 -d" ")
+                Self_XPU_percent=$(echo $line | cut -f8 -d" ")
+                XPU_total=$(echo $line | cut -f9 -d" ")
+                XPU_time_avg=$(echo $line | cut -f10 -d" ")
+                of_Calls=$(echo $line | cut -f11 -d" ")
+              fi
+              echo "| $Name | $Self_CPU_percent | $Self_CPU | $CPU_total_percent | $CPU_total | $CPU_time_avg | $Self_XPU | $Self_XPU_percent | $XPU_total | $XPU_time_avg | $of_Calls |"
+            done <${{ github.workspace }}/profile_test/profiling.rn50.fp32.pt
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Print Issue Reproduce UT results
+        if: ${{ ! cancelled() }}
+        run: |
+          cd ${{ github.workspace }}/profile_test/issue_reproduce
+          {
+            echo "### Issue reproduce Test"
+            filelist=`ls *.log`
+            for log in $filelist; do
+              echo "$log"
+              echo "| Name | Self CPU % | Self CPU | CPU total % | CPU total | CPU time avg | Self XPU | Self XPU % | XPU total | XPU time avg | of Calls |"
+              echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+              while read line; do
+                if [[ "$(echo $line | cut -f2 -d" ")" =~ [0-9] ]]; then
+                  Name=$(echo $line | cut -f1 -d" ")
+                else
+                  Name=$(echo $line | cut -f 1,2 -d" ")
+                fi
+                if [[ "$Name" == "$(echo $line | cut -f 1,2 -d" ")" ]]; then
+                  Self_CPU_percent=$(echo $line | cut -f3 -d" ")
+                  Self_CPU=$(echo $line | cut -f4 -d" ")
+                  CPU_total_percent=$(echo $line | cut -f5 -d" ")
+                  CPU_total=$(echo $line | cut -f6 -d" ")
+                  CPU_time_avg=$(echo $line | cut -f7 -d" ")
+                  Self_XPU=$(echo $line | cut -f8 -d" ")
+                  Self_XPU_percent=$(echo $line | cut -f9 -d" ")
+                  XPU_total=$(echo $line | cut -f10 -d" ")
+                  XPU_time_avg=$(echo $line | cut -f11 -d" ")
+                  of_Calls=$(echo $line | cut -f12 -d" ")
+                else
+                  Self_CPU_percent=$(echo $line | cut -f2 -d" ")
+                  Self_CPU=$(echo $line | cut -f3 -d" ")
+                  CPU_total_percent=$(echo $line | cut -f4 -d" ")
+                  CPU_total=$(echo $line | cut -f5 -d" ")
+                  CPU_time_avg=$(echo $line | cut -f6 -d" ")
+                  Self_XPU=$(echo $line | cut -f7 -d" ")
+                  Self_XPU_percent=$(echo $line | cut -f8 -d" ")
+                  XPU_total=$(echo $line | cut -f9 -d" ")
+                  XPU_time_avg=$(echo $line | cut -f10 -d" ")
+                  of_Calls=$(echo $line | cut -f11 -d" ")
+                fi
+                echo "| $Name | $Self_CPU_percent | $Self_CPU | $CPU_total_percent | $CPU_total | $CPU_time_avg | $Self_XPU | $Self_XPU_percent | $XPU_total | $XPU_time_avg | $of_Calls |"
+              done <$log
+            done
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Upload Profile Test log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Profile-Log-${{ github.event.pull_request.number || github.sha }}
+          path: | 
+            ${{ github.workspace }}/profile_test
+
