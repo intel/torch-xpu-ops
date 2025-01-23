@@ -638,7 +638,6 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
         # TODO: passed from source code building version, investigate
         "test_python_ref__refs_log2_xpu_complex128",
-
         # The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}.
         "test_dtypes_fft_fft2_xpu",
         "test_dtypes_fft_fft_xpu",
@@ -3233,12 +3232,10 @@ skip_dict = {
         "test_set_default_dtype_works_with_foreach_Rprop_xpu_float64",
         "test_set_default_dtype_works_with_foreach_SGD_xpu_float64",
     ),
-
     "test_spectral_ops_xpu.py": (
         # CUDA specific case
         "test_cufft_plan_cache_xpu_float64",
     ),
-
     "test_sparse_xpu.py": (
         "test_bmm_deterministic_xpu_float64",  # - AssertionError: Torch not compiled with CUDA enabled
         "test_bmm_oob_xpu",  # - NotImplementedError: Could not run 'aten::bmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was ...
