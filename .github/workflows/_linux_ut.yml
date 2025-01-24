@@ -262,7 +262,8 @@ jobs:
               }
           }
           set -xe
-          for ut_suite in $(echo ${{ inputs.ut }} |sed 's/-/ /g')
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
             contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_distributed" $ut_suite
             $contains_status
@@ -274,5 +275,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-${{ inputs.ut }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
