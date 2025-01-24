@@ -1067,18 +1067,9 @@ void batch_norm_stats_channels_last_template(
   TORCH_INTERNAL_ASSERT(
       out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
 
-  auto config = get_adaptive_launch_config(
-      reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
-  auto global_range = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   at::Tensor staging_data;
   at::Tensor semaphores;
-  auto wg_size_y = local_range[0];
-  auto wg_size_x = local_range[1];
-  auto nwg_y = global_range[0] / wg_size_y;
-  auto nwg_x = global_range[1] / wg_size_x;
-  
+
   using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
@@ -1086,61 +1077,70 @@ void batch_norm_stats_channels_last_template(
   auto input_ptr = input.const_data_ptr<scalar_t>();
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
-  if (VecKernel::valid(reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
-    // std::cout << "using WelfordBatchNormStatChannelsLastVecKernelFunctor\n";
-
+  if (VecKernel::valid(
+          reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
     auto kfn = VecKernel(
-      input_ptr,
-      out_mean_ptr,
-      out_invstd_ptr,
-      reduction_size,
-      stride,
-      nullptr,
-      nullptr);
-    
+        input_ptr,
+        out_mean_ptr,
+        out_invstd_ptr,
+        reduction_size,
+        stride,
+        nullptr,
+        nullptr,
+        epsilon);
+
     staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
-    semaphores = at::zeros({(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
-    accscalar_t* staging_data_ptr =
-      kfn.num_cooperative_groups() > 1 ? staging_data.mutable_data_ptr<accscalar_t>() : nullptr;
-    int* semaphores_ptr =
-      kfn.num_cooperative_groups() > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
+    semaphores = at::zeros(
+        {(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
+    accscalar_t* staging_data_ptr = kfn.num_cooperative_groups() > 1
+        ? staging_data.mutable_data_ptr<accscalar_t>()
+        : nullptr;
+    int* semaphores_ptr = kfn.num_cooperative_groups() > 1
+        ? semaphores.mutable_data_ptr<int>()
+        : nullptr;
 
     kfn.set_staging_data(staging_data_ptr);
     kfn.set_semaphores(semaphores_ptr);
-    
+
     sycl_kernel_submit(
-        kfn.global_range(),
-        kfn.local_range(),
-        getCurrentSYCLQueue(),
-        kfn);
-    return;
-  }
-  
-  if (nwg_y > 1) {
-    staging_data = at::empty({(long)(4 * stride * nwg_y)}, out_mean.options());
-    semaphores = at::zeros({(long)nwg_x}, input.options().dtype(at::kInt));
-  }
-  accscalar_t* staging_data_ptr =
-      nwg_y > 1 ? staging_data.mutable_data_ptr<accscalar_t>() : nullptr;
-  int* semaphores_ptr =
-      nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
+        kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+  } else {
+    auto config = get_adaptive_launch_config(
+        reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
+    auto global_range = std::get<0>(config);
+    auto local_range = std::get<1>(config);
 
-  auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
-      VarTransform,
-      scalar_t,
-      accscalar_t,
-      ELEMENTS_PER_ITER>(
-      input.const_data_ptr<scalar_t>(),
-      out_mean.mutable_data_ptr<accscalar_t>(),
-      out_invstd.mutable_data_ptr<accscalar_t>(),
-      staging_data_ptr,
-      semaphores_ptr,
-      reduction_size,
-      stride,
-      epsilon,
-      wg_size_y * wg_size_x);
+    auto wg_size_y = local_range[0];
+    auto wg_size_x = local_range[1];
+    auto nwg_y = global_range[0] / wg_size_y;
+    auto nwg_x = global_range[1] / wg_size_x;
+    if (nwg_y > 1) {
+      staging_data =
+          at::empty({(long)(4 * stride * nwg_y)}, out_mean.options());
+      semaphores = at::zeros({(long)nwg_x}, input.options().dtype(at::kInt));
+    }
+    accscalar_t* staging_data_ptr =
+        nwg_y > 1 ? staging_data.mutable_data_ptr<accscalar_t>() : nullptr;
+    int* semaphores_ptr =
+        nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
 
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+    auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
+        VarTransform,
+        scalar_t,
+        accscalar_t,
+        ELEMENTS_PER_ITER>(
+        input_ptr,
+        out_mean_ptr,
+        out_invstd_ptr,
+        staging_data_ptr,
+        semaphores_ptr,
+        reduction_size,
+        stride,
+        epsilon,
+        wg_size_y * wg_size_x);
+
+    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
 }
 
 std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
@@ -1727,7 +1727,7 @@ bool can_use_batch_norm_cnl_vec_kernel(
        memory::can_vectorize_up_to<scalar_t>(weight) >= VEC_SIZE) &&
       (shift == nullptr ||
        memory::can_vectorize_up_to<scalar_t>(shift) >= VEC_SIZE) &&
-      (stride % VEC_SIZE == 0);
+      (stride % VEC_SIZE == 0) && (sizeof(scalar_t) <= 2);
 }
 
 template <typename scalar_t, int VEC_SIZE>
