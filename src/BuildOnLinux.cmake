@@ -135,3 +135,9 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
 endforeach()
+
+if(USE_ONEMKL)
+  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL")
+  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
+  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
+endif()
