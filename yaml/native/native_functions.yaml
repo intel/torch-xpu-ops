@@ -9001,3 +9001,14 @@
   dispatch:
     NestedTensorXPU: NestedTensor_to_padded_tensor_xpu
   autogen: to_padded_tensor.out
+
+# Standard complex to complex FFT (forward or backward)
+- func: _fft_c2c(Tensor self, SymInt[] dim, int normalization, bool forward) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_c2c_xpu
+
+- func: _fft_c2c.out(Tensor self, SymInt[] dim, int normalization, bool forward, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_c2c_xpu_out
