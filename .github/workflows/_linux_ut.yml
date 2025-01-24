@@ -246,9 +246,7 @@ jobs:
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           python -c "import torch;print(torch.distributed.is_xccl_available())"
-          # timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
-          timeout 10000 python distributed/test_c10d_ops_xccl.py 2>${{ github.workspace }}/ut_log/xpu_distributed/c10d_ops_xccl_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/c10d_ops_xccl_test.log
-          timeout 10000 python distributed/test_c10d_xccl.py 2>${{ github.workspace }}/ut_log/xpu_distributed/c10d_xccl_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/c10d_xccl_test.log
+          timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
@@ -264,7 +262,7 @@ jobs:
               }
           }
           set -xe
-          for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
+          for ut_suite in $(echo ${{ inputs.ut }} |sed 's/-/ /g')
           do
             contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_distributed" $ut_suite
             $contains_status

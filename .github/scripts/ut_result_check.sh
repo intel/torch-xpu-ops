@@ -73,19 +73,13 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     fi
 fi
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
-    grep "^FAILED" c10d_ops_xccl_test.log | awk '{print $2}' > ./"${ut_suite}"_ops_xccl_test_failed.log
-    grep "^FAILED" c10d_xccl_test.log | awk '{print $2}' > ./"${ut_suite}"_c10d_xccl_test_failed.log
-    num_failed_ops_xccl=$(wc -l < "./${ut_suite}_ops_xccl_test_failed.log")
-    num_failed_c10d_xccl=$(wc -l < "./${ut_suite}_c10d_xccl_test_failed.log")
+    grep "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} c10d ops xccl"
+    echo -e "Show Failed cases in ${ut_suite} xpu distributed"
     echo -e "========================================================================="
-    cat "./${ut_suite}_ops_xccl_test_failed.log"
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} c10d xccl"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_c10d_xccl_test_failed.log"
-    ((num_failed=num_failed_ops_xccl+num_failed_c10d_xccl))
+    cat "./${ut_suite}_xpu_distributed_test_failed.log"
+    ((num_failed=num_failed_xpu_distributed))
     if [[ $num_failed -gt 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1

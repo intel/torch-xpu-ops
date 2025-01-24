@@ -55,7 +55,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
+      ut: op_regression-op_regression_dev1-op_extended-op_ut
       runner: linux.idc.xpu
 
   preci-ut-distributed:
