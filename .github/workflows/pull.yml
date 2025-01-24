@@ -55,8 +55,20 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
+      ut: op_regression-op_regression_dev1-op_extended-op_ut
       runner: linux.idc.xpu
+
+  preci-ut-distributed:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
+    needs: preci-linux-build
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      ut: xpu_distributed
+      runner: pvc_e2e
 
   Inductor-XPU-E2E-CI-Tests:
     name: preci-linux / e2e_test
