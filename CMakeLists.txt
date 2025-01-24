@@ -39,7 +39,7 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
-option(USE_XCCL "Build with XCCL support" ON)
+option(USE_XCCL "Build with XCCL support" OFF)
 
 if(NOT WIN32 AND USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
