@@ -1,9 +1,46 @@
 #pragma once
 
+#include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/SYCLContext.h>
+#include <comm/XPUMathCompat.h>
 
 namespace at::native::xpu {
+
+template <typename T>
+inline T divup(T a, T b) {
+  return (a + b - 1) / b;
+}
+
+std::tuple<int, int, int, int> get_adaptive_config(
+    const int reduction,
+    const int n_channels,
+    const int vec_size,
+    const bool coop_flag = false,
+    const int loops_per_item = 16) {
+  int max_wg_size = syclMaxWorkItemsPerEU();
+  int group_size_x = std::min(last_pow2(n_channels / vec_size), 16);
+  int group_size_y = std::min(
+      last_pow2(divup(reduction, loops_per_item)), max_wg_size / group_size_x);
+  if (group_size_x * group_size_y != max_wg_size) {
+    group_size_x =
+        std::min(last_pow2(n_channels / vec_size), max_wg_size / group_size_y);
+  }
+
+  int nwg_x = divup(n_channels, group_size_x * vec_size);
+  int nwg_y = std::min(
+      divup(reduction, group_size_y * loops_per_item),
+      int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
+  nwg_y = std::max(nwg_y, 1);
+
+  if (coop_flag) {
+    // it's not worth having reduction between work groups if the reduction
+    // dimension is not big enough
+    nwg_y = nwg_y < 8 ? 1 : nwg_y;
+  }
+
+  return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
+}
 
 template <typename T, typename C>
 inline void welford_merge(
@@ -20,95 +57,91 @@ inline void welford_merge(
   count += count_new;
 }
 
+template <int VEC_SIZE, typename T, typename C, typename TACC, typename CACC>
+inline void welford_vertical_merge(
+    sycl::nd_item<2>& item,
+    C& count,
+    T& mean,
+    T& m2n,
+    CACC& shmem_count,
+    TACC& shmem_mean,
+    TACC& shmem_m2n) {
+  // write to shared memory
+  auto address_base = item.get_local_linear_id();
+#pragma unroll
+  for (int offset = item.get_local_range(0) / 2; offset > 0; offset >>= 1) {
+    if (item.get_local_id(0) < offset * 2) {
+      shmem_mean[address_base] = mean;
+      shmem_m2n[address_base] = m2n;
+      shmem_count[address_base] = count;
+    }
+    item.barrier(sycl_local_fence);
+    if (item.get_local_id(0) < offset &&
+        item.get_local_id(0) + offset < item.get_local_range(0)) {
+      auto address = address_base + offset * item.get_local_range(1);
+      // read shared memory back to register for reduction
+      auto count_new = shmem_count[address];
+      auto mean_new = shmem_mean[address];
+      auto m2n_new = shmem_m2n[address];
+#pragma unroll
+      for (int v = 0; v < VEC_SIZE; ++v) {
+        welford_merge(
+            count[v], mean[v], m2n[v], count_new[v], mean_new[v], m2n_new[v]);
+      }
+    }
+  }
+}
+
 template <
     typename VarTransform,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE = 4,
-    int SG_SIZE = 32,
-    int NUM_SG = 8>
+    int VEC_SIZE = 2,
+    bool USE_POST_FUSION = false>
 struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  enum {
-    LOCAL_SIZE = SG_SIZE * NUM_SG,
-  };
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
 
-  [[intel::reqd_sub_group_size(SG_SIZE)]] void operator()(
-      sycl::nd_item<2> item) const {
+  void operator()(sycl::nd_item<2> item) const {
     //  init private counter
-    acc_vec_t x_mean;
-    acc_vec_t m_2_n;
+    acc_vec_t mean;
+    acc_vec_t m2n;
     int_vec_t count;
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      x_mean[v] = acc_t(0);
-      m_2_n[v] = acc_t(0);
+      mean[v] = acc_t(0);
+      m2n[v] = acc_t(0);
       count[v] = int(0);
     }
 
-    int lx = item.get_local_id(1);
-    int gx = item.get_group(1);
     int gy = item.get_group(0);
+    int gx = item.get_group(1);
+    int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
     int num_cooperative_groups = item.get_group_range(0);
-    auto c_vec_offset = gx * VEC_SIZE;
+    int inner_loop_stride = item.get_local_range(0) * num_cooperative_groups;
 
-    for (int row_wg = gy * LOCAL_SIZE; row_wg < reduction_size_;
-         row_wg += num_cooperative_groups * LOCAL_SIZE) {
-      int vec_offset = (row_wg + lx) * n_channels_ + c_vec_offset;
-      auto input_vec =
-          *reinterpret_cast<vec_t*>(const_cast<scalar_t*>(&input_[vec_offset]));
-#pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        auto x = input_vec[v];
-        count[v]++;
-        acc_t delta0 = x - x_mean[v];
-        x_mean[v] += delta0 / count[v];
-        acc_t delta1 = x - x_mean[v];
-        m_2_n[v] += delta0 * delta1;
-      }
-    }
-    shmem_mean_[lx] = x_mean;
-    shmem_m2n_[lx] = m_2_n;
-    shmem_count_[lx] = count;
-    item.barrier(sycl_local_fence);
-
-    // sub-group welford merge
-    if (lx < SG_SIZE) {
-#pragma unroll
-      for (int sg_id = 1; sg_id < NUM_SG; ++sg_id) {
-        auto idx = lx + sg_id * SG_SIZE;
+    for (int m_offset = item.get_global_id(0); m_offset < reduction_size_;
+         m_offset += inner_loop_stride) {
+      if (c_vec_offset < n_channels_) {
+        int address_vec_base = m_offset * n_channels_ + c_vec_offset;
+        auto input_vec = *reinterpret_cast<vec_t*>(
+            const_cast<scalar_t*>(&input_[address_vec_base]));
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
-          welford_merge(
-              count[v],
-              x_mean[v],
-              m_2_n[v],
-              shmem_count_[idx][v],
-              shmem_mean_[idx][v],
-              shmem_m2n_[idx][v]);
+          auto x = input_vec[v];
+          count[v]++;
+          acc_t delta0 = x - mean[v];
+          mean[v] += delta0 / count[v];
+          acc_t delta1 = x - mean[v];
+          m2n[v] += delta0 * delta1;
         }
       }
     }
-    shmem_mean_[lx] = x_mean;
-    shmem_m2n_[lx] = m_2_n;
-    shmem_count_[lx] = count;
-    item.barrier(sycl_local_fence);
-#pragma unroll
-    for (int i = 1; i < SG_SIZE; i++) {
-#pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        welford_merge(
-            count[v],
-            x_mean[v],
-            m_2_n[v],
-            shmem_count_[i][v],
-            shmem_mean_[i][v],
-            shmem_m2n_[i][v]);
-      }
-    }
+
+    welford_vertical_merge<VEC_SIZE>(
+        item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
 
     // welford vertical merge
     if (num_cooperative_groups > 1) {
@@ -119,9 +152,9 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       int address_vec_base = c_vec_offset + gy * n_channels_;
 
       // write data to staging_data;
-      if (lx == 0) {
-        *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = x_mean;
-        *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m_2_n;
+      if (item.get_local_id(0) == 0) {
+        *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
+        *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
         *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;
       }
       item.barrier(sycl_local_fence);
@@ -139,89 +172,58 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       // check that all data is now available in global memory
       if (is_last_group_done_[0]) {
 #pragma unroll
-        for (int i = 0; i < VEC_SIZE; ++i) {
-          x_mean[i] = acc_t(0);
-          m_2_n[i] = acc_t(0);
-          count[i] = int(0);
+        for (int v = 0; v < VEC_SIZE; ++v) {
+          mean[v] = acc_t(0);
+          m2n[v] = acc_t(0);
+          count[v] = int(0);
         }
 
-        for (int y = lx; y < num_cooperative_groups; y += LOCAL_SIZE) {
-          address_vec_base = y * n_channels_ + c_vec_offset;
-          auto mean_new =
-              *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]);
-          auto m2n_new =
-              *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]);
-          auto count_new =
-              *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]);
-#pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v) {
-            welford_merge(
-                count[v],
-                x_mean[v],
-                m_2_n[v],
-                count_new[v],
-                mean_new[v],
-                m2n_new[v]);
-          }
-        }
-
-        shmem_mean_[lx] = x_mean;
-        shmem_m2n_[lx] = m_2_n;
-        shmem_count_[lx] = count;
-        item.barrier(sycl_local_fence);
-
-        // sub-group welford merge
-        if (lx < SG_SIZE) {
-#pragma unroll
-          for (int sg_id = 1; sg_id < NUM_SG; ++sg_id) {
-            auto idx = lx + sg_id * SG_SIZE;
+        for (int y = item.get_local_id(0); y < num_cooperative_groups;
+             y += item.get_local_range(0)) {
+          if (c_vec_offset < n_channels_) {
+            address_vec_base = y * n_channels_ + c_vec_offset;
+            auto mean_new =
+                *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]);
+            auto m2n_new =
+                *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]);
+            auto count_new =
+                *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]);
 #pragma unroll
             for (int v = 0; v < VEC_SIZE; ++v) {
               welford_merge(
                   count[v],
-                  x_mean[v],
-                  m_2_n[v],
-                  shmem_count_[idx][v],
-                  shmem_mean_[idx][v],
-                  shmem_m2n_[idx][v]);
+                  mean[v],
+                  m2n[v],
+                  count_new[v],
+                  mean_new[v],
+                  m2n_new[v]);
             }
           }
         }
-        shmem_mean_[lx] = x_mean;
-        shmem_m2n_[lx] = m_2_n;
-        shmem_count_[lx] = count;
-        item.barrier(sycl_local_fence);
-#pragma unroll
-        for (int i = 1; i < SG_SIZE; i++) {
-#pragma unroll
-          for (int v = 0; v < VEC_SIZE; ++v) {
-            welford_merge(
-                count[v],
-                x_mean[v],
-                m_2_n[v],
-                shmem_count_[i][v],
-                shmem_mean_[i][v],
-                shmem_m2n_[i][v]);
-          }
-        }
+        welford_vertical_merge<VEC_SIZE>(
+            item, count, mean, m2n, shmem_count_, shmem_mean_, shmem_m2n_);
       }
     }
 
-    if (lx == 0 && (num_cooperative_groups == 1 || is_last_group_done_[0])) {
-      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = x_mean;
+    if (item.get_local_id(0) == 0 &&
+        (num_cooperative_groups == 1 || is_last_group_done_[0]) &&
+        c_vec_offset < n_channels_) {
       acc_vec_t invstd_vec;
 #pragma unroll
-      for (int i = 0; i < VEC_SIZE; ++i) {
-        invstd_vec[i] = VarTransform{}(m_2_n[i] / count[i], 1e-5);
+      for (int v = 0; v < VEC_SIZE; ++v) {
+        invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
       }
+
+      *reinterpret_cast<acc_vec_t*>(&save_mean_[c_vec_offset]) = mean;
       *reinterpret_cast<acc_vec_t*>(&save_invstd_[c_vec_offset]) = invstd_vec;
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shmem_mean_ = sycl_local_acc_t<acc_vec_t>(sycl::range<1>(LOCAL_SIZE), cgh);
-    shmem_m2n_ = sycl_local_acc_t<acc_vec_t>(sycl::range<1>(LOCAL_SIZE), cgh);
-    shmem_count_ = sycl_local_acc_t<int_vec_t>(sycl::range<1>(LOCAL_SIZE), cgh);
+    auto local_size = group_size_x_ * group_size_y_;
+    shmem_mean_ = sycl_local_acc_t<acc_vec_t>(sycl::range<1>(local_size), cgh);
+    shmem_m2n_ = sycl_local_acc_t<acc_vec_t>(sycl::range<1>(local_size), cgh);
+    shmem_count_ = sycl_local_acc_t<int_vec_t>(sycl::range<1>(local_size), cgh);
     is_last_group_done_ = sycl_local_acc_t<bool>(sycl::range<1>(1), cgh);
   }
 
@@ -232,24 +234,18 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       int reduction_size,
       int n_channels,
       acc_t* staging_data,
-      int* semaphores)
+      int* semaphores,
+      double epsilon)
       : input_(input),
         save_mean_(save_mean),
         save_invstd_(save_invstd),
         reduction_size_(reduction_size),
         n_channels_(n_channels),
         staging_data_(staging_data),
-        semaphores_(semaphores) {
-    auto gy = reduction_size / LOCAL_SIZE;
-    if (gy % 8 == 0) {
-      num_cooperative_groups_ = gy / 8;
-    } else if (gy % 4 == 0) {
-      num_cooperative_groups_ = gy / 4;
-    } else if (gy % 2 == 0) {
-      num_cooperative_groups_ = gy / 2;
-    } else {
-      num_cooperative_groups_ = gy;
-    }
+        semaphores_(semaphores),
+        epsilon_(epsilon) {
+    std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
+        get_adaptive_config(reduction_size, n_channels, VEC_SIZE, true);
   }
 
   static bool valid(
@@ -258,10 +254,8 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       const scalar_t* input,
       acc_t* save_mean,
       acc_t* save_invstd) {
-    bool valid = true;
+    bool valid = sizeof(scalar_t) <= 2;
     valid = valid && (n_channels % VEC_SIZE == 0);
-    valid = valid && (reduction_size % LOCAL_SIZE == 0);
-    // valid = valid && (reduction_size / n_channels >= 32);
     valid = valid &&
         (memory::can_vectorize_up_to<scalar_t>((char*)input) >= VEC_SIZE);
     valid = valid &&
@@ -272,20 +266,20 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   }
 
   sycl::range<2> local_range() const {
-    return sycl::range<2>(1, LOCAL_SIZE);
+    return sycl::range<2>(group_size_y_, group_size_x_);
   }
 
   sycl::range<2> global_range() const {
     return sycl::range<2>(
-        num_cooperative_groups_, n_channels_ / VEC_SIZE * LOCAL_SIZE);
+        group_size_y_ * ngroups_y_, group_size_x_ * ngroups_x_);
   }
 
   int staging_size() const {
-    return num_cooperative_groups_ * n_channels_ * 4;
+    return ngroups_y_ * n_channels_ * 4;
   }
 
   int semaphores_size() const {
-    return n_channels_ / VEC_SIZE;
+    return ngroups_x_;
   }
 
   void set_staging_data(acc_t* staging_data) {
@@ -297,7 +291,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   }
 
   int num_cooperative_groups() const {
-    return num_cooperative_groups_;
+    return ngroups_y_;
   }
 
  private:
@@ -308,7 +302,13 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
   int n_channels_;
   acc_t* staging_data_;
   int* semaphores_;
-  size_t num_cooperative_groups_;
+  double epsilon_;
+
+  size_t group_size_y_;
+  size_t group_size_x_;
+  size_t ngroups_y_;
+  size_t ngroups_x_;
+
   sycl_local_acc_t<acc_vec_t> shmem_mean_;
   sycl_local_acc_t<acc_vec_t> shmem_m2n_;
   sycl_local_acc_t<int_vec_t> shmem_count_;
