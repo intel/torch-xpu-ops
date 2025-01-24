@@ -57,6 +57,8 @@ Tensor _weight_int4pack_mm_xpu(
       "xpu::_weight_int4pack_mm",
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
+  // When M > 1 will use two kernels(dequant and gemm)
+  // When M == 1 will use one linear_int4_kernel(dequant and gemv)
   if (M > 1) {
     Tensor B_dequant = at::empty({K, N}, A.options());
     at::native::xpu::dequant_int4_kernel(

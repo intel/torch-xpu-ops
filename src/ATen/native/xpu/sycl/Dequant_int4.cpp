@@ -61,7 +61,7 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           : static_cast<int8_t>((srcu8 & 0x0f) - 8) * scale + zero_point;
     }
 
-    float tmpT[TileN];
+    __shared__ float tmpT[TileN];
     for (int in = 0; in < TileN; in++) {
       for (int is = 0; is < SgSize; is++) {
         auto shlv = select_from_group(sg, tmp[in], is);
@@ -101,6 +101,7 @@ void dequant_int4_kernel(
   static_assert(TileK == 1);
   int k = weight.size(0);
   int n = weight.size(1);
+  assert(k % GroupK == 0 && n % GroupN == 0);
   int nsg_k = k / GroupK;
   int nsg_n = n / GroupN;
   sycl::range<1> global_range{static_cast<size_t>(nsg_n) * nsg_k * SgSize};
