@@ -4,7 +4,9 @@ import sys
 
 
 def run(test_command):
-    result = subprocess.run(test_command, capture_output=True)
+    result = subprocess.run(test_command, capture_output=True, text=True)
+    print(result.stdout)
+    print(result.stderr)
     if "FAILED" in result.stdout or "FAILED" in result.stderr:
         return 0
     else:
