@@ -3261,7 +3261,7 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           } else {
             auto config = get_adaptive_launch_config(
-                reduction_size, stride / 2, false, ELEMENTS_PER_WORK_ITEM);
+                reduction_size, stride / VEC_SIZE, false, ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
             auto kfn =
