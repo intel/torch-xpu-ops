@@ -67,6 +67,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
    protected:
     at::Device device_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
+    at::Tensor barrierTensor_;
     bool blockingWait_ = false;
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
@@ -93,9 +94,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return std::string(XCCL_BACKEND_NAME);
   }
 
+  void startCoalescing() override;
+
+  c10::intrusive_ptr<Work> endCoalescing() override;
+
+  c10::intrusive_ptr<Work> endCoalescing(OpType optype);
+
   std::shared_ptr<xcclComm_t> getXCCLComm(
       const std::string& deviceKey,
-      at::Device& device);
+      at::Device& device,
+      OpType opType,
+      int p2pRank = 0,
+      bool isSendRecvSelf = false);
 
   virtual c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> initWork(
       at::Device& device,
@@ -112,8 +122,39 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       OpType opType,
       const char* profilingTitle = nullptr) {
+    return collective<Fn>(
+        input,
+        output,
+        fn,
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
+        opType,
+        profilingTitle);
+  }
+
+  template <typename Fn, typename PreProcess, typename PostProcess>
+  c10::intrusive_ptr<Work> collective(
+      at::Tensor& input,
+      at::Tensor& output,
+      Fn fn,
+      PreProcess pre,
+      PostProcess post,
+      OpType opType,
+      const char* profilingTitle = nullptr) {
     auto inputs = std::vector<at::Tensor>{input};
     auto outputs = std::vector<at::Tensor>{output};
+    return collective(inputs, outputs, fn, pre, post, opType, profilingTitle);
+  }
+
+  template <typename Fn>
+  c10::intrusive_ptr<Work> collective(
+      std::vector<at::Tensor>& inputs,
+      std::vector<at::Tensor>& outputs,
+      Fn fn,
+      OpType opType,
+      const char* profilingTitle = nullptr) {
     return collective<Fn>(
         inputs,
         outputs,
@@ -122,7 +163,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
-        opType);
+        opType,
+        profilingTitle);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -135,14 +177,150 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       OpType opType,
       const char* profilingTitle = nullptr);
 
+  template <typename Fn>
+  c10::intrusive_ptr<Work> collectiveCoalesced(
+      std::vector<at::Tensor>& input,
+      std::vector<at::Tensor>& output,
+      Fn fn,
+      OpType opType,
+      const char* profilingTitle = nullptr) {
+    return collective<Fn>(
+        input,
+        output,
+        fn,
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
+          // There are two types of coalesce that require `group_start/end`:
+          // 1. **Fast Pass for Operations**: For example,
+          // `allreduce_coalesced`. In this case, the backend has control, so
+          // the initial group API `ccl::group` is called.
+          // 2. **User-Specified Groups**: The user specifies a series of
+          // operations as a group in the frontend by calling the coalesce
+          // manager. To avoid incorrect judgments of the p2p state, the
+          // `xcclActiveGroupCounter_` is introduced to track group calls made
+          // in the frontend. In this scenario, the `groupStart` wrap API is
+          // used.
+          ccl::group_start();
+        },
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
+          ccl::group_end();
+        },
+        opType,
+        profilingTitle);
+  }
+
+  template <typename Fn>
+  c10::intrusive_ptr<Work> pointToPoint(
+      at::Tensor& tensor,
+      Fn fn,
+      int peer,
+      OpType opType,
+      const char* profilingTitle = nullptr);
+
+  c10::intrusive_ptr<Work> allreduce_impl(
+      at::Tensor& tensor,
+      const AllreduceOptions& opts = AllreduceOptions());
+
   c10::intrusive_ptr<Work> allreduce(
       std::vector<at::Tensor>& tensors,
       const AllreduceOptions& opts = AllreduceOptions()) override;
 
-  void setSequenceNumberForGroup() override {}
-  uint64_t getSequenceNumberForGroup() override {
-    return seqCollective_;
-  }
+  c10::intrusive_ptr<Work> allreduce_coalesced(
+      std::vector<at::Tensor>& tensors,
+      const AllreduceCoalescedOptions& opts =
+          AllreduceCoalescedOptions()) override;
+
+  c10::intrusive_ptr<Work> reduce(
+      std::vector<at::Tensor>& tensors,
+      const ReduceOptions& opts = ReduceOptions()) override;
+
+  c10::intrusive_ptr<Work> _reduce_oop(
+      at::Tensor& outputTensors,
+      at::Tensor& inputTensors,
+      const ReduceOptions& opts = ReduceOptions());
+
+  c10::intrusive_ptr<Work> broadcast(
+      std::vector<at::Tensor>& tensors,
+      const BroadcastOptions& opts = BroadcastOptions()) override;
+
+  c10::intrusive_ptr<Work> _broadcast_oop(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
+      const BroadcastOptions& opts);
+
+  c10::intrusive_ptr<Work> allgather(
+      std::vector<std::vector<at::Tensor>>& outputTensors,
+      std::vector<at::Tensor>& inputTensors,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
+
+  c10::intrusive_ptr<Work> _allgather_base(
+      at::Tensor& outputbuffer,
+      at::Tensor& inputbuffer,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
+
+  c10::intrusive_ptr<Work> allgather_into_tensor_coalesced(
+      std::vector<at::Tensor>& outputs,
+      std::vector<at::Tensor>& inputs,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
+
+  c10::intrusive_ptr<Work> reduce_scatter(
+      std::vector<at::Tensor>& outputTensors,
+      std::vector<std::vector<at::Tensor>>& inputTensors,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+
+  c10::intrusive_ptr<Work> _reduce_scatter_base(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+
+  c10::intrusive_ptr<Work> reduce_scatter_tensor_coalesced(
+      std::vector<at::Tensor>& outputs,
+      std::vector<at::Tensor>& inputs,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+
+  c10::intrusive_ptr<Work> barrier(
+      const BarrierOptions& opts = BarrierOptions()) override;
+
+  c10::intrusive_ptr<Work> alltoall_base(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
+      std::vector<int64_t>& outputSplitSizes,
+      std::vector<int64_t>& inputSplitSizes,
+      const AllToAllOptions& opts = AllToAllOptions()) override;
+
+  c10::intrusive_ptr<Work> alltoall(
+      std::vector<at::Tensor>& outputTensors,
+      std::vector<at::Tensor>& inputTensors,
+      const AllToAllOptions& opts = AllToAllOptions()) override;
+
+  c10::intrusive_ptr<Work> send(
+      std::vector<at::Tensor>& tensors,
+      int dstRank,
+      int tag) override;
+
+  c10::intrusive_ptr<Work> recv(
+      std::vector<at::Tensor>& tensors,
+      int srcRank,
+      int tag) override;
+
+  void groupStart();
+
+  void groupEnd();
+
+  c10::intrusive_ptr<Work> gather(
+      std::vector<std::vector<at::Tensor>>& outputTensors,
+      std::vector<at::Tensor>& inputTensors,
+      const GatherOptions& opts = GatherOptions()) override;
+
+  c10::intrusive_ptr<Work> scatter(
+      std::vector<at::Tensor>& outputTensors,
+      std::vector<std::vector<at::Tensor>>& inputTensors,
+      const ScatterOptions& opts = ScatterOptions()) override;
+
+  void setSequenceNumberForGroup() override;
+
+  uint64_t getSequenceNumberForGroup() override;
 
  protected:
   std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
@@ -151,8 +329,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
+  std::set<int> usedDeviceIdxs_;
+  int coalescing_state_ = 0;
+  at::Device coalescedDevice_ = at::Device("xpu");
+  std::shared_ptr<xcclComm_t> coalescedComm_ = nullptr;
   bool blockingWait_ = false;
+  static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
+  uint64_t seqP2P_{0};
 
  private:
   std::mutex kvs_mutex;

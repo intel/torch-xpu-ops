@@ -11,7 +11,8 @@ except Exception as e:
 
 with XPUPatchForImport(False):
     import test_decomp
-    from test_decomp import TestDecomp,DecompOneOffTests
+    from test_decomp import DecompOneOffTests, TestDecomp
+
 
 def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs):
     assert orig.dtype == decomp.dtype, f"{i} Operation:  {op}"
@@ -57,8 +58,14 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
         (torch.float16, torch.ops.aten.mv.default): 1e-5,
         (torch.bfloat16, torch.ops.aten.mv.default): 1e-5,
         (torch.float16, torch.ops.aten.log_sigmoid_backward.default): 2e-5,
-        (torch.float16, torch.ops.aten._batch_norm_with_update.default): 2e-7, # adjust tolerance for xpu, so hook this func
-        (torch.bfloat16, torch.ops.aten._batch_norm_with_update.default): 2e-7, # adjust tolerance for xpu, so hook this func
+        (
+            torch.float16,
+            torch.ops.aten._batch_norm_with_update.default,
+        ): 2e-7,  # adjust tolerance for xpu, so hook this func
+        (
+            torch.bfloat16,
+            torch.ops.aten._batch_norm_with_update.default,
+        ): 2e-7,  # adjust tolerance for xpu, so hook this func
     }
     if ref.is_floating_point():
         orig_diff = (orig - ref).abs().max()
@@ -76,10 +83,14 @@ def _op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs
         test_case.assertEqual(
             orig, decomp, msg=f"{op.__name__}\nargs = {args}\nkwargs = {kwargs}"
         )
-test_decomp.op_assert_ref=_op_assert_ref
+
+
+test_decomp.op_assert_ref = _op_assert_ref
 
 instantiate_device_type_tests(TestDecomp, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(DecompOneOffTests, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    DecompOneOffTests, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

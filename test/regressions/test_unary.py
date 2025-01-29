@@ -1,17 +1,24 @@
+# Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
 
-
 floating_types = [torch.float, torch.half, torch.bfloat16, torch.double]
-integral_types = [torch.int8, torch.uint8, torch.short, torch.int, torch.long, torch.bool]
+integral_types = [
+    torch.int8,
+    torch.uint8,
+    torch.short,
+    torch.int,
+    torch.long,
+    torch.bool,
+]
 complex_types = [torch.cfloat, torch.cdouble]
 floating_and_complex_types = floating_types + complex_types
 all_basic_types = floating_types + integral_types
 all_basic_and_complex_types = floating_types + integral_types + complex_types
 
 
-class Dtypes(object):
-    def __init__(self, include_dtypes, exclude_dtypes=[]):
+class Dtypes:  # noqa: UP004
+    def __init__(self, include_dtypes, exclude_dtypes=[]):  # noqa: B006
         self.include_dtypes = include_dtypes
         self.exclude_dtypes = exclude_dtypes
 
@@ -20,14 +27,15 @@ class Dtypes(object):
             for dtype in self.include_dtypes:
                 if dtype in self.exclude_dtypes:
                     continue
-                kwargs['dtype'] = dtype
+                kwargs["dtype"] = dtype
                 fn(*args, **kwargs)
+
         return fn_out
 
 
 class TestSimpleUnary(TestCase):
     def _test_unary_out_ops(self, fn_str, dtype):
-        a_cpu = (torch.randn(2049)*10).to(dtype)
+        a_cpu = (torch.randn(2049) * 10).to(dtype)
         a_xpu = a_cpu.xpu()
         b_cpu = eval(f"torch.{fn_str}(a_cpu)")
         b_xpu = eval(f"torch.{fn_str}(a_xpu)")
@@ -41,36 +49,36 @@ class TestSimpleUnary(TestCase):
 
     @Dtypes(floating_types)
     def test_abs_out(self, dtype):
-        self._test_unary_out_ops('abs', dtype)
+        self._test_unary_out_ops("abs", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_sin_out(self, dtype):
-        self._test_unary_out_ops('sin', dtype)
+        self._test_unary_out_ops("sin", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_cos_out(self, dtype):
-        self._test_unary_out_ops('cos', dtype)
+        self._test_unary_out_ops("cos", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_log_out(self, dtype):
-        self._test_unary_out_ops('log', dtype)
+        self._test_unary_out_ops("log", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_sqrt_out(self, dtype):
-        self._test_unary_out_ops('sqrt', dtype)
+        self._test_unary_out_ops("sqrt", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_rsqrt_out(self, dtype):
-        self._test_unary_out_ops('rsqrt', dtype)
+        self._test_unary_out_ops("rsqrt", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_tanh_out(self, dtype):
-        self._test_unary_out_ops('tanh', dtype)
+        self._test_unary_out_ops("tanh", dtype)
 
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
-        self._test_unary_out_ops('neg', dtype)
+        self._test_unary_out_ops("neg", dtype)
 
     @Dtypes(floating_and_complex_types)
     def test_reciprocal_out(self, dtype):
-        self._test_unary_out_ops('reciprocal', dtype)
+        self._test_unary_out_ops("reciprocal", dtype)

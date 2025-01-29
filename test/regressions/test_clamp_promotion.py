@@ -1,6 +1,8 @@
+# Owner(s): ["module: intel"]
+import itertools
+
 import torch
 from torch.testing._internal.common_utils import TestCase
-import itertools
 
 device = torch.device("xpu")
 

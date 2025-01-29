@@ -36,9 +36,10 @@ set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
 list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
+include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
-option(USE_XCCL "Build with XCCL support" ON)
+option(USE_XCCL "Build with XCCL support" OFF)
 
 if(NOT WIN32 AND USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
@@ -64,6 +65,7 @@ endif()
 
 # Only for debugging. Save building time by shrinking translation unit scope.
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
+set(BUILD_SPLIT_KERNEL_LIB $ENV{BUILD_SPLIT_KERNEL_LIB})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
 set(TORCH_XPU_OPS_FOUND TRUE)

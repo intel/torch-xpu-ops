@@ -22,7 +22,7 @@ skip_dict = {
         "test_copy_from_dlpack_xpu_int32",
         "test_copy_from_dlpack_xpu_int64",
         "test_copy_from_dlpack_xpu_int8",
-        "test_copy_from_dlpack_xpu_uint8"
+        "test_copy_from_dlpack_xpu_uint8",
     ),
     # SYCL compiler issue where host and device results differ for math ops with complex dtypes
     "test_unary_ufuncs_xpu.py": (

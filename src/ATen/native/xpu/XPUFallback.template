@@ -26,6 +26,12 @@ namespace native::xpu {
 Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
 Tensor roi_align(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t sampling_ratio, bool aligned);
 Tensor _roi_align_backward(const Tensor& grad, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width, int64_t sampling_ratio, bool aligned);
+std::tuple<Tensor, Tensor> ps_roi_align(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t sampling_ratio);
+Tensor _ps_roi_align_backward(const Tensor& grad, const Tensor& rois, const Tensor& channel_mapping, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t sampling_ratio, int64_t batch_size, int64_t channels, int64_t height, int64_t width);
+std::tuple<Tensor, Tensor> roi_pool(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width);
+Tensor _roi_pool_backward(const Tensor& grad, const Tensor& rois, const Tensor& argmax, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width);
+std::tuple<Tensor, Tensor> ps_roi_pool(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width);
+Tensor _ps_roi_pool_backward(const Tensor& grad, const Tensor& rois, const Tensor& channel_mapping, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width);
 }
 
 // Register op's implementation lazily since sometimes the op is not defined,
@@ -38,6 +44,12 @@ static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
   {"torchvision::nms", false},
   {"torchvision::roi_align", false},
   {"torchvision::_roi_align_backward", false},
+  {"torchvision::ps_roi_align", false},
+  {"torchvision::_ps_roi_align_backward", false},
+  {"torchvision::roi_pool", false},
+  {"torchvision::_roi_pool_backward", false},
+  {"torchvision::ps_roi_pool", false},
+  {"torchvision::_ps_roi_pool_backward", false},
 };
 
 // Return:
@@ -56,6 +68,18 @@ static bool lazy_registration_and_redispatch(
             TORCH_SELECTIVE_NAME("torchvision::roi_align"),TORCH_FN(at::native::xpu::roi_align));
         m.impl(
             TORCH_SELECTIVE_NAME("torchvision::_roi_align_backward"),TORCH_FN(at::native::xpu::_roi_align_backward));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::ps_roi_align"),TORCH_FN(at::native::xpu::ps_roi_align));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_ps_roi_align_backward"),TORCH_FN(at::native::xpu::_ps_roi_align_backward));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::roi_pool"),TORCH_FN(at::native::xpu::roi_pool));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_roi_pool_backward"),TORCH_FN(at::native::xpu::_roi_pool_backward));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::ps_roi_pool"),TORCH_FN(at::native::xpu::ps_roi_pool));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_ps_roi_pool_backward"),TORCH_FN(at::native::xpu::_ps_roi_pool_backward));
       };
 
   static const torch::detail::TorchLibraryInit
@@ -158,12 +182,10 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_cholesky_solve_helper",
     "dot",
     "_efficient_attention_forward",
-    "_fft_c2c",
     "_fft_c2r",
     "_fft_r2c",
     "_flash_attention_forward",
     "geqrf",
-    "index_reduce.out",
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
     "linalg_eig",

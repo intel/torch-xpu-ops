@@ -1,9 +1,9 @@
 
-import re
 import requests
 import argparse
 import urllib
 import subprocess
+import sys
 
 
 parser = argparse.ArgumentParser()
@@ -67,7 +67,7 @@ def appyly_pr(pr_info, re_apply_msg):
     else:
         print("{} {}, applied got FAILED".format(pr_info["diff_url"], apply_message))
         print(apply_status, apply_message)
-        exit(1)
+        sys.exit(1)
 
 
 # headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
@@ -103,5 +103,4 @@ for pr_link in pr_list:
         appyly_pr(pr_info, re_apply_msg)
     else:
         print("{} is {}, no need to apply".format(pr_info["diff_url"], pr_info["state"]))
-        exit(1)
-
+        sys.exit(1)

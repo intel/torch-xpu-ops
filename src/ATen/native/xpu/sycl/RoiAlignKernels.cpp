@@ -156,6 +156,7 @@ struct RoiAlignForwardKernel {
         width_(width),
         pooled_height_(pooled_height),
         pooled_width_(pooled_width),
+        sampling_ratio_(sampling_ratio),
         aligned_(aligned),
         rois_(rois),
         output_(output) {}
