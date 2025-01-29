@@ -31,21 +31,24 @@
 
 namespace at::native::xpu{
 
+using namespace at::sparse_csr;
+using namespace at::sparse;
+
 template <typename scalar_t>
 struct ReductionAddOp {
-  static inline scalar_t operator()(const scalar_t a, const scalar_t b) const {
+  inline scalar_t operator()(const scalar_t a, const scalar_t b) const {
     return a + b;
   }
-  static inline scalar_t identity() const { return 0; }
+  inline scalar_t identity() const { return 0; }
   inline scalar_t identity_cpu() const { return 0; }
 };
 
 template <typename scalar_t>
 struct ReductionMulOp {
-  static inline scalar_t operator()(const scalar_t a, const scalar_t b) const {
+  inline scalar_t operator()(const scalar_t a, const scalar_t b) const {
     return a * b;
   }
-  static inline scalar_t identity() const { return 1; }
+  inline scalar_t identity() const { return 1; }
   inline scalar_t identity_cpu() const { return 1; }
 };
 
@@ -59,8 +62,8 @@ struct ReduceSparseCsrDim0KernelFunctor {
       for (int64_t j=0; j < nnz; j++) {
         if (col == col_indices[j]) v = rop(v, acc_t(values[j]));
       }
+      new_values[tid] = v;
     }
-    new_values[tid] = v;
   }
 
   ReduceSparseCsrDim0KernelFunctor(
@@ -226,7 +229,7 @@ Tensor reduce_sparse_csr_dim1_xpu_template(const Tensor& sparse, ReductionOp rop
   Tensor new_values_acc = std::get<1>(acc_buffer);
   auto queue = getCurrentSYCLQueue();
 
-  AT_DISPATCH_INDEX_TYPES(col_indices.scalar_type(), "reduce_sparse_csr_dim1_xpu_indices",
+  AT_DISPATCH_INDEX_TYPES(crow_indices.scalar_type(), "reduce_sparse_csr_dim1_xpu_indices",
     [&]() {
       using KernelFn = ReduceSparseCsrDim1KernelFunctor<scalar_t, index_t, ReductionOp, acc_t>;
       int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
