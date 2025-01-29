@@ -337,7 +337,7 @@ Tensor reduce_sparse_csr_xpu_template(const Tensor& sparse, IntArrayRef dims_to_
   return reduce_sparse_csr_xpu_template<scalar_t>(sparse, dims, rop);
 }
 
-Tensor _sparse_csr_sum_xpu(const Tensor& input, IntArrayRef dims_to_sum, bool keepdim, std::optional<ScalarType> dtype) {
+Tensor _sparse_csr_sum_xpu_kernel(const Tensor& input, IntArrayRef dims_to_sum, bool keepdim, std::optional<ScalarType> dtype) {
   ScalarType dtype_ = dtype.value_or(input.scalar_type());
   Tensor input_ = at::sparse_csr::to_type(input, dtype_);
   Tensor result;
@@ -350,7 +350,7 @@ Tensor _sparse_csr_sum_xpu(const Tensor& input, IntArrayRef dims_to_sum, bool ke
   return result;
 }
 
-Tensor _sparse_csr_prod_xpu(const Tensor& input, IntArrayRef dims_to_reduce, bool keepdim, std::optional<ScalarType> dtype) {
+Tensor _sparse_csr_prod_xpu_kernel(const Tensor& input, IntArrayRef dims_to_reduce, bool keepdim, std::optional<ScalarType> dtype) {
   ScalarType dtype_ = dtype.value_or(input.scalar_type());
   Tensor input_ = input.to(dtype_);
   Tensor result;

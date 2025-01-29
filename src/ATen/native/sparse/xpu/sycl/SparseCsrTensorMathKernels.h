@@ -5,13 +5,13 @@
 
 namespace at::native::xpu {
 
-TORCH_XPU_API Tensor _sparse_csr_sum_xpu(
+TORCH_XPU_API Tensor _sparse_csr_sum_xpu_kernel(
   const Tensor& input,
   IntArrayRef dims_to_sum,
   bool keepdim,
   std::optional<ScalarType> dtype);
 
-TORCH_XPU_API Tensor _sparse_csr_prod_xpu(
+TORCH_XPU_API Tensor _sparse_csr_prod_xpu_kernel(
   const Tensor& input,
   IntArrayRef dims_to_reduce,
   bool keepdim,
