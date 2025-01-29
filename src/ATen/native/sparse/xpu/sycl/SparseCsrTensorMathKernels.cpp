@@ -118,7 +118,7 @@ Tensor reduce_sparse_csr_dim0_xpu_template(const Tensor& sparse, ReductionOp rop
       index_t* new_col_indices_ptr = new_col_indices.data_ptr<index_t>();
       using KernelFn = ReduceSparseCsrDim0KernelFunctor<scalar_t, index_t, ReductionOp, acc_t>;
       int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
-      int64_t work_group_num = (new_nnz + work_group_size - 1) / work_group_size; // fix -1
+      int64_t work_group_num = (new_nnz + work_group_size - 1) / work_group_size;
       auto kfn = KernelFn(
         new_values_acc_ptr,
         new_col_indices_ptr,
@@ -233,7 +233,7 @@ Tensor reduce_sparse_csr_dim1_xpu_template(const Tensor& sparse, ReductionOp rop
     [&]() {
       using KernelFn = ReduceSparseCsrDim1KernelFunctor<scalar_t, index_t, ReductionOp, acc_t>;
       int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
-      int64_t work_group_num = (nrows + work_group_size - 1) / work_group_size; // fix -1
+      int64_t work_group_num = (nrows + work_group_size - 1) / work_group_size;
 
       index_t* crow_indices_ptr = crow_indices.data_ptr<index_t>();
       index_t* new_crow_indices_ptr = new_crow_indices.data_ptr<index_t>();
@@ -319,7 +319,6 @@ Tensor reduce_sparse_csr_xpu_template(const Tensor& sparse, std::vector<int64_t>
     return reduce_sparse_csr_dim01_xpu_template<scalar_t>(sparse, rop);
   }
   TORCH_INTERNAL_ASSERT(dims.size() == 0);
-  // effective after gh-29137 has been resolved
   return sparse.clone();
 }
 
