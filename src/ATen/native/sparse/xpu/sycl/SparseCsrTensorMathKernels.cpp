@@ -31,7 +31,7 @@
 namespace at::native::xpu{
 
 template <typename input_t, typename output_t>
-struct convertIndicesFromCooToCsrXPUFunctor {
+struct convertIndicesFromCooToCsrXPUFunctor{
   void operator()(sycl::nd_item<1> itemId) const {
     auto linear_id = itemId.get_global_linear_id();
     if (linear_id == 0) {
@@ -59,6 +59,30 @@ struct convertIndicesFromCooToCsrXPUFunctor {
   const int64_t size;
 };
 
+template <typename input_t, typename output_t>
+struct convertIndicesFromCsrToCooXPUFunctor {
+  void operator()(sycl::nd_item<1> itemId) const {
+    int64_t linear_id = itemId.get_global_linear_id();
+    if (linear_id < nrows) {
+      for (int64_t i = crow_indices_data_in[linear_id];
+           i < crow_indices_data_in[linear_id + 1];
+           i++)
+        data_out[i] = static_cast<output_t>(linear_id);
+    }
+  }
+  convertIndicesFromCsrToCooXPUFunctor(
+      int64_t nrows_,
+      const input_t* crow_indices_data_in_,
+      output_t* data_out_)
+      : nrows(nrows_),
+        crow_indices_data_in(crow_indices_data_in_),
+        data_out(data_out_) {}
+
+ private:
+  int64_t nrows;
+  const input_t* crow_indices_data_in;
+  output_t* data_out;
+};
 
 template <typename input_t, typename output_t>
 void launch_convert_indices_from_coo_to_csr_xpu_kernel(
@@ -83,19 +107,54 @@ void launch_convert_indices_from_coo_to_csr_xpu_kernel(
     auto functor = convertIndicesFromCooToCsrXPUFunctor<input_t, output_t>(
         numel,
         data_in,
-        data_out, 
+        data_out,
         size);
 
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
 }
 
+
+template <typename input_t, typename output_t>
+void launch_convert_indices_from_csr_to_coo_xpu_kernel(
+    const Tensor& indices,
+    const Tensor& crow_indices,
+    const Tensor& col_indices,
+    const bool transpose = false) {
+  int64_t nrows = crow_indices.numel() - 1;
+
+  if (nrows == 0) {
+    indices.zero_();
+    return;
+  }
+
+  auto crow_indices_ = crow_indices.expect_contiguous();
+  const input_t* crow_indices_data_in = crow_indices_->data_ptr<input_t>();
+  TORCH_INTERNAL_ASSERT(indices.is_contiguous());
+  auto row0 = indices.select(0, transpose ? 1 : 0);
+  auto row1 = indices.select(0, transpose ? 0 : 1);
+  output_t* data_out = row0.data_ptr<output_t>();
+  row1.copy_(*col_indices.expect_contiguous());
+
+  int64_t wgroup_size = 64;
+  int64_t ngroups = (nrows + wgroup_size - 1) / wgroup_size;
+  sycl::range<1> global_range(ngroups * wgroup_size);
+  sycl::range<1> local_range(wgroup_size);
+
+  auto functor = convertIndicesFromCsrToCooXPUFunctor<input_t, output_t>(
+    nrows,
+    crow_indices_data_in,
+    data_out);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), functor);
+}
+
 void convert_indices_from_coo_to_csr_structured_kernel(
-    const Tensor& input, 
-    const int64_t size, 
-    const bool out_int32, 
+    const Tensor& input,
+    const int64_t size,
+    const bool out_int32,
     const Tensor& result){
     
-  if (out_int32) {
+  if (out_int32){
     AT_DISPATCH_INTEGRAL_TYPES(
         input.scalar_type(), "convert_indices_from_coo_to_csr_xpu", [&] {
           launch_convert_indices_from_coo_to_csr_xpu_kernel<scalar_t, int>(
@@ -110,6 +169,30 @@ void convert_indices_from_coo_to_csr_structured_kernel(
   }
 }
 
+void convert_indices_from_csr_to_coo_structured_kernel(
+    const Tensor& crow_indices,
+    const Tensor& col_indices,
+    const bool out_int32,
+    const bool transpose,
+    const Tensor& result) {
+  if (out_int32) {
+    AT_DISPATCH_INTEGRAL_TYPES(
+        crow_indices.scalar_type(),
+        "convert_indices_from_csr_to_coo_xpu",
+        [&] {
+          launch_convert_indices_from_csr_to_coo_xpu_kernel<scalar_t, int>(
+              result, crow_indices, col_indices, transpose);
+        });
+  } else {
+    AT_DISPATCH_INTEGRAL_TYPES(
+        crow_indices.scalar_type(),
+        "convert_indices_from_coo_to_csr_xpu",
+        [&] {
+          launch_convert_indices_from_csr_to_coo_xpu_kernel<scalar_t, int64_t>(
+              result, crow_indices, col_indices, transpose);
+        });
+  }
+}
 } // namespace at::native::xpu
 
 

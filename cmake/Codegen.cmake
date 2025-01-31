@@ -99,7 +99,7 @@ function(GEN_XPU file_yaml)
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_PATH}
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterNestedTensorXPU_PATH}
     COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseCsrXPU_PATH}
-    ${SIMPLE_TRACE} 
+    ${SIMPLE_TRACE}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
     ${depended_files}
