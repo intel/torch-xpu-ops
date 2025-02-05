@@ -43,16 +43,21 @@ jobs:
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     env:
+      PF_HOME: ${{ github.workspace }}/.pf_home
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Clean PF home directory and cache
+        run: |
+          rm -rf ${{ env.PF_HOME }}
       - name: Create unique Conda ENV name
         run: |
           echo "CONDA_ENV_NAME=profile_test_${ZE_AFFINITY_MASK}" >> $GITHUB_ENV
       - name: Prepare Conda ENV
         run: |
+          echo "Using Conda ENV name: $CONDA_ENV_NAME"
           which conda && conda clean -ay
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ env.python }} cmake ninja -y
@@ -101,7 +106,6 @@ jobs:
       - name: Official UT Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         run: |
-          cd ${{ github.workspace }}
           rm -rf profile_test && mkdir -p profile_test
           source activate $CONDA_ENV_NAME
           cd ../pytorch/test/profiler
