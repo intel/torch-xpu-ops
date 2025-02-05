@@ -1,7 +1,5 @@
 import torch
 
-from torch.profiler import profile, record_function, ProfilerActivity
-
 input1 = torch.randn(3, 3, device='xpu')
 input2 = torch.randn(3, 3, device='xpu')
 
