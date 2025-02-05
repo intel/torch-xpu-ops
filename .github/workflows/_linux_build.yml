@@ -88,6 +88,7 @@ jobs:
         run: |
           source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
+          export USE_XCCL=1
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
@@ -100,33 +101,41 @@ jobs:
             last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
             cd ../pytorch
             current_commit=$(git rev-parse HEAD)
-            echo ">>>>>>>>>>>>branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
+            is_fork_pr=false
+            if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              is_fork_pr=true
+            fi
+            echo ">>>>>>>>>>>>Fork PR: ${is_fork_pr}, pytorch branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
 
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
-            if [ -f dist/torch*.whl ]; then
-              echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
-              gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};" > new_body.txt
-              gh --repo $repo issue edit $commit_issue --body-file new_body.txt
-            else
-              echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
-              gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
-              git clean -df .
-              git checkout $last_commit
-              # apply PRs for stock pytorch
-              python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-              git status && git show -s
-              git submodule sync && git submodule update --init --recursive
-              if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-                echo "Don't replace torch-xpu-ops!"
+            if [[ ${is_fork_pr} == "false" ]]; then
+              if [ -f dist/torch*.whl -a "${last_commit}" != "${current_commit}" ]; then
+                echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
+                gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
+                gh --repo $repo issue edit $commit_issue --body-file new_body.txt
               else
-                rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-                # Workaround for torch-xpu-ops ci test
-                sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+                echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
+                gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
+                git clean -df .
+                git checkout $last_commit
+                # apply PRs for stock pytorch
+                python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+                git status && git show -s
+                git submodule sync && git submodule update --init --recursive
+                if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+                  echo "Don't replace torch-xpu-ops!"
+                else
+                  rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+                  # Workaround for torch-xpu-ops ci test
+                  sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+                fi
+                WERROR=1 python setup.py bdist_wheel
               fi
-              WERROR=1 python setup.py bdist_wheel
+            else
+              echo "Forked PR, don't update the issue"
             fi
             pip install --force-reinstall dist/*.whl
             cp dist/*.whl ${{ github.workspace }}/

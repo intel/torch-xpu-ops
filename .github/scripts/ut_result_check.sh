@@ -72,3 +72,18 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
+if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
+    grep "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} xpu distributed"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_xpu_distributed_test_failed.log"
+    ((num_failed=num_failed_xpu_distributed))
+    if [[ $num_failed -gt 0 ]]; then
+      echo -e "[ERROR] UT ${ut_suite} test Fail"
+      exit 1
+    else
+      echo -e "[PASS] UT ${ut_suite} test Pass"
+    fi
+fi

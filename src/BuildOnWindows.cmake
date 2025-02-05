@@ -6,7 +6,8 @@ set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 add_library(
   torch_xpu_ops
   STATIC
-  ${ATen_XPU_CPP_SRCS})
+  ${ATen_XPU_CPP_SRCS}
+  ${ATen_XPU_MKL_SRCS})
 set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
 target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
@@ -35,7 +36,7 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-elseif(BUILD_SPLIT_KERNEL_LIB)
+elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
   # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
   set(ATen_XPU_SYCL_BINARY_SRCS)
   set(ATen_XPU_SYCL_UNARY_SRCS)
@@ -264,3 +265,9 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_link_libraries(${lib} PUBLIC c10_xpu)
   target_link_libraries(${lib} PUBLIC torch_cpu)
 endforeach()
+
+if(USE_ONEMKL)
+  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL")
+  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
+  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
+endif()
