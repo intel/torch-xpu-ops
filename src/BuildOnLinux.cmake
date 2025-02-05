@@ -9,6 +9,7 @@ if(BUILD_SEPARATE_OPS)
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS}
     ${ATen_XPU_XCCL_SRCS})
@@ -31,11 +32,12 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-elseif(BUILD_SPLIT_KERNEL_LIB)
+elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
   add_library(
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS}
     ${ATen_XPU_XCCL_SRCS})
@@ -126,7 +128,7 @@ else()
   sycl_add_library(
     xpu_sycl
     STATIC
-    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
+    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
   add_library(torch_xpu_ops ALIAS xpu_sycl)
   set_target_properties(xpu_sycl PROPERTIES OUTPUT_NAME torch_xpu_ops)
@@ -154,3 +156,9 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
 endforeach()
+
+if(USE_ONEMKL)
+  target_compile_options(torch_xpu_ops PRIVATE "-DUSE_ONEMKL")
+  target_include_directories(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR})
+  target_link_libraries(torch_xpu_ops PUBLIC ${TORCH_XPU_OPS_ONEMKL_LIBRARIES})
+endif()

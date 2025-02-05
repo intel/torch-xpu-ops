@@ -96,7 +96,7 @@ jobs:
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
@@ -128,6 +128,7 @@ jobs:
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
             cd ../..
+            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
@@ -233,6 +234,21 @@ jobs:
             test_cmd="${test_cmd} test_xpu.py"
           fi
           eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+      - name: Run Torch XPU Distributed UT
+        if: contains(inputs.ut, 'xpu_distributed')
+        run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install pytest
+          cd ${{ github.workspace }}
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+          mkdir -p ut_log/xpu_distributed
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
+          python -c "import torch;print(torch.distributed.is_xccl_available())"
+          timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+          cd ${{ github.workspace }}
+          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
         shell: bash
         run: |
@@ -246,9 +262,10 @@ jobs:
               }
           }
           set -xe
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
-            contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu" $ut_suite
+            contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_distributed" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
@@ -258,5 +275,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }} 
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
