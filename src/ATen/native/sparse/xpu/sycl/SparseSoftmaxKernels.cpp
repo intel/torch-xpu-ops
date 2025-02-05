@@ -364,7 +364,6 @@ Tensor get_offsets(
 
   auto ndim = indices.size(0);
   auto nnz = indices.size(1);
-  std::cout << "indices " << indices << std::endl;
   std::vector<int64_t> host_strides(ndim, 1);
   if (ndim > 1) {
     for (int64_t i = ndim - 2; i >= 0; i--) {
@@ -383,30 +382,19 @@ Tensor get_offsets(
   for (int kk = 0; kk < ndim; kk++) {
     strides[kk] = host_strides[kk];
   }
-  std::cout << "strides " << strides << std::endl;
-
-  std::cout << std::endl;
-  std::cout << "after syclMemcpyAsync---" << std::endl;
 
   auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
 
   Tensor offsets = at::zeros({nnz}, indices.options());
-  std::cout << "offsets " << offsets << std::endl;
-
-  std::cout << "before transform---" << std::endl;
 
   for (int i = 0; i < nnz; i++) {
     int64_t pool_index = 0;
-    std::cout << "pool_index " << std::endl;
     for (int64_t j = 0; j < ndim; j++) {
-      std::cout << "i " << i << " j " << j << std::endl;
       if (j != dim) {
         offsets[i] += (strides[j] * indices[j][i]);
-        // std::cout << "pool_index " << pool_index << std::endl;
       }
     }
   }
-  std::cout << "end---get_offsets" << std::endl;
   return offsets;
 }
 
@@ -425,43 +413,21 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
     ATen/native/sparse/SoftMax.cpp:cpu_sparse_coo_softmax for the CPU
     implementation that this implementation is based on.
   */
-  std::cout << "enter compute_pool_max---" << std::endl;
   auto nnz = indices.size(1);
-  std::cout << "nnz " << nnz << std::endl;
   auto offsets = get_offsets(indices, sizes, dim);
   int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
-  std::cout << "get_offsets done------" << std::endl;
-  // std::vector<int64_t> off_vec(nnz, 1);
-
-  // std::cout<<"offsets " << offsets << std::endl;
-  // for(int kk = 0; kk < nnz; kk++){
-  //   std::cout<<" " << off_vec[kk];
-  // }
-  // std::cout<< std::endl;
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
   // std::sequence(sorted_indices_ptr, sorted_indices_ptr + nnz, 0);
 
-  // for (int i = 0; i < nnz; i++){
-  //   std::cout << sorted_indices[i] << std::endl;
-  // }
-  std::cout << "before iota---sorted_indices " << sorted_indices << std::endl;
-
   pstl::iota<int64_t>(sorted_indices_ptr, sorted_indices_ptr + nnz, (int64_t)0);
-
-  std::cout << "before sort---sorted_indices " << sorted_indices << std::endl;
 
   PoolFunctor pool_functor;
   pstl::sort<int64_t, int64_t>(
       sorted_indices_ptr, offsets_ptr, nnz, pool_functor);
 
-  std::cout << "after sort---offsets " << offsets << std::endl;
-  std::cout << "after sort---sorted_indices " << sorted_indices << std::endl;
-
   auto pool_sizes = at::ones({nnz}, indices.options());
-
-  std::cout << "before_reduce_by_key--- pool_sizes" << pool_sizes << std::endl;
 
   auto constant_it = at::ones({nnz}, indices.options());
   auto discard_it = at::zeros({nnz}, indices.options());
@@ -478,8 +444,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
 
   pool_sizes.resize_({new_sz});
 
-  std::cout << "after reduce_by_key--- pool_sizes" << pool_sizes << std::endl;
-
   auto pool_offsets = pool_sizes.clone();
   auto pool_offsets_ptr = pool_offsets.data_ptr<int64_t>();
   pstl::exclusive_scan(
@@ -487,9 +451,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
       pool_offsets_ptr + new_sz,
       pool_offsets_ptr,
       static_cast<int64_t>(0));
-
-  std::cout << "after_exclusive_scan--- pool_offsets" << pool_offsets
-            << std::endl;
 
   Tensor mx_buffer;
   if (requireMxRows) {
@@ -553,7 +514,6 @@ void xpu_sparse_coo_softmax(
   auto nnz = values.size(0);
   auto sizes = input.sizes();
   auto nvalues = get_nvalues(sizes, sparse_dim);
-  std::cout << "nnz---" << nnz << std::endl;
 
   /* Prepare accessors */
   auto values_2 = values.view({nnz, nvalues});
@@ -565,13 +525,9 @@ void xpu_sparse_coo_softmax(
   auto [sorted_indices, pool_offsets, pool_sizes, mx_buffer] =
       compute_pool_max<scalar_t, true>(indices, values_2, sizes, nvalues, dim);
 
-  std::cout << "exit compute_pool_max " << std::endl;
-
   auto pool_size = pool_offsets.size(0);
   int block_size = getNumThreads(pool_size);
   const int grid_size = (pool_size + block_size - 1) / block_size;
-  std::cout << "nvalues---" << nvalues << std::endl;
-  std::cout << "pool_size---" << pool_size << std::endl;
 
   sycl::range<1> global_range(grid_size * block_size);
   sycl::range<1> local_range(block_size);
@@ -581,7 +537,6 @@ void xpu_sparse_coo_softmax(
   // Further, they will be invalid configuration parameters for the launch. So
   // let's not launch a kernel unless both are non-zero.
   if (nvalues > 0 && pool_size > 0) {
-    std::cout << "before enter functor---" << std::endl;
     auto kfn = SparseCooSoftmaxFunctor<scalar_t, LogSoftMax>(
         sorted_indices.template data_ptr<int64_t>(),
         pool_size,
@@ -692,8 +647,6 @@ void xpu_sparse_coo_softmax_backward(
   Tensor lower_bound_values =
       at::empty({out_offsets.size(0)}, indices.options());
 
-  std::cout << "lower_bound_values------" << lower_bound_values << std::endl;
-
   // pstl::lower_bound_tensor(
   pstl::lower_bound_tensor<int64_t>(
       grad_offsets.data_ptr<int64_t>(),
@@ -701,8 +654,6 @@ void xpu_sparse_coo_softmax_backward(
       out_offsets.data_ptr<int64_t>(),
       out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
       lower_bound_values.data_ptr<int64_t>());
-
-  std::cout << "after lower_bound_tensor---" << lower_bound_values << std::endl;
 
   // for (int64_t i = 0; i < out_offsets.size(0); i++) {
   //   auto low = std::lower_bound(
@@ -756,7 +707,7 @@ Tensor softmax_sparse_xpu_kernel(
   if (input.numel() == 0) {
     return output;
   }
-  std::cout << "softmax_sparse_xpu_kernel---dispatch" << std::endl;
+
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "softmax", [&] {
     xpu_sparse_coo_softmax<scalar_t, false>(output, input, dim);
   });
