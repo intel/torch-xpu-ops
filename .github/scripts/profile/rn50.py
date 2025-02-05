@@ -25,7 +25,7 @@ torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
 model_names = sorted(
-    name for name in models.__dict__ 
+    name for name in models.__dict__
     if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
 )
 
@@ -860,7 +860,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
 
         # config profiler
         import contextlib
-        
+
         def profiler_setup(profiling=False, *args, **kwargs):
             if profiling:
                 return torch.profiler.profile(*args, **kwargs)
@@ -877,7 +877,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
         skip_iters = max(num_iters - 5, 0)
         schedule = torch.profiler.schedule(skip_first=skip_iters,
                                            wait=1, warmup=3, active=1)
-        
+
         def trace_handle(prof):
             profile_name = 'fp32'
             if args.fp16:
