@@ -626,9 +626,9 @@ def main_worker(ngpus_per_node, args):
         best_acc1 = max(acc1, best_acc1)
 
         if not args.skip_checkpoint and \
-             (not args.multiprocessing_distributed or
-              (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
-              ):
+            (not args.multiprocessing_distributed or
+             (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
+             ):
             save_checkpoint(state={
                 'epoch': epoch + 1,
                 'arch': args.arch,
