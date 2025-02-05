@@ -24,8 +24,10 @@ import math
 torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
-model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
+model_names = sorted(
+    name for name in models.__dict__ 
+    if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
+)
 
 # for convergence
 converged = False
@@ -98,9 +100,9 @@ parser.add_argument('--optimize', action='store_true', help='Use torch.xpu.optim
 parser.add_argument("--kineto_profile", action="store_true", help="Whether to running kineto profiler",)
 parser.add_argument('--disable-broadcast-buffers', action='store_true', help='disable syncing buffers')
 parser.add_argument('--bucket-cap', default=25, type=int, help='controls the bucket size in MegaBytes')
-parser.add_argument('--large-first-bucket', action="store_true", 
+parser.add_argument('--large-first-bucket', action="store_true",
                     help='Configure a large capacity of the first bucket in DDP for allreduce')
-parser.add_argument("--use-gradient-as-bucket-view", action='store_true', 
+parser.add_argument("--use-gradient-as-bucket-view", action='store_true',
                     help="Turn ON gradient_as_bucket_view optimization in DDP")
 parser.add_argument('--jit-cache', type=str, default=str(hub), help="path to save/load jit model")
 parser.add_argument('--jit-trace', action='store_true',
@@ -413,7 +415,7 @@ def main_worker(ngpus_per_node, args):
                 if args.large_first_bucket:
                     # set the first bucket with maximal size to cover all parameters for allreduce
                     dist._DEFAULT_FIRST_BUCKET_BYTES = sys.maxsize
-                broadcast_buffers=False if args.disable_broadcast_buffers else True
+                broadcast_buffers = False if args.disable_broadcast_buffers else True
                 model = torch.nn.parallel.DistributedDataParallel(model,
                                                                   device_ids=[args.xpu],
                                                                   broadcast_buffers=broadcast_buffers,
@@ -429,7 +431,7 @@ def main_worker(ngpus_per_node, args):
                 if args.large_first_bucket:
                     # set the first bucket with maximal size to cover all parameters for allreduce
                     dist._DEFAULT_FIRST_BUCKET_BYTES = sys.maxsize
-                broadcast_buffers=False if args.disable_broadcast_buffers else True
+                broadcast_buffers = False if args.disable_broadcast_buffers else True
                 model = torch.nn.parallel.DistributedDataParallel(model,
                                                                   device_ids=[args.gpu],
                                                                   broadcast_buffers=broadcast_buffers,
@@ -623,8 +625,8 @@ def main_worker(ngpus_per_node, args):
         best_acc1 = max(acc1, best_acc1)
 
         if not args.skip_checkpoint and \
-                (not args.multiprocessing_distributed or \
-                (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)):
+                    (not args.multiprocessing_distributed or \
+                    (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)):
             save_checkpoint(state={
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -858,6 +860,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
 
         # config profiler
         import contextlib
+        
         def profiler_setup(profiling=False, *args, **kwargs):
             if profiling:
                 return torch.profiler.profile(*args, **kwargs)
@@ -874,6 +877,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
         skip_iters = max(num_iters - 5, 0)
         schedule = torch.profiler.schedule(skip_first=skip_iters,
                                            wait=1, warmup=3, active=1)
+        
         def trace_handle(prof):
             profile_name = 'fp32'
             if args.fp16:
@@ -965,9 +969,9 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
 
                 if i == (args.num_iterations - 1) and args.num_iterations >= warmup_iter:
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                        % (args.batch_size, 
-                        (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))), 
-                        top1.avg, 
+                        % (args.batch_size,
+                        (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))),
+                        top1.avg,
                         top5.avg))
                     sys.exit(0)
                 elif args.num_iterations == 0 and i == len(val_loader) - 1:
@@ -975,9 +979,9 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                         top1.all_reduce()
                         top5.all_reduce()
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                        % (args.batch_size, 
-                        (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))), 
-                        top1.avg, 
+                        % (args.batch_size,
+                        (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))),
+                        top1.avg,
                             top5.avg))
                     if args.converge:
                         global final_top1_acc
@@ -1087,7 +1091,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
             torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"), './profiling.int8.inf.pt')
 
     # start profiler, or none while profiling is false
-    with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as prof, torch.inference_mode():
+    with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as p:
         for i, (images, target) in enumerate(val_loader):
             if args.xpu is not None and args.benchmark == 1:
                 images = images.to(args.xpu, non_blocking=non_blocking)
@@ -1124,7 +1128,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
             loss = criterion(output, target)
 
             if profiling:
-                prof.step()
+                p.step()
 
             # measure accuracy and record loss
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -1144,11 +1148,11 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
 
             if i == (args.num_iterations - 1) and args.num_iterations >= 2:
                 print('Quantization Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                    % (args.batch_size, (args.batch_size / (duration_total / (args.num_iterations - perf_start_iter))), top1.avg, top5.avg))
+                        % (args.batch_size, (args.batch_size / (duration_total / (args.num_iterations - perf_start_iter))), top1.avg, top5.avg))
                 sys.exit(0)
             elif args.num_iterations == 0 and i == len(val_loader) - 1:
                 print('Quantization Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                    % (args.batch_size, (args.batch_size / (duration_total / (len(val_loader) - 2))), top1.avg, top5.avg))
+                        % (args.batch_size, (args.batch_size / (duration_total / (len(val_loader) - 2))), top1.avg, top5.avg))
                 sys.exit(0)
 
         progress.display_summary()
@@ -1291,7 +1295,7 @@ def MLPerfLRScheduler(optimizer, step, iteration, args):
         lr_rate = args.lr * (step / warmup_iter)
     else:
         lr_step = min((step - warmup_iter), decay_steps)
-        lr_rate = ((args.lr - args.end_lr) * (1-(lr_step/decay_steps)) ** power) + args.end_lr
+        lr_rate = ((args.lr - args.end_lr) * (1 - (lr_step / decay_steps)) ** power) + args.end_lr
     global_lr = lr_rate
     optimizer.param_groups[0]['lr'] = global_lr
 
