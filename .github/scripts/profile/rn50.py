@@ -25,8 +25,7 @@ torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
 model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__")
-    and callable(models.__dict__[name]))
+    if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
 # for convergence
 converged = False
@@ -44,8 +43,8 @@ parser.add_argument('data', metavar='DIR', nargs='?', default='imagenet',
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet18)')
+                         ' | '.join(model_names) +
+                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -99,8 +98,10 @@ parser.add_argument('--optimize', action='store_true', help='Use torch.xpu.optim
 parser.add_argument("--kineto_profile", action="store_true", help="Whether to running kineto profiler",)
 parser.add_argument('--disable-broadcast-buffers', action='store_true', help='disable syncing buffers')
 parser.add_argument('--bucket-cap', default=25, type=int, help='controls the bucket size in MegaBytes')
-parser.add_argument('--large-first-bucket', action="store_true", help='Configure a large capacity of the first bucket in DDP for allreduce')
-parser.add_argument("--use-gradient-as-bucket-view", action='store_true', help="Turn ON gradient_as_bucket_view optimization in DDP")
+parser.add_argument('--large-first-bucket', action="store_true", 
+                    help='Configure a large capacity of the first bucket in DDP for allreduce')
+parser.add_argument("--use-gradient-as-bucket-view", action='store_true', 
+                    help="Turn ON gradient_as_bucket_view optimization in DDP")
 parser.add_argument('--jit-cache', type=str, default=str(hub), help="path to save/load jit model")
 parser.add_argument('--jit-trace', action='store_true',
                     help='enable PyTorch jit trace graph mode')
@@ -412,9 +413,10 @@ def main_worker(ngpus_per_node, args):
                 if args.large_first_bucket:
                     # set the first bucket with maximal size to cover all parameters for allreduce
                     dist._DEFAULT_FIRST_BUCKET_BYTES = sys.maxsize
+                broadcast_buffers=False if args.disable_broadcast_buffers else True
                 model = torch.nn.parallel.DistributedDataParallel(model,
                                                                   device_ids=[args.xpu],
-                                                                  broadcast_buffers=False if args.disable_broadcast_buffers else True,
+                                                                  broadcast_buffers=broadcast_buffers,
                                                                   bucket_cap_mb=args.bucket_cap,
                                                                   gradient_as_bucket_view=args.use_gradient_as_bucket_view)
             elif args.gpu is not None:
@@ -427,9 +429,10 @@ def main_worker(ngpus_per_node, args):
                 if args.large_first_bucket:
                     # set the first bucket with maximal size to cover all parameters for allreduce
                     dist._DEFAULT_FIRST_BUCKET_BYTES = sys.maxsize
+                broadcast_buffers=False if args.disable_broadcast_buffers else True
                 model = torch.nn.parallel.DistributedDataParallel(model,
                                                                   device_ids=[args.gpu],
-                                                                  broadcast_buffers=False if args.disable_broadcast_buffers else True,
+                                                                  broadcast_buffers=broadcast_buffers,
                                                                   bucket_cap_mb=args.bucket_cap,
                                                                   gradient_as_bucket_view=args.use_gradient_as_bucket_view)
 
@@ -620,7 +623,8 @@ def main_worker(ngpus_per_node, args):
         best_acc1 = max(acc1, best_acc1)
 
         if not args.skip_checkpoint and \
-            (not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)):
+                (not args.multiprocessing_distributed or \
+                (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)):
             save_checkpoint(state={
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -705,6 +709,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
 
     # config profiler
     import contextlib
+
     def profiler_setup(profiling=False, *args, **kwargs):
         if profiling:
             return torch.profiler.profile(*args, **kwargs)
@@ -721,6 +726,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
     skip_iters = max(num_iters - 5, 0)
     schedule = torch.profiler.schedule(skip_first=skip_iters,
                                        wait=1, warmup=3, active=1)
+
     def trace_handle(prof):
         profile_name = 'fp32'
         if args.fp16:
@@ -758,7 +764,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
                 try:
                     import memory_check
                     memory_check.display_mem("xpu:0")
-                except:
+                except Exception:
                     pass
                 start_time = time.time()
                 images = images.to(args.xpu, non_blocking=non_blocking)
@@ -887,7 +893,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                 torch.save(prof.key_averages().table(sort_by="self_cpu_time_total"), './profiling.card.' + str(args.xpu) + '.pt')
 
         # start profiler, or none while profiling is false
-        with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as prof, torch.no_grad():
+        with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as p:
             for i, (images, target) in enumerate(loader):
                 i = base_progress + i
 
@@ -899,7 +905,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                     try:
                         import memory_check
                         memory_check.display_mem("xpu:0")
-                    except:
+                    except Exception:
                         pass
                     start_time = time.time()
                     images = images.to(args.xpu, non_blocking=non_blocking)
@@ -933,7 +939,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                         output = model(images)
 
                 if profiling:
-                    prof.step()
+                    p.step()
 
                 # D2H
                 output = output.cpu()
@@ -959,14 +965,20 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
 
                 if i == (args.num_iterations - 1) and args.num_iterations >= warmup_iter:
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                        % (args.batch_size, (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))), top1.avg, top5.avg))
+                        % (args.batch_size, 
+                        (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))), 
+                        top1.avg, 
+                        top5.avg))
                     sys.exit(0)
                 elif args.num_iterations == 0 and i == len(val_loader) - 1:
                     if args.converge and args.distributed:
                         top1.all_reduce()
                         top5.all_reduce()
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                        % (args.batch_size, (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))), top1.avg, top5.avg))
+                        % (args.batch_size, 
+                        (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))), 
+                        top1.avg, 
+                            top5.avg))
                     if args.converge:
                         global final_top1_acc
                         global final_top5_acc
@@ -1083,7 +1095,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
             try:
                 import memory_check
                 memory_check.display_mem("xpu:0")
-            except:
+            except Exception:
                 pass
 
             start = time.time()
@@ -1163,7 +1175,7 @@ def qnormalize(tensor, mean, std, scl):
     if std.ndim == 1:
         std = std[:, None, None]
 
-    tensor.sub_(mean).div_(std)#.mul_(scale)#tensor.sub_(255 * mean).mul(128/255*(1/(1-0.406)))
+    tensor.sub_(mean).div_(std)
     out = torch.quantize_per_tensor(tensor, scale=scl, zero_point=0, dtype=torch.qint8)
     return out
 
@@ -1228,7 +1240,7 @@ class AverageMeter:
         elif self.summary_type is Summary.COUNT:
             fmtstr = '{name} {count:.3f}'
         else:
-            raise ValueError('invalid summary type %r' % self.summary_type)
+            raise ValueError('invalid summary type:', self.summary_type)
 
         return fmtstr.format(**self.__dict__)
 
@@ -1276,10 +1288,10 @@ def MLPerfLRScheduler(optimizer, step, iteration, args):
     decay_steps = args.decay_epochs * iteration
     power = 2
     if step <= warmup_iter:
-       lr_rate = args.lr * (step / warmup_iter)
+        lr_rate = args.lr * (step / warmup_iter)
     else:
-       lr_step = min((step - warmup_iter), decay_steps)
-       lr_rate = ((args.lr - args.end_lr) * (1-(lr_step/decay_steps)) ** power) + args.end_lr
+        lr_step = min((step - warmup_iter), decay_steps)
+        lr_rate = ((args.lr - args.end_lr) * (1-(lr_step/decay_steps)) ** power) + args.end_lr
     global_lr = lr_rate
     optimizer.param_groups[0]['lr'] = global_lr
 
