@@ -211,4 +211,3 @@ jobs:
           name: Torch-XPU-Profile-Log-${{ github.event.pull_request.number || github.sha }}
           path: | 
             ${{ github.workspace }}/profile_test
-

@@ -218,16 +218,16 @@ def main():
         mpi_world_size = int(os.environ.get('PMI_SIZE', -1))
 
         if mpi_world_size > 0:
-            os.environ['MASTER_ADDR'] = args.dist_url #'127.0.0.1'
-            os.environ['MASTER_PORT'] = args.dist_port #'29500'
+            os.environ['MASTER_ADDR'] = args.dist_url
+            os.environ['MASTER_PORT'] = args.dist_port
             os.environ['RANK'] = os.environ.get('PMI_RANK', -1)
             os.environ['WORLD_SIZE'] = os.environ.get('PMI_SIZE', -1)
             args.rank = int(os.environ.get('PMI_RANK', -1))
         args.world_size = int(os.environ.get("WORLD_SIZE", -1))
-    else: # mpich set
-        if 'PMIX_RANK' in os.environ.keys(): # mpich set
-            os.environ['MASTER_ADDR'] = args.dist_url #'127.0.0.1'
-            os.environ['MASTER_PORT'] = args.dist_port #'29500'
+    else:
+        if 'PMIX_RANK' in os.environ.keys():
+            os.environ['MASTER_ADDR'] = args.dist_url
+            os.environ['MASTER_PORT'] = args.dist_port
             os.environ['RANK'] = os.environ.get('PMIX_RANK')
             os.environ['WORLD_SIZE'] = str(args.world_size)
             args.rank = int(os.environ.get('PMIX_RANK', -1))
@@ -251,7 +251,7 @@ def jit_calib(model, val_loader_calib, args):
     print('doing int8 jit calibration')
     jit_model_file = os.path.join(args.jit_cache, "rn50_jit_model_int8.pt")
     if os.path.isfile(jit_model_file):
-        print("=> load jit model from {}".format(jit_model_file))
+        print(f"=> load jit model from {jit_model_file}")
         modelJit = torch.load(jit_model_file)
         print("=> load jit model ... done")
     else:
@@ -317,15 +317,15 @@ def main_worker(ngpus_per_node, args):
                 local_rank = os.environ['MPI_LOCALRANKID']
             elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ.keys():
                 local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
-            else: # mpich set
+            else:
                 local_rank = os.environ['PALS_LOCAL_RANKID']
             args.xpu = local_rank
-            print('world_size:{}, rank:{}, local_rank:{}'.format(args.world_size, args.rank, local_rank))
+            print(f"world_size:{args.world_size}, rank:{args.rank}, local_rank:{local_rank}.")
 
     if args.gpu is not None:
-        args.gpu = "cuda:{}".format(args.gpu)
+        args.gpu = f"cuda:{args.gpu}"
     elif args.xpu is not None:
-        args.xpu = "xpu:{}".format(args.xpu)
+        args.xpu = f"xpu:{args.xpu}"
 
     # define loss function (criterion)
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
@@ -345,14 +345,14 @@ def main_worker(ngpus_per_node, args):
                                             weight_decay=args.weight_decay)
                 scheduler = StepLR(optimizer, step_size=args.step_size, gamma=0.1)
         else:
-            print("=> no saved model found at '{}'".format(args.load))
+            print(f"=> no saved model found at '{args.load}'")
             sys.exit(1)
     else:
         if args.pretrained:
-            print("=> using pre-trained model '{}'".format(args.arch))
+            print(f"=> using pre-trained model '{args.arch}'")
             model = models.__dict__[args.arch](pretrained=True)
         else:
-            print("=> creating model '{}'".format(args.arch))
+            print(f"=> creating model '{args.arch}'")
             model = models.__dict__[args.arch]()
 
         # channels last
@@ -439,7 +439,7 @@ def main_worker(ngpus_per_node, args):
         # optionally resume from a checkpoint
         if args.resume:
             if os.path.isfile(args.resume):
-                print("[info] loading checkpoint '{}'".format(args.resume))
+                print(f"[info] loading checkpoint '{args.resume}'")
                 if args.gpu is not None:
                     # Map model to be loaded to specified single gpu.
                     print('[info] loading checkpoint to ', str(args.gpu))
@@ -457,7 +457,7 @@ def main_worker(ngpus_per_node, args):
                 optimizer.load_state_dict(checkpoint['optimizer'])
                 scheduler.load_state_dict(checkpoint['scheduler'])
             else:
-                raise RuntimeError("[error] no checkpoint found at '{}'".format(args.resume))
+                raise RuntimeError(f"[error] no checkpoint found at '{args.resume}'")
 
     # create dataset
     traindir = os.path.join(args.data, 'train')
@@ -467,7 +467,7 @@ def main_worker(ngpus_per_node, args):
     if args.dummy:
         print("[info] dummy dataset is used")
         if args.num_iterations > 0:
-            train_dataset_size = args.num_iterations * args.batch_size  * (args.world_size if args.distributed else 1)
+            train_dataset_size = args.num_iterations * args.batch_size * (args.world_size if args.distributed else 1)
         else:
             train_dataset_size = 1281167
         train_dataset = datasets.FakeData(train_dataset_size, (3, 224, 224), 1000, transforms.ToTensor())
@@ -508,7 +508,7 @@ def main_worker(ngpus_per_node, args):
                                                batch_size=args.batch_size,
                                                shuffle=(train_sampler is None),
                                                num_workers=args.workers,
-                                               sampler=train_sampler,drop_last=True)
+                                               sampler=train_sampler, drop_last=True)
     val_loader = torch.utils.data.DataLoader(val_dataset,
                                              batch_size=args.batch_size,
                                              shuffle=False,
@@ -521,7 +521,7 @@ def main_worker(ngpus_per_node, args):
                                                    num_workers=args.workers,
                                                    pin_memory=True,
                                                    pin_memory_device="xpu",
-                                                   sampler=train_sampler,drop_last=True)
+                                                   sampler=train_sampler, drop_last=True)
         val_loader = torch.utils.data.DataLoader(val_dataset,
                                                  batch_size=args.batch_size,
                                                  shuffle=False,
@@ -578,7 +578,7 @@ def main_worker(ngpus_per_node, args):
         warm_up_epoch = args.warm_up_epoch
         warm_up_portion = args.lr / float(warm_up_epoch)
         for epoch in range(0, warm_up_epoch):
-            if args.lars == False:
+            if not args.lars:
                 optimizer.param_groups[0]['lr'] = (epoch + 1) * warm_up_portion
             train(train_loader, model, criterion, optimizer, epoch, profiling, use_autocast, autocast_dtype, args, mode='warming')
             print('[info] warmup [', (epoch + 1), '][', warm_up_epoch, '] lr = ', optimizer.param_groups[0]['lr'])
@@ -612,7 +612,7 @@ def main_worker(ngpus_per_node, args):
             last_acc = acc1
 
         # update the LR
-        if args.lars == False:
+        if not args.lars:
             scheduler.step()
 
         # remember best acc@1 and save checkpoint
@@ -663,7 +663,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
     progress = ProgressMeter(
         len(train_loader),
         [batch_time, data_time, losses, top1, top5],
-        prefix="Epoch: [{}]".format(epoch))
+        prefix=f"Epoch: [{epoch}]")
     global global_num_iter
 
     non_blocking = False
@@ -746,7 +746,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
     with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as prof:
         data_start = time.time()
         for i, (images, target) in enumerate(train_loader):
-            global_num_iter +=1
+            global_num_iter += 1
             # measure data loading time
             data_time.update(time.time() - data_start)
 
@@ -835,7 +835,7 @@ def train(train_loader, model, criterion, optimizer, epoch, profiling, use_autoc
         tensorboard_data['train']['top5'] = top5.avg
 
 def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autocast_dtype, args):
-    from torch._inductor import config
+    # from torch._inductor import config
 
     def compile_model(model, val_loader):
         print("====Before compile model====")
@@ -848,7 +848,7 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
         duration_total = 0.0
         warmup_iter = 5
         if (not args.num_iterations == 0) and (args.num_iterations <= warmup_iter):
-            raise RuntimeError('At least {} iterations required for performance measure'.format(warmup_iter))
+            raise RuntimeError(f'At least {warmup_iter} iterations required for performance measure')
 
         # config profiler
         import contextlib
@@ -1172,7 +1172,7 @@ def compute_scale(val_loader_com):
         scale = 1.0 / (128 / torch.max(input))
         return scale
 
-class QNormalize(object):
+class QNormalize:
     def __init__(self, mean, std, scale):
         self.mean = mean
         self.std = std
@@ -1187,7 +1187,7 @@ class Summary(Enum):
     SUM = 2
     COUNT = 3
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value"""
     def __init__(self, name, fmt=':f', summary_type=Summary.AVERAGE):
         self.name = name
@@ -1232,7 +1232,7 @@ class AverageMeter(object):
 
         return fmtstr.format(**self.__dict__)
 
-class ProgressMeter(object):
+class ProgressMeter:
     def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
