@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - main
+    path:
+      - '.github/workflows/_linux_profile.yml'
   workflow_dispatch:
     inputs:
       pytorch:
