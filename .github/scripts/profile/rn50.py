@@ -626,8 +626,9 @@ def main_worker(ngpus_per_node, args):
         best_acc1 = max(acc1, best_acc1)
 
         if not args.skip_checkpoint and \
-           (not args.multiprocessing_distributed or 
-           (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)):
+           (not args.multiprocessing_distributed or
+            (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
+           ):
             save_checkpoint(state={
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -971,9 +972,8 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                 if i == (args.num_iterations - 1) and args.num_iterations >= warmup_iter:
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
                           % (args.batch_size,
-                          (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))),
-                          top1.avg,
-                          top5.avg))
+                            (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))),
+                            top1.avg, top5.avg))
                     sys.exit(0)
                 elif args.num_iterations == 0 and i == len(val_loader) - 1:
                     if args.converge and args.distributed:
@@ -981,9 +981,9 @@ def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autoc
                         top5.all_reduce()
                     print('Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
                           % (args.batch_size,
-                          (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))),
-                          top1.avg,
-                          top5.avg))
+                            (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))),
+                            top1.avg,
+                            top5.avg))
                     if args.converge:
                         global final_top1_acc
                         global final_top5_acc
@@ -1086,7 +1086,6 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
     skip_iters = max(num_iters - 5, 0)
     schedule = torch.profiler.schedule(skip_first=skip_iters,
                                        wait=1, warmup=3, active=1)
-    
     # trace handle
     def trace_handle(prof):
         if args.xpu is not None:
@@ -1150,9 +1149,9 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
 
             if i == (args.num_iterations - 1) and args.num_iterations >= 2:
                 print('Quantization Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
-                      % (args.batch_size, (args.batch_size / (duration_total / (args.num_iterations - perf_start_iter))), 
-                      top1.avg, 
-                      top5.avg))
+                      % (args.batch_size, (args.batch_size / (duration_total / (args.num_iterations - perf_start_iter))),
+                         top1.avg,
+                         top5.avg))
                 sys.exit(0)
             elif args.num_iterations == 0 and i == len(val_loader) - 1:
                 print('Quantization Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f'
