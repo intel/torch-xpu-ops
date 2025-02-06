@@ -839,6 +839,12 @@ class XPUPatchForImport:
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+        self.SM53OrLater = common_cuda.SM53OrLater
+        self.SM70OrLater = common_cuda.SM70OrLater
+        self.SM75OrLater = common_cuda.SM75OrLater
+        self.SM80OrLater = common_cuda.SM80OrLater
+        self.SM89OrLater = common_cuda.SM89OrLater
+        self.SM90OrLater = common_cuda.SM90OrLater
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -1066,6 +1072,12 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDNN_VERSION = 0
         cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
+        common_cuda.SM53OrLater = True
+        common_cuda.SM70OrLater = True
+        common_cuda.SM75OrLater = True
+        common_cuda.SM80OrLater = True
+        common_cuda.SM89OrLater = True
+        common_cuda.SM90OrLater = True
 
         sys.path.extend(self.test_package)
 
@@ -1090,6 +1102,12 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
         cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
+        common_cuda.SM53OrLater = self.SM53OrLater
+        common_cuda.SM70OrLater = self.SM70OrLater
+        common_cuda.SM75OrLater = self.SM75OrLater
+        common_cuda.SM80OrLater = self.SM80OrLater
+        common_cuda.SM89OrLater = self.SM89OrLater
+        common_cuda.SM90OrLater = self.SM90OrLater
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
