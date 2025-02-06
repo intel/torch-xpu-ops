@@ -1449,7 +1449,7 @@ void batch_norm_elemt_template(
   nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto output_ptr = (char*)output_reshaped.data_ptr();
+  auto output_ptr = (char*)output_reshaped.const_data_ptr();
   if (output_reshaped.is_contiguous() &&
       memory::can_vectorize_up_to<input_scalar_t>(output_ptr) >= 4 &&
       sizeof(input_scalar_t) < sizeof(float) && input.size(2) % 4 == 0) {
@@ -2825,9 +2825,9 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto input_ptr = (char*)input_reshaped.data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.data_ptr();
-  auto grad_output_ptr = (char*)grad_output_reshaped.data_ptr();
+  auto input_ptr = (char*)input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   if (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
       grad_output_reshaped.is_contiguous() &&
       memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
@@ -2933,9 +2933,9 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> local_range(tb, tf);
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto input_ptr = (char*)input_reshaped.data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.data_ptr();
-  auto grad_output_ptr = (char*)grad_output_reshaped.data_ptr();
+  auto input_ptr = (char*)input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   if (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
       grad_output_reshaped.is_contiguous() &&
       memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
@@ -4559,9 +4559,9 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
     sycl_kernel_submit(global_range, local_range, queue, kfn);    \
   }
 
-  auto input_ptr = (char*)input_reshaped.data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.data_ptr();
-  auto grad_output_ptr = (char*)grad_output_reshaped.data_ptr();
+  auto input_ptr = (char*)input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   bool can_use_vec_kernel =
       (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
        grad_output_reshaped.is_contiguous() &&
