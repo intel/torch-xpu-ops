@@ -77,7 +77,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: test
+      runner: kailei-test
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
@@ -90,7 +90,7 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: test
+      runner: kailei-test
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [self-hosted,Linux,X64,kailei-test]
@@ -314,7 +314,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       abi: 0
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: test
+      runner: kailei-test
 
   Linux-Weekly-UT-Tests-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
@@ -328,7 +328,7 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: test
+      runner: kailei-test
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
