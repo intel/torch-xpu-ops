@@ -62,6 +62,7 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
+          shell: bash -l {0}
           which conda && conda clean -ay
           conda remove --all -y -n xpu_build || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
