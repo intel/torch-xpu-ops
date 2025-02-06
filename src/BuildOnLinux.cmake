@@ -140,7 +140,6 @@ else()
 
   install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_sycl)
-  
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 

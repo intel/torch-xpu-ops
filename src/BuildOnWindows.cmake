@@ -256,11 +256,10 @@ elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
 else()
-
-  # On Windows, it is not possible to combine all obj files into one library 
-  # because the obj files of kernels compiled on Windows are much larger than 
-  # those on Linux. If they are combined into one, the library size will exceed 
-  # 4GB, which conflicts with the size limit of a single library on Windows. 
+  # On Windows, it is not possible to combine all obj files into one library
+  # because the obj files of kernels compiled on Windows are much larger than
+  # those on Linux. If they are combined into one, the library size will exceed
+  # 4GB, which conflicts with the size limit of a single library on Windows.
   # We will combine the libraries on Windows into one after the compiler is fixed.
   add_library(
     torch_xpu_ops
