@@ -36,7 +36,7 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
+else()
   # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
   set(ATen_XPU_SYCL_BINARY_SRCS)
   set(ATen_XPU_SYCL_UNARY_SRCS)
@@ -230,21 +230,6 @@ elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE
 
   # Decouple with PyTorch cmake definition.
   install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-else()
-  # Internal file name is decided by the target name. On windows, torch_xpu_ops_sycl_kernels
-  # is too long in device code linkage command.
-  sycl_add_library(
-    xpu_sycl
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
-  target_compile_definitions(xpu_sycl PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC xpu_sycl)
-  target_link_libraries(xpu_sycl PUBLIC torch_xpu)
-  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_sycl)
-
-  set_target_properties(xpu_sycl PROPERTIES OUTPUT_NAME torch_xpu_ops_sycl_kernels)
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
