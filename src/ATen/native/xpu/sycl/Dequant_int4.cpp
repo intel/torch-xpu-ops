@@ -42,9 +42,10 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int g_n = g_idx_n * GroupN;
     int g_k = g_idx_k * GroupK;
 
-    auto sptr = ScaleAndZeros + (g_k / blocksize + g_n * (k / blocksize)) * 2;
-    auto zptr =
-        ScaleAndZeros + (g_k / blocksize + g_n * (k / blocksize)) * 2 + 1;
+    int ld_scale_zp = k / blocksize * 2;
+
+    auto sptr = ScaleAndZeros + (g_k / blocksize) * 2 + g_n * ld_scale_zp;
+    auto zptr = ScaleAndZeros + (g_k / blocksize) * 2 + g_n * ld_scale_zp + 1;
 
     auto bptr = weight_int4 + (g_k + g_n * k) / 2;
     auto dbptr = weight_dequant + g_k * n + g_n;
@@ -52,9 +53,8 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     float tmp[TileN];
     bool high4 = sg_id % 2 != 0;
     for (int in = 0; in < TileN; in++) {
-      int scale_offset =
-          sg_id * TileK / blocksize * 2 + in * (k / blocksize) * 2;
-      int zp_offset = sg_id * TileK / blocksize * 2 + in * (k / blocksize) * 2;
+      int scale_offset = sg_id * TileK / blocksize * 2 + in * ld_scale_zp;
+      int zp_offset = scale_offset;
       float scale = *(sptr + scale_offset);
       float zero_point = *(zptr + zp_offset);
       uint8_t srcu8 = *(bptr + (sg_id * TileK + in * k) / 2);
