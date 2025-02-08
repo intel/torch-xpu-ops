@@ -87,7 +87,7 @@ runs:
         fi
         pip install numpy==1.26.4
         pip uninstall -y torch && pip uninstall -y torch
-        pip install --no-deps /home/sdp/mengfeil/torch-2.6.0.dev20250115+xpu-cp310-cp310-linux_x86_64.whl
+        pip install --no-deps /home/sdp/mengfeil/torch-2.6.0.dev20250207+xpu-cp310-cp310-linux_x86_64.whl
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}

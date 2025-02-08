@@ -106,7 +106,7 @@ jobs:
           cd ../
           pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/test/xpu
           pip uninstall -y torch && pip uninstall -y torch
-          pip install --no-deps /home/sdp/mengfeil/torch-2.6.0.dev20250115+xpu-cp310-cp310-linux_x86_64.whl
+          pip install --no-deps /home/sdp/mengfeil/torch-2.6.0.dev20250207+xpu-cp310-cp310-linux_x86_64.whl
       - name: Identify pinned versions
         id: pinned
         run: |
