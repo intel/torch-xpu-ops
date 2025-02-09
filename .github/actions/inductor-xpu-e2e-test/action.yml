@@ -56,10 +56,10 @@ runs:
           if [ "${{ inputs.pytorch }}" != "" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
             cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
+            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
             cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
             cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
           fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/mengfei25/benchmark.git
@@ -78,7 +78,7 @@ runs:
           if [ "${{ inputs.pytorch }}" != "" ]; then
             cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
             cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
           fi
           # install timm without dependencies
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
