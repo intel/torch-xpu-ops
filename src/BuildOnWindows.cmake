@@ -3,9 +3,7 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-
-if(BUILD_SEPARATE_OPS)
-
+function(setup_common_libraries)
   add_library(
     torch_xpu_ops
     STATIC
@@ -24,7 +22,10 @@ if(BUILD_SEPARATE_OPS)
   target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
   target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
   target_link_libraries(torch_xpu_ops_aten PUBLIC c10)
+endfunction()
 
+if(BUILD_SEPARATE_OPS)
+  setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -40,25 +41,10 @@ if(BUILD_SEPARATE_OPS)
   endforeach()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
+# Working with the compilers which don't support device code compression, we have to split kernels
+# into multiple libraries to meet the bin size limitation.
 elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
-  add_library(
-    torch_xpu_ops
-    STATIC
-    ${ATen_XPU_CPP_SRCS}
-    ${ATen_XPU_MKL_SRCS})
-  set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
-  target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
-
-  add_library(
-    torch_xpu_ops_aten
-    SHARED
-    ${ATen_XPU_NATIVE_CPP_SRCS}
-    ${ATen_XPU_GEN_SRCS})
-  install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  target_compile_definitions(torch_xpu_ops_aten PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC c10)
+  setup_common_libraries()
   # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
   set(ATen_XPU_SYCL_BINARY_SRCS)
   set(ATen_XPU_SYCL_UNARY_SRCS)
@@ -270,8 +256,8 @@ else()
     ${ATen_XPU_GEN_SRCS})
   install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
- # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary+Reduce+Pow+Copy+Activation+Foreach 2) Others.
-  set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
+ # Split SYCL kernels into 2 libraries as categories 1) Common (Unary+Binary+Reduce+Pow+Copy+Activation+Foreach) 2) Others.
+  set(ATen_XPU_SYCL_COMMON_SRCS)
   set(ATen_XPU_SYCL_OTHERS_SRCS)
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
@@ -283,30 +269,30 @@ else()
     string(REGEX MATCH "Foreach" IS_FOREACH ${sycl_src})
 
     if(NOT IS_FOREACH STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     elseif(NOT IS_REDUCE STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     elseif(NOT IS_UNARY STREQUAL "" OR NOT IS_BINARY STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     elseif(NOT IS_COPY STREQUAL "" OR NOT IS_POW STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     elseif(NOT IS_ACTIVATION STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
     endif()
   endforeach()
-  # Unary binary kernel lib
-  set(sycl_unary_binary_lib torch_xpu_ops_sycl_unary_binary_kernels)
+  # Common kernel lib
+  set(sycl_common_lib torch_xpu_ops_sycl_common_kernels)
   sycl_add_library(
-    ${sycl_unary_binary_lib}
+    ${sycl_common_lib}
     STATIC
     SYCL_SOURCES ${ATen_XPU_SYCL_UNARY_BINARY_SRCS})
-  target_compile_definitions(${sycl_unary_binary_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_unary_binary_lib})
+  target_compile_definitions(${sycl_common_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_common_lib})
 
   # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_unary_binary_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS ${sycl_common_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
   # Other kernel lib
   set(sycl_lib torch_xpu_ops_sycl_kernels)
@@ -322,11 +308,11 @@ else()
 
   target_link_libraries(torch_xpu_ops
       PUBLIC
-      ${sycl_unary_binary_lib}
+      ${sycl_common_lib}
       ${sycl_lib}
   )
   target_link_options(torch_xpu_ops PUBLIC
-      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_unary_binary_lib}>"
+      "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_common_lib}>"
       "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
   )
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
