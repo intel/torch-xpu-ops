@@ -68,10 +68,10 @@ jobs:
           conda create -n xpu_build python=${{ inputs.python }} cmake ninja -y
           source activate xpu_build
           cd ../ && rm -rf pytorch
-          pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
+          pip install requests botocore
+          git clone https://github.com/DDEle/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            cd pytorch && git checkout onednn_graph_sdpa-test5
             # apply PRs for stock pytorch
             python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
             git status && git show -s
