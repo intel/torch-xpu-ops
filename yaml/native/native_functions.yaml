@@ -8583,6 +8583,7 @@
 - func: _sparse_softmax_backward_data(Tensor grad_output, Tensor output, int dim, Tensor self) -> Tensor
   dispatch:
     SparseXPU: softmax_backward_sparse_xpu
+  autogen: _sparse_softmax_backward_data.out
 
 - func: _sparse_log_softmax.int(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
   python_module: sparse
