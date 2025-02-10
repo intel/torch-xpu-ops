@@ -96,8 +96,7 @@ template <
     typename VarTransform,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE = 2,
-    bool USE_POST_FUSION = false>
+    int VEC_SIZE = 2>
 struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
@@ -282,8 +281,11 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
     return ngroups_x_;
   }
 
-  void set_staging_data(acc_t* staging_data) {
+  bool set_staging_data_check(acc_t* staging_data) {
     staging_data_ = staging_data;
+    return (
+        (staging_data == nullptr) ||
+        (memory::can_vectorize_up_to<acc_t>((char*)staging_data) >= VEC_SIZE));
   }
 
   void set_semaphores(int* semaphores) {
