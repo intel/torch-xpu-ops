@@ -141,7 +141,7 @@ static inline int64_t syclLocalMemSize(
 template <typename T>
 uint32_t syclPrefVectorWidth(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
-  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  (void)dev_id; // Suppress unused variable warning
 
   // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
   uint32_t vec_width = 16;
