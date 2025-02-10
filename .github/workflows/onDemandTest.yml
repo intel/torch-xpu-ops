@@ -66,25 +66,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-Build:
-    if: always()
-    name: linux-nightly-ondemand
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 1
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: kailei-test
+  #Linux-Nightly-Ondemand-Build:
+    #if: always()
+    #name: linux-nightly-ondemand
+    #permissions:
+      #issues: write
+    #uses: ./.github/workflows/_linux_build.yml
+    #with:
+      #pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      #keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      #abi: 1
+      #python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      #runner: kailei-test
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [self-hosted,Linux,X64,kailei-test]
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
-    needs: Linux-Nightly-Ondemand-Build
+    if: github.repository_owner == 'kaileiyx'
+    # needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
@@ -112,16 +112,16 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
+          conda remove --all -y -n e2e_ci_kaileiyx || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci_kaileiyx
+          conda create -n e2e_ci_kaileiyx python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci_kaileiyx
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          source activate e2e_ci
+          source activate e2e_ci_kaileiyx
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
@@ -163,7 +163,7 @@ jobs:
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
-          source activate e2e_ci
+          source activate e2e_ci_kaileiyx
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
@@ -176,7 +176,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate e2e_ci
+          source activate e2e_ci_kaileiyx
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
