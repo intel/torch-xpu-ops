@@ -67,7 +67,7 @@ jobs:
           conda remove --all -y -n kailei_test || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/kailei_test
           conda create -n kailei_test python=${{ inputs.python }} cmake ninja -y
-          source activate kailei_test
+          conda activate kailei_test
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -87,7 +87,7 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          source activate kailei_test
+          conda activate kailei_test
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_XCCL=1
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
@@ -155,7 +155,7 @@ jobs:
           fi
       - name: Torch Config
         run: |
-          source activate kailei_test
+          conda activate kailei_test
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
