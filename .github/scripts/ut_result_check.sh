@@ -2,7 +2,7 @@
 ut_suite="${1:-op_regression}"   # op_regression / op_extended / op_ut / torch_xpu
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' ]]; then
-    grep "^FAILED" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_failed.log
+    grep -E "^FAILED|have failures" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     num_failed=$(wc -l < "./${ut_suite}_failed.log")
     num_passed=$(wc -l < "./${ut_suite}_passed.log")
@@ -18,8 +18,8 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     fi
 fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
-    grep "^FAILED" op_ut_with_skip_test.log | awk '{print $2}' > ./"${ut_suite}"_with_skip_test_failed.log
-    grep "^FAILED" op_ut_with_only_test.log | awk '{print $2}' > ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "^FAILED|have failures" op_ut_with_skip_test.log | awk '{print $2}' > ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "^FAILED|have failures" op_ut_with_only_test.log | awk '{print $2}' > ./"${ut_suite}"_with_only_test_failed.log
     num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
     num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
     echo -e "========================================================================="
@@ -50,7 +50,7 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
       if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
         case_name=$(basename "$xpu_case")
         cd ../ut_log/torch_xpu || exit
-        grep -E "FAILED" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_failed.log
+        grep -E "FAILED|have failures" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_failed.log
         wc -l < "./binary_ut_${ut_suite}_${case_name}_failed.log" | tee -a ./binary_ut_"${ut_suite}"_failed_summary.log
         grep -E "PASSED|Pass" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_passed.log
         wc -l < "./binary_ut_${ut_suite}_${case_name}_passed.log" | tee -a ./binary_ut_"${ut_suite}"_passed_summary.log
@@ -73,7 +73,7 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     fi
 fi
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
-    grep "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "^FAILED|have failures" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
     num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
