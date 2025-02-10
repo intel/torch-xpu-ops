@@ -79,19 +79,6 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: kailei-test
 
-  Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
-    name: linux-nightly-ondemand
-    needs: Linux-Nightly-Ondemand-Build
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: kailei-test
-
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [self-hosted,Linux,X64,kailei-test]
     name: linux-nightly-ondemand / e2e_test
@@ -250,7 +237,7 @@ jobs:
           suite: torchbench
           env_prepare: true
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
+          mode: inference,trainings
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
@@ -302,109 +289,3 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-
-  Linux-Nightly-Ondemand-Build-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    name: linux-nightly-ondemand-abi0
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 0
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: kailei-test
-
-  Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    name: linux-nightly-ondemand-abi0
-    needs: Linux-Nightly-Ondemand-Build-ABI-0
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.torch_commit_id }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: kailei-test
-
-  Tests-Failure-And-Report:
-    if: ${{ ! cancelled() }}
-    runs-on: [self-hosted,Linux,X64,kailei-test]
-    permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-Tests
-    steps:
-      - name: Report github issue for XPU OPS nightly
-        if: github.repository_owner == 'intel'
-        run: |
-          set -xe
-          # Test env
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_COMMIT_ID }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.DRIVER_VERSION }}"
-          KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.KERNEL_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
-          # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "success" ];then
-            test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "failure" ];then
-            test_status=Failure
-            cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
-          else
-            test_status=None
-            exit 0
-          fi
-          # Test Type
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_type="On-demand"
-            test_issue_id=426
-            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
-            test_type="Weekly"
-            test_issue_id=432
-          else
-            test_type="Nightly"
-            test_issue_id=432
-          fi
-          # Test report
-          echo -e "**${test_status}** $test_type Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
-          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Transformers | Timm | Torchbench | Torchvision | Torchaudio\n--- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          printf "[${TRANSFORMERS_VERSION:0:7}](https://github.com/huggingface/transformers/commit/${TRANSFORMERS_VERSION:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TIMM_COMMIT_ID:0:7}](https://github.com/huggingface/pytorch-image-models/commit/${TIMM_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.model }}" != "" ];then
-              test_scope+="; model=${{ inputs.model }}"
-            fi
-            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
-          fi
-          echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
-          echo "$cc_comment" >> ${{ github.workspace }}/report.txt
-          # Report
-          report_txt=$(cat ${{ github.workspace }}/report.txt)
-          gh --repo $repo issue comment $test_issue_id --body "$report_txt"

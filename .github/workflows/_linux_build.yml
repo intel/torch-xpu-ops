@@ -102,7 +102,7 @@ jobs:
             last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
             cd ../pytorch
             current_commit=$(git rev-parse HEAD)
-            is_fork_pr=false
+            is_fork_pr=true
             if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
               is_fork_pr=true
             fi
