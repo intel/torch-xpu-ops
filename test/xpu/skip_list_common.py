@@ -1024,6 +1024,8 @@ skip_dict = {
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
+        # RuntimeError: reflection_pad2d_backward_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'.
+        "test_ReflectionPad2d_large_deterministic_xpu",
     ),
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now
