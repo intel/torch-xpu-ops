@@ -24,12 +24,12 @@ on:
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
+        default: 'pvc_rolling'
         description: Runner label
       driver:
         required: false
         type: string
-        default: 'lts'
+        default: 'rolling'
         description: Driver lts/rolling
       nightly_whl:
         required: false
@@ -41,13 +41,15 @@ permissions: read-all
 
 jobs:
   Torch-XPU-Profile-Tests:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     env:
       PF_HOME: ${{ github.workspace }}/.pf_home
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       pytorch: ${{ inputs.pytorch != '' && inputs.pytorch || 'nightly' }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
