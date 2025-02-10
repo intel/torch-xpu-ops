@@ -4,7 +4,7 @@ results_dir="$1"
 
 # Accuracy
 accuracy=$(find ${results_dir} -name "*.csv" |grep -E "_xpu_accuracy.csv" |wc -l)
-if [ ${accuracy} -gt 1 ];then
+if [ ${accuracy} -gt 0 ];then
     echo "### Accuracy"
     echo "| Category | Passed | Total | Pass Rate |"
     echo "| --- | --- | --- | --- |"
@@ -33,7 +33,7 @@ fi
 
 # Performance
 performance=$(find ${results_dir} -name "*.csv" |grep -E "_xpu_performance.csv" |wc -l)
-if [ ${performance} -gt 1 ];then
+if [ ${performance} -gt 0 ];then
     echo "### Performance"
     echo "| Category | Passed | Total | Pass Rate | Speedup |"
     echo "| --- | --- | --- | --- | --- |"
