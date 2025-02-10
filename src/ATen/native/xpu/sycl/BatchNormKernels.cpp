@@ -1075,10 +1075,13 @@ void batch_norm_stats_channels_last_template(
   using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
-      accscalar_t>;
+      accscalar_t,
+      PREFERRED_VEC_SIZE>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
+  bool use_vec_kernel = false;
+
   if (VecKernel::valid(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
     auto kfn = VecKernel(
@@ -1101,12 +1104,17 @@ void batch_norm_stats_channels_last_template(
         ? semaphores.mutable_data_ptr<int>()
         : nullptr;
 
-    kfn.set_staging_data(staging_data_ptr);
-    kfn.set_semaphores(semaphores_ptr);
+    use_vec_kernel = kfn.set_staging_data_check(staging_data_ptr);
 
-    sycl_kernel_submit(
-        kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
-  } else {
+    if (use_vec_kernel) {
+      kfn.set_semaphores(semaphores_ptr);
+      sycl_kernel_submit(
+          kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      return;
+    }
+  }
+
+  if (!use_vec_kernel) {
     auto config = get_adaptive_launch_config(
         reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
     auto global_range = std::get<0>(config);
