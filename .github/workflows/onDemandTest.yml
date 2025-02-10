@@ -66,25 +66,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  #Linux-Nightly-Ondemand-Build:
-    #if: always()
-    #name: linux-nightly-ondemand
-    #permissions:
-      #issues: write
-    #uses: ./.github/workflows/_linux_build.yml
-    #with:
-      #pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      #keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      #abi: 1
-      #python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      #runner: kailei-test
+  Linux-Nightly-Ondemand-Build:
+    if: always()
+    name: linux-nightly-ondemand
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      abi: 1
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      runner: kailei-test
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [self-hosted,Linux,X64,kailei-test]
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
     if: github.repository_owner == 'kaileiyx'
-    # needs: Linux-Nightly-Ondemand-Build
+    needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
