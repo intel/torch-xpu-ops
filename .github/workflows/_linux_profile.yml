@@ -101,12 +101,10 @@ jobs:
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
       - name: Model Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         run: |
           source activate $CONDA_ENV_NAME
           PROFILE=1 python -u .github/scripts/profile/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
       - name: Official UT Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         run: |
           rm -rf profile_test && mkdir -p profile_test
           source activate $CONDA_ENV_NAME
@@ -116,7 +114,6 @@ jobs:
           python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/profile_test/test_memory_profiler.log
           python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/profile_test/test_profiler_tree.log
       - name: Issue Reproduce UT Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         run: |
           source activate $CONDA_ENV_NAME
           mkdir -p profile_test/issue_reproduce
