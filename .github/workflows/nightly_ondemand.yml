@@ -81,7 +81,7 @@ jobs:
       runner: pvc_e2e
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
     name: linux-nightly-ondemand
     needs: Linux-Nightly-Ondemand-Build
     uses: ./.github/workflows/_linux_ut.yml
@@ -97,7 +97,7 @@ jobs:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
