@@ -67,7 +67,7 @@ jobs:
           conda create -n $CONDA_ENV_NAME python=${{ env.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm
+          pip install pandas scipy tqdm pytest
       - name: Prepare Stock Pytorch
         id: installed
         run: |
@@ -119,17 +119,18 @@ jobs:
         run: |
           source activate $CONDA_ENV_NAME
           mkdir -p profile_test/issue_reproduce
-          python -u torch-xpu-ops/.github/scripts/profile/correlation_id_mixed.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/correlation_id_mixed.log
-          python -u torch-xpu-ops/.github/scripts/profile/reproducer.missing.gpu.kernel.time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
-          python -u torch-xpu-ops/.github/scripts/profile/time_precision_in_profile.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/time_precision_in_profile.log
-          python -u torch-xpu-ops/.github/scripts/profile/profile_partial_runtime_ops.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/profile_partial_runtime_ops.log
-          python -u torch-xpu-ops/.github/scripts/profile/triton_xpu_ops_time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/triton_xpu_ops_time.log
+          python -u .github/scripts/profile/correlation_id_mixed.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/correlation_id_mixed.log
+          python -u .github/scripts/profile/reproducer.missing.gpu.kernel.time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+          python -u .github/scripts/profile/time_precision_in_profile.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/time_precision_in_profile.log
+          python -u .github/scripts/profile/profile_partial_runtime_ops.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+          python -u .github/scripts/profile/triton_xpu_ops_time.py | tee ${{ github.workspace }}/profile_test/issue_reproduce/triton_xpu_ops_time.log
       - name: Print model results
         if: ${{ ! cancelled() }}
         run: |
+          cp profiling.fp32.train.pt ${{ github.workspace }}/profile_test
           {
-            sed -i '1d' .github/scripts/profile/profiling.fp32.train.pt
-            head -n -2 .github/scripts/profile/profiling.fp32.train.pt > ${{ github.workspace }}/profile_test/profiling.rn50.fp32.pt
+            sed -i '1d' ${{ github.workspace }}/profile_test/profiling.fp32.train.pt
+            head -n -2 ${{ github.workspace }}/profile_test/profiling.fp32.train.pt > ${{ github.workspace }}/profile_test/profiling.rn50.fp32.pt
             echo "### Model Test"
             echo "| Name | Self CPU % | Self CPU | CPU total % | CPU total | CPU time avg | Self XPU | Self XPU % | XPU total | XPU time avg | of Calls |"
             echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
