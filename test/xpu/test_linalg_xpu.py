@@ -259,7 +259,7 @@ def _int4_mm(self, device, m, k, n):
         assert torch.isnan(out).sum() == 0
 
         out = out.to(dtype=torch.uint8).reshape(w.shape)
-
+        # The cpu uses big endian while the xpu uses little endian
         if out.device.type == "xpu":
             out = (out[::, 1::2] << 4 | out[::, ::2]).to(torch.uint8)
         elif out.device != torch.device("cpu"):
