@@ -9,6 +9,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
+#include <ATen/native/xpu/sycl/WelfordNorm.h>
 #include <ATen/ops/from_blob.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
@@ -1068,42 +1069,88 @@ void batch_norm_stats_channels_last_template(
   TORCH_INTERNAL_ASSERT(
       out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
 
-  auto config = get_adaptive_launch_config(
-      reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
-  auto global_range = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   at::Tensor staging_data;
   at::Tensor semaphores;
-  auto wg_size_y = local_range[0];
-  auto wg_size_x = local_range[1];
-  auto nwg_y = global_range[0] / wg_size_y;
-  auto nwg_x = global_range[1] / wg_size_x;
-  if (nwg_y > 1) {
-    staging_data = at::empty({(long)(4 * stride * nwg_y)}, out_mean.options());
-    semaphores = at::zeros({(long)nwg_x}, input.options().dtype(at::kInt));
-  }
-  accscalar_t* staging_data_ptr =
-      nwg_y > 1 ? staging_data.mutable_data_ptr<accscalar_t>() : nullptr;
-  int* semaphores_ptr =
-      nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
 
-  auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
+  using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
       VarTransform,
       scalar_t,
       accscalar_t,
-      ELEMENTS_PER_ITER>(
-      input.const_data_ptr<scalar_t>(),
-      out_mean.mutable_data_ptr<accscalar_t>(),
-      out_invstd.mutable_data_ptr<accscalar_t>(),
-      staging_data_ptr,
-      semaphores_ptr,
-      reduction_size,
-      stride,
-      epsilon,
-      wg_size_y * wg_size_x);
+      PREFERRED_VEC_SIZE>;
+  auto input_ptr = input.const_data_ptr<scalar_t>();
+  auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
+  auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
+  bool use_vec_kernel = false;
 
-  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  if (VecKernel::valid(
+          reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
+    auto kfn = VecKernel(
+        input_ptr,
+        out_mean_ptr,
+        out_invstd_ptr,
+        reduction_size,
+        stride,
+        nullptr,
+        nullptr,
+        epsilon);
+
+    staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
+    semaphores = at::zeros(
+        {(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
+    accscalar_t* staging_data_ptr = kfn.num_cooperative_groups() > 1
+        ? staging_data.mutable_data_ptr<accscalar_t>()
+        : nullptr;
+    int* semaphores_ptr = kfn.num_cooperative_groups() > 1
+        ? semaphores.mutable_data_ptr<int>()
+        : nullptr;
+
+    use_vec_kernel = kfn.set_staging_data_check(staging_data_ptr);
+
+    if (use_vec_kernel) {
+      kfn.set_semaphores(semaphores_ptr);
+      sycl_kernel_submit(
+          kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      return;
+    }
+  }
+
+  if (!use_vec_kernel) {
+    auto config = get_adaptive_launch_config(
+        reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
+    auto global_range = std::get<0>(config);
+    auto local_range = std::get<1>(config);
+
+    auto wg_size_y = local_range[0];
+    auto wg_size_x = local_range[1];
+    auto nwg_y = global_range[0] / wg_size_y;
+    auto nwg_x = global_range[1] / wg_size_x;
+    if (nwg_y > 1) {
+      staging_data =
+          at::empty({(long)(4 * stride * nwg_y)}, out_mean.options());
+      semaphores = at::zeros({(long)nwg_x}, input.options().dtype(at::kInt));
+    }
+    accscalar_t* staging_data_ptr =
+        nwg_y > 1 ? staging_data.mutable_data_ptr<accscalar_t>() : nullptr;
+    int* semaphores_ptr =
+        nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
+
+    auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
+        VarTransform,
+        scalar_t,
+        accscalar_t,
+        ELEMENTS_PER_ITER>(
+        input_ptr,
+        out_mean_ptr,
+        out_invstd_ptr,
+        staging_data_ptr,
+        semaphores_ptr,
+        reduction_size,
+        stride,
+        epsilon,
+        wg_size_y * wg_size_x);
+
+    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  }
 }
 
 std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
@@ -1305,15 +1352,16 @@ struct BatchNormTransformInputVectorizedKernelFunctor {
            feature_vec_begin < fs;
            feature_vec_begin += VEC_SIZE * item.get_local_range(1)) {
         using vec_t = memory::aligned_vector<input_scalar_t, VEC_SIZE>;
-        vec_t vec;
+        auto i_vec = *reinterpret_cast<vec_t*>(
+            const_cast<input_scalar_t*>(&i[feature_vec_begin]));
+        vec_t o_vec;
 #pragma unroll
         for (int vt = 0; vt < VEC_SIZE; ++vt) {
-          index_t feature = feature_vec_begin + vt;
-          vec[vt] = static_cast<input_scalar_t>(
-              gamma * (i[feature] - mean) * invstd + beta);
+          o_vec[vt] = static_cast<input_scalar_t>(
+              gamma * (i_vec[vt] - mean) * invstd + beta);
         }
         input_scalar_t* write_ptr = &o[feature_vec_begin];
-        *(reinterpret_cast<vec_t*>(write_ptr)) = vec;
+        *(reinterpret_cast<vec_t*>(write_ptr)) = o_vec;
       }
     }
   }
@@ -1449,12 +1497,16 @@ void batch_norm_elemt_template(
   nwg_y = std::min<int>(nwg_y, syclMaxWorkItemsPerTile() / (tf * tb));
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
-  auto output_ptr = (char*)output_reshaped.const_data_ptr();
-  if (output_reshaped.is_contiguous() &&
-      memory::can_vectorize_up_to<input_scalar_t>(output_ptr) >= 4 &&
-      sizeof(input_scalar_t) < sizeof(float) && input.size(2) % 4 == 0) {
+  auto input_ptr = (char*)input_reshaped.const_data_ptr();
+  auto output_ptr = (char*)output_reshaped.mutable_data_ptr();
+  if (input_reshaped.is_contiguous() && output_reshaped.is_contiguous() &&
+      memory::can_vectorize_up_to<input_scalar_t>(input_ptr) >=
+          PREFERRED_VEC_SIZE &&
+      memory::can_vectorize_up_to<input_scalar_t>(output_ptr) >=
+          PREFERRED_VEC_SIZE &&
+      input.size(2) % PREFERRED_VEC_SIZE == 0) {
     auto kfn = BatchNormTransformInputVectorizedKernelFunctor<
-        4,
+        PREFERRED_VEC_SIZE,
         input_scalar_t,
         stat_scalar_t,
         stat_accscalar_t,
@@ -1560,6 +1612,139 @@ struct BatchNormTransformInputChannelsLastKernelFunctor {
   const bool fuse_relu_;
 };
 
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename layerscalar_t,
+    int VEC_SIZE,
+    int PARALLEL_LOADS>
+struct BatchNormTransformInputChannelsLastVectorizedKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    // tensor dimension (m,c)
+    // loop along m dimension
+    int inner_loop_stride = item.get_local_range(0) * item.get_group_range(0);
+
+    // offset along m dimension
+    int m_offset = item.get_global_id(0);
+    int c_vec_offset = item.get_global_id(1) * VEC_SIZE;
+
+    if (c_vec_offset >= stride_ || m_offset >= reduction_size_) {
+      return;
+    }
+
+    int loop_count =
+        1 + (reduction_size_ - 1) / (inner_loop_stride * PARALLEL_LOADS);
+    int address_base = m_offset * stride_ + c_vec_offset;
+    int address_increment = inner_loop_stride * stride_;
+
+    for (int i = 0; i < loop_count; i++) {
+#pragma unroll
+      for (int j = 0; j < PARALLEL_LOADS; j++) {
+        if (m_offset < reduction_size_) {
+          using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
+          using layerscalar_vec_t =
+              memory::aligned_vector<layerscalar_t, VEC_SIZE>;
+          auto input_vec = *reinterpret_cast<vec_t*>(
+              const_cast<scalar_t*>(&input_[address_base]));
+          vec_t output_vec, z_vec;
+          layerscalar_vec_t weight_vec, shift_vec;
+
+          if (z_ != nullptr) {
+            z_vec = *reinterpret_cast<vec_t*>(
+                const_cast<scalar_t*>(&z_[address_base]));
+          }
+          if (weight_ != nullptr) {
+            weight_vec = *reinterpret_cast<layerscalar_vec_t*>(
+                const_cast<layerscalar_t*>(&weight_[c_vec_offset]));
+          }
+          if (shift_ != nullptr) {
+            shift_vec = *reinterpret_cast<layerscalar_vec_t*>(
+                const_cast<layerscalar_t*>(&shift_[c_vec_offset]));
+          }
+
+#pragma unroll
+          for (int vt = 0; vt < VEC_SIZE; ++vt) {
+            auto c_offset = c_vec_offset + vt;
+            auto m_c = mean_[c_offset];
+            auto inv_std_c = static_cast<accscalar_t>(inv_std_[c_offset]);
+            auto w_c = weight_ == nullptr
+                ? accscalar_t(1.0)
+                : static_cast<accscalar_t>(weight_vec[vt]);
+            auto s_c = shift_ == nullptr
+                ? accscalar_t(0.0)
+                : static_cast<accscalar_t>(shift_vec[vt]);
+            auto tmp = w_c * (static_cast<accscalar_t>(input_vec[vt]) - m_c) *
+                    inv_std_c +
+                s_c;
+            if (z_ != nullptr) {
+              tmp += z_vec[vt];
+            }
+            output_vec[vt] =
+                (fuse_relu_ && tmp <= accscalar_t(0.0)
+                     ? scalar_t(0.0)
+                     : static_cast<scalar_t>(tmp));
+          }
+          *reinterpret_cast<vec_t*>(&out_[address_base]) = output_vec;
+        }
+        m_offset += inner_loop_stride;
+        address_base += address_increment;
+      }
+    }
+  }
+
+  BatchNormTransformInputChannelsLastVectorizedKernelFunctor(
+      const scalar_t* RESTRICT input,
+      const scalar_t* RESTRICT z,
+      const accscalar_t* RESTRICT mean,
+      const accscalar_t* RESTRICT inv_std,
+      const layerscalar_t* RESTRICT weight,
+      const layerscalar_t* RESTRICT shift,
+      scalar_t* RESTRICT out,
+      const int reduction_size,
+      const int stride,
+      const bool fuse_relu)
+      : input_(input),
+        z_(z),
+        mean_(mean),
+        inv_std_(inv_std),
+        weight_(weight),
+        shift_(shift),
+        out_(out),
+        reduction_size_(reduction_size),
+        stride_(stride),
+        fuse_relu_(fuse_relu) {}
+
+ private:
+  const scalar_t* RESTRICT input_;
+  const scalar_t* RESTRICT z_;
+  const accscalar_t* RESTRICT mean_;
+  const accscalar_t* RESTRICT inv_std_;
+  const layerscalar_t* RESTRICT weight_;
+  const layerscalar_t* RESTRICT shift_;
+  scalar_t* RESTRICT out_;
+  const int reduction_size_;
+  const int stride_;
+  const bool fuse_relu_;
+};
+
+template <typename scalar_t, typename weight_t, int VEC_SIZE>
+bool can_use_batch_norm_cnl_vec_kernel(
+    char* input,
+    char* output,
+    char* z,
+    char* weight,
+    char* shift,
+    int stride) {
+  return memory::can_vectorize_up_to<scalar_t>(input) >= VEC_SIZE &&
+      memory::can_vectorize_up_to<scalar_t>(output) >= VEC_SIZE &&
+      (z == nullptr || memory::can_vectorize_up_to<scalar_t>(z) >= VEC_SIZE) &&
+      (weight == nullptr ||
+       memory::can_vectorize_up_to<weight_t>(weight) >= VEC_SIZE) &&
+      (shift == nullptr ||
+       memory::can_vectorize_up_to<weight_t>(shift) >= VEC_SIZE) &&
+      (stride % VEC_SIZE == 0);
+}
+
 void batch_norm_elemt_channels_last_template(
     const at::Tensor& output,
     const at::Tensor& input,
@@ -1571,35 +1756,83 @@ void batch_norm_elemt_channels_last_template(
     const bool fuse_relu = false) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
-  auto config = get_adaptive_launch_config(
-      reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
-  auto global_range = std::get<0>(config);
-  auto local_range = std::get<1>(config);
   auto& queue = getCurrentSYCLQueue();
   const auto second_dtype = weight.defined()
       ? weight.scalar_type()
       : (shift.defined() ? shift.scalar_type() : input.scalar_type());
+  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
 
   if (input.scalar_type() != second_dtype) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
-              scalar_t,
-              accscalar_t,
-              accscalar_t,
-              ELEMENTS_PER_ITER>(
-              input.const_data_ptr<scalar_t>(),
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr,
-              mean.const_data_ptr<accscalar_t>(),
-              inv_std.const_data_ptr<accscalar_t>(),
-              weight.defined() ? weight.const_data_ptr<accscalar_t>() : nullptr,
-              shift.defined() ? shift.const_data_ptr<accscalar_t>() : nullptr,
-              output.mutable_data_ptr<scalar_t>(),
-              reduction_size,
-              stride,
-              fuse_relu);
-          sycl_kernel_submit(global_range, local_range, queue, kfn);
+
+          auto input_data_ptr = input.const_data_ptr<scalar_t>();
+          auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
+          auto z_data_ptr =
+              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
+          auto weight_data_ptr =
+              weight.defined() ? weight.const_data_ptr<accscalar_t>() : nullptr;
+          auto shift_data_ptr =
+              shift.defined() ? shift.const_data_ptr<accscalar_t>() : nullptr;
+
+          if (can_use_batch_norm_cnl_vec_kernel<
+                  scalar_t,
+                  accscalar_t,
+                  VEC_SIZE>(
+                  (char*)input_data_ptr,
+                  (char*)output_data_ptr,
+                  (char*)z_data_ptr,
+                  (char*)weight_data_ptr,
+                  (char*)shift_data_ptr,
+                  stride)) {
+            auto config_vec = get_adaptive_launch_config(
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range_vec = std::get<0>(config_vec);
+            auto local_range_vec = std::get<1>(config_vec);
+            auto kfn =
+                BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
+                    scalar_t,
+                    accscalar_t,
+                    accscalar_t,
+                    VEC_SIZE,
+                    ELEMENTS_PER_ITER>(
+                    input_data_ptr,
+                    z_data_ptr,
+                    mean.const_data_ptr<accscalar_t>(),
+                    inv_std.const_data_ptr<accscalar_t>(),
+                    weight_data_ptr,
+                    shift_data_ptr,
+                    output_data_ptr,
+                    reduction_size,
+                    stride,
+                    fuse_relu);
+            sycl_kernel_submit(global_range_vec, local_range_vec, queue, kfn);
+          } else {
+            auto config = get_adaptive_launch_config(
+                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
+            auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
+                scalar_t,
+                accscalar_t,
+                accscalar_t,
+                ELEMENTS_PER_ITER>(
+                input_data_ptr,
+                z_data_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_data_ptr,
+                shift_data_ptr,
+                output_data_ptr,
+                reduction_size,
+                stride,
+                fuse_relu);
+            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          }
         });
   } else {
     if (weight.defined()) {
@@ -1613,22 +1846,70 @@ void batch_norm_elemt_channels_last_template(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "batchnorm_forward_xpu", [&] {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
-          auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
-              scalar_t,
-              accscalar_t,
-              scalar_t,
-              ELEMENTS_PER_ITER>(
-              input.const_data_ptr<scalar_t>(),
-              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr,
-              mean.const_data_ptr<accscalar_t>(),
-              inv_std.const_data_ptr<accscalar_t>(),
-              weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr,
-              shift.defined() ? shift.const_data_ptr<scalar_t>() : nullptr,
-              output.mutable_data_ptr<scalar_t>(),
-              reduction_size,
-              stride,
-              fuse_relu);
-          sycl_kernel_submit(global_range, local_range, queue, kfn);
+
+          auto input_data_ptr = input.const_data_ptr<scalar_t>();
+          auto output_data_ptr = output.mutable_data_ptr<scalar_t>();
+          auto z_data_ptr =
+              z.has_value() ? z.value().const_data_ptr<scalar_t>() : nullptr;
+          auto weight_data_ptr =
+              weight.defined() ? weight.const_data_ptr<scalar_t>() : nullptr;
+          auto shift_data_ptr =
+              shift.defined() ? shift.const_data_ptr<scalar_t>() : nullptr;
+
+          if (can_use_batch_norm_cnl_vec_kernel<scalar_t, scalar_t, VEC_SIZE>(
+                  (char*)input_data_ptr,
+                  (char*)output_data_ptr,
+                  (char*)z_data_ptr,
+                  (char*)weight_data_ptr,
+                  (char*)shift_data_ptr,
+                  stride)) {
+            auto config_vec = get_adaptive_launch_config(
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range_vec = std::get<0>(config_vec);
+            auto local_range_vec = std::get<1>(config_vec);
+            auto kfn =
+                BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
+                    scalar_t,
+                    accscalar_t,
+                    scalar_t,
+                    VEC_SIZE,
+                    ELEMENTS_PER_ITER>(
+                    input_data_ptr,
+                    z_data_ptr,
+                    mean.const_data_ptr<accscalar_t>(),
+                    inv_std.const_data_ptr<accscalar_t>(),
+                    weight_data_ptr,
+                    shift_data_ptr,
+                    output_data_ptr,
+                    reduction_size,
+                    stride,
+                    fuse_relu);
+            sycl_kernel_submit(global_range_vec, local_range_vec, queue, kfn);
+          } else {
+            auto config = get_adaptive_launch_config(
+                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
+            auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
+                scalar_t,
+                accscalar_t,
+                scalar_t,
+                ELEMENTS_PER_ITER>(
+                input_data_ptr,
+                z_data_ptr,
+                mean.const_data_ptr<accscalar_t>(),
+                inv_std.const_data_ptr<accscalar_t>(),
+                weight_data_ptr,
+                shift_data_ptr,
+                output_data_ptr,
+                reduction_size,
+                stride,
+                fuse_relu);
+            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          }
         });
   }
 }
@@ -2826,7 +3107,7 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
   auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   if (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
       grad_output_reshaped.is_contiguous() &&
@@ -2934,7 +3215,7 @@ Tensor batch_norm_backward_elemt_template(
   sycl::range<2> global_range(nwg_y * tb, nwg_x * tf);
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
   auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   if (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
       grad_output_reshaped.is_contiguous() &&
@@ -4560,7 +4841,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
   }
 
   auto input_ptr = (char*)input_reshaped.const_data_ptr();
-  auto grad_input_ptr = (char*)grad_input_reshaped.const_data_ptr();
+  auto grad_input_ptr = (char*)grad_input_reshaped.mutable_data_ptr();
   auto grad_output_ptr = (char*)grad_output_reshaped.const_data_ptr();
   bool can_use_vec_kernel =
       (input_reshaped.is_contiguous() && grad_input_reshaped.is_contiguous() &&
