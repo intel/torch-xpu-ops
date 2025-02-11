@@ -16,10 +16,10 @@ std::tuple<int, int, int, int> get_adaptive_config(
     const int reduction,
     const int n_channels,
     const int vec_size,
-    const bool coop_flag = false,
-    const int loops_per_item = 16) {
-  int max_wg_size = syclMaxWorkItemsPerEU();
-  int group_size_x = std::min(last_pow2(n_channels / vec_size), 16);
+    int max_wg_size,
+    int loops_per_item = 8) {
+  loops_per_item /= vec_size;
+  int group_size_x = std::min(last_pow2(n_channels / vec_size), 32);
   int group_size_y = std::min(
       last_pow2(divup(reduction, loops_per_item)), max_wg_size / group_size_x);
   if (group_size_x * group_size_y != max_wg_size) {
@@ -33,11 +33,9 @@ std::tuple<int, int, int, int> get_adaptive_config(
       int(syclMaxWorkItemsPerTile()) / (nwg_x * group_size_x) / (group_size_y));
   nwg_y = std::max(nwg_y, 1);
 
-  if (coop_flag) {
-    // it's not worth having reduction between work groups if the reduction
-    // dimension is not big enough
-    nwg_y = nwg_y < 8 ? 1 : nwg_y;
-  }
+  // it's not worth having reduction between work groups if the reduction
+  // dimension is not big enough
+  nwg_y = nwg_y < 4 ? 1 : nwg_y;
 
   return std::make_tuple(group_size_y, group_size_x, nwg_y, nwg_x);
 }
@@ -242,9 +240,18 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         n_channels_(n_channels),
         staging_data_(staging_data),
         semaphores_(semaphores),
-        epsilon_(epsilon) {
+        epsilon_(epsilon) {}
+
+  void init() {
+    using KernelT = WelfordBatchNormStatChannelsLastVecKernelFunctor<
+        VarTransform,
+        scalar_t,
+        acc_t,
+        VEC_SIZE>;
+    auto max_group_size = syclMaxWorkGroupSize<KernelT>();
     std::tie(group_size_y_, group_size_x_, ngroups_y_, ngroups_x_) =
-        get_adaptive_config(reduction_size, n_channels, VEC_SIZE, true);
+        get_adaptive_config(
+            reduction_size_, n_channels_, VEC_SIZE, max_group_size);
   }
 
   static bool valid(
