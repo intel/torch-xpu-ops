@@ -14,6 +14,20 @@
 
 namespace at::native::xpu {
 
+#define PREFERRED_VEC_SIZE \
+  2 // To reduce register spill, we should not allocate too many
+
+int64_t get_adaptive_workgroup_size(int64_t prob_size, int simd) {
+  auto max_size = get_group_reduce_group_size(simd);
+  int64_t sizes[5] = {simd, 64, 128, 256, max_size};
+  for (int i = 0; i < 5; ++i) {
+    if (prob_size <= sizes[i]) {
+      return sizes[i];
+    }
+  }
+  return max_size;
+}
+
 template <
     typename scalar_t,
     typename acc_scalar_t,
@@ -422,54 +436,36 @@ void group_norm_kernel_impl(
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
   int64_t prob_size = D * HxW;
-  int64_t wg_size = prob_size < get_group_reduce_group_size(simd)
-      ? simd
-      : get_group_reduce_group_size(simd);
-  int64_t nwg = N * G;
-  auto global_range = sycl::range<1>(nwg * wg_size);
-  auto local_range = sycl::range<1>(wg_size);
+  int64_t stride = N * G;
 
-  int height;
-  int width;
+  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
 
   switch (x_format) {
     case MemoryFormat::Contiguous: {
-      constexpr int VEC_SIZE =
-          2; // To reduce the register pressure caused by WelfordData, we apply
-             // 2-way vectorization only to half-precision data.
-      if (sizeof(T) < sizeof(float) &&
-          can_use_vectorization(X_data, VEC_SIZE) &&
+      if (can_use_vectorization(X_data, VEC_SIZE) &&
           can_use_vectorization(mean_data, VEC_SIZE) &&
           can_use_vectorization(rstd_data, VEC_SIZE) &&
-          prob_size % VEC_SIZE == 0) {
-        using FUNC_T_SIMD16 =
-            GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
-        using FUNC_T_SIMD32 =
-            GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
-        if (simd == SIMD16) {
-          wg_size = syclMaxWorkGroupSize<FUNC_T_SIMD16>();
-        } else if (simd == SIMD32) {
-          wg_size = syclMaxWorkGroupSize<FUNC_T_SIMD32>();
-        } else {
-          TORCH_INTERNAL_ASSERT(
-              false,
-              "The GroupNorm kernel currently only supports SIMD16 or SIMD32.");
-        }
-        auto global_range_ =
-            sycl::range<1>((N * G + VEC_SIZE - 1) / VEC_SIZE * wg_size);
-        auto local_range_ = sycl::range<1>(wg_size);
-        group_norm_kernel_simd_choice_and_launch<FUNC_T_SIMD16, FUNC_T_SIMD32>(
+          prob_size % VEC_SIZE == 0 && stride % VEC_SIZE == 0) {
+        auto wg_size = get_adaptive_workgroup_size(prob_size / VEC_SIZE, simd);
+        auto global_range = sycl::range<1>((stride / VEC_SIZE) * wg_size);
+        auto local_range = sycl::range<1>(wg_size);
+        group_norm_kernel_simd_choice_and_launch<
+            GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>,
+            GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>>(
             simd,
-            global_range_,
-            local_range_,
+            global_range,
+            local_range,
             queue,
             prob_size,
-            N * G,
+            stride,
             eps,
             X_data,
             mean_data,
             rstd_data);
       } else {
+        auto wg_size = get_adaptive_workgroup_size(prob_size, simd);
+        auto global_range = sycl::range<1>(stride * wg_size);
+        auto local_range = sycl::range<1>(wg_size);
         group_norm_kernel_simd_choice_and_launch<
             GNRowwiseMomentsFunctor<T, SIMD16>,
             GNRowwiseMomentsFunctor<T, SIMD32>>(
@@ -486,8 +482,11 @@ void group_norm_kernel_impl(
       break;
     }
     case MemoryFormat::ChannelsLast: {
-      height = X.size(2);
-      width = X.size(3);
+      auto wg_size = get_adaptive_workgroup_size(prob_size, simd);
+      auto global_range = sycl::range<1>(stride * wg_size);
+      auto local_range = sycl::range<1>(wg_size);
+      int height = X.size(2);
+      int width = X.size(3);
       group_norm_kernel_simd_choice_and_launch<
           GNRowwiseMomentsNHWCFunctor<T, SIMD16>,
           GNRowwiseMomentsNHWCFunctor<T, SIMD32>>(
