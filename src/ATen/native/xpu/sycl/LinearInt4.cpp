@@ -229,8 +229,10 @@ void linear_int4_kernel(
             reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
         scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
             qScaleAndZeros.data_ptr<scalar_t>());
-        LinearInt4KernelFunctor<scalar_sycl_t, 32> kfn =
-            LinearInt4KernelFunctor<scalar_sycl_t, 32>(
+
+        switch (qGroupSize) {
+          case 16: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 16>(
                 input_data,
                 weight_data,
                 output_data,
@@ -241,7 +243,70 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 32: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 32>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 64: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 64>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 128: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 128>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 256: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 256>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+        }
       });
 }
 
