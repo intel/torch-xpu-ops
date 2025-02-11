@@ -3,7 +3,7 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-function(setup_common_libraries)
+macro(setup_common_libraries)
   add_library(
     torch_xpu_ops
     STATIC
@@ -18,7 +18,7 @@ function(setup_common_libraries)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
   endif()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
-endfunction()
+endmacro()
 
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
