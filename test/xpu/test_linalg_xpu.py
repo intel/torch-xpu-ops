@@ -275,9 +275,7 @@ def _int4_mm(self, device, m, k, n):
             ],
             2,
         )
-
-        if out.device.type != "xpu":
-            scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
+        scales_and_zeros = scales_and_zeros.transpose(0, 1).contiguous()
         return out, scales_and_zeros
 
     def convert_weight_to_int4pack(b):
