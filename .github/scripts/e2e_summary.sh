@@ -11,6 +11,9 @@ if [ "${accuracy}" -gt 0 ];then
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
+        suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
+        mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
+        dt="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
         test_result="$(awk -F ',' 'BEGIN{
             total = 0;
             pass = 0;
@@ -28,6 +31,12 @@ if [ "${accuracy}" -gt 0 ];then
             printf("%d | %d | %.2f%\n", total, pass, pass/total*100)
         }' "${csv}")"
         echo "| ${category} | ${test_result} |"
+        python .github/ci_expected_accuracy/check_expected.py \
+            --suite "${suite}" \
+            --mode "${mode}" \
+            --dtype "${dt}" \
+            --csv_file "${csv}"
+        exit
     done
 fi
 
