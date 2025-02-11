@@ -14,9 +14,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            "pytest -v " 
-            + "--junit-xml=./op_ut_with_only.xml " 
-            + test_case 
+            "pytest -v "
+            + "--junit-xml=./op_ut_with_only.xml "
+            + test_case
             + skip_options
         )
         return os.system(test_command)
@@ -27,9 +27,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            "pytest -v " 
-            + "--junit-xml=./op_ut_with_only.xml " 
-            + test_case 
+            "pytest -v "
+            + "--junit-xml=./op_ut_with_only.xml "
+            + test_case
             + exe_options
         )
         return os.system(test_command)
