@@ -32,10 +32,10 @@ Tensor _weight_int4pack_mm_xpu(
   TORCH_CHECK(B.dim() == 2, __func__, " : expect B to 2d tensor.");
 
   TORCH_CHECK(
-      qGroupSize == 32 || qGroupSize == 64 || qGroupSize == 128 ||
-          qGroupSize == 256,
+      qGroupSize == 16 || qGroupSize == 32 || qGroupSize == 64 ||
+          qGroupSize == 128 || qGroupSize == 256,
       __func__,
-      ": expect qGroupSize to be 32, 64, 128 or 256, got ",
+      ": expect qGroupSize to be 16, 32, 64, 128 or 256, got ",
       qGroupSize);
 
   TORCH_CHECK(

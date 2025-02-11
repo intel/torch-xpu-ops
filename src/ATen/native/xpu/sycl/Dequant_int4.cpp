@@ -22,7 +22,6 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         weight_dequant(weight_dequant) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    tmpT = sycl::local_accessor<float>(TileN, cgh);
   }
   [[intel::reqd_sub_group_size(SgSize)]] void operator()(
       sycl::nd_item<1> it) const {
@@ -63,6 +62,8 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           : static_cast<int8_t>((srcu8 & 0x0f) - 8) * scale + zero_point;
     }
 
+    float tmpT[TileN];
+
     for (int in = 0; in < TileN; in++) {
       for (int is = 0; is < SgSize; is++) {
         auto shlv = select_from_group(sg, tmp[in], is);
@@ -83,7 +84,6 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const uint8_t* weight_int4;
   const scalar_t* ScaleAndZeros;
   scalar_t* weight_dequant;
-  sycl::local_accessor<float> tmpT;
 };
 
 void dequant_int4_kernel(
