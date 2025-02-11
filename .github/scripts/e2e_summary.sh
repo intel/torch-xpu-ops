@@ -36,7 +36,6 @@ if [ "${accuracy}" -gt 0 ];then
             --mode "${mode}" \
             --dtype "${dt}" \
             --csv_file "${csv}"
-        exit
     done
 fi
 
