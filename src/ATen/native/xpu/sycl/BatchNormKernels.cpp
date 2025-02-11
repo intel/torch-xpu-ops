@@ -364,14 +364,14 @@ inline int div_up(int a, int b) {
 
 constexpr int ELEMENTS_PER_ITER =
     4; // enables concurrency within each thread to hide latency
-constexpr int ELEMENTS_PER_WORK_ITEM = 16;
+constexpr int ELEMENTS_PER_WORK_ITEM = 4;
 
 std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
+    const int max_wg_size,
     const int reduction,
     const int stride,
     const bool coop_flag = false,
     const int loops_per_item = 1) {
-  int max_wg_size = syclMaxWorkItemsPerEU();
   int group_x = std::min(last_pow2(stride), 32);
   int group_y = std::min(
       last_pow2(div_up(reduction, loops_per_item)), max_wg_size / group_x);
@@ -388,7 +388,7 @@ std::tuple<sycl::range<2>, sycl::range<2>> get_adaptive_launch_config(
   if (coop_flag) {
     // it's not worth having a grid reduction if the reduction dimension is not
     // big enough
-    nwg_y = nwg_y < 8 ? 1 : nwg_y;
+    nwg_y = nwg_y < 4 ? 1 : nwg_y;
   }
 
   sycl::range<2> local_range(group_y, group_x);
@@ -1093,6 +1093,7 @@ void batch_norm_stats_channels_last_template(
         nullptr,
         nullptr,
         epsilon);
+    kfn.init();
 
     staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
     semaphores = at::zeros(
@@ -1115,8 +1116,18 @@ void batch_norm_stats_channels_last_template(
   }
 
   if (!use_vec_kernel) {
+    using KernelT = BatchNormCollectStatisticsChannelsLastKernelFunctor<
+        VarTransform,
+        scalar_t,
+        accscalar_t,
+        ELEMENTS_PER_ITER>;
+
     auto config = get_adaptive_launch_config(
-        reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
+        syclMaxWorkGroupSize<KernelT>(),
+        reduction_size,
+        stride,
+        true,
+        ELEMENTS_PER_WORK_ITEM);
     auto global_range = std::get<0>(config);
     auto local_range = std::get<1>(config);
 
@@ -1134,11 +1145,7 @@ void batch_norm_stats_channels_last_template(
     int* semaphores_ptr =
         nwg_y > 1 ? semaphores.mutable_data_ptr<int>() : nullptr;
 
-    auto kfn = BatchNormCollectStatisticsChannelsLastKernelFunctor<
-        VarTransform,
-        scalar_t,
-        accscalar_t,
-        ELEMENTS_PER_ITER>(
+    auto kfn = KernelT(
         input_ptr,
         out_mean_ptr,
         out_invstd_ptr,
@@ -1786,20 +1793,13 @@ void batch_norm_elemt_channels_last_template(
                   (char*)weight_data_ptr,
                   (char*)shift_data_ptr,
                   stride)) {
-            auto config_vec = get_adaptive_launch_config(
-                reduction_size,
-                stride / VEC_SIZE,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range_vec = std::get<0>(config_vec);
-            auto local_range_vec = std::get<1>(config_vec);
             auto kfn =
                 BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
                     scalar_t,
                     accscalar_t,
                     accscalar_t,
                     VEC_SIZE,
-                    ELEMENTS_PER_ITER>(
+                    ELEMENTS_PER_ITER / VEC_SIZE>(
                     input_data_ptr,
                     z_data_ptr,
                     mean.const_data_ptr<accscalar_t>(),
@@ -1810,12 +1810,16 @@ void batch_norm_elemt_channels_last_template(
                     reduction_size,
                     stride,
                     fuse_relu);
+            auto config_vec = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range_vec = std::get<0>(config_vec);
+            auto local_range_vec = std::get<1>(config_vec);
             sycl_kernel_submit(global_range_vec, local_range_vec, queue, kfn);
           } else {
-            auto config = get_adaptive_launch_config(
-                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
             auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
                 scalar_t,
                 accscalar_t,
@@ -1831,6 +1835,14 @@ void batch_norm_elemt_channels_last_template(
                 reduction_size,
                 stride,
                 fuse_relu);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         });
@@ -1863,20 +1875,13 @@ void batch_norm_elemt_channels_last_template(
                   (char*)weight_data_ptr,
                   (char*)shift_data_ptr,
                   stride)) {
-            auto config_vec = get_adaptive_launch_config(
-                reduction_size,
-                stride / VEC_SIZE,
-                false,
-                ELEMENTS_PER_WORK_ITEM);
-            auto global_range_vec = std::get<0>(config_vec);
-            auto local_range_vec = std::get<1>(config_vec);
             auto kfn =
                 BatchNormTransformInputChannelsLastVectorizedKernelFunctor<
                     scalar_t,
                     accscalar_t,
                     scalar_t,
                     VEC_SIZE,
-                    ELEMENTS_PER_ITER>(
+                    ELEMENTS_PER_ITER / VEC_SIZE>(
                     input_data_ptr,
                     z_data_ptr,
                     mean.const_data_ptr<accscalar_t>(),
@@ -1887,12 +1892,16 @@ void batch_norm_elemt_channels_last_template(
                     reduction_size,
                     stride,
                     fuse_relu);
+            auto config_vec = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range_vec = std::get<0>(config_vec);
+            auto local_range_vec = std::get<1>(config_vec);
             sycl_kernel_submit(global_range_vec, local_range_vec, queue, kfn);
           } else {
-            auto config = get_adaptive_launch_config(
-                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
             auto kfn = BatchNormTransformInputChannelsLastKernelFunctor<
                 scalar_t,
                 accscalar_t,
@@ -1908,6 +1917,14 @@ void batch_norm_elemt_channels_last_template(
                 reduction_size,
                 stride,
                 fuse_relu);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         });
@@ -2536,7 +2553,11 @@ batch_norm_backward_reduce_channels_last_template(
   }
 
   auto config = get_adaptive_launch_config(
-      reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
+      syclMaxWorkItemsPerEU() * 2,
+      reduction_size,
+      stride,
+      false,
+      ELEMENTS_PER_WORK_ITEM);
   auto global_range = std::get<0>(config);
   auto local_range = std::get<1>(config);
   auto wg_size_y = local_range[0];
@@ -3543,14 +3564,10 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
 
         if (can_use_batch_norm_bwd_cnl_vec_kernel<scalar_t, VEC_SIZE>(
                 grad_output_ptr, input_ptr, grad_input_ptr, stride)) {
-          auto config = get_adaptive_launch_config(
-              reduction_size, stride / VEC_SIZE, true, ELEMENTS_PER_WORK_ITEM);
-          auto global_range = std::get<0>(config);
-          auto local_range = std::get<1>(config);
           if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
             auto kfn =
                 BatchNormBackwardElemtChannelsLastVectorizedKernelFunctor<
-                    ELEMENTS_PER_ITER,
+                    ELEMENTS_PER_ITER / VEC_SIZE,
                     VEC_SIZE,
                     scalar_t,
                     accscalar_t,
@@ -3566,11 +3583,19 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     static_cast<accscalar_t>(norm_fct),
                     reduction_size,
                     stride);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                true,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           } else {
             auto kfn =
                 BatchNormBackwardElemtChannelsLastVectorizedKernelFunctor<
-                    ELEMENTS_PER_ITER,
+                    ELEMENTS_PER_ITER / VEC_SIZE,
                     VEC_SIZE,
                     scalar_t,
                     accscalar_t,
@@ -3587,13 +3612,17 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     static_cast<accscalar_t>(norm_fct),
                     reduction_size,
                     stride);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                true,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         } else {
-          auto config = get_adaptive_launch_config(
-              reduction_size, stride, true, ELEMENTS_PER_WORK_ITEM);
-          auto global_range = std::get<0>(config);
-          auto local_range = std::get<1>(config);
           if (weight.defined() && weight.scalar_type() != input.scalar_type()) {
             auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
                 ELEMENTS_PER_ITER,
@@ -3611,6 +3640,14 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 static_cast<accscalar_t>(norm_fct),
                 reduction_size,
                 stride);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride,
+                true,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           } else {
             auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
@@ -3629,6 +3666,14 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 static_cast<accscalar_t>(norm_fct),
                 reduction_size,
                 stride);
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride,
+                true,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         }
@@ -3667,10 +3712,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
 
           if (!can_use_batch_norm_bwd_cnl_vec_kernel<scalar_t, VEC_SIZE>(
                   grad_output_ptr, input_ptr, grad_input_ptr, stride)) {
-            auto config = get_adaptive_launch_config(
-                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
             auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
                 ELEMENTS_PER_ITER,
                 scalar_t,
@@ -3690,18 +3731,19 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 stride,
                 count.const_data_ptr<int>(),
                 count.numel());
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
-          } else {
             auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
                 reduction_size,
-                stride / VEC_SIZE,
+                stride,
                 false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
+            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          } else {
             auto kfn =
                 BatchNormBackwardElemtChannelsLastVectorizedKernelFunctor<
-                    ELEMENTS_PER_ITER,
+                    ELEMENTS_PER_ITER / VEC_SIZE,
                     VEC_SIZE,
                     scalar_t,
                     accscalar_t,
@@ -3720,6 +3762,14 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     stride,
                     count.const_data_ptr<int>(),
                     count.numel());
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         });
@@ -3745,10 +3795,6 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
 
           if (!can_use_batch_norm_bwd_cnl_vec_kernel<scalar_t, VEC_SIZE>(
                   grad_output_ptr, input_ptr, grad_input_ptr, stride)) {
-            auto config = get_adaptive_launch_config(
-                reduction_size, stride, false, ELEMENTS_PER_WORK_ITEM);
-            auto global_range = std::get<0>(config);
-            auto local_range = std::get<1>(config);
             auto kfn = BatchNormBackwardElemtChannelsLastKernelFunctor<
                 ELEMENTS_PER_ITER,
                 scalar_t,
@@ -3768,18 +3814,19 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                 stride,
                 count.const_data_ptr<int>(),
                 count.numel());
-            sycl_kernel_submit(global_range, local_range, queue, kfn);
-          } else {
             auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
                 reduction_size,
-                stride / VEC_SIZE,
+                stride,
                 false,
                 ELEMENTS_PER_WORK_ITEM);
             auto global_range = std::get<0>(config);
             auto local_range = std::get<1>(config);
+            sycl_kernel_submit(global_range, local_range, queue, kfn);
+          } else {
             auto kfn =
                 BatchNormBackwardElemtChannelsLastVectorizedKernelFunctor<
-                    ELEMENTS_PER_ITER,
+                    ELEMENTS_PER_ITER / VEC_SIZE,
                     VEC_SIZE,
                     scalar_t,
                     accscalar_t,
@@ -3799,6 +3846,14 @@ at::Tensor batch_norm_backward_elemt_channels_last_template(
                     stride,
                     count.const_data_ptr<int>(),
                     count.numel());
+            auto config = get_adaptive_launch_config(
+                syclMaxWorkGroupSize(kfn),
+                reduction_size,
+                stride / VEC_SIZE,
+                false,
+                ELEMENTS_PER_WORK_ITEM);
+            auto global_range = std::get<0>(config);
+            auto local_range = std::get<1>(config);
             sycl_kernel_submit(global_range, local_range, queue, kfn);
           }
         });
