@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Run lint check
         run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           bash .github/scripts/lintrunner.sh
 
   preci-linux-build:
