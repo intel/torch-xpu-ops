@@ -38,7 +38,13 @@ if [ "${accuracy}" -gt 0 ];then
             --dtype "${dt}" \
             --csv_file "${csv}" >> tmp-report.txt
     done
-    cat tmp-report.txt && rm -rf tmp-report.txt
+    cat tmp-report.txt |sed '
+        s/Real failed models:/$${\\color{red}Real \\space failed \\space models:}$$:/g;
+        s/Expected failed models:/$${\\color{blue}Expected \\space failed \\space models:}$$:/g;
+        s/Warning timeout models:/$${\\color{orange}Warning \\space timeout \\space models:}$$:/g;
+        s/Failed to passed models:/$${\\color{green}Failed \\space to \\space passed \\space models:}$$:/g;
+    '
+    rm -rf tmp-report.txt
 fi
 
 # Performance
