@@ -1154,7 +1154,10 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
-        test_command = "pytest -v --junit-xml=./op_ut_with_skip_{case_name}.xml ".format(case_name=test_case) + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " 
+            + test_case
+        )
         test_command += skip_options
     elif exe_list is not None:
         exe_options = ' -k "' + exe_list[0]
@@ -1162,8 +1165,14 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
-        test_command = "pytest -v --junit-xml=./op_ut_with_skip_{case_name}.xml ".format(case_name=test_case) + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " 
+            + test_case
+        )
         test_command += exe_options
     else:
-        test_command = "pytest -v --junit-xml=./op_ut_with_skip_{case_name}.xml ".format(case_name=test_case) + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " 
+            + test_case
+        )
     return os.system(test_command)
