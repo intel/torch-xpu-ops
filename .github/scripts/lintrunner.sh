@@ -29,7 +29,6 @@ lintrunner init 2> /dev/null
 # Do build steps necessary for linters
 if [[ "${CLANG}" == "1" ]]; then
     pushd ../../
-    cp -rf ./torchgen/packaged/ATen/templates third_party/torch-xpu-ops/yaml/templates
     python3 third_party/torch-xpu-ops/tools/linter/clang_tidy/generate_build_files.py
 fi
 #python3 -m tools.generate_torch_version --is_debug=false
