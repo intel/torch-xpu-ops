@@ -58,7 +58,8 @@ def print_cases(cases):
 
 def print_suite(suite):
     print_header = True
-    ut = ".".join(args.junitxml).split('.')[0]
+    ut = args.junitxml[0]
+    del(args.junitxml[0])
     tests = suite.tests
     skipped = suite.skipped
     failures = suite.failures
