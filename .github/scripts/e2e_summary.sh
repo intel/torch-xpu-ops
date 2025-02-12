@@ -8,6 +8,7 @@ if [ "${accuracy}" -gt 0 ];then
     echo "### Accuracy"
     echo "| Category | Passed | Total | Pass Rate |"
     echo "| --- | --- | --- | --- |"
+    echo > tmp-report.txt
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
@@ -35,8 +36,9 @@ if [ "${accuracy}" -gt 0 ];then
             --suite "${suite}" \
             --mode "${mode}" \
             --dtype "${dt}" \
-            --csv_file "${csv}"
+            --csv_file "${csv}" >> tmp-report.txt
     done
+    cat tmp-report.txt && rm -rf tmp-report.txt
 fi
 
 # Performance
@@ -68,4 +70,5 @@ if [ "${performance}" -gt 0 ];then
         }' "${csv}")"
         echo "| ${category} | ${test_result} |"
     done
+    echo
 fi
