@@ -24,7 +24,7 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -34,6 +34,7 @@ jobs:
           bash .github/scripts/lintrunner.sh
       - name: Run lint check with Clang
         run: |
+          sudo apt update -y && sudo apt install -y libomp-dev
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && cp -r ../torch-xpu-ops third_party/
