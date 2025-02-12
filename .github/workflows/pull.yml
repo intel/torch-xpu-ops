@@ -32,6 +32,14 @@ jobs:
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           bash .github/scripts/lintrunner.sh
+      - name: Run lint check with Clang
+        run: |
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && cp -r ../torch-xpu-ops third_party/
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT build/xpu/**/*.* build/xpu/*.* third_party/torch-xpu-ops/src/*.* third_party/torch-xpu-ops/src/**/*.* third_party/torch-xpu-ops/src/**/**/*.* third_party/torch-xpu-ops/src/**/**/**/*.*"
+          export CLANG=1
+          bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
   preci-linux-build:
     # Don't run on forked repos and draft PRs
