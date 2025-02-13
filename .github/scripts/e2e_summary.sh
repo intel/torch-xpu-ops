@@ -1,13 +1,14 @@
 #!/bin/bash
 
 results_dir="$1"
+check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
 
 # Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
 if [ "${accuracy}" -gt 0 ];then
     echo "### Accuracy"
     printf "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
-    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{green}Timeout}\$\$ | New Passed | New Enabled | Not Run |\n"
+    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | New Passed | New Enabled | Not Run |\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     echo > tmp-summary.txt
     echo > tmp-details.txt
@@ -17,8 +18,7 @@ if [ "${accuracy}" -gt 0 ];then
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dt="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python .github/ci_expected_accuracy/check_expected.py \
-            --suite "${suite}" --mode "${mode}" --dtype "${dt}" --csv_file "${csv}" > tmp-result.txt
+        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dt}" --csv_file "${csv}" > tmp-result.txt
         test_result="$(sed 's/, /,/g' tmp-result.txt |awk '{
             if($0 ~/Total/){
                 total = $3;
@@ -67,7 +67,7 @@ if [ "${accuracy}" -gt 0 ];then
         {
             echo "<table><thead><tr><th colspan=2>$(sed 's/=//g' tmp-result.txt |head -n 1)</th></tr></thead><tbody>"
             sed "1d" tmp-result.txt |awk -F: '{printf("<tr><td>%s</td><td>%s</td></tr>\n", $1, $2)}'
-            echo "</tbody></table>"
+            echo -e "</tbody></table>\n"
         } >> tmp-details.txt
     done
     cat tmp-summary.txt
@@ -79,7 +79,7 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
-    echo "| Category | Total | Passed | Pass Rate | Speedup |"
+    echo "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | Speedup |"
     echo "| --- | --- | --- | --- | --- |"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" |sort)
     do
