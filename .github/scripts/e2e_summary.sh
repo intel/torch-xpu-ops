@@ -79,7 +79,7 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
-    echo "| Category | Passed | Total | Pass Rate | Speedup |"
+    echo "| Category | Total | Passed | Pass Rate | Speedup |"
     echo "| --- | --- | --- | --- | --- |"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" |sort)
     do
