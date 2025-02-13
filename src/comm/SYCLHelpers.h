@@ -138,3 +138,13 @@ sycl_kernel_submit(
   };
   q.submit(cgf);
 }
+
+#define SYCL_KERNEL_STRING(var, str) \
+  static const __attribute__((opencl_constant)) char var[] = str;
+#define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
+
+#define SYCL_PRINT(fmt_str, ...)                \
+  {                                             \
+    SYCL_KERNEL_STRING(fmt_var, fmt_str);       \
+    SYCL_KERNEL_PRINTF(fmt_var, ##__VA_ARGS__); \
+  }
