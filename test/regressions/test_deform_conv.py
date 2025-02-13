@@ -5,12 +5,11 @@ import os
 import pytest
 import torch
 import torch.fx
-from torch import nn
 import torch.testing._internal.optests as optests
+from torch import nn
 from torch.nn.modules.utils import _pair
 from torchvision import ops
 from torchvision.models.feature_extraction import get_graph_node_names
-
 
 OPTESTS = [
     "test_schema",
@@ -65,7 +64,9 @@ def bilinear_interpolate(data, y, x, snap_border=False):
 class TestDeformConv:
     dtype = torch.float32
 
-    def expected_fn(self, x, weight, offset, mask, bias, stride=1, padding=0, dilation=1):
+    def expected_fn(
+        self, x, weight, offset, mask, bias, stride=1, padding=0, dilation=1
+    ):
         stride_h, stride_w = _pair(stride)
         pad_h, pad_w = _pair(padding)
         dil_h, dil_w = _pair(dilation)
@@ -84,7 +85,9 @@ class TestDeformConv:
         in_c_per_weight_grp = weight.shape[1]
         out_c_per_weight_grp = n_out_channels // n_weight_grps
 
-        out = torch.zeros(n_batches, n_out_channels, out_h, out_w, device=x.device, dtype=x.dtype)
+        out = torch.zeros(
+            n_batches, n_out_channels, out_h, out_w, device=x.device, dtype=x.dtype
+        )
         for b in range(n_batches):
             for c_out in range(n_out_channels):
                 for i in range(out_h):
@@ -96,11 +99,25 @@ class TestDeformConv:
                                     c_in = weight_grp * in_c_per_weight_grp + c
 
                                     offset_grp = c_in // in_c_per_offset_grp
-                                    mask_idx = offset_grp * (weight_h * weight_w) + di * weight_w + dj
+                                    mask_idx = (
+                                        offset_grp * (weight_h * weight_w)
+                                        + di * weight_w
+                                        + dj
+                                    )
                                     offset_idx = 2 * mask_idx
 
-                                    pi = stride_h * i - pad_h + dil_h * di + offset[b, offset_idx, i, j]
-                                    pj = stride_w * j - pad_w + dil_w * dj + offset[b, offset_idx + 1, i, j]
+                                    pi = (
+                                        stride_h * i
+                                        - pad_h
+                                        + dil_h * di
+                                        + offset[b, offset_idx, i, j]
+                                    )
+                                    pj = (
+                                        stride_w * j
+                                        - pad_w
+                                        + dil_w * dj
+                                        + offset[b, offset_idx + 1, i, j]
+                                    )
 
                                     mask_value = 1.0
                                     if mask is not None:
@@ -133,7 +150,9 @@ class TestDeformConv:
         out_h = (in_h + 2 * pad_h - (dil_h * (weight_h - 1) + 1)) // stride_h + 1
         out_w = (in_w + 2 * pad_w - (dil_w * (weight_w - 1) + 1)) // stride_w + 1
 
-        x = torch.rand(batch_sz, n_in_channels, in_h, in_w, dtype=dtype, requires_grad=True).to(device)
+        x = torch.rand(
+            batch_sz, n_in_channels, in_h, in_w, dtype=dtype, requires_grad=True
+        ).to(device)
 
         offset = torch.randn(
             batch_sz,
@@ -145,7 +164,12 @@ class TestDeformConv:
         ).to(device)
 
         mask = torch.randn(
-            batch_sz, n_offset_grps * weight_h * weight_w, out_h, out_w, dtype=dtype, requires_grad=True
+            batch_sz,
+            n_offset_grps * weight_h * weight_w,
+            out_h,
+            out_w,
+            dtype=dtype,
+            requires_grad=True,
         ).to(device)
 
         weight = torch.randn(
@@ -167,9 +191,17 @@ class TestDeformConv:
 
         return x, weight, offset, mask, bias, stride, pad, dilation
 
-    def make_obj(self, in_channels=6, out_channels=2, kernel_size=(3, 2), groups=2, wrap=False):
+    def make_obj(
+        self, in_channels=6, out_channels=2, kernel_size=(3, 2), groups=2, wrap=False
+    ):
         obj = ops.DeformConv2d(
-            in_channels, out_channels, kernel_size, stride=(2, 1), padding=(1, 0), dilation=(2, 1), groups=groups
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=(2, 1),
+            padding=(1, 0),
+            dilation=(2, 1),
+            groups=groups,
         )
         return DeformConvModuleWrapper(obj) if wrap else obj
 
@@ -185,39 +217,67 @@ class TestDeformConv:
     @pytest.mark.parametrize("device", ("xpu",))
     @pytest.mark.parametrize("contiguous", (True, False))
     @pytest.mark.parametrize("batch_sz", (0, 1, 33))
-    @pytest.mark.opcheck_only_one()
+    @pytest.mark.opcheck_only_one
     def test_forward(self, device, contiguous, batch_sz, dtype=None):
         dtype = dtype or self.dtype
-        x, _, offset, mask, _, stride, padding, dilation = self.get_fn_args(device, contiguous, batch_sz, dtype)
+        x, _, offset, mask, _, stride, padding, dilation = self.get_fn_args(
+            device, contiguous, batch_sz, dtype
+        )
         in_channels = 6
         out_channels = 2
         kernel_size = (3, 2)
         groups = 2
         tol = 2e-3 if dtype is torch.half else 1e-5
 
-        layer = self.make_obj(in_channels, out_channels, kernel_size, groups, wrap=False).to(
-            device=x.device, dtype=dtype
-        )
+        layer = self.make_obj(
+            in_channels, out_channels, kernel_size, groups, wrap=False
+        ).to(device=x.device, dtype=dtype)
         res = layer(x, offset, mask)
 
         weight = layer.weight.data
         bias = layer.bias.data
-        expected = self.expected_fn(x, weight, offset, mask, bias, stride=stride, padding=padding, dilation=dilation)
+        expected = self.expected_fn(
+            x,
+            weight,
+            offset,
+            mask,
+            bias,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+        )
 
         torch.testing.assert_close(
-            res.to(expected), expected, rtol=tol, atol=tol, msg=f"\nres:\n{res}\nexpected:\n{expected}"
+            res.to(expected),
+            expected,
+            rtol=tol,
+            atol=tol,
+            msg=f"\nres:\n{res}\nexpected:\n{expected}",
         )
 
         # no modulation test
         res = layer(x, offset)
-        expected = self.expected_fn(x, weight, offset, None, bias, stride=stride, padding=padding, dilation=dilation)
+        expected = self.expected_fn(
+            x,
+            weight,
+            offset,
+            None,
+            bias,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+        )
 
         torch.testing.assert_close(
-            res.to(expected), expected, rtol=tol, atol=tol, msg=f"\nres:\n{res}\nexpected:\n{expected}"
+            res.to(expected),
+            expected,
+            rtol=tol,
+            atol=tol,
+            msg=f"\nres:\n{res}\nexpected:\n{expected}",
         )
 
     @pytest.mark.parametrize("contiguous", (True, False))
-    @pytest.mark.opcheck_only_one()
+    @pytest.mark.opcheck_only_one
     def test_compare_cpu_xpu_grads(self, contiguous):
         true_cpu_grads = None
 
@@ -235,7 +295,9 @@ class TestDeformConv:
             weight = init_weight
 
         for d in ["xpu"]:
-            out = ops.deform_conv2d(img.to(d), offset.to(d), weight.to(d), padding=1, mask=mask.to(d))
+            out = ops.deform_conv2d(
+                img.to(d), offset.to(d), weight.to(d), padding=1, mask=mask.to(d)
+            )
             out.mean().backward()
             if true_cpu_grads is None:
                 true_cpu_grads = init_weight.grad
@@ -253,7 +315,9 @@ class TestDeformConv:
 optests.generate_opcheck_tests(
     testcase=TestDeformConv,
     namespaces=["torchvision"],
-    failures_dict_path=os.path.join(os.path.dirname(__file__), "optests_failures_dict.json"),
+    failures_dict_path=os.path.join(
+        os.path.dirname(__file__), "optests_failures_dict.json"
+    ),
     additional_decorators=[],
     test_utils=OPTESTS,
 )
