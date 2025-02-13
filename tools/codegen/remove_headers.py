@@ -6,7 +6,7 @@ parser.add_argument("--register_xpu_path", type=str, help="file location of Regi
 args = parser.parse_args()
 
 def rm_as_strided_native():
-    with open(args.register_xpu_path, 'r') as fr:
+    with open(args.register_xpu_path) as fr:
         lines = fr.readlines()
 
         with open(args.register_xpu_path, 'w') as fw:
@@ -15,7 +15,7 @@ def rm_as_strided_native():
                     fw.write(ln)
 
 def replace_op_headers():
-    with open(args.register_xpu_path, 'r') as fr:
+    with open(args.register_xpu_path) as fr:
         lines = fr.readlines()
         patt = r'#include <ATen/ops'
         rep = r'#include <xpu/ATen/ops'

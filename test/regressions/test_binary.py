@@ -1,3 +1,4 @@
+# Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
 
@@ -57,7 +58,7 @@ class TestSimpleBinary(TestCase):
         b_xpu = b_cpu.to(xpu_device)
         c_xpu = a_xpu / b_xpu
         c_cpu = a_cpu / b_cpu
-        self.assertEqual(c_cpu.dtype, c_xpu.dtype) # assume float
+        self.assertEqual(c_cpu.dtype, c_xpu.dtype)  # assume float
         self.assertEqual(c_cpu, c_xpu.to(cpu_device))
 
     def test_binary_div_channels_last(self, dtype=torch.float):
@@ -225,13 +226,9 @@ class TestSimpleBinary(TestCase):
 
     def test_pow(self, dtype=torch.float):
         x_cpu = torch.tensor(([2.5, 3.1, 1.3]), dtype=torch.float, device=cpu_device)
-        x_xpu = torch.tensor(
-            ([2.5, 3.1, 1.3]), dtype=torch.float, device=xpu_device
-        )
+        x_xpu = torch.tensor(([2.5, 3.1, 1.3]), dtype=torch.float, device=xpu_device)
         y_cpu = torch.tensor(([3.0, 3.0, 3.0]), dtype=torch.float, device=cpu_device)
-        y_xpu = torch.tensor(
-            ([3.0, 3.0, 3.0]), dtype=torch.float, device=xpu_device
-        )
+        y_xpu = torch.tensor(([3.0, 3.0, 3.0]), dtype=torch.float, device=xpu_device)
         self.assertEqual(torch.pow(x_cpu, y_cpu), torch.pow(x_xpu, y_xpu).cpu())
         self.assertEqual(x_cpu.pow(y_cpu), x_xpu.pow(y_xpu).cpu())
         self.assertEqual(x_cpu.pow_(y_cpu), x_xpu.pow_(y_xpu).cpu())

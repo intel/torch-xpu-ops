@@ -1,11 +1,13 @@
 # Owner(s): ["module: intel"]
 
-import torch
-import torch.autograd.forward_ad as fwAD
 import threading
 import warnings
 from copy import deepcopy
 from functools import partial
+
+import torch
+import torch.autograd.forward_ad as fwAD
+import torch.utils.checkpoint
 from torch import nn
 from torch.autograd import Function
 from torch.autograd.profiler import emit_nvtx
@@ -20,8 +22,11 @@ from torch.testing._internal.common_utils import (
     run_tests,
     slowTest,
 )
-from torch.utils.checkpoint import checkpoint, create_selective_checkpoint_contexts, CheckpointPolicy
-import torch.utils.checkpoint
+from torch.utils.checkpoint import (
+    checkpoint,
+    CheckpointPolicy,
+    create_selective_checkpoint_contexts,
+)
 from torch.utils.flop_counter import FlopCounterMode
 
 
@@ -115,6 +120,7 @@ def backward_single_threaded(self, device):
             nonlocal threads_eq
             threads_eq = ctx.tid == threading.get_ident()
             return gO, None
+
     inp = torch.rand(10, device=device, requires_grad=True)
     with torch.autograd.set_multithreading_enabled(False):
         TestFn.apply(inp, None).sum().backward()
@@ -142,6 +148,7 @@ def backward_tls_stash(self, device):
             test_self.assertTrue(torch._C._get_obj_in_tls("my_obj")[10] == 10)
             torch._C._get_obj_in_tls("my_obj")[10] = 5
             return gO, None
+
     inp = torch.rand(10, device=device, requires_grad=True)
     TestFn.apply(inp, None).sum().backward()
     self.assertEqual(local.my_obj[10], 5)
@@ -196,6 +203,7 @@ def gradcheck_input_output_different_device(self, device):
     x = torch.ones((1,), dtype=torch.double, device="cpu", requires_grad=True)
     gradcheck(lambda x: x.to("xpu"), (x,))
 
+
 def profiler_emit_nvtx(self, device):
     # This test is not intended to ensure correctness of nvtx ranges.
     # That would require something a great deal more complex (you'd have to create a
@@ -205,6 +213,7 @@ def profiler_emit_nvtx(self, device):
     with torch.xpu.profiler.profile():
         with emit_nvtx():
             a.add(1.0)
+
 
 def dataparallel_saved_tensors_hooks(self):
     def pack(x):
@@ -316,16 +325,15 @@ def checkpointing_without_reentrant_memory_savings(self):
                 if not self.use_checkpoint:
                     x = self.layers[i](x)
                 else:
-                    x = checkpoint(
-                        self.layers[i], x, use_reentrant=self.use_reentrant
-                    )
+                    x = checkpoint(self.layers[i], x, use_reentrant=self.use_reentrant)
             return x
-    model_no_checkpoint = MyModel(
-        8, use_checkpoint=False, use_reentrant=False
-    ).to(device="xpu")
-    model_reentrant_checkpoint = MyModel(
-        8, use_checkpoint=True, use_reentrant=True
-    ).to(device="xpu")
+
+    model_no_checkpoint = MyModel(8, use_checkpoint=False, use_reentrant=False).to(
+        device="xpu"
+    )
+    model_reentrant_checkpoint = MyModel(8, use_checkpoint=True, use_reentrant=True).to(
+        device="xpu"
+    )
     model_no_reentrant_checkpoint = MyModel(
         8, use_checkpoint=True, use_reentrant=False
     ).to(device="xpu")
@@ -389,11 +397,13 @@ def graph_save_on_cpu_cuda(self):
         memory_with_hooks = torch.xpu.memory_allocated()
         self.assertEqual(memory_with_hooks, memory_without_grad)
 
+
 def scalar_grad_mixed_device(self):
     x = torch.tensor(1.0, requires_grad=True)
     y = torch.randn(2, 2, device="xpu")
     out = x * y
     out.sum().backward()
+
 
 def custom_function_propagates_errors_from_device_thread(self):
     class MyFunc(Function):
@@ -411,6 +421,7 @@ def custom_function_propagates_errors_from_device_thread(self):
 
     with self.assertRaisesRegex(RuntimeError, "blah"):
         out.backward()
+
 
 def flops_and_mem(self):
     # From https://github.com/pytorch/pytorch/pull/126320
@@ -509,6 +520,7 @@ def flops_and_mem(self):
     self.assertEqual(act_mem_sac3, 1.0)
     self.assertEqual(bw_flops_sac3, 2.0)
 
+
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
@@ -517,21 +529,20 @@ except Exception as e:
 torch.utils.checkpoint.DefaultDeviceType.set_device_type("xpu")
 
 with XPUPatchForImport(False):
+    from autograd.test_complex import TestAutogradComplex  # noqa: F401
+    from autograd.test_functional import (  # noqa: F401
+        base_and_logging_tensor,
+        TestAutogradFunctional,
+    )
+    from autograd.test_logging import TestAutogradLogging  # noqa: F401
     from test_autograd import (
         TestAutograd,
-        TestAutogradForwardModeBatchedGrad,
-        TestAutogradForwardMode,
         TestAutogradDeviceType,
-        TestAllowMutationOnSaved,
-        TestAutogradInferenceMode,
         TestAutogradMultipleDispatch,
         TestMultithreadAutograd,
         TestNestedCheckpoint,
         TestSelectiveActivationCheckpoint,
     )
-    from autograd.test_complex import TestAutogradComplex  # noqa: F401
-    from autograd.test_functional import TestAutogradFunctional, base_and_logging_tensor  # noqa: F401
-    from autograd.test_logging import TestAutogradLogging  # noqa: F401
 
     @base_and_logging_tensor
     def construct_standard_basis_for_cuda(self, ctors):
@@ -594,30 +605,60 @@ with XPUPatchForImport(False):
 
         self.assertEqual(executed, ["B", "A"])
 
-    TestAutograd.test_checkpointing_without_reentrant_dataparallel = checkpointing_without_reentrant_dataparallel
-    TestAutograd.test_callback_propagates_errors_from_device_thread = callback_propagates_errors_from_device_thread
-    TestAutograd._test_checkpointing_non_reentrant_autocast = checkpointing_non_reentrant_autocast
-    TestAutograd.test_checkpointing_non_reentrant_autocast_gpu = checkpointing_non_reentrant_autocast_gpu
-    TestAutograd.test_checkpointing_without_reentrant_memory_savings = checkpointing_without_reentrant_memory_savings
-    TestAutograd.test_gradcheck_default_device_placement_context = gradcheck_default_device_placement_context
+    TestAutograd.test_checkpointing_without_reentrant_dataparallel = (
+        checkpointing_without_reentrant_dataparallel
+    )
+    TestAutograd.test_callback_propagates_errors_from_device_thread = (
+        callback_propagates_errors_from_device_thread
+    )
+    TestAutograd._test_checkpointing_non_reentrant_autocast = (
+        checkpointing_non_reentrant_autocast
+    )
+    TestAutograd.test_checkpointing_non_reentrant_autocast_gpu = (
+        checkpointing_non_reentrant_autocast_gpu
+    )
+    TestAutograd.test_checkpointing_without_reentrant_memory_savings = (
+        checkpointing_without_reentrant_memory_savings
+    )
+    TestAutograd.test_gradcheck_default_device_placement_context = (
+        gradcheck_default_device_placement_context
+    )
     TestAutograd.test_graph_save_on_cpu_cuda = graph_save_on_cpu_cuda
-    TestAutograd.test_scalar_grad_mixed_device=scalar_grad_mixed_device
-    TestAutograd.test_node_ordering_when_none_returned=node_ordering_when_none_returned
+    TestAutograd.test_scalar_grad_mixed_device = scalar_grad_mixed_device
+    TestAutograd.test_node_ordering_when_none_returned = (
+        node_ordering_when_none_returned
+    )
 
-    TestAutogradDeviceType.test_gradcheck_input_output_different_device = gradcheck_input_output_different_device
+    TestAutogradDeviceType.test_gradcheck_input_output_different_device = (
+        gradcheck_input_output_different_device
+    )
     TestAutogradDeviceType.test_pin_memory = pin_memory
     TestAutogradDeviceType.test_profiler_emit_nvtx = profiler_emit_nvtx
-    TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = dataparallel_saved_tensors_hooks
-    TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = custom_function_propagates_errors_from_device_thread
-    TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = autograd_multiple_dispatch_registrations
+    TestMultithreadAutograd.test_dataparallel_saved_tensors_hooks = (
+        dataparallel_saved_tensors_hooks
+    )
+    TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = (
+        custom_function_propagates_errors_from_device_thread
+    )
+    TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = (
+        autograd_multiple_dispatch_registrations
+    )
     TestAutogradMultipleDispatch.test_foward_mode_AD = foward_mode_AD
     TestAutogradMultipleDispatch.test_view_copy = view_copy
-    TestAutogradMultipleDispatch.test_backward_single_threaded = backward_single_threaded
+    TestAutogradMultipleDispatch.test_backward_single_threaded = (
+        backward_single_threaded
+    )
     TestAutogradMultipleDispatch.test_backward_tls_stash = backward_tls_stash
     TestSelectiveActivationCheckpoint.test_flops_and_mem = flops_and_mem
-    TestAutogradFunctional.test_construct_standard_basis_for_cuda = construct_standard_basis_for_cuda
-    TestAutogradFunctional.test_jacobian_vectorize_correctness_different_devices = jacobian_vectorize_correctness_different_devices
-instantiate_device_type_tests(TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True)
+    TestAutogradFunctional.test_construct_standard_basis_for_cuda = (
+        construct_standard_basis_for_cuda
+    )
+    TestAutogradFunctional.test_jacobian_vectorize_correctness_different_devices = (
+        jacobian_vectorize_correctness_different_devices
+    )
+instantiate_device_type_tests(
+    TestAutogradDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
 
 instantiate_device_type_tests(
     TestAutogradMultipleDispatch, globals(), only_for="xpu", allow_xpu=True
