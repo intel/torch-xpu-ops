@@ -45,7 +45,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int constexpr SgSize = 16;
     int constexpr blocksize = block_size;
     using scalarx2_t = sycl::vec<scalar_t, 2>;
-
+    int ld_scale_zp = 2 * n;
     if (k % (SgSize * 32 * Unroll) == 0) {
       int constexpr TileK = 32;
       int constexpr GroupK = SgSize * TileK;
@@ -54,8 +54,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * ldb * 2;
-      auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      // auto sptr = ScaleAndZeros + g_n * ldb * 2;
+      // auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      auto sptr = ScaleAndZeros + g_n * 2;
+      auto zptr = ScaleAndZeros + g_n * 2 + 1;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -67,8 +69,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          int scale_offset = sg_id * (TileK / blocksize) * 2;
-          int zp_offset = sg_id * (TileK / blocksize) * 2;
+          int scale_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          // int scale_offset = sg_id * (TileK / blocksize) * 2;
+          // int zp_offset = sg_id * (TileK / blocksize) * 2;
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -80,7 +84,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
-          sptr += (GroupK / blocksize) * 2;
+          sptr += (GroupK / blocksize) * ld_scale_zp;
+          // sptr += (GroupK / blocksize) * 2;
           aptr += GroupK;
           bptr += GroupK / 2;
         }
@@ -94,6 +99,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int constexpr TileK = 32;
       int constexpr GroupK = SgSize * TileK;
       int k_body = padto_le(k, GroupK * Unroll);
+
       int constexpr TileK2 = 8;
       int constexpr GroupK2 = SgSize * TileK2;
       int k_body2 = padto_le(k, GroupK2 * Unroll);
@@ -115,8 +121,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
 
-          int scale_offset = sg_id * (TileK / blocksize) * 2;
-          int zp_offset = sg_id * (TileK / blocksize) * 2;
+          int scale_offset = sg_id * TileK / blocksize * 2;
+          int zp_offset = sg_id * TileK / blocksize * 2;
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
