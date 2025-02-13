@@ -15,6 +15,7 @@ def weight_unpack(weight_packed, n, k_div_2):
     weight_unpacked = weight_packed.view(n, -1).contiguous()
     return weight_unpacked.view(torch.uint8).view(n, -1)
 
+
 class TestNNMethod(TestCase):
     def _test_convert_weight_to_int4pack(self, n, k, device):
         k_div_2 = k // 2
