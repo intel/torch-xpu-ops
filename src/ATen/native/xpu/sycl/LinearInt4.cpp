@@ -85,6 +85,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
+          zptr += (GroupK / blocksize) * ld_scale_zp;
           // sptr += (GroupK / blocksize) * 2;
           aptr += GroupK;
           bptr += GroupK / 2;
@@ -107,8 +108,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * ldb * 2;
-      auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      // auto sptr = ScaleAndZeros + g_n * ldb * 2;
+      // auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      auto sptr = ScaleAndZeros + g_n * 2;
+      auto zptr = ScaleAndZeros + g_n * 2 + 1;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -121,8 +124,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
 
-          int scale_offset = sg_id * TileK / blocksize * 2;
-          int zp_offset = sg_id * TileK / blocksize * 2;
+          // int scale_offset = sg_id * TileK / blocksize * 2;
+          // int zp_offset = sg_id * TileK / blocksize * 2;
+          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
+
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -134,7 +140,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
-          sptr += (GroupK / blocksize) * 2;
+          sptr += (GroupK / blocksize) * ld_scale_zp;
+          zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK / 2;
         }
@@ -147,8 +154,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             *(sycl::vec<uint8_t, TileK2 / 2>*)tmps8 =
                 *(sycl::vec<uint8_t, TileK2 / 2>*)(bptr + sg_id * TileK2 / 2);
 
-            int scale_offset = sg_id * (TileK2 / blocksize) * 2;
-            int zp_offset = sg_id * (TileK2 / blocksize) * 2;
+            int scale_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+            int zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
             scalar_t scale = *(sptr + scale_offset);
             scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -160,7 +167,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
               tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
             }
-            sptr += (GroupK2 / blocksize) * 2;
+            sptr += (GroupK2 / blocksize) * ld_scale_zp;
+            zptr += (GroupK2 / blocksize) * ld_scale_zp;
             aptr += GroupK2;
             bptr += GroupK2 / 2;
           }
@@ -169,18 +177,24 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       if (i + SgSize * 2 <= k) {
         for (; i < k; i += SgSize * 2) {
           uint8_t tmps8 = *(bptr + sg_id);
+
+          // int scale_offset = sg_id * (2 / blocksize) * 2;
+          // int zp_offset = sg_id * (2 / blocksize) * 2;
+          int scale_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
+
           scalarx2_t tmpB = {
               static_cast<int8_t>((tmps8 & 0x0f) - 8),
               static_cast<int8_t>((tmps8 >> 4) - 8)};
-
-          int scale_offset = sg_id * (2 / blocksize) * 2;
-          int zp_offset = sg_id * (2 / blocksize) * 2;
-          scalar_t scale = *(sptr + scale_offset);
-          scalar_t zero_point = *(zptr + zp_offset);
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
+
           auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
           tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
-          sptr += (SgSize * 2 / blocksize) * 2;
+          sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
+          zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
+          // sptr += (SgSize * 2 / blocksize) * 2;
           aptr += SgSize * 2;
           bptr += SgSize * 2 / 2;
         }
