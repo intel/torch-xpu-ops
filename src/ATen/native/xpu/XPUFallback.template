@@ -32,6 +32,8 @@ std::tuple<Tensor, Tensor> roi_pool(const Tensor& input, const Tensor& rois, dou
 Tensor _roi_pool_backward(const Tensor& grad, const Tensor& rois, const Tensor& argmax, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width);
 std::tuple<Tensor, Tensor> ps_roi_pool(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width);
 Tensor _ps_roi_pool_backward(const Tensor& grad, const Tensor& rois, const Tensor& channel_mapping, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t batch_size, int64_t channels, int64_t height, int64_t width);
+Tensor deform_conv2d(const Tensor& input, const Tensor& weight, const Tensor& offset, const Tensor& mask, const Tensor& bias, int64_t stride_h, int64_t stride_w, int64_t pad_h, int64_t pad_w, int64_t dilation_h, int64_t dilation_w, int64_t n_weight_grps, int64_t n_offset_grps, bool use_mask);
+std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor> _deform_conv2d_backward( const Tensor& grad_out, const Tensor& input, const Tensor& weight, const Tensor& offset, const Tensor& mask, const Tensor& bias, int64_t stride_h, int64_t stride_w, int64_t pad_h, int64_t pad_w, int64_t dilation_h, int64_t dilation_w, int64_t n_weight_grps, int64_t n_offset_grps, bool use_mask);
 }
 
 // Register op's implementation lazily since sometimes the op is not defined,
@@ -50,6 +52,8 @@ static std::map<std::string, bool> torchvision_ops_dispatching_table_ = {
   {"torchvision::_roi_pool_backward", false},
   {"torchvision::ps_roi_pool", false},
   {"torchvision::_ps_roi_pool_backward", false},
+  {"torchvision::deform_conv2d", false},
+  {"torchvision::_deform_conv2d_backward", false},
 };
 
 // Return:
@@ -80,6 +84,10 @@ static bool lazy_registration_and_redispatch(
             TORCH_SELECTIVE_NAME("torchvision::ps_roi_pool"),TORCH_FN(at::native::xpu::ps_roi_pool));
         m.impl(
             TORCH_SELECTIVE_NAME("torchvision::_ps_roi_pool_backward"),TORCH_FN(at::native::xpu::_ps_roi_pool_backward));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::deform_conv2d"),TORCH_FN(at::native::xpu::deform_conv2d));
+        m.impl(
+            TORCH_SELECTIVE_NAME("torchvision::_deform_conv2d_backward"),TORCH_FN(at::native::xpu::_deform_conv2d_backward));
       };
 
   static const torch::detail::TorchLibraryInit
