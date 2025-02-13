@@ -77,6 +77,7 @@ def print_suite(suite):
 xmls = [ JUnitXml.fromfile(f) for f in args.junitxml ]
 for idx, xml in enumerate(xmls):
     for suite in xml:
+        print("### Results Summary")
         print_suite(suite)
         for case in suite:
             classname = get_classname(case)
