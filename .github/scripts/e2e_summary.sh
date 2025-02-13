@@ -6,17 +6,20 @@ results_dir="$1"
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
 if [ "${accuracy}" -gt 0 ];then
     echo "### Accuracy"
-    printf '| Category | Total | $${\color{green}Passed}$$ | Pass Rate | $${\color{red}Failed}$$ | '
-    printf '$${\color{blue}Xfailed}$$ | $${\color{green}Timeout}$$ | New Passed | New Enabled | Not Run |\n'
-    echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    printf "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
+    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{green}Timeout}\$\$ | New Passed | New Enabled | Not Run |\n"
+    printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    echo > tmp-summary.txt
+    echo > tmp-details.txt
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dt="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        test_result="$(python .github/ci_expected_accuracy/check_expected.py \
-            --suite "${suite}" --mode "${mode}" --dtype "${dt}" --csv_file "${csv}" |sed 's/, /,/g'|awk '{
+        python .github/ci_expected_accuracy/check_expected.py \
+            --suite "${suite}" --mode "${mode}" --dtype "${dt}" --csv_file "${csv}" > tmp-result.txt
+        test_result="$(sed 's/, /,/g' tmp-result.txt |awk '{
             if($0 ~/Total/){
                 total = $3;
             }
@@ -51,13 +54,27 @@ if [ "${accuracy}" -gt 0 ];then
                 new_enabled_models = $4;
             }
         }END {
-            printf(" %d | %d | %s | %d %s | %d %s | %d %s | %d %s | %d %s | %d\n",
-                total, passed, pass_rate, failed, failed_models, xfail, xfail_models,
-                timeout, timeout_models, new_passed, new_passed_models, new_enabled, new_enabled_models, not_run);
+            printf(" %d | %d | %s | %d | %d | %d | %d | %d | %d\n",
+                total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
-        echo "| ${category} | ${test_result} |"
+        echo "| ${category} | ${test_result} |" >> tmp-summary.txt
+        sed -i '
+            s/Real failed models:/$${\\color{red}Real \\space failed \\space models}$$:/g;
+            s/Expected failed models:/$${\\color{blue}Expected \\space failed \\space models}$$:/g;
+            s/Warning timeout models:/$${\\color{orange}Warning \\space timeout \\space models}$$:/g;
+            s/Failed to passed models:/$${\\color{green}Failed \\space to \\space passed \\space models}$$:/g;
+        ' tmp-result.txt
+        {
+            echo "<table><thead><tr><th colspan=2>$(sed 's/=//g' tmp-result.txt |head -n 1)</th></tr></thead><tbody>"
+            sed "1d" tmp-result.txt |awk -F: '{printf("<tr><td>%s</td><td>%s</td></tr>\n", $1, $2)}'
+            echo "</tbody></table>"
+        } >> tmp-details.txt
     done
+    cat tmp-summary.txt
+    grep -v "<td> 0 \[\]</td>" tmp-details.txt
+    rm -rf tmp-*.txt
 fi
+
 # Performance
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
