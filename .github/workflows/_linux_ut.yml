@@ -148,7 +148,6 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression
-          xpu-smi discovery
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
@@ -160,7 +159,6 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression_dev1
-          xpu-smi discovery
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
