@@ -835,16 +835,16 @@ class XPUPatchForImport:
         for opinfo in db:
             if ( opinfo.name not in _xpu_computation_op_list and (opinfo.torch_opinfo.name not in _xpu_computation_op_list 
                 if db == common_methods_invocations.python_ref_db else True)) or opinfo.name in _ops_without_cuda_support:
-                opinfo.dtypesIfXPU = opinfo.dtypes
+                opinfo.dtypesIf['xpu'] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIfXPU:
+                if bfloat16 in opinfo.dtypesIf['xpu']:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [ torch.float64, torch.complex128, torch.double, ]
-                opinfo.dtypesIfXPU = set(filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU)))
+                opinfo.dtypesIf['xpu'] = set(filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf['xpu'])))
                 opinfo.backward_dtypes = tuple(filter(lambda x: (x not in fp64_dtypes), list(opinfo.backward_dtypes)))
 
     def filter_fp64_sample_input(self, db):
