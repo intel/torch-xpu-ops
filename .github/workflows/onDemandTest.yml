@@ -1,11 +1,12 @@
-name: OnDemand Tests
+
+name: Nightly-OnDemand Tests
 
 on:
-    # schedule:
+  schedule:
     # GMT+8 21:00 every workday
-    # - cron: '0 13 * * 0-4'
+    #- cron: '0 13 * * 0-4'
     # GMT+8 0:00 Saturday
-    # - cron: '0 16 * * 5'
+    #- cron: '0 16 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
@@ -67,6 +68,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-Build:
+    secrets: inherit
     if: always()
     name: linux-nightly-ondemand
     permissions:
@@ -79,15 +81,28 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: kailei-test
 
+  Linux-Nightly-Ondemand-UT-Tests:
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    name: linux-nightly-ondemand
+    needs: Linux-Nightly-Ondemand-Build
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      runner: kailei-test
+
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: [self-hosted,Linux,X64,kailei-test]
+    runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
-    if: github.repository_owner == 'kaileiyx'
+    if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
-    timeout-minutes: 3600
+    timeout-minutes: 36000
     env:
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
+      pytorch: ${{ inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
@@ -112,20 +127,19 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci_kaileiyx || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci_kaileiyx
-          conda create -n e2e_ci_kaileiyx python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci_kaileiyx
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          source activate e2e_ci_kaileiyx
-          git clone https://github.com/pytorch/pytorch pytorch
+          source activate e2e_ci
+          git clone https://github.com/etaf/pytorch-inductor-xpu pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
-          pip install requests
+          pip install requests botocore
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
@@ -163,23 +177,24 @@ jobs:
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
-          source activate e2e_ci_kaileiyx
+          source activate e2e_ci
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate e2e_ci_kaileiyx
+          source activate e2e_ci
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
@@ -237,7 +252,7 @@ jobs:
           suite: torchbench
           env_prepare: true
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,trainings
+          mode: inference,training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
@@ -271,16 +286,18 @@ jobs:
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
-          failed_models=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          # Print summary
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
+          timeout_models=$(grep "timeout models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
           if [ ${timeout_models} -ne 0 ];then
             TIMEOUT_MODELS="$(
-              grep -B 1 "timeout models: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log
+              grep -B 1 "timeout models: [1-9]" ${GITHUB_STEP_SUMMARY}
             )"
             echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
+            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
