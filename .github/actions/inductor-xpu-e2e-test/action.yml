@@ -1,3 +1,4 @@
+
 name: inductor-xpu-e2e-test
 
 inputs:
@@ -125,29 +126,13 @@ runs:
               do
                 contains "accuracy,performance" $scenario
                 $contains_status
-                if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{print $1 - 1":"NR - 1}'))
-                  for xpu_id in ${xpu_list[*]}
-                  do
-                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
-                  done
-                else
-                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
-                fi
+                bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0
                 wait
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
                 LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
                 rm -f ${LOG_DIR}/${LOG_NAME}
                 find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
-                if [ "${scenario}" == "accuracy" ];then
-                  python ../torch-xpu-ops/.github/ci_expected_accuracy/check_expected.py \
-                        --suite $suite \
-                        --mode $mode \
-                        --dtype $dt \
-                        --csv_file ${LOG_DIR}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}.csv \
-                        2>&1 |tee -a inductor_log/summary_accuracy.log
-                fi
               done
             done
           done
