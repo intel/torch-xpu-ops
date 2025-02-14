@@ -2,7 +2,7 @@
 name: Nightly-OnDemand Tests
 
 on:
-  schedule:
+  #schedule:
     # GMT+8 21:00 every workday
     #- cron: '0 13 * * 0-4'
     # GMT+8 0:00 Saturday
