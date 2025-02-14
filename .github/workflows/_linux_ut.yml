@@ -65,7 +65,7 @@ jobs:
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
-          pip install requests
+          pip install requests botocore
           git clone https://github.com/etaf/pytorch-inductor-xpu pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd pytorch && git checkout $(echo ${{ inputs.pytorch }})

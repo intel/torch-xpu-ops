@@ -139,7 +139,7 @@ jobs:
           git clone https://github.com/etaf/pytorch-inductor-xpu pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
-          pip install requests
+          pip install requests botocore
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           git submodule sync && git submodule update --init --recursive
