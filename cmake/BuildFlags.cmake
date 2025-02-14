@@ -123,9 +123,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
 
   if(WIN32)
-    set(AOT_TARGETS "dg2-g10,mtl-u,mtl-h,xe2-lpg,xe2-hpg")
+  # LNL and BMG share the same compatibility name, which is BMG. BMG is defined as the base platform.
+  # Code for base platform can execute on all platforms with same compatible name.
+    set(AOT_TARGETS "dg2-g10,arl-h,bmg")
   else()
-    set(AOT_TARGETS "pvc,xe-lpg,dg2-g10")
+    set(AOT_TARGETS "pvc")
   endif()
   if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
     set(AOT_TARGETS "$ENV{TORCH_XPU_ARCH_LIST}")
