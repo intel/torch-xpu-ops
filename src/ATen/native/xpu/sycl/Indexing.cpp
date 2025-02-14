@@ -1182,7 +1182,7 @@ struct IndexFuncSmallIndexFunctor {
       IndexType dstIndex =
           indices.data[IndexToOffset<const IndicesType, IndexType>::get(
               srcIndex, indices)];
-      CUDA_KERNEL_ASSERT(dstIndex < dstAddDimSize);
+      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
@@ -1267,7 +1267,7 @@ struct IndexFuncLargeIndexFunctor {
       IndexType dstIndex =
           indices_.data[IndexToOffset<const IndicesType, IndexType>::get(
               srcIndex, indices_)];
-      CUDA_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
 
       IndexType dstOffset =
           IndexToOffset<T, IndexType>::get(elementInSlice, dst_);
