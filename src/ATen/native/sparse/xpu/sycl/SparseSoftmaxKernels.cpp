@@ -140,10 +140,15 @@ int64_t get_nvalues(const IntArrayRef& sizes, int64_t sparse_dim) {
   return c10::multiply_integers(sizes.begin() + sparse_dim, sizes.end());
 }
 
-struct PoolFunctor {
-  bool operator()(int64_t x, int64_t y) const {
-    return x < y;
+template <typename T>
+struct PoolPred {
+  bool operator()(const T& x, const T& y) const {
+    return offsets_ptr[x] < offsets_ptr[y];
   }
+  PoolPred(T* offsets_ptr) : offsets_ptr(offsets_ptr) {}
+
+ private:
+  T* offsets_ptr;
 };
 
 template <typename T>
@@ -415,21 +420,25 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
-  // std::sequence(sorted_indices_ptr, sorted_indices_ptr + nnz, 0);
-
   pstl::iota<int64_t>(sorted_indices_ptr, sorted_indices_ptr + nnz, (int64_t)0);
 
-  PoolFunctor pool_functor;
+  auto sorted_index = at::empty({nnz}, indices.options());
+  auto sorted_index_ptr = sorted_index.data_ptr<int64_t>();
+  pstl::iota<int64_t>(sorted_index_ptr, sorted_index_ptr + nnz, (int64_t)0);
+
   pstl::sort<int64_t, int64_t>(
-      sorted_indices_ptr, offsets_ptr, nnz, pool_functor);
+      sorted_indices_ptr,
+      sorted_index_ptr,
+      nnz,
+      PoolPred<int64_t>(offsets_ptr));
 
   auto pool_sizes = at::ones({nnz}, indices.options());
 
   auto constant_it = at::ones({nnz}, indices.options());
   auto discard_it = at::zeros({nnz}, indices.options());
+  sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
 
   auto new_end = pstl::reduce_by_key<int64_t>(
-      // auto new_end = reduce_by_key<int64_t>(
       sorted_indices_ptr,
       sorted_indices_ptr + nnz,
       constant_it.data_ptr<int64_t>(),
@@ -457,7 +466,6 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
         {new_sz * nvalues},
         Scalar(-std::numeric_limits<scalar_t>::infinity()),
         values.options());
-
     auto mx_buffer_ptr = mx_buffer.data_ptr<scalar_t>();
 
     auto pool_sizes_ptr = pool_sizes.data_ptr<int64_t>();
@@ -584,10 +592,6 @@ void xpu_sparse_coo_softmax_backward(
         auto r = at::_log_softmax_backward_data(
             grad_values, out_values, dim - sparse_dim + 1, input_dtype);
         values.set_(r);
-        // _log_softmax_backward_xpu_out(
-        //     grad_values, out_values, values, dim - sparse_dim + 1,
-        //     input_dtype);
-
       } else {
         auto r = at::_softmax_backward_data(
             grad_values, out_values, dim - sparse_dim + 1, input_dtype);
@@ -600,12 +604,14 @@ void xpu_sparse_coo_softmax_backward(
           grad_offsets.to(at::Device(kCPU), indices.dtype(), false, true);
       auto out_offsets_accessor = host_out_offsets.data_ptr<int64_t>();
       auto grad_offsets_accessor = host_grad_offsets.data_ptr<int64_t>();
+
       for (int64_t i = 0; i < out_nnz; i++) {
         auto low = std::lower_bound(
             grad_offsets_accessor,
             grad_offsets_accessor + grad_offsets.size(0),
             out_offsets_accessor[i]);
         auto j = low - grad_offsets_accessor;
+
         /*
           Compute output using dense backward only when limits and pools are
           valid If this check is false then a sparse tensor with full of zeros
@@ -643,23 +649,12 @@ void xpu_sparse_coo_softmax_backward(
   Tensor lower_bound_values =
       at::empty({out_offsets.size(0)}, indices.options());
 
-  // pstl::lower_bound_tensor(
   pstl::lower_bound_tensor<int64_t>(
       grad_offsets.data_ptr<int64_t>(),
       grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
       out_offsets.data_ptr<int64_t>(),
       out_offsets.data_ptr<int64_t>() + out_offsets.size(0),
       lower_bound_values.data_ptr<int64_t>());
-
-  // for (int64_t i = 0; i < out_offsets.size(0); i++) {
-  //   auto low = std::lower_bound(
-  //       grad_offsets.data_ptr<int64_t>(),
-  //       grad_offsets.data_ptr<int64_t>() + grad_offsets.size(0),
-  //       out_offsets.data_ptr<int64_t>()[i]);
-
-  //   lower_bound_values.data_ptr<int64_t>()[i] =
-  //       low - grad_offsets.data_ptr<int64_t>();
-  // }
 
   /* Compute independent pools of indices */
   auto [sorted_indices, pool_offsets, pool_sizes, _] =
@@ -703,6 +698,9 @@ Tensor softmax_sparse_xpu_kernel(
   if (input.numel() == 0) {
     return output;
   }
+  if (input._values().numel() == 0) {
+    return output;
+  }
 
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "softmax", [&] {
     xpu_sparse_coo_softmax<scalar_t, false>(output, input, dim);
@@ -719,6 +717,9 @@ Tensor log_softmax_sparse_xpu_kernel(
   std::tie(input, output, dim) = softmax_sparse_input_preprocessing(
       input_, dim_, half_to_float, "log_softmax");
   if (input.numel() == 0) {
+    return output;
+  }
+  if (input._values().numel() == 0) {
     return output;
   }
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "log_softmax", [&] {
@@ -740,6 +741,10 @@ Tensor softmax_backward_sparse_xpu_kernel(
   if (output.numel() == 0) {
     return grad_input;
   }
+  if (output._values().numel() == 0) {
+    return grad_input;
+  }
+
   AT_DISPATCH_FLOATING_TYPES(grad.scalar_type(), "softmax_backward", [&] {
     xpu_sparse_coo_softmax_backward<scalar_t, false>(
         grad_input, grad, output, dim_, input_.scalar_type());
@@ -758,6 +763,9 @@ Tensor log_softmax_backward_sparse_xpu_kernel(
       softmax_backward_sparse_input_preprocessing(
           grad_, output_, dim_, input_, "log_softmax_backward");
   if (output.numel() == 0) {
+    return grad_input;
+  }
+  if (output._values().numel() == 0) {
     return grad_input;
   }
 

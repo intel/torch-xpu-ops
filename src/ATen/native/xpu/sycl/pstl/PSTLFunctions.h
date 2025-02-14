@@ -1194,10 +1194,10 @@ struct LowerBoundTenFunctor {
     T first = 0;
     T it;
     while (N > 0) {
-      it = 0;
+      it = first;
       cur = N / 2;
       it += cur;
-      if (begin[it] > pilot) {
+      if (begin[it] < pilot) {
         N -= cur + 1;
         first = ++it;
       } else {
