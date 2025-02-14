@@ -98,7 +98,7 @@ jobs:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
+    if: ${{ github.repository_owner == 'kaileiyx' }}
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 36000
     env:
