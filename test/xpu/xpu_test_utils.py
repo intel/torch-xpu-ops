@@ -899,10 +899,10 @@ class XPUPatchForImport:
                     else True
                 )
             ) or opinfo.name in _ops_without_cuda_support:
-                opinfo.dtypesIf['xpu'] = opinfo.dtypes
+                opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIf['xpu']:
+                if bfloat16 in opinfo.dtypesIf["xpu"]:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
@@ -912,8 +912,10 @@ class XPUPatchForImport:
                     torch.complex128,
                     torch.double,
                 ]
-                opinfo.dtypesIf['xpu'] = set(
-                    filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf['xpu']))
+                opinfo.dtypesIf["xpu"] = set(
+                    filter(
+                        lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])
+                    )
                 )
                 opinfo.backward_dtypes = tuple(
                     filter(
