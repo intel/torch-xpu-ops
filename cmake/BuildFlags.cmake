@@ -122,12 +122,23 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "-options '${SYCL_OFFLINE_COMPILER_CG_OPTIONS}'")
 
+  # AOT default targets.
+  # The motivation of AOT default targets here is to provide a minimized set and
+  # enable an efficient building for developers in build from source scenarios.
+  # It doesn't tell what all we support, but targets are the most common
+  # platforms for PyTorch XPU development, which ensures we can meet the
+  # requirement of development at the current stage. TODO: We will support
+  # auto-check on the native platform and Intel SYCL SDK to decide a proper AOT
+  # target for developers automatically.
+  # PyTorch CI/CD and special development requirements are treated as custom
+  # scenarios, where customers are recommended to config custom AOT targets with
+  # `TORCH_XPU_ARCH_LIST`.
   if(WIN32)
-    set(AOT_TARGETS "dg2-g10,mtl-u,mtl-h,xe2-lpg,xe2-hpg")
+    set(AOT_TARGETS "dg2,bmg")
   else()
-    set(AOT_TARGETS "pvc,xe-lpg,dg2-g10")
+    set(AOT_TARGETS "pvc")
   endif()
-  if((DEFINED ENV{TORCH_XPU_ARCH_LIST}) AND NOT ("$ENV{TORCH_XPU_ARCH_LIST}" STREQUAL ""))
+  if(DEFINED ENV{TORCH_XPU_ARCH_LIST})
     set(AOT_TARGETS "$ENV{TORCH_XPU_ARCH_LIST}")
   endif()
   set(TORCH_XPU_ARCH_LIST ${AOT_TARGETS} PARENT_SCOPE)
