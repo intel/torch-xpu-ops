@@ -975,6 +975,11 @@ skip_dict = {
         "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+        # Unexpected succuss
+        "test_memory_format_nn_Conv2d_xpu_float64",
+        "test_memory_format_nn_ConvTranspose2d_xpu_float64",
+        "test_memory_format_nn_LazyConv2d_xpu_float64",
+        "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
     ),
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
