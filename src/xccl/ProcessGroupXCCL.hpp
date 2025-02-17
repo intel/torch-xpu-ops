@@ -21,11 +21,12 @@
 #include <torch/csrc/distributed/c10d/Store.hpp>
 namespace c10d {
 
+#define XCCL_UNIQUE_ID_BYTES 128
 static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
     "XCCL_BLOCKING_WAIT"};
 
-using xcclComm_t = ccl::communicator;
+using xcclComm_t = onecclComm_t;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
 class TORCH_API ProcessGroupXCCL : public Backend {
