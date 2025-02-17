@@ -92,8 +92,6 @@ print("Failed to passed models:", len(new_pass_models), new_pass_models)
 print("Not run/in models:", len(lost_models), lost_models)
 print(f"Pass rate: {len(passed_models) / len(model_names) * 100:.2f}%")
 
-if len(new_pass_models + new_models) > 0:
-    print("NOTE: New models result, please update the reference", new_pass_models, new_models)
-    if args.update:
-        refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)
-        print("Updated. Now, confirm the changes to .csvs and `git add` them if satisfied.")
+# update reference csv
+if len(new_pass_models + new_models) > 0 and args.update:
+    refer_data.to_csv(refer_file, sep=',', encoding='utf-8', index=False)

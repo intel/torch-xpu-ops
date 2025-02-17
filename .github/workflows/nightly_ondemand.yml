@@ -285,16 +285,18 @@ jobs:
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
-          failed_models=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
+          # Print summary
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
+          timeout_models=$(grep "timeout models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
           if [ ${timeout_models} -ne 0 ];then
             TIMEOUT_MODELS="$(
-              grep -B 1 "timeout models: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log
+              grep -B 1 "timeout models: [1-9]" ${GITHUB_STEP_SUMMARY}
             )"
             echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
           fi
           if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
+            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data
