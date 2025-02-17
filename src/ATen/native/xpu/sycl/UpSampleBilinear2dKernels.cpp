@@ -274,6 +274,99 @@ size_t idx(
   return (nc * height + y) * width + x;
 }
 
+template <typename scalar_t, typename accscalar_t, bool is_channel_last>
+struct UpsampleBilinear2dBackwardAlignKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int index = item.get_global_linear_id();
+    if (index < i_numel_) {
+      const int c = is_channel_last
+          ? index % channels_
+          : (index / input_width_ / input_height_) % channels_;
+      const int w1 = is_channel_last ? (index / channels_) % input_width_
+                                     : index % input_width_;
+      const int h1 = is_channel_last
+          ? (index / channels_ / input_width_) % input_height_
+          : (index / input_width_) % input_width_;
+      const int n = index / channels_ / input_width_ / input_height_;
+      idata_[index] = static_cast<scalar_t>(0);
+      const int in_index_w = (output_width_ - 1) * w1;
+      const int in_index_h = (output_height_ - 1) * h1;
+      int out_index_w_start = w1 > 0 ? (output_width_ - 1) * (w1 - 1) /
+                  (input_width_ - 1) * (input_width_ - 1) +
+              (input_width_ - 1)
+                                     : 0;
+      int out_index_h_start = h1 > 0 ? (output_height_ - 1) * (h1 - 1) /
+                  (input_height_ - 1) * (input_height_ - 1) +
+              (input_height_ - 1)
+                                     : 0;
+      int out_index_w_end = w1 < input_width_ - 1
+          ? (output_width_ - 1) * (w1 + 1) / (input_width_ - 1) *
+              (input_width_ - 1)
+          : (input_width_ - 1) * (output_width_ - 1);
+      int out_index_h_end = h1 < input_height_ - 1
+          ? (output_height_ - 1) * (h1 + 1) / (input_height_ - 1) *
+              (input_height_ - 1)
+          : (input_height_ - 1) * (output_height_ - 1);
+      for (int point_h = out_index_h_start; point_h <= out_index_h_end;
+           point_h += input_height_ - 1) {
+        for (int point_w = out_index_w_start; point_w <= out_index_w_end;
+             point_w += input_width_ - 1) {
+          accscalar_t distance_w = std::abs(point_w - in_index_w);
+          accscalar_t distance_h = std::abs(point_h - in_index_h);
+          accscalar_t scale_w = static_cast<accscalar_t>(1) -
+              distance_w / static_cast<accscalar_t>(output_width_ - 1);
+          accscalar_t scale_h = static_cast<accscalar_t>(1) -
+              distance_h / static_cast<accscalar_t>(output_height_ - 1);
+          if constexpr (is_channel_last) {
+            idata_[index] += odata_[idx_cl(
+                                 n,
+                                 point_h / (input_height_ - 1),
+                                 point_w / (input_width_ - 1),
+                                 c,
+                                 output_height_,
+                                 output_width_,
+                                 channels_)] *
+                scale_w * scale_h;
+          } else {
+            size_t output_index = ((n * channels_ + c) * output_height_ +
+                                   point_h / (input_height_ - 1)) *
+                    output_width_ +
+                point_w / (input_width_ - 1);
+            idata_[index] += odata_[output_index] * scale_w * scale_h;
+          }
+        }
+      }
+    }
+  }
+  UpsampleBilinear2dBackwardAlignKernelFunctor(
+      const int input_height,
+      const int input_width,
+      const int output_height,
+      const int output_width,
+      scalar_t* idata,
+      const scalar_t* odata,
+      const int channels,
+      const size_t i_numel)
+      : input_height_(input_height),
+        input_width_(input_width),
+        output_height_(output_height),
+        output_width_(output_width),
+        idata_(idata),
+        odata_(odata),
+        channels_(channels),
+        i_numel_(i_numel) {}
+
+ private:
+  const int input_height_;
+  const int input_width_;
+  const int output_height_;
+  const int output_width_;
+  scalar_t* idata_;
+  const scalar_t* odata_;
+  const int channels_;
+  const size_t i_numel_;
+};
+
 template <typename scalar_t, typename accscalar_t>
 struct UpsampleBilinear2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
@@ -304,23 +397,39 @@ struct UpsampleBilinear2dBackwardKernelFunctor {
       const scalar_t d2val = out_data_[index];
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1,
+                                          w1)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1 + w1p)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1,
+                                          w1 + w1p)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1 + h1p,
+                                          w1)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1 + w1p)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1 + h1p,
+                                          w1 + w1p)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
@@ -388,30 +497,56 @@ void launch_upsample_bilinear2d_backward_kernel(
   const size_t o_numel = nc * output_width * output_height;
   const size_t i_numel = nc * input_width * input_height;
 
-  const size_t num_kernels = nc * output_width * output_height;
+  if (align_corners) {
+    UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
+        kfn(input_height,
+            input_width,
+            output_height,
+            output_width,
+            idata,
+            odata,
+            channels,
+            i_numel);
 
-  UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
-      nc,
-      input_height,
-      input_width,
-      output_height,
-      output_width,
-      nbatch,
-      channels,
-      rheight,
-      rwidth,
-      align_corners,
-      idata,
-      odata,
-      o_numel,
-      i_numel);
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
-  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
-  auto queue = getCurrentSYCLQueue();
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
+  } else {
+    const size_t num_kernels = nc * output_width * output_height;
+
+    UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+        nc,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        nbatch,
+        channels,
+        rheight,
+        rwidth,
+        align_corners,
+        idata,
+        odata,
+        o_numel,
+        i_numel);
+
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
+
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
+  }
 }
 
 template <typename scalar_t, typename accscalar_t>
@@ -441,20 +576,48 @@ struct UpsampleBilinear2dBackwardnhwcKernelFunctor {
 
       const scalar_t d2val = odata_[index];
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1, w1, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1,
+                                          w1,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1, w1 + w1p, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1,
+                                          w1 + w1p,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1 + h1p,
+                                          w1,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1 + w1p, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1 + h1p,
+                                          w1 + w1p,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
@@ -513,26 +676,52 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     const int channels,
     const size_t o_numel,
     const size_t i_numel) {
-  UpsampleBilinear2dBackwardnhwcKernelFunctor<scalar_t, accscalar_t> kfn(
-      input_height,
-      input_width,
-      output_height,
-      output_width,
-      rheight,
-      rwidth,
-      align_corners,
-      idata,
-      odata,
-      channels,
-      o_numel,
-      i_numel);
+  if (align_corners) {
+    UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>
+        kfn(input_height,
+            input_width,
+            output_height,
+            output_width,
+            idata,
+            odata,
+            channels,
+            i_numel);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
-  int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
-  auto queue = getCurrentSYCLQueue();
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
+
+  } else {
+    UpsampleBilinear2dBackwardnhwcKernelFunctor<scalar_t, accscalar_t> kfn(
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        rheight,
+        rwidth,
+        align_corners,
+        idata,
+        odata,
+        channels,
+        o_numel,
+        i_numel);
+
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
+
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
+  }
 }
 
 void upsample_bilinear2d_out_kernel(
