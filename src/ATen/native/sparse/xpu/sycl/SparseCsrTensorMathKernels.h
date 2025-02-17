@@ -17,4 +17,5 @@ TORCH_XPU_API void convert_indices_from_csr_to_coo_structured_kernel(
     const bool out_int32,
     const bool transpose,
     const Tensor& result);
+
 } // namespace at::native::xpu
