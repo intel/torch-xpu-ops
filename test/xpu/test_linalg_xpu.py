@@ -233,8 +233,8 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
 @parametrize("m", [1, 32, 1024])
-@parametrize("k", [32, 64, 128,256, 512, 1024])
-@parametrize("n", [32, 64, 128,256, 512, 1024])
+@parametrize("k", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
