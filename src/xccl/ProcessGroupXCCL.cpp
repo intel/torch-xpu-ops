@@ -890,14 +890,22 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         auto ccl_stream = ccl::create_stream(stream.queue());
-        ccl::allreduce(
+        onecclAllReduce(
             input.data_ptr(),
-            output.data_ptr(),
+            coutput.data_ptr(),
             (size_t)input.numel(),
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            stream.queue());
+        // ccl::allreduce(
+        //     input.data_ptr(),
+        //     output.data_ptr(),
+        //     (size_t)input.numel(),
+        //     xcclDataType,
+        //     xcclReduceOp,
+        //     comm,
+        //     ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -944,14 +952,22 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
-        ccl::allreduce(
-            input.data_ptr(),
-            output.data_ptr(),
-            (size_t)input.numel(),
-            xcclDataType,
-            xcclReduceOp,
-            comm,
-            ccl::create_stream(stream.queue()));
+        onecclAllReduce(
+          input.data_ptr(),
+          coutput.data_ptr(),
+          (size_t)input.numel(),
+          xcclDataType,
+          xcclReduceOp,
+          comm,
+          stream.queue());
+        // ccl::allreduce(
+        //     input.data_ptr(),
+        //     output.data_ptr(),
+        //     (size_t)input.numel(),
+        //     xcclDataType,
+        //     xcclReduceOp,
+        //     comm,
+        //     ccl::create_stream(stream.queue()));
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
