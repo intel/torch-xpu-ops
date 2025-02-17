@@ -9180,6 +9180,7 @@
   variants: function
   dispatch:
     CompositeExplicitAutogradNonFunctional: select_copy_symint
+    SparseCsrXPU: select_copy_sparse_csr
   tags: view_copy
   autogen: select_copy.int_out
 
@@ -9190,6 +9191,7 @@
   dispatch:
     CompositeExplicitAutograd: select_symint
     NestedTensorXPU: select_nested
+    SparseCsrXPU: select_sparse_csr
   tags: core
 
 - func: squeeze_copy(Tensor self) -> Tensor
