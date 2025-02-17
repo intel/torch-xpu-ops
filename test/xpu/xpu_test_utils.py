@@ -30,7 +30,6 @@ from torch.testing._internal.opinfo.core import (
 _xpu_computation_op_list = [
     "empty",
     "eye",
-    "fill",
     "zeros",
     "zeros_like",
     "clone",
@@ -73,6 +72,26 @@ _xpu_computation_op_list = [
     "exp2",
     "expm1",
     "exponential",
+    "fft.fft",
+    "fft.fft2",
+    "fft.fftn",
+    "fft.hfft",
+    "fft.hfft2",
+    "fft.hfftn",
+    "fft.rfft",
+    "fft.rfft2",
+    "fft.rfftn",
+    "fft.ifft",
+    "fft.ifft2",
+    "fft.ifftn",
+    "fft.ihfft",
+    "fft.ihfft2",
+    "fft.ihfftn",
+    "fft.irfft",
+    "fft.irfft2",
+    "fft.irfftn",
+    "fft.fftshift",
+    "fft.ifftshift",
     "fill",
     "fmod",
     "__rmod__",
@@ -783,6 +802,10 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
         yield SampleInput(t, **kwargs)
 
 
+def is_tf32_supported() -> bool:
+    return False
+
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(
@@ -818,8 +841,9 @@ class XPUPatchForImport:
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
-        self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+        self.cuda_is_tf32_supported = cuda.is_tf32_supported
+        self.cuda_get_device_capability = torch.cuda.get_device_capability
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -1045,8 +1069,9 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         common_cuda.TEST_CUDNN_VERSION = 0
-        cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
+        torch.cuda.is_tf32_supported = is_tf32_supported
+        torch.cuda.get_device_capability = torch.xpu.get_device_capability
 
         sys.path.extend(self.test_package)
 
@@ -1069,8 +1094,9 @@ class XPUPatchForImport:
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
-        cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
+        torch.cuda.is_tf32_supported = self.cuda_is_tf32_supported
+        torch.cuda.get_device_capability = self.cuda_get_device_capability
 
 
 # Copy the test cases from generic_base_class to generic_test_class.

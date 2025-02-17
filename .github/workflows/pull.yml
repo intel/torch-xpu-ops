@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Run lint check
         run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           bash .github/scripts/lintrunner.sh
 
   preci-linux-build:
@@ -57,6 +57,18 @@ jobs:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut
       runner: linux.idc.xpu
+
+  preci-ut-distributed:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux
+    needs: preci-linux-build
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      ut: xpu_distributed
+      runner: pvc_e2e
 
   Inductor-XPU-E2E-CI-Tests:
     name: preci-linux / e2e_test
@@ -172,9 +184,11 @@ jobs:
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
-          failed_case=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          if [ ${failed_case} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log
+          # Print summary
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
+          if [ ${failed_models} -ne 0 ];then
+            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
             exit 1
           fi
       - name: Upload Inductor XPU E2E Data

@@ -88,6 +88,8 @@ jobs:
         run: |
           source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
+          export USE_ONEMKL=1
+          export USE_XCCL=1
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
