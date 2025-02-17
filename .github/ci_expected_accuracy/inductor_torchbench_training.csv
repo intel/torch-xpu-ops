@@ -3,8 +3,7 @@ torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
 BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-# https://github.com/intel/torch-xpu-ops/issues/1263
-LearningToPaint,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+LearningToPaint,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1256
 Super_SloMo,eager_two_runs_differ,pass,pass,eager_two_runs_differ,pass
 alexnet,pass,pass,pass,pass,pass
@@ -68,8 +67,7 @@ mobilenet_v3_large,pass,pass,pass,pass,pass
 moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1260
-nvidia_deeprecommender,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+nvidia_deeprecommender,pass,pass,pass,pass,pass
 opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/509
