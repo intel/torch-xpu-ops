@@ -4,15 +4,104 @@
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
+#include <ATen/ops/full.h>
+#include <ATen/ops/full_like.h>
+#include <ATen/ops/ones.h>
+#include <ATen/ops/ones_like.h>
+#include <ATen/ops/zeros.h>
+#include <ATen/ops/zeros_like.h>
 #include <ATen/record_function.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 #include <comm/TensorOptions.h>
+#include <cstdint>
 #include <functional>
 
 namespace at::native::xpu::pstl {
 
 using namespace at::xpu;
+
+template <typename Predicate>
+struct Not2Pred {
+  template <typename T>
+  bool operator()(const T x, const T y) const {
+    return !bool(pred(x, y));
+  }
+  Not2Pred(Predicate pred) : pred(pred) {}
+
+ private:
+  Predicate pred;
+};
+
+struct IdentityPred {
+  template <typename T>
+  T operator()(T x) const {
+    return x;
+  }
+};
+
+struct PlusPred {
+  template <typename T>
+  T operator()(T x, T y) const {
+    return x + y;
+  }
+};
+
+struct PlusOrPred {
+  template <typename T>
+  T operator()(T a, T b) const {
+    return b ? b : static_cast<T>(a + b);
+  }
+};
+
+template <typename scalar_t>
+struct GTFunctor {
+  bool operator()(scalar_t a, scalar_t b) const {
+    return std::greater<scalar_t>()(a, b);
+  }
+};
+
+template <typename scalar_t>
+struct LSFunctor {
+  bool operator()(scalar_t a, scalar_t b) const {
+    return std::less<scalar_t>()(a, b);
+  }
+};
+
+template <class T, class InputIt>
+struct GetItemFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::item<1> item_id) const {
+    d_first_[item_id] = first_[item_id];
+  }
+  GetItemFunctor(InputIt first, T index, InputIt d_first)
+      : first_(first), index_(index), d_first_(d_first) {}
+
+ private:
+  InputIt first_;
+  T index_;
+  InputIt d_first_;
+};
+
+template <class T, class InputIt>
+static inline T get_item(InputIt first, InputIt last, T index) {
+  RECORD_FUNCTION("get_item_xpu", {});
+  const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
+
+  T res = -1;
+  if (index >= N)
+    return res;
+
+  auto options = map_options<T>();
+  Tensor d_tensor = at::empty({N}, options);
+  T* d_tensor_ptr = d_tensor.data_ptr<T>();
+
+  GetItemFunctor<T, InputIt> kfn1(first, index, d_tensor_ptr);
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
+  res = d_tensor[index].template item<T>();
+
+  return res;
+}
 
 template <int scan_type, class InputIt, class OutputIt, class T>
 struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
@@ -262,6 +351,100 @@ struct PredictKernelFunctor {
   index_t* gmask_ptr_;
 };
 
+template <typename T, class InputIt, class OutputIt, class BinaryPredicate>
+struct InclusiveScanIfKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    d_first_[item_id] = static_cast<T>(first_[item_id]);
+
+    if (mask_ptr_[item_id] == 0) {
+      for (int64_t _k = 1; item_id - _k >= 0; _k++) {
+        auto tmp = first_[item_id - _k];
+        d_first_[item_id] = static_cast<T>(p_(d_first_[item_id], tmp));
+        if (mask_ptr_[item_id - _k] != 0)
+          break;
+      }
+    }
+  }
+
+  InclusiveScanIfKernelFunctor(
+      InputIt first,
+      InputIt mask_ptr,
+      OutputIt d_first,
+      BinaryPredicate p)
+      : first_(first), mask_ptr_(mask_ptr), d_first_(d_first), p_(p) {}
+
+ private:
+  InputIt first_;
+  InputIt mask_ptr_;
+  OutputIt d_first_;
+  BinaryPredicate p_;
+};
+
+template <typename T, class InputIt, class OutputIt, class BinaryPredicate>
+OutputIt inclusive_scan_if(
+    InputIt first,
+    InputIt last,
+    InputIt mask_ptr,
+    OutputIt d_first,
+    BinaryPredicate p) {
+  RECORD_FUNCTION("inclusive_scan_if_xpu", {});
+  const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
+
+  InclusiveScanIfKernelFunctor<T, InputIt, OutputIt, BinaryPredicate> ifn(
+      first, mask_ptr, d_first, p);
+  sycl_kernel_submit(sycl::range<1>(N), q, ifn);
+
+  return d_first;
+}
+
+template <typename index_t, class InputIt, class OutputIt>
+struct ReverseCopyKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    d_first_[N_ - tpos_ptr_[item_id]] = first_[item_id];
+  }
+
+  ReverseCopyKernelFunctor(
+      InputIt first,
+      OutputIt d_first,
+      index_t* tpos_ptr,
+      index_t N)
+      : first_(first), d_first_(d_first), tpos_ptr_(tpos_ptr), N_(N) {}
+
+ private:
+  InputIt first_;
+  OutputIt d_first_;
+  index_t* tpos_ptr_;
+  index_t N_;
+};
+
+template <typename index_t, class InputIt, class OutputIt>
+static inline OutputIt reverse_copy(
+    InputIt first,
+    InputIt last,
+    OutputIt d_first) {
+  RECORD_FUNCTION("copy_xpu", {});
+  const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
+
+  auto index_options = map_options<index_t>();
+
+  Tensor global_mask = at::ones({N}, index_options);
+  Tensor target_pos = at::empty({N}, index_options);
+  index_t* gmask_ptr = global_mask.data_ptr<index_t>();
+  index_t* tpos_ptr = target_pos.data_ptr<index_t>();
+
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+
+  // copy selected data into dst
+  ReverseCopyKernelFunctor<index_t, InputIt, OutputIt> kfn(
+      first, d_first, tpos_ptr, static_cast<index_t>(N));
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+
+  index_t M = target_pos[N - 1].template item<index_t>();
+  return d_first + M;
+}
+
 template <typename index_t, class InputIt, class OutputIt>
 struct CopyIfKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
@@ -498,6 +681,58 @@ static inline void itoa(ForwardIt first, ForwardIt last, T value) {
   auto& q = getCurrentSYCLQueue();
 
   ItoAKernelFunctor<T, ForwardIt> kfn(first, value);
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+}
+
+template <class T, class InputIt1, class InputIt2, class OutputIt>
+struct PiecewiseKernelFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    auto start = cnt_start_first[item_id];
+    auto end = cnt_end_first[item_id];
+    pstl::inclusive_scan(
+        first + static_cast<T>(start),
+        first + static_cast<T>(start) + static_cast<T>(end) + 1,
+        d_first,
+        static_cast<T>(0));
+  }
+
+  PiecewiseKernelFunctor(
+      InputIt1 first,
+      InputIt1 last,
+      InputIt1 cnt_start_first,
+      InputIt1 cnt_end_first,
+      InputIt2 flag_first,
+      OutputIt d_first)
+      : first(first),
+        last(last),
+        cnt_start_first(cnt_start_first),
+        cnt_end_first(cnt_end_first),
+        flag_first(flag_first),
+        d_first(d_first) {}
+
+ private:
+  InputIt1 first;
+  InputIt1 last;
+  InputIt1 cnt_start_first;
+  InputIt1 cnt_end_first;
+  InputIt2 flag_first;
+  OutputIt d_first;
+};
+
+template <class T, class InputIt1, class InputIt2, class OutputIt>
+static inline void piecewise_sum(
+    InputIt1 first,
+    InputIt1 last,
+    InputIt1 cnt_start_first,
+    InputIt1 cnt_end_first,
+    InputIt2 flag_first,
+    OutputIt d_first) {
+  RECORD_FUNCTION("piecewise_sum_xpu", {});
+  const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
+
+  PiecewiseKernelFunctor<T, InputIt1, InputIt2, OutputIt> kfn(
+      first, last, cnt_start_first, cnt_end_first, flag_first, d_first);
   sycl_kernel_submit(sycl::range<1>(N), q, kfn);
 }
 
@@ -924,8 +1159,8 @@ inline void leaf_sort(
   }
 }
 
-// lower_bound used in merge sort: pick up the elements in the sequence doesn't
-// meet the compare situation with smallest index
+// lower_bound used in merge sort: pick up the elements in the sequence
+// doesn't meet the compare situation with smallest index
 template <typename KeyType, typename CompFunc>
 inline size_t lower_bound(
     KeyType* in_data,
@@ -948,6 +1183,61 @@ inline size_t lower_bound(
     }
   }
   return first;
+}
+
+template <class T, class ForwardIt, class InputIt, class OutputIt>
+struct LowerBoundTenFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    auto pilot = values_begin[item_id];
+    auto N = std::distance(begin, end);
+    auto cur = N;
+    T first = 0;
+    T it;
+    while (N > 0) {
+      it = first;
+      cur = N / 2;
+      it += cur;
+      if (begin[it] < pilot) {
+        N -= cur + 1;
+        first = ++it;
+      } else {
+        N = cur;
+      }
+    }
+    d_ptr[item_id] = first;
+  }
+
+  LowerBoundTenFunctor(
+      ForwardIt begin,
+      ForwardIt end,
+      InputIt values_begin,
+      OutputIt d_ptr)
+      : begin(begin), end(end), values_begin(values_begin), d_ptr(d_ptr) {}
+
+ private:
+  ForwardIt begin;
+  ForwardIt end;
+  InputIt values_begin;
+  OutputIt d_ptr;
+};
+
+template <class T, class ForwardIt, class InputIt, class OutputIt>
+OutputIt lower_bound_tensor(
+    ForwardIt begin,
+    ForwardIt end,
+    InputIt values_begin,
+    InputIt values_end,
+    OutputIt output) {
+  RECORD_FUNCTION("lower_bound_tensor_xpu", {});
+  // const auto N = std::distance(begin, end);
+  const auto val_N = std::distance(values_begin, values_end);
+  auto& q = getCurrentSYCLQueue();
+
+  LowerBoundTenFunctor<T, ForwardIt, InputIt, OutputIt> kfn(
+      begin, end, values_begin, output);
+  sycl_kernel_submit(sycl::range<1>(val_N), q, kfn);
+
+  return output + val_N;
 }
 
 template <typename KeyType, typename CompFunc>
@@ -1402,20 +1692,6 @@ void sort(
   merge_sort<KeyType, ValueType>(out_key, out_val, sort_sz, comp_t);
 }
 
-template <typename scalar_t>
-struct GTFunctor {
-  bool operator()(scalar_t a, scalar_t b) const {
-    return std::greater<scalar_t>()(a, b);
-  }
-};
-
-template <typename scalar_t>
-struct LSFunctor {
-  bool operator()(scalar_t a, scalar_t b) const {
-    return std::less<scalar_t>()(a, b);
-  }
-};
-
 template <typename KeyType, typename ValueType>
 void sort(
     const KeyType* in_key,
@@ -1447,6 +1723,257 @@ static inline void iota(ForwardIt first, ForwardIt last, T value) {
 
   IotaKernelFunctor<T, ForwardIt> kfn(first, value);
   sycl_kernel_submit(sycl::range<1>(N), getCurrentSYCLQueue(), kfn);
+}
+
+template <
+    typename output_t,
+    class InputIt1,
+    class InputIt2,
+    class InputIt3,
+    class ForwardIt,
+    typename UnaryFunction,
+    typename Predicate>
+struct UnaryTransformIfWithStencilFunctor {
+  void operator()(sycl::item<1> item_id) const {
+    if (pred(stencil[item_id]))
+      result[map[item_id]] = static_cast<output_t>(unary_op(first[item_id]));
+  }
+
+  UnaryTransformIfWithStencilFunctor(
+      InputIt1 first,
+      InputIt2 stencil,
+      InputIt3 map,
+      ForwardIt result,
+      UnaryFunction unary_op,
+      Predicate pred)
+      : first{first},
+        stencil(stencil),
+        map(map),
+        result(result),
+        unary_op(unary_op),
+        pred(pred) {}
+
+ private:
+  InputIt1 first;
+  InputIt2 stencil;
+  InputIt3 map;
+  ForwardIt result;
+  UnaryFunction unary_op;
+  Predicate pred;
+};
+
+template <
+    typename output_t,
+    class InputIt1,
+    class InputIt2,
+    class InputIt3,
+    class ForwardIt,
+    typename UnaryFunction,
+    typename Predicate>
+ForwardIt transform_if(
+    InputIt1 first,
+    InputIt1 last,
+    InputIt2 stencil,
+    InputIt3 map,
+    ForwardIt result,
+    UnaryFunction unary_op,
+    Predicate pred) {
+  RECORD_FUNCTION("unary_transform_if_with_stencil_xpu", {});
+  const auto N = std::distance(first, last);
+  auto& q = getCurrentSYCLQueue();
+
+  UnaryTransformIfWithStencilFunctor<
+      output_t,
+      InputIt1,
+      InputIt2,
+      InputIt3,
+      ForwardIt,
+      UnaryFunction,
+      Predicate>
+      kfn(first, stencil, map, result, unary_op, pred);
+  sycl_kernel_submit(sycl::range<1>(N), q, kfn);
+
+  return result + N;
+}
+
+template <
+    class T,
+    class InputIt1,
+    class InputIt2,
+    class InputIt3,
+    class RandomAccessIt>
+void scatter_if(
+    InputIt1 first,
+    InputIt1 last,
+    InputIt2 map,
+    InputIt3 stencil,
+    RandomAccessIt output) {
+  // default predicate is identity
+  // typedef typename std::iterator_value<InputIterator3>::type StencilType;
+  IdentityPred identity;
+  scatter_if<T>(first, last, map, stencil, output, identity);
+}
+
+template <
+    class T,
+    class InputIt1,
+    class InputIt2,
+    class InputIt3,
+    class RandomAccessIt,
+    typename Predicate>
+void scatter_if(
+    InputIt1 first,
+    InputIt1 last,
+    InputIt2 map,
+    InputIt3 stencil,
+    RandomAccessIt output,
+    Predicate pred) {
+  // typedef typename std::iterator_value<InputIt1>::type InputType;
+  // pstl::transform_if(
+  //     first,
+  //     last,
+  //     stencil,
+  //     thrust::make_permutation_iterator(output, map),
+  //     std::identity<InputType>(),
+  //     pred);
+  IdentityPred identity;
+  pstl::transform_if<T>(first, last, stencil, map, output, identity, pred);
+}
+
+template <
+    class ValueType,
+    class InputIt1,
+    class InputIt2,
+    class OutputIt1,
+    class OutputIt2,
+    typename BinaryPredicate,
+    typename BinaryFunction>
+OutputIt2 reduce_by_key(
+    InputIt1 keys_first,
+    InputIt1 keys_last,
+    InputIt2 values_first,
+    OutputIt1 keys_output,
+    OutputIt2 values_output,
+    BinaryPredicate binary_pred,
+    BinaryFunction binary_op) {
+  // typedef ValueType FlagType;
+
+  if (keys_first == keys_last)
+    return values_output;
+
+  // input size
+  auto N = std::distance(keys_first, keys_last);
+
+  auto values_last = values_first + N;
+  auto flag_options = map_options<ValueType>();
+
+  // compute head flags
+  Tensor head_flags = at::ones({N}, flag_options);
+  auto head_flags_first = head_flags.data_ptr<ValueType>();
+  Not2Pred<BinaryPredicate> not2(binary_pred);
+  pstl::transform<ValueType>(
+      keys_first, keys_last - 1, keys_first + 1, head_flags_first + 1, not2);
+
+  // compute tail flags
+  Tensor tail_flags = at::ones({N}, flag_options);
+  auto tail_flags_first = tail_flags.data_ptr<ValueType>();
+  pstl::transform<ValueType>(
+      keys_first, keys_last - 1, keys_first + 1, tail_flags_first, not2);
+
+  auto value_options = map_options<ValueType>();
+  // scan the values by flag
+  Tensor scanned_values = at::zeros({N}, value_options);
+  auto scanned_values_first = scanned_values.data_ptr<ValueType>();
+
+  Tensor scanned_tail_flags = at::ones({N}, flag_options);
+  ValueType* scanned_tail_flags_first =
+      scanned_tail_flags.data_ptr<ValueType>();
+
+  pstl::inclusive_scan_if<int64_t>(
+      values_first,
+      values_last,
+      head_flags_first,
+      scanned_values_first,
+      binary_op);
+
+  pstl::exclusive_scan(
+      tail_flags_first,
+      tail_flags_first + N,
+      scanned_tail_flags_first,
+      static_cast<ValueType>(0));
+
+  // number of unique keys
+  int64_t new_sz =
+      pstl::get_item<int64_t>(
+          scanned_tail_flags_first, scanned_tail_flags_first + N, N - 1) +
+      1;
+
+  // scatter the keys and accumulated values
+  pstl::scatter_if<ValueType>(
+      keys_first,
+      keys_last,
+      scanned_tail_flags_first,
+      head_flags_first,
+      keys_output);
+
+  pstl::scatter_if<ValueType>(
+      scanned_values_first,
+      scanned_values_first + N,
+      scanned_tail_flags_first,
+      tail_flags_first,
+      values_output);
+
+  return values_output + new_sz;
+}
+
+template <
+    class ValueType,
+    class InputIt1,
+    class InputIt2,
+    class OutputIt1,
+    class OutputIt2>
+OutputIt2 reduce_by_key(
+    InputIt1 keys_first,
+    InputIt1 keys_last,
+    InputIt2 values_first,
+    OutputIt1 keys_output,
+    OutputIt2 values_output) {
+  // use equal_to<ValueType> as default BinaryPredicate
+  return reduce_by_key<ValueType>(
+      keys_first,
+      keys_last,
+      values_first,
+      keys_output,
+      values_output,
+      std::equal_to<ValueType>());
+}
+
+template <
+    class ValueType,
+    class InputIt1,
+    class InputIt2,
+    class OutputIt1,
+    class OutputIt2,
+    typename BinaryPredicate>
+OutputIt2 reduce_by_key(
+    InputIt1 keys_first,
+    InputIt1 keys_last,
+    InputIt2 values_first,
+    OutputIt1 keys_output,
+    OutputIt2 values_output,
+    BinaryPredicate binary_pred) {
+  // use plus<T> as default BinaryFunction
+
+  // typedef int64_t FlagType;
+  PlusPred plus;
+  return reduce_by_key<ValueType>(
+      keys_first,
+      keys_last,
+      values_first,
+      keys_output,
+      values_output,
+      binary_pred,
+      plus);
 }
 
 } // namespace at::native::xpu::pstl
