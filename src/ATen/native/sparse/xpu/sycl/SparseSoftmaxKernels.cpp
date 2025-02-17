@@ -151,6 +151,13 @@ struct PoolPred {
   T* offsets_ptr;
 };
 
+template <typename index_t>
+struct SortFunctor {
+  auto operator()(index_t a, index_t b) const {
+    return (a < b);
+  }
+};
+
 template <typename T>
 struct ReducePred {
   bool operator()(const T& x, const T& y) const {
@@ -371,8 +378,8 @@ Tensor get_offsets(
       host_strides[i] = host_strides[i + 1] * (i + 1 == dim ? 1 : sizes[i + 1]);
     }
   }
-  auto strides = at::empty({ndim}, indices.options());
   // auto strides = host_strides;
+  auto strides = at::empty({ndim}, indices.options());
   auto strides_ptr = strides.data_ptr<int64_t>();
 
   // syclMemcpyAsync(
@@ -380,13 +387,13 @@ Tensor get_offsets(
   //     host_strides.data(),
   //     host_strides.size() * sizeof(int64_t),
   //     HostToDevice);
+
   for (int kk = 0; kk < ndim; kk++) {
     strides[kk] = host_strides[kk];
   }
 
   auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
-
-  Tensor offsets = at::zeros({nnz}, indices.options());
+  Tensor offsets = at::ones({nnz}, indices.options());
 
   for (int i = 0; i < nnz; i++) {
     int64_t pool_index = 0;
@@ -415,28 +422,23 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> compute_pool_max(
     implementation that this implementation is based on.
   */
   auto nnz = indices.size(1);
+
   auto offsets = get_offsets(indices, sizes, dim);
   int64_t* offsets_ptr = offsets.data_ptr<int64_t>();
+  auto offsets_sort = get_offsets(indices, sizes, dim);
+  int64_t* offsets_sort_ptr = offsets_sort.data_ptr<int64_t>();
 
   auto sorted_indices = at::empty({nnz}, indices.options());
   auto sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
   pstl::iota<int64_t>(sorted_indices_ptr, sorted_indices_ptr + nnz, (int64_t)0);
 
-  auto sorted_index = at::empty({nnz}, indices.options());
-  auto sorted_index_ptr = sorted_index.data_ptr<int64_t>();
-  pstl::iota<int64_t>(sorted_index_ptr, sorted_index_ptr + nnz, (int64_t)0);
-
-  pstl::sort<int64_t, int64_t>(
-      sorted_indices_ptr,
-      sorted_index_ptr,
-      nnz,
-      PoolPred<int64_t>(offsets_ptr));
+  SortFunctor<int64_t> sfn;
+  pstl::sort<int64_t, int64_t>(offsets_sort_ptr, sorted_indices_ptr, nnz, sfn);
 
   auto pool_sizes = at::ones({nnz}, indices.options());
-
   auto constant_it = at::ones({nnz}, indices.options());
   auto discard_it = at::zeros({nnz}, indices.options());
-  sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
+  // sorted_indices_ptr = sorted_indices.data_ptr<int64_t>();
 
   auto new_end = pstl::reduce_by_key<int64_t>(
       sorted_indices_ptr,
