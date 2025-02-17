@@ -53,19 +53,6 @@ skip_dict = {
         "test_errors_sparse_mul_layout3_xpu",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
-        # Similar error as above for to_sparse_csr() operator
-        "test_sparse_csr_from_dense_xpu_bfloat16",
-        "test_sparse_csr_from_dense_xpu_bool",
-        "test_sparse_csr_from_dense_xpu_complex128",
-        "test_sparse_csr_from_dense_xpu_complex64",
-        "test_sparse_csr_from_dense_xpu_float16",
-        "test_sparse_csr_from_dense_xpu_float32",
-        "test_sparse_csr_from_dense_xpu_float64",
-        "test_sparse_csr_from_dense_xpu_int16",
-        "test_sparse_csr_from_dense_xpu_int32",
-        "test_sparse_csr_from_dense_xpu_int64",
-        "test_sparse_csr_from_dense_xpu_int8",
-        "test_sparse_csr_from_dense_xpu_uint8",
         # OneDNN issues, https://github.com/intel/torch-xpu-ops/issues/253
         # RuntimeError: Long is not supported in oneDNN!
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
