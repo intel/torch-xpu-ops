@@ -747,7 +747,3 @@ supported:
   - take.out
   - segment_reduce
   - _segment_reduce_backward
-  - _convert_indices_from_coo_to_csr
-  - _convert_indices_from_coo_to_csr.out
-  - _convert_indices_from_csr_to_coo
-  - _convert_indices_from_csr_to_coo.out
