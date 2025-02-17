@@ -8966,62 +8966,6 @@
     SparseCsrXPU: sparse_compressed_to_sparse_csc
   autogen: _to_sparse_csc.out
 
-- func: crow_indices(Tensor(a) self) -> Tensor(a)
-  variants: method
-  dispatch:
-    SparseCsrXPU: crow_indices_sparse_csr
-  device_check: NoCheck
-  device_guard: False
-
-- func: col_indices(Tensor(a) self) -> Tensor(a)
-  variants: method
-  dispatch:
-    SparseCsrXPU: col_indices_sparse_csr
-  device_check: NoCheck
-  device_guard: False
-
-- func: ccol_indices(Tensor(a) self) -> Tensor(a)
-  variants: method
-  dispatch:
-    SparseCsrXPU: ccol_indices_sparse_csr
-  device_check: NoCheck
-  device_guard: False
-
-- func: row_indices(Tensor(a) self) -> Tensor(a)
-  variants: method
-  dispatch:
-    SparseCsrXPU: row_indices_sparse_csr
-  device_check: NoCheck
-  device_guard: False
-
-- func: crow_indices_copy(Tensor self) -> Tensor
-  variants: function
-  dispatch:
-    CompositeExplicitAutogradNonFunctional: crow_indices_copy
-  tags: view_copy
-  autogen: crow_indices_copy.out
-
-- func: col_indices_copy(Tensor self) -> Tensor
-  variants: function
-  dispatch:
-    CompositeExplicitAutogradNonFunctional: col_indices_copy
-  tags: view_copy
-  autogen: col_indices_copy.out
-
-- func: ccol_indices_copy(Tensor self) -> Tensor
-  variants: function
-  dispatch:
-    CompositeExplicitAutogradNonFunctional: ccol_indices_copy
-  tags: view_copy
-  autogen: ccol_indices_copy.out
-
-- func: row_indices_copy(Tensor self) -> Tensor
-  variants: function
-  dispatch:
-    CompositeExplicitAutogradNonFunctional: row_indices_copy
-  tags: view_copy
-  autogen: row_indices_copy.out
-
 # - func: _to_sparse_semi_structured(Tensor dense) -> (Tensor, Tensor)
 #   variants: function
 #   dispatch:
