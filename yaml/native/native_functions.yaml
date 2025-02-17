@@ -8783,6 +8783,7 @@
     SparseCsrXPU: row_indices_sparse_csr
     CompositeExplicitAutograd: row_indices_default
   device_check: NoCheck
+  device_guard: False
 
 # Special case of to_sparse.sparse_dim with custom derivative
 - func: _to_sparse.sparse_dim(Tensor self, int sparse_dim) -> Tensor
