@@ -27,19 +27,20 @@ TORCH_IMPL_FUNC(_convert_indices_from_csr_to_coo_structured_xpu)
 };
 
 Tensor _sparse_csr_sum_xpu(
-  const Tensor& input,
-  IntArrayRef dims_to_sum,
-  bool keepdim,
-  std::optional<ScalarType> dtype) {
-    return xpu::_sparse_csr_sum_xpu_kernel(input, dims_to_sum, keepdim, dtype);
+    const Tensor& input,
+    IntArrayRef dims_to_sum,
+    bool keepdim,
+    std::optional<ScalarType> dtype) {
+  return xpu::_sparse_csr_sum_xpu_kernel(input, dims_to_sum, keepdim, dtype);
 }
 
 Tensor _sparse_csr_prod_xpu(
-  const Tensor& input,
-  IntArrayRef dims_to_reduce,
-  bool keepdim,
-  std::optional<ScalarType> dtype) {
-    return xpu::_sparse_csr_prod_xpu_kernel(input, dims_to_reduce, keepdim, dtype);
+    const Tensor& input,
+    IntArrayRef dims_to_reduce,
+    bool keepdim,
+    std::optional<ScalarType> dtype) {
+  return xpu::_sparse_csr_prod_xpu_kernel(
+      input, dims_to_reduce, keepdim, dtype);
 }
 
 } // namespace at::native
