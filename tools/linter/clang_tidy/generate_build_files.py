@@ -32,6 +32,7 @@ def gen_compile_commands() -> None:
     os.environ["CC"] = "clang"
     os.environ["CXX"] = "clang++"
     run_cmd([sys.executable, "setup.py", "--cmake-only", "build"])
+    run_cmd(["cp", "-rf", "./torchgen/packaged/ATen/templates", "third_party/torch-xpu-ops/yaml/templates"])
 
 
 def run_autogen() -> None:
