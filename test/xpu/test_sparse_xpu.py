@@ -55,7 +55,7 @@ with XPUPatchForImport(False):
 
     @coalescedonoff
     @dtypes(torch.float16, torch.bfloat16, torch.float64, torch.int, torch.cfloat, torch.cdouble)
-    def test_to_sparse(self, device, dtype, coalesced):
+    def _test_to_sparse(self, device, dtype, coalesced):
         shape = [5, 2, 10, 4]
         max_nnz = 1
         for value_type in [torch.double]:
@@ -73,7 +73,7 @@ with XPUPatchForImport(False):
                     self.assertEqual(expected.size(), result.size())
                     self.assertEqual(dim, result.sparse_dim())
     
-    TestSparse.test_to_sparse = test_to_sparse
+    TestSparse.test_to_sparse = _test_to_sparse
 
 instantiate_device_type_tests(TestSparse, globals(), only_for="xpu", allow_xpu=True)
 
