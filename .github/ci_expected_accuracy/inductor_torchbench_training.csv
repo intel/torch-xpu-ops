@@ -109,5 +109,5 @@ tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1264
 vision_maskrcnn,eager_fail_to_run,pass,pass,eager_fail_to_run,eager_fail_to_run
-yolov3,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass
