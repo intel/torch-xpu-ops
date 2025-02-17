@@ -5,7 +5,7 @@ Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_t
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 LearningToPaint,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1256
-Super_SloMo,eager_two_runs_differ,pass,pass,eager_two_runs_differ,pass
+Super_SloMo,eager_two_runs_differ,pass,pass,pass,pass
 alexnet,pass,pass,pass,pass,pass
 basic_gnn_edgecnn,pass,pass,pass,pass,pass
 basic_gnn_gcn,pass,pass,pass,pass,pass
