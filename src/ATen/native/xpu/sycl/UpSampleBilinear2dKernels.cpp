@@ -318,21 +318,24 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
           accscalar_t scale_h = static_cast<accscalar_t>(1) -
               distance_h / static_cast<accscalar_t>(output_height_ - 1);
           if constexpr (is_channel_last) {
-            idata_[index] += odata_[idx_cl(
-                                 n,
-                                 point_h / (input_height_ - 1),
-                                 point_w / (input_width_ - 1),
-                                 c,
-                                 output_height_,
-                                 output_width_,
-                                 channels_)] *
-                scale_w * scale_h;
+            idata_[index] += static_cast<scalar_t>(
+                static_cast<accscalar_t>(odata_[idx_cl(
+                    n,
+                    point_h / (input_height_ - 1),
+                    point_w / (input_width_ - 1),
+                    c,
+                    output_height_,
+                    output_width_,
+                    channels_)]) *
+                scale_w * scale_h);
           } else {
             size_t output_index = ((n * channels_ + c) * output_height_ +
                                    point_h / (input_height_ - 1)) *
                     output_width_ +
                 point_w / (input_width_ - 1);
-            idata_[index] += odata_[output_index] * scale_w * scale_h;
+            idata_[index] += static_cast<scalar_t>(
+                static_cast<accscalar_t>(odata_[output_index]) * scale_w *
+                scale_h);
           }
         }
       }
@@ -397,39 +400,23 @@ struct UpsampleBilinear2dBackwardKernelFunctor {
       const scalar_t d2val = out_data_[index];
 
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(in_data_ +
-                                      idx(nc,
-                                          input_height_,
-                                          input_width_,
-                                          h1,
-                                          w1)),
+          (sycl_global_ptr<
+              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(in_data_ +
-                                      idx(nc,
-                                          input_height_,
-                                          input_width_,
-                                          h1,
-                                          w1 + w1p)),
+          (sycl_global_ptr<
+              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1 + w1p)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(in_data_ +
-                                      idx(nc,
-                                          input_height_,
-                                          input_width_,
-                                          h1 + h1p,
-                                          w1)),
+          (sycl_global_ptr<
+              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(in_data_ +
-                                      idx(nc,
-                                          input_height_,
-                                          input_width_,
-                                          h1 + h1p,
-                                          w1 + w1p)),
+          (sycl_global_ptr<
+              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1 + w1p)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
@@ -576,48 +563,20 @@ struct UpsampleBilinear2dBackwardnhwcKernelFunctor {
 
       const scalar_t d2val = odata_[index];
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(idata_ +
-                                      idx_cl(
-                                          n,
-                                          h1,
-                                          w1,
-                                          c,
-                                          input_height_,
-                                          input_width_,
-                                          channels_)),
+          (sycl_global_ptr<
+              scalar_t>)(idata_ + idx_cl(n, h1, w1, c, input_height_, input_width_, channels_)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(idata_ +
-                                      idx_cl(
-                                          n,
-                                          h1,
-                                          w1 + w1p,
-                                          c,
-                                          input_height_,
-                                          input_width_,
-                                          channels_)),
+          (sycl_global_ptr<
+              scalar_t>)(idata_ + idx_cl(n, h1, w1 + w1p, c, input_height_, input_width_, channels_)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(idata_ +
-                                      idx_cl(
-                                          n,
-                                          h1 + h1p,
-                                          w1,
-                                          c,
-                                          input_height_,
-                                          input_width_,
-                                          channels_)),
+          (sycl_global_ptr<
+              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1, c, input_height_, input_width_, channels_)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<scalar_t>)(idata_ +
-                                      idx_cl(
-                                          n,
-                                          h1 + h1p,
-                                          w1 + w1p,
-                                          c,
-                                          input_height_,
-                                          input_width_,
-                                          channels_)),
+          (sycl_global_ptr<
+              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1 + w1p, c, input_height_, input_width_, channels_)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
