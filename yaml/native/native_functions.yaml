@@ -8862,7 +8862,6 @@
     SparseXPU: values_sparse
     SparseCsrXPU: values_sparse_csr
     NestedTensorXPU: values_nested
-    SparseCsrXPU: values_sparse_csr
   device_check: NoCheck
   device_guard: False
 
