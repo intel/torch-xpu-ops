@@ -224,7 +224,7 @@ WelfordDataLN WelfordCombine(
 
 template <typename T, typename T_ACC, typename shared_t>
 WelfordDataLN compute_stats(
-    const T* __restrict__ X,
+    const T* RESTRICT X,
     const int N,
     shared_t meansigmabuf,
     shared_t countbuf,
