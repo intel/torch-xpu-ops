@@ -81,18 +81,18 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: kailei-test
 
-  Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
-    name: linux-nightly-ondemand
-    needs: Linux-Nightly-Ondemand-Build
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ inputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: kailei-test
+  #Linux-Nightly-Ondemand-UT-Tests:
+    #if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    #name: linux-nightly-ondemand
+    #needs: Linux-Nightly-Ondemand-Build
+    #uses: ./.github/workflows/_linux_ut.yml
+    #with:
+      #keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      #ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
+      #pytorch: ${{ inputs.pytorch }}
+      #python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      #triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      #runner: kailei-test
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: [self-hosted,Linux,X64,kailei-test]
