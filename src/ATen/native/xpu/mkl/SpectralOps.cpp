@@ -420,31 +420,41 @@ Tensor _fft_c2r_mkl(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
-  if (dim.size() > 1) {
-    auto c2c_dims = dim.slice(0, dim.size() - 1);
-    input = _fft_c2c_mkl(
-        self,
-        c2c_dims,
-        static_cast<int64_t>(fft_norm_mode::none),
-        /*forward=*/false);
-    //dim = dim.slice(dim.size() - 1);
-  }
+  printf("dim_size = %ld dims = ", dim.size());
+  for (int i = 0; i < dim.size(); ++i)
+    printf("%ld ", dim[i]);
+  printf("\n");
 
   Tensor input_cpu = input.to(at::kCPU);
   auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
-  printf("%ld\n", input_cpu.numel());
+  printf("%ld %ld\n", input_cpu.numel(), input_cpu.dim());
+  for (int i = 0; i < input_cpu.numel(); ++i)
+    printf("%f %f ", data[i].real(), data[i].imag());
+  printf("\n");
   int64_t last_in_size = in_sizes[input_cpu.dim() - 1];
-    printf("%ld\n", last_in_size);
+  printf("%ld\n", last_in_size);
+  int64_t stride_0 = 1;
+  int64_t stride_1 = 1;
+  for (int i = input_cpu.dim() - 1; i > dim.back(); i--)
+    stride_1 *= in_sizes[i];
+  stride_0 = stride_1 * in_sizes[dim.back()];
+  printf("%ld %ld\n", stride_0, stride_1);
   if (dim.back() == 0) {
-    for (int i = 0; i < last_in_size; ++i) {
+    for (int i = 0; i < stride_1; ++i) {
       data[i].imag(0.0f);
       data[input_cpu.numel() - 1 - i].imag(0.0f);
     }
-  }
-  if (dim.back() == -1) {
+  } else if (dim.back() == input_cpu.dim() - 1) {
     for (int i = 0; i < input_cpu.numel(); i += last_in_size) {
       data[i].imag(0.0f);
       data[i + last_in_size - 1].imag(0.0f);
+    }
+  } else {
+    for (int i = 0; i < input_cpu.numel(); i+= stride_0) {
+      for (int j = 0; j < stride_1; ++j) {
+        data[i + j].imag(0.0f);
+        data[i + stride_0 - 1 - j].imag(0.0f);
+      }
     }
   }
   //data[0].imag(0.0f);
@@ -457,6 +467,16 @@ Tensor _fft_c2r_mkl(
   // auto in_sizes = input.sizes();
   // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   // out_sizes[dim.back()] = last_dim_size;
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c_mkl(
+        self,
+        c2c_dims,
+        static_cast<int64_t>(fft_norm_mode::none),
+        /*forward=*/false);
+    // dim = dim.slice(dim.size() - 1);
+  }
 
   impl::_exec_fft(
       out,
