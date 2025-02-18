@@ -16,105 +16,6 @@ namespace native {
 namespace xpu {
 
 template <typename scalar_t, typename mean_t, typename weight_t>
-class LayerNormForward : public NormForward<scalar_t, mean_t, weight_t> {
- public:
-  using accscalar_t = acc_type_device<scalar_t, kXPU>;
-  typedef NormForward<scalar_t, mean_t, weight_t> NF;
-  LayerNormForward() = delete;
-  LayerNormForward(
-      const scalar_t* X_data,
-      scalar_t* Y_data,
-      mean_t* mean_data,
-      mean_t* var_data,
-      const weight_t* gamma_data,
-      const weight_t* beta_data,
-      accscalar_t eps,
-      int64_t M,
-      int64_t N)
-      : NormForward<scalar_t, mean_t, weight_t>(
-            X_data,
-            Y_data,
-            mean_data,
-            var_data,
-            gamma_data,
-            beta_data,
-            eps),
-        M(M),
-        N(N) {
-    numel = M * N;
-  };
-
-  template <
-      int vec_size,
-      typename index_t,
-      typename vec_t,
-      typename weight_vec_t,
-      typename nd_item_id>
-  void update(
-      nd_item_id item_id,
-      const NormConfig& cfg,
-      accscalar_t sum1 = 0,
-      accscalar_t sum2 = 0) const {
-    auto group_id = item_id.get_group(0);
-    auto group_id_foreach = item_id.get_group(1);
-    auto local_id = item_id.get_local_id(2);
-
-    index_t group_offset = group_id * cfg.problem_size;
-    if (cfg.workgroup_num_foreach == 1) {
-      if (local_id == 0) {
-        NF::reduce_project(item_id, sum1, sum2, cfg);
-      }
-      item_id.barrier(sycl_global_fence);
-    }
-
-    mean_t mean_val = NF::mean_data[group_id];
-    mean_t var_val = NF::var_data[group_id];
-    for (index_t j = local_id * vec_size; j < cfg.workgroup_work_size;
-         j += cfg.workgroup_size * vec_size) {
-      index_t plane_offset = group_id_foreach * cfg.workgroup_work_size + j;
-      if (plane_offset < (index_t)cfg.problem_size) {
-        vec_t X_val = *(reinterpret_cast<const vec_t*>(
-            NF::X_data + group_offset + plane_offset));
-        weight_vec_t gamma_val, beta_val;
-        vec_t Y_val;
-        if (NF::gamma_data != nullptr) {
-          gamma_val = *(reinterpret_cast<const weight_vec_t*>(
-              NF::gamma_data + plane_offset));
-        }
-        if (NF::beta_data != nullptr) {
-          beta_val = *(reinterpret_cast<const weight_vec_t*>(
-              NF::beta_data + plane_offset));
-        }
-
-        for (int v = 0; v < vec_size; ++v) {
-          if (NF::gamma_data != nullptr && NF::beta_data != nullptr) {
-            Y_val[v] = static_cast<accscalar_t>(gamma_val[v]) *
-                    (var_val * static_cast<accscalar_t>(X_val[v] - mean_val)) +
-                static_cast<accscalar_t>(beta_val[v]);
-          } else if (NF::gamma_data != nullptr) {
-            Y_val[v] = static_cast<accscalar_t>(gamma_val[v]) *
-                (var_val * static_cast<accscalar_t>(X_val[v] - mean_val));
-          } else if (NF::beta_data != nullptr) {
-            Y_val[v] =
-                (var_val * static_cast<accscalar_t>(X_val[v] - mean_val)) +
-                static_cast<accscalar_t>(beta_val[v]);
-          } else {
-            Y_val[v] =
-                (var_val * static_cast<accscalar_t>(X_val[v] - mean_val));
-          }
-        }
-        *(reinterpret_cast<vec_t*>(NF::Y_data + group_offset + plane_offset)) =
-            Y_val;
-      }
-    }
-  };
-
-  int64_t M;
-  int64_t N;
-  int64_t numel;
-};
-
-template <typename scalar_t, typename mean_t, typename weight_t>
 class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
  public:
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
@@ -397,7 +298,7 @@ WelfordDataLN compute_stats(
 }
 
 template <typename T, typename T_ACC>
-struct vectorized_layer_norm_kernel_impl {
+struct VectorizedLayerNormKernelFunctor {
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
@@ -465,7 +366,7 @@ struct vectorized_layer_norm_kernel_impl {
     countbuf_ = sycl_local_acc_t<T_ACC>(16, cgh);
   }
 
-  vectorized_layer_norm_kernel_impl(
+  VectorizedLayerNormKernelFunctor(
       const int N,
       T_ACC eps,
       const T* __restrict__ X,
@@ -507,7 +408,7 @@ void launch_vectorized_layer_norm_kernel(
     T* Y_data,
     T_ACC* mean_data,
     T_ACC* rstd_data) {
-  vectorized_layer_norm_kernel_impl<T, T_ACC> kfn(
+  VectorizedLayerNormKernelFunctor<T, T_ACC> kfn(
       N, eps, X_data, gamma_data, beta_data, mean_data, rstd_data, Y_data);
   int64_t sg_size = syclMaxSubGroupSize();
   int64_t wg_size = syclMaxWorkGroupSize(kfn);
@@ -518,7 +419,7 @@ void launch_vectorized_layer_norm_kernel(
 }
 
 template <typename T, typename T_ACC>
-void LayerNormKernelImplInternalXPU(
+void _layer_norm_kernel(
     const Tensor& X,
     const Tensor& gamma,
     const Tensor& beta,
@@ -559,48 +460,6 @@ void LayerNormKernelImplInternalXPU(
         Y_data,
         mean_data,
         rstd_data);
-  }
-}
-
-template <typename scalar_t, typename mean_t, typename weight_t>
-void _layer_norm_kernel(
-    const Tensor& X,
-    const Tensor& gamma,
-    const Tensor& beta,
-    int64_t M,
-    int64_t N,
-    acc_type_device<scalar_t, kXPU> eps,
-    Tensor& Y,
-    Tensor& mean,
-    Tensor& rstd) {
-  TORCH_CHECK(X.numel() == M * N);
-  TORCH_CHECK(!gamma.defined() || gamma.numel() == N);
-  TORCH_CHECK(!beta.defined() || beta.numel() == N);
-
-  const scalar_t* X_data = X.const_data_ptr<scalar_t>();
-  scalar_t* Y_data = Y.data_ptr<scalar_t>();
-  mean_t* mean_data = mean.data_ptr<mean_t>();
-  mean_t* var_data = rstd.data_ptr<mean_t>();
-  const weight_t* gamma_data =
-      gamma.defined() ? gamma.const_data_ptr<weight_t>() : nullptr;
-  const weight_t* beta_data =
-      beta.defined() ? beta.const_data_ptr<weight_t>() : nullptr;
-
-  auto config = NormConfig(M, N, 1, sizeof(scalar_t));
-  bool can_use_32bit_index = canUse32BitIndexMath(X);
-  LayerNormForward<scalar_t, mean_t, weight_t> norm(
-      X_data, Y_data, mean_data, var_data, gamma_data, beta_data, eps, M, N);
-
-  if (config.workgroup_num_foreach == 1) {
-    vectorized_fused_norm_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
-        norm, config, can_use_32bit_index);
-  } else {
-    Tensor semaphores, scratchpad;
-    config.template init_global_reduce<scalar_t>(X, semaphores, scratchpad);
-    rowwise_moments_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
-        norm, config, can_use_32bit_index);
-    norm_update_kernel<scalar_t, mean_t, weight_t, LayerNormForward>(
-        norm, config, can_use_32bit_index);
   }
 }
 
@@ -907,38 +766,10 @@ void layer_norm_kernel(
       "layer_norm_xpu",
       [&]() {
         using acc_t = acc_type_device<scalar_t, kXPU>;
-        LayerNormKernelImplInternalXPU<scalar_t, acc_t>(
+        _layer_norm_kernel<scalar_t, acc_t>(
             X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
       });
 }
-
-/*
-std::tuple<Tensor, Tensor, Tensor> layer_norm_kernel(
-    const Tensor& X,
-    const Tensor& gamma,
-    const Tensor& beta,
-    int64_t M,
-    int64_t N,
-    double eps,
-    Tensor& Y,
-    Tensor& mean,
-    Tensor& rstd) {
-  if (M > 0) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        X.scalar_type(),
-        "layer_norm_xpu",
-        [&]() {
-          using acc_t = acc_type_device<scalar_t, kXPU>;
-          _layer_norm_kernel<scalar_t, acc_t, scalar_t>(
-              X, gamma, beta, M, N, static_cast<acc_t>(eps), Y, mean, rstd);
-        });
-  }
-
-  return std::make_tuple(Y, mean, rstd);
-}
-*/
 
 std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
     const Tensor& dY,
