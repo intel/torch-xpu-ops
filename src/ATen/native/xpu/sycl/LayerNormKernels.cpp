@@ -305,7 +305,6 @@ struct VectorizedLayerNormKernelFunctor {
     const T* block_row = X_ + i1 * N_;
     WelfordDataLN wd = compute_stats<T, T_ACC>(
         block_row, N_, meansigmabuf_, countbuf_, item_id);
-
     using vec_t = aligned_vector<T, vec_size>;
     const vec_t* X_vec = reinterpret_cast<const vec_t*>(block_row);
     const vec_t* gamma_vec =
@@ -362,8 +361,10 @@ struct VectorizedLayerNormKernelFunctor {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    meansigmabuf_ = sycl_local_acc_t<T_ACC>(2 * 16, cgh);
-    countbuf_ = sycl_local_acc_t<T_ACC>(16, cgh);
+    meansigmabuf_ =
+        sycl_local_acc_t<float>(2 * get_group_reduce_group_size(sg_size_), cgh);
+    countbuf_ =
+        sycl_local_acc_t<float>(get_group_reduce_group_size(sg_size_), cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
@@ -374,7 +375,8 @@ struct VectorizedLayerNormKernelFunctor {
       const T* beta,
       T_ACC* mean,
       T_ACC* rstd,
-      T* Y)
+      T* Y,
+      int64_t sg_size)
       : N_(N),
         eps_(eps),
         X_(X),
@@ -382,7 +384,8 @@ struct VectorizedLayerNormKernelFunctor {
         beta_(beta),
         mean_(mean),
         rstd_(rstd),
-        Y_(Y) {}
+        Y_(Y),
+        sg_size_(sg_size) {}
 
  private:
   const int N_;
@@ -393,6 +396,7 @@ struct VectorizedLayerNormKernelFunctor {
   T_ACC* mean_;
   T_ACC* rstd_;
   T* Y_;
+  int64_t sg_size_;
   sycl_local_acc_t<T_ACC> meansigmabuf_;
   sycl_local_acc_t<T_ACC> countbuf_;
 };
@@ -408,12 +412,20 @@ void launch_vectorized_layer_norm_kernel(
     T* Y_data,
     T_ACC* mean_data,
     T_ACC* rstd_data) {
-  VectorizedLayerNormKernelFunctor<T, T_ACC> kfn(
-      N, eps, X_data, gamma_data, beta_data, mean_data, rstd_data, Y_data);
   int64_t sg_size = syclMaxSubGroupSize();
+  VectorizedLayerNormKernelFunctor<T, T_ACC> kfn(
+      N,
+      eps,
+      X_data,
+      gamma_data,
+      beta_data,
+      mean_data,
+      rstd_data,
+      Y_data,
+      sg_size);
   int64_t wg_size = syclMaxWorkGroupSize(kfn);
   sycl::range<2> local_range{size_t(wg_size / sg_size), size_t(sg_size)};
-  sycl::range<2> global_range(M * size_t(wg_size / sg_size), size_t(sg_size));
+  sycl::range<2> global_range(size_t(wg_size / sg_size), M * size_t(sg_size));
   auto queue = getCurrentSYCLQueue();
   sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
