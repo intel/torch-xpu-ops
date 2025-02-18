@@ -1,6 +1,6 @@
 import argparse
 import sys
-
+import os
 from junitparser import JUnitXml, Error, Failure, Skipped
 
 parser = argparse.ArgumentParser()
@@ -8,6 +8,7 @@ parser.add_argument('junitxml', nargs='+')
 args = parser.parse_args()
 
 failures = []
+suites = []
 
 def get_classname(case):
     return ' '.join(case.classname.split())
@@ -58,33 +59,37 @@ def print_cases(cases):
 
 def print_suite(suite):
     print_header = True
-    ut = args.junitxml[0]
-    del(args.junitxml[0])
-    tests = suite.tests
-    skipped = suite.skipped
-    failures = suite.failures
-    errors = suite.errors
-    row = {
-        'UT': ut,
-        'test cases': tests,
-        'skipped': skipped,
-        'failures': failures,
-        'errors': errors,
-    }
-    print_md_row(row, print_header)
-    print_header = False
+    for suite in suites:
+        ut = args.junitxml[0]
+        del(args.junitxml[0])
+        tests = suite.tests
+        skipped = suite.skipped
+        failures = suite.failures
+        errors = suite.errors
+        row = {
+            'UT': os.path.basename(ut).split('.')[0],
+            'Test cases': tests,
+            'Passed': tests-skipped-failures-errors,
+            'Skipped': skipped,
+            'Failures': failures,
+            'Errors': errors,
+        }
+        print_md_row(row, print_header)
+        print_header = False
 
 xmls = [ JUnitXml.fromfile(f) for f in args.junitxml ]
 for idx, xml in enumerate(xmls):
     for suite in xml:
-        print("### Results Summary")
-        print_suite(suite)
+        suites.append(suite)
         for case in suite:
             classname = get_classname(case)
             name = get_name(case)
             result = get_result(case)
             if result not in ["passed", "skipped"]:
                 failures.append(case)
+
+print("### Results Summary")
+print_suite(suites)
 
 printed = False
 def print_break(needed):
