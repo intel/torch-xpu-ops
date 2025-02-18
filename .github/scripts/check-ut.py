@@ -62,12 +62,22 @@ def print_suite(suite):
     for suite in suites:
         ut = args.junitxml[0]
         del(args.junitxml[0])
+        ut = os.path.basename(ut).split('.')[0]
         tests = suite.tests
         skipped = suite.skipped
         failures = suite.failures
         errors = suite.errors
+        if ut == 'op_regression':
+            category = 'op_regression' 
+        elif ut == 'op_regression_dev1':
+            category = 'op_regression_dev1'
+        elif ut == 'op_extended':
+            category = 'op_extended'
+        elif 'op_ut' in ut:
+            category = 'op_ut'
         row = {
-            'UT': os.path.basename(ut).split('.')[0],
+            'Category': category,
+            'UT': ut,
             'Test cases': tests,
             'Passed': tests-skipped-failures-errors,
             'Skipped': skipped,
@@ -88,9 +98,6 @@ for idx, xml in enumerate(xmls):
             if result not in ["passed", "skipped"]:
                 failures.append(case)
 
-print("### Results Summary")
-print_suite(suites)
-
 printed = False
 def print_break(needed):
     if needed:
@@ -101,5 +108,8 @@ if failures:
     print("### Failures")
     print_cases(failures)
     printed = True
+
+print("### Results Summary")
+print_suite(suites)
 
 sys.exit(0)
