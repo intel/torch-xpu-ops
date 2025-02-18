@@ -431,32 +431,39 @@ Tensor _fft_c2r_mkl(
   for (int i = 0; i < input_cpu.numel(); ++i)
     printf("%f %f ", data[i].real(), data[i].imag());
   printf("\n");
-  int64_t last_in_size = in_sizes[input_cpu.dim() - 1];
-  printf("%ld\n", last_in_size);
-  int64_t stride_0 = 1;
-  int64_t stride_1 = 1;
-  for (int i = input_cpu.dim() - 1; i > dim.back(); i--)
-    stride_1 *= in_sizes[i];
-  stride_0 = stride_1 * in_sizes[dim.back()];
-  printf("%ld %ld\n", stride_0, stride_1);
+  printf("sizes = ");
+  for (int i = 0; i < in_sizes.size(); ++i)
+    printf("%ld ", in_sizes[i]);
+  printf("\n");
+
+  std::vector<int64_t> strides(in_sizes.size(), 1);
+  for (int i = strides.size() - 2; i >= 0; --i)
+    strides[i] = strides[i + 1] * in_sizes[i + 1];
+
+  printf("strides = ");
+  for (int i = 0; i < strides.size(); ++i)
+    printf("%ld ", strides[i]);
+  printf("\n");
+  // int64_t stride_0 = 1;
+  // int64_t stride_1 = 1;
+  // for (int i = input_cpu.dim() - 1; i > dim.back(); i--)
+  //   stride_1 *= in_sizes[i];
+  // stride_0 = stride_1 * in_sizes[dim.back()];
+  // printf("%ld %ld\n", stride_0, stride_1);
   if (dim.back() == 0) {
-    for (int i = 0; i < stride_1; ++i) {
+    for (int i = 0; i < strides[0]; ++i) {
       data[i].imag(0.0f);
       data[input_cpu.numel() - 1 - i].imag(0.0f);
     }
-  } else if (dim.back() == input_cpu.dim() - 1) {
-    for (int i = 0; i < input_cpu.numel(); i += last_in_size) {
-      data[i].imag(0.0f);
-      data[i + last_in_size - 1].imag(0.0f);
-    }
   } else {
-    for (int i = 0; i < input_cpu.numel(); i+= stride_0) {
-      for (int j = 0; j < stride_1; ++j) {
+    for (int i = 0; i < input_cpu.numel(); i+= strides[dim.back() - 1]) {
+      for (int j = 0; j < strides[dim.back()]; ++j) {
         data[i + j].imag(0.0f);
-        data[i + stride_0 - 1 - j].imag(0.0f);
+        data[i + strides[dim.back() - 1] - 1 - j].imag(0.0f);
       }
     }
   }
+
   //data[0].imag(0.0f);
   //data[input.numel() - 1].imag(0.0f);
   for (int i = 0; i < input_cpu.numel(); ++i)
