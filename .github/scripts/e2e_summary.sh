@@ -71,11 +71,12 @@ function get_model_result() {
 # Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
 if [ "${accuracy}" -gt 0 ];then
-    printf "Note:
+    printf "#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
 \$\${\\color{green}Green}\$\$: the new passed cases which need update reference
 \$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
-\$\${\\color{orange}Orange}\$\$: the warning cases\n\n"
+\$\${\\color{orange}Orange}\$\$: the warning cases
+Empty means the cases NOT run\n\n"
     echo "### Accuracy"
     printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
     printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | "
