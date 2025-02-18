@@ -19,4 +19,11 @@ SparseTensor& mul_out_sparse_xpu(
   return xpu::mul_sparse_kernel(t_, src_, r_);
 }
 
+Tensor _sparse_sum_backward_xpu(
+    const Tensor& grad_,
+    const SparseTensor& input_,
+    IntArrayRef dims_to_sum) {
+  return xpu::_sparse_sum_backward_kernel(grad_, input_, dims_to_sum);
+}
+
 } // namespace at::native
