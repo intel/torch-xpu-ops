@@ -19,17 +19,17 @@ function get_model_result() {
     )
     for suite in ${suite_list}
     do
-        model_list=($(
+        model_list=$(
             find "${results_dir}" -name "*.csv" |grep -E ".*${suite}.*_xpu_accuracy.csv" |\
             xargs cat |grep "^xpu," |cut -d, -f2 |sort |uniq
-        ))
-        for model in ${model_list[*]}
+        )
+        for model in ${model_list}
         do
             for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
             do
                 for mode in training inference
                 do
-                    colorful=$(grep "${model}" tmp-${suite}-${mode}-${dtype}.txt 2>&1 |awk 'BEGIN{color="black";}{
+                    colorful=$(grep "${model}" "tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{color="black";}{
                         if ($0 ~/Real failed/){
                             color="red";
                         }else if ($0 ~/Expected failed/){
@@ -51,16 +51,17 @@ function get_model_result() {
             echo -e "<tr>
                     <td>${suite}</td>
                     <td>${model}</td>
-                    <td>${training_float32}</td>
-                    <td>${training_bfloat16}</td>
-                    <td>${training_float16}</td>
-                    <td>${training_amp_bf16}</td>
-                    <td>${training_amp_fp16}</td>
-                    <td>${inference_float32}</td>
-                    <td>${inference_bfloat16}</td>
-                    <td>${inference_float16}</td>
-                    <td>${inference_amp_bf16}</td>
-                    <td>${inference_amp_fp16}</td>
+                    $(eval "
+                        for mode in training inference
+                        do
+                            for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
+                            do
+                                printf '<td>'
+                                printf "\${${mode}_${dtype}}"
+                                printf '</td>'
+                            done
+                        done
+                    ")
                 </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
         done
     done
@@ -88,8 +89,8 @@ if [ "${accuracy}" -gt 0 ];then
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > tmp-${suite}-${mode}-${dtype}.txt
-        test_result="$(sed 's/, /,/g' tmp-${suite}-${mode}-${dtype}.txt |awk '{
+        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "tmp-${suite}-${mode}-${dtype}.txt"
+        test_result="$(sed 's/, /,/g' "tmp-${suite}-${mode}-${dtype}.txt" |awk '{
             if($0 ~/Total/){
                 total = $3;
             }

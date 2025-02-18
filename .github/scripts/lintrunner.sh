@@ -23,6 +23,9 @@ if ! command -v lintrunner &> /dev/null; then
     python3 -m pip install lintrunner==0.12.7
 fi
 
+# Ignoring errors in one specific run
+export SHELLCHECK_OPTS="-e SC1083"
+
 # This has already been cached in the docker image
 lintrunner init 2> /dev/null
 
