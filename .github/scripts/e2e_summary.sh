@@ -17,6 +17,7 @@ function get_model_result() {
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
     )
+    rm -rf /tmp/tmp-result.txt
     for suite in ${suite_list}
     do
         model_list=$(
@@ -29,9 +30,13 @@ function get_model_result() {
             do
                 for mode in training inference
                 do
-                    colorful=$(grep "${model}" "tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{color="black";}{
+                    colorful=$(grep "${model}" "tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
+                        color = "black";
+                        exit_label = 0;
+                    }{
                         if ($0 ~/Real failed/){
                             color="red";
+                            exit_label++;
                         }else if ($0 ~/Expected failed/){
                             color="blue";
                         }else if ($0 ~/Warning timeout/){
@@ -40,11 +45,13 @@ function get_model_result() {
                             color="blue";
                         }else if ($0 ~/Failed to passed/){
                             color="green";
+                            exit_label++;
                         }
-                    }END{print color;}')
+                    }END{print color, exit_label}')
+                    echo "${colorful}" >> /tmp/tmp-result.txt
                     context=$(find "${results_dir}" -name "*.csv" |\
                         grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
-                        awk -v c="${colorful}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
+                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
                     eval "${mode}_${dtype}=${context}"
                 done
             done
@@ -133,7 +140,6 @@ Empty means the cases NOT run\n\n"
     done
     cat tmp-summary.txt
     get_model_result
-    rm -rf tmp-*.txt
 fi
 
 # Performance
