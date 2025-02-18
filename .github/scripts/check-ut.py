@@ -68,7 +68,7 @@ def print_suite(suite):
         failures = suite.failures
         errors = suite.errors
         if ut == 'op_regression':
-            category = 'op_regression' 
+            category = 'op_regression'
         elif ut == 'op_regression_dev1':
             category = 'op_regression_dev1'
         elif ut == 'op_extended':
