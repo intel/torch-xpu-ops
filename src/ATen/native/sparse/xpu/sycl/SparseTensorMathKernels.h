@@ -18,4 +18,9 @@ TORCH_XPU_API SparseTensor& mul_sparse_kernel(
     const Tensor& src_,
     SparseTensor& r_);
 
+TORCH_XPU_API Tensor _sparse_sum_backward_kernel(
+    const Tensor& grad_,
+    const SparseTensor& input_,
+    IntArrayRef dims_to_sum);
+
 } // namespace at::native::xpu
