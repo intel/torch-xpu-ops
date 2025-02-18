@@ -95,7 +95,7 @@ jobs:
       runner: kailei-test
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+    runs-on: [self-hosted,Linux,X64,kailei-test]
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'kaileiyx' }}
