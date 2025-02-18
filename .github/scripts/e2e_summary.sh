@@ -5,8 +5,13 @@ check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
 
 function get_model_result() {
     echo -e "\n<table><thead>
-        <tr><th rowspan=2> Suite </th><th rowspan=2> Model </th><th colspan=5> Training </th><th colspan=5> Inference </th></tr>
-        <tr><th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th><th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th></tr>
+        <tr>
+            <th rowspan=2> Suite </th><th rowspan=2> Model </th>
+            <th colspan=5> Training </th><th colspan=5> Inference </th>
+        </tr><tr>
+            <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
+            <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
+        </tr>
     </thead><tbody>"
     suite_list=$(
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
@@ -18,13 +23,39 @@ function get_model_result() {
             find "${results_dir}" -name "*.csv" |grep -E ".*${suite}.*_xpu_accuracy.csv" |\
             xargs cat |grep "^xpu," |cut -d, -f2 |sort |uniq
         ))
+        for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
+        do
+            for mode in training inference
+            do
+                python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" \
+                    --csv_file "$(find "${results_dir}" -name "*.csv" |\
+                        grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv"
+                )" > tmp-${dtype}-${mode}.txt
+            done
+        done
         for model in ${model_list[*]}
         do
             for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
             do
                 for mode in training inference
                 do
-                    eval "${mode}_${dtype}=\$(find "${results_dir}" -name "*.csv" |grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4)"
+                    colorful=$(grep "${model}" tmp-${dtype}-${mode}.txt |awk 'BEGIN{color="black";}{
+                        if ($0 ~/Real failed/){
+                            color="red";
+                        }else if ($0 ~/Expected failed/){
+                            color="blue";
+                        }else if ($0 ~/Warning timeout/){
+                            color="orange";
+                        }else if ($0 ~/New models/){
+                            color="blue";
+                        }else if ($0 ~/Failed to passed/){
+                            color="green";
+                        }
+                    }END{print color;}')
+                    context=$(find "${results_dir}" -name "*.csv" |\
+                        grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
+                        awk -v c="${colorful}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
+                    eval "${mode}_${dtype}=${context}"
                 done
             done
             echo -e "<tr>
@@ -40,7 +71,7 @@ function get_model_result() {
                     <td>${inference_float16}</td>
                     <td>${inference_amp_bf16}</td>
                     <td>${inference_amp_fp16}</td>
-                </tr>"
+                </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
         done
     done
     echo -e "</tbody></table>\n"
@@ -49,9 +80,15 @@ function get_model_result() {
 # Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
 if [ "${accuracy}" -gt 0 ];then
+    printf "Note:
+\$\${\\color{red}Red}\$\$: the failed cases which need look into
+\$\${\\color{green}Green}\$\$: the new passed cases which need update reference
+\$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
+\$\${\\color{orange}Orange}\$\$: the warning cases\n\n"
     echo "### Accuracy"
-    printf "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
-    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | New Passed | New Enabled | Not Run |\n"
+    printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
+    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | "
+    printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     echo > tmp-summary.txt
     echo > tmp-details.txt
