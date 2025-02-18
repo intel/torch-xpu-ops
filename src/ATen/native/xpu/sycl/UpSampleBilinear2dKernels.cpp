@@ -484,7 +484,9 @@ void launch_upsample_bilinear2d_backward_kernel(
   const size_t o_numel = nc * output_width * output_height;
   const size_t i_numel = nc * input_width * input_height;
 
-  if (align_corners) {
+  bool can_optimize = align_corners && input_height < output_height &&
+      input_width < output_width && input_height > 1 && input_width > 1;
+  if (can_optimize) {
     UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
         kfn(input_height,
             input_width,
@@ -635,7 +637,9 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     const int channels,
     const size_t o_numel,
     const size_t i_numel) {
-  if (align_corners) {
+  bool can_optimize = align_corners && input_height < output_height &&
+      input_width < output_width && input_height > 1 && input_width > 1;
+  if (can_optimize) {
     UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>
         kfn(input_height,
             input_width,
