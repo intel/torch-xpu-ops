@@ -370,7 +370,7 @@ struct VectorizedLayerNormKernelFunctor {
   VectorizedLayerNormKernelFunctor(
       const int N,
       T_ACC eps,
-      const T* __restrict__ X,
+      const T* RESTRICT X,
       const T* gamma,
       const T* beta,
       T_ACC* mean,
@@ -390,7 +390,7 @@ struct VectorizedLayerNormKernelFunctor {
  private:
   const int N_;
   T_ACC eps_;
-  const T* __restrict__ X_;
+  const T* RESTRICT X_;
   const T* gamma_;
   const T* beta_;
   T_ACC* mean_;
