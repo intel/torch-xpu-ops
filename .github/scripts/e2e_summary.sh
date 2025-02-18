@@ -23,23 +23,13 @@ function get_model_result() {
             find "${results_dir}" -name "*.csv" |grep -E ".*${suite}.*_xpu_accuracy.csv" |\
             xargs cat |grep "^xpu," |cut -d, -f2 |sort |uniq
         ))
-        for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
-        do
-            for mode in training inference
-            do
-                python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" \
-                    --csv_file "$(find "${results_dir}" -name "*.csv" |\
-                        grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv"
-                )" > tmp-${dtype}-${mode}.txt
-            done
-        done
         for model in ${model_list[*]}
         do
             for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
             do
                 for mode in training inference
                 do
-                    colorful=$(grep "${model}" tmp-${dtype}-${mode}.txt |awk 'BEGIN{color="black";}{
+                    colorful=$(grep "${model}" tmp-${suite}-${mode}-${dtype}.txt 2>&1 |awk 'BEGIN{color="black";}{
                         if ($0 ~/Real failed/){
                             color="red";
                         }else if ($0 ~/Expected failed/){
@@ -97,9 +87,9 @@ if [ "${accuracy}" -gt 0 ];then
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
-        dt="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dt}" --csv_file "${csv}" > tmp-result.txt
-        test_result="$(sed 's/, /,/g' tmp-result.txt |awk '{
+        dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
+        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > tmp-${suite}-${mode}-${dtype}.txt
+        test_result="$(sed 's/, /,/g' tmp-${suite}-${mode}-${dtype}.txt |awk '{
             if($0 ~/Total/){
                 total = $3;
             }
@@ -138,12 +128,6 @@ if [ "${accuracy}" -gt 0 ];then
                 total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
         echo "| ${category} | ${test_result} |" >> tmp-summary.txt
-        sed -i '
-            s/Real failed models:/$${\\color{red}Real \\space failed \\space models}$$:/g;
-            s/Expected failed models:/$${\\color{blue}Expected \\space failed \\space models}$$:/g;
-            s/Warning timeout models:/$${\\color{orange}Warning \\space timeout \\space models}$$:/g;
-            s/Failed to passed models:/$${\\color{green}Failed \\space to \\space passed \\space models}$$:/g;
-        ' tmp-result.txt
     done
     cat tmp-summary.txt
     get_model_result
