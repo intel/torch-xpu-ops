@@ -240,5 +240,5 @@ jobs:
     needs: preci-lint-check
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: op_extended
+      ut: op_extended,test_xpu
       runner: Windows_CI
