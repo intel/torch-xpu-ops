@@ -314,7 +314,9 @@ def _int4_mm(self, device, m, k, n):
 
     torch.manual_seed(1)
     a_bf16 = torch.rand((m, k), dtype=torch.bfloat16, device=device)
-    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device) * torch.rand((k, 1), dtype=torch.bfloat16, device=device)
+    b_bf16 = torch.rand((k, n), dtype=torch.bfloat16, device=device) * torch.rand(
+        (k, 1), dtype=torch.bfloat16, device=device
+    )
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
     for dtype in [torch.bfloat16] + (
