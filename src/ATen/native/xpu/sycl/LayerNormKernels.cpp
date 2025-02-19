@@ -382,7 +382,7 @@ WelfordDataLN compute_stats(
   }
   // intra-warp reduction
   auto sg = item_id.get_sub_group();
-  int sgSize = static_cast<int>(sg.get_local_range()[1]);
+  int sgSize = static_cast<int>(sg.get_local_range()[0]);
   for (int offset = (sgSize >> 1); offset > 0; offset >>= 1) {
     WelfordDataLN wdB{
         sycl::shift_group_left(sg, wd.mean, offset),
