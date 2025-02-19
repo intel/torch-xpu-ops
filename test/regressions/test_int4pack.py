@@ -10,13 +10,9 @@ def rand_weight_uint8(n, k_div_2, device="xpu"):
 
 def weight_unpack(weight_packed, n, k_div_2):
     k_div_8 = k_div_2 // 4
-    weight_packed = weight_packed.view(k_div_8, n).transpose(0, 1).contiguous()
+    weight_packed = weight_packed.view(n, k_div_8).contiguous()
     weight_packed = weight_packed.view(torch.uint8).view(n, k_div_8, 4)
-    weight_unpacked = torch.empty_like(weight_packed)
-    weight_unpacked[:, :, 0:1] = weight_packed[:, :, 3:4]
-    weight_unpacked[:, :, 1:2] = weight_packed[:, :, 2:3]
-    weight_unpacked[:, :, 2:3] = weight_packed[:, :, 1:2]
-    weight_unpacked[:, :, 3:4] = weight_packed[:, :, 0:1]
+    weight_unpacked = weight_packed.view(n, -1).contiguous()
     return weight_unpacked.view(torch.uint8).view(n, -1)
 
 

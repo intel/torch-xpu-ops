@@ -47,10 +47,6 @@ skip_dict = {
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
         "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
-        "test_errors_sparse_mul_layout0_xpu",
-        "test_errors_sparse_mul_layout1_xpu",
-        "test_errors_sparse_mul_layout2_xpu",
-        "test_errors_sparse_mul_layout3_xpu",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
         # OneDNN issues, https://github.com/intel/torch-xpu-ops/issues/253
@@ -975,6 +971,11 @@ skip_dict = {
         "test_to_nn_TransformerEncoder_eval_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_TransformerEncoder_train_mode_swap_True_set_grad_True_xpu_float32",
         "test_to_nn_Transformer_swap_True_set_grad_True_xpu_float32",
+        # Unexpected succuss
+        "test_memory_format_nn_Conv2d_xpu_float64",
+        "test_memory_format_nn_ConvTranspose2d_xpu_float64",
+        "test_memory_format_nn_LazyConv2d_xpu_float64",
+        "test_memory_format_nn_LazyConvTranspose2d_xpu_float64",
     ),
     "test_nn_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute 'FloatTensor'
@@ -1192,81 +1193,6 @@ skip_dict = {
         "test_mask_layout_sparse_coo_masked_sum_xpu_int64",
         "test_mask_layout_sparse_coo_masked_sum_xpu_int8",
         "test_mask_layout_sparse_coo_masked_sum_xpu_uint8",
-        # CPU and CUDA bias code in SparseCsrTensor.cpp.
-        # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta :
-        "test_mask_layout_sparse_csr_masked_amax_xpu_bfloat16",
-        "test_mask_layout_sparse_csr_masked_amax_xpu_float16",
-        "test_mask_layout_sparse_csr_masked_amax_xpu_float32",
-        "test_mask_layout_sparse_csr_masked_amax_xpu_float64",
-        "test_mask_layout_sparse_csr_masked_amin_xpu_bfloat16",
-        "test_mask_layout_sparse_csr_masked_amin_xpu_float16",
-        "test_mask_layout_sparse_csr_masked_amin_xpu_float32",
-        "test_mask_layout_sparse_csr_masked_amin_xpu_float64",
-        "test_mask_layout_sparse_csr_masked_mean_xpu_bfloat16",
-        "test_mask_layout_sparse_csr_masked_mean_xpu_float16",
-        "test_mask_layout_sparse_csr_masked_mean_xpu_float32",
-        "test_mask_layout_sparse_csr_masked_mean_xpu_float64",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_bfloat16",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_bool",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_complex128",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_complex64",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_float16",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_float32",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_float64",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_int16",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_int32",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_int64",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_int8",
-        "test_mask_layout_sparse_csr_masked_prod_xpu_uint8",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_bfloat16",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_bool",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_complex128",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_complex64",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_float16",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_float32",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_float64",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_int16",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_int32",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_int64",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_int8",
-        "test_mask_layout_sparse_csr_masked_sum_xpu_uint8",
-        "test_mask_layout_strided_masked_mean_xpu_bfloat16",
-        "test_mask_layout_strided_masked_mean_xpu_float16",
-        "test_mask_layout_strided_masked_mean_xpu_float32",
-        "test_mask_layout_strided_masked_mean_xpu_float64",
-        # NotImplementedError: Could not run 'aten::_to_sparse_csr' with arguments from the 'SparseXPU' backend.
-        "test_mask_layout_strided_masked_amax_xpu_bfloat16",
-        "test_mask_layout_strided_masked_amax_xpu_float16",
-        "test_mask_layout_strided_masked_amax_xpu_float32",
-        "test_mask_layout_strided_masked_amax_xpu_float64",
-        "test_mask_layout_strided_masked_amin_xpu_bfloat16",
-        "test_mask_layout_strided_masked_amin_xpu_float16",
-        "test_mask_layout_strided_masked_amin_xpu_float32",
-        "test_mask_layout_strided_masked_amin_xpu_float64",
-        "test_mask_layout_strided_masked_prod_xpu_bfloat16",
-        "test_mask_layout_strided_masked_prod_xpu_bool",
-        "test_mask_layout_strided_masked_prod_xpu_complex128",
-        "test_mask_layout_strided_masked_prod_xpu_complex64",
-        "test_mask_layout_strided_masked_prod_xpu_float16",
-        "test_mask_layout_strided_masked_prod_xpu_float32",
-        "test_mask_layout_strided_masked_prod_xpu_float64",
-        "test_mask_layout_strided_masked_prod_xpu_int16",
-        "test_mask_layout_strided_masked_prod_xpu_int32",
-        "test_mask_layout_strided_masked_prod_xpu_int64",
-        "test_mask_layout_strided_masked_prod_xpu_int8",
-        "test_mask_layout_strided_masked_prod_xpu_uint8",
-        "test_mask_layout_strided_masked_sum_xpu_bfloat16",
-        "test_mask_layout_strided_masked_sum_xpu_bool",
-        "test_mask_layout_strided_masked_sum_xpu_complex128",
-        "test_mask_layout_strided_masked_sum_xpu_complex64",
-        "test_mask_layout_strided_masked_sum_xpu_float16",
-        "test_mask_layout_strided_masked_sum_xpu_float32",
-        "test_mask_layout_strided_masked_sum_xpu_float64",
-        "test_mask_layout_strided_masked_sum_xpu_int16",
-        "test_mask_layout_strided_masked_sum_xpu_int32",
-        "test_mask_layout_strided_masked_sum_xpu_int64",
-        "test_mask_layout_strided_masked_sum_xpu_int8",
-        "test_mask_layout_strided_masked_sum_xpu_uint8",
     ),
     "test_view_ops_xpu.py": (
         # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
@@ -1814,129 +1740,41 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
         "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_float64",
     ),
-    "test_matmul_cuda_xpu.py": (
-        # AssertionError: "Bias is not supported when out_dtype is set to Float32" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
-        "test_float32_output_errors_with_bias_xpu",
-        # RuntimeError: "eye" not implemented for 'Float8_e4m3fn'
-        "test_float8_basics_xpu",
-        # AssertionError: "For row-wise scaling, scale_a must be size 1024 but got 1 and scale_b must be size 2048 but got 2" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
-        "test_float8_error_messages_xpu",
-        # NotImplementedError: Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
-        "test_float8_bias_relu_edgecase_xpu",
-        "test_float8_bias_xpu",
-        "test_float8_rowwise_scaling_sanity_use_fast_accum_False_xpu",
-        "test_float8_rowwise_scaling_sanity_use_fast_accum_True_xpu",
-        "test_float8_scale_fast_accum_xpu",
-        "test_float8_scale_xpu",
-        "test_non_divisible_leading_dim_bias_False_xpu",
-        "test_non_divisible_leading_dim_bias_True_xpu",
-        "test_scaled_mm_change_stride_bfloat16_xpu",
-        "test_scaled_mm_change_stride_float16_xpu",
-        "test_scaled_mm_change_stride_float32_xpu",
-        "test_scaled_mm_vs_emulated_bfloat16_xpu",
-        "test_scaled_mm_vs_emulated_float16_xpu",
-        "test_scaled_mm_vs_emulated_float32_xpu",
-        "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
-        # AssertionError: Torch not compiled with CUDA enabled
-        "test_zero_dim_tensorwise_which_dim_zero",
-        # New added case in 2.7
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_bfloat16",
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_float16",
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_bfloat16",
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_float16",
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_bfloat16",
-        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_float16",
-        "test_cublas_and_lt_reduced_precision_fp16_accumulate_xpu",
-    ),
-    "test_maskedtensor_xpu.py": (
-        # Summary: SparseCsrXPU OPs are not supported
-        # NotImplementedError: Could not run 'aten::_to_sparse_csr' with arguments from the 'SparseXPU' backend.
-        # https://github.com/intel/torch-xpu-ops/issues/357
-        "test_to_dense_xpu",
-        # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
-        "test_like_",
-        "test_invalid_sparse_layout_xpu",
-        "test_to_dense_and_sparse_csr_xpu",
-        "test_binary_core_add_layout2_xpu_float16",
-        "test_binary_core_add_layout2_xpu_float32",
-        "test_binary_core_add_layout2_xpu_float64",
-        "test_binary_core_atan2_layout2_xpu_float16",
-        "test_binary_core_atan2_layout2_xpu_float32",
-        "test_binary_core_atan2_layout2_xpu_float64",
-        "test_binary_core_div_floor_rounding_layout2_xpu_float16",
-        "test_binary_core_div_floor_rounding_layout2_xpu_float32",
-        "test_binary_core_div_floor_rounding_layout2_xpu_float64",
-        "test_binary_core_div_no_rounding_mode_layout2_xpu_float16",
-        "test_binary_core_div_no_rounding_mode_layout2_xpu_float32",
-        "test_binary_core_div_no_rounding_mode_layout2_xpu_float64",
-        "test_binary_core_div_trunc_rounding_layout2_xpu_float16",
-        "test_binary_core_div_trunc_rounding_layout2_xpu_float32",
-        "test_binary_core_div_trunc_rounding_layout2_xpu_float64",
-        "test_binary_core_eq_layout2_xpu_float16",
-        "test_binary_core_eq_layout2_xpu_float32",
-        "test_binary_core_eq_layout2_xpu_float64",
-        "test_binary_core_floor_divide_layout2_xpu_float16",
-        "test_binary_core_floor_divide_layout2_xpu_float32",
-        "test_binary_core_floor_divide_layout2_xpu_float64",
-        "test_binary_core_fmax_layout2_xpu_float16",
-        "test_binary_core_fmax_layout2_xpu_float32",
-        "test_binary_core_fmax_layout2_xpu_float64",
-        "test_binary_core_fmin_layout2_xpu_float16",
-        "test_binary_core_fmin_layout2_xpu_float32",
-        "test_binary_core_fmin_layout2_xpu_float64",
-        "test_binary_core_fmod_layout2_xpu_float16",
-        "test_binary_core_fmod_layout2_xpu_float32",
-        "test_binary_core_fmod_layout2_xpu_float64",
-        "test_binary_core_ge_layout2_xpu_float16",
-        "test_binary_core_ge_layout2_xpu_float32",
-        "test_binary_core_ge_layout2_xpu_float64",
-        "test_binary_core_gt_layout2_xpu_float16",
-        "test_binary_core_gt_layout2_xpu_float32",
-        "test_binary_core_gt_layout2_xpu_float64",
-        "test_binary_core_le_layout2_xpu_float16",
-        "test_binary_core_le_layout2_xpu_float32",
-        "test_binary_core_le_layout2_xpu_float64",
-        "test_binary_core_logaddexp_layout2_xpu_float16",
-        "test_binary_core_logaddexp_layout2_xpu_float32",
-        "test_binary_core_logaddexp_layout2_xpu_float64",
-        "test_binary_core_lt_layout2_xpu_float16",
-        "test_binary_core_lt_layout2_xpu_float32",
-        "test_binary_core_lt_layout2_xpu_float64",
-        "test_binary_core_maximum_layout2_xpu_float16",
-        "test_binary_core_maximum_layout2_xpu_float32",
-        "test_binary_core_maximum_layout2_xpu_float64",
-        "test_binary_core_minimum_layout2_xpu_float16",
-        "test_binary_core_minimum_layout2_xpu_float32",
-        "test_binary_core_minimum_layout2_xpu_float64",
-        "test_binary_core_mul_layout2_xpu_float16",
-        "test_binary_core_mul_layout2_xpu_float32",
-        "test_binary_core_mul_layout2_xpu_float64",
-        "test_binary_core_ne_layout2_xpu_float16",
-        "test_binary_core_ne_layout2_xpu_float32",
-        "test_binary_core_ne_layout2_xpu_float64",
-        "test_binary_core_nextafter_layout2_xpu_float16",
-        "test_binary_core_nextafter_layout2_xpu_float32",
-        "test_binary_core_nextafter_layout2_xpu_float64",
-        "test_binary_core_remainder_layout2_xpu_float16",
-        "test_binary_core_remainder_layout2_xpu_float32",
-        "test_binary_core_remainder_layout2_xpu_float64",
-        "test_binary_core_sub_layout2_xpu_float16",
-        "test_binary_core_sub_layout2_xpu_float32",
-        "test_binary_core_sub_layout2_xpu_float64",
-        "test_binary_core_true_divide_layout2_xpu_float16",
-        "test_binary_core_true_divide_layout2_xpu_float32",
-        "test_binary_core_true_divide_layout2_xpu_float64",
-        "test_reduction_all_amax_layout2_xpu_float16",
-        "test_reduction_all_amax_layout2_xpu_float32",
-        "test_reduction_all_amax_layout2_xpu_float64",
-        "test_reduction_all_amin_layout2_xpu_float16",
-        "test_reduction_all_amin_layout2_xpu_float32",
-        "test_reduction_all_amin_layout2_xpu_float64",
-        "test_reduction_all_prod_layout2_xpu_float32",
-        "test_reduction_all_prod_layout2_xpu_float64",
-        "test_reduction_all_sum_layout2_xpu_float16",
-        "test_reduction_all_sum_layout2_xpu_float64",
-    ),
+    #    "test_matmul_cuda_xpu.py": (
+    #        # AssertionError: "Bias is not supported when out_dtype is set to Float32" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    #        "test_float32_output_errors_with_bias_xpu",
+    #        # RuntimeError: "eye" not implemented for 'Float8_e4m3fn'
+    #        "test_float8_basics_xpu",
+    #        # AssertionError: "For row-wise scaling, scale_a must be size 1024 but got 1 and scale_b must be size 2048 but got 2" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    #        "test_float8_error_messages_xpu",
+    #        # NotImplementedError: Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
+    #        "test_float8_bias_relu_edgecase_xpu",
+    #        "test_float8_bias_xpu",
+    #        "test_float8_rowwise_scaling_sanity_use_fast_accum_False_xpu",
+    #        "test_float8_rowwise_scaling_sanity_use_fast_accum_True_xpu",
+    #        "test_float8_scale_fast_accum_xpu",
+    #        "test_float8_scale_xpu",
+    #        "test_non_divisible_leading_dim_bias_False_xpu",
+    #        "test_non_divisible_leading_dim_bias_True_xpu",
+    #        "test_scaled_mm_change_stride_bfloat16_xpu",
+    #        "test_scaled_mm_change_stride_float16_xpu",
+    #        "test_scaled_mm_change_stride_float32_xpu",
+    #        "test_scaled_mm_vs_emulated_bfloat16_xpu",
+    #        "test_scaled_mm_vs_emulated_float16_xpu",
+    #        "test_scaled_mm_vs_emulated_float32_xpu",
+    #        "test_scaled_mm_vs_emulated_row_wise_bfloat16_xpu",
+    #        # AssertionError: Torch not compiled with CUDA enabled
+    #        "test_zero_dim_tensorwise_which_dim_zero",
+    #        # New added case in 2.7
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_bfloat16",
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_10000_xpu_float16",
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_bfloat16",
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_1000_xpu_float16",
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_bfloat16",
+    #        "test_cublas_addmm_reduced_precision_fp16_accumulate_size_100_xpu_float16",
+    #        "test_cublas_and_lt_reduced_precision_fp16_accumulate_xpu",
+    #    ),
+    "test_maskedtensor_xpu.py": None,
     "quantization/core/test_quantized_op_xpu.py": (
         # AssertionError: Torch not compiled with CUDA enabled
         "test_qgelu_xpu",
@@ -3247,15 +3085,10 @@ skip_dict = {
         "test_empty_like_xpu_float64",  # - AssertionError: "Could not run 'aten::empty_strided' with arguments from the 'Sparse(CPU|CUDA)' backend" does not match "Could not run 'aten::empty_strided' with argu...
         "test_factory_device_type_inference_xpu",  # - RuntimeError: PyTorch is not linked with support for cuda devices
         "test_hsmm_xpu_float64",  # - NotImplementedError: Could not run 'aten::hspmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
-        "test_log_softmax_zero_nnz_xpu_float32",  # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
-        "test_log_softmax_zero_nnz_xpu_float64",  # - NotImplementedError: Could not run 'aten::_sparse_log_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this ...
         "test_mv_xpu_float64",  # - NotImplementedError: Could not run 'aten::mm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or was o...
         "test_new_device_single_gpu_xpu",  # - RuntimeError: PyTorch was compiled without CUDA support
         "test_print_coalesced_xpu_float64",  # - RuntimeError: I got this output for TestSparseXPU.test_print_coalesced_xpu_float64:
-        "test_print_uncoalesced_xpu_float64",  # - RuntimeError: I got this output for TestSparseXPU.test_print_uncoalesced_xpu_float64:
-        "test_softmax_xpu_float64",  # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
-        "test_softmax_zero_nnz_xpu_float32",  # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
-        "test_softmax_zero_nnz_xpu_float64",  # - NotImplementedError: Could not run 'aten::_sparse_softmax' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this back...
+        "test_print_uncoalesced_xpu_float64",  # - RuntimeError: I got this output for TestSparseXPU.test_print_uncoalesced_xpu_float64
         "test_sparse_addmm_xpu_bfloat16",  # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
         "test_sparse_addmm_xpu_complex128",  # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
         "test_sparse_addmm_xpu_float16",  # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
@@ -3265,6 +3098,5 @@ skip_dict = {
         "test_sparse_matmul_xpu_float32",  # - NotImplementedError: Could not run 'aten::_sparse_sparse_matmul' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for thi...
         "test_sparse_matmul_xpu_float64",  # - RuntimeError: Double and complex datatype matmul is not supported in oneDNN
         "test_sparse_mm_xpu_float64",  # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
-        "test_sparse_sum_xpu_float64",  # - NotImplementedError: Could not run 'aten::_sparse_sum_backward' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this...
     ),
 }

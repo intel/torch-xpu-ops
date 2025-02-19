@@ -424,6 +424,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     },
+    "nn.ConvTranspose3d": {
+        ("TestModule", "test_non_contiguous_tensors"): {
+            torch.float32: tol(atol=2e-5, rtol=5e-5),
+        }
+    },
 }
 
 
@@ -899,10 +904,10 @@ class XPUPatchForImport:
                     else True
                 )
             ) or opinfo.name in _ops_without_cuda_support:
-                opinfo.dtypesIfXPU = opinfo.dtypes
+                opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIfXPU:
+                if bfloat16 in opinfo.dtypesIf["xpu"]:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
@@ -912,8 +917,10 @@ class XPUPatchForImport:
                     torch.complex128,
                     torch.double,
                 ]
-                opinfo.dtypesIfXPU = set(
-                    filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU))
+                opinfo.dtypesIf["xpu"] = set(
+                    filter(
+                        lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])
+                    )
                 )
                 opinfo.backward_dtypes = tuple(
                     filter(

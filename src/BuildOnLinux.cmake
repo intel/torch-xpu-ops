@@ -3,21 +3,25 @@
 set(TORCH_XPU_OPS_LIBRARIES)
 set(SYCL_LINK_LIBRARIES_KEYWORD PRIVATE)
 
-add_library(
-  torch_xpu_ops
-  STATIC
-  ${ATen_XPU_CPP_SRCS}
-  ${ATen_XPU_MKL_SRCS}
-  ${ATen_XPU_NATIVE_CPP_SRCS}
-  ${ATen_XPU_GEN_SRCS}
-  ${ATen_XPU_XCCL_SRCS})
+macro(setup_common_libraries)
+  add_library(
+    torch_xpu_ops
+    STATIC
+    ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_MKL_SRCS}
+    ${ATen_XPU_NATIVE_CPP_SRCS}
+    ${ATen_XPU_GEN_SRCS}
+    ${ATen_XPU_XCCL_SRCS})
 
-if(USE_C10D_XCCL)
-  target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
-  target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
-endif()
+  if(USE_C10D_XCCL)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
+  endif()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+endmacro()
 
 if(BUILD_SEPARATE_OPS)
+  setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
     set(sycl_lib torch-xpu-ops-sycl-${name})
@@ -31,7 +35,10 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE LESS 20241211)
+# Working with the compilers which don't support device code compression, we have to split kernels
+# into multiple libraries to meet the bin size limitation.
+elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE LESS 20241205)
+  setup_common_libraries()
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
   set(ATen_XPU_SYCL_REDUCE_SRCS)
@@ -111,17 +118,19 @@ elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250001 OR ICX_DATE
   install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 else()
   sycl_add_library(
-    torch_xpu_ops_sycl_kernels
-    SHARED
+    torch_xpu_ops
+    STATIC
+    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu_ops_sycl_kernels)
-  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_sycl_kernels)
+  if(USE_C10D_XCCL)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops  PUBLIC torch::xccl)
+  endif()
 
-  install(TARGETS torch_xpu_ops_sycl_kernels DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
-
-list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 
 foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
