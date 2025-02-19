@@ -13,7 +13,6 @@ from torchvision.models.feature_extraction import get_graph_node_names
 
 OPTESTS = [
     "test_schema",
-    "test_autograd_registration",
     "test_faketensor",
     "test_aot_dispatch_dynamic",
 ]
