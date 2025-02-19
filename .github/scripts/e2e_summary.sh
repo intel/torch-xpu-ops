@@ -30,7 +30,7 @@ function get_model_result() {
             do
                 for mode in training inference
                 do
-                    colorful=$(grep "${model}" "tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
+                    colorful=$(grep "${model}" "/tmp/tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
                         color = "black";
                         exit_label = 0;
                     }{
@@ -88,16 +88,16 @@ Empty means the cases NOT run\n\n"
     printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | "
     printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
-    echo > tmp-summary.txt
-    echo > tmp-details.txt
+    echo > /tmp/tmp-summary.txt
+    echo > /tmp/tmp-details.txt
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "tmp-${suite}-${mode}-${dtype}.txt"
-        test_result="$(sed 's/, /,/g' "tmp-${suite}-${mode}-${dtype}.txt" |awk '{
+        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+        test_result="$(sed 's/, /,/g' "/tmp/tmp-${suite}-${mode}-${dtype}.txt" |awk '{
             if($0 ~/Total/){
                 total = $3;
             }
@@ -135,9 +135,9 @@ Empty means the cases NOT run\n\n"
             printf(" %d | %d | %s | %d | %d | %d | %d | %d | %d\n",
                 total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
-        echo "| ${category} | ${test_result} |" >> tmp-summary.txt
+        echo "| ${category} | ${test_result} |" >> /tmp/tmp-summary.txt
     done
-    cat tmp-summary.txt
+    cat /tmp/tmp-summary.txt
     get_model_result
 fi
 
