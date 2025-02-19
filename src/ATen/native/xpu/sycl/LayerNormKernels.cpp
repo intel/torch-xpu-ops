@@ -3,6 +3,7 @@
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/Math.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -179,6 +180,139 @@ bool can_vectorize(const T* ptr, int alignment) {
   uint64_t addr = reinterpret_cast<uint64_t>(ptr);
   return addr % alignment == 0;
 };
+
+template <typename T, typename T_ACC>
+struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using WelfordType = WelfordData<T_ACC, int64_t>;
+  using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<1> item_id) const {
+    const int64_t i = item_id.get_group(0);
+    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
+    WelfordType val(0, 0, 0, 0);
+    for (int64_t j = item_id.get_local_id(0); j < N_;
+         j += item_id.get_local_range(0)) {
+      const int64_t index = i * N_ + j;
+      val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
+    }
+
+    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
+        item_id, val, welford_op, shared_);
+
+    if (item_id.get_local_id(0) == 0) {
+      T_ACC m1;
+      T_ACC m2;
+      std::tie(m2, m1) = welford_op.project(val);
+      mean_[i] = m1;
+      rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+  }
+
+  RowwiseMomentsFunctor(
+      int64_t N,
+      T_ACC eps,
+      const T* X,
+      T_ACC* mean,
+      T_ACC* rstd)
+      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
+
+ private:
+  int64_t N_;
+  T_ACC eps_;
+  const T* X_;
+  T_ACC* mean_;
+  T_ACC* rstd_;
+  sycl_local_acc_t<WelfordType> shared_;
+};
+
+template <typename T, typename T_ACC>
+void launch_rowwise_moments_kernel(
+    int N,
+    int64_t M,
+    T_ACC eps,
+    const T* X_data,
+    T_ACC* mean_data,
+    T_ACC* rstd_data) {
+  RowwiseMomentsFunctor<T, T_ACC> kfn(N, eps, X_data, mean_data, rstd_data);
+
+  int64_t sg_size = syclMaxSubGroupSize();
+  int64_t wg_size = get_group_reduce_group_size(sg_size);
+  sycl::range<1> local_range{size_t(wg_size)};
+  sycl::range<1> global_range{size_t(M * wg_size)};
+  auto queue = getCurrentSYCLQueue();
+
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
+}
+
+template <typename T, typename T_ACC>
+struct LayerNormForwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item_id) const {
+    const int64_t i = item_id.get_group(0);
+    for (int64_t j = item_id.get_local_id(0); j < N_;
+         j += item_id.get_local_range(0)) {
+      const int64_t index = i * N_ + j;
+      const T_ACC gamma_v =
+          gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[j]);
+      const T_ACC beta_v =
+          beta_ == nullptr ? T_ACC(0) : static_cast<T_ACC>(beta_[j]);
+      Y_[index] =
+          (static_cast<T_ACC>(X_[index]) - static_cast<T_ACC>(mean_[i])) *
+              static_cast<T_ACC>(rstd_[i]) * gamma_v +
+          beta_v;
+    }
+  }
+  LayerNormForwardKernelFunctor(
+      int64_t N,
+      const T* X,
+      const T_ACC* mean,
+      const T_ACC* rstd,
+      const T* gamma,
+      const T* beta,
+      T* Y)
+      : N_(N),
+        X_(X),
+        mean_(mean),
+        rstd_(rstd),
+        gamma_(gamma),
+        beta_(beta),
+        Y_(Y) {}
+
+ private:
+  int64_t N_;
+  const T* X_;
+  const T_ACC* mean_;
+  const T_ACC* rstd_;
+  const T* gamma_;
+  const T* beta_;
+  T* Y_;
+};
+
+template <typename T, typename T_ACC>
+void launch_layer_norm_forward_kernel(
+    int N,
+    int64_t M,
+    const T* X_data,
+    const T_ACC* mean_data,
+    const T_ACC* rstd_data,
+    const T* gamma_data,
+    const T* beta_data,
+    T* Y_data) {
+  LayerNormForwardKernelFunctor<T, T_ACC> kfn(
+      N, X_data, mean_data, rstd_data, gamma_data, beta_data, Y_data);
+
+  int64_t sg_size = syclMaxSubGroupSize();
+  int64_t wg_size = get_group_reduce_group_size(sg_size);
+  sycl::range<1> local_range{size_t(wg_size)};
+  sycl::range<1> global_range(M * size_t(wg_size));
+  auto queue = getCurrentSYCLQueue();
+
+  sycl_kernel_submit(global_range, local_range, queue, kfn);
+}
 
 struct WelfordDataLN {
   float mean;
@@ -472,6 +606,18 @@ void _layer_norm_kernel(
         Y_data,
         mean_data,
         rstd_data);
+  } else {
+    launch_rowwise_moments_kernel(
+        static_cast<int>(N), M, eps, X_data, mean_data, rstd_data);
+    launch_layer_norm_forward_kernel(
+        static_cast<int>(N),
+        M,
+        X_data,
+        mean_data,
+        rstd_data,
+        gamma_data,
+        beta_data,
+        Y_data);
   }
 }
 
