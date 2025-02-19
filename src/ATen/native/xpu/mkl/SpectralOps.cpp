@@ -401,6 +401,28 @@ Tensor& _fft_c2c_mkl_out(
       out, result, normalization, result.sizes(), dim);
 }
 
+void HermitSymmImpl(Tensor& input, int64_t dim, int64_t pre_stride, int64_t cur_stride) {
+  auto* data = input.mutable_data_ptr<c10::complex<float>>();
+
+  for (int i = 0; i < input.numel(); i+= pre_stride) {
+    for (int j = 0; j < cur_stride; ++j) {
+      data[i + j].imag(0.0f);
+      data[i + pre_stride - 1 - j].imag(0.0f);
+    }
+  }
+}
+
+void HermitSymm(Tensor& input, IntArrayRef& dim, std::vector<int64_t>& strides) {
+  for (int i = 0; i < dim.size(); ++i) {
+    if (dim[i] == 0) {
+      HermitSymmImpl(input, dim[i], input.numel(), strides[0]);
+      continue;
+    }
+
+    HermitSymmImpl(input, dim[i], strides[dim[i] - 1], strides[dim[i]]);
+  }
+}
+
 Tensor _fft_c2r_mkl(
     const Tensor& self,
     IntArrayRef dim,
@@ -419,6 +441,16 @@ Tensor _fft_c2r_mkl(
   auto out = at::empty(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
+
+  // if (dim.size() > 1) {
+  //   auto c2c_dims = dim.slice(0, dim.size() - 1);
+  //   input = _fft_c2c_mkl(
+  //       self,
+  //       c2c_dims,
+  //       static_cast<int64_t>(fft_norm_mode::none),
+  //       /*forward=*/false);
+  //   // dim = dim.slice(dim.size() - 1);
+  // }
 
   printf("dim_size = %ld dims = ", dim.size());
   for (int i = 0; i < dim.size(); ++i)
@@ -444,28 +476,14 @@ Tensor _fft_c2r_mkl(
   for (int i = 0; i < strides.size(); ++i)
     printf("%ld ", strides[i]);
   printf("\n");
-  // int64_t stride_0 = 1;
-  // int64_t stride_1 = 1;
-  // for (int i = input_cpu.dim() - 1; i > dim.back(); i--)
-  //   stride_1 *= in_sizes[i];
-  // stride_0 = stride_1 * in_sizes[dim.back()];
-  // printf("%ld %ld\n", stride_0, stride_1);
-  if (dim.back() == 0) {
-    for (int i = 0; i < strides[0]; ++i) {
-      data[i].imag(0.0f);
-      data[input_cpu.numel() - 1 - i].imag(0.0f);
-    }
-  } else {
-    for (int i = 0; i < input_cpu.numel(); i+= strides[dim.back() - 1]) {
-      for (int j = 0; j < strides[dim.back()]; ++j) {
-        data[i + j].imag(0.0f);
-        data[i + strides[dim.back() - 1] - 1 - j].imag(0.0f);
-      }
-    }
-  }
 
   //data[0].imag(0.0f);
-  //data[input.numel() - 1].imag(0.0f);
+  //data[strides[0] - 1].imag(0.0f);
+  //data[strides[0] * in_sizes[0] / 2].imag(0.0f);
+  //data[strides[0] * in_sizes[0] / 2 + strides[0] - 1].imag(0.0f);
+  //printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * in_sizes[0] / 2, strides[0] * in_sizes[0] / 2 + strides[0] - 1);
+  HermitSymm(input_cpu, dim, strides);
+
   for (int i = 0; i < input_cpu.numel(); ++i)
     printf("%f %f ", data[i].real(), data[i].imag());
   printf("\n");
