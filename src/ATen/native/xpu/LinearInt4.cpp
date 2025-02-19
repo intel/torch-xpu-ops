@@ -38,14 +38,6 @@ Tensor _weight_int4pack_mm_xpu(
       ": expect qGroupSize to be 16, 32, 64, 128 or 256, got ",
       qGroupSize);
 
-  //   TORCH_CHECK(
-  //       qScaleAndZeros.dim() == 3 && qScaleAndZeros.size(0) == K &&
-  //           qScaleAndZeros.size(2) == 2,
-  //       __func__,
-  //       ": expect qScaleAndZeros to be 3d tensor with sizes [",
-  //       N,
-  //       ", :, 2]");
-
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
       common_device, A, "xpu::_weight_int4pack_mm", "A");
@@ -63,7 +55,6 @@ Tensor _weight_int4pack_mm_xpu(
     Tensor B_dequant = at::empty({K, N}, A.options());
     at::native::xpu::dequant_int4_kernel(
         B, B_dequant, qGroupSize, qScaleAndZeros);
-    // std::cout << B_dequant << std::endl;
     C = A.matmul(B_dequant);
   } else {
     at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);

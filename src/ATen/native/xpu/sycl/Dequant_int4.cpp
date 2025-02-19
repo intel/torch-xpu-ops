@@ -41,11 +41,6 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int g_k = g_idx_k * GroupK;
 
     int ld_scale_zp = n * 2;
-    // int ld_scale_zp = k / blocksize * 2;
-
-    // auto sptr = ScaleAndZeros + (g_k / blocksize) * 2 + g_n * ld_scale_zp;
-    // auto zptr = ScaleAndZeros + (g_k / blocksize) * 2 + g_n * ld_scale_zp +
-    // 1;
     auto sptr = ScaleAndZeros + g_n * 2 + (g_k / blocksize) * ld_scale_zp;
     auto zptr = ScaleAndZeros + g_n * 2 + (g_k / blocksize) * ld_scale_zp + 1;
 
@@ -55,7 +50,6 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     float tmp[TileN];
     bool high4 = sg_id % 2 != 0;
     for (int in = 0; in < TileN; in++) {
-      // int scale_offset = sg_id * TileK / blocksize * 2 + in * ld_scale_zp;
       int scale_offset = in * 2 + sg_id * TileK / blocksize * ld_scale_zp;
       int zp_offset = scale_offset;
       float scale = *(sptr + scale_offset);
