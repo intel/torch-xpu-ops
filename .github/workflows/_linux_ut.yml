@@ -155,7 +155,7 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
-          timeout 8000 pytest -v 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
       - name: Run XPU OP Regressions test on device 1
         if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
         run: |
@@ -169,7 +169,7 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
-          timeout 8000 pytest -v test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
+          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
           export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
@@ -181,6 +181,7 @@ jobs:
           mkdir -p ut_log/op_extended
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
+          cp op_extended.xml ${{ github.workspace }}/ut_log
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
@@ -192,11 +193,13 @@ jobs:
           mkdir -p ut_log/op_ut
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+          cp *.xml ${{ github.workspace }}/ut_log
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
           # test_foreach, test_decomp
           timeout 10000 python run_test_with_only.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
+          cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
       - name: Run Torch XPU UT
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
@@ -249,6 +252,11 @@ jobs:
           timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check
         shell: bash
         run: |
