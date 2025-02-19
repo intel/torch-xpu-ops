@@ -234,7 +234,7 @@ jobs:
     needs: [preci-lint-check, check-conditions]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: op_extended,test_xpu
+      ut: op_extended,torch_xpu
       runner: Windows_CI
       files-changed: ${{ needs.check-conditions.outputs.files-changed }}
       has-label: ${{ needs.check-conditions.outputs.has-label }}
