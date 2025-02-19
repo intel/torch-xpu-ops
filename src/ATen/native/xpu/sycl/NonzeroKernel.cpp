@@ -103,7 +103,6 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
 
     auto num_nonzeros = std::distance(idx_flat_begin, idx_flat_end);
 
-    // Tensor tensor_ = tensor.resize_({num_nonzeros, num_dim}).contiguous();
     bool need_to_copy = tensor.dim() == 2 &&
         tensor.sizes()[0] == num_nonzeros && tensor.sizes()[1] == self_.dim() &&
         !tensor.t().is_contiguous();
@@ -141,12 +140,6 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
 
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), kfn);
 
-      // Support non-contiguous/outplace cases
-      // TODO: Next step, we will give state of art algo/implementation.
-      // Non-contiguous/outplace cases performance will be covered there.
-      // if (tensor.data_ptr() != tensor_.data_ptr()) {
-      //  tensor.copy_(tensor_);
-      //}
     }
     if (need_to_copy) {
       tensor.copy_(tensor_.t());
