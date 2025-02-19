@@ -52,23 +52,22 @@ function get_model_result() {
                     context=$(find "${results_dir}" -name "*.csv" |\
                         grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
                         awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
-                    eval "${mode}_${dtype}=${context}"
+                    eval "export ${mode}_${dtype}=${context}"
                 done
             done
             echo -e "<tr>
                     <td>${suite}</td>
                     <td>${model}</td>
-                    $(eval "
-                        for mode in training inference
-                        do
-                            for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
-                            do
-                                printf '<td>'
-                                printf "\${${mode}_${dtype}}"
-                                printf '</td>'
-                            done
-                        done
-                    ")
+                    <td>${training_float32}</td>
+                    <td>${training_bfloat16}</td>
+                    <td>${training_float16}</td>
+                    <td>${training_amp_bf16}</td>
+                    <td>${training_amp_fp16}</td>
+                    <td>${inference_float32}</td>
+                    <td>${inference_bfloat16}</td>
+                    <td>${inference_float16}</td>
+                    <td>${inference_amp_bf16}</td>
+                    <td>${inference_amp_fp16}</td>
                 </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
         done
     done
