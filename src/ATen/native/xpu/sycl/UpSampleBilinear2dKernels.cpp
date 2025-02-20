@@ -604,6 +604,10 @@ void launch_upsample_bilinear2d_backward_kernel(
 
   bool can_optimize = input_height < output_height &&
       input_width < output_width && input_height > 1 && input_width > 1;
+  // TODO: when input 3x3, scale is 1.5, output is 4x4,
+  // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
+      input_height > (rheight * output_height);
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
@@ -782,6 +786,10 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     const size_t i_numel) {
   bool can_optimize = input_height < output_height &&
       input_width < output_width && input_height > 1 && input_width > 1;
+  // TODO: when input 3x3, scale is 1.5, output is 4x4,
+  // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
+      input_height > (rheight * output_height);
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>
