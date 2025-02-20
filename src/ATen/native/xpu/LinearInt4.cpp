@@ -4,6 +4,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
+#include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <ATen/native/xpu/sycl/LinearInt4.h>
 #include <comm/xpu_aten.h>
 
@@ -56,8 +57,16 @@ Tensor _weight_int4pack_mm_xpu(
       "xpu::_weight_int4pack_mm",
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
-
-  at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  // When M > 1 will use two kernels(dequant and gemm)
+  // When M == 1 will use one linear_int4_kernel(dequant and gemv)
+  if (M > 1) {
+    Tensor B_dequant = at::empty({K, N}, A.options());
+    at::native::xpu::dequant_int4_kernel(
+        B, B_dequant, qGroupSize, qScaleAndZeros);
+    C = A.matmul(B_dequant);
+  } else {
+    at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  }
   return C;
 }
 } // namespace at::native
