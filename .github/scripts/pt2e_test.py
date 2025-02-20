@@ -31,7 +31,7 @@ def pt2e_test(dt,scenario):
               "timm_vision_transformer_large",
               "timm_vovnet",
               "vgg16"]
-    os.chdir("../")
+
     if scenario == "accuracy" and scenario != " ":
         # cd inductor-tools/scripts/modelbench/quant/inductor_quant_acc.py
         os.chdir("inductor-tools/scripts/modelbench/quant")
