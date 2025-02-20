@@ -13,7 +13,7 @@ inputs:
   dt:
     required: true
     type: string
-    default: 'INT8','FP32'
+    default: 'INT8'
     description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16,INT8,FP32. Delimiter is comma
   mode:
     required: true
