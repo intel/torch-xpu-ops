@@ -442,15 +442,22 @@ Tensor _fft_c2r_mkl(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
-  // if (dim.size() > 1) {
-  //   auto c2c_dims = dim.slice(0, dim.size() - 1);
-  //   input = _fft_c2c_mkl(
-  //       self,
-  //       c2c_dims,
-  //       static_cast<int64_t>(fft_norm_mode::none),
-  //       /*forward=*/false);
-  //   // dim = dim.slice(dim.size() - 1);
-  // }
+  Tensor temp = input.to(at::kCPU);
+  auto* td = temp.mutable_data_ptr<c10::complex<float>>();
+  for (int i = 0; i < temp.numel(); ++i)
+    printf("%f %f ", td[i].real(), td[i].imag());
+  printf("\n\n");
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c_mkl(
+        self,
+        c2c_dims,
+        //static_cast<int64_t>(fft_norm_mode::none),
+        normalization,
+        /*forward=*/false);
+    // dim = dim.slice(dim.size() - 1);
+  }
 
   printf("dim_size = %ld dims = ", dim.size());
   for (int i = 0; i < dim.size(); ++i)
@@ -482,7 +489,7 @@ Tensor _fft_c2r_mkl(
   //data[strides[0] * in_sizes[0] / 2].imag(0.0f);
   //data[strides[0] * in_sizes[0] / 2 + strides[0] - 1].imag(0.0f);
   //printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * in_sizes[0] / 2, strides[0] * in_sizes[0] / 2 + strides[0] - 1);
-  HermitSymm(input_cpu, dim, strides);
+  //HermitSymm(input_cpu, dim, strides);
 
   for (int i = 0; i < input_cpu.numel(); ++i)
     printf("%f %f ", data[i].real(), data[i].imag());
@@ -493,15 +500,15 @@ Tensor _fft_c2r_mkl(
   // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   // out_sizes[dim.back()] = last_dim_size;
 
-  if (dim.size() > 1) {
-    auto c2c_dims = dim.slice(0, dim.size() - 1);
-    input = _fft_c2c_mkl(
-        self,
-        c2c_dims,
-        static_cast<int64_t>(fft_norm_mode::none),
-        /*forward=*/false);
-    // dim = dim.slice(dim.size() - 1);
-  }
+  // if (dim.size() > 1) {
+  //   auto c2c_dims = dim.slice(0, dim.size() - 1);
+  //   input = _fft_c2c_mkl(
+  //       self,
+  //       c2c_dims,
+  //       static_cast<int64_t>(fft_norm_mode::none),
+  //       /*forward=*/false);
+  //   // dim = dim.slice(dim.size() - 1);
+  // }
 
   impl::_exec_fft(
       out,
