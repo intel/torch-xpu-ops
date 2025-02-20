@@ -288,7 +288,7 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
       } else {
         c = (index / input_width_ / input_height_) % channels_;
         w1 = index % input_width_;
-        h1 = (index / input_width_) % input_width_;
+        h1 = (index / input_width_) % input_height_;
         n = index / input_width_ / input_height_ / channels_;
       }
       idata_[index] = static_cast<scalar_t>(0);
@@ -387,7 +387,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
       } else {
         c = (index / input_width_ / input_height_) % channels_;
         w1 = index % input_width_;
-        h1 = (index / input_width_) % input_width_;
+        h1 = (index / input_width_) % input_height_;
         n = index / input_width_ / input_height_ / channels_;
       }
       idata_[index] = static_cast<scalar_t>(0);
