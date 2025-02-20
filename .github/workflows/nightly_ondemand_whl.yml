@@ -252,16 +252,16 @@ jobs:
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
-    runs-on: [ self-hosted, Linux ]
+    runs-on: [self-hosted,Linux,X64,test]
     permissions:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-WHL-Tests
+    needs: Linux-Nightly-Ondemand-PT2E-WHL-Tests
     steps:
       - name: Report github issue for XPU OPS nightly
-        if: github.repository_owner == 'intel'
+        if: github.repository_owner == 'kaileiyx'
         run: |
           set -xe
           # Test env
