@@ -13,6 +13,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/126516",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/143739",
+        # Allow XPU device for validating the arguments to sparse compressed tensor factory functions
+        "https://github.com/pytorch/pytorch/pull/147306",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
