@@ -1,5 +1,6 @@
 # Owner(s): ["module: intel"]
 
+import re
 import unittest
 from functools import partial
 
@@ -34,6 +35,7 @@ torch.testing._internal.common_cuda.SM90OrLater = True
 with XPUPatchForImport(False):
     from test_matmul_cuda import (
         e4m3_type,
+        e5m2_type,
         f8_msg,
         mm_float8,
         mm_float8_emulated,
@@ -45,7 +47,7 @@ with XPUPatchForImport(False):
     )
 
 
-def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = False):
+def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = False, fp16_accumulate: bool = False):
     #
     # Check for catastrophic cuBLAS inaccuracy by measuring the deviation between
     # results from the CUDA invocation of torch.addmm and the CPU invocation
@@ -57,12 +59,10 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     # which fail the threshold check
     orig_bf16 = torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
     orig_fp16 = torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
-    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = (
-        reduced_precision
-    )
-    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = (
-        reduced_precision
-    )
+    orig_fp16_accumulate = torch.backends.cuda.matmul.allow_fp16_accumulation
+    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = reduced_precision
+    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = reduced_precision
+    torch.backends.cuda.matmul.allow_fp16_accumulation = fp16_accumulate
     # Make random tensors on CPU (seed set on common_utils.py import)
     # (Not using numpy because it does not support bfloat16)
     make_arg = partial(make_tensor, dtype=dtype, device="cpu")
@@ -70,6 +70,10 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     m_input = make_arg((n, p))
     m_1 = make_arg((n, m))
     m_2 = make_arg((m, p))
+    # scale to abate overflows in fp16 accum
+    if fp16_accumulate:
+        m_1 = m_1 / 100
+        m_2 = m_2 / 100
     # *(B)FLOAT16 Special Handling*
     # Backend does not tensorize float16 on CPU,
     # and bloat16 may present accuracy issues,
@@ -103,6 +107,7 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     self.assertEqual(res_cpu, res_cuda)
     torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = orig_bf16
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = orig_fp16
+    torch.backends.cuda.matmul.allow_fp16_accumulation = orig_fp16_accumulate
 
 
 @toleranceOverride({torch.float16: xtol(atol=1e-3, rtol=2e-3)})
@@ -115,17 +120,11 @@ def cublas_addmm_alignment(self, dtype):
             offsets = [0, 0, 0]
             offsets[idx] = offset
             x_offset, a_offset, b_offset = offsets
-            A = torch.rand(
-                (5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device
-            )
+            A = torch.rand((5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device)
             A = A[a_offset:].reshape(5120, 2560)
-            X = torch.rand(
-                (26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device
-            )
+            X = torch.rand((26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device)
             X = X[x_offset:].reshape(26, 1, 2560)
-            B = torch.rand(
-                (5120 + b_offset), requires_grad=True, dtype=dtype, device=device
-            )
+            B = torch.rand((5120 + b_offset), requires_grad=True, dtype=dtype, device=device)
             B = B[b_offset:].reshape(5120)
             out = torch.nn.functional.linear(X, A, B)
             self.assertEqual(out, torch.matmul(X, A.transpose(1, 0)) + B)
@@ -153,11 +152,21 @@ def _test_scaled_mm_vs_emulated(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
+        x_fp8,
+        y_fp8,
+        a_scale=x_scale,
+        b_scale=y_scale,
+        output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
+    out_emulated = mm_float8_emulated(
+        x_fp8,
+        x_scale,
+        y_fp8,
+        y_scale,
+        output_dtype
+    )
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -187,6 +196,9 @@ def _test_scaled_mm_change_stride(self, base_dtype):
     x = torch.empty_strided((16, 16), (16, 1), device="xpu", dtype=base_dtype)
     y = torch.empty_strided((16, 32), (1, 64), device="xpu", dtype=base_dtype)
 
+    x.normal_()
+    y.normal_()
+
     x_scale = tensor_to_scale(x, input_dtype).float()
     y_scale = tensor_to_scale(y, input_dtype).float()
 
@@ -195,11 +207,21 @@ def _test_scaled_mm_change_stride(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
+        x_fp8,
+        y_fp8,
+        a_scale=x_scale,
+        b_scale=y_scale,
+        output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
+    out_emulated = mm_float8_emulated(
+        x_fp8,
+        x_scale,
+        y_fp8,
+        y_scale,
+        output_dtype
+    )
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -226,35 +248,41 @@ def _test_float8_error_messages(self, device) -> None:
     x = torch.full((M, K), fill_value, device=device)
     y = torch.full((N, K), fill_value, device=device)
 
-    x_fp8 = x.to(torch.float8_e4m3fn)
-    y_fp8 = y.to(torch.float8_e4m3fn).t()
+    x_fp8 = x.to(e4m3_type)
+    y_fp8 = y.to(e4m3_type).t()
 
     with self.assertRaisesRegex(
         RuntimeError,
-        "For row-wise scaling, scale_a must be size 1024 but got 1 and scale_b must be size 2048 but got 2",
+        re.escape(
+            "For RowWise scaling, scale_a should be (1024, 1) and scale_b "
+            "should be (1, 2048). Got scale_a.size()=(1, 1) and scale_b.size()=(1, 2)"
+        ),
     ):
         torch._scaled_mm(
             x_fp8,
             y_fp8,
-            scale_a=torch.ones((), device="xpu"),
-            scale_b=torch.ones((2), device="xpu"),
+            scale_a=torch.ones((1, 1), device="xpu"),
+            scale_b=torch.ones((1, 2), device="xpu"),
             out_dtype=torch.bfloat16,
         )
 
     with self.assertRaisesRegex(
         RuntimeError,
-        "For row-wise scaling, scale_b must have size 2048 but got 2049.",
+        re.escape(
+            " For RowWise scaling, scale_a should be (1024, 1) and scale_b "
+            "should be (1, 2048). Got scale_a.size()=(1024, 1) and scale_b.size()=(1, 2049)"
+        ),
     ):
         torch._scaled_mm(
             x_fp8,
             y_fp8,
-            scale_a=torch.ones((M), device="xpu"),
-            scale_b=torch.ones((N + 1), device="xpu"),
+            scale_a=torch.ones((M, 1), device="xpu"),
+            scale_b=torch.ones((1, N + 1), device="xpu"),
             out_dtype=torch.bfloat16,
         )
     with self.assertRaisesRegex(
         RuntimeError,
-        "Both scale_a and scale_b must be 1-dimensional tensors",
+        re.escape("For non-TensorWise scaling, scale tensors must be 2-dimensional"),
     ):
         torch._scaled_mm(
             x_fp8,
@@ -266,25 +294,28 @@ def _test_float8_error_messages(self, device) -> None:
 
     with self.assertRaisesRegex(
         RuntimeError,
-        "Both scale_a and scale_b must be contiguous.",
+        re.escape(
+            "Both scale_a and scale_b must be contiguous for RowWise scaling."
+        ),
     ):
         torch._scaled_mm(
             x_fp8,
             y_fp8,
-            scale_a=torch.ones((M), device="xpu"),
-            scale_b=torch.ones((N * 2), device="xpu")[::2],
+            scale_a=torch.ones((M, 1), device="xpu"),
+            scale_b=torch.ones((1, N * 2), device="xpu")[:, ::2],
             out_dtype=torch.bfloat16,
         )
 
+    # Note re.compile is used, not re.escape. This is to accomodate fn vs fnuz type message.
     with self.assertRaisesRegex(
         RuntimeError,
-        "For row-wise scaling the second input is required to be a float8_e4m3fn dtype.",
+        r"Expected b\.dtype\(\) == at::kFloat8_e4m3fnu?z? to be true, but got false\.",
     ):
         torch._scaled_mm(
             x_fp8,
-            y_fp8.to(torch.float8_e5m2),
-            scale_a=torch.ones((M), device="xpu"),
-            scale_b=torch.ones((N), device="xpu"),
+            y_fp8.to(e5m2_type),
+            scale_a=torch.ones((M, 1), device="xpu"),
+            scale_b=torch.ones((1, N), device="xpu"),
             out_dtype=torch.bfloat16,
         )
 
@@ -305,8 +336,8 @@ def _test_scaled_mm_vs_emulated_row_wise(self, base_dtype):
     x_scales = tensor_to_scale(x, input_dtype, dim=1).float()
     y_scales = tensor_to_scale(y, input_dtype, dim=0).float()
 
-    x_fp8 = to_fp8_saturated(x * x_scales[:, None], e4m3_type)
-    y_fp8 = to_fp8_saturated(y * y_scales[None, :], e4m3_type)
+    x_fp8 = to_fp8_saturated(x * x_scales, e4m3_type)
+    y_fp8 = to_fp8_saturated(y * y_scales, e4m3_type)
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
@@ -315,7 +346,7 @@ def _test_scaled_mm_vs_emulated_row_wise(self, base_dtype):
 
     # Calculate emulated F8 mm
     out_emulated = mm_float8_emulated(
-        x_fp8, x_scales[:, None], y_fp8, y_scales[None, :], output_dtype
+        x_fp8, x_scales, y_fp8, y_scales, output_dtype
     )
 
     if base_dtype in {torch.bfloat16, torch.float16}:
@@ -329,6 +360,31 @@ def _test_scaled_mm_vs_emulated_row_wise(self, base_dtype):
 TestFP8MatmulCuda.test_scaled_mm_vs_emulated_row_wise = (
     _test_scaled_mm_vs_emulated_row_wise
 )
+
+
+def _cublas_and_lt_reduced_precision_fp16_accumulate(self):
+    orig_fp16_accumulate = torch.backends.cuda.matmul.allow_fp16_accumulation
+    torch.backends.cuda.matmul.allow_fp16_accumulation = True
+    x = torch.rand(32, 512, 512, device='xpu', dtype=torch.half)
+    w = torch.rand(512, 512, device='xpu', dtype=torch.half)
+    b = torch.rand(512, device='xpu', dtype=torch.half)
+    out = torch.nn.functional.linear(x, w, b)
+    out_cpu = torch.nn.functional.linear(x.cpu(), w.cpu(), b.cpu())
+    self.assertEqual(out, out_cpu, atol=5e-3, rtol=8e-3)
+
+    a = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
+    b = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
+    c = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
+    out = torch.baddbmm(a, b, c)
+    out_cpu = torch.baddbmm(a.cpu(), b.cpu(), c.cpu())
+    self.assertEqual(out, out_cpu, atol=1e-3, rtol=5e-3)
+    torch.backends.cuda.matmul.allow_fp16_accumulation = orig_fp16_accumulate
+
+
+TestMatmulCuda.test_cublas_and_lt_reduced_precision_fp16_accumulate = (
+    _cublas_and_lt_reduced_precision_fp16_accumulate
+)
+
 
 TestMixedDtypesLinearCuda._default_dtype_check_enabled = True
 TestFP8MatmulCuda._default_dtype_check_enabled = True
