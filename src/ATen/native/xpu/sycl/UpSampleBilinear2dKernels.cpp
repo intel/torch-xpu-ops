@@ -291,7 +291,7 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
         h1 = (index / input_width_) % input_height_;
         n = index / input_width_ / input_height_ / channels_;
       }
-      idata_[index] = static_cast<scalar_t>(0);
+      accscalar_t tmp = static_cast<accscalar_t>(0);
       const int in_index_w = (output_width_ - 1) * w1;
       const int in_index_h = (output_height_ - 1) * h1;
       int out_index_w_start = w1 > 0 ? (output_width_ - 1) * (w1 - 1) /
@@ -321,27 +321,26 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
           accscalar_t scale_h = static_cast<accscalar_t>(1) -
               distance_h / static_cast<accscalar_t>(output_height_ - 1);
           if constexpr (is_channel_last) {
-            idata_[index] += static_cast<scalar_t>(
-                static_cast<accscalar_t>(odata_[idx_cl(
-                    n,
-                    point_h / (input_height_ - 1),
-                    point_w / (input_width_ - 1),
-                    c,
-                    output_height_,
-                    output_width_,
-                    channels_)]) *
-                scale_w * scale_h);
+            tmp += static_cast<accscalar_t>(odata_[idx_cl(
+                       n,
+                       point_h / (input_height_ - 1),
+                       point_w / (input_width_ - 1),
+                       c,
+                       output_height_,
+                       output_width_,
+                       channels_)]) *
+                scale_w * scale_h;
           } else {
             size_t output_index = ((n * channels_ + c) * output_height_ +
                                    point_h / (input_height_ - 1)) *
                     output_width_ +
                 point_w / (input_width_ - 1);
-            idata_[index] += static_cast<scalar_t>(
-                static_cast<accscalar_t>(odata_[output_index]) * scale_w *
-                scale_h);
+            tmp += static_cast<accscalar_t>(odata_[output_index]) * scale_w *
+                scale_h;
           }
         }
       }
+      idata_[index] = static_cast<scalar_t>(tmp);
     }
   }
   UpsampleBilinear2dBackwardAlignKernelFunctor(
@@ -390,7 +389,7 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
         h1 = (index / input_width_) % input_height_;
         n = index / input_width_ / input_height_ / channels_;
       }
-      idata_[index] = static_cast<scalar_t>(0);
+      accscalar_t tmp = static_cast<accscalar_t>(0);
       // suppose we interpolate in an image with width =
       // input_width*output_width*2
       const int in_index_w = output_width_ * (2 * w1 + 1);
@@ -435,28 +434,27 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
                 (point_h < output_height_ * input_height_ * 2 - input_height_));
           scale_h += is_boundary_h * (static_cast<accscalar_t>(1) - scale_h);
           if constexpr (is_channel_last) {
-            idata_[index] += static_cast<scalar_t>(
-                static_cast<accscalar_t>(odata_[idx_cl(
-                    n,
-                    (point_h - input_height_) / (2 * input_height_),
-                    (point_w - input_height_) / (2 * input_width_),
-                    c,
-                    output_height_,
-                    output_width_,
-                    channels_)]) *
-                scale_w * scale_h);
+            tmp += static_cast<accscalar_t>(odata_[idx_cl(
+                       n,
+                       (point_h - input_height_) / (2 * input_height_),
+                       (point_w - input_height_) / (2 * input_width_),
+                       c,
+                       output_height_,
+                       output_width_,
+                       channels_)]) *
+                scale_w * scale_h;
           } else {
             size_t output_index =
                 ((n * channels_ + c) * output_height_ +
                  (point_h - input_height_) / (2 * input_height_)) *
                     output_width_ +
                 (point_w - input_height_) / (2 * input_width_);
-            idata_[index] += static_cast<scalar_t>(
-                static_cast<accscalar_t>(odata_[output_index]) * scale_w *
-                scale_h);
+            tmp += static_cast<accscalar_t>(odata_[output_index]) * scale_w *
+                scale_h;
           }
         }
       }
+      idata_[index] = static_cast<scalar_t>(tmp);
     }
   }
   UpsampleBilinear2dBackwardNotAlignKernelFunctor(
@@ -606,8 +604,10 @@ void launch_upsample_bilinear2d_backward_kernel(
       input_width < output_width && input_height > 1 && input_width > 1;
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  // I also have to skip double because of rounding issues, it will not pass ut
   can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height);
+      input_height > (rheight * output_height) &&
+      !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
@@ -788,8 +788,10 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
       input_width < output_width && input_height > 1 && input_width > 1;
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  // I also have to skip double because of rounding issues, it will not pass ut
   can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height);
+      input_height > (rheight * output_height) &&
+      !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>

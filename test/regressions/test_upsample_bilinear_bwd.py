@@ -12,7 +12,7 @@ class TestTorchMethod(TestCase):
 
         def _test_upsample_bilinear_bwd(dtype):
             grad_output_cpu = torch.randn(
-                (1, 3, 512, 512), dtype=dtype, device=cpu_device
+                (4, 4, 512, 512), dtype=dtype, device=cpu_device
             )
             for memory_format in [torch.channels_last, torch.contiguous_format]:
                 for align_corners in [True, False]:
@@ -22,13 +22,13 @@ class TestTorchMethod(TestCase):
                     r_cpu = torch._ops.ops.aten.upsample_bilinear2d_backward(
                         grad_output_cpu.to(torch.float64),
                         output_size=(512, 512),
-                        input_size=(1, 3, 256, 256),
+                        input_size=(4, 4, 256, 256),
                         align_corners=align_corners,
                     )
                     r_xpu = torch._ops.ops.aten.upsample_bilinear2d_backward(
                         grad_output_cpu.to("xpu"),
                         output_size=(512, 512),
-                        input_size=(1, 3, 256, 256),
+                        input_size=(4, 4, 256, 256),
                         align_corners=align_corners,
                     )
 
