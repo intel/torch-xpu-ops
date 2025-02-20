@@ -7,13 +7,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('junitxml', nargs='+')
 args = parser.parse_args()
 
-benchmark_failures = {
-    'link': 'https://github.com/huggingface/transformers/pull/35620',
+layernorm_accuracy_failures = {
+    'link': 'https://github.com/pytorch/pytorch/issues/141642',
     'cuda': 'passed',
 }
 
-layernorm_accuracy_failures = {
-    'link': 'https://github.com/pytorch/pytorch/issues/141642',
+# Tests were enabled for non-cuda backends by v4.49.0 (previously were
+# skipped for xpu):
+# https://github.com/huggingface/transformers/commit/2fa876d2d824123b80ced9d689f75a153731769b
+test_cpu_offload_failures = {
+    'link': 'https://github.com/huggingface/accelerate/issues/3402',
     'cuda': 'passed',
 }
 
@@ -30,21 +33,6 @@ layernorm_accuracy_failures = {
 #   }
 # Use None if no metadata is needed.
 failing_cases = {
-    'tests.benchmark.test_benchmark.BenchmarkTest': {
-        'test_inference_encoder_decoder_with_configs': benchmark_failures,
-        'test_inference_fp16': benchmark_failures,
-        'test_inference_no_configs': benchmark_failures,
-        'test_inference_no_configs_only_pretrain': benchmark_failures,
-        'test_inference_no_model_no_architectures': benchmark_failures,
-        'test_inference_torchscript': benchmark_failures,
-        'test_inference_with_configs': benchmark_failures,
-        'test_save_csv_files': benchmark_failures,
-        'test_trace_memory': benchmark_failures,
-        'test_train_encoder_decoder_with_configs': benchmark_failures,
-        'test_train_no_configs': benchmark_failures,
-        'test_train_no_configs_fp16': benchmark_failures,
-        'test_train_with_configs': benchmark_failures,
-    },
     'tests.generation.test_logits_process.LogitsProcessorTest': {
         'test_watermarking_processor': { 'cuda': 'passed', },
     },
@@ -66,6 +54,21 @@ failing_cases = {
         'test_prepare_inputs_for_generation_decoder_llm': { 'cuda': 'failed' },
         'test_stop_sequence_stopping_criteria': { 'cuda': 'failed' },
     },
+    'tests.models.blip.test_modeling_blip.BlipTextImageModelTest': {
+        'test_cpu_offload': test_cpu_offload_failures,
+        'test_disk_offload_bin': test_cpu_offload_failures,
+        'test_disk_offload_safetensors': test_cpu_offload_failures,
+    },
+    'tests.models.blip.test_modeling_blip.BlipVQAModelTest': {
+        'test_cpu_offload': test_cpu_offload_failures,
+        'test_disk_offload_bin': test_cpu_offload_failures,
+        'test_disk_offload_safetensors': test_cpu_offload_failures,
+    },
+    'tests.models.dab_detr.test_modeling_dab_detr.DabDetrModelTest': {
+        'test_cpu_offload': test_cpu_offload_failures,
+        'test_disk_offload_bin': test_cpu_offload_failures,
+        'test_disk_offload_safetensors': test_cpu_offload_failures,
+    },
     'tests.models.detr.test_image_processing_detr.DetrImageProcessingTest': {
         'test_fast_is_faster_than_slow': { 'flaky': True },
     },
@@ -86,13 +89,42 @@ failing_cases = {
     'tests.models.mamba.test_modeling_mamba.MambaIntegrationTests': {
         'test_simple_generate_1_cpu': { 'cuda': 'passed' },
     },
+    # introduced by v4.49.0:
+    # https://github.com/huggingface/transformers/commit/be2ac0916a7902e1683d708805270142257a254a
+    'tests.models.paligemma.test_modeling_paligemma.PaliGemmaForConditionalGenerationModelTest': {
+        'test_generate_compilation_all_outputs': { 'cuda': 'failed' },
+    },
+    # introduced by v4.49.0:
+    # https://github.com/huggingface/transformers/commit/be2ac0916a7902e1683d708805270142257a254a
+    'tests.models.paligemma2.test_modeling_paligemma2.PaliGemma2ForConditionalGenerationModelTest': {
+        'test_generate_compilation_all_outputs': { 'cuda': 'failed' },
+    },
     'tests.models.pix2struct.test_modeling_pix2struct.Pix2StructModelTest': {
         'test_new_cache_format_0': { 'cuda': 'passed' },
         'test_new_cache_format_1': { 'cuda': 'passed' },
         'test_new_cache_format_2': { 'cuda': 'passed' },
     },
+    'tests.models.qwen2_5_vl.test_processor_qwen2_5_vl.Qwen2_5_VLProcessorTest': {
+        'test_chat_template_video_custom_sampling': { 'cuda': 'failed' },
+        'test_chat_template_video_special_processing': { 'cuda': 'failed' },
+    },
+    'tests.models.qwen2_vl.test_processor_qwen2_vl.Qwen2VLProcessorTest': {
+        'test_chat_template_video_custom_sampling': { 'cuda': 'failed' },
+        'test_chat_template_video_special_processing': { 'cuda': 'failed' },
+    },
+    # different failure signature than described in 'test_cpu_offload_failures'
+    'tests.models.roberta.test_modeling_roberta.RobertaModelTest': {
+        'test_cpu_offload': { 'cuda': 'failed' },
+        'test_disk_offload_bin': { 'cuda': 'failed' },
+        'test_disk_offload_safetensors': { 'cuda': 'failed' },
+    },
     'tests.models.speecht5.test_modeling_speecht5.SpeechT5ForTextToSpeechIntegrationTests': {
         'test_batch_generation': { 'cuda': 'passed' },
+    },
+    'tests.models.vilt.test_modeling_vilt.ViltModelTest': {
+        'test_cpu_offload': test_cpu_offload_failures,
+        'test_disk_offload_bin': test_cpu_offload_failures,
+        'test_disk_offload_safetensors': test_cpu_offload_failures,
     },
     'tests.pipelines.test_pipelines_automatic_speech_recognition.AutomaticSpeechRecognitionPipelineTests': {
         'test_small_model_pt_seq2seq': { 'cuda': "failed" },
