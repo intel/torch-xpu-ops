@@ -60,7 +60,7 @@ runs:
         else
           wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
         fi
-        rm -rf imagenet && mkdir -p workspace/benchmark/imagenet/val && mv ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && cd workspace/benchmark/imagenet/val && tar -xvf ILSVRC2012_img_val.tar && rm -f ILSVRC2012_img_val.tar
+        rm -rf workspace/benchmark/imagenet && mkdir -p workspace/benchmark/imagenet/val && mv ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && cd workspace/benchmark/imagenet/val && tar -xvf ILSVRC2012_img_val.tar && rm -f ILSVRC2012_img_val.tar
         cd ../../ && wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
         bash valprep.sh
 
@@ -73,7 +73,7 @@ runs:
             cd vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           fi
-          #cd ../ && python -c "import torch, torchvision, torchaudio"
+          cd ../ && python -c "import torch, torchvision, torchaudio"
           #rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
           #cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           #python install.py --continue_on_fail
@@ -107,11 +107,10 @@ runs:
       run: |
         source activate pt2e_ci
         source .github/scripts/env.sh ${{ inputs.pytorch }}
-        cp .github/scripts/inductor_xpu_test.sh ../pytorch
+        cp .github/scripts/pt2e_test.py ../pytorch
         cd ../pytorch
 
         # check param
-        set -xe
         python pt2e_test.py ${dt} ${scenario}
         wait
         # summarize pass rate

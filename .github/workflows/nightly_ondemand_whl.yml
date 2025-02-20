@@ -56,19 +56,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut }}
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      pytorch: nightly_wheel
-      runner: linux.idc.xpu
 
-  Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_e2e
+  Linux-Nightly-Ondemand-PT2E-WHL-Tests:
+    runs-on: [self-hosted,Linux,X64,test]
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: github.repository_owner == 'kaileiyx'
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
@@ -96,16 +88,16 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
+          conda remove --all -y -n pt2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/pt2e_ci
+          conda create -n pt2e_ci python=${{ env.python }} cmake ninja -y
+          source activate pt2e_ci
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
         run: |
           pwd
-          source activate e2e_ci
+          source activate pt2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -127,7 +119,7 @@ jobs:
       - name: Identify pinned versions
         id: pinned
         run: |
-          source activate e2e_ci
+          source activate pt2e_ci
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -150,20 +142,20 @@ jobs:
           rm -rf /tmp/torchinductor_*
 
       # Nihglty launch
-      - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
+      - name: Nightly Huggingface INT8,FP32 Inference & Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: huggingface
           env_prepare: true
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          dt: INT8,FP32
           mode: inference,training
           scenario: accuracy
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: torchbench
           dt: bfloat16
@@ -174,7 +166,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: timm_models
           dt: float16
@@ -186,7 +178,7 @@ jobs:
       # Weekly launch
       - name: Weekly Huggingface Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: huggingface
           env_prepare: true
@@ -197,7 +189,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: torchbench
           env_prepare: true
@@ -208,7 +200,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: timm_models
           env_prepare: true
@@ -220,7 +212,7 @@ jobs:
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: github.event_name != 'schedule'
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
