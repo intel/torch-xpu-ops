@@ -297,6 +297,7 @@ jobs:
             done <_failures_uniq.txt
           } >> $GITHUB_STEP_SUMMARY
       - name: Print not implemented XPU backend ops
+        if: ${{ ! cancelled() }}
         run: |
           cd transformers
           {
