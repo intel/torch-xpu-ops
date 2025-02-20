@@ -107,7 +107,7 @@ runs:
         #cp .github/scripts/pt2e_test.py ../pytorch
         #cd ../pytorch
         # check param
-        python .github/scripts/pt2e_test.py ${dt} ${scenario}
+        python .github/scripts/pt2e_test.py ${{ inputs.dt }} ${{ inputs.scenario }}
         wait
         # summarize pass rate
         LOG_DIR="inductor_log/${suite}/${dt}"
