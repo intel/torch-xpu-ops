@@ -68,7 +68,7 @@ concurrency:
 jobs:
   Linux-Nightly-Ondemand-Build:
     secrets: inherit
-    if: always()
+    if: ${{ ! cancelled() }}
     name: linux-nightly-ondemand
     permissions:
       issues: write
