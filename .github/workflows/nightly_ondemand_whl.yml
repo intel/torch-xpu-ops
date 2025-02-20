@@ -21,12 +21,12 @@ on:
       suite:
         required: true
         type: string
-        default: 'huggingface'
+        default: 'torchbench'
         description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
       dt:
         required: true
         type: string
-        default: 'float32'
+        default: 'INT8'
         description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
       mode:
         required: true

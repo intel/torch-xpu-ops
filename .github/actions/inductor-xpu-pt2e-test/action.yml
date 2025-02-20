@@ -5,7 +5,7 @@ inputs:
   suite:
     required: true
     type: string
-    default: 'huggingface'
+    default: 'torchbench'
     description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
   env_prepare:
     required: false
@@ -56,9 +56,9 @@ runs:
         # prepare Imagenet val dataset
         rm -rf inductor-tools && git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools.git
         rm -rf benchmark && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark.git
-        wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
-        rm -rf workspace/benchmark/imagenet && mkdir -p workspace/benchmark/imagenet/val && mv ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && cd workspace/benchmark/imagenet/val && tar -xvf ILSVRC2012_img_val.tar && rm -f ILSVRC2012_img_val.tar
-        cd ../../ && wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+        # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
+        cd ../ && rm -rf workspace/benchmark/imagenet && mkdir -p workspace/benchmark/imagenet/val && cp ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && cd workspace/benchmark/imagenet/val && tar -xvf ILSVRC2012_img_val.tar
+        rm -rf valprep.sh && wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
         bash valprep.sh
 
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
