@@ -73,7 +73,7 @@ jobs:
     name: linux-nightly-ondemand
     permissions:
       issues: write
-    uses: ./.github/workflows/_linux_build.yml
+    uses: ./.github/workflows/_linux_pt2e.yml
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
