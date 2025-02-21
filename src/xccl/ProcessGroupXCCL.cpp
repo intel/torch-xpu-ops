@@ -146,7 +146,7 @@ onecclRedOp_t getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool && reduceOp == ReduceOp::SUM) {
       // Map sum to max for bool tensors to avoid overflow issues with sum.
-      return onecclRedOp_t::max;
+      return onecclRedOp_t::ONECCL_MAX;
     }
     return xcclOps.at(reduceOp);
   } catch (const std::out_of_range&) {
@@ -271,11 +271,10 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
 }
 
 void ProcessGroupNCCL::broadcastUniqueXCCLID(
-  onecclUniqueId* xcclID,
+    onecclUniqueId* xcclID,
     bool isSingleP2POp,
     const std::string& p2pKey,
     int p2pRank) {
-
   std::string storeKey;
   if (!isSingleP2POp) {
     storeKey = std::to_string(xcclCommCounter_++);
@@ -371,7 +370,6 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
-
   if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
     onecclGetUniqueId(&uid);
   }
@@ -409,7 +407,7 @@ void ProcessGroupXCCL::groupStart() {
 }
 
 void ProcessGroupXCCL::groupEnd() {
-  onecclGroupEnd;
+  onecclGroupEnd();
   --xcclActiveGroupCounter_;
 }
 
@@ -1198,14 +1196,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
         const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         onecclReduce(
-          input.data_ptr(),
-          output.data_ptr(),
-          (size_t)input.numel(),
-          xcclDataType,
-          xcclReduceOp,
-          root,
-          comm,
-          stream.queue());
+            input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
+            xcclReduceOp,
+            root,
+            comm,
+            stream.queue());
         return;
       },
       OpType::REDUCE,
@@ -1623,7 +1621,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 //         "xpu_alltoall_base: tensors are not equal in size or data type");
 //     TORCH_CHECK(
 //         outputTensor.size(0) % size_ == 0,
-//         "xpu_alltoall_base: tensor's dim 0 does not divide equally across group size");
+//         "xpu_alltoall_base: tensor's dim 0 does not divide equally across
+//         group size");
 //     return collective(
 //         inputTensor,
 //         outputTensor,
@@ -1726,7 +1725,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 
 //   RECORD_PARAM_COMMS_DATA(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputTensors, // inputTensors
 //       outputTensors, // outputTensors
@@ -1764,8 +1764,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 //             outputTensors, recvCounts, flatOutput, flatRecvCount);
 //         if (!isInputFlat) {
 //           auto flatInputSplits = flatInput.split_with_sizes(
-//               c10::IntArrayRef((int64_t*)sendCounts.data(), sendCounts.size()),
-//               0);
+//               c10::IntArrayRef((int64_t*)sendCounts.data(),
+//               sendCounts.size()), 0);
 
 //           for (int i = 0; i < size_; i++) {
 //             flatInputSplits[i].copy_(inputTensors[i].view({-1}));
@@ -1786,8 +1786,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 //         if (!isOutputFlat) {
 //           ret_evt.wait();
 //           auto flatOutputSplits = flatOutput.split_with_sizes(
-//               c10::IntArrayRef((int64_t*)recvCounts.data(), recvCounts.size()),
-//               0);
+//               c10::IntArrayRef((int64_t*)recvCounts.data(),
+//               recvCounts.size()), 0);
 
 //           for (int i = 0; i < size_; i++) {
 //             outputTensors[i].view({-1}).copy_(flatOutputSplits[i]);

@@ -6,7 +6,7 @@
 #define CCL_ENABLE_ZE
 #define CCL_ENABLE_SYCL
 
-#include <oneapi/ccl.hpp>
+#include <oneapi/ccl.h>
 #include <exception>
 #include <future>
 #include <list>
@@ -201,11 +201,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // `xcclActiveGroupCounter_` is introduced to track group calls made
           // in the frontend. In this scenario, the `groupStart` wrap API is
           // used.
-          ccl::group_start();
+          onecclGroupStart();
         },
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
-          ccl::group_end();
+          onecclGroupEnd();
         },
         opType,
         profilingTitle);
@@ -342,39 +342,41 @@ class TORCH_API ProcessGroupXCCL : public Backend {
  private:
   std::mutex kvs_mutex;
 
-  ccl::shared_ptr_class<ccl::kvs> get_kvs(
-      int rank,
-      c10d::Store& store,
-      bool singleP2POp = false,
-      const std::string& p2pKey = "",
-      int p2pRank = 0) {
-    std::lock_guard<std::mutex> lock(kvs_mutex);
-    ccl::shared_ptr_class<ccl::kvs> kvs;
-    std::string storeKey;
-    if (!singleP2POp) {
-      storeKey = std::to_string(xcclCommCounter_++);
-    } else {
-      storeKey = p2pKey;
-    }
-    // Rank 0 broadcast the bootstrap network information to other ranks
-    if (rank == 0 || (singleP2POp && p2pRank == 0)) {
-      kvs = ccl::create_main_kvs();
-      ccl::kvs::address_type main_addr = kvs->get_address();
-      auto ccl_kvs_addr =
-          std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-      store.set(storeKey, ccl_kvs_addr);
-    } else {
-      auto ccl_kvs_addr = store.get(storeKey);
-      if (ccl_kvs_addr.size() != ccl::kvs::address_max_size) {
-        throw std::runtime_error("Unexpected ccl kvs addr from the store\n");
-      }
-      ccl::kvs::address_type main_addr;
-      std::copy_n(
-          ccl_kvs_addr.begin(), ccl::kvs::address_max_size, main_addr.begin());
-      kvs = ccl::create_kvs(main_addr);
-    }
-    return kvs;
-  }
+  //   ccl::shared_ptr_class<ccl::kvs> get_kvs(
+  //       int rank,
+  //       c10d::Store& store,
+  //       bool singleP2POp = false,
+  //       const std::string& p2pKey = "",
+  //       int p2pRank = 0) {
+  //     std::lock_guard<std::mutex> lock(kvs_mutex);
+  //     ccl::shared_ptr_class<ccl::kvs> kvs;
+  //     std::string storeKey;
+  //     if (!singleP2POp) {
+  //       storeKey = std::to_string(xcclCommCounter_++);
+  //     } else {
+  //       storeKey = p2pKey;
+  //     }
+  //     // Rank 0 broadcast the bootstrap network information to other ranks
+  //     if (rank == 0 || (singleP2POp && p2pRank == 0)) {
+  //       kvs = ccl::create_main_kvs();
+  //       ccl::kvs::address_type main_addr = kvs->get_address();
+  //       auto ccl_kvs_addr =
+  //           std::vector<uint8_t>(main_addr.begin(), main_addr.end());
+  //       store.set(storeKey, ccl_kvs_addr);
+  //     } else {
+  //       auto ccl_kvs_addr = store.get(storeKey);
+  //       if (ccl_kvs_addr.size() != ccl::kvs::address_max_size) {
+  //         throw std::runtime_error("Unexpected ccl kvs addr from the
+  //         store\n");
+  //       }
+  //       ccl::kvs::address_type main_addr;
+  //       std::copy_n(
+  //           ccl_kvs_addr.begin(), ccl::kvs::address_max_size,
+  //           main_addr.begin());
+  //       kvs = ccl::create_kvs(main_addr);
+  //     }
+  //     return kvs;
+  //   }
 };
 } // namespace c10d
 
