@@ -63,7 +63,7 @@ runs:
         cd /home/gta/kaileiyx/actions-runner/_work/torch-xpu-ops/
         git clone https://github.com/pytorch/ao
         cd ao
-        USE_CPP=0 pip install -v
+        USE_CPP=0 pip install -v .
 
         pip install numpy==1.26.4
     - name: PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
