@@ -330,8 +330,10 @@ WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
   U new_mean = curr_sum.mean +
       delta * (1.f / new_count); // proper division is slow, this is less
                                  // accurate but noticeably faster
-  return WelfordDataLN(
-      new_mean, curr_sum.sigma2 + delta * (val - new_mean), new_count);
+  return {
+      static_cast<float>(new_mean),
+      static_cast<float>(curr_sum.sigma2 + delta * (val - new_mean)),
+      static_cast<float>(new_count)};
 }
 
 WelfordDataLN WelfordCombine(
@@ -356,17 +358,15 @@ WelfordDataLN WelfordCombine(
   return {mean, sigma2, count};
 }
 
-template <typename T, typename T_ACC, typename shared_t>
+template <typename T, typename T_ACC>
 WelfordDataLN compute_stats(
     const T* RESTRICT X,
     const int N,
-    shared_t meansigmabuf,
-    shared_t countbuf,
+    T_ACC& buf,
     sycl::nd_item<2>& item_id) {
-  int tid = item_id.get_local_linear_id();
   // X points to the row to read
   using vec_t = aligned_vector<T, vec_size>;
-  using acc_t = acc_type<T, true>;
+  using acc_t = acc_type_device<T, kXPU>;
   const vec_t* X_vec = reinterpret_cast<const vec_t*>(X);
   const int numx = item_id.get_local_range(1) * item_id.get_local_range(0);
   const int thrx = item_id.get_local_linear_id();
@@ -389,43 +389,45 @@ WelfordDataLN compute_stats(
         sycl::shift_group_left(sg, wd.count, offset)};
     wd = WelfordCombine(wd, wdB);
   }
+
   // threadIdx.x == 0 has correct values for each warp
   // inter-warp reductions
   if (item_id.get_local_range(0) > 1) {
+    auto addr_offset = item_id.get_local_range(0);
     for (int offset = item_id.get_local_range(0) / 2; offset > 0; offset /= 2) {
       // upper half of warps write to shared
       if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) >= offset &&
           item_id.get_local_id(0) < 2 * offset) {
         const int wrt_y = item_id.get_local_id(0) - offset;
-        meansigmabuf[2 * wrt_y] = wd.mean;
-        meansigmabuf[2 * wrt_y + 1] = wd.sigma2;
-        countbuf[wrt_y] = wd.count;
+        buf[2 * wrt_y] = wd.mean;
+        buf[2 * wrt_y + 1] = wd.sigma2;
+        buf[wrt_y + addr_offset] = wd.count;
       }
       item_id.barrier(sycl_local_fence);
+
       // lower half merges
       if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
-        const int local_y = item_id.get_local_id(0);
+        const int rd_y = item_id.get_local_id(0);
         WelfordDataLN wdB{
-            static_cast<float>(meansigmabuf[2 * local_y]),
-            static_cast<float>(meansigmabuf[2 * local_y + 1]),
-            static_cast<float>(countbuf[local_y])};
+            static_cast<float>(buf[2 * rd_y]),
+            static_cast<float>(buf[2 * rd_y + 1]),
+            static_cast<float>(buf[rd_y + addr_offset])};
         wd = WelfordCombine(wd, wdB);
       }
       item_id.barrier(sycl_local_fence);
     }
+
     if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
-      meansigmabuf[0] = wd.mean;
-      meansigmabuf[1] = wd.sigma2 / float(N);
+      buf[0] = wd.mean;
+      buf[1] = wd.sigma2 / float(N);
     }
     item_id.barrier(sycl_local_fence);
     return WelfordDataLN{
-        static_cast<float>(meansigmabuf[0]),
-        static_cast<float>(meansigmabuf[1]),
-        0.f};
+        static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
   } else {
     return WelfordDataLN{
-        sycl::shift_group_left(sg, wd.mean, 0),
-        sycl::shift_group_left(sg, wd.sigma2, 0) / float(N),
+        sycl::select_from_group(sg, wd.mean, 0),
+        sycl::select_from_group(sg, wd.sigma2, 0) / float(N),
         0.f};
   }
 }
@@ -436,8 +438,8 @@ struct VectorizedLayerNormKernelFunctor {
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
-    WelfordDataLN wd = compute_stats<T, T_ACC>(
-        block_row, N_, meansigmabuf_, countbuf_, item_id);
+    WelfordDataLN wd = compute_stats<T>(block_row, N_, buf_, item_id);
+
     using vec_t = aligned_vector<T, vec_size>;
     const vec_t* X_vec = reinterpret_cast<const vec_t*>(block_row);
     const vec_t* gamma_vec =
@@ -494,10 +496,8 @@ struct VectorizedLayerNormKernelFunctor {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    meansigmabuf_ =
-        sycl_local_acc_t<float>(2 * get_group_reduce_group_size(sg_size_), cgh);
-    countbuf_ =
-        sycl_local_acc_t<float>(get_group_reduce_group_size(sg_size_), cgh);
+    buf_ =
+        sycl_local_acc_t<float>(sycl::range<1>((wg_size_ / sg_size_) * 2), cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
@@ -509,7 +509,8 @@ struct VectorizedLayerNormKernelFunctor {
       T_ACC* mean,
       T_ACC* rstd,
       T* Y,
-      int64_t sg_size)
+      int64_t sg_size,
+      int64_t wg_size)
       : N_(N),
         eps_(eps),
         X_(X),
@@ -518,7 +519,8 @@ struct VectorizedLayerNormKernelFunctor {
         mean_(mean),
         rstd_(rstd),
         Y_(Y),
-        sg_size_(sg_size) {}
+        sg_size_(sg_size),
+        wg_size_(wg_size) {}
 
  private:
   const int N_;
@@ -530,8 +532,8 @@ struct VectorizedLayerNormKernelFunctor {
   T_ACC* rstd_;
   T* Y_;
   int64_t sg_size_;
-  sycl_local_acc_t<T_ACC> meansigmabuf_;
-  sycl_local_acc_t<T_ACC> countbuf_;
+  int64_t wg_size_;
+  sycl_local_acc_t<T_ACC> buf_;
 };
 
 template <typename T, typename T_ACC>
@@ -545,8 +547,10 @@ void launch_vectorized_layer_norm_kernel(
     T* Y_data,
     T_ACC* mean_data,
     T_ACC* rstd_data) {
+  using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC>;
   int64_t sg_size = syclMaxSubGroupSize();
-  VectorizedLayerNormKernelFunctor<T, T_ACC> kfn(
+  int64_t wg_size = syclMaxWorkGroupSize<KernelClass>();
+  KernelClass kfn(
       N,
       eps,
       X_data,
@@ -555,8 +559,8 @@ void launch_vectorized_layer_norm_kernel(
       mean_data,
       rstd_data,
       Y_data,
-      sg_size);
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      sg_size,
+      wg_size);
   sycl::range<2> local_range{size_t(wg_size / sg_size), size_t(sg_size)};
   sycl::range<2> global_range(size_t(wg_size / sg_size), M * size_t(sg_size));
   auto queue = getCurrentSYCLQueue();
