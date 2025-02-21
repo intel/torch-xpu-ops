@@ -249,6 +249,30 @@ jobs:
           timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+      - name: Run Torch XPU Profile UT
+        if: ${{ inputs.driver == 'rolling' }} 
+        run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          mkdir -p ${{ github.workspace }}/ut_log/profile_test
+          # RN50 Test
+          PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
+          cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
+
+          # All Issue Reproduce UT
+          mkdir -p ${{ github.workspace }}/ut_log/profile_test/issue_reproduce
+          python -u test/profiling/correlation_id_mixed.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
+          python -u test/profiling/reproducer.missing.gpu.kernel.time.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+          python -u test/profiling/time_precision_in_profile.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
+          python -u test/profiling/profile_partial_runtime_ops.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+          python -u test/profiling/triton_xpu_ops_time.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
+
+          # All xpu ut under test/profiler
+          cd ../pytorch/test/profiler
+          python -m pytest -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
+          python -m pytest -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
+          python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
+          python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Check
         shell: bash
         run: |
