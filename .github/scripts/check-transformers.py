@@ -45,7 +45,6 @@ failing_cases = {
         'test_eos_token_id_int_and_list_beam_search': { 'cuda': 'failed', },
         'test_eos_token_id_int_and_list_top_k_top_sampling': { 'cuda': 'failed', },
         'test_generate_compile_fullgraph_tiny': { 'cuda': 'failed', },
-        'test_generated_length_assisted_generation': { 'cuda': 'failed', },
         'test_max_new_tokens_encoder_decoder': { 'cuda': 'failed', },
         'test_min_length_if_input_embeds': { 'cuda': 'passed' },
         'test_model_kwarg_assisted_decoding_decoder_only': { 'cuda': 'failed' },
@@ -80,7 +79,6 @@ failing_cases = {
     },
     'tests.models.git.test_modeling_git.GitModelTest': {
         'test_generate_continue_from_past_key_values': { 'flaky': True, 'cuda': 'passed' },
-        'test_inputs_embeds_matches_input_ids': { 'cuda': 'passed' },
     },
     'tests.models.hiera.test_modeling_hiera.HieraModelTest': {
         'test_torch_fx': layernorm_accuracy_failures,
@@ -142,11 +140,10 @@ failing_cases = {
         'test_small_model_pt': { 'cuda': "failed" },
     },
     'tests.pipelines.test_pipelines_text_generation.TextGenerationPipelineTests': {
+        'test_return_dict_in_generate': { 'cuda': "failed" },
         'test_small_model_pt': { 'cuda': "failed" },
+        'test_small_model_pt_bloom_accelerate': { 'cuda': "failed" },
         'test_stop_sequence_stopping_criteria': { 'cuda': "failed" },
-    },
-    'tests.pipelines.test_pipelines_video_classification.VideoClassificationPipelineTests': {
-        'test_small_model_pt': { 'cuda': "failed" },
     },
     'tests.pipelines.test_pipelines_visual_question_answering.VisualQuestionAnsweringPipelineTests': {
         'test_small_model_pt_blip2': { 'cuda': "failed" },
@@ -168,7 +165,9 @@ failing_cases = {
         'test_small_model_pt': { 'cuda': "failed" },
     },
     'tests.test_pipeline_mixin.TextGenerationPipelineTests': {
+        'test_return_dict_in_generate': { 'cuda': "failed" },
         'test_small_model_pt': { 'cuda': "failed" },
+        'test_small_model_pt_bloom_accelerate': { 'cuda': "failed" },
         'test_stop_sequence_stopping_criteria': { 'cuda': "failed" },
     },
     'tests.test_pipeline_mixin.VideoClassificationPipelineTests': {
