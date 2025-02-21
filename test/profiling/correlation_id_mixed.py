@@ -1,11 +1,11 @@
 import torch
 
-input1 = torch.randn(3, 3, device='xpu')
-input2 = torch.randn(3, 3, device='xpu')
+input1 = torch.randn(3, 3, device="xpu")
+input2 = torch.randn(3, 3, device="xpu")
 
 with torch.profiler.profile(
     activities=[
-        torch.profiler.ProfilerActivity.CPU, 
+        torch.profiler.ProfilerActivity.CPU,
         torch.profiler.ProfilerActivity.XPU,
     ]
 ) as prof:

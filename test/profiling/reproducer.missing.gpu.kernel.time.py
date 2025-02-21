@@ -1,6 +1,7 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
+
 def maxUnpool2d(shape, dtype, channels_last, backward):
     N, C, H, W = int(shape[0]), int(shape[1]), int(shape[2]), int(shape[3])
     kernel_size = 2
@@ -49,6 +50,7 @@ def maxUnpool2d(shape, dtype, channels_last, backward):
 
     if backward:
         y_dpcpp.backward(grad_dpcpp)
+
 
 if __name__ == "__main__":
     dtype = torch.bfloat16
