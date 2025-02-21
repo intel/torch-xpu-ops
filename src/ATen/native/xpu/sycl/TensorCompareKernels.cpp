@@ -1,7 +1,10 @@
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorCompare.h>
 #include <ATen/native/TensorIterator.h>
+#include <c10/core/Scalar.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -78,11 +81,24 @@ struct ClampScalarFunctor {
 };
 
 void where_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "where_xpu", [&] {
-        gpu_kernel(iter, WhereFunctor<scalar_t>());
-      });
+  AT_DISPATCH_V2(
+      iter.dtype(),
+      "where_xpu",
+      [&] { gpu_kernel(iter, WhereFunctor<scalar_t>()); },
+      kComplexHalf,
+      kHalf,
+      kBFloat16,
+      kBool,
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES));
 }
+
+// void where_kernel(TensorIterator& iter) {
+//   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+//       kComplexHalf, kHalf, kBFloat16, kBool, iter.dtype(), "where_xpu", [&] {
+//         gpu_kernel(iter, WhereFunctor<scalar_t>());
+//       });
+// }
 
 void isposinf_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES_AND2(

@@ -393,6 +393,7 @@ void cat_out_kernel(
         kHalf,
         kBool,
         kBFloat16,
+        AT_EXPAND(AT_FLOAT8_TYPES),
         AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   } else {
     offset = 0;
