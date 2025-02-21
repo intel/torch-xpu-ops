@@ -32,6 +32,10 @@ def pt2e_test(dt,scenario):
               "timm_vovnet",
               "vgg16"]
 
+    log_dir = "inductor_log/%s/%s/" %dt %scenario
+    os.mkdir(log_dir)
+    log_name = "inductor_%s_%s" %dt %scenario
+
     if scenario == "accuracy" and scenario != " ":
         # cd inductor-tools/scripts/modelbench/quant/inductor_quant_acc.py
         os.chdir("inductor-tools/scripts/modelbench/quant")
@@ -46,7 +50,7 @@ def pt2e_test(dt,scenario):
         os.chdir("benchmark")
         if dt == "INT8":
             for model in models:
-                cmd = 'python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m %s' %model
+                cmd = 'python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m %s >> ' + log_dir + log_name %model
                 try:
                     subprocess.run(cmd,shell=True,check=True)
                 except subprocess.CalledProcessError as e:
@@ -54,7 +58,7 @@ def pt2e_test(dt,scenario):
                 #subprocess.run(['python', 'run_benchmark.py', 'xpu', '--test', 'eval', '--channels-last', '--metrics', 'throughputs', '--torchdynamo', 'inductor', '--quantization', 'pt2e', '-m', model ])
         if dt == "FP32":
             for model in models:
-                cmd = 'python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m %s' %model
+                cmd = 'python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m %s >> ' + log_dir + log_name %model
                 try:
                     subprocess.run(cmd, shell=True, check=True)
                 except subprocess.CalledProcessError as e:
