@@ -57,43 +57,14 @@ runs:
         rm -rf inductor-tools && git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools.git
         rm -rf benchmark && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark.git
         # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
-        cd ../ && rm -rf workspace/benchmark/imagenet && mkdir -p workspace/benchmark/imagenet/val && cp ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && cd workspace/benchmark/imagenet/val && tar -xvf ILSVRC2012_img_val.tar
+        cd ../ && sudo rm -rf workspace/benchmark/imagenet && sudo mkdir -p workspace/benchmark/imagenet/val && sudo cp ILSVRC2012_img_val.tar workspace/benchmark/imagenet/val/ && sudo cd workspace/benchmark/imagenet/val && sudo tar -xvf ILSVRC2012_img_val.tar
         rm -rf valprep.sh && wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
         bash valprep.sh
 
-        if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-          fi
-          #cd ../ && python -c "import torch, torchvision, torchaudio"
-          #rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          #cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
-          #python install.py --continue_on_fail
-          # # deps for torchrec_dlrm
-          #pip install pyre_extensions
-          #pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
-          #pip install torchmetrics==1.0.3
-          #pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
-        fi
-        if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
-          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
-        fi
-        if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-          fi
-          # install timm without dependencies
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
-          # install timm dependencies without torch and torchvision
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
-        fi
+        git clone https://github.com/pytorch/ao
+        cd ao
+        USE_CPP=0 pip install -v
+
         pip install numpy==1.26.4
     - name: PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
