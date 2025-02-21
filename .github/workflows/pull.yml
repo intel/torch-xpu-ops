@@ -24,7 +24,7 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -32,6 +32,15 @@ jobs:
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           bash .github/scripts/lintrunner.sh
+      - name: Run lint check with Clang
+        run: |
+          sudo apt update -y && sudo apt install -y libomp-dev
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && cp -r ../torch-xpu-ops third_party/
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT build/xpu/**/*.* build/xpu/*.* third_party/torch-xpu-ops/src/*.* third_party/torch-xpu-ops/src/**/*.* third_party/torch-xpu-ops/src/**/**/*.* third_party/torch-xpu-ops/src/**/**/**/*.*"
+          export CLANG=1
+          bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
   preci-linux-build:
     # Don't run on forked repos and draft PRs
@@ -185,11 +194,13 @@ jobs:
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
+          rm -rf /tmp/tmp-*.txt
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
-          if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
-            exit 1
+          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          if [ ${exit_label} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "There are ${exit_label} cases that need look into!!! Please check them"
+            exit ${exit_label}
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}

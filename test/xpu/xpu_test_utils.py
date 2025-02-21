@@ -424,6 +424,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=3e-5, rtol=5e-5),
         }
     },
+    "nn.ConvTranspose3d": {
+        ("TestModule", "test_non_contiguous_tensors"): {
+            torch.float32: tol(atol=2e-5, rtol=5e-5),
+        }
+    },
 }
 
 
@@ -899,10 +904,10 @@ class XPUPatchForImport:
                     else True
                 )
             ) or opinfo.name in _ops_without_cuda_support:
-                opinfo.dtypesIfXPU = opinfo.dtypes
+                opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIfXPU:
+                if bfloat16 in opinfo.dtypesIf["xpu"]:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
@@ -912,8 +917,10 @@ class XPUPatchForImport:
                     torch.complex128,
                     torch.double,
                 ]
-                opinfo.dtypesIfXPU = set(
-                    filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU))
+                opinfo.dtypesIf["xpu"] = set(
+                    filter(
+                        lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])
+                    )
                 )
                 opinfo.backward_dtypes = tuple(
                     filter(
@@ -1147,7 +1154,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
         test_command += skip_options
     elif exe_list is not None:
         exe_options = ' -k "' + exe_list[0]
@@ -1155,8 +1164,12 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
         test_command += exe_options
     else:
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
     return os.system(test_command)
