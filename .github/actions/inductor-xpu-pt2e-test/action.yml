@@ -61,7 +61,7 @@ runs:
         #sudo cd /workspace/benchmark/imagenet/val && sudo rm -rf valprep.sh && sudo wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
         #sudo bash valprep.sh
         cd /home/gta/kaileiyx/actions-runner/_work/torch-xpu-ops/
-        git clone https://github.com/pytorch/ao
+        rm -rf ao && git clone https://github.com/pytorch/ao
         cd ao
         USE_CPP=0 pip install -v .
 
