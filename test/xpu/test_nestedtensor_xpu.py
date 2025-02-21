@@ -2,9 +2,10 @@
 
 import ast
 import sys
+import unittest
+
 import torch
 import torch.nn.functional as F
-import unittest
 from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FUSED_ATTENTION
 from torch.testing._internal.common_device_type import (
     dtypes,
@@ -25,16 +26,16 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_nestedtensor import(
+    from test_nestedtensor import (
         convert_jagged_to_nested_tensor,
         get_tolerances,
         random_nt,
         random_nt_noncontiguous_pair,
         TestNestedTensor,
-        TestNestedTensorDeviceType,
         TestNestedTensorAutograd,
-        TestNestedTensorSubclass,
+        TestNestedTensorDeviceType,
         TestNestedTensorOpInfo,
+        TestNestedTensorSubclass,
     )
 
     def _test_to(self):
@@ -824,20 +825,32 @@ torch.xpu.synchronize()
     TestNestedTensor.test_copy_ = _test_copy_
     TestNestedTensorDeviceType.test_device_checks = _test_device_checks
     TestNestedTensorDeviceType.test_empty_like = _test_empty_like
-    TestNestedTensorSubclass.test_linear_backward_memory_usage = _test_linear_backward_memory_usage
+    TestNestedTensorSubclass.test_linear_backward_memory_usage = (
+        _test_linear_backward_memory_usage
+    )
     TestNestedTensorSubclass.test_record_stream = _test_record_stream
     TestNestedTensorSubclass.test_construction_from_list = _test_construction_from_list
     TestNestedTensorSubclass.test_index_put_error = _test_index_put_error
     TestNestedTensorSubclass.test_sdpa = _test_sdpa
     TestNestedTensorSubclass.test_sdpa_autocast = _test_sdpa_autocast
-    TestNestedTensorSubclass.test_to_padded_tensor_compile = _test_to_padded_tensor_compile
+    TestNestedTensorSubclass.test_to_padded_tensor_compile = (
+        _test_to_padded_tensor_compile
+    )
 
 
 instantiate_parametrized_tests(TestNestedTensor, only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestNestedTensorDeviceType, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestNestedTensorAutograd, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestNestedTensorSubclass, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestNestedTensorOpInfo, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestNestedTensorDeviceType, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestNestedTensorAutograd, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestNestedTensorSubclass, globals(), only_for="xpu", allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestNestedTensorOpInfo, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":
