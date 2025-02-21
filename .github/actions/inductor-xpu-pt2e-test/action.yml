@@ -58,7 +58,7 @@ runs:
         rm -rf benchmark && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark.git
         # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
         cd ../ && sudo rm -rf /workspace/benchmark/imagenet && sudo mkdir -p /workspace/benchmark/imagenet/val && sudo cp ILSVRC2012_img_val.tar /workspace/benchmark/imagenet/val/ && sudo cd /workspace/benchmark/imagenet/val && sudo tar -xvf ILSVRC2012_img_val.tar && sudo rm -f /workspace/benchmark/imagenet/val/ILSVRC2012_img_val.tar
-        rm -rf valprep.sh && wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+        sudo cd /workspace/benchmark/imagenet/val && sudo rm -rf valprep.sh && sudo wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
         bash valprep.sh
 
         git clone https://github.com/pytorch/ao
