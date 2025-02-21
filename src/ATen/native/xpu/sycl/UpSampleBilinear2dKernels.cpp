@@ -314,29 +314,28 @@ struct UpsampleBilinear2dBackwardAlignKernelFunctor {
            point_h += input_height_ - 1) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ - 1) {
-          accscalar_t distance_w = std::abs(point_w - in_index_w);
-          accscalar_t distance_h = std::abs(point_h - in_index_h);
-          accscalar_t scale_w = static_cast<accscalar_t>(1) -
-              distance_w / static_cast<accscalar_t>(output_width_ - 1);
-          accscalar_t scale_h = static_cast<accscalar_t>(1) -
-              distance_h / static_cast<accscalar_t>(output_height_ - 1);
+          int distance_w = output_width_ - 1 - std::abs(point_w - in_index_w);
+          int distance_h = output_height_ - 1 - std::abs(point_h - in_index_h);
+          accscalar_t scale =
+              static_cast<accscalar_t>(distance_h * distance_w) /
+              static_cast<accscalar_t>(
+                  (output_width_ - 1) * (output_height_ - 1));
           if constexpr (is_channel_last) {
-            tmp += static_cast<accscalar_t>(odata_[idx_cl(
-                       n,
-                       point_h / (input_height_ - 1),
-                       point_w / (input_width_ - 1),
-                       c,
-                       output_height_,
-                       output_width_,
-                       channels_)]) *
-                scale_w * scale_h;
+            tmp += scale *
+                static_cast<accscalar_t>(odata_[idx_cl(
+                    n,
+                    point_h / (input_height_ - 1),
+                    point_w / (input_width_ - 1),
+                    c,
+                    output_height_,
+                    output_width_,
+                    channels_)]);
           } else {
             size_t output_index = ((n * channels_ + c) * output_height_ +
                                    point_h / (input_height_ - 1)) *
                     output_width_ +
                 point_w / (input_width_ - 1);
-            tmp += static_cast<accscalar_t>(odata_[output_index]) * scale_w *
-                scale_h;
+            tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
           }
         }
       }
@@ -418,39 +417,45 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
            point_h += input_height_ * 2) {
         for (int point_w = out_index_w_start; point_w <= out_index_w_end;
              point_w += input_width_ * 2) {
-          accscalar_t distance_w = std::abs(point_w - in_index_w);
-          accscalar_t distance_h = std::abs(point_h - in_index_h);
-          accscalar_t scale_w = static_cast<accscalar_t>(1) -
+          int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
+          int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
+          accscalar_t scale_w =
               distance_w / static_cast<accscalar_t>(output_width_ * 2);
-          accscalar_t scale_h = static_cast<accscalar_t>(1) -
+          accscalar_t scale_h =
               distance_h / static_cast<accscalar_t>(output_height_ * 2);
           bool is_boundary_w =
               !((point_w > input_width_) &&
                 (point_w < output_width_ * input_width_ * 2 - input_width_));
           // scale is 1 if on boundary
-          scale_w += is_boundary_w * (static_cast<accscalar_t>(1) - scale_w);
+          distance_w =
+              distance_w + is_boundary_w * (output_width_ * 2 - distance_w);
           bool is_boundary_h =
               !((point_h > input_height_) &&
                 (point_h < output_height_ * input_height_ * 2 - input_height_));
-          scale_h += is_boundary_h * (static_cast<accscalar_t>(1) - scale_h);
+          distance_h =
+              distance_h + is_boundary_h * (output_height_ * 2 - distance_h);
+          accscalar_t scale =
+              static_cast<accscalar_t>(distance_h * distance_w) /
+              static_cast<accscalar_t>(
+                  (output_width_ * 2) * (output_height_ * 2));
+
           if constexpr (is_channel_last) {
-            tmp += static_cast<accscalar_t>(odata_[idx_cl(
-                       n,
-                       (point_h - input_height_) / (2 * input_height_),
-                       (point_w - input_height_) / (2 * input_width_),
-                       c,
-                       output_height_,
-                       output_width_,
-                       channels_)]) *
-                scale_w * scale_h;
+            tmp += scale *
+                static_cast<accscalar_t>(odata_[idx_cl(
+                    n,
+                    (point_h - input_height_) / (2 * input_height_),
+                    (point_w - input_height_) / (2 * input_width_),
+                    c,
+                    output_height_,
+                    output_width_,
+                    channels_)]);
           } else {
             size_t output_index =
                 ((n * channels_ + c) * output_height_ +
                  (point_h - input_height_) / (2 * input_height_)) *
                     output_width_ +
                 (point_w - input_height_) / (2 * input_width_);
-            tmp += static_cast<accscalar_t>(odata_[output_index]) * scale_w *
-                scale_h;
+            tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
           }
         }
       }
@@ -1006,7 +1011,7 @@ void upsample_bilinear2d_backward_out_kernel(
       [&] {
         if (memory_format == at::MemoryFormat::ChannelsLast && channels >= 4 &&
             grad_input.is_contiguous(memory_format)) {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
           Tensor grad_output =
               grad_output_.contiguous(at::MemoryFormat::ChannelsLast);
