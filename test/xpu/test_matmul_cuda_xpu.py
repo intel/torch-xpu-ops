@@ -47,7 +47,13 @@ with XPUPatchForImport(False):
     )
 
 
-def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = False, fp16_accumulate: bool = False):
+def cublas_addmm(
+    self,
+    size: int,
+    dtype: torch.dtype,
+    reduced_precision: bool = False,
+    fp16_accumulate: bool = False,
+):
     #
     # Check for catastrophic cuBLAS inaccuracy by measuring the deviation between
     # results from the CUDA invocation of torch.addmm and the CPU invocation
@@ -60,8 +66,12 @@ def cublas_addmm(self, size: int, dtype: torch.dtype, reduced_precision: bool = 
     orig_bf16 = torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
     orig_fp16 = torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
     orig_fp16_accumulate = torch.backends.cuda.matmul.allow_fp16_accumulation
-    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = reduced_precision
-    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = reduced_precision
+    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = (
+        reduced_precision
+    )
+    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = (
+        reduced_precision
+    )
     torch.backends.cuda.matmul.allow_fp16_accumulation = fp16_accumulate
     # Make random tensors on CPU (seed set on common_utils.py import)
     # (Not using numpy because it does not support bfloat16)
@@ -120,11 +130,17 @@ def cublas_addmm_alignment(self, dtype):
             offsets = [0, 0, 0]
             offsets[idx] = offset
             x_offset, a_offset, b_offset = offsets
-            A = torch.rand((5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device)
+            A = torch.rand(
+                (5120 * 2560 + a_offset), requires_grad=True, dtype=dtype, device=device
+            )
             A = A[a_offset:].reshape(5120, 2560)
-            X = torch.rand((26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device)
+            X = torch.rand(
+                (26 * 2560 + x_offset), requires_grad=True, dtype=dtype, device=device
+            )
             X = X[x_offset:].reshape(26, 1, 2560)
-            B = torch.rand((5120 + b_offset), requires_grad=True, dtype=dtype, device=device)
+            B = torch.rand(
+                (5120 + b_offset), requires_grad=True, dtype=dtype, device=device
+            )
             B = B[b_offset:].reshape(5120)
             out = torch.nn.functional.linear(X, A, B)
             self.assertEqual(out, torch.matmul(X, A.transpose(1, 0)) + B)
@@ -152,21 +168,11 @@ def _test_scaled_mm_vs_emulated(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8,
-        y_fp8,
-        a_scale=x_scale,
-        b_scale=y_scale,
-        output_dtype=output_dtype
+        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(
-        x_fp8,
-        x_scale,
-        y_fp8,
-        y_scale,
-        output_dtype
-    )
+    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -207,21 +213,11 @@ def _test_scaled_mm_change_stride(self, base_dtype):
 
     # Calculate actual F8 mm
     out_scaled_mm = mm_float8(
-        x_fp8,
-        y_fp8,
-        a_scale=x_scale,
-        b_scale=y_scale,
-        output_dtype=output_dtype
+        x_fp8, y_fp8, a_scale=x_scale, b_scale=y_scale, output_dtype=output_dtype
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(
-        x_fp8,
-        x_scale,
-        y_fp8,
-        y_scale,
-        output_dtype
-    )
+    out_emulated = mm_float8_emulated(x_fp8, x_scale, y_fp8, y_scale, output_dtype)
 
     if output_dtype != base_dtype:
         out_scaled_mm = out_scaled_mm.to(compare_type)
@@ -294,9 +290,7 @@ def _test_float8_error_messages(self, device) -> None:
 
     with self.assertRaisesRegex(
         RuntimeError,
-        re.escape(
-            "Both scale_a and scale_b must be contiguous for RowWise scaling."
-        ),
+        re.escape("Both scale_a and scale_b must be contiguous for RowWise scaling."),
     ):
         torch._scaled_mm(
             x_fp8,
@@ -345,9 +339,7 @@ def _test_scaled_mm_vs_emulated_row_wise(self, base_dtype):
     )
 
     # Calculate emulated F8 mm
-    out_emulated = mm_float8_emulated(
-        x_fp8, x_scales, y_fp8, y_scales, output_dtype
-    )
+    out_emulated = mm_float8_emulated(x_fp8, x_scales, y_fp8, y_scales, output_dtype)
 
     if base_dtype in {torch.bfloat16, torch.float16}:
         atol, rtol = 7e-2, 7e-2
@@ -365,16 +357,16 @@ TestFP8MatmulCuda.test_scaled_mm_vs_emulated_row_wise = (
 def _cublas_and_lt_reduced_precision_fp16_accumulate(self):
     orig_fp16_accumulate = torch.backends.cuda.matmul.allow_fp16_accumulation
     torch.backends.cuda.matmul.allow_fp16_accumulation = True
-    x = torch.rand(32, 512, 512, device='xpu', dtype=torch.half)
-    w = torch.rand(512, 512, device='xpu', dtype=torch.half)
-    b = torch.rand(512, device='xpu', dtype=torch.half)
+    x = torch.rand(32, 512, 512, device="xpu", dtype=torch.half)
+    w = torch.rand(512, 512, device="xpu", dtype=torch.half)
+    b = torch.rand(512, device="xpu", dtype=torch.half)
     out = torch.nn.functional.linear(x, w, b)
     out_cpu = torch.nn.functional.linear(x.cpu(), w.cpu(), b.cpu())
     self.assertEqual(out, out_cpu, atol=5e-3, rtol=8e-3)
 
-    a = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
-    b = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
-    c = torch.rand(16, 128, 128, device='xpu', dtype=torch.half)
+    a = torch.rand(16, 128, 128, device="xpu", dtype=torch.half)
+    b = torch.rand(16, 128, 128, device="xpu", dtype=torch.half)
+    c = torch.rand(16, 128, 128, device="xpu", dtype=torch.half)
     out = torch.baddbmm(a, b, c)
     out_cpu = torch.baddbmm(a.cpu(), b.cpu(), c.cpu())
     self.assertEqual(out, out_cpu, atol=1e-3, rtol=5e-3)
