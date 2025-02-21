@@ -59,8 +59,8 @@ runs:
         # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
         cd ../ && sudo rm -rf /workspace/benchmark/imagenet && sudo mkdir -p /workspace/benchmark/imagenet/val && sudo cp ILSVRC2012_img_val.tar /workspace/benchmark/imagenet/val/ && sudo cd /workspace/benchmark/imagenet/val && sudo tar -xvf ILSVRC2012_img_val.tar && sudo rm -f /workspace/benchmark/imagenet/val/ILSVRC2012_img_val.tar
         sudo cd /workspace/benchmark/imagenet/val && sudo rm -rf valprep.sh && sudo wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
-        bash valprep.sh
-
+        sudo bash valprep.sh
+        cd /home/gta/kaileiyx/actions-runner/_work/torch-xpu-ops/
         git clone https://github.com/pytorch/ao
         cd ao
         USE_CPP=0 pip install -v
