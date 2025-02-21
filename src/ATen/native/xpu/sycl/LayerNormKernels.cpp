@@ -433,7 +433,8 @@ WelfordDataLN compute_stats(
 }
 
 template <typename T, typename T_ACC>
-struct VectorizedLayerNormKernelFunctor {
+struct VectorizedLayerNormKernelFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
@@ -496,8 +497,7 @@ struct VectorizedLayerNormKernelFunctor {
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    buf_ =
-        sycl_local_acc_t<float>(sycl::range<1>((wg_size_ / sg_size_) * 2), cgh);
+    buf_ = sycl_local_acc_t<T_ACC>((wg_size_ / SIMD) * 2, cgh);
   }
 
   VectorizedLayerNormKernelFunctor(
@@ -509,7 +509,6 @@ struct VectorizedLayerNormKernelFunctor {
       T_ACC* mean,
       T_ACC* rstd,
       T* Y,
-      int64_t sg_size,
       int64_t wg_size)
       : N_(N),
         eps_(eps),
@@ -519,7 +518,6 @@ struct VectorizedLayerNormKernelFunctor {
         mean_(mean),
         rstd_(rstd),
         Y_(Y),
-        sg_size_(sg_size),
         wg_size_(wg_size) {}
 
  private:
@@ -548,7 +546,6 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* mean_data,
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC>;
-  int64_t sg_size = syclMaxSubGroupSize();
   int64_t wg_size = syclMaxWorkGroupSize<KernelClass>();
   KernelClass kfn(
       N,
@@ -559,10 +556,9 @@ void launch_vectorized_layer_norm_kernel(
       mean_data,
       rstd_data,
       Y_data,
-      sg_size,
       wg_size);
-  sycl::range<2> local_range{size_t(wg_size / sg_size), size_t(sg_size)};
-  sycl::range<2> global_range(size_t(wg_size / sg_size), M * size_t(sg_size));
+  sycl::range<2> local_range{size_t(wg_size / SIMD), SIMD};
+  sycl::range<2> global_range(size_t(wg_size / SIMD), M * SIMD);
   auto queue = getCurrentSYCLQueue();
   sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
