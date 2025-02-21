@@ -838,7 +838,7 @@ torch.xpu.synchronize()
     )
 
 
-instantiate_parametrized_tests(TestNestedTensor, only_for="xpu", allow_xpu=True)
+instantiate_parametrized_tests(TestNestedTensor)
 instantiate_device_type_tests(
     TestNestedTensorDeviceType, globals(), only_for="xpu", allow_xpu=True
 )
