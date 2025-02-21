@@ -3,7 +3,12 @@ import torch
 input1 = torch.randn(3, 3, device='xpu')
 input2 = torch.randn(3, 3, device='xpu')
 
-with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU],) as prof:
+with torch.profiler.profile(
+    activities=[
+        torch.profiler.ProfilerActivity.CPU, 
+        torch.profiler.ProfilerActivity.XPU,
+    ]
+) as prof:
     output1 = input1 + 1.0
     output2 = input2 + 2.0
     output = output1 + output2

@@ -1,32 +1,33 @@
 import argparse
+import contextlib
+import math
 import os
-import sys
 import random
 import shutil
+import sys
 import time
 import warnings
 from enum import Enum
-import contextlib
 
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.parallel
-import torch.distributed as dist
 import torch.optim
-from torch.optim.lr_scheduler import StepLR
-import torch.multiprocessing as mp
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-import math
+import torchvision.transforms as transforms
+from torch.optim.lr_scheduler import StepLR
 
 torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
 model_names = sorted(
-    name for name in models.__dict__
+    name 
+for name in models.__dict__
     if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
 )
 

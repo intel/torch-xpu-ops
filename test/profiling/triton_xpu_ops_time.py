@@ -15,7 +15,12 @@ input = torch.randn(128, 128, device=device)
 output = test(input)
 print('[info] finish warm up')
 
-with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU,]) as p:
+with torch.profiler.profile(
+    activities=[
+        torch.profiler.ProfilerActivity.CPU, 
+        torch.profiler.ProfilerActivity.XPU,
+    ]
+) as p:
     print('[info] start running')
     output = test(input)
 print(p.key_averages().table(sort_by="self_xpu_time_total", row_limit=-1))
