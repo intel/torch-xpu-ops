@@ -30,7 +30,7 @@ function get_model_result() {
             do
                 for mode in training inference
                 do
-                    colorful=$(grep "${model}" "/tmp/tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
+                    colorful=$(grep -w "${model}" "/tmp/tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
                         color = "black";
                         exit_label = 0;
                     }{

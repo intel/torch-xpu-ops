@@ -113,7 +113,7 @@ jobs:
             WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
             if [[ ${is_fork_pr} == "false" ]]; then
-              if [ -f dist/torch*.whl -a "${last_commit}" != "${current_commit}" ]; then
+              if [ -f dist/torch*.whl && "${last_commit}" != "${current_commit}"] && [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
                 echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
                 gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
                 gh --repo $repo issue edit $commit_issue --body-file new_body.txt
@@ -170,21 +170,21 @@ jobs:
           cd ../pytorch
           echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
       - name: Upload Torch XPU Wheel
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }} 
           path: ${{ github.workspace }}/torch*.whl
       - name: Upload Build Log
-        if: always()
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
