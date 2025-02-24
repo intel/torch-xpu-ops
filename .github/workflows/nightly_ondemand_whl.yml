@@ -168,7 +168,7 @@ jobs:
       # On-demand launch
       - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
