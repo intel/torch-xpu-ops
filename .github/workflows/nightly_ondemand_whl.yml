@@ -56,17 +56,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      pytorch: nightly_wheel
-      runner: linux.idc.xpu
-
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_e2e
+    runs-on: e2e_internal
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
