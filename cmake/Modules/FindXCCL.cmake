@@ -6,6 +6,12 @@
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
+  set(XCCL_FOUND False)
+  set(XCCL_NOT_FOUND_MESSAGE "OneCCL library is only supported on Linux!")
+  return()
+endif()
+
 # we need source OneCCL environment before building.
 set(XCCL_ROOT $ENV{CCL_ROOT})
 
