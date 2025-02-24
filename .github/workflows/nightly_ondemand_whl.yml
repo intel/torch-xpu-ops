@@ -243,7 +243,7 @@ jobs:
 
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ github.event_name != 'schedule' && inputs.ut != 'pt2e' }}
+        if: ${{ github.event_name != 'schedule' && inputs.suite != 'pt2e' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
@@ -254,7 +254,7 @@ jobs:
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ github.event_name != 'schedule' && contains(inputs.ut, 'pt2e') }}
+        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
