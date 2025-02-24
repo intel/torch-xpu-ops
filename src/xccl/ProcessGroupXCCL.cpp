@@ -1612,13 +1612,32 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(output.scalar_type());
-          ccl::alltoall(
-              input.data_ptr(),
-              output.data_ptr(),
-              (size_t)output.numel() / comm.size(),
-              xcclDataType,
-              comm,
-              ccl::create_stream(stream.queue()));
+          auto xccl_stream = ccl::create_stream(stream.queue());
+
+          size_t count = input.numel() / size_;
+          size_t rankdiff = input.nbytes() / size_;
+
+          ccl::group_start();
+          for (const auto r : c10::irange(rank_)) {
+            if (count != 0) {
+              ccl::send(
+                  ((char*)input.data_ptr()) + r * rankdiff,
+                  count,
+                  xcclDataType,
+                  r,
+                  comm,
+                  xccl_stream);
+              ccl::recv(
+                  ((char*)output.data_ptr()) + r * rankdiff,
+                  count,
+                  xcclDataType,
+                  r,
+                  comm,
+                  xccl_stream);
+            }
+          }
+          ccl::group_end();
+
           return;
         },
         OpType::ALLTOALL_BASE,
