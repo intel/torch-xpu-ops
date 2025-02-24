@@ -137,7 +137,7 @@ runs:
                     tee "${pt2e_logs_dir}/performance-fp32.log"
             mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-fp32
           fi
-          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+          if [[ "${{ inputs.dt }}" == *"int8"* ]];then
             rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
             python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models |\
                     tee "${pt2e_logs_dir}/performance-int8.log"

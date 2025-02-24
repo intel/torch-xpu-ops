@@ -26,17 +26,17 @@ on:
       dt:
         required: true
         type: string
-        default: 'INT8'
+        default: 'int8'
         description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
       mode:
         required: true
         type: string
-        default: 'inference'
-        description: Test mode. `inference,training`. Delimiter is comma
+        default: 'pt2e'
+        description: Test mode. `inference,training,pt2e`. Delimiter is comma
       scenario:
         required: true
         type: string
-        default: 'accuracy'
+        default: 'performance'
         description: Test scenario. `accuracy,performance`. Delimiter is comma
       model:
         required: false
@@ -98,6 +98,7 @@ jobs:
         run: |
           pwd
           source activate kailei_pt2e
+          source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -116,10 +117,13 @@ jobs:
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
           git checkout ${TORCH_XPU_OPS_COMMIT}
+          cd ../../
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
       - name: Identify pinned versions
         id: pinned
         run: |
           source activate kailei_pt2e
+          source .github/scripts/env.sh
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -140,79 +144,32 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
 
       # Nihglty launch
-      - name: Nightly Huggingface INT8,FP32 Inference & Training Accuracy Test
+      - name: Nightly PT2E Accuracy Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
-          suite: huggingface
-          env_prepare: true
-          dt: INT8,FP32
-          mode: inference,training
-          scenario: accuracy
+          suite: pt2e
+          dt: float32,int8
+          scenario: accuracy,performance
           pytorch: nightly_wheel
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
-        uses: ./.github/actions/inductor-xpu-pt2e-test
-        with:
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          pytorch: nightly_wheel
-          env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
-        uses: ./.github/actions/inductor-xpu-pt2e-test
-        with:
-          suite: timm_models
-          dt: float16
-          mode: training
-          scenario: accuracy
-          pytorch: nightly_wheel
-          env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # Weekly launch
-      - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-pt2e-test
-        with:
-          suite: huggingface
-          env_prepare: true
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-          pytorch: nightly_wheel
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-pt2e-test
-        with:
-          suite: torchbench
-          env_prepare: true
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-          pytorch: nightly_wheel
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
-        uses: ./.github/actions/inductor-xpu-pt2e-test
-        with:
-          suite: timm_models
-          env_prepare: true
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-          pytorch: nightly_wheel
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly PT2E Accuracy Test
+          if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
+          uses: ./.github/actions/inductor-xpu-pt2e-test
+          with:
+            suite: pt2e
+            dt: float32,int8
+            scenario: accuracy,performance
+            pytorch: nightly_wheel
+            hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # On-demand launch
-      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/inductor-xpu-pt2e-test
+        uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
