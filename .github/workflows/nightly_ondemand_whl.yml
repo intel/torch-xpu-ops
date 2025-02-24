@@ -21,8 +21,8 @@ on:
       suite:
         required: true
         type: string
-        default: 'torchbench'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
+        default: 'pt2e'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
       dt:
         required: true
         type: string
@@ -31,8 +31,8 @@ on:
       mode:
         required: true
         type: string
-        default: 'pt2e'
-        description: Test mode. `inference,training,pt2e`. Delimiter is comma
+        default: 'inference'
+        description: Test mode. `inference,training`. Delimiter is comma
       scenario:
         required: true
         type: string
@@ -98,7 +98,6 @@ jobs:
         run: |
           pwd
           source activate kailei_pt2e
-          source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
