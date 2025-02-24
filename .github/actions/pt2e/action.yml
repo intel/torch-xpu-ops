@@ -95,6 +95,16 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        # dataset
+        if [ ! -d ${HOME}/datasets/imagenet ];then
+          rm -rf ${HOME}/datasets/imagenet
+          mkdir -p ${HOME}/datasets/imagenet
+          cd ${HOME}/datasets/imagenet
+          wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+          tar -xf ILSVRC2012_img_val.tar
+          wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+          bash valprep.sh
+        fi
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -108,11 +118,11 @@ runs:
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 |\
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet |\
                     tee "${pt2e_logs_dir}/accuracy-fp32.log"
           fi
           if [[ "${{ inputs.dt }}" == *"int8"* ]];then
-            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu |\
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet |\
                     tee "${pt2e_logs_dir}/accuracy-int8.log"
           fi
         fi
@@ -122,9 +132,15 @@ runs:
           models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
           models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models
+            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models |\
+                    tee "${pt2e_logs_dir}/performance-fp32.log"
+            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-fp32
           fi
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            python run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models
+            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models |\
+                    tee "${pt2e_logs_dir}/performance-int8.log"
+            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-int8
           fi
         fi
