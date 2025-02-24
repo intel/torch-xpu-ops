@@ -1,0 +1,113 @@
+
+name: inductor-xpu-e2e-test
+
+inputs:
+  suite:
+    required: true
+    type: string
+    default: 'torchbench'
+    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+  env_prepare:
+    required: false
+    description: If set to any value, will prepare suite test env
+  dt:
+    required: true
+    type: string
+    default: 'INT8'
+    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16,INT8,FP32. Delimiter is comma
+  mode:
+    required: true
+    type: string
+    default: 'inference'
+    description: inference,training. Delimiter is comma
+  scenario:
+    required: true
+    type: string
+    default: 'accuracy'
+    description: accuracy,performance. Delimiter is comma
+  cards:
+    required: false
+    type: string
+    default: 'all'
+    description: which cards can be used in the test
+  hf_token:
+    required: false
+    description: HUGGING_FACE_HUB_TOKEN for torchbench test
+  pytorch:
+    required: false
+    type: string
+    default: 'main'
+    description: Pytorch branch/commit
+  driver:
+    required: false
+    type: string
+    default: 'lts'
+    description: Driver lts/rolling
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare ENV
+      if: ${{ inputs.env_prepare }}
+      shell: bash
+      run: |
+        source activate pt2e_ci
+        source .github/scripts/env.sh ${{ inputs.pytorch }}
+        # prepare Imagenet val dataset
+        rm -rf inductor-tools && git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools.git
+        rm -rf benchmark && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark.git
+        # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
+        #cd ../ && sudo rm -rf /workspace/benchmark/imagenet && sudo mkdir -p /workspace/benchmark/imagenet/val && sudo cp ILSVRC2012_img_val.tar /workspace/benchmark/imagenet/val/ && sudo cd /workspace/benchmark/imagenet/val && sudo tar -xvf ILSVRC2012_img_val.tar && sudo rm -f /workspace/benchmark/imagenet/val/ILSVRC2012_img_val.tar
+        #sudo cd /workspace/benchmark/imagenet/val && sudo rm -rf valprep.sh && sudo wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+        #sudo bash valprep.sh
+        cd /home/gta/kaileiyx/actions-runner/_work/torch-xpu-ops/
+        rm -rf ao && git clone https://github.com/pytorch/ao
+        cd ao
+        USE_CPP=0 pip install -v .
+
+        pip install numpy==1.26.4
+    - name: PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      shell: bash
+      run: |
+        source activate pt2e_ci
+        source .github/scripts/env.sh ${{ inputs.pytorch }}
+        #cp .github/scripts/pt2e_test.py ../pytorch
+        #cd ../pytorch
+        # check param
+        python .github/scripts/pt2e_test.py ${{ inputs.dt }} ${{ inputs.scenario }}
+        wait
+        # summarize pass rate
+        LOG_DIR="inductor_log/${suite}/${dt}"
+        LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
+        rm -f ${LOG_DIR}/${LOG_NAME}
+        find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
+
+
+    - name: Summary PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+      shell: bash
+      run: |
+        cd ../pytorch
+        rm -f inductor_log/summary_accuracy.csv
+        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
+        do
+          sed -i "s/$/,$(basename $var)/" $var
+          cat $var >> inductor_log/summary_accuracy.csv
+        done
+
+        source activate pt2e_ci
+        cd ${{ github.workspace }}
+        cp .github/scripts/inductor_summary.py ../pytorch
+        cd ../pytorch
+        pip install styleFrame scipy pandas
+        set -xe
+        dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
+        mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
+        suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+        python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}

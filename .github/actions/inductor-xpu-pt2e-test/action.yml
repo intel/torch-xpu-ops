@@ -1,11 +1,10 @@
-
-name: inductor-xpu-e2e-test
+name: inductor-xpu-pt2e-test
 
 inputs:
   suite:
     required: true
     type: string
-    default: 'torchbench'
+    default: 'huggingface'
     description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
   env_prepare:
     required: false
@@ -13,17 +12,17 @@ inputs:
   dt:
     required: true
     type: string
-    default: 'INT8'
-    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16,INT8,FP32. Delimiter is comma
+    default: 'float32'
+    description: Data precision of the test.float32,int8. Delimiter is comma
   mode:
     required: true
     type: string
     default: 'inference'
-    description: inference,training. Delimiter is comma
+    description: inference. Delimiter is comma
   scenario:
     required: true
     type: string
-    default: 'accuracy'
+    default: 'performance'
     description: accuracy,performance. Delimiter is comma
   cards:
     required: false
@@ -51,21 +50,61 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate pt2e_ci
+        source activate kailei_pt2e
         source .github/scripts/env.sh ${{ inputs.pytorch }}
-        # prepare Imagenet val dataset
-        rm -rf inductor-tools && git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools.git
-        rm -rf benchmark && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark.git
-        # wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar --no-check-certificate
-        #cd ../ && sudo rm -rf /workspace/benchmark/imagenet && sudo mkdir -p /workspace/benchmark/imagenet/val && sudo cp ILSVRC2012_img_val.tar /workspace/benchmark/imagenet/val/ && sudo cd /workspace/benchmark/imagenet/val && sudo tar -xvf ILSVRC2012_img_val.tar && sudo rm -f /workspace/benchmark/imagenet/val/ILSVRC2012_img_val.tar
-        #sudo cd /workspace/benchmark/imagenet/val && sudo rm -rf valprep.sh && sudo wget https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
-        #sudo bash valprep.sh
-        cd /home/gta/kaileiyx/actions-runner/_work/torch-xpu-ops/
-        rm -rf ao && git clone https://github.com/pytorch/ao
-        cd ao
-        USE_CPP=0 pip install -v .
-
+        # accuracy code
+        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
+          rm -rf pt2e-accuracy
+          git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools pt2e-accuracy
+        fi
+        # performance code
+        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
+          rm -rf pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
+        fi
+        # deps
+        if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
+          pip install pyyaml botocore
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            rm -rf pt2e-audio
+            git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
+            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
+            cd ../
+            rm -rf pt2e-vision
+            git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
+            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
+            cd ../
+          fi
+          # torchbench
+          python -c "import torch, torchvision, torchaudio"
+          rm -rf pt2e-benchmark
+          git clone https://github.com/pytorch/benchmark pt2e-benchmark
+          cd pt2e-benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          python install.py --continue_on_fail
+          cd ../
+          # deps for torchrec_dlrm
+          pip install pyre_extensions
+          pip install fbgemm-gpu
+          pip install --no-deps torchmetrics==1.0.3 torchrec
+          # transformers
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+          # timm
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+        fi
         pip install numpy==1.26.4
+        # dataset
+        if [ ! -d ${HOME}/datasets/imagenet ];then
+          rm -rf ${HOME}/datasets/imagenet
+          mkdir -p ${HOME}/datasets/imagenet
+          cd ${HOME}/datasets/imagenet
+          wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+          tar -xf ILSVRC2012_img_val.tar
+          wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+          bash valprep.sh
+        fi
     - name: PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -73,41 +112,35 @@ runs:
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate pt2e_ci
+        source activate kailei_pt2e
         source .github/scripts/env.sh ${{ inputs.pytorch }}
-        #cp .github/scripts/pt2e_test.py ../pytorch
-        #cd ../pytorch
-        # check param
-        python .github/scripts/pt2e_test.py ${{ inputs.dt }} ${{ inputs.scenario }}
-        wait
-        # summarize pass rate
-        LOG_DIR="inductor_log/${suite}/${dt}"
-        LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
-        rm -f ${LOG_DIR}/${LOG_NAME}
-        find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
-
-
-    - name: Summary PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-      shell: bash
-      run: |
-        cd ../pytorch
-        rm -f inductor_log/summary_accuracy.csv
-        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
-        do
-          sed -i "s/$/,$(basename $var)/" $var
-          cat $var >> inductor_log/summary_accuracy.csv
-        done
-
-        source activate pt2e_ci
-        cd ${{ github.workspace }}
-        cp .github/scripts/inductor_summary.py ../pytorch
-        cd ../pytorch
-        pip install styleFrame scipy pandas
-        set -xe
-        dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
-        mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
-        suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
-        scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-        python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}
+        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log"
+        rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
+        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
+          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet |\
+                    tee "${pt2e_logs_dir}/accuracy-fp32.log"
+          fi
+          if [[ "${{ inputs.dt }}" == *"int8"* ]];then
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet |\
+                    tee "${pt2e_logs_dir}/accuracy-int8.log"
+          fi
+        fi
+        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
+          models="alexnet,demucs,dlrm,hf_Albert,hf_Bert,hf_Bert_large,hf_DistilBert,hf_Roberta_base,mnasnet1_0,mobilenet_v2,"
+          models+="mobilenet_v3_large,nvidia_deeprecommender,pytorch_CycleGAN_and_pix2pix,resnet152,resnet18,resnet50,resnext50_32x4d,"
+          models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
+          models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
+          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models |\
+                    tee "${pt2e_logs_dir}/performance-fp32.log"
+            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-fp32
+          fi
+          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models |\
+                    tee "${pt2e_logs_dir}/performance-int8.log"
+            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-int8
+          fi
+        fi

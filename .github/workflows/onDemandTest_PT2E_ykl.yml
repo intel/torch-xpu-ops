@@ -32,8 +32,8 @@ on:
       suite:
         required: true
         type: string
-        default: 'pt2e'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+        default: 'torchbench'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
       dt:
         required: true
         type: string
@@ -116,15 +116,15 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n kailei_pt2e || rm -rf $(dirname ${CONDA_EXE})/../envs/kailei_pt2e
-          conda create -n kailei_pt2e python=${{ env.python }} cmake ninja -y
-          source activate kailei_pt2e
+          conda remove --all -y -n pt2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/pt2e_ci
+          conda create -n pt2e_ci python=${{ env.python }} cmake ninja -y
+          source activate pt2e_ci
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          source activate kailei_pt2e
+          source activate pt2e_ci
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}')
           # apply PRs for stock pytorch
@@ -166,7 +166,7 @@ jobs:
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
-          source activate kailei_pt2e
+          source activate pt2e_ci
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
@@ -179,7 +179,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate kailei_pt2e
+          source activate pt2e_ci
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
@@ -225,8 +225,8 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # On-demand launch
-      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
+      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: github.event_name != 'schedule'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
@@ -234,7 +234,6 @@ jobs:
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-          pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       - name: Summarize archieve files

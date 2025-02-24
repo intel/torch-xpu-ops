@@ -88,16 +88,16 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
-          conda remove --all -y -n pt2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/pt2e_ci
-          conda create -n pt2e_ci python=${{ env.python }} cmake ninja -y
-          source activate pt2e_ci
+          conda remove --all -y -n kailei_pt2e || rm -rf $(dirname ${CONDA_EXE})/../envs/kailei_pt2e
+          conda create -n kailei_pt2e python=${{ env.python }} cmake ninja -y
+          source activate kailei_pt2e
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
         run: |
           pwd
-          source activate pt2e_ci
+          source activate kailei_pt2e
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -119,7 +119,7 @@ jobs:
       - name: Identify pinned versions
         id: pinned
         run: |
-          source activate pt2e_ci
+          source activate kailei_pt2e
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -211,7 +211,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: github.event_name != 'schedule'
+        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/inductor-xpu-pt2e-test
         with:
           suite: ${{ inputs.suite }}
