@@ -270,7 +270,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
   return r;
 }
 
-void ProcessGroupNCCL::broadcastUniqueXCCLID(
+void ProcessGroupXCCL::broadcastUniqueXCCLID(
     onecclUniqueId* xcclID,
     bool isSingleP2POp,
     const std::string& p2pKey,
@@ -346,7 +346,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   }
 
   std::shared_ptr<xcclComm_t> XCCLComm;
-  xcclUniqueId xcclID;
+  onecclUniqueId xcclID;
 
   bool batchP2P = xcclActiveGroupCounter_ > 0;
   bool singleP2POp = isP2POp(opType, batchP2P);
@@ -371,12 +371,12 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
   if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
-    onecclGetUniqueId(&uid);
+    onecclGetUniqueId(&xcclID);
   }
-  broadcastUniqueXCCLID(&ncclID, singleP2POp, deviceKey, p2pRank);
+  broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
 
-  xcclComm_t comm;
-  onecclCommInitRank(&comm, numRanks, uid, rank);
+  xcclComm_t comm = nullptr;
+  onecclCommInitRank(&comm, numRanks, xcclID, rank);
   XCCLComm = std::make_shared<xcclComm_t>(std::move(comm));
 
   RECORD_PARAM_COMMS(
@@ -644,7 +644,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
             xcclDataType,
             dst,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       dstRank,
@@ -692,7 +692,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
             xcclDataType,
             src,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       srcRank,
@@ -790,7 +790,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
                     xcclDataType,
                     r,
                     comm,
-                    stream.queue());
+                    &(stream.queue()));
               } else {
                 // on its own rank, simply copy from the input
                 outputs[r].copy_(inputTensor);
@@ -804,7 +804,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
                 xcclDataType,
                 root,
                 comm,
-                stream.queue());
+                &(stream.queue()));
           }
           return;
         }
@@ -903,7 +903,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                     send_type,
                     r,
                     comm,
-                    (stream.queue());
+                    &(stream.queue()));
               } else {
                 // on its own rank, simply copy from the input
                 outputTensor.copy_(inputs[r]);
@@ -919,7 +919,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                 recv_type,
                 root,
                 comm,
-                stream.queue());
+                &(stream.queue()));
           }
 
           return;
@@ -947,7 +947,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
             xcclDataType,
             xcclReduceOp,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::ALLREDUCE,
@@ -995,7 +995,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             xcclDataType,
             xcclReduceOp,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::ALLREDUCE,
@@ -1041,7 +1041,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
             xcclDataType,
             xcclReduceOp,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::COALESCED,
@@ -1085,11 +1085,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
         auto xcclDataType = getXcclDataType(input.scalar_type());
         onecclBroadcast(
             input.data_ptr(),
+            output.data_ptr(), // ?
             (size_t)input.numel(),
             xcclDataType,
             root,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::BROADCAST,
@@ -1121,7 +1122,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
             xcclDataType,
             root,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::BROADCAST,
@@ -1170,7 +1171,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
             xcclReduceOp,
             root,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::REDUCE,
@@ -1203,7 +1204,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
             xcclReduceOp,
             root,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::REDUCE,
@@ -1260,7 +1261,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
               (size_t)input.numel(),
               xcclDataType,
               comm,
-              stream.queue());
+              &(stream.queue()));
           return;
         },
         [](at::xpu::XPUStream&,
@@ -1341,7 +1342,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
             (size_t)input.numel(),
             xcclDataType,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::_ALLGATHER_BASE,
@@ -1366,7 +1367,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
             (size_t)input.numel(),
             xcclDataType,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::COALESCED,
@@ -1423,7 +1424,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               xcclDataType,
               xcclReduceOp,
               comm,
-              stream.queue());
+              &(stream.queue()));
           return;
         },
         [&](at::xpu::XPUStream& Stream,
@@ -1506,7 +1507,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             xcclDataType,
             xcclReduceOp,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::_REDUCE_SCATTER_BASE,
@@ -1535,7 +1536,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             xcclDataType,
             xcclReduceOp,
             comm,
-            stream.queue());
+            &(stream.queue()));
         return;
       },
       OpType::COALESCED,

@@ -116,6 +116,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {});
 
+  void broadcastUniqueXCCLID(
+      onecclUniqueId* xcclID,
+      bool isSingleP2POp,
+      const std::string& p2pKey,
+      int p2pRank);
+
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
       at::Tensor& input,
@@ -283,17 +289,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Work> barrier(
       const BarrierOptions& opts = BarrierOptions()) override;
 
-  c10::intrusive_ptr<Work> alltoall_base(
-      at::Tensor& outputTensor,
-      at::Tensor& inputTensor,
-      std::vector<int64_t>& outputSplitSizes,
-      std::vector<int64_t>& inputSplitSizes,
-      const AllToAllOptions& opts = AllToAllOptions()) override;
+  // c10::intrusive_ptr<Work> alltoall_base(
+  //     at::Tensor& outputTensor,
+  //     at::Tensor& inputTensor,
+  //     std::vector<int64_t>& outputSplitSizes,
+  //     std::vector<int64_t>& inputSplitSizes,
+  //     const AllToAllOptions& opts = AllToAllOptions()) override;
 
-  c10::intrusive_ptr<Work> alltoall(
-      std::vector<at::Tensor>& outputTensors,
-      std::vector<at::Tensor>& inputTensors,
-      const AllToAllOptions& opts = AllToAllOptions()) override;
+  // c10::intrusive_ptr<Work> alltoall(
+  //     std::vector<at::Tensor>& outputTensors,
+  //     std::vector<at::Tensor>& inputTensors,
+  //     const AllToAllOptions& opts = AllToAllOptions()) override;
 
   c10::intrusive_ptr<Work> send(
       std::vector<at::Tensor>& tensors,
@@ -339,8 +345,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
 
- private:
-  std::mutex kvs_mutex;
+  //  private:
+  //   std::mutex kvs_mutex;
 
   //   ccl::shared_ptr_class<ccl::kvs> get_kvs(
   //       int rank,
