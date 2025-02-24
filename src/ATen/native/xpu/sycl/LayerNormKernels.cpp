@@ -232,7 +232,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename T, typename T_ACC>
 void launch_rowwise_moments_kernel(
-    int N,
+    int64_t N,
     int64_t M,
     T_ACC eps,
     const T* X_data,
@@ -240,7 +240,7 @@ void launch_rowwise_moments_kernel(
     T_ACC* rstd_data) {
   RowwiseMomentsFunctor<T, T_ACC> kfn(N, eps, X_data, mean_data, rstd_data);
 
-  int64_t sg_size = syclMaxSubGroupSize();
+  int64_t sg_size = SIMD;
   int64_t wg_size = get_group_reduce_group_size(sg_size);
   sycl::range<1> local_range{size_t(wg_size)};
   sycl::range<1> global_range{size_t(M * wg_size)};
@@ -294,7 +294,7 @@ struct LayerNormForwardKernelFunctor {
 
 template <typename T, typename T_ACC>
 void launch_layer_norm_forward_kernel(
-    int N,
+    int64_t N,
     int64_t M,
     const T* X_data,
     const T_ACC* mean_data,
@@ -305,7 +305,7 @@ void launch_layer_norm_forward_kernel(
   LayerNormForwardKernelFunctor<T, T_ACC> kfn(
       N, X_data, mean_data, rstd_data, gamma_data, beta_data, Y_data);
 
-  int64_t sg_size = syclMaxSubGroupSize();
+  int64_t sg_size = SIMD;
   int64_t wg_size = get_group_reduce_group_size(sg_size);
   sycl::range<1> local_range{size_t(wg_size)};
   sycl::range<1> global_range(M * size_t(wg_size));
@@ -606,17 +606,9 @@ void _layer_norm_kernel(
         mean_data,
         rstd_data);
   } else {
-    launch_rowwise_moments_kernel(
-        static_cast<int>(N), M, eps, X_data, mean_data, rstd_data);
+    launch_rowwise_moments_kernel(N, M, eps, X_data, mean_data, rstd_data);
     launch_layer_norm_forward_kernel(
-        static_cast<int>(N),
-        M,
-        X_data,
-        mean_data,
-        rstd_data,
-        gamma_data,
-        beta_data,
-        Y_data);
+        N, M, X_data, mean_data, rstd_data, gamma_data, beta_data, Y_data);
   }
 }
 
