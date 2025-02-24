@@ -54,28 +54,36 @@ runs:
         source .github/scripts/env.sh ${{ inputs.pytorch }}
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
-          cd ../ && rm -rf pt2e-accuracy && git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools
+          rm -rf pt2e-accuracy
+          git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools pt2e-accuracy
         fi
         # performance code
         if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
-          cd ../ && rm -rf pt2e-performance && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
+          rm -rf pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
         fi
         # deps
         if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
           pip install pyyaml
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
+            rm -rf pt2e-audio
+            git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
+            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
+            cd ../
+            rm -rf pt2e-vision
+            git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
+            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
+            cd ../
           fi
           # torchbench
-          cd ../ && python -c "import torch, torchvision, torchaudio"
-          rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          python -c "import torch, torchvision, torchaudio"
+          rm -rf pt2e-benchmark
+          git clone https://github.com/pytorch/benchmark pt2e-benchmark
+          cd pt2e-benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
+          cd ../
           # deps for torchrec_dlrm
           pip install pyre_extensions
           pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
