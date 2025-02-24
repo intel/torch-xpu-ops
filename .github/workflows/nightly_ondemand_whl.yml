@@ -1,11 +1,11 @@
 name: Torch Nightly WHL Tests
 
 on:
-  schedule:
-    # GMT+8 21:00 every workday
-    - cron: '0 14 * * 0-4'
+  #schedule:
+    ## GMT+8 21:00 every workday
+    #- cron: '0 14 * * 0-4'
     # GMT+8 0:00 Saturday
-    - cron: '0 17 * * 5'
+    #- cron: '0 17 * * 5'
   workflow_dispatch:
     inputs:
       pytorch:
