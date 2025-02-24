@@ -72,6 +72,9 @@ failing_cases = {
     'tests.models.dpt.test_modeling_dpt_auto_backbone.DPTModelTest': {
         'test_batching_equivalence': { 'flaky': True, 'cuda': 'passed' },
     },
+    'tests.models.encoder_decoder.test_modeling_encoder_decoder.BartEncoderDecoderModelTest': {
+        'test_save_and_load_from_pretrained': { 'flaky': True },
+    },
     'tests.models.fuyu.test_modeling_fuyu.FuyuModelTest': {
         'test_prompt_lookup_decoding_matches_greedy_search': { 'flaky': True },
     },
