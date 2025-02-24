@@ -97,8 +97,9 @@ jobs:
         run: |
           pwd
           source activate e2e_ci
-          # pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          pip install /home/sdp/mengfeil/torch-2.7.0.dev20250220+xpu-cp310-cp310-linux_x86_64.whl
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip uninstall -y torch torchvision torchaudio triton && pip uninstall -y torch torchvision torchaudio triton
+          pip install --no-deps /home/sdp/mengfeil/torch-2.7.0.dev20250220+xpu-cp310-cp310-linux_x86_64.whl
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -118,6 +119,14 @@ jobs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
           python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+      - name: Triton Installation
+        run: |
+          source activate e2e_ci
+          cd ../pytorch
+          TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Identify pinned versions
         id: pinned
         run: |
