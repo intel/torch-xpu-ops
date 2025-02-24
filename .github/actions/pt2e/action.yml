@@ -61,16 +61,16 @@ runs:
           cd ../ && rm -rf pt2e-performance && git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
         fi
         # deps
+        pip install pyyaml
+        if [ "${{ inputs.pytorch }}" != "" ]; then
+          cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
+          cd audio && git checkout $TORCHAUDIO_COMMIT_ID
+          python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
+          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+          cd vision && git checkout $TORCHVISION_COMMIT_ID
+          python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
+        fi
         if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
-          pip install pyyaml
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
-          fi
           # torchbench
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
