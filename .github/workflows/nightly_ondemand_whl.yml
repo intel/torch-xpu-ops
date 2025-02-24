@@ -199,11 +199,11 @@ jobs:
             grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
             exit 1
           fi
-      - name: Upload Inductor XPU E2E Data
+      - name: Upload Inductor XPU PT2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-PT2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
   Tests-Failure-And-Report:
