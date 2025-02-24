@@ -64,7 +64,7 @@ runs:
         fi
         # deps
         if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
-          pip install pyyaml
+          pip install pyyaml botocore
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             rm -rf pt2e-audio
             git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
