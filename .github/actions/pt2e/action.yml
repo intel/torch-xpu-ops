@@ -132,15 +132,15 @@ runs:
           models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
           models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            rm -rf pt2e-performance/.userbenchmark
             python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models |\
                     tee "${pt2e_logs_dir}/performance-fp32.log"
-            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-fp32
+            mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-fp32
           fi
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            rm -rf pt2e-performance/.userbenchmark/xpu/xpu-*
+            rm -rf pt2e-performance/.userbenchmark
             python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models |\
                     tee "${pt2e_logs_dir}/performance-int8.log"
-            mv pt2e-performance/.userbenchmark/xpu/xpu-* ${pt2e_logs_dir}/performance-int8
+            mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8
           fi
         fi
