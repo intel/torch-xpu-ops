@@ -1,7 +1,5 @@
 # Owner(s): ["module: intel"]
-import torch
 from torch.testing._internal.common_device_type import (
-    dtypes,
     instantiate_device_type_tests,
 )
 from torch.testing._internal.common_utils import run_tests
@@ -20,7 +18,8 @@ with XPUPatchForImport(False):
 
 
 instantiate_device_type_tests(
-    TestFloat8Dtype, globals(), only_for="xpu", allow_xpu=True)
+    TestFloat8Dtype, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":
