@@ -78,7 +78,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+      runner: e2e_internal
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -91,15 +91,15 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
+      runner: ut_internal
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
+    runs-on: e2e_internal
     name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
-    timeout-minutes: 3600
+    timeout-minutes: 360000
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
