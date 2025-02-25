@@ -133,12 +133,6 @@ GEN_XPU(
 
 include(${BUILD_TORCH_XPU_ATEN_GENERATED}/xpu_ops_generated_headers.cmake)
 
-# The c_shim_xpu.cpp needs include files in ${CMAKE_BINARY_DIR}/xpu/ATen/ops/*.h)
-# The include path is auto generated as "#include <ATen/ops/*.h">
-# To follow the design of aoti codegen, here ${CMAKE_BINARY_DIR}/xpu is added to
-# $TORCH_XPU_OPS_INCLUDE_DIRS, so that "#include <ATen/ops/*.h>" works.
-list(APPEND TORCH_XPU_OPS_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/xpu)
-
 list(APPEND xpu_generated_src
   ${RegisterXPU_GENERATED}
   ${RegisterSparseXPU_GENERATED}
