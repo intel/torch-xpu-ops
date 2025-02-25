@@ -1,0 +1,35 @@
+
+
+#####################  BELOW NEED TO BE UPDATED WEEKLY ######################################
+WORK_WEEK: "ww06_onednn_37" # will decide the folder name for logs and downloaded wheels
+# WORK_WEEK: "test_ww40" # will decide the folder name for logs and downloaded wheels
+#conda_path: "/home/huxue/idp_2024_251"    # you need to change to your own conda_path
+# conda_path: "/home/huxue/intelpython3-2024.1.0_814/"
+conda_or_venv: "conda" # conda or venv
+conda_path: "/home/libohao/miniforge3"
+# change workspace_path to your local folder
+# we will generate folders like dl_dev_onesource  horovod  itex-gpu-models  logs  whls into this workspace_path
+workspace_path: '/home/libohao/client_gpu'
+
+build_ipex: "false" # true or false
+pytorch_branch_commit: "90b7dcf2c5ee13b892701822f2abbc0e64f5584d"
+PT_WHEEL_SRC_URL: "pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu"
+# description: Keep torch-xpu-ops pin. `true` means use pined commit, `false` means use specific commit
+keep_torch_xpu_ops: "true"
+torch_xpu_ops_commit: "" # if keep_torch_xpu_ops is false, this commit will be used
+test_type: "triton"  # test type, such as triton-acceptance, onednn-acceptance
+pt_version: "2.6.0"
+
+
+artifactory_upload_path: "client_gpu/logs/weekly/2025/ww08"
+ 
+
+
+Driver_version: ""  # Not used in script but just a reminder that we might need to update driver
+oneAPI_version: "" # update lqcd, pointnet-atlas submodules
+# https://github.com/intel-innersource/frameworks.ai.infrastructure.argonne-onesource/commit/e2d9e73836d848ed7292db14935ed895fc9c234f
+
+#####################  BELOW DOES NOT NEED TO CHANGED WEEKLY ######################################
+gha_runner: "Borealis" # Do not change for Borealis
+python_version: "3.10" # Do not change on Borealis since we only test IDP3.9
+WHEEL_DOWNLOAD_PROXY: "--proxy=no" # Do not change for Borealis

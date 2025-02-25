@@ -1,0 +1,182 @@
+name: Test Arguments
+on:
+  workflow_dispatch:
+    inputs:      
+      Config_File:
+        type: string
+        description: 'Where to read config file?'
+        required: true
+        default: "/home/libohao/client_gpu/weekly_configs/ww06_onednn.yml"     
+
+      Update_conda:
+        description: 'Delete and recreate the conda env?'
+        type: boolean
+        default: true       
+
+      ut:
+        required: false
+        type: string
+        default: ''
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu`. Delimiter is comma
+
+      suite:
+        required: true
+        type: string
+        default: 'huggingface'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
+
+      dt:
+        required: true
+        type: string
+        default: 'float32'
+        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
+
+      mode:
+        required: true
+        type: string
+        default: 'inference'
+        description: Test mode. `inference,training`. Delimiter is comma
+
+      scenario:
+        required: true
+        type: string
+        default: 'accuracy'
+        description: Test scenario. `accuracy,performance`. Delimiter is comma
+
+      model:
+        required: false
+        type: string
+        default: ''
+        description: Model. Will only run this one mode if set
+      
+      gha-runner-surrogate:
+        # choose from two options
+        type: choice
+        description: 'Choose the runner for the first few jobs'
+        options:
+        - "a21-surrogate4-libo"
+
+      gha-runner-test:
+        # choose from two options
+        type: choice
+        description: 'Please choose the same user as gha-runner-surrogate'
+        options:
+        - "mtl"
+        - "lnl"
+        - "bmg"
+        - "arc"
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}
+  cancel-in-progress: true
+
+
+jobs:
+    Preparation:
+        # The type of runner that the job will run on
+        runs-on: [ "${{ inputs.gha-runner-surrogate }}" ]
+        steps:
+        # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+        - uses: actions/checkout@v3
+        - name: Print and prepare config file
+          id: get_env_data
+          run: | 
+            set -x
+            if [ -z ${{ inputs.Config_File }}  ]; then
+                echo "Please provide config file path! E.g. /home/libohao/client_gpu/weekly_configs/ww06_onednn.yml"
+                exit 1
+            else
+                Config_File=${{ inputs.Config_File }}
+            fi         
+            content=`cat ${{ inputs.Config_File }}` || true
+            # Save all the env vars in config file to later use in another CI job
+            /home/libohao/miniforge3/bin/python ./scripts/common/parse_config.py --file $Config_File > env_var_config.sh
+            bash env_var_config.sh
+            
+        - name: Update env vars
+          run: |
+            bash ./scripts/common/prepare_gha_work_envs.sh
+            # write env vars to GITHUB_ENV
+            bash env_var_config.sh
+
+        - name: Check env_var_config.sh
+          run: | 
+            echo "Printing config information"        
+            cat env_var_config.sh   
+
+        - name: Archive config file
+          uses: actions/upload-artifact@v3
+          with:
+            name: config-env-vars
+            path: |
+                env_var_config.sh
+        
+        - name: Upload config file
+          run: |
+            echo "artifactory_upload_path: ${artifactory_upload_path}/"
+            if [ ! -z ${artifactory_upload_path} ]; then
+                export no_proxy=intel.com,localhost,smw2,192.168.0.0/16,172.16.0.0/12,127.0.0.0/8,10.0.0.0/8,/var/run/docker.sock
+                curl -vvv -ulibohao:${{ secrets.ARTIFACTORY_ACCESS_TOKEN_LIBO }} -T env_var_config.sh "https://af01p-fm.devtools.intel.com/artifactory/satg_aia_ioh-fm-local/${artifactory_upload_path}/"
+            else
+                echo "Please input the artifactory upload path"
+            fi
+
+    Linux-Nightly-Ondemand-E2E-Tests:
+        runs-on: [ mtl_gha_runner ]
+        needs: [Preparation]
+        # Don't run on forked repos
+        if: github.repository_owner == 'libohao1201'
+        timeout-minutes: 3600
+        env:
+            pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+            keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+            ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
+            python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+        outputs:
+            TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
+            TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
+            DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+            KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
+            BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
+            OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
+            GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
+            TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
+            TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
+            TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
+            TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
+            TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
+            TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
+            TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
+    
+        steps:
+          - name: Checkout torch-xpu-ops
+            uses: actions/checkout@v4
+          - name: Download config file
+            uses: actions/download-artifact@v3
+            with:
+              name: config-env-vars
+
+          - name: Update env vars
+            run: |
+              cat env_var_config.sh
+              ren env_var_config.sh env_var_config.bat
+
+          - name: Prepare Conda ENV
+            run: |
+              echo "current path is: $(pwd)"
+              which conda && conda clean -ay
+              if [ -d "$(dirname ${CONDA_EXE})/../envs/e2e_ci" ]; then
+                echo "e2e_ci exists, remove it!"
+                conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+              fi
+              
+              conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+              source activate e2e_ci
+              pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu
+              pip uninstall -y torch
+              pip install --no-deps /home/ruijie/onednn_37_ww03/torch-2.6.0.dev20250115+xpu-cp310-cp310-linux_x86_64.whl
+              pip install pandas psutil pyyaml scipy tqdm pytest
+
+
+            
