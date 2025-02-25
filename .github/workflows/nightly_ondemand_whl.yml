@@ -68,7 +68,7 @@ jobs:
   Linux-Nightly-Ondemand-PT2E-WHL-Tests:
     runs-on: [self-hosted,Linux,X64,test]
     # Don't run on forked repos
-    if: github.repository_owner == 'kaileiyx'
+    if: github.repository_owner == 'intel'
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
