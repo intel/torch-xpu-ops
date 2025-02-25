@@ -129,7 +129,7 @@ jobs:
           /usr/bin/python3.10 -m venv ${HOME}/mengfeil/myvenv-e2e
           source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm pyyaml
+          pip install pandas scipy tqdm pyyaml botocore
       - name: Prepare Stock Pytorch
         run: |
           pwd
