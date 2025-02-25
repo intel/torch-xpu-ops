@@ -2,6 +2,7 @@
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/NMSKernel.h>
 
 namespace at {
@@ -97,9 +98,68 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<acc_t> slm_;
 };
 
+struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<1> item) const {
+    const int thread_id = item.get_local_id(0);
+
+    // Initialize removed
+    for (int i = thread_id; i < col_blocks_; i += nms_items_per_group) {
+      removed_[i] = 0;
+    }
+    item.barrier(sycl_local_fence);
+
+    for (int nblock = 0; nblock < col_blocks_; nblock++) {
+      auto removed_val = removed_[nblock];
+      item.barrier(sycl_local_fence);
+      const int i_offset = nblock * nms_items_per_group;
+
+      for (int inblock = 0; inblock < nms_items_per_group; inblock++) {
+        const int i = i_offset + inblock;
+        if (i >= n_boxes_)
+          break;
+
+        // Select a candidate, check if it should be kept
+        if (!(removed_val & (1ULL << inblock))) {
+          if (thread_id == 0) {
+            keep_[i] = true;
+          }
+          auto p = dev_mask_ + i * col_blocks_;
+
+          // Remove all bboxes which overlap the candidate
+          for (int j = thread_id; j < col_blocks_; j += nms_items_per_group) {
+            if (j >= nblock)
+              removed_[j] |= p[j];
+          }
+          item.barrier(sycl_local_fence);
+          removed_val = removed_[nblock];
+        }
+      }
+    }
+  }
+  GatherKeepFromMask(
+      bool* keep,
+      const unsigned long long* dev_mask,
+      const int n_boxes)
+      : keep_(keep),
+        dev_mask_(dev_mask),
+        n_boxes_(n_boxes),
+        col_blocks_(ceil_div(n_boxes, nms_items_per_group)) {}
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    removed_ = sycl_local_acc_t<unsigned long long>(col_blocks_, cgh);
+  }
+
+ private:
+  bool* keep_;
+  const unsigned long long* dev_mask_;
+  const int n_boxes_;
+  const int col_blocks_;
+  sycl_local_acc_t<unsigned long long> removed_;
+};
+
 Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
   int dets_num = dets_sorted.size(0);
-  int col_blocks = (dets_num + nms_items_per_group - 1) / nms_items_per_group;
+  int col_blocks = ceil_div(dets_num, nms_items_per_group);
   auto mask = at::empty(
       {dets_num * col_blocks}, dets_sorted.options().dtype(at::kLong));
 
@@ -120,7 +180,19 @@ Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
         sycl_kernel_submit(
             global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
       });
-  return mask;
+
+  at::Tensor keep = at::zeros(
+      {dets_num}, dets_sorted.options().dtype(at::kBool).device(at::kXPU));
+  auto caller = GatherKeepFromMask(
+      keep.data_ptr<bool>(),
+      (unsigned long long*)mask.data_ptr<int64_t>(),
+      dets_num);
+  sycl_kernel_submit(
+      std::min(col_blocks, nms_items_per_group),
+      std::min(col_blocks, nms_items_per_group),
+      at::xpu::getCurrentSYCLQueue(),
+      caller);
+  return keep;
 }
 
 } // namespace xpu
