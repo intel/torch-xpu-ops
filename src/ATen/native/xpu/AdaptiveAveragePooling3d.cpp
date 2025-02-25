@@ -4,8 +4,8 @@
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
-#include <xpu/ATen/ops/adaptive_avg_pool3d_backward_native.h>
-#include <xpu/ATen/ops/adaptive_avg_pool3d_native.h>
+#include <ATen/ops/adaptive_avg_pool3d_backward_native.h>
+#include <ATen/ops/adaptive_avg_pool3d_native.h>
 
 namespace at::native {
 

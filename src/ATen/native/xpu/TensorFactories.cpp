@@ -5,7 +5,7 @@
 
 #include <ATen/ops/empty_native.h>
 #include <ATen/ops/empty_strided_native.h>
-#include <xpu/ATen/ops/_efficientzerotensor_native.h>
+#include <ATen/ops/_efficientzerotensor_native.h>
 
 #include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
