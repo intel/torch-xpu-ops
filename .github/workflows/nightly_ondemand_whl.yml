@@ -255,7 +255,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: ./.github/actions/pt2e
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
