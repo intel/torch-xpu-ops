@@ -96,10 +96,10 @@ runs:
         fi
         pip install numpy==1.26.4
         # dataset
-        if [ ! -d /workspace/benchmark/imagenet/val ];then
-          sudo rm -rf /workspace/benchmark/imagenet/val
-          sudo mkdir -p /workspace/benchmark/imagenet/val
-          cd /workspace/benchmark/imagenet/val
+        if [ ! -d ${HOME}/datasets/imagenet ];then
+          rm -rf ${HOME}/datasets/imagenet
+          mkdir -p ${HOME}/datasets/imagenet
+          cd ${HOME}/datasets/imagenet
           wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
           tar -xf ILSVRC2012_img_val.tar
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
