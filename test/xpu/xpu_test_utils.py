@@ -30,7 +30,6 @@ from torch.testing._internal.opinfo.core import (
 _xpu_computation_op_list = [
     "empty",
     "eye",
-    "fill",
     "zeros",
     "zeros_like",
     "clone",
@@ -73,6 +72,26 @@ _xpu_computation_op_list = [
     "exp2",
     "expm1",
     "exponential",
+    "fft.fft",
+    "fft.fft2",
+    "fft.fftn",
+    "fft.hfft",
+    "fft.hfft2",
+    "fft.hfftn",
+    "fft.rfft",
+    "fft.rfft2",
+    "fft.rfftn",
+    "fft.ifft",
+    "fft.ifft2",
+    "fft.ifftn",
+    "fft.ihfft",
+    "fft.ihfft2",
+    "fft.ihfftn",
+    "fft.irfft",
+    "fft.irfft2",
+    "fft.irfftn",
+    "fft.fftshift",
+    "fft.ifftshift",
     "fill",
     "fmod",
     "__rmod__",
@@ -403,6 +422,11 @@ _xpu_tolerance_override = {
     "histogram": {
         ("TestCommon", "test_out"): {
             torch.float32: tol(atol=3e-5, rtol=5e-5),
+        }
+    },
+    "nn.ConvTranspose3d": {
+        ("TestModule", "test_non_contiguous_tensors"): {
+            torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
 }
@@ -783,6 +807,10 @@ def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
         yield SampleInput(t, **kwargs)
 
 
+def is_tf32_supported() -> bool:
+    return False
+
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(
@@ -818,8 +846,9 @@ class XPUPatchForImport:
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
-        self.cuda_is_available = cuda.is_available
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
+        self.cuda_is_tf32_supported = cuda.is_tf32_supported
+        self.cuda_get_device_capability = torch.cuda.get_device_capability
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -875,10 +904,10 @@ class XPUPatchForImport:
                     else True
                 )
             ) or opinfo.name in _ops_without_cuda_support:
-                opinfo.dtypesIfXPU = opinfo.dtypes
+                opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIfXPU:
+                if bfloat16 in opinfo.dtypesIf["xpu"]:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
@@ -888,8 +917,10 @@ class XPUPatchForImport:
                     torch.complex128,
                     torch.double,
                 ]
-                opinfo.dtypesIfXPU = set(
-                    filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIfXPU))
+                opinfo.dtypesIf["xpu"] = set(
+                    filter(
+                        lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])
+                    )
                 )
                 opinfo.backward_dtypes = tuple(
                     filter(
@@ -1045,8 +1076,9 @@ class XPUPatchForImport:
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         common_cuda.TEST_CUDNN_VERSION = 0
-        cuda.is_available = lambda: True
         cuda.is_bf16_supported = lambda: True
+        torch.cuda.is_tf32_supported = is_tf32_supported
+        torch.cuda.get_device_capability = torch.xpu.get_device_capability
 
         sys.path.extend(self.test_package)
 
@@ -1069,8 +1101,9 @@ class XPUPatchForImport:
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
-        cuda.is_available = self.cuda_is_available
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
+        torch.cuda.is_tf32_supported = self.cuda_is_tf32_supported
+        torch.cuda.get_device_capability = self.cuda_get_device_capability
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
@@ -1121,7 +1154,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
         test_command += skip_options
     elif exe_list is not None:
         exe_options = ' -k "' + exe_list[0]
@@ -1129,8 +1164,12 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
         test_command += exe_options
     else:
-        test_command = "pytest -v " + test_case
+        test_command = (
+            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+        )
     return os.system(test_command)

@@ -14,7 +14,7 @@
 
 file(READ ${input_file} depend_text)
 
-if (NOT "${depend_text}" STREQUAL "")
+if(NOT "${depend_text}" STREQUAL "")
 
   string(REPLACE "\\ " " " depend_text ${depend_text})
   string(REGEX REPLACE "^.* : " "" depend_text ${depend_text})
@@ -27,7 +27,7 @@ if (NOT "${depend_text}" STREQUAL "")
     string(REGEX REPLACE "^ +" "" file ${file})
 
     if(NOT EXISTS "${file}")
-      if (EXISTS "/${file}")
+      if(EXISTS "/${file}")
         set(file "/${file}")
       else()
         if(verbose)

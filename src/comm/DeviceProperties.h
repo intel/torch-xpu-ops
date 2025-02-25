@@ -120,9 +120,8 @@ static inline int64_t syclMaxNumSubGroups(
 
 static inline int64_t syclMaxDSSNum(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
-  // TODO: We need to got this info from DPC++ Runtime
-  // Hardcode to 32 for ATS
-  int64_t dss_num = 32;
+  int64_t dss_num =
+      syclMaxComputeUnitSize(dev_id) / syclGpuEUCountPerSubslice(dev_id);
   return dss_num;
 }
 
@@ -141,27 +140,31 @@ static inline int64_t syclLocalMemSize(
 template <typename T>
 uint32_t syclPrefVectorWidth(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
-  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  (void)dev_id; // Suppress unused variable warning
+
+  // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
+  uint32_t vec_width = 16;
+
   if (std::is_same<T, char>::value) {
-    return dev_prop->preferred_vector_width_char;
+    return vec_width / sizeof(char);
   }
   if (std::is_same<T, short>::value) {
-    return dev_prop->preferred_vector_width_short;
+    return vec_width / sizeof(short);
   }
   if (std::is_same<T, int>::value) {
-    return dev_prop->preferred_vector_width_int;
+    return vec_width / sizeof(int);
   }
   if (std::is_same<T, int64_t>::value) {
-    return dev_prop->preferred_vector_width_long;
+    return vec_width / sizeof(int64_t);
   }
   if (std::is_same<T, float>::value) {
-    return dev_prop->preferred_vector_width_float;
+    return vec_width / sizeof(float);
   }
   if (std::is_same<T, double>::value) {
-    return dev_prop->preferred_vector_width_double;
+    return vec_width / sizeof(double);
   }
   if (std::is_same<T, ::sycl::half>::value) {
-    return dev_prop->preferred_vector_width_half;
+    return vec_width / sizeof(::sycl::half);
   }
   throw std::invalid_argument(
       "Invalid data type to fetch preferred vector width!");
