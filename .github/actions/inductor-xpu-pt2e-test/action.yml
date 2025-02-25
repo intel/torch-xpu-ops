@@ -4,8 +4,8 @@ inputs:
   suite:
     required: true
     type: string
-    default: 'huggingface'
-    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+    default: 'pt2e'
+    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench,pt2e. Delimiter is comma
   env_prepare:
     required: false
     description: If set to any value, will prepare suite test env
@@ -50,7 +50,7 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate kailei_pt2e
+        source activate pt2e_ci
         source .github/scripts/env.sh ${{ inputs.pytorch }}
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
@@ -112,7 +112,7 @@ runs:
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate kailei_pt2e
+        source activate pt2e_ci
         source .github/scripts/env.sh ${{ inputs.pytorch }}
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
