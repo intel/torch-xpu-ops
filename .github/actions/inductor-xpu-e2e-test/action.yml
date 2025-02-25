@@ -64,6 +64,7 @@ runs:
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          pip install -U transformers tokenizers
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
