@@ -80,7 +80,7 @@ jobs:
       abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
-      runner: e2e_internal
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -94,10 +94,10 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       driver: rolling
-      runner: ut_internal
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: e2e_internal
+    runs-on: pvc_rolling
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test

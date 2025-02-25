@@ -280,11 +280,17 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            which conda && conda clean -ay
+            conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                  rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+            conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            rm -rf ${HOME}/mengfeil/myvenv-ut
+            /usr/bin/python3.10 -m venv ${HOME}/mengfeil/myvenv-ut
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -304,7 +310,11 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
@@ -324,7 +334,11 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
@@ -354,7 +368,11 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
@@ -368,7 +386,11 @@ jobs:
       - name: Run Torch XPU Distributed UT
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           pip install pytest
           cd ${{ github.workspace }}
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
@@ -381,7 +403,11 @@ jobs:
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Summary
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_op_${ZE_AFFINITY_MASK}
+          else
+            source ${HOME}/mengfeil/myvenv-ut/bin/activate
+          fi
           pip install junitparser
           python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check

@@ -62,11 +62,17 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_build || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
-          conda create -n xpu_build python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_build
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            which conda && conda clean -ay
+            conda remove --all -y -n xpu_build || \
+                  rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
+            conda create -n xpu_build python=${{ inputs.python }} cmake ninja -y
+            source activate xpu_build
+          else
+            rm -rf ${HOME}/mengfeil/myvenv-build
+            /usr/bin/python3.10 -m venv ${HOME}/mengfeil/myvenv-build
+            source ${HOME}/mengfeil/myvenv-build/bin/activate
+          fi
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -86,7 +92,11 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          source activate xpu_build
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_build
+          else
+            source ${HOME}/mengfeil/myvenv-build/bin/activate
+          fi
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
           export USE_XCCL=1
@@ -158,7 +168,11 @@ jobs:
           fi
       - name: Torch Config
         run: |
-          source activate xpu_build
+          if [ "${{ inputs.driver }}" == "rolling" ];then
+            source activate xpu_build
+          else
+            source ${HOME}/mengfeil/myvenv-build/bin/activate
+          fi
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"

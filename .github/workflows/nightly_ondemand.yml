@@ -125,17 +125,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Prepare Conda ENV
         run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
+          rm -rf ${HOME}/mengfeil/myvenv-e2e
+          /usr/bin/python3.10 -m venv ${HOME}/mengfeil/myvenv-e2e
+          source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
           cd ../ && rm -rf pytorch
-          source activate e2e_ci
+          source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
@@ -177,7 +176,7 @@ jobs:
           echo ${GITHUB_ENV}
       - name: Triton Installation
         run: |
-          source activate e2e_ci
+          source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
@@ -190,7 +189,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate e2e_ci
+          source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
@@ -287,7 +286,7 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
+          source ${HOME}/mengfeil/myvenv-e2e/bin/activate
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then
