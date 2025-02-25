@@ -121,7 +121,9 @@ jobs:
             fi
             echo ">>>>>>>>>>>>Fork PR: ${is_fork_pr}, pytorch branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
 
-            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+            if [ "${{ inputs.driver }}" == "rolling" ];then
+              export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+            fi
             pip install -r requirements.txt
             WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
