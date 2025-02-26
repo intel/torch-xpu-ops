@@ -98,7 +98,7 @@ function(GEN_XPU file_yaml)
     --aoti-install-dir=${XPU_AOTI_INSTALL_DIR}
     COMMAND
     ${REGISTER_FALLBACK_CMD}
-    # # Codegen post-process
+    # Codegen post-process
     COMMAND
     ${XPU_INSTALL_HEADER_COMMAND}
     WORKING_DIRECTORY ${TORCH_ROOT}
