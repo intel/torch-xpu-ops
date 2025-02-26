@@ -27,7 +27,7 @@ on:
         required: true
         type: string
         default: 'float32'
-        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16,int8`. Delimiter is comma
+        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
       mode:
         required: true
         type: string
