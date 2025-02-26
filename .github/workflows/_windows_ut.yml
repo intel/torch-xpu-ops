@@ -178,5 +178,5 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-          cd ../pytorch/test/
-          pytest -v test_xpu.py
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
+          python run_test_win_with_skip_mtl.py
