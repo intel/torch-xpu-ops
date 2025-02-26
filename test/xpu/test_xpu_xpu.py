@@ -9,7 +9,7 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_xpu import TestXpu, TestXpuAutocast, TestXpuTrace
+    from test_xpu import TestXpu, TestXpuAutocast, TestXpuTrace # noqa
 
 instantiate_device_type_tests(TestXpu, globals(), only_for="xpu", allow_xpu=True)
 
