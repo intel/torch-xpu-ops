@@ -209,16 +209,7 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/torch_xpu
           cd ../pytorch
-          TEST_REPORTS_DIR=$(pwd)/test/test-reports
-          rm -rf "$TEST_REPORTS_DIR" && mkdir -p "$TEST_REPORTS_DIR"
-          # Run Pytorch XPU binary UT
-          for xpu_case in build/bin/*{xpu,sycl}*; do
-            if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
-              case_name=$(basename "$xpu_case")
-              echo "Testing ${case_name} ..."
-              "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml 2>${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test.log
-            fi
-          done
+          
           # Run Pytorch XPU python UT
           export PYTORCH_TEST_WITH_SLOW=1
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
@@ -238,6 +229,19 @@ jobs:
             test_cmd="${test_cmd} test_xpu.py"
           fi
           eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+          cp -r test/test-reports ${{ github.workspace }}/ut_log/torch_xpu/
+          function read_dir(){
+            for file in `ls $1`
+            do
+              if [ -d $1"/"$file ]
+              then
+                cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+              else
+                echo "[Warning] $file has no xml"
+              fi
+            done
+          }
+          read_dir test/test-reports/python-pytest
       - name: Run Torch XPU Profile UT
         if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
         run: |
