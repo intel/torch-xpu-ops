@@ -1,6 +1,6 @@
 # Owner(s): ["module: intel"]
 
-from torch.testing._internal.autocast_test_lists import AutocastTestLists, TestAutocast
+from torch.testing._internal.autocast_test_lists import TestAutocast
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests, TestCase
 
