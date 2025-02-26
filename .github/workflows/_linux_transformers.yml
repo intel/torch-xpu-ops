@@ -149,8 +149,7 @@ jobs:
           # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml \
             --ignore=tests/models/marian/test_modeling_marian.py \
-            -k backbone tests || \
-            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+            -k backbone tests || true
       - name: Run tests/*.py
         env:
           TEST_CASE: 'tests_py'
@@ -207,7 +206,7 @@ jobs:
             not TestTrainerDistributedXPU and \
             not TestFSDPTrainer"
           python3 -m pytest -rsf --make-reports=$TEST_CASE tests/trainer --junit-xml=reports/$TEST_CASE.xml -k "$pattern" || \
-            (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+            true
       - name: Run tests/utils
         env:
           TEST_CASE: 'tests_utils'
@@ -221,12 +220,9 @@ jobs:
           # next tests to fail. See: https://github.com/huggingface/transformers/issues/36267
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml \
             -k "$pattern" --ignore=tests/utils/test_import_utils.py \
-            tests/utils || (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
+            tests/utils || true
       - name: Check for errors in tests
         run: |
-          FAILED_CASES=$(echo $FAILED_CASES | sed 's/^,//')
-          echo "Failed cases: [$(echo $FAILED_CASES | sed 's/,/, /g')]"
-          test -z "$FAILED_CASES"
           source activate $CONDA_ENV_NAME
           python3 torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml
       - name: Clean HF home directory and cache
