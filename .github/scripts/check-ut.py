@@ -73,6 +73,8 @@ def print_suite(suite):
             category = 'op_regression_dev1'
         elif ut == 'op_extended':
             category = 'op_extended'
+        elif ut =='torch_xpu':
+            category = 'torch_xpu'
         elif 'op_ut' in ut:
             category = 'op_ut'
         row = {
