@@ -205,6 +205,17 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     : Backend(rank, size), store_(store), xcclCommCounter_(0) {
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   init();
+  if (!with_mpirun()) {
+    int local_rank = getXCCLEnvVar("LOCAL_RANK");
+    int local_world_size = getXCCLEnvVar("LOCAL_WORLD_SIZE");
+    if (local_rank == -1 || local_world_size == -1) {
+      local_rank = rank;
+      local_world_size = size;
+    }
+    setXCCLEnvVar("CCL_PROCESS_LAUNCHER", "none");
+    setXCCLEnvVar("CCL_LOCAL_RANK", local_rank);
+    setXCCLEnvVar("CCL_LOCAL_SIZE", local_world_size);
+  }
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() = default;
@@ -330,7 +341,6 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   c10::impl::VirtualGuardImpl impl(device.type());
   c10::Stream stream =
       impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
-  sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
   if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
     onecclGetUniqueId(&xcclID);
@@ -338,8 +348,16 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
 
   xcclComm_t comm = nullptr;
-  onecclCommInitRank(&comm, numRanks, xcclID, rank);
-  XCCLComm = std::make_shared<xcclComm_t>(std::move(comm));
+  onecclResult_t result = ONECCL_SUCCESS;
+  result = onecclSetDevice(rank);
+  if (result != ONECCL_SUCCESS) {
+    std::cerr << "Failed to set device.\n";
+  }
+  result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
+  if (result != ONECCL_SUCCESS) {
+    std::cerr << "Failed to initialize communicator.\n";
+  }
+  XCCLComm = std::make_shared<xcclComm_t>(comm);
 
   RECORD_PARAM_COMMS(
       0, // seq
