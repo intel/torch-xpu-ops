@@ -11,6 +11,7 @@ const std::map<c10d::ReduceOp, ccl::reduction> xcclOps = {
     {ReduceOp::MIN, ccl::reduction::min},
     {ReduceOp::MAX, ccl::reduction::max},
     {ReduceOp::SUM, ccl::reduction::sum},
+    {ReduceOp::AVG, ccl::reduction::avg},
     {ReduceOp::PRODUCT, ccl::reduction::prod},
 };
 
@@ -146,11 +147,6 @@ ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
     if (input.scalar_type() == at::kBool && reduceOp == ReduceOp::SUM) {
       // Map sum to max for bool tensors to avoid overflow issues with sum.
       return ccl::reduction::max;
-    }
-    // Use SUM emu AVG due to oneCCL not support AVG.
-    // oneCCL is expected to support avg in basekit 2025.2 release.
-    if (reduceOp == ReduceOp::AVG) {
-      return ccl::reduction::sum;
     }
     return xcclOps.at(reduceOp);
   } catch (const std::out_of_range&) {
@@ -898,12 +894,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          output.div_(divisor);
-        }
         return;
       },
       OpType::ALLREDUCE,
@@ -952,15 +942,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::ALLREDUCE,
@@ -1007,15 +988,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::COALESCED,
@@ -1145,14 +1117,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
             root,
             comm,
             ccl::create_stream(stream.queue()));
-        // WA due to oneCCL not support AVG
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::REDUCE,
@@ -1186,15 +1150,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
             root,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::REDUCE,
@@ -1415,15 +1370,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               xcclReduceOp,
               comm,
               ccl::create_stream(stream.queue()));
-          // Use SUM emu AVG due to oneCCL not support AVG
-          // oneCCL is expected to support avg in basekit 2025.2 release.
-          if (opts.reduceOp == ReduceOp::AVG) {
-            auto divisor = getSize();
-            c10::StreamGuard guard(stream);
-            c10::xpu::XPUCachingAllocator::recordStream(
-                output.storage().data_ptr(), stream);
-            output.div_(divisor);
-          }
           return;
         },
         [&](at::xpu::XPUStream& Stream,
@@ -1507,15 +1453,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::_REDUCE_SCATTER_BASE,
@@ -1545,15 +1482,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
-        // Use SUM emu AVG due to oneCCL not support AVG
-        // oneCCL is expected to support avg in basekit 2025.2 release.
-        if (opts.reduceOp == ReduceOp::AVG) {
-          auto divisor = getSize();
-          c10::StreamGuard guard(stream);
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          output.div_(divisor);
-        }
         return;
       },
       OpType::COALESCED,
