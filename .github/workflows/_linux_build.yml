@@ -70,6 +70,7 @@ jobs:
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
+          git chekcout cherry/enable-xccl-fsdp-tests
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
             # apply PRs for stock pytorch
