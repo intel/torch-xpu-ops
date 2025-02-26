@@ -22,7 +22,7 @@ on:
         required: true
         type: string
         default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
       dt:
         required: true
         type: string
@@ -187,6 +187,16 @@ jobs:
           pytorch: nightly_wheel
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly PT2E Accuracy Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
+        uses: ./.github/actions/pt2e
+        with:
+          suite: pt2e
+          dt: float32,int8
+          scenario: accuracy,performance
+          pytorch: nightly_wheel
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       # Weekly launch
       - name: Weekly Huggingface Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
@@ -221,10 +231,31 @@ jobs:
           scenario: accuracy,performance
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly PT2E Accuracy Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
+        uses: ./.github/actions/pt2e
+        with:
+          suite: pt2e
+          dt: float32,int8
+          scenario: accuracy,performance
+          pytorch: nightly_wheel
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: github.event_name != 'schedule'
+        if: ${{ github.event_name != 'schedule' && inputs.suite != 'pt2e' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: ${{ inputs.suite }}
+          env_prepare: true
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+          pytorch: nightly_wheel
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
