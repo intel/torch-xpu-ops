@@ -338,7 +338,11 @@ command = [
 [[linter]]
 code = 'INCLUDE'
 include_patterns = [
-    'src/**',
+    'src/comm/**',
+    'src/Aten/**',
+    'src/Aten/**/**',
+    'src/Aten/**/**/**',
+    'src/Aten/**/**/**/**',
 ]
 command = [
     'python3',
@@ -473,6 +477,11 @@ exclude_patterns = [
     '**/*.py',
     '**/*.sh',
     '**/*.bash',
+    '**/git-pre-commit',
+    '**/git-clang-format',
+    '**/gradlew',
+    'fb/**',
+    '**/fb/**',
     '.github/workflows/*.yml',
 ]
 command = [
@@ -609,6 +618,11 @@ init_command = [
 code = 'SHELLCHECK'
 include_patterns = [
     '**/*.sh'
+]
+exclude_patterns = [
+    '.github/scripts/lintrunner.sh',
+    '.github/scripts/rpath.sh',
+    '.github/scripts/env.sh'
 ]
 command = [
     'python3',
@@ -767,6 +781,9 @@ include_patterns = [
     '.github/**/*.yml',
     '.github/**/*.yaml',
 ]
+exclude_patterns = [
+    '.github/workflows/*.yml'
+]
 command = [
     'python3',
     'tools/linter/adapters/no_workflows_on_fork.py',
@@ -791,6 +808,7 @@ include_patterns = [
 ]
 exclude_patterns = [
     'tools/linter/adapters/*.py',
+    'test/xpu/test_autograd_xpu.py',
 ]
 command = [
     'python3',
@@ -861,14 +879,7 @@ command = [
 
 [[linter]]
 code = 'RUFF'
-include_patterns = [
-    'src/comm/*.h',
-    'src/comm/*.cpp',
-    'src/Aten/**/**/*.h',
-    'src/Aten/**/**/*.cpp',
-    'src/Aten/**/**/**/*.h',
-    'src/Aten/**/**/**/*.cpp',
-]
+include_patterns = ['**/*.py', '**/*.pyi']
 #exclude_patterns = [
 #    'caffe2/**',
 #    'functorch/docs/**',

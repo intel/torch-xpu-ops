@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -ex
 
-# The generic Linux job chooses to use base env, not the one setup by the image
-CONDA_ENV=$(conda env list --json | jq -r ".envs | .[-1]")
-eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)"
-conda activate "${CONDA_ENV}"
+# Creat a venv for lint check
+python3 -m venv lint
+source lint/bin/activate
+python3 -m pip install setuptools
 
 # Use uv to speed up lintrunner init
 python3 -m pip install uv==0.1.45
+python3 -m pip install ruamel.yaml
 
 CACHE_DIRECTORY="/tmp/.lintbin"
 # Try to recover the cached binaries
@@ -22,13 +23,20 @@ if ! command -v lintrunner &> /dev/null; then
     python3 -m pip install lintrunner==0.12.7
 fi
 
+# Ignoring errors in one specific run
+export SHELLCHECK_OPTS="-e SC2154"
+
 # This has already been cached in the docker image
 lintrunner init 2> /dev/null
 
-## Do build steps necessary for linters
-#if [[ "${CLANG}" == "1" ]]; then
-#    python3 -m tools.linter.clang_tidy.generate_build_files
-#fi
+# Do build steps necessary for linters
+if [[ "${CLANG}" == "1" ]]; then
+    if [[ -e "third_party/torch-xpu-ops/tools/linter/clang_tidy/generate_build_files.py" ]];then
+        python3 third_party/torch-xpu-ops/tools/linter/clang_tidy/generate_build_files.py
+    else
+        echo "Please run the checker under pytorch source code folder"
+    fi
+fi
 #python3 -m tools.generate_torch_version --is_debug=false
 #python3 -m tools.pyi.gen_pyi \
 #    --native-functions-path aten/src/ATen/native/native_functions.yaml \

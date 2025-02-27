@@ -22,7 +22,7 @@ on:
         required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu`. Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
       triton:
         required: false
         type: string
@@ -66,36 +66,42 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
+  Linux-Nightly-Ondemand-Build:
+    secrets: inherit
+    if: ${{ ! cancelled() }}
+    name: linux-nightly-ondemand
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      abi: 1
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      runner: pvc_e2e
+
   Linux-Nightly-Ondemand-UT-Tests:
-    if: github.event_name == 'schedule' || ${{ inputs.ut_suite }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    name: linux-nightly-ondemand
+    needs: Linux-Nightly-Ondemand-Build
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
-
-  Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
+    name: linux-nightly-ondemand / e2e_test
     # Don't run on forked repos
-    if: github.repository_owner == 'intel'
+    if: ${{ github.repository_owner == 'intel' }}
+    needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
@@ -162,9 +168,9 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -176,15 +182,19 @@ jobs:
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-      - name: Build Pytorch XPU
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          path: ${{ github.workspace }}
+      - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-          python setup.py bdist_wheel
-          pip install --force-reinstall dist/*.whl
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
@@ -275,17 +285,15 @@ jobs:
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
-          failed_models=$(grep "Real failed models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          timeout_models=$(grep "timeout models: *[1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log |wc -l || true)
-          if [ ${timeout_models} -ne 0 ];then
-            TIMEOUT_MODELS="$(
-              grep -B 1 "timeout models: [1-9]" ${{ github.workspace }}/upload_files/summary_accuracy.log
-            )"
-            echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
-          fi
-          if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${{ github.workspace }}/upload_files/summary_accuracy.log |grep "failed" -B 1
-            exit 1
+          # Print summary
+          rm -rf /tmp/tmp-*.txt
+          source activate e2e_ci
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          if [ ${exit_label} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "There are ${exit_label} cases that need look into!!! Please check them"
+            exit ${exit_label}
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
@@ -293,6 +301,34 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+
+  Linux-Nightly-Ondemand-Build-ABI-0:
+    secrets: inherit
+    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+    name: linux-nightly-ondemand-abi0
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      abi: 0
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      runner: pvc_e2e
+
+  Linux-Weekly-UT-Tests-ABI-0:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+    name: linux-nightly-ondemand-abi0
+    needs: Linux-Nightly-Ondemand-Build-ABI-0
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      abi: 0
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      ut: op_regression,op_regression_dev1,op_extended,op_ut
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.torch_commit_id }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      runner: linux.idc.xpu
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}

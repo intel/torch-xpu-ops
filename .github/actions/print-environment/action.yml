@@ -1,0 +1,74 @@
+name: print-environment
+
+inputs:
+  conda:
+    required: false
+    type: string
+    default: ''
+    description: "Conda environment to use (must exist beforehand)"
+  os_packages:
+    required: false
+    type: string
+    default: ''
+    description: "Space separated list of OS packages to evaluate"
+  pip_packages:
+    required: false
+    type: string
+    default: ''
+    description: "Space separated list of PyPi packages to evaluate"
+
+runs:
+  using: composite
+  steps:
+    - name: Print environment
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.conda }}" ]; then
+          source activate ${{ inputs.conda }}
+        fi
+        {
+          echo "### Environment"
+          echo "| | |"
+          echo "| --- | --- |"
+          echo "| jobs.$GITHUB_JOB.versions.os | $(source /etc/os-release && echo $VERSION_ID) |"
+          echo "| jobs.$GITHUB_JOB.versions.linux-kernel | $(uname -r) |"
+          echo "| jobs.$GITHUB_JOB.versions.python | $(python --version | cut -f2 -d' ' || true) |"
+          packages="${{ inputs.os_packages}}"
+          packages+=" \
+            level-zero \
+            libigc1 \
+            libigc2 \
+            libze1 \
+            libze-intel-gpu1 \
+            intel-i915-dkms \
+            intel-level-zero-gpu \
+            intel-opencl-icd"
+          for package in $packages; do
+            package_version="$(dpkg -l | grep $package | grep ii | head -1 | sed 's/  */ /g' | cut -f3 -d" " || true)"
+            echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+          done
+          packages="${{ inputs.pip_packages}}"
+          packages+=" \
+            numpy \
+            torch \
+            torchaudio \
+            torchvision"
+          for package in $packages; do
+            package_version=$(python -c "import $package; print($package.__version__)" || true)
+            echo "| jobs.$GITHUB_JOB.versions.$package | $package_version |"
+          done
+          # printing annotations for GPU cards
+          var="[$(cat /sys/class/drm/render*/device/vendor || true)]"
+          echo "| jobs.$GITHUB_JOB.drm.render_nodes_vendor_ids | $(echo $var | sed 's/ /,/g') |"
+          var="[$(cat /sys/class/drm/render*/device/device || true)]"
+          echo "| jobs.$GITHUB_JOB.drm.render_nodes_device_ids | $(echo $var | sed 's/ /,/g') |"
+          var=$(python -c "import torch; print(torch.version.xpu)" || true)
+          echo "| jobs.$GITHUB_JOB.torch.version.xpu | $var |"
+          var=$(python -c "import torch; print(torch.xpu.device_count())" || true)
+          echo "| jobs.$GITHUB_JOB.torch.xpu.device_count | $var |"
+          # printing annotations with key environment variables
+          echo "| jobs.$GITHUB_JOB.env.ZE_AFFINITY_MASK | $ZE_AFFINITY_MASK |"
+          echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
+          echo "| jobs.$GITHUB_JOB.env.PYTORCH_ENABLE_XPU_FALLBACK | $PYTORCH_ENABLE_XPU_FALLBACK |"
+          echo "| jobs.$GITHUB_JOB.env.PYTORCH_DEBUG_XPU_FALLBACK | $PYTORCH_DEBUG_XPU_FALLBACK |"
+        } >> $GITHUB_STEP_SUMMARY

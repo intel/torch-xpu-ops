@@ -1,5 +1,6 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
-torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1221
+torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,fail_to_run,fail_to_run
 BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
@@ -14,6 +15,7 @@ cm3leon_generate,pass,pass,pass,pass,pass
 dcgan,pass,pass,pass,pass,pass
 demucs,pass,pass,pass,pass,pass
 densenet121,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1278
 detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
@@ -25,9 +27,9 @@ detectron2_maskrcnn,fail_to_run,eager_fail_to_run,fail_to_run,eager_fail_to_run,
 detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_maskrcnn_r_50_fpn,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_maskrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 dlrm,pass,pass,pass,pass,pass
-doctr_det_predictor,pass,pass,pass,eager_fail_to_run,pass
+doctr_det_predictor,pass,pass,pass,pass,pass
 doctr_reco_predictor,pass,pass,pass,pass,pass
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
@@ -44,7 +46,8 @@ hf_GPT2_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_ski
 hf_Longformer,pass,pass,pass,pass,pass
 hf_Reformer,pass,pass,pass,pass,pass
 hf_T5,pass,pass,pass,pass,pass
-hf_T5_base,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1276
+hf_T5_base,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 hf_T5_generate,pass,pass,pass,pass,pass
 hf_T5_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 hf_Whisper,pass,pass,pass,pass,pass
@@ -53,7 +56,8 @@ hf_distil_whisper,pass,pass,pass,pass,pass
 lennard_jones,pass,pass,pass,pass,pass
 llama,pass,pass,pass,pass,pass
 llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-llava,eager_fail_to_run,pass,pass,eager_fail_to_run,eager_fail_to_run
+# https://github.com/intel/torch-xpu-ops/issues/1277
+llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
@@ -61,14 +65,14 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
+moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
 opacus_cifar10,pass,pass,pass,pass,pass
 phlippe_densenet,pass,pass,pass,pass,pass
 phlippe_resnet,pass,pass,pass,pass,pass
-pyhpc_equation_of_state,pass,pass,fail_accuracy,pass,pass
+pyhpc_equation_of_state,pass,pass,pass,pass,pass
 pyhpc_isoneutral_mixing,pass,pass,pass,pass,pass
 pyhpc_turbulent_kinetic_energy,pass,pass,pass,pass,pass
 pytorch_CycleGAN_and_pix2pix,pass,pass,pass,pass,pass
@@ -86,9 +90,10 @@ simple_gpt,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_t
 simple_gpt_tp_manual,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
-squeezenet1_1,pass,fail_accuracy,fail_accuracy,pass,pass
+squeezenet1_1,pass,fail_accuracy,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
-stable_diffusion_unet,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
+# https://github.com/intel/torch-xpu-ops/issues/1261
+stable_diffusion_unet,eager_fail_to_run,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
 tacotron2,pass,pass,pass,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 timm_efficientnet,pass,pass,pass,pass,pass
@@ -98,10 +103,9 @@ timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
 timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 timm_vovnet,pass,pass,pass,pass,pass
-torch_multimodal_clip,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
-tts_angular,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+torch_multimodal_clip,pass,pass,pass,pass,pass
+tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
 vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
-# Skip yolov3 for known torchbench issue: https://github.com/intel/torch-xpu-ops/issues/1229
-yolov3,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass

@@ -32,6 +32,7 @@ def gen_compile_commands() -> None:
     os.environ["CC"] = "clang"
     os.environ["CXX"] = "clang++"
     run_cmd([sys.executable, "setup.py", "--cmake-only", "build"])
+    run_cmd(["cp", "-rf", "./torchgen/packaged/ATen/templates", "third_party/torch-xpu-ops/yaml/templates"])
 
 
 def run_autogen() -> None:
@@ -60,6 +61,29 @@ def run_autogen() -> None:
         ]
     )
 
+
+    run_cmd(
+        [
+            sys.executable,
+            "-m",
+            "torchgen.gen",
+            "--source-path",
+            "third_party/torch-xpu-ops/yaml",
+            "--install-dir",
+            "build/xpu",
+            "--per-operator-headers",
+            "--static-dispatch-backend",
+            "--backend-whitelist",
+            "XPU SparseXPU NestedTensorXPU",
+            "--xpu",
+            "--update-aoti-c-shim",
+            "--extend-aoti-c-shim",
+            "--aoti-install-dir",
+            "torch/csrc/inductor/aoti_torch/generated/extend",
+        ]
+
+
+    )
 
 def generate_build_files() -> None:
     update_submodules()
