@@ -1511,7 +1511,7 @@ void batch_norm_elemt_template(
           PREFERRED_VEC_SIZE &&
       memory::can_vectorize_up_to<input_scalar_t>(output_ptr) >=
           PREFERRED_VEC_SIZE &&
-      input.size(2) % PREFERRED_VEC_SIZE == 0) {
+      input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2) {
     auto kfn = BatchNormTransformInputVectorizedKernelFunctor<
         PREFERRED_VEC_SIZE,
         input_scalar_t,
@@ -1749,7 +1749,7 @@ bool can_use_batch_norm_cnl_vec_kernel(
        memory::can_vectorize_up_to<weight_t>(weight) >= VEC_SIZE) &&
       (shift == nullptr ||
        memory::can_vectorize_up_to<weight_t>(shift) >= VEC_SIZE) &&
-      (stride % VEC_SIZE == 0);
+      (stride % VEC_SIZE == 0) && sizeof(scalar_t) <= 2;
 }
 
 void batch_norm_elemt_channels_last_template(
@@ -3138,7 +3138,7 @@ Tensor batch_norm_backward_elemt_template(
           PREFERRED_VEC_SIZE &&
       memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
           PREFERRED_VEC_SIZE &&
-      input.size(2) % PREFERRED_VEC_SIZE == 0) {
+      input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2) {
     auto kfn = BatchNormBackwardElemtVectorizedKernelFunctor<
         PREFERRED_VEC_SIZE,
         input_scalar_t,
@@ -3246,7 +3246,7 @@ Tensor batch_norm_backward_elemt_template(
           PREFERRED_VEC_SIZE &&
       memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
           PREFERRED_VEC_SIZE &&
-      input.size(2) % PREFERRED_VEC_SIZE == 0) {
+      input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2) {
     auto kfn = BatchNormBackwardElemtVectorizedKernelFunctor<
         PREFERRED_VEC_SIZE,
         input_scalar_t,
@@ -3531,7 +3531,7 @@ bool can_use_batch_norm_bwd_cnl_vec_kernel(
       memory::can_vectorize_up_to<scalar_t>((char*)input_ptr) >= VEC_SIZE &&
       memory::can_vectorize_up_to<scalar_t>((char*)grad_input_ptr) >=
           VEC_SIZE &&
-      stride % VEC_SIZE == 0);
+      stride % VEC_SIZE == 0 && sizeof(scalar_t) <= 2);
 }
 
 at::Tensor batch_norm_backward_elemt_channels_last_template(
@@ -4907,7 +4907,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_template(
            PREFERRED_VEC_SIZE &&
        memory::can_vectorize_up_to<input_scalar_t>(grad_output_ptr) >=
            PREFERRED_VEC_SIZE &&
-       input.size(2) % PREFERRED_VEC_SIZE == 0);
+       input.size(2) % PREFERRED_VEC_SIZE == 0 && sizeof(input_scalar_t) <= 2);
 
   if (simd == SIMD32) {
     if (can_use_vec_kernel) {
