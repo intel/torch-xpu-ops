@@ -4,7 +4,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
-#include <xpu/ATen/ops/im2col_native.h>
+#include <ATen/ops/im2col_native.h>
 
 #include <ATen/native/xpu/sycl/Im2ColKernel.h>
 #include <comm/xpu_aten.h>
