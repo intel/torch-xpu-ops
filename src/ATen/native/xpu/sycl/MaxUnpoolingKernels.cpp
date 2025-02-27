@@ -8,18 +8,27 @@
 
 namespace at::native::xpu {
 
-template <typename scalar_t>
+template <typename scalar_t, bool is_channels_last_>
 struct MaxUnpooling2dForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     int64_t outputImageSize = outputHeight_ * outputWidth_;
     auto output = output_data_;
     XPU_KERNEL_LOOP(item, linearIndex, numInputElements_) {
-      int c = (linearIndex / inputWidth_ / inputHeight_) % numChannels_;
+      int c = is_channels_last_
+          ? linearIndex % numChannels_
+          : (linearIndex / inputWidth_ / inputHeight_) % numChannels_;
       int n = linearIndex / inputWidth_ / inputHeight_ / numChannels_;
-      output += (n * numChannels_ + c) * outputHeight_ * outputWidth_;
       int maxind = indices_data_[linearIndex];
       SYCL_KERNEL_ASSERT(maxind >= 0 && maxind < outputImageSize);
-      output[maxind] = input_data_[linearIndex];
+      int offset = is_channels_last_
+          ? n * numChannels_ * outputHeight_ * outputWidth_ + c
+          : (n * numChannels_ + c) * outputHeight_ * outputWidth_;
+      output += offset;
+      if (is_channels_last_) {
+        output[maxind * numChannels_] = input_data_[linearIndex];
+      } else {
+        output[maxind] = input_data_[linearIndex];
+      }
     }
   };
   MaxUnpooling2dForwardKernelFunctor(
@@ -109,8 +118,9 @@ Tensor& max_unpooling2d_forward_kernel(
   int64_t inputHeight;
   int64_t inputWidth;
 
-  auto self = self_.contiguous();
-  auto indices = indices_.contiguous();
+  auto memory_format = self_.suggest_memory_format();
+  auto self = self_.contiguous(memory_format);
+  auto indices = indices_.contiguous(memory_format);
 
   if (self.ndimension() == 4) {
     numBatch = self.size(0);
@@ -121,8 +131,7 @@ Tensor& max_unpooling2d_forward_kernel(
   inputHeight = self.size(dimh);
   inputWidth = self.size(dimw);
 
-  output.resize_({numBatch, numChannels, oheight, owidth});
-
+  output.resize_({numBatch, numChannels, oheight, owidth}, memory_format);
   output.zero_();
 
   auto count = self.numel();
@@ -133,23 +142,44 @@ Tensor& max_unpooling2d_forward_kernel(
         self.scalar_type(),
         "max_unpooling2d_forward_xpu",
         ([&] {
-          auto caller = MaxUnpooling2dForwardKernelFunctor<scalar_t>(
-              count,
-              self.const_data_ptr<scalar_t>(),
-              indices.const_data_ptr<int64_t>(),
-              numChannels,
-              inputHeight,
-              inputWidth,
-              oheight,
-              owidth,
-              output.mutable_data_ptr<scalar_t>());
-          int64_t group_size = syclMaxWorkItemsPerEU();
-          int64_t num_groups = (count + group_size - 1) / group_size;
-          sycl_kernel_submit(
-              num_groups * group_size,
-              group_size,
-              getCurrentSYCLQueue(),
-              caller);
+          if (is_channels_last(memory_format)) {
+            auto caller = MaxUnpooling2dForwardKernelFunctor<scalar_t, true>(
+                count,
+                self.const_data_ptr<scalar_t>(),
+                indices.const_data_ptr<int64_t>(),
+                numChannels,
+                inputHeight,
+                inputWidth,
+                oheight,
+                owidth,
+                output.mutable_data_ptr<scalar_t>());
+
+            int64_t group_size = syclMaxWorkItemsPerEU();
+            int64_t num_groups = (count + group_size - 1) / group_size;
+            sycl_kernel_submit(
+                num_groups * group_size,
+                group_size,
+                getCurrentSYCLQueue(),
+                caller);
+          } else {
+            auto caller = MaxUnpooling2dForwardKernelFunctor<scalar_t, false>(
+                count,
+                self.const_data_ptr<scalar_t>(),
+                indices.const_data_ptr<int64_t>(),
+                numChannels,
+                inputHeight,
+                inputWidth,
+                oheight,
+                owidth,
+                output.mutable_data_ptr<scalar_t>());
+            int64_t group_size = syclMaxWorkItemsPerEU();
+            int64_t num_groups = (count + group_size - 1) / group_size;
+            sycl_kernel_submit(
+                num_groups * group_size,
+                group_size,
+                getCurrentSYCLQueue(),
+                caller);
+          }
         }));
   }
   if (self.ndimension() == 3) {
