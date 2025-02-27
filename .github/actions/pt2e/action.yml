@@ -71,7 +71,7 @@ runs:
           python -c "import torch, torchvision, torchaudio"
           rm -rf pt2e-benchmark
           git clone https://github.com/pytorch/benchmark pt2e-benchmark
-          cd pt2e-benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          cd pt2e-benchmark && pip install --no-deps -r requirements.txt
           pip install -U transformers tokenizers safetensors
           python install.py --continue_on_fail
           cd ../
