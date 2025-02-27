@@ -9,11 +9,6 @@ inputs:
     type: string
     default: 'float32'
     description: Data precision of the test.float32,int8. Delimiter is comma
-  mode:
-    required: true
-    type: string
-    default: 'inference'
-    description: inference. Delimiter is comma
   scenario:
     required: true
     type: string
@@ -96,7 +91,7 @@ runs:
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
           bash valprep.sh
         fi
-    - name: PT2E Test (${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+    - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
