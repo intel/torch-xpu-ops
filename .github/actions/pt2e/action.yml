@@ -40,7 +40,7 @@ runs:
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           rm -rf pt2e-accuracy
-          git clone -b yifeng/accuracy https://github.com/chuanqi129/inductor-tools pt2e-accuracy
+          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
         fi
         # performance code
         if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
@@ -53,20 +53,18 @@ runs:
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             rm -rf pt2e-audio
             git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
-            cd pt2e-audio
+            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install --no-deps dist/*.whl
             cd ../
             rm -rf pt2e-vision
             git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
-            cd pt2e-vision
+            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install --no-deps dist/*.whl
             cd ../
           fi
           # torchbench
           python -c "import torch, torchvision, torchaudio"
-          rm -rf pt2e-benchmark
-          git clone https://github.com/pytorch/benchmark pt2e-benchmark
-          cd pt2e-benchmark && pip install --no-deps -r requirements.txt
+          cd pt2e-performance && pip install --no-deps -r requirements.txt
           pip install -U transformers tokenizers safetensors
           python install.py --continue_on_fail
           cd ../
