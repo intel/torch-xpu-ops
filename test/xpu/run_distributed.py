@@ -9,6 +9,7 @@ res = 0
 res2 = 0
 fail_test = []
 
+
 # run python test
 def run(test_command):
     result = subprocess.run(test_command, capture_output=True, text=True)
@@ -16,7 +17,8 @@ def run(test_command):
     print(result.stderr)
     if "FAILED" in result.stdout or "FAILED" in result.stderr:
         fail_test.append(" ".join(test_command))
-    return result.returncode 
+    return result.returncode
+
 
 test_command = ["python", "distributed/test_c10d_ops_xccl.py"]
 res += run(test_command)
