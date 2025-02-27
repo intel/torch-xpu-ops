@@ -38,11 +38,6 @@ on:
         type: string
         default: 'accuracy'
         description: Test scenario. `accuracy,performance`. Delimiter is comma
-      model:
-        required: false
-        type: string
-        default: ''
-        description: Model. Will only run this one mode if set
       python:
         required: false
         type: string
@@ -52,7 +47,7 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.python }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
@@ -138,7 +133,6 @@ jobs:
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "BUNDLE_VERSION=$(pip list |grep cmplr |head -n 1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -360,9 +354,6 @@ jobs:
           echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION |$KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.model }}" != "" ];then
-              test_scope+="; model=${{ inputs.model }}"
-            fi
             echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
           fi
           echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
