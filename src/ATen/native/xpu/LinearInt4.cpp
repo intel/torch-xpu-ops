@@ -4,6 +4,7 @@
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
+#include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <ATen/native/xpu/sycl/LinearInt4.h>
 #include <comm/xpu_aten.h>
 
@@ -31,19 +32,11 @@ Tensor _weight_int4pack_mm_xpu(
   TORCH_CHECK(B.dim() == 2, __func__, " : expect B to 2d tensor.");
 
   TORCH_CHECK(
-      qGroupSize == 32 || qGroupSize == 64 || qGroupSize == 128 ||
-          qGroupSize == 256,
+      qGroupSize == 16 || qGroupSize == 32 || qGroupSize == 64 ||
+          qGroupSize == 128 || qGroupSize == 256,
       __func__,
-      ": expect qGroupSize to be 32, 64, 128 or 256, got ",
+      ": expect qGroupSize to be 16, 32, 64, 128 or 256, got ",
       qGroupSize);
-
-  TORCH_CHECK(
-      qScaleAndZeros.dim() == 3 && qScaleAndZeros.size(0) == N &&
-          qScaleAndZeros.size(2) == 2,
-      __func__,
-      ": expect qScaleAndZeros to be 3d tensor with sizes [",
-      N,
-      ", :, 2]");
 
   std::optional<Device> common_device = std::nullopt;
   c10::impl::check_and_update_common_device(
@@ -56,8 +49,16 @@ Tensor _weight_int4pack_mm_xpu(
       "xpu::_weight_int4pack_mm",
       "qScaleAndZeros");
   Tensor C = at::empty({M, N}, A.options());
-
-  at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  // When M > 1 will use two kernels(dequant and gemm)
+  // When M == 1 will use one linear_int4_kernel(dequant and gemv)
+  if (M > 1) {
+    Tensor B_dequant = at::empty({K, N}, A.options());
+    at::native::xpu::dequant_int4_kernel(
+        B, B_dequant, qGroupSize, qScaleAndZeros);
+    C = A.matmul(B_dequant);
+  } else {
+    at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
+  }
   return C;
 }
 } // namespace at::native

@@ -1,6 +1,9 @@
 name: Linux Accelerate Test
 
 on:
+  schedule:
+    # GMT+8 0:00 Sunday
+    - cron: '0 16 * * 6'
   pull_request:
     branches:
       - main
@@ -28,12 +31,12 @@ on:
       accelerate:
         required: false
         type: string
-        default: 'v1.2.1'
+        default: 'v1.4.0'
         description: Accelerate version
       transformers:
         required: false
         type: string
-        default: 'v4.47.1'
+        default: 'v4.49.0'
         description: Transformers version
 
 permissions: read-all
@@ -45,8 +48,8 @@ jobs:
       WORK_DIR: 'accelerate'
       NEOReadDebugKeys: 0
       DisableScratchPages: 0
-      accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.2.1' }}
-      transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.47.1' }}
+      accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.4.0' }}
+      transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.49.0' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
       PYTORCH_DEBUG_XPU_FALLBACK: 1
       ZE_AFFINITY_MASK: 0
