@@ -17,7 +17,7 @@ on:
         required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu`. Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
       suite:
         required: true
         type: string
