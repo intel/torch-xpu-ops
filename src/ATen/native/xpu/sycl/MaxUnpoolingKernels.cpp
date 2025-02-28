@@ -224,7 +224,7 @@ struct MaxUnpooling3dForwardKernelFunctor {
 };
 
 template <typename scalar_t>
-void max_unpooling3d_forward_kernel(
+void max_unpooling3d_forward_template(
     const scalar_t* input,
     const int64_t* indices,
     scalar_t* output,
@@ -252,7 +252,7 @@ void max_unpooling3d_forward_kernel(
       offsetZ);
 
   int64_t work_group_size_w = 32;
-  int64_t work_group_size_h = syclMaxWorkGroupSize(kfn) / 32;
+  int64_t work_group_size_h = 8;
   int64_t total_t = batchSize * inputSlices * iT;
   // int64_t num_groups_w = CeilDiv(iW, work_group_size_w);
   // int64_t num_groups_h = CeilDiv(iH, work_group_size_h);
@@ -266,6 +266,95 @@ void max_unpooling3d_forward_kernel(
       (size_t)(work_group_size_h * num_groups_h),
       (size_t)(work_group_size_w * num_groups_w)};
   sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+}
+
+template <typename scalar_t>
+struct MaxUnpooling3dClForwardKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto output_ptr = output_data_;
+    auto input_ptr = input_data_;
+    auto indices_ptr = indices_data_;
+    for (int linearIndex = item.get_global_id(0);
+         linearIndex < numInputElements_;
+         linearIndex += item.get_global_range()[0]) {
+      int c = linearIndex % numChannels_;
+      int n =
+          linearIndex / inputDepth_ / inputWidth_ / inputHeight_ / numChannels_;
+      int maxind = indices_ptr[linearIndex];
+      int offset =
+          n * numChannels_ * outputDepth_ * outputHeight_ * outputWidth_ + c;
+      output_ptr += offset;
+      output_ptr[maxind * numChannels_] = input_ptr[linearIndex];
+    }
+  }
+  MaxUnpooling3dClForwardKernelFunctor(
+      const int64_t numInputElements,
+      const scalar_t* input_data,
+      const int64_t* indices_data,
+      const int64_t numChannels,
+      const int64_t inputDepth,
+      const int64_t inputHeight,
+      const int64_t inputWidth,
+      const int64_t outputDepth,
+      const int64_t outputHeight,
+      const int64_t outputWidth,
+      scalar_t* output_data)
+      : numInputElements_(numInputElements),
+        input_data_(input_data),
+        indices_data_(indices_data),
+        numChannels_(numChannels),
+        inputDepth_(inputDepth),
+        inputHeight_(inputHeight),
+        inputWidth_(inputWidth),
+        outputDepth_(outputDepth),
+        outputHeight_(outputHeight),
+        outputWidth_(outputWidth),
+        output_data_(output_data) {}
+
+ private:
+  const int64_t numInputElements_;
+  const scalar_t* input_data_;
+  const int64_t* indices_data_;
+  const int64_t numChannels_;
+  const int64_t inputDepth_;
+  const int64_t inputHeight_;
+  const int64_t inputWidth_;
+  const int64_t outputDepth_;
+  const int64_t outputHeight_;
+  const int64_t outputWidth_;
+  scalar_t* output_data_;
+};
+
+template <typename scalar_t>
+void max_unpooling3d_cl_forward_template(
+    const int64_t numInputElements,
+    const scalar_t* input,
+    const int64_t* indices,
+    const int64_t numChannels,
+    const int64_t inputDepth,
+    const int64_t inputHeight,
+    const int64_t inputWidth,
+    const int64_t outputDepth,
+    const int64_t outputHeight,
+    const int64_t outputWidth,
+    scalar_t* output) {
+  MaxUnpooling3dClForwardKernelFunctor<scalar_t> kfn(
+      numInputElements,
+      input,
+      indices,
+      numChannels,
+      inputDepth,
+      inputHeight,
+      inputWidth,
+      outputDepth,
+      outputHeight,
+      outputWidth,
+      output);
+
+  int64_t group_size = syclMaxWorkGroupSize(kfn);
+  int64_t num_groups = (numInputElements + group_size - 1) / group_size;
+  int64_t total_items = num_groups * group_size;
+  sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
 }
 
 static void max_unpooling3d_shape_check(
@@ -389,9 +478,9 @@ Tensor& max_unpooling3d_forward_kernel(
       indices_arg{indices_, "indices_", 3};
   checkAllSameGPU(
       "max_unpooling3d_forward_out_xpu", {output_arg, self_arg, indices_arg});
-
-  auto self = self_.contiguous();
-  auto indices = indices_.contiguous();
+  auto memory_format = self_.suggest_memory_format();
+  auto self = self_.contiguous(memory_format);
+  auto indices = indices_.contiguous(memory_format);
 
   int64_t batchSize;
   int64_t inputSlices;
@@ -405,18 +494,40 @@ Tensor& max_unpooling3d_forward_kernel(
     inputTime = self.size(1);
     inputHeight = self.size(2);
     inputWidth = self.size(3);
-    output.resize_({inputSlices, oT, oH, oW});
+    output.resize_({inputSlices, oT, oH, oW}, memory_format);
   } else {
     batchSize = self.size(0);
     inputSlices = self.size(1);
     inputTime = self.size(2);
     inputHeight = self.size(3);
     inputWidth = self.size(4);
-    output.resize_({batchSize, inputSlices, oT, oH, oW});
+    output.resize_({batchSize, inputSlices, oT, oH, oW}, memory_format);
   }
 
   output.zero_();
+  if (is_channels_last(memory_format)) {
+    AT_DISPATCH_ALL_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        self.scalar_type(),
+        "max_unpooling3d_forward_xpu",
+        ([&] {
+          max_unpooling3d_cl_forward_template(
+              self.numel(),
+              self.const_data_ptr<scalar_t>(),
+              indices.const_data_ptr<int64_t>(),
+              inputSlices,
+              inputTime,
+              inputHeight,
+              inputWidth,
+              oT,
+              oH,
+              oW,
+              output.mutable_data_ptr<scalar_t>());
+        }));
 
+    return output;
+  }
   // Collapse batch and feature dimensions if needed
   if (self.ndimension() == 5) {
     self = self.reshape(
@@ -442,7 +553,7 @@ Tensor& max_unpooling3d_forward_kernel(
       self.scalar_type(),
       "max_unpooling3d_forward_xpu",
       ([&] {
-        max_unpooling3d_forward_kernel(
+        max_unpooling3d_forward_template(
             self.const_data_ptr<scalar_t>(),
             indices.const_data_ptr<int64_t>(),
             output.mutable_data_ptr<scalar_t>(),
@@ -460,3 +571,4 @@ Tensor& max_unpooling3d_forward_kernel(
 }
 
 } // namespace at::native::xpu
+
