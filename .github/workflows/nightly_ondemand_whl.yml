@@ -111,7 +111,7 @@ jobs:
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ../ && rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone https://github.com/DDEle/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
           pip install requests
