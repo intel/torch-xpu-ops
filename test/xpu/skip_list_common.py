@@ -1421,6 +1421,9 @@ skip_dict = {
         "test_numeric_check_leak_tunableop_rocm_xpu_float32",
         "test_dump_results_on_exit_tunableop_xpu_float32",
         "test_rotating_buffer_tunableop_xpu_float32",
+        "test_gemm_bias_tunableop_xpu_bfloat16",
+        "test_scaled_gemm_tunableop_xpu_float8_e4m3fnuz",
+        "test_scaled_gemm_tunableop_xpu_float8_e5m2fnuz",
         # CUDA bias cases added in latest PyTorch
         # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
         "test_matmul_check_entries_tunableop_xpu_float16",
