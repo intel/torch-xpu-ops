@@ -24,6 +24,11 @@ inputs:
     type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
+  cards:
+    required: false
+    type: string
+    default: 'all'
+    description: which cards can be used in the test
   hf_token:
     required: false
     description: HUGGING_FACE_HUB_TOKEN for torchbench test

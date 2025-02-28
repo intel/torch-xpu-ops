@@ -33,16 +33,16 @@ on:
         type: string
         default: 'inference'
         description: Test mode. `inference,training`. Delimiter is comma
-      model:
-        required: false
-        type: string
-        default: ''
-        description: Model. Will only run this one mode if set
       scenario:
         required: true
         type: string
         default: 'accuracy'
         description: Test scenario. `accuracy,performance`. Delimiter is comma
+      model:
+        required: false
+        type: string
+        default: ''
+        description: Model. Will only run this one mode if set
       python:
         required: false
         type: string
@@ -191,7 +191,6 @@ jobs:
         if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/pt2e
         with:
-          suite: pt2e
           dt: float32,int8
           scenario: accuracy,performance
           pytorch: nightly_wheel
@@ -235,7 +234,7 @@ jobs:
         if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/pt2e
         with:
-          suite: pt2e
+          env_prepare: true
           dt: float32,int8
           scenario: accuracy,performance
           pytorch: nightly_wheel
@@ -257,10 +256,8 @@ jobs:
         if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          suite: ${{ inputs.suite }}
           env_prepare: true
           dt: ${{ inputs.dt }}
-          mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
