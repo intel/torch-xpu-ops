@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Prepare Stock Pytorch
         run: |
-          pwd
+          pwd && printenv
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}

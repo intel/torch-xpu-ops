@@ -50,6 +50,7 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
+        pwd && printenv
         source activate e2e_ci
         source .github/scripts/env.sh ${{ inputs.pytorch }}
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
