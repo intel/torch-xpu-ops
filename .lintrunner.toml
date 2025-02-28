@@ -621,6 +621,7 @@ include_patterns = [
 ]
 exclude_patterns = [
     '.github/scripts/lintrunner.sh',
+    '.github/scripts/rpath.sh',
     '.github/scripts/env.sh'
 ]
 command = [

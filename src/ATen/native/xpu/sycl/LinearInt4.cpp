@@ -45,7 +45,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int constexpr SgSize = 16;
     int constexpr blocksize = block_size;
     using scalarx2_t = sycl::vec<scalar_t, 2>;
-
+    int ld_scale_zp = 2 * n;
     if (k % (SgSize * 32 * Unroll) == 0) {
       int constexpr TileK = 32;
       int constexpr GroupK = SgSize * TileK;
@@ -54,8 +54,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * ldb * 2;
-      auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      auto sptr = ScaleAndZeros + g_n * 2;
+      auto zptr = ScaleAndZeros + g_n * 2 + 1;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -67,8 +67,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          int scale_offset = sg_id * (TileK / blocksize) * 2;
-          int zp_offset = sg_id * (TileK / blocksize) * 2;
+          int scale_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -80,7 +80,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
-          sptr += (GroupK / blocksize) * 2;
+          sptr += (GroupK / blocksize) * ld_scale_zp;
+          zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK / 2;
         }
@@ -94,6 +95,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int constexpr TileK = 32;
       int constexpr GroupK = SgSize * TileK;
       int k_body = padto_le(k, GroupK * Unroll);
+
       int constexpr TileK2 = 8;
       int constexpr GroupK2 = SgSize * TileK2;
       int k_body2 = padto_le(k, GroupK2 * Unroll);
@@ -101,8 +103,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto sg = it.get_sub_group();
       int sg_id = sg.get_local_id()[0];
       int g_n = g_idx;
-      auto sptr = ScaleAndZeros + g_n * ldb * 2;
-      auto zptr = ScaleAndZeros + g_n * ldb * 2 + 1;
+      auto sptr = ScaleAndZeros + g_n * 2;
+      auto zptr = ScaleAndZeros + g_n * 2 + 1;
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
@@ -115,8 +117,9 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
 
-          int scale_offset = sg_id * (TileK / blocksize) * 2;
-          int zp_offset = sg_id * (TileK / blocksize) * 2;
+          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
+
           scalar_t scale = *(sptr + scale_offset);
           scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -128,7 +131,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
-          sptr += (GroupK / blocksize) * 2;
+          sptr += (GroupK / blocksize) * ld_scale_zp;
+          zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK / 2;
         }
@@ -141,8 +145,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             *(sycl::vec<uint8_t, TileK2 / 2>*)tmps8 =
                 *(sycl::vec<uint8_t, TileK2 / 2>*)(bptr + sg_id * TileK2 / 2);
 
-            int scale_offset = sg_id * (TileK2 / blocksize) * 2;
-            int zp_offset = sg_id * (TileK2 / blocksize) * 2;
+            int scale_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+            int zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
             scalar_t scale = *(sptr + scale_offset);
             scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
@@ -154,7 +158,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
               tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
             }
-            sptr += (GroupK2 / blocksize) * 2;
+            sptr += (GroupK2 / blocksize) * ld_scale_zp;
+            zptr += (GroupK2 / blocksize) * ld_scale_zp;
             aptr += GroupK2;
             bptr += GroupK2 / 2;
           }
@@ -163,18 +168,21 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       if (i + SgSize * 2 <= k) {
         for (; i < k; i += SgSize * 2) {
           uint8_t tmps8 = *(bptr + sg_id);
+
+          int scale_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
+
           scalarx2_t tmpB = {
               static_cast<int8_t>((tmps8 & 0x0f) - 8),
               static_cast<int8_t>((tmps8 >> 4) - 8)};
-
-          int scale_offset = sg_id * (2 / blocksize) * 2;
-          int zp_offset = sg_id * (2 / blocksize) * 2;
-          scalar_t scale = *(sptr + scale_offset);
-          scalar_t zero_point = *(zptr + zp_offset);
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
+
           auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
           tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
-          sptr += (SgSize * 2 / blocksize) * 2;
+          sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
+          zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           aptr += SgSize * 2;
           bptr += SgSize * 2 / 2;
         }
@@ -229,8 +237,10 @@ void linear_int4_kernel(
             reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
         scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
             qScaleAndZeros.data_ptr<scalar_t>());
-        LinearInt4KernelFunctor<scalar_sycl_t, 32> kfn =
-            LinearInt4KernelFunctor<scalar_sycl_t, 32>(
+
+        switch (qGroupSize) {
+          case 16: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 16>(
                 input_data,
                 weight_data,
                 output_data,
@@ -241,7 +251,70 @@ void linear_int4_kernel(
                 k,
                 k / qGroupSize,
                 n);
-        sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 32: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 32>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 64: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 64>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 128: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 128>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+          case 256: {
+            auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 256>(
+                input_data,
+                weight_data,
+                output_data,
+                scale_zeros_data,
+                m,
+                n,
+                k,
+                k,
+                k / qGroupSize,
+                n);
+            sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
+            break;
+          }
+        }
       });
 }
 
