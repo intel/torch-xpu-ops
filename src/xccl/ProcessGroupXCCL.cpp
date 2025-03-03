@@ -243,8 +243,13 @@ constexpr const char* MULTI_DEVICE_ERROR_MSG =
 ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
-    int size)
-    : Backend(rank, size), store_(store), xcclCommCounter_(0) {
+    int size,
+    c10::intrusive_ptr<Options> options)
+    : Backend(rank, size),
+      store_(std::move(store)),
+      options_(std::move(options)),
+      xcclCommCounter_(0) {
+  this->setGroupUid(options_->group_name);
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   init();
 }
@@ -315,9 +320,9 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     rank = p2pRank;
   }
 
-  c10::impl::VirtualGuardImpl impl(device.type());
-  c10::Stream stream =
-      impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
+  bool force_high = getCvarBool(TORCH_XCCL_HIGH_PRIORITY, false);
+  c10::Stream stream = at::xpu::getStreamFromPool(
+      options_->is_high_priority_stream || force_high);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
   auto ctx = ccl::create_context(q.get_context());
@@ -359,6 +364,10 @@ void ProcessGroupXCCL::groupEnd() {
   ccl::group_end();
   --xcclActiveGroupCounter_;
 }
+
+ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
+    : Backend::Options(XCCL_BACKEND_NAME),
+      is_high_priority_stream(is_high_priority_stream) {}
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
