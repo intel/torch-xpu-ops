@@ -241,7 +241,7 @@ constexpr const char* MULTI_DEVICE_ERROR_MSG =
     "Expecting one tensor only but got multiple";
 
 ProcessGroupXCCL::ProcessGroupXCCL(
-    const c10::intrusive_ptr<Store>& store,
+    c10::intrusive_ptr<Store> store,
     int rank,
     int size,
     c10::intrusive_ptr<Options> options)
