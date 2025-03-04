@@ -113,16 +113,37 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     friend class ProcessGroupXCCL;
   };
 
-  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
+  struct Options : Backend::Options {
+    explicit Options(bool is_high_priority_stream = false);
+
+    static c10::intrusive_ptr<Options> create(
+        bool is_high_priority_stream = false) {
+      return c10::make_intrusive<Options>(is_high_priority_stream);
+    }
+    bool is_high_priority_stream;
+    std::vector<uint64_t> global_ranks_in_group;
+    std::string group_name;
+  };
+
+  ProcessGroupXCCL(
+      c10::intrusive_ptr<Store> store,
+      int rank,
+      int size,
+      c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
       int rank,
       int size,
-      const std::string& groupName)
-      : ProcessGroupXCCL(store, rank, size) {}
+      const std::string& groupName,
+      c10::intrusive_ptr<Options> options = Options::create())
+      : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
 
   ~ProcessGroupXCCL() override;
+
+  c10::intrusive_ptr<Options> getOptions() {
+    return options_;
+  }
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
@@ -367,6 +388,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
+  const c10::intrusive_ptr<Options> options_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::set<int> usedDeviceIdxs_;
