@@ -327,14 +327,22 @@ jobs:
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
-          rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-          if [ ${exit_label} -ne 0 ];then
-            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-            echo "There are ${exit_label} cases that need look into!!! Please check them"
-            exit ${exit_label}
+          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            rm -rf /tmp/tmp-*.txt
+            source activate e2e_ci
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            if [ ${exit_label} -ne 0 ];then
+              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+              echo "There are ${exit_label} cases that need look into!!! Please check them"
+              exit ${exit_label}
+            fi
+          else
+            source activate e2e_ci
+            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cd ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files
+            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
