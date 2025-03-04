@@ -973,6 +973,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             xcclReduceOp,
             comm,
             ccl::create_stream(stream.queue()));
+#if !defined(XCCL_HAS_AVG)
+        if (opts.reduceOp == ReduceOp::AVG) {
+          auto divisor = getSize();
+          c10::StreamGuard guard(stream);
+          c10::xpu::XPUCachingAllocator::recordStream(
+              output.storage().data_ptr(), stream);
+          output.div_(divisor);
+        }
+#endif
         return;
       },
       OpType::ALLREDUCE,
