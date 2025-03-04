@@ -252,7 +252,7 @@ void max_unpooling3d_forward_template(
       offsetZ);
 
   int64_t work_group_size_w = 32;
-  int64_t work_group_size_h = 8;
+  int64_t work_group_size_h = syclMaxWorkItemsPerEU() / work_group_size_w;
   int64_t total_t = batchSize * inputSlices * iT;
   // int64_t num_groups_w = CeilDiv(iW, work_group_size_w);
   // int64_t num_groups_h = CeilDiv(iH, work_group_size_h);
@@ -351,7 +351,7 @@ void max_unpooling3d_cl_forward_template(
       outputWidth,
       output);
 
-  int64_t group_size = syclMaxWorkGroupSize(kfn);
+  int64_t group_size = syclMaxWorkItemsPerEU();
   int64_t num_groups = (numInputElements + group_size - 1) / group_size;
   int64_t total_items = num_groups * group_size;
   sycl_kernel_submit(total_items, group_size, getCurrentSYCLQueue(), kfn);
