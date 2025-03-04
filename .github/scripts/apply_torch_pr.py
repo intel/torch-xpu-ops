@@ -15,6 +15,8 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/143739",
         # Allow XPU device for validating the arguments to sparse compressed tensor factory functions
         "https://github.com/pytorch/pytorch/pull/147306",
+        # oneDNN v3.7.1
+        "https://github.com/pytorch/pytorch/pull/148403",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
