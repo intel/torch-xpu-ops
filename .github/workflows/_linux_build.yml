@@ -33,13 +33,6 @@ on:
         type: string
         default: 'lts'
         description: Driver lts/rolling
-    outputs:
-      whl_name:
-        description: The name of the wheel file
-        value: ${{ jobs.Torch-XPU-Build.outputs.whl_name }}
-      torch_commit_id:
-        description: The commit id of the torch build
-        value: ${{ jobs.Torch-XPU-Build.outputs.TORCH_COMMIT_ID }}
 
 permissions:
   issues: write

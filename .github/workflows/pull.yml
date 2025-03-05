@@ -63,7 +63,7 @@ jobs:
     needs: preci-linux-build
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      pytorch: ${{ needs.preci-linux-build.outputs.TORCH_COMMIT_ID }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
 
@@ -91,7 +91,7 @@ jobs:
           cd ../ && rm -rf pytorch
           source activate e2e_ci
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.TORCH_COMMIT_ID }}
           # apply PRs for stock pytorch
           pip install requests
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
@@ -110,7 +110,6 @@ jobs:
           echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
@@ -220,7 +219,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       abi: 0
-      pytorch: ${{ needs.preci-linux-build-abi-0.outputs.torch_commit_id }}
+      pytorch: ${{ needs.preci-linux-build-abi-0.outputs.TORCH_COMMIT_ID }}
       ut: op_extended
       runner: linux.idc.xpu
   
