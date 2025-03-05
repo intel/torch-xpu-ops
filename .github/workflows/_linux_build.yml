@@ -89,7 +89,7 @@ jobs:
           source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
-          export USE_XCCL=1
+          export USE_XCCL=ON
           if [[ ${{ inputs.driver }} == 'lts' ]]; then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
