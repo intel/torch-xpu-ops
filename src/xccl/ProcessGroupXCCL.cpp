@@ -303,6 +303,11 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   at::xpu::OptionalXPUGuard gpuGuard(device);
 
+  for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
+    (void)i;
+    ccl::group_end();
+  }
+
   int numRanks, rank;
   if (!singleP2POp) {
     numRanks = getSize();
@@ -341,6 +346,11 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       -1, // globalRankStart
       -1, // globalRankStride
       size_); // worldSize
+
+  for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
+    (void)i;
+    ccl::group_start();
+  }
 
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
