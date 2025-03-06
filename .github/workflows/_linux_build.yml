@@ -120,7 +120,8 @@ jobs:
                 echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
                 gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
                 gh --repo $repo issue edit $commit_issue --body-file new_body.txt
-              else
+              fi
+              if [ ! -f dist/torch*.whl ]; then
                 echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
                 gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
                 git clean -df .
