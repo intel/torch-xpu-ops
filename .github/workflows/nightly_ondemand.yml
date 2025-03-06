@@ -88,7 +88,7 @@ jobs:
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.build.outputs.TORCH_COMMIT_ID }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
@@ -101,7 +101,7 @@ jobs:
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.build.outputs.TORCH_COMMIT_ID }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
@@ -323,7 +323,7 @@ jobs:
       abi: 0
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.build.outputs.TORCH_COMMIT_ID }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
