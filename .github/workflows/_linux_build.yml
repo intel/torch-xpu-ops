@@ -69,9 +69,9 @@ jobs:
           source activate xpu_build
           cd ../ && rm -rf pytorch
           pip install requests
-          git clone https://github.com/zhangxiaoli73/pytorch.git pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout cherry/enable-xccl-fsdp-tests
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
             # apply PRs for stock pytorch
             python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
             git status && git show -s
