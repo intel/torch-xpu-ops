@@ -70,15 +70,20 @@ jobs:
     secrets: inherit
     if: ${{ ! cancelled() }}
     name: linux-nightly-ondemand
+    outputs:
+      TORCH_COMMIT_ID: ${{ steps.build_1.outputs.TORCH_COMMIT_ID }}
     permissions:
       issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 1
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+    steps:
+    - name: Build PyTorch ABI=1
+      id: build_1
+      uses: ./.github/workflows/_linux_build.yml
+      with:
+        pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+        keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+        abi: 1
+        python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+        runner: pvc_e2e
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -88,7 +93,7 @@ jobs:
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.build.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.TORCH_COMMIT_ID }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
@@ -101,7 +106,7 @@ jobs:
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.build.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.TORCH_COMMIT_ID }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
@@ -306,13 +311,18 @@ jobs:
     name: linux-nightly-ondemand-abi0
     permissions:
       issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 0
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+    outputs:
+      TORCH_COMMIT_ID: ${{ steps.build_0.outputs.TORCH_COMMIT_ID }}
+    steps:
+      - name: Build PyTorch ABI=0
+        id: build_0
+        uses: ./.github/workflows/_linux_build.yml
+        with:
+          pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+          keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+          abi: 0
+          python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+          runner: pvc_e2e
 
   Linux-Weekly-UT-Tests-ABI-0:
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
@@ -323,7 +333,7 @@ jobs:
       abi: 0
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       ut: op_regression,op_regression_dev1,op_extended,op_ut
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.build.outputs.TORCH_COMMIT_ID }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.TORCH_COMMIT_ID }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu

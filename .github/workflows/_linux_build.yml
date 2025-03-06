@@ -41,8 +41,6 @@ jobs:
   build:
     if: ${{ inputs.pytorch }} != 'nightly_wheel'
     runs-on: ${{ inputs.runner }}
-    outputs:
-      TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
     env:
       commit_issue: 1280
@@ -146,7 +144,6 @@ jobs:
           cd ..
           python pytorch/torch/utils/collect_env.py
       - name: Identify Build version
-        id: build_version
         run: |
           source activate xpu_build
           source .github/scripts/env.sh
