@@ -413,7 +413,9 @@ void HermitSymmImpl(Tensor& input, int64_t dim, int64_t pre_stride, int64_t cur_
 }
 
 void HermitSymm(Tensor& input, IntArrayRef& dim, std::vector<int64_t>& strides) {
+  printf("dims to be modified: ");
   for (int i = 0; i < dim.size(); ++i) {
+    printf("%ld ", dim[i]);
     if (dim[i] == 0) {
       HermitSymmImpl(input, dim[i], input.numel(), strides[0]);
       continue;
@@ -421,6 +423,7 @@ void HermitSymm(Tensor& input, IntArrayRef& dim, std::vector<int64_t>& strides) 
 
     HermitSymmImpl(input, dim[i], strides[dim[i] - 1], strides[dim[i]]);
   }
+  printf("\n");
 }
 
 Tensor _fft_c2r_mkl(
@@ -456,7 +459,7 @@ Tensor _fft_c2r_mkl(
         //static_cast<int64_t>(fft_norm_mode::none),
         normalization,
         /*forward=*/false);
-    // dim = dim.slice(dim.size() - 1);
+    dim = dim.slice(dim.size() - 1);
   }
 
   printf("dim_size = %ld dims = ", dim.size());
@@ -486,9 +489,13 @@ Tensor _fft_c2r_mkl(
 
   //data[0].imag(0.0f);
   //data[strides[0] - 1].imag(0.0f);
-  //data[strides[0] * in_sizes[0] / 2].imag(0.0f);
-  //data[strides[0] * in_sizes[0] / 2 + strides[0] - 1].imag(0.0f);
-  //printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * in_sizes[0] / 2, strides[0] * in_sizes[0] / 2 + strides[0] - 1);
+  //data[strides[0] * (in_sizes[0] - 1)].imag(0.0f);
+  //data[strides[0] * in_sizes[0] - 1].imag(0.0f);
+  //printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * (in_sizes[0] - 1), strides[0] * in_sizes[0] - 1);
+  for (int i = 0; i < 4; ++i) {
+    data[i].imag(0.0f);
+    data[input_cpu.numel() - 1 - i].imag(0.0f);
+  }
   //HermitSymm(input_cpu, dim, strides);
 
   for (int i = 0; i < input_cpu.numel(); ++i)
@@ -518,7 +525,7 @@ Tensor _fft_c2r_mkl(
       /*onesided=*/true,
       /*forward=*/false);
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim.back());
 }
 
 Tensor& _fft_c2r_mkl_out(
