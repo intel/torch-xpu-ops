@@ -164,8 +164,6 @@ bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
       return true;
     case ReduceOp::AVG:
       return true;
-    case ReduceOp::PREMUL_SUM:
-      return true;
     case ReduceOp::UNUSED:
       return true;
     default:

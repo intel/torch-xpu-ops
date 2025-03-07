@@ -131,8 +131,9 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
                     self.assertEqual(tensor, expected_tensor)
 
     @requires_xccl()
+    @parametrize("dtype", [torch.float32, torch.cfloat])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
-    def test_allreduce_ops(self):
+    def test_allreduce_ops(self, dtype: torch.dtype):
         device_count = torch.xpu.device_count()
         pg = self.pg
         local_device_id = self.rank_to_GPU[self.rank][0]
@@ -144,23 +145,23 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             work.wait()
 
         # Sum
-        tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id)]
+        tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype)]
 
         allreduce(tensors, c10d.ReduceOp.SUM)
 
         ndev = self.world_size
         self.assertEqual(
-            torch.tensor([ndev * (ndev + 1) // 2]),
+            torch.tensor([ndev * (ndev + 1) // 2]).to(dtype),
             tensors[0],
         )
 
         # Avg
-        tensors = [torch.tensor([self.rank + 1.0]).xpu(local_device_id)]
+        tensors = [torch.tensor([self.rank + 1.0]).xpu(local_device_id).to(dtype)]
 
         allreduce(tensors, c10d.ReduceOp.AVG)
         ndev = self.world_size
         self.assertEqual(
-            torch.tensor([ndev * (ndev + 1.0) / (2.0 * ndev)]),
+            torch.tensor([ndev * (ndev + 1.0) / (2.0 * ndev)]).to(dtype),
             tensors[0],
         )
 
