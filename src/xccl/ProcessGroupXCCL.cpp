@@ -82,9 +82,8 @@ void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
 ) {
-  if (!tensor.is_xpu() || tensor.is_sparse() || tensor.is_complex()) {
-    C10_THROW_ERROR(
-        ValueError, "Tensors must be XPU and dense and non-complex");
+  if (!tensor.is_xpu() || tensor.is_sparse()) {
+    C10_THROW_ERROR(ValueError, "Tensors must be XPU and dense");
 
     // Skip the following requirements for P2P operations
     if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
@@ -108,9 +107,8 @@ int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
 
   int64_t total_numel = 0;
   for (const auto& t : tensors) {
-    if (!t.is_xpu() || t.is_sparse() || t.is_complex()) {
-      C10_THROW_ERROR(
-          ValueError, "Tensors must be XPU and dense and non-complex");
+    if (!t.is_xpu() || t.is_sparse()) {
+      C10_THROW_ERROR(ValueError, "Tensors must be XPU and dense");
     }
     if (t.scalar_type() != first.scalar_type()) {
       C10_THROW_ERROR(TypeError, "Tensors must have identical type");
@@ -158,6 +156,22 @@ ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
         ValueError,
         "Cannot use ReduceOp." + reduceOpToString(reduceOp) + " with XCCL");
   }
+}
+
+bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
+  switch (reduceOp) {
+    case ReduceOp::SUM:
+      return true;
+    case ReduceOp::AVG:
+      return true;
+    case ReduceOp::PREMUL_SUM:
+      return true;
+    case ReduceOp::UNUSED:
+      return true;
+    default:
+      return false;
+  }
+  return false;
 }
 
 void syncStream(
@@ -915,6 +929,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
     const AllreduceOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
+  if (tensor.is_complex()) {
+    TORCH_CHECK(
+        complexViewAsRealAllowed(opts.reduceOp),
+        "all_reduce does not support",
+        opts.reduceOp,
+        "on complex tensors");
+    tensor = at::view_as_real(tensor);
+  }
   checkSingleTensor(tensor);
 
   // @lint-ignore CLANGTIDY
@@ -1027,6 +1049,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
     const BroadcastOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
+  if (tensor.is_complex()) {
+    tensor = at::view_as_real(tensor);
+  }
   checkSingleTensor(tensor);
 
   // @lint-ignore CLANGTIDY
@@ -1107,6 +1132,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
     const ReduceOptions& opts) {
   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   auto tensor = tensors.back();
+  if (tensor.is_complex()) {
+    TORCH_CHECK(
+        complexViewAsRealAllowed(opts.reduceOp),
+        "reduce does not support",
+        opts.reduceOp,
+        "on complex tensors");
+    tensor = at::view_as_real(tensor);
+  }
   checkSingleTensor(tensor);
 
   RECORD_PARAM_COMMS_DATA(
