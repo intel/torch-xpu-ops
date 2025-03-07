@@ -62,17 +62,15 @@ for item in os.listdir(work_dir):
                 writer = csv.writer(csv_file)
                 writer.writerow(['Model','Throughput'])
                 writer.writerows(csvData)
-                
 # accuracy ratio
 for filename in os.listdir(work_dir):
     if filename.endswith('.csv') and 'accuracy' in filename and 'fp32' in filename:
         file_path = os.path.join(work_dir, filename)
         df_fp32 = pd.read_csv(file_path)
-        
     if filename.endswith('.csv') and 'accuracy' in filename and 'int8' in filename:
         file_path = os.path.join(work_dir, filename)
         df_int8 = pd.read_csv(file_path)
-
+        
 df_fp32_selected = df_fp32[['Model','fp32']]
 df_int8_selected = df_int8[['Model','int8']]
 acc_df = pd.merge(df_fp32_selected, df_int8_selected, on='Model') # merge csv files
@@ -88,11 +86,9 @@ for filename_perf in os.listdir(work_dir):
     if filename_perf.endswith('.csv') and 'performance' in filename_perf and 'fp32' in filename_perf:
         file_path = os.path.join(work_dir, filename_perf)
         perf_fp32 = pd.read_csv(file_path)
-        
     if filename_perf.endswith('.csv') and 'performance' in filename_perf and 'int8' in filename_perf:
         file_path = os.path.join(work_dir, filename_perf)
         perf_int8 = pd.read_csv(file_path)
-
 # Create Model Data
 Model = {
     'Model': ['alexnet','demucs','dlrm','hf_Albert','hf_Bert','hf_Bert_large','hf_DistilBert','hf_Roberta_base','mnasnet1_0',
@@ -100,7 +96,6 @@ Model = {
               'resnet152','resnet18','resnet50','resnext50_32x4d','shufflenet_v2_x1_0','squeezenet1_1','Super_SloMo',
               'timm_efficientnet','timm_nfnet,timm_regnet','timm_resnest','timm_vision_transformer','timm_vision_transformer_large','timm_vovnet','vgg16']
         }
-        
 perf_df = pd.DataFrame(Model)
 
 fp32_merged = pd.merge(perf_df, perf_fp32[['Model', 'Throughput']], on='Model', how='left').rename(columns={'Throughput': 'fp32'})
@@ -113,16 +108,4 @@ perf_df['int8/fp32'] = perf_df['int8']/perf_df['fp32']
 
 # write to new csv file
 perf_df.to_csv('summary_perf.csv', index=False)
-
-
-
-
-
-
-
-
-
-
-
-
 
