@@ -68,6 +68,8 @@ endif()
 if(USE_DISTRIBUTED AND USE_XCCL AND USE_C10D_XCCL)
   caffe2_update_option(USE_C10D_XCCL ON)
 else()
+  # WA for USE_C10D_XCCL duplicated definition, will remove it after USE_C10D_XCCL and USE_XCCL define in PyTorch
+  set(USE_C10D_XCCL OFF CACHE BOOL "Build with XCCL support for C10D" FORCE)
   caffe2_update_option(USE_C10D_XCCL OFF)
 endif()
 
