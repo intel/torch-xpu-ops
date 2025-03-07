@@ -26,8 +26,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
 from torch.testing._internal.common_distributed import MultiProcContinousTest
 from torch.testing._internal.common_utils import (
-    parametrize,
     instantiate_parametrized_tests,
+    parametrize,
     skip_but_pass_in_sandcastle_if,
     TEST_WITH_DEV_DBG_ASAN,
     TEST_XPU,
@@ -110,7 +110,9 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         # Every rank is root once
         for i in range(self.world_size):
             # Run with 1 input tensor
-            x = torch.tensor([self.rank], dtype=dtype).xpu(self.rank_to_GPU[self.rank][0])
+            x = torch.tensor([self.rank], dtype=dtype).xpu(
+                self.rank_to_GPU[self.rank][0]
+            )
             output = broadcast([x], i, 0)
             self.assertEqual(torch.tensor([i]).to(dtype), output[0])
 
@@ -123,7 +125,9 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             # test with multiple input tensors (multiple gpu in one rank)
             for j in range(len(xs)):
                 if self.rank == i:
-                    xs[j] = expected_tensor.xpu(device=self.rank_to_GPU[self.rank][j]).to(dtype)
+                    xs[j] = expected_tensor.xpu(
+                        device=self.rank_to_GPU[self.rank][j]
+                    ).to(dtype)
 
                 broadcast(xs, i, j)
 
