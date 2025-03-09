@@ -56,18 +56,10 @@ void _mkl_dft(
   int64_t idist = istrides[0];
   int64_t odist = ostrides[0];
 
-  std::vector<int64_t> fwd_strides(1 + signal_ndim, 0),
-      bwd_strides(1 + signal_ndim, 0);
-
-  for (int64_t i = 1; i <= signal_ndim; i++) {
-    if (!inverse) {
-      fwd_strides[i] = istrides[i];
-      bwd_strides[i] = ostrides[i];
-    } else {
-      fwd_strides[i] = ostrides[i];
-      bwd_strides[i] = istrides[i];
-    }
-  }
+  std::vector<int64_t> fwd_strides(istrides.cbegin(), istrides.cbegin() + signal_ndim + 1),
+      bwd_strides(ostrides.cbegin(), ostrides.cbegin() + signal_ndim + 1);
+  fwd_strides[0] = 0;
+  bwd_strides[0] = 0;
 
   auto desc = descriptor<prec, signal_type>(mkl_signal_sizes);
   desc.set_value(config_param::PLACEMENT, config_value::NOT_INPLACE);
@@ -76,16 +68,15 @@ void _mkl_dft(
   if (!inverse) {
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
+
+    desc.set_value(config_param::FWD_STRIDES, fwd_strides.data());
+    desc.set_value(config_param::BWD_STRIDES, bwd_strides.data());
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
-  }
 
-  if (!fwd_strides.empty()) {
-    desc.set_value(config_param::FWD_STRIDES, fwd_strides.data());
-  }
-  if (!bwd_strides.empty()) {
-    desc.set_value(config_param::BWD_STRIDES, bwd_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, bwd_strides.data());
+    desc.set_value(config_param::BWD_STRIDES, fwd_strides.data());
   }
 
   if (!complex_input || !complex_output) {
@@ -134,10 +125,10 @@ void _fft_with_size(
   // real/imag dimension must aligned when viewed as of complex type
 
   if (complex_input) {
-    bool need_contiguous = input_.stride(-1) != 1;
-
+    const auto strides = input_.strides();
+    bool need_contiguous = strides.back() != 1;
     for (int64_t i = 0; !need_contiguous && i <= signal_ndim; i++) {
-      need_contiguous |= input_.stride(i) % 2 != 0;
+      need_contiguous |= strides[i] % 2;
     }
 
     if (need_contiguous) {
@@ -228,12 +219,13 @@ Tensor& _exec_fft(
       batched_sizes.begin() + 1);
   input = input.reshape(batched_sizes);
 
-  const auto batch_size = input.sizes()[0];
+  const auto in_sizes = input.sizes();
+  const auto batch_size = in_sizes[0];
   DimVector signal_size(signal_ndim + 1);
   signal_size[0] = batch_size;
 
   for (const auto i : c10::irange(signal_ndim)) {
-    auto in_size = input.sizes()[i + 1];
+    auto in_size = in_sizes[i + 1];
     auto out_size = out_sizes[dim[i]];
     signal_size[i + 1] = std::max(in_size, out_size);
     TORCH_INTERNAL_ASSERT(
@@ -270,12 +262,12 @@ Tensor& _exec_fft(
   int64_t batch_numel = 1;
 
   for (int64_t i = batch_dims - 1; i >= 0; --i) {
-    out_strides[dim_permute[i]] = batch_numel * out.strides()[0];
+    out_strides[dim_permute[i]] = batch_numel * out.stride(0);
     batch_numel *= out_sizes[dim_permute[i]];
   }
 
   for (const auto i : c10::irange(batch_dims, ndim)) {
-    out_strides[dim_permute[i]] = out.strides()[1 + (i - batch_dims)];
+    out_strides[dim_permute[i]] = out.stride(1 + (i - batch_dims));
   }
 
   out.as_strided_(out_sizes, out_strides, out.storage_offset());
@@ -326,16 +318,6 @@ const Tensor& _fft_apply_normalization(
     IntArrayRef dims) {
   auto scale = _dft_scale(dims, sizes, self.sizes(), normalization);
   return (scale == 1.0) ? self : self.mul_(scale);
-}
-
-Tensor& _fft_apply_normalization_out(
-    Tensor& out,
-    const Tensor& self,
-    int64_t normalization,
-    IntArrayRef sizes,
-    IntArrayRef dims) {
-  auto scale = _dft_scale(dims, sizes, self.sizes(), normalization);
-  return at::mul_out(out, self, c10::scalar_to_tensor(scale));
 }
 
 } // namespace impl
@@ -397,8 +379,8 @@ Tensor& _fft_c2c_mkl_out(
   auto result = _fft_c2c_mkl(
       self, dim, static_cast<int64_t>(fft_norm_mode::none), forward);
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(
-      out, result, normalization, result.sizes(), dim);
+  out.copy_(result);
+  return out;
 }
 
 void HermitSymmImpl(Tensor& input, int64_t dim, int pos) {
@@ -473,8 +455,8 @@ Tensor& _fft_c2r_mkl_out(
   auto result = _fft_c2r_mkl(
       self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(
-      out, result, normalization, result.sizes(), dim);
+  out.copy_(result);
+  return out;
 }
 
 REGISTER_XPU_DISPATCH(
@@ -560,20 +542,8 @@ Tensor& _fft_r2c_mkl_out(
   auto result = _fft_r2c_mkl(
       self, dim, static_cast<int64_t>(fft_norm_mode::none), /*onesided=*/true);
 
-  if (onesided) {
-    return impl::_fft_apply_normalization_out(
-        out, result, normalization, self.sizes(), dim);
-  }
-
-  at::native::resize_output(out, self.sizes());
-
-  auto last_dim = dim.back();
-  auto last_dim_halfsize = result.sizes()[last_dim];
-  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
-
-  impl::_fft_apply_normalization_out(
-      out_slice, result, normalization, self.sizes(), dim);
-  at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+  at::native::resize_output(out, result.sizes());
+  out.copy_(result);
   return out;
 }
 

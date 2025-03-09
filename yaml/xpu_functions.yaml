@@ -747,3 +747,9 @@ supported:
   - take.out
   - segment_reduce
   - _segment_reduce_backward
+  - _fft_c2c
+  - _fft_c2c.out
+  - _fft_c2r
+  - _fft_c2r.out
+  - _fft_r2c
+  - _fft_r2c.out
