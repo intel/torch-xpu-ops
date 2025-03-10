@@ -324,7 +324,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t getSequenceNumberForGroup() override;
 
  protected:
-  std::unordered_map<std::string, at::xpu::XPUStream> xcclStreamsMap_;
+  std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
+      xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;

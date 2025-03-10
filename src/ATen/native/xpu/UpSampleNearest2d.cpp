@@ -2,10 +2,10 @@
 #include <ATen/native/xpu/sycl/UpSampleNearest2dKernels.h>
 #include <comm/xpu_aten.h>
 
-#include <xpu/ATen/ops/_upsample_nearest_exact2d_backward_native.h>
-#include <xpu/ATen/ops/_upsample_nearest_exact2d_native.h>
-#include <xpu/ATen/ops/upsample_nearest2d_backward_native.h>
-#include <xpu/ATen/ops/upsample_nearest2d_native.h>
+#include <ATen/ops/_upsample_nearest_exact2d_backward_native.h>
+#include <ATen/ops/_upsample_nearest_exact2d_native.h>
+#include <ATen/ops/upsample_nearest2d_backward_native.h>
+#include <ATen/ops/upsample_nearest2d_native.h>
 namespace at {
 
 namespace native {
