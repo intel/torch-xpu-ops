@@ -70,7 +70,7 @@ for filename in os.listdir(work_dir):
     if filename.endswith('.csv') and 'accuracy' in filename and 'int8' in filename:
         file_path = os.path.join(work_dir, filename)
         df_int8 = pd.read_csv(file_path)
-        
+
 df_fp32_selected = df_fp32[['Model','fp32']]
 df_int8_selected = df_int8[['Model','int8']]
 acc_df = pd.merge(df_fp32_selected, df_int8_selected, on='Model') # merge csv files
