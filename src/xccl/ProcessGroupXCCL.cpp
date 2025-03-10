@@ -1593,7 +1593,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             (size_t)output.numel(),
             xcclDataType,
             xcclReduceOp,
-            comm,            
+            comm,
             xcclStream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
