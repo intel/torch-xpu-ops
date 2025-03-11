@@ -277,8 +277,7 @@ Tensor& _exec_fft(
 
 double _dft_scale(
     IntArrayRef dim,
-    IntArrayRef input_sizes,
-    IntArrayRef out_sizes,
+    IntArrayRef norm_sizes,
     int64_t normalization) {
   const auto norm = static_cast<fft_norm_mode>(normalization);
   double double_scale = 1.0;
@@ -287,21 +286,10 @@ double _dft_scale(
     return double_scale;
   }
 
-  const int64_t signal_ndim = dim.size();
   int64_t signal_numel = 1;
-
-  for (int64_t i = 0; i < signal_ndim; ++i) {
-    auto in_size = input_sizes[dim[i]];
-    auto out_size = out_sizes[dim[i]];
-    auto signal_size = std::max(in_size, out_size);
-
-    signal_numel *= signal_size;
-    TORCH_INTERNAL_ASSERT(
-        in_size == signal_size || in_size == (signal_size / 2) + 1);
-    TORCH_INTERNAL_ASSERT(
-        out_size == signal_size || out_size == (signal_size / 2) + 1);
+  for (const int64_t& d : dim) {
+    signal_numel *= norm_sizes[d];
   }
-
   if (norm == fft_norm_mode::by_root_n) {
     double_scale = 1.0 / std::sqrt(signal_numel);
   } else {
@@ -314,9 +302,9 @@ double _dft_scale(
 const Tensor& _fft_apply_normalization(
     const Tensor& self,
     int64_t normalization,
-    IntArrayRef sizes,
+    IntArrayRef norm_sizes,
     IntArrayRef dims) {
-  auto scale = _dft_scale(dims, sizes, self.sizes(), normalization);
+  auto scale = _dft_scale(dims, norm_sizes, normalization);
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
