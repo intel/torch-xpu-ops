@@ -70,7 +70,7 @@ jobs:
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install pyyaml requests
           call conda install -y libuv
-          call conda install -y rust 
+          call conda install -y rust
           git config --system core.longpaths true
           git config --global core.symlinks true
           git config --global core.fsmonitor false
@@ -101,6 +101,8 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           pip install cmake setuptools==72.1.0 clang-format
+          pip install mkl-static mkl-include
+          call ..\torch-xpu-ops\.github\scripts\copy.bat
           set USE_KINETO=0
           set USE_ONEMKL=1
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
