@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import shutil
+from pathlib import Path
 
 
 parser = argparse.ArgumentParser(description="Utils for append ops headers")
@@ -65,7 +66,7 @@ def generate_xpu_ops_headers_cmake(src_dir, dst_dir, xpu_ops_headers):
     with open(os.path.join(src_dir, "xpu_ops_generated_headers.cmake"), "w") as fw:
         fw.write("set(xpu_ops_generated_headers\n")
         for header in xpu_ops_headers:
-            fw.write(f'    "{os.path.join(dst_dir, header)}"\n')
+            fw.write(f'    "{Path(os.path.join(dst_dir, header)).as_posix()}"\n')
         fw.write(")\n")
 
 
