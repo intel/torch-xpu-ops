@@ -352,6 +352,13 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     ccl::group_start();
   }
 
+  // The oneCCL group API requires retaining the SYCL queue (xcclstream) object
+  // within the lifecycle of the communicator. If the XPU stream is created
+  // within the collective operation, it would be destroyed earlier than the
+  // communicator after the operation ends. Therefore, the XPU stream is stored
+  // in a map alongside the communicator. Similarly, oneCCLv2 also requires
+  // retaining the SYCL queue pointer for collective operations, so this change
+  // will be necessary in oneCCLv2 as well.
   ccl::stream xccl_stream = ccl::create_stream(q);
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
