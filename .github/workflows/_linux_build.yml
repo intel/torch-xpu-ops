@@ -83,10 +83,17 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          source .github/scripts/env.sh
+          source .github/scripts/env.sh build
           source activate xpu_build
           export USE_ONEMKL=1
           export USE_XCCL=1
+          export PYTORCH_EXTRA_INSTALL_REQUIREMENTS="\
+                intel-cmplr-lib-rt; platform_system == 'Linux' |\
+                intel-cmplr-lib-ur; platform_system == 'Linux' |\
+                intel-cmplr-lic-rt; platform_system == 'Linux' |\
+                intel-sycl-rt; platform_system == 'Linux' |\
+                tcmlib |umf |intel-pti
+          "
           if [[ ${{ inputs.driver }} == 'lts' ]]; then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
@@ -138,8 +145,10 @@ jobs:
           else
             echo "Forked PR, don't update the issue"
           fi
-          pip install --force-reinstall dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}/
+          pip install patchelf
+          bash ${{ github.workspace }}/.github/scripts/rpath.sh dist/torch*.whl
+          pip install --force-reinstall tmp/torch*.whl
+          cp tmp/*.whl ${{ github.workspace }}/
           cp pytorch_${current_commit}_build.log ${{ github.workspace }}/
       - name: Torch Config
         id: build_version
