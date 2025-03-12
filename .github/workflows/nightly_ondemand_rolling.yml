@@ -312,9 +312,8 @@ jobs:
   
   Linux-Nightly-Ondemand-Build-Rolling-ABI-0:
     # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
+    if: ${{ github.repository_owner == 'intel' && github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5' }}
     secrets: inherit
-    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     name: linux-nightly-ondemand-rolling-abi0
     permissions:
       issues: write
