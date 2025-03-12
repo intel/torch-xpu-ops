@@ -254,7 +254,6 @@ else()
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS})
-  install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
  # Split SYCL kernels into 2 libraries as categories 1) Common (Unary+Binary+Reduce+Pow+Copy+Activation+Foreach) 2) Others.
   set(ATen_XPU_SYCL_COMMON_SRCS)
@@ -267,6 +266,11 @@ else()
     string(REGEX MATCH "Reduce" IS_REDUCE ${sycl_src})
     string(REGEX MATCH "Activation" IS_ACTIVATION ${sycl_src})
     string(REGEX MATCH "Foreach" IS_FOREACH ${sycl_src})
+    string(REGEX MATCH "Polynomial" IS_POLY ${sycl_src})
+    string(REGEX MATCH "Norm" IS_NORM ${sycl_src})
+    string(REGEX MATCH "Loss" IS_LOSS ${sycl_src})
+    string(REGEX MATCH "Resize" IS_RESIZE ${sycl_src})
+    string(REGEX MATCH "Distribution" IS_DISTRIBUTION ${sycl_src})
 
     if(NOT IS_FOREACH STREQUAL "")
       list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
@@ -277,6 +281,16 @@ else()
     elseif(NOT IS_COPY STREQUAL "" OR NOT IS_POW STREQUAL "")
       list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     elseif(NOT IS_ACTIVATION STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
+    elseif(NOT IS_NORM STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
+    elseif(NOT IS_LOSS STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
+    elseif(NOT IS_RESIZE STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
+    elseif(NOT IS_DISTRIBUTION STREQUAL "")
+      list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
+    elseif(NOT IS_POLY STREQUAL "")
       list(APPEND ATen_XPU_SYCL_COMMON_SRCS ${sycl_src})
     else()
       list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
@@ -291,9 +305,6 @@ else()
   target_compile_definitions(${sycl_common_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_common_lib})
 
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_common_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-
   # Other kernel lib
   set(sycl_lib torch_xpu_ops_sycl_kernels)
   sycl_add_library(
@@ -302,9 +313,6 @@ else()
     SYCL_SOURCES ${ATen_XPU_SYCL_OTHERS_SRCS})
   target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
   list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
   target_link_libraries(torch_xpu_ops
       PUBLIC

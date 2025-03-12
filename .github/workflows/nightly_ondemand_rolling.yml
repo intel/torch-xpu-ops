@@ -147,7 +147,6 @@ jobs:
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
-          git submodule sync && git submodule update --init --recursive
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             echo "Don't replace torch-xpu-ops!"
           else
