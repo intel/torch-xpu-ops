@@ -45,7 +45,7 @@ jobs:
   preci-linux-build:
     # Don't run on forked repos and draft PRs
     secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux
     needs: preci-lint-check
     permissions:
@@ -58,7 +58,7 @@ jobs:
   preci-ut:
     # Don't run on forked repos and draft PRs
     secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux
     needs: preci-linux-build
     uses: ./.github/workflows/_linux_ut.yml
@@ -72,7 +72,7 @@ jobs:
     needs: preci-linux-build
     runs-on: pvc_e2e
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -200,7 +200,7 @@ jobs:
   preci-linux-build-abi-0:
     # Don't run on forked repos and draft PRs
     secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux-abi-0
     needs: preci-lint-check
     permissions:
@@ -213,7 +213,7 @@ jobs:
 
   preci-ut-abi-0:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux-abi-0
     needs: preci-linux-build-abi-0
     uses: ./.github/workflows/_linux_ut.yml
@@ -225,7 +225,7 @@ jobs:
   
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    if: ${{ github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'windows_ci') }}
     name: preci-windows
     needs: preci-lint-check
     uses: ./.github/workflows/_windows_ut.yml

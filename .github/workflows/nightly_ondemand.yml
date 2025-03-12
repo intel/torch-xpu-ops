@@ -67,6 +67,8 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-Build:
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
     if: ${{ ! cancelled() }}
     name: linux-nightly-ondemand
@@ -81,7 +83,7 @@ jobs:
       runner: pvc_e2e
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, '_') }}
     name: linux-nightly-ondemand
     needs: Linux-Nightly-Ondemand-Build
     uses: ./.github/workflows/_linux_ut.yml
@@ -96,14 +98,11 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
-    # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
@@ -302,6 +301,8 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   Linux-Nightly-Ondemand-Build-ABI-0:
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
     if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
     name: linux-nightly-ondemand-abi0

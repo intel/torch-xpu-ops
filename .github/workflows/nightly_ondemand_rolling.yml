@@ -83,7 +83,7 @@ jobs:
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, '_') }}
     name: linux-nightly-ondemand-rolling
     needs: Linux-Nightly-Ondemand-Build-Rolling
     uses: ./.github/workflows/_linux_ut.yml
@@ -98,15 +98,12 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
-    # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
@@ -314,6 +311,8 @@ jobs:
           path: ${{ github.workspace }}/upload_files
   
   Linux-Nightly-Ondemand-Build-Rolling-ABI-0:
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
     if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
     name: linux-nightly-ondemand-rolling-abi0
