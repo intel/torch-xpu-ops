@@ -70,7 +70,6 @@ jobs:
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
-    if: ${{ ! cancelled() }}
     name: linux-nightly-ondemand
     permissions:
       issues: write
