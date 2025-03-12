@@ -303,6 +303,11 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   at::xpu::OptionalXPUGuard gpuGuard(device);
 
+  for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
+    (void)i;
+    ccl::group_end();
+  }
+
   int numRanks, rank;
   if (!singleP2POp) {
     numRanks = getSize();
@@ -342,9 +347,17 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       -1, // globalRankStride
       size_); // worldSize
 
+  for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
+    (void)i;
+    ccl::group_start();
+  }
+
+  ccl::stream xccl_stream = ccl::create_stream(q);
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
-  xcclStreamsMap_.emplace(deviceKey, std::move(stream));
+  xcclStreamsMap_.emplace(
+      deviceKey,
+      std::make_pair(at::xpu::XPUStream(stream), std::move(xccl_stream)));
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
   return XCCLComm;
@@ -388,7 +401,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   auto device = coalescedDevice_;
 
   const auto key = std::to_string(device.index());
-  auto stream = xcclStreamsMap_.at(key);
+  auto stream = xcclStreamsMap_.at(key).first;
 
   auto work = initWork(device, rank_, optype);
   work->blockingWait_ = blockingWait_;
@@ -436,7 +449,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
-  auto stream = xcclStreamsMap_.at(key);
+  auto stream = xcclStreamsMap_.at(key).first;
   syncStream(device, xcclEventsMap_[key], stream);
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
@@ -517,7 +530,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
   }
 
-  auto stream = xcclStreamsMap_.at(key);
+  auto stream = xcclStreamsMap_.at(key).first;
   syncStream(device, xcclEventsMap_[key], stream);
 
   if (!coalescing_state_) {
@@ -587,13 +600,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
           at::xpu::XPUStream& stream,
           int dst) {
         auto xcclDataType = getXcclDataType(input.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::send(
             input.data_ptr(),
             (size_t)input.numel(),
             xcclDataType,
             dst,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       dstRank,
@@ -635,13 +650,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
           at::xpu::XPUStream& stream,
           int src) {
         auto xcclDataType = getXcclDataType(output.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::recv(
             output.data_ptr(),
             (size_t)output.numel(),
             xcclDataType,
             src,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       srcRank,
@@ -729,6 +746,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
         }
         {
           auto xcclDataType = getXcclDataType(inputTensor.scalar_type());
+          auto xcclStream =
+              xcclStreamsMap_.at(std::to_string(inputs[0].device().index()))
+                  .second;
           if (rank_ == root) {
             for (const auto r : c10::irange(size_)) {
               if (r != root) {
@@ -739,7 +759,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
                     xcclDataType,
                     r,
                     comm,
-                    ccl::create_stream(stream.queue()));
+                    xcclStream);
               } else {
                 // on its own rank, simply copy from the input
                 outputs[r].copy_(inputTensor);
@@ -753,7 +773,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
                 xcclDataType,
                 root,
                 comm,
-                ccl::create_stream(stream.queue()));
+                xcclStream);
           }
           return;
         }
@@ -840,6 +860,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
           }
         }
         {
+          auto xcclStream =
+              xcclStreamsMap_.at(std::to_string(outputs[0].device().index()))
+                  .second;
           if (rank_ == root) {
             for (const auto r : c10::irange(size_)) {
               if (r != root) {
@@ -852,7 +875,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                     send_type,
                     r,
                     comm,
-                    ccl::create_stream(stream.queue()));
+                    xcclStream);
               } else {
                 // on its own rank, simply copy from the input
                 outputTensor.copy_(inputs[r]);
@@ -868,7 +891,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                 recv_type,
                 root,
                 comm,
-                ccl::create_stream(stream.queue()));
+                xcclStream);
           }
 
           return;
@@ -889,7 +912,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
-        auto ccl_stream = ccl::create_stream(stream.queue());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::allreduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -897,7 +921,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -944,6 +968,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::allreduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -951,7 +977,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -999,6 +1025,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensors[0].device().index()))
+                .second;
         ccl::allreduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1006,7 +1035,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -1057,13 +1086,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::broadcast(
             input.data_ptr(),
             (size_t)input.numel(),
             xcclDataType,
             root,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       OpType::BROADCAST,
@@ -1088,6 +1119,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputTensor[0].device().index()))
+                .second;
         ccl::broadcast(
             input.data_ptr(),
             output.data_ptr(),
@@ -1095,7 +1129,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
             xcclDataType,
             root,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       OpType::BROADCAST,
@@ -1136,6 +1170,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
         const int root = opts.rootRank + opts.rootTensor;
         const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(tensor.device().index())).second;
         ccl::reduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1144,7 +1180,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
             xcclReduceOp,
             root,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // WA due to oneCCL not support AVG
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
@@ -1177,6 +1213,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
         const int root = opts.rootRank + opts.rootTensor;
         const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputTensor[0].device().index()))
+                .second;
         ccl::reduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1185,7 +1224,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
             xcclReduceOp,
             root,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
@@ -1245,13 +1284,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(input.scalar_type());
+          auto xcclStream =
+              xcclStreamsMap_.at(std::to_string(inputTensor.device().index()))
+                  .second;
           ccl::allgather(
               input.data_ptr(),
               output.data_ptr(),
               (size_t)input.numel(),
               xcclDataType,
               comm,
-              ccl::create_stream(stream.queue()));
+              xcclStream);
           return;
         },
         [](at::xpu::XPUStream&,
@@ -1326,13 +1368,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
         c10::xpu::XPUCachingAllocator::recordStream(
             output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(input_tensor.device().index()))
+                .second;
         ccl::allgather(
             input.data_ptr(),
             output.data_ptr(),
             (size_t)input.numel(),
             xcclDataType,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       OpType::_ALLGATHER_BASE,
@@ -1351,13 +1396,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream) {
         auto xcclDataType = getXcclDataType(input.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputs[0].device().index()))
+                .second;
         ccl::allgather(
             input.data_ptr(),
             output.data_ptr(),
             (size_t)input.numel(),
             xcclDataType,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         return;
       },
       OpType::COALESCED,
@@ -1407,6 +1455,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(input.scalar_type(), true);
           auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+          auto xcclStream =
+              xcclStreamsMap_
+                  .at(std::to_string(inputFlattened.device().index()))
+                  .second;
           ccl::reduce_scatter(
               input.data_ptr(),
               output.data_ptr(),
@@ -1414,7 +1466,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
               xcclDataType,
               xcclReduceOp,
               comm,
-              ccl::create_stream(stream.queue()));
+              xcclStream);
           // Use SUM emu AVG due to oneCCL not support AVG
           // oneCCL is expected to support avg in basekit 2025.2 release.
           if (opts.reduceOp == ReduceOp::AVG) {
@@ -1499,6 +1551,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputTensor.device().index()))
+                .second;
         ccl::reduce_scatter(
             input.data_ptr(),
             output.data_ptr(),
@@ -1506,7 +1561,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -1537,6 +1592,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputs[0].device().index()))
+                .second;
         ccl::reduce_scatter(
             input.data_ptr(),
             output.data_ptr(),
@@ -1544,7 +1602,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
             xcclDataType,
             xcclReduceOp,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
         // Use SUM emu AVG due to oneCCL not support AVG
         // oneCCL is expected to support avg in basekit 2025.2 release.
         if (opts.reduceOp == ReduceOp::AVG) {
@@ -1650,13 +1708,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(output.scalar_type());
+          auto xcclStream =
+              xcclStreamsMap_.at(std::to_string(inputTensor.device().index()))
+                  .second;
           ccl::alltoall(
               input.data_ptr(),
               output.data_ptr(),
               (size_t)output.numel() / comm.size(),
               xcclDataType,
               comm,
-              ccl::create_stream(stream.queue()));
+              xcclStream);
           return;
         },
         OpType::ALLTOALL_BASE,
@@ -1709,6 +1770,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
                 (outputSplitsEqual ? outLen : outputSplitSizes[i] * outLen);
           }
           auto xcclDataType = getXcclDataType(output.scalar_type());
+          auto xcclStream =
+              xcclStreamsMap_.at(std::to_string(inputTensor.device().index()))
+                  .second;
           ccl::alltoallv(
               input.data_ptr(),
               sendCounts,
@@ -1716,7 +1780,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
               recvCounts,
               xcclDataType,
               comm,
-              ccl::create_stream(stream.queue()));
+              xcclStream);
           return;
         },
         OpType::ALLTOALL_BASE,
@@ -1789,6 +1853,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
         }
 
         auto xcclDataType = getXcclDataType(flatOutput.scalar_type());
+        auto xcclStream =
+            xcclStreamsMap_.at(std::to_string(inputTensors[0].device().index()))
+                .second;
         ccl::event ret_evt;
         ret_evt = ccl::alltoallv(
             flatInput.data_ptr(),
@@ -1797,7 +1864,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
             recvCounts,
             xcclDataType,
             comm,
-            ccl::create_stream(stream.queue()));
+            xcclStream);
 
         if (!isOutputFlat) {
           ret_evt.wait();
