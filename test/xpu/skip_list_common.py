@@ -1010,18 +1010,6 @@ skip_dict = {
         # Unexpected success: CUDA only test case, launch grid_y == 2**16 (larger than CUDA maximum y-dimension limit 65535) and expect fail.
         # SYCL don't have this limitation and hence can pass.
         "test_upsamplingNearest2d_launch_fail_xpu",
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "test_RNN_cudnn_weight_norm",
-        "test_partial_flat_weights",
-        "test_variable_sequence_xpu_float16",
-        "test_variable_sequence_xpu_float32",
-        # CPU fallback could not cover
-        # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
-        "test_cudnn_weight_tying",
-        "test_RNN_input_size_zero",
-        "test_rnn_fused_xpu_float32",
-        "test_rnn_retain_variables_xpu_float16",
-        "test_rnn_retain_variables_xpu_float32",
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
