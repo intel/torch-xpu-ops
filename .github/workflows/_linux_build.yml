@@ -83,7 +83,6 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
-          set -xe
           source .github/scripts/env.sh build
           source activate xpu_build
           export USE_ONEMKL=1
@@ -120,7 +119,7 @@ jobs:
           WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
           if [[ ${is_fork_pr} == "false" ]]; then
-            if [ -f dist/torch*.whl && "${last_commit}" != "${current_commit}" ] && [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
+            if [ -f dist/torch*.whl ] && [ "${last_commit}" != "${current_commit}" ] && [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
               echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
               gh --repo $repo issue edit $commit_issue --body-file new_body.txt
