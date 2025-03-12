@@ -83,6 +83,7 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
+          set -xe
           source .github/scripts/env.sh build
           source activate xpu_build
           export USE_ONEMKL=1
@@ -145,7 +146,7 @@ jobs:
           else
             echo "Forked PR, don't update the issue"
           fi
-          pip install patchelf
+          conda install patchelf zip -y
           bash ${{ github.workspace }}/.github/scripts/rpath.sh dist/torch*.whl
           pip install --force-reinstall tmp/torch*.whl
           cp tmp/*.whl ${{ github.workspace }}/
