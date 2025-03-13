@@ -501,8 +501,6 @@ struct ConvDepthwise2dGradWeightFunctor
 
     // At this point each thread in the block has a local gradient, which we
     // need to accumulate prior to writing the global value
-    // extern char smem[];
-    // acc_t* buf = reinterpret_cast<acc_t*>(smem);
     acc_t tval = GroupReduceSumWithoutBroadcast<acc_t, SIMD>(item, grad, smem);
 
     // After reduction, first thread in the block has the gradient, so its
@@ -638,9 +636,6 @@ void conv_depthwise2d_forward_kernel(
   // One thread per output value
   TORCH_CHECK(canUse32BitIndexMath(input) && canUse32BitIndexMath(output));
   int32_t n = output.numel();
-  // int blocks = (n - 1) / NUM_THREADS + 1;
-  // dim3 grid(blocks);
-  // dim3 block(CUDA_NUM_THREADS);
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,
@@ -825,10 +820,7 @@ void conv_depthwise2d_backward_kernel(
   TORCH_CHECK(
       canUse32BitIndexMath(grad_input) && canUse32BitIndexMath(grad_output));
   int32_t n = grad_input.numel();
-  // int blocks = (n - 1) / NUM_THREADS + 1;
-  // dim3 grid(blocks);
-  // dim3 block(CUDA_NUM_THREADS);
-  // const auto stream = c10::cuda::getCurrentCUDAStream();
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,
       kBFloat16,
@@ -1227,11 +1219,6 @@ void conv_depthwise2d_grad_weight_kernel(
 
   // We parallelize so that each block computes a single value in grad_weight
   TORCH_CHECK(canUse32BitIndexMath(input) && canUse32BitIndexMath(grad_output));
-  // int blocks = outputChannels * kH * kW;
-
-  // dim3 grid(blocks);
-  // dim3 block(getGradParamsNumThreads(batchSize));
-  // const auto stream = c10::cuda::getCurrentCUDAStream();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,

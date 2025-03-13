@@ -26,7 +26,6 @@ Tensor& conv_depthwise2d_xpu_out(
     IntArrayRef padding,
     IntArrayRef dilation,
     Tensor& out) {
-  std::cout << "enter conv_depthwise2d_xpu_out" << std::endl;
   TORCH_CHECK(kernel_size.size() == 2);
   TORCH_CHECK(stride.size() == 2);
   TORCH_CHECK(padding.size() == 2);
@@ -66,7 +65,6 @@ Tensor conv_depthwise2d_xpu(
     IntArrayRef padding,
     IntArrayRef dilation) {
   auto out = at::empty({0}, input.options());
-  std::cout << "enter conv_depthwise2d_xpu" << std::endl;
   return conv_depthwise2d_xpu_out(
       input, weight, kernel_size, bias, stride, padding, dilation, out);
 }
@@ -81,7 +79,6 @@ std::tuple<Tensor&, Tensor&> conv_depthwise2d_backward_xpu_out(
     IntArrayRef dilation,
     Tensor& grad_input,
     Tensor& grad_weight) {
-  std::cout << "enter conv_depthwise2d_backward_xpu_out" << std::endl;
   auto grad_output = grad_output_.expect_contiguous();
 
   if (grad_weight.defined()) {
@@ -128,7 +125,6 @@ std::tuple<Tensor, Tensor> conv_depthwise2d_backward_xpu(
     IntArrayRef padding,
     IntArrayRef dilation,
     std::array<bool, 2> output_mask) {
-  std::cout << "enter conv_depthwise2d_backward_xpu" << std::endl;
   Tensor grad_input;
   Tensor grad_weight;
 

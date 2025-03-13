@@ -358,16 +358,15 @@ struct ConvDepthwise3dXpuBackwardWeightFunctor
     }
 
     sdata[item.get_local_id(0)] = grad;
-    // __syncthreads();
+
     item.barrier(sycl_local_fence);
 
-    // XPU_KERNEL_ASSERT(__popc(item.get_local_range(0)) == 1);   !!!!!!
 #pragma unroll
     for (int i = item.get_local_range(0) / 2; i >= 1; i >>= 1) {
       if (item.get_local_id(0) < i) {
         sdata[item.get_local_id(0)] += sdata[item.get_local_id(0) + i];
       }
-      // __syncthreads();
+
       item.barrier(sycl_local_fence);
     }
 
@@ -662,9 +661,6 @@ Tensor conv_depthwise3d_kernel(
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "conv_depthwise3d", [&] {
         int64_t num_outputs = output_.numel();
-        // int64_t block = 256;
-        // int64_t grid = std::min((num_outputs - 1) / block + 1,
-        // (int64_t)65536); int64_t smem = 0;
 
         const scalar_t* bias_ptr =
             bias_.defined() ? bias_.const_data_ptr<scalar_t>() : NULL;
@@ -890,9 +886,8 @@ std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
     const Tensor input_ = input.contiguous();
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, grad_output.scalar_type(), "conv_depthwise3d", [&] {
-          // int64_t grid = grad_weight.numel();
-          int64_t block = 256;
-          // int64_t smem = sizeof(scalar_t) * block;
+          int64_t group_size = 256;
+          // int64_t smem = sizeof(scalar_t) * group_size;
 
           const int64_t int_max = std::numeric_limits<int32_t>::max();
           TORCH_CHECK(
@@ -905,11 +900,11 @@ std::tuple<Tensor&, Tensor&, Tensor&> _depthwise_3d_backward_kernel(
                 padding[i] * 2 + input.size(i + 2) <= int_max,
                 "Padded input tensor is too large.");
           }
-          // int64_t warp_size = at::cuda::warp_size();
+
           int64_t warp_size = C10_WARP_SIZE;
           TORCH_CHECK(
               grad_output_.size(0) * grad_output_.size(2) <
-                      int_max - block / warp_size &&
+                      int_max - group_size / warp_size &&
                   grad_output_.size(3) <= int_max - warp_size &&
                   grad_output_.size(4) <= int_max - warp_size,
               "Output size is too large.");
