@@ -51,20 +51,15 @@ jobs:
     runs-on: ${{ inputs.runner }} 
     if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
-    env:
-      NEOReadDebugKeys: 1
-      DisableScratchPages: 1
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          rm -rf ${HOME}/mengfeil/myvenv-ut
+          /usr/bin/python3.10 -m venv ${HOME}/mengfeil/myvenv-ut
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -84,7 +79,7 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
@@ -104,7 +99,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
@@ -135,7 +130,7 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
@@ -153,7 +148,7 @@ jobs:
           mkdir -p ut_log/op_regression
           xpu-smi discovery
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest
@@ -165,7 +160,7 @@ jobs:
           mkdir -p ut_log/op_regression_dev1
           xpu-smi discovery
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
@@ -177,7 +172,7 @@ jobs:
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           export PYTORCH_TEST_WITH_SLOW=1
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_extended
@@ -188,7 +183,7 @@ jobs:
         if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           export PYTORCH_TEST_WITH_SLOW=1
           cd ${{ github.workspace }}
@@ -206,7 +201,7 @@ jobs:
         if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ${{ github.workspace }}
           mkdir -p ut_log/torch_xpu
           cd ../pytorch
@@ -243,7 +238,7 @@ jobs:
         if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           mkdir -p ${{ github.workspace }}/ut_log/profile_test
           # RN50 Test
           PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
@@ -265,7 +260,7 @@ jobs:
           python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Summary
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           pip install junitparser
           python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check
@@ -314,7 +309,7 @@ jobs:
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -334,7 +329,7 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           cd ../pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
@@ -354,7 +349,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
@@ -385,7 +380,7 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
@@ -399,7 +394,7 @@ jobs:
       - name: Run Torch XPU Distributed UT
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source ${HOME}/mengfeil/myvenv-ut/bin/activate
           pip install pytest
           cd ${{ github.workspace }}
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
