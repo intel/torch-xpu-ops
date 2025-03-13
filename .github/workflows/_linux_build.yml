@@ -57,7 +57,7 @@ jobs:
         run: |
           pwd && printenv
           if [ -n "${GITHUB_WORKSPACE}" ];then
-            rm -rf ${GITHUB_WORKSPACE}/* ${GITHUB_WORKSPACE}/.*
+            rm -rf ${GITHUB_WORKSPACE}/*
           fi
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
                 intel-cmplr-lib-ur; platform_system == 'Linux' |\
                 intel-cmplr-lic-rt; platform_system == 'Linux' |\
                 intel-sycl-rt; platform_system == 'Linux' |\
-                tcmlib |umf |intel-pti
+                tcmlib | umf | intel-pti \
           "
           if [[ ${{ inputs.driver }} == 'lts' ]]; then
             export TORCH_XPU_ARCH_LIST='pvc'

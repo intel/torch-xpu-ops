@@ -78,7 +78,7 @@ jobs:
           xpu-smi discovery
           pwd && printenv
           if [ -n "${GITHUB_WORKSPACE}" ];then
-            rm -rf ${GITHUB_WORKSPACE}/* ${GITHUB_WORKSPACE}/.*
+            rm -rf ${GITHUB_WORKSPACE}/*
           fi
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
