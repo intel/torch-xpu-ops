@@ -102,12 +102,18 @@ jobs:
           pip install -r requirements.txt
           pip install cmake setuptools==72.1.0 clang-format
           pip install mkl-static mkl-include
-          call ..\torch-xpu-ops\.github\scripts\copy.bat
           set USE_KINETO=0
           set USE_ONEMKL=1
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
+          copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
+          copy "%CONDA_PREFIX%\Library\bin\uv.dll" .\torch\lib
+          if defined CMAKE_PREFIX_PATH (
+              set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library;%CMAKE_PREFIX_PATH%"
+          ) else (
+              set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
+          )
           python setup.py clean
           set MAX_JOBS=4
           python setup.py bdist_wheel > build_torch_wheel_log.log
