@@ -22,7 +22,7 @@ on:
         required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu`. Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
       triton:
         required: false
         type: string
@@ -147,7 +147,6 @@ jobs:
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
-          git submodule sync && git submodule update --init --recursive
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             echo "Don't replace torch-xpu-ops!"
           else
@@ -173,9 +172,9 @@ jobs:
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "MODEL_ONLY_NAME=${{ inputs.model }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DRIVER_VERSION=$(dkms status 2>&1 |grep 'intel-i915-dkms' |sed 's/.*\///;s/,.*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(dpcpp --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -205,6 +204,7 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
@@ -297,18 +297,14 @@ jobs:
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
+          rm -rf /tmp/tmp-*.txt
+          source activate e2e_ci
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
-          timeout_models=$(grep "timeout models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
-          if [ ${timeout_models} -ne 0 ];then
-            TIMEOUT_MODELS="$(
-              grep -B 1 "timeout models: [1-9]" ${GITHUB_STEP_SUMMARY}
-            )"
-            echo "TIMEOUT_MODELS=\"${TIMEOUT_MODELS}\"" |awk '{printf("%s\\n", $0)}' |sed 's/\\n$//' |tee -a "${GITHUB_OUTPUT}"
-          fi
-          if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
-            exit 1
+          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          if [ ${exit_label} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "There are ${exit_label} cases that need look into!!! Please check them"
+            exit ${exit_label}
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}

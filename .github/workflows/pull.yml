@@ -64,20 +64,8 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
+      ut: op_regression,op_regression_dev1,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
-
-  preci-ut-distributed:
-    # Don't run on forked repos and draft PRs
-    secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux
-    needs: preci-linux-build
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: xpu_distributed
-      runner: pvc_e2e
 
   Inductor-XPU-E2E-CI-Tests:
     name: preci-linux / e2e_test
@@ -109,7 +97,6 @@ jobs:
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
           git status && git show -s
-          git submodule sync && git submodule update --init --recursive
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test
           sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
@@ -194,11 +181,14 @@ jobs:
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
+          rm -rf /tmp/tmp-*.txt
+          source activate e2e_ci
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          failed_models=$(grep "Real failed models: *[1-9]" ${GITHUB_STEP_SUMMARY} |wc -l || true)
-          if [ ${failed_models} -ne 0 ];then
-            grep -E "Real failed models: [1-9]|Summary for" ${GITHUB_STEP_SUMMARY} |grep "failed" -B 1
-            exit 1
+          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          if [ ${exit_label} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "There are ${exit_label} cases that need look into!!! Please check them"
+            exit ${exit_label}
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
