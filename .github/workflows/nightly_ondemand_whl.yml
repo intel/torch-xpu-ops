@@ -63,10 +63,10 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
-      runner: linux.idc.xpu
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_e2e
+    runs-on: internal
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
@@ -74,6 +74,8 @@ jobs:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
     outputs:
       TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.installed.outputs.TORCH_COMMIT_ID }}

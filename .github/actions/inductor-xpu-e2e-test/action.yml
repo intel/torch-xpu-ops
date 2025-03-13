@@ -89,8 +89,8 @@ runs:
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        NEOReadDebugKeys: 1
+        DisableScratchPages: 1
       shell: bash
       run: |
         source activate e2e_ci
