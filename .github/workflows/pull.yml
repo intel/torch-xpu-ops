@@ -21,7 +21,7 @@ permissions: read-all
 
 jobs:
   preci-lint-check:
-    # Don't run on forked repos and draft PRs
+    # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
     runs-on: ubuntu-22.04
@@ -43,7 +43,7 @@ jobs:
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
   preci-linux-build:
-    # Don't run on forked repos and draft PRs
+    # Don't run on draft PRs
     secrets: inherit
     if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux
@@ -56,7 +56,6 @@ jobs:
       runner: pvc_e2e
 
   preci-ut:
-    # Don't run on forked repos and draft PRs
     secrets: inherit
     if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux
@@ -71,75 +70,48 @@ jobs:
     name: preci-linux / e2e_test
     needs: preci-linux-build
     runs-on: pvc_e2e
-    # Don't run on forked repos and draft PRs
     if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 900
     steps:
+      - name: Clean Workspace
+        run: |
+          xpu-smi discovery
+          pwd && printenv
+          if [ -n "${GITHUB_WORKSPACE}" ];then
+            rm -rf ${GITHUB_WORKSPACE}/* ${GITHUB_WORKSPACE}/.*
+          fi
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Conda ENV
-        run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=3.10 cmake ninja -y
-          source activate e2e_ci
-          pip install mkl-static mkl-include
-          pip install pandas scipy tqdm
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-          # apply PRs for stock pytorch
-          pip install requests
-          # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
-          git status && git show -s
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-          # Workaround for torch-xpu-ops ci test
-          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+        with:
+          path: torch-xpu-ops
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+      - name: Prepare Stock Pytorch
         run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-      - name: Identify pinned versions
-        run: |
-          cd ../pytorch
-          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
-          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
-          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          source torch-xpu-ops/.github/scripts/env.sh conda-pytorch create
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
       - name: Torch Config
         run: |
-          echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-
-          cd ..
-          source activate e2e_ci
+          source torch-xpu-ops/.github/scripts/env.sh conda activate
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
+          rm -rf pytorch/inductor_log
+      - name: Identify pinned versions
+        run: |
+          cd pytorch
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
@@ -178,12 +150,12 @@ jobs:
       - name: Summarize archieve files
         if: ${{ ! cancelled() }}
         run: |
-          rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          rm -rf ${GITHUB_WORKSPACE}/upload_files
+          cp -r ${GITHUB_WORKSPACE}/pytorch/inductor_log ${GITHUB_WORKSPACE}/upload_files
           # Print summary
           rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+          source torch-xpu-ops/.github/scripts/env.sh conda activate
+          bash ${GITHUB_WORKSPACE}/.github/scripts/e2e_summary.sh ${GITHUB_WORKSPACE}/upload_files >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then
             grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
@@ -198,7 +170,6 @@ jobs:
           path: ${{ github.workspace }}/upload_files
   
   preci-linux-build-abi-0:
-    # Don't run on forked repos and draft PRs
     secrets: inherit
     if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux-abi-0
@@ -212,7 +183,6 @@ jobs:
       runner: pvc_e2e
 
   preci-ut-abi-0:
-    # Don't run on forked repos and draft PRs
     if: ${{ github.event.pull_request.draft == false }}
     name: preci-linux-abi-0
     needs: preci-linux-build-abi-0
@@ -224,7 +194,6 @@ jobs:
       runner: linux.idc.xpu
   
   preci-windows:
-    # Don't run on forked repos and draft PRs
     if: ${{ github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'windows_ci') }}
     name: preci-windows
     needs: preci-lint-check

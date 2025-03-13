@@ -90,50 +90,45 @@ jobs:
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
+      - name: Clean Workspace
+        run: |
+          xpu-smi discovery
+          pwd && printenv
+          if [ -n "${GITHUB_WORKSPACE}" ];then
+            rm -rf ${GITHUB_WORKSPACE}/* ${GITHUB_WORKSPACE}/.*
+          fi
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Conda ENV
-        run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm
+        with:
+          path: torch-xpu-ops
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
       - name: Prepare Stock Pytorch
-        id: installed
         run: |
-          pwd
-          source activate e2e_ci
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../ && rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${TORCH_COMMIT_ID}
-          # apply PRs for stock pytorch
-          pip install requests
-          # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          pip install -r requirements.txt
-          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          rm -rf third_party/torch-xpu-ops
-          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          cd ../../
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          source torch-xpu-ops/.github/scripts/env.sh conda-pytorch create
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+      - name: Torch Config
+        run: |
+          source torch-xpu-ops/.github/scripts/env.sh conda activate
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
+          rm -rf pytorch/inductor_log
       - name: Identify pinned versions
         id: pinned
         run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
+          source torch-xpu-ops/.github/scripts/env.sh oneapi
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../pytorch
+          cd pytorch
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -148,9 +143,6 @@ jobs:
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
@@ -238,13 +230,13 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
+          source torch-xpu-ops/.github/scripts/env.sh conda activate
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then

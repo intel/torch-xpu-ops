@@ -50,8 +50,7 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate e2e_ci
-        source .github/scripts/env.sh ${{ inputs.pytorch }}
+        source torch-xpu-ops/.github/scripts/env.sh conda activate
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
@@ -63,7 +62,7 @@ runs:
           fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install -r requirements.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
@@ -93,10 +92,9 @@ runs:
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate e2e_ci
-        source .github/scripts/env.sh ${{ inputs.pytorch }}
-        cp .github/scripts/inductor_xpu_test.sh ../pytorch
-        cd ../pytorch
+        source torch-xpu-ops/.github/scripts/env.sh conda activate
+        cp torch-xpu-ops/.github/scripts/inductor_xpu_test.sh ./pytorch
+        cd ./pytorch
 
         # check param
         function contains() {
@@ -153,7 +151,7 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       shell: bash
       run: |
-        cd ../pytorch
+        cd ./pytorch
         rm -f inductor_log/summary_accuracy.csv
         for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do
@@ -161,10 +159,10 @@ runs:
           cat $var >> inductor_log/summary_accuracy.csv
         done
 
-        source activate e2e_ci
+        source torch-xpu-ops/.github/scripts/env.sh conda activate
         cd ${{ github.workspace }}
-        cp .github/scripts/inductor_summary.py ../pytorch
-        cd ../pytorch
+        cp .github/scripts/inductor_summary.py ./pytorch
+        cd ./pytorch
         pip install styleFrame scipy pandas
         set -xe
         dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
