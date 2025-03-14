@@ -31,7 +31,7 @@ if [[ "${input_type}" == *"conda"* ]];then
     . "${conda_config_file}"
     if [[ "${action_type}" == *"create"* ]];then
         conda remove --all -y -n "xpu_op_${ZE_AFFINITY_MASK}" || rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-        conda create -n "xpu_op_${ZE_AFFINITY_MASK}" -y
+        conda create python=${{ inputs.python }} cmake ninja -n "xpu_op_${ZE_AFFINITY_MASK}" -y
     fi
     conda activate "xpu_op_${ZE_AFFINITY_MASK}"
     conda info -e
