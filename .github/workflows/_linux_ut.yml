@@ -114,7 +114,7 @@ jobs:
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
-            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+            pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ../pytorch
             git reset --hard && git checkout ${TORCH_COMMIT_ID}
@@ -363,7 +363,7 @@ jobs:
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
-            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+            pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ../pytorch
             git reset --hard && git checkout ${TORCH_COMMIT_ID}

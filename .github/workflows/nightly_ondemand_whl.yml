@@ -105,7 +105,7 @@ jobs:
         run: |
           pwd
           source ${HOME}/mengfeil/myvenv-e2e/bin/activate
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+          pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
