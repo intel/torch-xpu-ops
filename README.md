@@ -24,12 +24,10 @@ Torch XPU Operators* implements PyTorch ATen operators for Intel GPU devices, ai
   * Intel® Core™ Ultra Processors with Intel Arc Graphics
   * Intel Core Ultra Processors Series 2 with Intel Arc Graphics
   * Intel Arc B-Series Graphics
-  
 * Hardware Verified with Ubuntu 24.10
   * Intel Arc A-Series Graphics
   * Intel Core Ultra Processors with Intel Arc Graphics
   * Intel Core Ultra Processor Series 2 with Intel Arc Graphics
-
 * Hardware Verified with Ubuntu 24.04 and Windows* Subsystem for Linux 2 (WSL2) with Ubuntu 24.04
   * Intel Arc A-Series Graphics
   * Intel Core Ultra Processors with Intel Arc Graphics
