@@ -111,5 +111,3 @@ perf_df['SYMM  int8/fp32'] = perf_df['int8_SYMM']/perf_df['fp32']
 
 # write to new csv file
 perf_df.to_csv('summary_perf.csv', index=False)
-
-
