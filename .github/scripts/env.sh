@@ -1,4 +1,5 @@
 #!/bin/bash
+set -xe
 
 # Activate oneAPI DLE
 if [[ "$1" == *"oneapi"* ]];then
