@@ -494,7 +494,11 @@ class CommTest(MultiProcessTestCase):
                 dist.reduce_scatter_tensor(output_tensors[i], input_tensors[i])
         self.assertEqual(output_tensors, input_tensors[self.rank] * self.world_size)
 
-    def test_tensor_dtype_complex(self):
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    # The difference between this case and `test_send_recv` is that `test_send_recv` uses a previously created process group,
+    # whereas this case performs point-to-point operations immediately after creating the process group.
+    def test_single_p2p(self):
         store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(
             "xccl",
@@ -502,7 +506,18 @@ class CommTest(MultiProcessTestCase):
             rank=self.rank,
             store=store,
         )
+        torch.manual_seed(0)
+        send_tensor = torch.rand(10, 10).to(self.rank)
+        if self.rank == 0:
+            dist.send(send_tensor, 1)
+        if self.rank == 1:
+            recv_tensor = torch.rand(10, 10).to(self.rank)
+            dist.recv(recv_tensor, 0)
+            self.assertEqual(send_tensor, recv_tensor)
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_tensor_dtype_complex(self):
         tensor = torch.rand(2, device=self.device)
         tensor_c = torch.view_as_complex(tensor)
         tensor_list = [
