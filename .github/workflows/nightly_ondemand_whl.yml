@@ -129,7 +129,6 @@ jobs:
         id: pinned
         run: |
           source ${HOME}/mengfeil/myvenv-e2e/bin/activate
-          source .github/scripts/env.sh
           cd ../pytorch
           echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
