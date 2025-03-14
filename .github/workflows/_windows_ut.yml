@@ -153,6 +153,7 @@ jobs:
         shell: cmd
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           set PYTORCH_TEST_WITH_SLOW=1
