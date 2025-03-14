@@ -515,6 +515,22 @@ class CommTest(MultiProcessTestCase):
             dist.recv(recv_tensor, 0)
             self.assertEqual(send_tensor, recv_tensor)
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_tensor_dtype_complex(self):
+        tensor = torch.rand(2, device=self.device)
+        tensor_c = torch.view_as_complex(tensor)
+        tensor_list = [
+            torch.rand(2, device=self.device) for _ in range(self.world_size)
+        ]
+        tensor_list_c = list(tensor_list)
+        tensor_list_c[1] = torch.view_as_complex(tensor_list_c[1])
+
+        dist.all_gather(tensor_list, tensor)
+        dist.all_gather(tensor_list, tensor_c)
+        dist.all_gather(tensor_list_c, tensor)
+        dist.all_gather(tensor_list_c, tensor_c)
+
 
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
