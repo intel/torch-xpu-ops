@@ -42,7 +42,7 @@ function(GEN_XPU file_yaml)
   endif()
 
   set(XPU_CODEGEN_COMMAND
-    "${PYTHON_EXECUTABLE}" -m torchgen.gen
+    "${Python_EXECUTABLE}" -m torchgen.gen
     --source-path ${CODEGEN_XPU_YAML_DIR}
     --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --per-operator-headers
@@ -51,7 +51,7 @@ function(GEN_XPU file_yaml)
   )
 
   set(XPU_INSTALL_HEADER_COMMAND
-    "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
+    "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
     --src-header-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --dst-header-dir ${BUILD_TORCH_ATEN_GENERATED}
   )
