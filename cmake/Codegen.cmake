@@ -32,7 +32,7 @@ function(GEN_BACKEND file_yaml)
   add_custom_command(
     OUTPUT ${generated_files}
     COMMAND
-    "${PYTHON_EXECUTABLE}" -m torchgen.gen_backend_stubs
+    "${Python_EXECUTABLE}" -m torchgen.gen_backend_stubs
     --output_dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --source_yaml ${TORCH_XPU_OPS_ROOT}/yaml/${file_yaml}
     COMMAND
@@ -76,7 +76,7 @@ function(GEN_XPU file_yaml)
   add_custom_command(
     OUTPUT ${generated_files}
     COMMAND
-    "${PYTHON_EXECUTABLE}" -m torchgen.gen
+    "${Python_EXECUTABLE}" -m torchgen.gen
     --source-path ${TORCH_XPU_OPS_ROOT}/yaml/
     --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --per-operator-headers
@@ -95,10 +95,10 @@ function(GEN_XPU file_yaml)
     COMMAND
     ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_PATH}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseCsrXPU_PATH}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterNestedTensorXPU_PATH}
+    COMMAND "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_PATH}
+    COMMAND "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_PATH}
+    COMMAND "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseCsrXPU_PATH}
+    COMMAND "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterNestedTensorXPU_PATH}
     ${SIMPLE_TRACE}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
