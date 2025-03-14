@@ -1,8 +1,11 @@
 #!/bin/bash
 set -xe
 
+input_type="$1"
+action_type="$2"
+
 # Activate oneAPI DLE
-if [[ "$1" == *"oneapi"* ]];then
+if [[ "${input_type}" == *"oneapi"* ]];then
     ONEAPI_ROOT="/opt/intel/oneapi"
     source "${ONEAPI_ROOT}/compiler/latest/env/vars.sh"
     source "${ONEAPI_ROOT}/umf/latest/env/vars.sh"
@@ -15,7 +18,7 @@ if [[ "$1" == *"oneapi"* ]];then
 fi
 
 # Conda Env
-if [[ "$1" == *"conda"* ]];then
+if [[ "${input_type}" == *"conda"* ]];then
     conda_config_file="/opt/conda/etc/profile.d/conda.sh"
     if $(which conda > /dev/null 2>&1) ;then
         conda_config_file="$(realpath "$(dirname ${CONDA_EXE})/../etc/profile.d/conda.sh")"
@@ -26,7 +29,7 @@ if [[ "$1" == *"conda"* ]];then
         bash "Miniforge3-$(uname)-$(uname -m).sh" -b -f -p "/opt/conda"
     fi
     . "${conda_config_file}"
-    if [[ "$2" == *"create"* ]];then
+    if [[ "${action_type}" == *"create"* ]];then
         conda remove --all -y -n "xpu_op_${ZE_AFFINITY_MASK}" || rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
         conda create -n "xpu_op_${ZE_AFFINITY_MASK}" -y
     fi
@@ -35,7 +38,7 @@ if [[ "$1" == *"conda"* ]];then
 fi
 
 # Prepare PyTorch
-if [[ "$1" == *"pytorch"* ]];then
+if [[ "${input_type}" == *"pytorch"* ]];then
     if [[ "${{ inputs.pytorch }}" != *"nightly_wheel"* ]]; then
       pip install --force-reinstall ${GITHUB_WORKSPACE}/torch*.whl
     else
