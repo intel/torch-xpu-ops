@@ -773,6 +773,13 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1432
+        "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_2_key_padding_mask_dim_2_bool_xpu",
+        "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_3_key_padding_mask_dim_2_bool_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_False_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_False_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
     ),
     "test_complex_xpu.py": None,
     "test_modules_xpu.py": (
@@ -1466,6 +1473,11 @@ skip_dict = {
         "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         "test_compile_int4_mm_m_64_k_64_n_48_xpu",
         "test_compile_int4_mm_m_64_k_64_n_64_xpu",
+        # float8 is not supported
+        "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e4m3fnuz",
+        "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
+        # case need to port for xpu
+        "test_gemm_bias_offline_tunableop_xpu_bfloat16",
     ),
     "test_ops_fwd_gradients_xpu.py": (
         # All of the followings are oneDNN issues
