@@ -17,7 +17,7 @@ function get_model_result() {
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
     )
-    rm -rf /tmp/tmp-result.txt
+    echo > /tmp/tmp-result.txt
     for suite in ${suite_list}
     do
         model_list=$(
