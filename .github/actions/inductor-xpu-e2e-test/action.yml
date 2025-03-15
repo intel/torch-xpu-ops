@@ -51,7 +51,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        source .github/scripts/env.sh ${{ inputs.pytorch }}
+        source .github/scripts/env.sh
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
