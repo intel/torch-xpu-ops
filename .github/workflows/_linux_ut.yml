@@ -252,6 +252,19 @@ jobs:
           python -m pytest -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
           python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
           python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
+      - name: Run Torch XPU Op Microbench
+        if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'op_microbench') }} 
+        run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          mkdir -p ${{ github.workspace }}/ut_log/op_microbench
+          for i in $filename
+            python test/microbench/${i%.*}.py > ${{ github.workspace }}/ut_log/op_microbench/${i%.*}.log
+          done
+          # Summary forward op time
+          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/ut_log/op_microbench ${{ github.workspace }}/ut_log/op_microbench/forward_op_summary.txt
+          # Summary backward op time
+          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/ut_log/op_microbench ${{ github.workspace }}/ut_log/op_microbench/backward_op_summary.txt True
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}

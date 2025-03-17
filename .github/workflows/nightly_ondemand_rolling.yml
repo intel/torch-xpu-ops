@@ -95,6 +95,20 @@ jobs:
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       driver: rolling
       runner: pvc_rolling
+  
+  Linux-Nightly-Ondemand-OP-Microbench-Rolling:
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    name: linux-nightly-ondemand-rolling
+    needs: Linux-Nightly-Ondemand-Build-Rolling
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      ut: ${{ github.event_name == 'schedule' && 'op_microbench' || inputs.ut }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      driver: rolling
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
