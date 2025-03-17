@@ -237,16 +237,54 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
+static std::atomic<size_t> process_group_id = 0;
+
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
     "Expecting one tensor only but got multiple";
+
+std::string ProcessGroupXCCL::createLogPrefix() const {
+  if (!pg_desc_.empty() && pg_desc_ != "undefined") {
+    return c10::str(
+        "[PG ID ",
+        local_id_,
+        " PG GUID ",
+        pg_uid_,
+        "(",
+        pg_desc_,
+        ") Rank ",
+        rank_,
+        "] ");
+  }
+  return c10::str(
+      "[PG ID ", local_id_, " PG GUID ", pg_uid_, " Rank ", rank_, "] ");
+}
+
+const std::string& ProcessGroupXCCL::logPrefix() const {
+  return logPrefix_;
+}
 
 ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
     int size)
-    : Backend(rank, size), store_(store), xcclCommCounter_(0) {
+    : Backend(rank, size),
+      store_(store),
+      xcclCommCounter_(0),
+      local_id_(process_group_id++) {
+  logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   init();
+  const std::string OFF = "OFF";
+  std::string torch_distributed_debug =
+      getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
+  const auto XcclVersion = getXcclVersion();
+  LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
+            << "size: " << size << ", global rank: " << rank_;
+
+  LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
+            << "XCCL version: " << XcclVersion
+            << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
+            << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() = default;
