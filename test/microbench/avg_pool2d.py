@@ -12,12 +12,12 @@ shape_list = [
 
 def AVGPool2d(shape, dtype, channels_last, backward):
     N, C, H, W, kernel_size, stride = shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]
-    
+
     if channels_last:
         input = torch.randn(N, C, H, W, requires_grad=True).to(memory_format=torch.channels_last).to(device=device, dtype=dtype)
     else:
         input = torch.randn(N, C, H, W, requires_grad=True).to(device=device, dtype=dtype)
-    
+
     if backward:
         input.requires_grad_(True)
         if isinstance(kernel_size, int):
@@ -27,11 +27,11 @@ def AVGPool2d(shape, dtype, channels_last, backward):
             Wout = (W - kernel_size[1])/stride[1] + 1
             Hout = (H - kernel_size[0])/stride[0] + 1
         grad = torch.rand([C, int(Hout), int(Wout)], requires_grad=True).to(device=device, dtype=dtype)
-    
+
     AVG2d = torch.nn.AvgPool2d(shape[4], stride=shape[5])
 
     output = AVG2d(input)
-    
+
     if backward:
         output[0].backward(grad)
 
