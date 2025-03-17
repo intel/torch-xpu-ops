@@ -64,6 +64,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
       runner: pvc_rolling
+      driver: rolling
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
     runs-on: internal
