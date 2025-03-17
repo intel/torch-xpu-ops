@@ -62,7 +62,10 @@ def print_suite(suite):
     for suite in suites:
         ut = args.junitxml[0]
         del(args.junitxml[0])
-        ut = os.path.basename(ut).split('.')[0]
+        if 'inductor.test' or 'xpu.test' in ut:
+            ut = os.path.basename(ut).split('-')[0]
+        else:
+            ut = os.path.basename(ut).split('.')[0]
         tests = suite.tests
         skipped = suite.skipped
         failures = suite.failures
@@ -73,7 +76,7 @@ def print_suite(suite):
             category = 'op_regression_dev1'
         elif ut == 'op_extended':
             category = 'op_extended'
-        elif ut =='torch_xpu':
+        elif 'inductor.test' or 'xpu.test' in ut:
             category = 'torch_xpu'
         elif 'op_ut' in ut:
             category = 'op_ut'
