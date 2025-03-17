@@ -12,33 +12,10 @@ Torch XPU Operators* implements PyTorch ATen operators for Intel GPU devices, ai
 
 ## Requirements
 
-### Hardware Requirements
-
-#### Intel Data Center GPU
-
-* Intel® Data Center GPU Max Series
-
-#### Intel Client GPU
-
-* Hardware Verified with Windows® 10 and 11
-  * Intel® Core™ Ultra Processors with Intel Arc Graphics
-  * Intel Core Ultra Processors Series 2 with Intel Arc Graphics
-  * Intel Arc B-Series Graphics
-* Hardware Verified with Ubuntu 24.10
-  * Intel Arc A-Series Graphics
-  * Intel Core Ultra Processors with Intel Arc Graphics
-  * Intel Core Ultra Processor Series 2 with Intel Arc Graphics
-* Hardware Verified with Ubuntu 24.04 and Windows* Subsystem for Linux 2 (WSL2) with Ubuntu 24.04
-  * Intel Arc A-Series Graphics
-  * Intel Core Ultra Processors with Intel Arc Graphics
-
-### Software Requirements
-
-For the hardware and software prerequiste, please refer to [PyTorch Prerequisites for Intel GPUs](https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpus.html) for Intel GPU Driver and Intel Deep Learning Essentials.
+For the hardware and software prerequiste, please refer to [PyTorch Prerequisites for Intel GPUs](https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpus.html) to check your hardware and install the following packages.
 
 * Intel GPU Driver: Install Intel GPU drivers along with compute and media runtimes and development packages.
-* Intel Deep Learning Essentials: Install a subset of Intel® oneAPI components needed for building and running PyTorch.
-
+* Intel® Deep Learning Essentials: Install a subset of Intel® oneAPI components needed for building and running PyTorch.
 
 ## Build
 
