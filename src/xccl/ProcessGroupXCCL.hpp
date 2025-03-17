@@ -94,6 +94,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return std::string(XCCL_BACKEND_NAME);
   }
 
+  bool supportsCoalescing() const override {
+    return true;
+  }
+
   void startCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing() override;
