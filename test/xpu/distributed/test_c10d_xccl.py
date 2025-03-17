@@ -518,6 +518,13 @@ class CommTest(MultiProcessTestCase):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_tensor_dtype_complex(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
         tensor = torch.rand(2, device=self.device)
         tensor_c = torch.view_as_complex(tensor)
         tensor_list = [
