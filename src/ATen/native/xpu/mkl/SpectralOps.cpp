@@ -84,8 +84,7 @@ void _mkl_dft(
   }
 
   if (!complex_input || !complex_output) {
-    desc.set_value(
-        config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
+    desc.set_value(config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
   }
 
   desc.set_value(
@@ -144,7 +143,11 @@ void _fft_with_size(
 
   bool complex_type = inverse ? complex_output : complex_input;
   printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-  printf("complex_input = %d complex_output = %d inverse = %d\n", complex_input, complex_output, inverse);
+  printf(
+      "complex_input = %d complex_output = %d inverse = %d\n",
+      complex_input,
+      complex_output,
+      inverse);
   printf("complex_type = %d\n", complex_type);
 
   void (*dft_func)(
@@ -401,10 +404,14 @@ Tensor& _fft_c2c_mkl_out(
       out, result, normalization, result.sizes(), dim);
 }
 
-void HermitSymmImpl(Tensor& input, int64_t dim, int64_t pre_stride, int64_t cur_stride) {
+void HermitSymmImpl(
+    Tensor& input,
+    int64_t dim,
+    int64_t pre_stride,
+    int64_t cur_stride) {
   auto* data = input.mutable_data_ptr<c10::complex<float>>();
 
-  for (int i = 0; i < input.numel(); i+= pre_stride) {
+  for (int i = 0; i < input.numel(); i += pre_stride) {
     for (int j = 0; j < cur_stride; ++j) {
       data[i + j].imag(0.0f);
       data[i + pre_stride - 1 - j].imag(0.0f);
@@ -412,7 +419,10 @@ void HermitSymmImpl(Tensor& input, int64_t dim, int64_t pre_stride, int64_t cur_
   }
 }
 
-void HermitSymm(Tensor& input, IntArrayRef& dim, std::vector<int64_t>& strides) {
+void HermitSymm(
+    Tensor& input,
+    IntArrayRef& dim,
+    std::vector<int64_t>& strides) {
   printf("dims to be modified: ");
   for (int i = 0; i < dim.size(); ++i) {
     printf("%ld ", dim[i]);
@@ -456,11 +466,12 @@ Tensor _fft_c2r_mkl(
     input = _fft_c2c_mkl(
         self,
         c2c_dims,
-        //static_cast<int64_t>(fft_norm_mode::none),
+        // static_cast<int64_t>(fft_norm_mode::none),
         normalization,
         /*forward=*/false);
     dim = dim.slice(dim.size() - 1);
   }
+  input = input.clone(MemoryFormat::Contiguous);
 
   printf("dim_size = %ld dims = ", dim.size());
   for (int i = 0; i < dim.size(); ++i)
@@ -487,16 +498,16 @@ Tensor _fft_c2r_mkl(
     printf("%ld ", strides[i]);
   printf("\n");
 
-  //data[0].imag(0.0f);
-  //data[strides[0] - 1].imag(0.0f);
-  //data[strides[0] * (in_sizes[0] - 1)].imag(0.0f);
-  //data[strides[0] * in_sizes[0] - 1].imag(0.0f);
-  //printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * (in_sizes[0] - 1), strides[0] * in_sizes[0] - 1);
-  for (int i = 0; i < 4; ++i) {
-    data[i].imag(0.0f);
-    data[input_cpu.numel() - 1 - i].imag(0.0f);
-  }
-  //HermitSymm(input_cpu, dim, strides);
+  // data[0].imag(0.0f);
+  // data[strides[0] - 1].imag(0.0f);
+  // data[strides[0] * (in_sizes[0] - 1)].imag(0.0f);
+  // data[strides[0] * in_sizes[0] - 1].imag(0.0f);
+  // printf("%ld %ld %ld\n", strides[0] - 1, strides[0] * (in_sizes[0] - 1),
+  // strides[0] * in_sizes[0] - 1); for (int i = 0; i < 4; ++i) {
+  //  data[i].imag(0.0f);
+  //  data[input_cpu.numel() - 1 - i].imag(0.0f);
+  //}
+  HermitSymm(input_cpu, dim, strides);
 
   for (int i = 0; i < input_cpu.numel(); ++i)
     printf("%f %f ", data[i].real(), data[i].imag());
@@ -521,11 +532,12 @@ Tensor _fft_c2r_mkl(
       out,
       input,
       out_sizes,
-      dim.back(),//dim,
+      dim.back(), // dim,
       /*onesided=*/true,
       /*forward=*/false);
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim.back());
+  return impl::_fft_apply_normalization(
+      out, normalization, out_sizes, dim.back());
 }
 
 Tensor& _fft_c2r_mkl_out(
@@ -537,7 +549,8 @@ Tensor& _fft_c2r_mkl_out(
   auto result = _fft_c2c_mkl(
       self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(out, result, normalization, result.sizes(), dim);
+  return impl::_fft_apply_normalization_out(
+      out, result, normalization, result.sizes(), dim);
 }
 
 } // namespace at::native::xpu
