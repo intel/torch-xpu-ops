@@ -46,6 +46,7 @@ skip_dict = {
         "test_transformer_offload_false_shard_grad_op_xpu",
         "test_transformer_offload_true_none_xpu",
         "test_transformer_offload_true_shard_grad_op_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1475
         "test_transformer_no_grad_mixed_precision_True_xpu",
         "test_transformer_no_grad_mixed_precision_False_xpu",
     ),
