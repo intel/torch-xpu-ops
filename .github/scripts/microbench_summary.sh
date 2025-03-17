@@ -98,7 +98,7 @@ do
     scale_factor=""
     case_name=$(echo ${i%.*} )
     type_name=$(echo "$i" | cut -d. -f1)
-    op_name=$(echo "$case_name" | awk -F. '{print $NF}') 
+    op_name=$(echo "$case_name" | awk -F. '{print $NF}')
     if [[ $Get_backward == "False" ]] ; then
         if [[ $op_name =~ batch_norm ]] ; then
             op_name="aten::batch_norm"
