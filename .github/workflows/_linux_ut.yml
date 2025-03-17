@@ -213,13 +213,6 @@ jobs:
           # Run Pytorch XPU python UT
           export PYTORCH_TEST_WITH_SLOW=1
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-          cd test
-          cp -r inductor inductor_bk
-          cd inductor
-          rm -rf test_*.py
-          cp ../inductor_bk/test_max_autotune.py ./
-          cp ../inductor_bk/test_flex_attention.py ./
-          cd ../..
 
           test_cmd="python test/run_test.py --include "
           # All Inductor UT under test/inductor
