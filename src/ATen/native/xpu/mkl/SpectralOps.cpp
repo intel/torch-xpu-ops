@@ -2,7 +2,11 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
+#include <ATen/ops/complex.h>
+#include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/real.h>
+#include <ATen/ops/zeros_like.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl.hpp>
@@ -455,11 +459,11 @@ Tensor _fft_c2r_mkl(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
 
-  Tensor temp = input.to(at::kCPU);
-  auto* td = temp.mutable_data_ptr<c10::complex<float>>();
-  for (int i = 0; i < temp.numel(); ++i)
-    printf("%f %f ", td[i].real(), td[i].imag());
-  printf("\n\n");
+  // Tensor temp = input.to(at::kCPU);
+  // auto* td = temp.mutable_data_ptr<c10::complex<float>>();
+  // for (int i = 0; i < temp.numel(); ++i)
+  //   printf("%f %f ", td[i].real(), td[i].imag());
+  // printf("\n\n");
 
   if (dim.size() > 1) {
     auto c2c_dims = dim.slice(0, dim.size() - 1);
@@ -473,30 +477,46 @@ Tensor _fft_c2r_mkl(
   }
   input = input.clone(MemoryFormat::Contiguous);
 
-  printf("dim_size = %ld dims = ", dim.size());
-  for (int i = 0; i < dim.size(); ++i)
-    printf("%ld ", dim[i]);
-  printf("\n");
+  std::vector<at::indexing::TensorIndex> index_0(
+      input.dim(), at::indexing::Slice());
+  index_0[dim.back()] = 0;
+  Tensor value_0 = at::complex(
+      at::real(input.index(index_0)),
+      at::zeros_like(at::imag(input.index(index_0))));
+  input.index_put_(index_0, value_0);
 
-  Tensor input_cpu = input.to(at::kCPU);
-  auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
-  printf("%ld %ld\n", input_cpu.numel(), input_cpu.dim());
-  for (int i = 0; i < input_cpu.numel(); ++i)
-    printf("%f %f ", data[i].real(), data[i].imag());
-  printf("\n");
-  printf("sizes = ");
-  for (int i = 0; i < in_sizes.size(); ++i)
-    printf("%ld ", in_sizes[i]);
-  printf("\n");
+  std::vector<at::indexing::TensorIndex> index_1(
+      input.dim(), at::indexing::Slice());
+  index_1[dim.back()] = -1;
+  Tensor value_1 = at::complex(
+      at::real(input.index(index_1)),
+      at::zeros_like(at::imag(input.index(index_1))));
+  input.index_put_(index_1, value_1);
 
-  std::vector<int64_t> strides(in_sizes.size(), 1);
-  for (int i = strides.size() - 2; i >= 0; --i)
-    strides[i] = strides[i + 1] * in_sizes[i + 1];
+  // printf("dim_size = %ld dims = ", dim.size());
+  // for (int i = 0; i < dim.size(); ++i)
+  //   printf("%ld ", dim[i]);
+  // printf("\n");
 
-  printf("strides = ");
-  for (int i = 0; i < strides.size(); ++i)
-    printf("%ld ", strides[i]);
-  printf("\n");
+  // Tensor input_cpu = input.to(at::kCPU);
+  // auto* data = input_cpu.mutable_data_ptr<c10::complex<float>>();
+  // printf("%ld %ld\n", input_cpu.numel(), input_cpu.dim());
+  // for (int i = 0; i < input_cpu.numel(); ++i)
+  //   printf("%f %f ", data[i].real(), data[i].imag());
+  // printf("\n");
+  // printf("sizes = ");
+  // for (int i = 0; i < in_sizes.size(); ++i)
+  //   printf("%ld ", in_sizes[i]);
+  // printf("\n");
+
+  // std::vector<int64_t> strides(in_sizes.size(), 1);
+  // for (int i = strides.size() - 2; i >= 0; --i)
+  //   strides[i] = strides[i + 1] * in_sizes[i + 1];
+
+  // printf("strides = ");
+  // for (int i = 0; i < strides.size(); ++i)
+  //   printf("%ld ", strides[i]);
+  // printf("\n");
 
   // data[0].imag(0.0f);
   // data[strides[0] - 1].imag(0.0f);
@@ -507,12 +527,12 @@ Tensor _fft_c2r_mkl(
   //  data[i].imag(0.0f);
   //  data[input_cpu.numel() - 1 - i].imag(0.0f);
   //}
-  HermitSymm(input_cpu, dim, strides);
+  // HermitSymm(input_cpu, dim, strides);
 
-  for (int i = 0; i < input_cpu.numel(); ++i)
-    printf("%f %f ", data[i].real(), data[i].imag());
-  printf("\n");
-  input.copy_(input_cpu);
+  // for (int i = 0; i < input_cpu.numel(); ++i)
+  //   printf("%f %f ", data[i].real(), data[i].imag());
+  // printf("\n");
+  // input.copy_(input_cpu);
 
   // auto in_sizes = input.sizes();
   // DimVector out_sizes(in_sizes.begin(), in_sizes.end());
