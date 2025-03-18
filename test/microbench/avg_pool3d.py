@@ -9,6 +9,7 @@ shape_list = [
     (64, 1024, 14, 14, 14, (6), (4)),
 ]
 
+
 def AVGPool3d(shape, dtype, channels_last, backward):
     N, C, D, H, W, kernel_size, stride = (
         shape[0],
@@ -50,6 +51,7 @@ def AVGPool3d(shape, dtype, channels_last, backward):
     if backward:
         output[0].backward(grad)
 
+
 if __name__ == "__main__":
     backward = True
 
@@ -75,7 +77,7 @@ if __name__ == "__main__":
                     backward,
                 )
                 with profile(
-                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], 
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                     record_shapes=True,
                 ) as prof:
                     for i in range(20):

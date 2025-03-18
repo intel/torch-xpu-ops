@@ -30,7 +30,7 @@ for shape in shape_list:
                     activities=[
                         ProfilerActivity.CPU,
                         ProfilerActivity.XPU,
-                    ], 
+                    ],
                     record_shapes=True,
                 ) as prof:
                     for _ in range(20):
