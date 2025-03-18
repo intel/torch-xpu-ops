@@ -9322,3 +9322,25 @@
   variants: function
   dispatch:
     XPU: _fft_c2c_xpu_out
+
+# Standard complex to real backward FFT
+- func: _fft_c2r(Tensor self, int[] dim, int normalization, int last_dim_size) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu
+
+- func: _fft_c2r.out(Tensor self, int[] dim, int normalization, int last_dim_size, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu_out
+
+# Standard real to complex forward FFT
+- func: _fft_r2c(Tensor self, int[] dim, int normalization, bool onesided) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_r2c_xpu
+
+- func: _fft_r2c.out(Tensor self, int[] dim, int normalization, bool onesided, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_r2c_xpu_out
