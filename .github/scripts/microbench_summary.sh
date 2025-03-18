@@ -4,9 +4,9 @@
 results_dir="$1"
 output_file="$2"
 Get_backward=${3:-False}
-cd $results_dir || exit
+cd $results_dir
 
-echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> $output_file
+echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> "$output_file"
 
 function op_summary {
     while IFS= read -r line1 && IFS= read -r line2 <&3; do
@@ -16,7 +16,7 @@ function op_summary {
             IFS=':' read -r key value <<< "$pair"
             key=$(echo "$key" | xargs)
             value=$(echo "$value" | xargs)
-            if [[ shape = ""$key"" ]] ; then
+            if [[ shape = "$key" ]] ; then
                 shape=${value}
             fi
             if [[ datatype = "$key" ]] ; then
@@ -33,9 +33,6 @@ function op_summary {
             fi
             if [[ backward = "$key" ]] ; then
                 backward=${value}
-            fi
-            if [[ index_shape = "$key" ]] ; then
-                index_shape=${value}
             fi
             if [[ reduce = "$key" ]] ; then
                 reduce=${value}
@@ -79,7 +76,7 @@ function op_summary {
     done < <(echo "$texts") 3< <(echo "$times")
 }
 
-filename=$(ls -lr *.log |awk '{print $9}')
+filename=$(find *.log)
 
 for i in $filename
 do
@@ -97,7 +94,6 @@ do
     num_samples=""
     scale_factor=""
     case_name="${i%.*}"
-    type_name=$(echo "$i" | cut -d. -f1)
     op_name=$(echo "$case_name" | awk -F. '{print $NF}')
     if [[ $Get_backward == "False" ]] ; then
         if [[ $op_name =~ batch_norm ]] ; then
@@ -157,16 +153,16 @@ do
         fi
     fi
 
-    texts=$(cat $i | grep -E "shape :|shape:")
+    texts=$(cat "$i" | grep -E "shape :|shape:")
     number=""
     if [[ $op_name == l1_loss ]] && [[ $Get_backward == "True" ]] ; then
         op_name="AbsBackward0"
         times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}' | head -n 6)
-        texts=$(cat $i | grep -E "shape :|shape:" | head -n 6)
+        texts=$(cat "$i" | grep -E "shape :|shape:" | head -n 6)
         op_summary
         op_name="MeanBackward0"
         times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}')
-        texts=$(cat $i | grep -E "shape :|shape:" | tail -n 6)
+        texts=$(cat "$i" | grep -E "shape :|shape:" | tail -n 6)
         op_summary
     else
         op_summary
