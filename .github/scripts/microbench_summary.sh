@@ -16,49 +16,49 @@ function op_summary {
             IFS=':' read -r key value <<< "$pair"
             key=$(echo "$key" | xargs)
             value=$(echo "$value" | xargs)
-            if [[ shape = $key ]] ; then
+            if [[ shape = ""$key"" ]] ; then
                 shape=${value}
             fi
-            if [[ datatype = $key ]] ; then
+            if [[ datatype = "$key" ]] ; then
                 datatype=${value}
             fi
-            if [[ dim = $key ]] || [[ dims = $key ]] ; then
+            if [[ dim = "$key" ]] || [[ dims = "$key" ]] ; then
                 dim=${value}
             fi
-            if [[ output_size = $key ]] ; then
+            if [[ output_size = "$key" ]] ; then
                 output_size=${value}
             fi
-            if [[ channels_last = $key ]] ; then
+            if [[ channels_last = "$key" ]] ; then
                 channels_last=${value}
             fi
-            if [[ backward = $key ]] ; then
+            if [[ backward = "$key" ]] ; then
                 backward=${value}
             fi
-            if [[ index_shape = $key ]] ; then
+            if [[ index_shape = "$key" ]] ; then
                 index_shape=${value}
             fi
-            if [[ reduce = $key ]] ; then
+            if [[ reduce = "$key" ]] ; then
                 reduce=${value}
             fi
-            if [[ kernel_size = $key ]] ; then
+            if [[ kernel_size = "$key" ]] ; then
                 kernel_size=${value}
             fi
-            if [[ P = $key ]] ; then
+            if [[ P = "$key" ]] ; then
                 P=${value}
             fi
-            if [[ stride = $key ]] ; then
+            if [[ stride = "$key" ]] ; then
                 stride=${value}
             fi
-            if [[ replacement = $key ]] ; then
+            if [[ replacement = "$key" ]] ; then
                 replacement=${value}
             fi
-            if [[ num_samples = $key ]] ; then
+            if [[ num_samples = "$key" ]] ; then
                 num_samples=${value}
             fi
-            if [[ scale_factor = $key ]] ; then
+            if [[ scale_factor = "$key" ]] ; then
                 scale_factor=${value}
             fi
-            if [[ affine = $key ]] ; then
+            if [[ affine = "$key" ]] ; then
                 affine=${value}
             fi
         done
@@ -79,7 +79,7 @@ function op_summary {
     done < <(echo "$texts") 3< <(echo "$times")
 }
 
-filename=`ls -lr *.log |awk '{print $9}'`
+filename=$(ls -lr *.log |awk '{print $9}')
 
 for i in $filename
 do
@@ -96,77 +96,77 @@ do
     replacement=""
     num_samples=""
     scale_factor=""
-    case_name=$(echo ${i%.*} )
+    case_name="${i%.*}"
     type_name=$(echo "$i" | cut -d. -f1)
     op_name=$(echo "$case_name" | awk -F. '{print $NF}')
     if [[ $Get_backward == "False" ]] ; then
         if [[ $op_name =~ batch_norm ]] ; then
             op_name="aten::batch_norm"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name =~ exponential ]] || [[ $op_name =~ geometric ]] || [[ $op_name =~ uniform ]] || [[ $op_name =~ random ]] || [[ $op_name =~ normal ]] || [[ $op_name =~ log_normal ]] || [[ $op_name =~ bernoulli ]] || [[ $op_name =~ cauchy ]] ;then
             op_name=$op_name"_"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name == unique ]] ; then
             op_name="unique2"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name == max_pool3d ]] ; then
             op_name=$op_name"_with_indices"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
             op_name="aten::softmax"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name == group_norm ]] ; then
             op_name="aten::group_norm"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         else
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         fi
     else
         if [[ $op_name =~ batch_norm ]] ; then
             op_name="batch_norm_backward"
-            times=$(grep -E "${op_name}" ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name == max_pool3d ]] ; then
             op_name=$op_name"_with_indices_backward"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == col2im ]] ; then
             op_name="Col2ImBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == im2col ]] ; then
             op_name="Im2ColBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == flip ]] ; then
             op_name="FlipBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == matmul ]] ; then
             op_name="MmBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == roll ]] ; then
             op_name="RollBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
             op_name=$op_name"_backward_data"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == remainder ]] ; then
             op_name="RemainderBackward0"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == l1_loss ]] ; then
             op_name="l1_loss"
         else
             op_name=$op_name"_backward"
-            times=$(grep -E "${op_name} " ${i} | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         fi
     fi
 
-    texts=`cat $i | grep -E "shape :|shape:"`
+    texts=$(cat $i | grep -E "shape :|shape:")
     number=""
     if [[ $op_name == l1_loss ]] && [[ $Get_backward == "True" ]] ; then
         op_name="AbsBackward0"
-        times=$(grep -E "${op_name} " ${i} | grep -v "autograd" | awk  '{print $10}' | head -n 6)
-        texts=`cat $i | grep -E "shape :|shape:" | head -n 6`
+        times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}' | head -n 6)
+        texts=$(cat $i | grep -E "shape :|shape:" | head -n 6)
         op_summary
         op_name="MeanBackward0"
-        times=$(grep -E "${op_name} " ${i} | grep -v "autograd" | awk  '{print $10}')
-        texts=`cat $i | grep -E "shape :|shape:" | tail -n 6`
+        times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}')
+        texts=$(cat $i | grep -E "shape :|shape:" | tail -n 6)
         op_summary
     else
         op_summary
