@@ -9,6 +9,7 @@ shape_list = [
     (16, 1024, 23, 23, (2.3)),
 ]
 
+
 def Interpolate2d(shape, dtype, channels_last, backward):
     N, C, H, W, scale_factor = shape[0], shape[1], shape[2], shape[3], shape[4]
 
@@ -24,11 +25,12 @@ def Interpolate2d(shape, dtype, channels_last, backward):
         )
 
     output = torch.nn.functional.interpolate(
-        input, scale_factor=shape[4], mode='nearest'
+        input, scale_factor=shape[4], mode="nearest"
     )
 
     if backward:
         output.backward(torch.ones_like(output))
+
 
 if __name__ == "__main__":
     backward = True

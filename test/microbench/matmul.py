@@ -16,6 +16,7 @@ shape_list = [
     (4, 1792, 250880),
 ]
 
+
 def matmul(m, n, k, dtype, backward):
     m1 = torch.rand(2, m, k).type(dtype).to(device)
     m2 = torch.rand(k, n).type(dtype).to(device)

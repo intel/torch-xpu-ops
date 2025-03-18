@@ -9,12 +9,14 @@ shape_list = [(8733, 8733), (8733, 513), (513, 8733), (8192, 8192)]
 cache_r = torch.randn(1024 * 1024 * 1024, device=device)
 cache_w = torch.randn(1024 * 1024 * 1024, device=device)
 
+
 def _do_test(loss, input, target, dtype, device):
     output = loss(input, target)
     grad_output = torch.ones_like(output, dtype=dtype)
     grad_inputs = torch.autograd.grad(output, input, grad_output)
 
     return output, grad_inputs
+
 
 for shape in shape_list:
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
@@ -41,7 +43,7 @@ for shape in shape_list:
                 backward,
             )
             with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], 
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                 record_shapes=True,
             ) as prof:
                 for i in range(20):

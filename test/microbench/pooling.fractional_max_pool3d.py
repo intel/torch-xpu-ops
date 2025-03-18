@@ -7,6 +7,7 @@ shape_list = [
     (512, 512, 12, 12, 12, 6, 6, 6),
 ]
 
+
 def fmp3d(shape, dtype, channels_last, backward):
     N, C, H, W, D, oH, oW, oD = (
         shape[0],
@@ -38,6 +39,7 @@ def fmp3d(shape, dtype, channels_last, backward):
 
     if backward:
         output[0].backward(grad)
+
 
 if __name__ == "__main__":
     backward = True

@@ -15,9 +15,9 @@ shape_list = [
 for shape in shape_list:
     for p in [0, 1, 2]:
         for compute_mode in [
-            'use_mm_for_euclid_dist_if_necessary',
-            'use_mm_for_euclid_dist',
-            'donot_use_mm_for_euclid_dist',
+            "use_mm_for_euclid_dist_if_necessary",
+            "use_mm_for_euclid_dist",
+            "donot_use_mm_for_euclid_dist",
         ]:
             for dtype in [torch.float32]:
                 input1 = torch.rand(shape[0], device=device, dtype=dtype)
