@@ -4,7 +4,7 @@
 results_dir="$1"
 output_file="$2"
 Get_backward=${3:-False}
-cd $results_dir
+cd $results_dir || exit
 
 echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> $output_file
 
@@ -68,8 +68,8 @@ function op_summary {
             unit="${BASH_REMATCH[2]}"
         fi
         # Align the time units
-	    if [[ $unit == "ms" ]] ;then
-	        number=$(echo "scale=3; $number * 1000" | bc)
+        if [[ $unit == "ms" ]] ;then
+           number=$(echo "scale=3; $number * 1000" | bc)
         fi
         if [[ $Get_backward == "True" ]] && [[ $backward == "False" ]]; then
             echo "Only Forward"
