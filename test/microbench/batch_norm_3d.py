@@ -5,14 +5,15 @@ device = "xpu"
 
 shape_list = [(2, 5, 6, 3, 5, 5), (2, 8, 64, 64, 64, 8), (16, 16, 128, 128, 256, 16)]
 
+
 def BTN3d(shape, dtype, channels_last, backward):
     N, C, D, H, W, num_features = (
-        shape[0], 
-        shape[1], 
-        shape[2], 
-        shape[3], 
-        shape[4], 
-        shape[5]
+        shape[0],
+        shape[1],
+        shape[2],
+        shape[3],
+        shape[4],
+        shape[5],
     )
 
     if channels_last:
@@ -34,6 +35,7 @@ def BTN3d(shape, dtype, channels_last, backward):
 
     if backward:
         output[0].backward(grad)
+
 
 if __name__ == "__main__":
     backward = True

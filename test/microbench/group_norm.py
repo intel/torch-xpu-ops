@@ -9,7 +9,7 @@ shape_list = [
     (16, 1024, 128, 32, 32),  # normal shape, big memory
     (32, 32, 32, 64, 64),  # normal shape, small memory, 1 channel per group
     (32, 32, 512, 256, 256),  # group_num=32, channel for per group=16,big memory
-    (8 , 32, 32, 16, 64, 64),  # 3d
+    (8, 32, 32, 16, 64, 64),  # 3d
 ]
 
 for channels_last in [False, True]:
@@ -20,8 +20,8 @@ for channels_last in [False, True]:
                 shape_input = (shape[1], shape[2], shape[3], shape[4])
                 C = shape[2]
                 memory_format = (
-                    torch.channels_last_3d 
-                    if len(shape_input) == 5 
+                    torch.channels_last_3d
+                    if len(shape_input) == 5
                     else torch.channels_last
                 )
 
