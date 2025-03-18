@@ -77,7 +77,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             scalarx2_t tmpB = {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            // auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
+            sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
+            sycl::float2 tmpAmulB =
+                tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
@@ -128,7 +132,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             scalarx2_t tmpB = {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            // tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
+            sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
+            sycl::float2 tmpAmulB =
+                tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
             tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
@@ -155,7 +163,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               scalarx2_t tmpB = {
                   static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                   static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-              auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+              // auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+              sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
+              sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
+              sycl::float2 tmpAmulB =
+                  tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
               tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
             }
             sptr += (GroupK2 / blocksize) * ld_scale_zp;
@@ -179,7 +191,11 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               static_cast<int8_t>((tmps8 >> 4) - 8)};
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
 
-          auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+          // auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+          sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
+          sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
+          sycl::float2 tmpAmulB =
+              tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
           tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
