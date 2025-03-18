@@ -4,7 +4,7 @@
 results_dir="$1"
 output_file="$2"
 Get_backward=${3:-False}
-cd $results_dir
+cd $results_dir || exit
 
 echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> "$output_file"
 
@@ -71,12 +71,12 @@ function op_summary {
         if [[ $Get_backward == "True" ]] && [[ $backward == "False" ]]; then
             echo "Only Forward"
         else
-            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$affine;$backward;$number" >> $output_file
+            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$affine;$backward;$number" >> "$output_file"
         fi
     done < <(echo "$texts") 3< <(echo "$times")
 }
 
-filename=$(find *.log)
+filename=$(find -- *.log)
 
 for i in $filename
 do
@@ -153,16 +153,16 @@ do
         fi
     fi
 
-    texts=$(cat "$i" | grep -E "shape :|shape:")
+    texts=$(grep -E "shape :|shape:" "$i")
     number=""
     if [[ $op_name == l1_loss ]] && [[ $Get_backward == "True" ]] ; then
         op_name="AbsBackward0"
         times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}' | head -n 6)
-        texts=$(cat "$i" | grep -E "shape :|shape:" | head -n 6)
+        texts=$(grep -E "shape :|shape:" "$i" | head -n 6)
         op_summary
         op_name="MeanBackward0"
         times=$(grep -E "${op_name} " "${i}" | grep -v "autograd" | awk  '{print $10}')
-        texts=$(cat "$i" | grep -E "shape :|shape:" | tail -n 6)
+        texts=$(grep -E "shape :|shape:" "$i" | tail -n 6)
         op_summary
     else
         op_summary
