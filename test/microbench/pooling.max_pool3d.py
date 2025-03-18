@@ -7,6 +7,7 @@ shape_list = [
     (512, 512, 12, 12, 12, 6, 6, 6),
 ]
 
+
 def fmp3d(shape, dtype, channels_last, backward):
     torch.manual_seed(20)
     N, C, H, W, D, oH, oW, oD = (
