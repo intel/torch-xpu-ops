@@ -10,7 +10,7 @@ shape_list = [
     ((1024, 1024, 1024), (128), (-1)),
     ((16, 3, 512, 512), (-1), (-1)),
     ((16, 3, 512, 512), (127), (0)),
-    ((16, 3, 512, 512), (127, 127), (0, -1))
+    ((16, 3, 512, 512), (127, 127), (0, -1)),
 ]
 
 for shape in shape_list:
@@ -18,7 +18,7 @@ for shape in shape_list:
         input = torch.randn(shape[0], device=device, dtype=dtype)
         if backward:
             input.requires_grad_(True)
-        
+
         # warm
         output = torch.roll(input, shifts=shape[1], dims=shape[2])
         if backward:
@@ -27,7 +27,9 @@ for shape in shape_list:
 
         # go
         print("shape:", (shape[0]), "; datatype:", dtype, "; backward:", backward)
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(20):
                 output = torch.roll(input, shifts=shape[1], dims=shape[2])
                 if backward:

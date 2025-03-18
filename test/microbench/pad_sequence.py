@@ -1,13 +1,10 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device="xpu"
+device = "xpu"
 backward = False
 
-shape_list = [
-    ((25, 300), (22, 300), (15, 300)),
-    ((2, 1000), (100, 1000), (8192, 1000))
-]
+shape_list = [((25, 300), (22, 300), (15, 300)), ((2, 1000), (100, 1000), (8192, 1000))]
 
 for shape in shape_list:
     for batch_first in [False, True]:
@@ -23,15 +20,33 @@ for shape in shape_list:
                     c.requires_grad_(True)
 
                 # warm up
-                output = torch.nn.utils.rnn.pad_sequence(([a, b, c]), batch_first, padding_value)
+                output = torch.nn.utils.rnn.pad_sequence(
+                    ([a, b, c]), batch_first, padding_value
+                )
                 if backward:
                     gy = torch.empty_like(output)
                     output.backward(gy)
                 # go
-                print("shape:", (shape), "; datatype:", dtype, "; batch_first:", batch_first, "; padding_value:", padding_value, "; backward:", backward)
-                with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
-                    for i in range(20): 
-                        output = torch.nn.utils.rnn.pad_sequence(([a, b, c]), batch_first, padding_value)
+                print(
+                    "shape:",
+                    (shape),
+                    "; datatype:",
+                    dtype,
+                    "; batch_first:",
+                    batch_first,
+                    "; padding_value:",
+                    padding_value,
+                    "; backward:",
+                    backward,
+                )
+                with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                    record_shapes=True,
+                ) as prof:
+                    for i in range(20):
+                        output = torch.nn.utils.rnn.pad_sequence(
+                            ([a, b, c]), batch_first, padding_value
+                        )
                         if backward:
                             gy = torch.empty_like(output)
                             output.backward(gy)
