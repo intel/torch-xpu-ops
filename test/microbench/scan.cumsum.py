@@ -4,12 +4,7 @@ from torch.profiler import profile, ProfilerActivity
 device = "xpu"
 backward = False
 
-shape_list = [
-    (8193, 8193),
-    (1234, 8193),
-    (8192, 1234),
-    (1, 4 * 15000)
-]
+shape_list = [(8193, 8193), (1234, 8193), (8192, 1234), (1, 4 * 15000)]
 
 for dim in [0, 1]:
     for shape in shape_list:
@@ -21,8 +16,20 @@ for dim in [0, 1]:
             torch.cumsum(input, 1)
 
             # go
-            print("shape:", (shape), "; datatype:", dtype, "; dim:", dim, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            print(
+                "shape:",
+                (shape),
+                "; datatype:",
+                dtype,
+                "; dim:",
+                dim,
+                "; backward:",
+                backward,
+            )
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
                     torch.cumsum(input, 0)
             print(prof.key_averages().table(sort_by="xpu_time_total"))
