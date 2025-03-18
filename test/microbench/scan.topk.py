@@ -4,9 +4,7 @@ from torch.profiler import profile, ProfilerActivity
 device = "xpu"
 backward = False
 
-shape_list = [
-    (8193, 8193)
-]
+shape_list = [(8193, 8193)]
 k = 4096
 largest = True
 sorted = True
@@ -21,10 +19,22 @@ for dim in [None, 0, 1]:
             torch.topk(input, k, 1, largest, sorted)
 
             # go
-            print("shape:", (shape), "; datatype:", dtype, "; dim:", dim, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            print(
+                "shape:",
+                (shape),
+                "; datatype:",
+                dtype,
+                "; dim:",
+                dim,
+                "; backward:",
+                backward,
+            )
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
-                    if dim == None:
+                    if dim is None:
                         torch.topk(input, k)
                     else:
                         torch.topk(input, k, dim, largest, sorted)

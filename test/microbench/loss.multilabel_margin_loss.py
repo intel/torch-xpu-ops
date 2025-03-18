@@ -15,26 +15,36 @@ def _test_dpcpp(input, target, reduce, dtype):
     loss = nn.MultiLabelMarginLoss(reduction=reduce)
     input.requires_grad = True
 
-    if(reduce == "none"):
+    if reduce == "none":
         # warm up
         output = loss(input, target)
         output.backward(torch.ones_like(output, dtype=dtype).to("xpu"))
 
         # go
-        print("shape:", (shape), "; datatype:", dtype, "; backward:", backward, "; reduce: 0" if(reduce == "none") else "; reduce: 1")
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:    
+        print(
+            "shape:",
+            (shape),
+            "; datatype:",
+            dtype,
+            "; backward:",
+            backward,
+            "; reduce: 0" if (reduce == "none") else "; reduce: 1",
+        )
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(20):
                 cache_r = cache_w
                 output = loss(input, target)
                 cache_r = cache_w
                 output.backward(torch.ones_like(output, dtype=dtype).to("xpu"))
         print(prof.key_averages().table(sort_by="xpu_time_total"))
-        
+
     else:
         # warm up
         output = loss(input, target)
         output.backward(torch.tensor((1.0), dtype=dtype).to("xpu"))
-        
+
         # go
         print("shape:", (shape), "; datatype:", dtype, "; backward:", backward, "; reduce: 0" if(reduce == "none") else "; reduce: 1")
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
@@ -43,7 +53,7 @@ def _test_dpcpp(input, target, reduce, dtype):
                 output = loss(input, target)
                 cache_r = cache_w
                 output.backward(torch.tensor((1.0), dtype=dtype).to("xpu"))
-        print(prof.key_averages().table(sort_by="xpu_time_total")) 
+        print(prof.key_averages().table(sort_by="xpu_time_total"))
 
 for shape in shape_list:
     for reduce in ["none", "mean"]:

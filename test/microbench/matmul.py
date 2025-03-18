@@ -13,7 +13,7 @@ shape_list = [
     (4, 4096, 250880),
     (4, 2560, 32000),
     (4, 2048, 50272),
-    (4, 1792, 250880)
+    (4, 1792, 250880),
 ]
 
 def matmul(m, n, k, dtype, backward):
@@ -23,10 +23,11 @@ def matmul(m, n, k, dtype, backward):
         m1.requires_grad_(True)
         m2.requires_grad_(True)
     output = torch.matmul(m1, m2)
-    
+
     if backward:
         gy = torch.empty_like(output)
         output.backward(gy)
+
 
 if __name__ == "__main__":
     backward = True
@@ -37,7 +38,10 @@ if __name__ == "__main__":
 
             # go
             print("shape:", (shape), "; datatype:", dtype, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
                     matmul(shape[0], shape[2], shape[1], dtype, backward)
             print(prof.key_averages().table(sort_by="xpu_time_total"))

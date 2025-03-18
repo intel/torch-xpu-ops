@@ -5,10 +5,10 @@ device = "xpu"
 backward = False
 
 shape_list = [
-    ((8192, 8192), (8192, 8192)), # contiguous input
-    ((100000, 10000), (100000, 10000)), # non-contiguous input
-    ((8190, 8190), (8190, 8190)), # non-vectorized input
-    ((8192, 8192), (0.5)) # scalar input
+    ((8192, 8192), (8192, 8192)),  # contiguous input
+    ((100000, 10000), (100000, 10000)),  # non-contiguous input
+    ((8190, 8190), (8190, 8190)),  # non-vectorized input
+    ((8192, 8192), (0.5))  # scalar input
 ]
 
 for shape in shape_list:
@@ -23,12 +23,21 @@ for shape in shape_list:
             b = torch.as_strided(b, (8192, 8192), (20000, 2))
 
         # warm up
-        for i in range (10):
+        for i in range(10):
             output = a + b
 
         # go
-        print("shape:", (shape[0], shape[1]), "; datatype:", dtype, "; backward:", backward)
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        print(
+            "shape:",
+            (shape[0], shape[1]),
+            "; datatype:",
+            dtype,
+            "; backward:",
+            backward,
+        )
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(20):
                 output = a + b
         print(prof.key_averages().table(sort_by="xpu_time_total", row_limit=100))

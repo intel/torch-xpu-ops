@@ -13,13 +13,16 @@ for backward in [False, True]:
             input = torch.rand(shape, device=device, dtype=dtype)
             if backward:
                 input.requires_grad_(True)
-            
+
             # warm up
             b = torch.nn.functional.pdist(input, 2)
-            
+
             # go
             print("shape:", shape, "; datatype:", dtype, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
                     b = torch.nn.functional.pdist(input, 2)
                     if backward:

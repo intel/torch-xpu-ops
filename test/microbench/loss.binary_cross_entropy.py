@@ -4,12 +4,7 @@ from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
 backward = True
-shape_list = [
-    (8733, 8733),
-    (8733, 513),
-    (513, 8733),
-    (8192, 8192)
-]
+shape_list = [(8733, 8733), (8733, 513), (513, 8733), (8192, 8192)]
 
 cache_r = torch.randn(1024 * 1024 * 1024, device=device)
 cache_w = torch.randn(1024 * 1024 * 1024, device=device)
@@ -35,9 +30,23 @@ for shape in shape_list:
             _do_test(loss, input, target, dtype, device)
 
             # go
-            print("shape:", (M, N), "; datatype:", dtype, "; reduce:", reduce, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            print(
+                "shape:",
+                (M, N),
+                "; datatype:",
+                dtype,
+                "; reduce:",
+                reduce,
+                "; backward:",
+                backward,
+            )
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], 
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
                     cache_r = cache_w + 1
-                    output_xpu, grad_input_xpu = _do_test(loss, input, target, dtype, device)
+                    output_xpu, grad_input_xpu = _do_test(
+                        loss, input, target, dtype, device
+                    )
             print(prof.key_averages().table(sort_by="xpu_time_total"))

@@ -1,10 +1,7 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-shape_list = [
-    (8192, 8192), 
-    (16, 1024)
-]
+shape_list = [(8192, 8192), (16, 1024)]
 
 if __name__ == "__main__":
     backward = True
@@ -16,7 +13,7 @@ if __name__ == "__main__":
             dropout = torch.nn.Dropout(p=0.5)
             dropout.to(device="xpu", dtype=dtype)
             grad_dpcpp = torch.randn((H, W)).to(device="xpu", dtype=dtype)
-            input.requires_grad_(True) 
+            input.requires_grad_(True)
 
             # warm up
             output = dropout(input)
@@ -24,8 +21,20 @@ if __name__ == "__main__":
                 output.backward(grad_dpcpp)
 
             # go
-            print("shape:", (shape), "; datatype:", dtype, "; P:", 0.5, "; backward:", backward)
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+            print(
+                "shape:",
+                (shape),
+                "; datatype:",
+                dtype,
+                "; P:",
+                0.5,
+                "; backward:",
+                backward,
+            )
+            with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                record_shapes=True,
+            ) as prof:
                 for i in range(20):
                     output = dropout(input)
                     if backward:

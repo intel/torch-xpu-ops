@@ -2,10 +2,7 @@ import torch
 from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
-shape_list = [
-    (8192, 8192)
-]
-
+shape_list = [(8192, 8192)]
 backward = False
 
 for shape in shape_list:
@@ -16,7 +13,9 @@ for shape in shape_list:
 
         # go
         print("shape:", (shape), "; datatype:", dtype, "; backward:", backward)
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(20):
                 input.cauchy_()
         print(prof.key_averages().table(sort_by="xpu_time_total"))
