@@ -9,6 +9,7 @@ shape_list = [(8192, 8192)]
 cache_r = torch.randn((1024 * 1024 * 1024), device=device)
 cache_w = torch.randn((1024 * 1024 * 1024), device=device)
 
+
 def _do_test(loss, input, target, dtype, device):
     input = input.to(dtype=dtype, device=device)
     target = target.to(dtype=dtype, device=device)
@@ -40,6 +41,7 @@ def _do_test(loss, input, target, dtype, device):
             cache_r = cache_w
             output.backward(grad_output)
     print(prof.key_averages().table(sort_by="xpu_time_total"))
+
 
 for shape in shape_list:
     for reduce in ["none", "mean"]:

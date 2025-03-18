@@ -6,6 +6,7 @@ backward = True
 cache_r = torch.randn((1024 * 1024 * 1024), device="xpu")
 cache_w = torch.randn((1024 * 1024 * 1024), device="xpu")
 
+
 def simple_test(in_shape, scale_factor, backward, dtype):
     in_tensor = torch.randn(
         in_shape, dtype=dtype, device=device, requires_grad=backward
@@ -28,7 +29,10 @@ def simple_test(in_shape, scale_factor, backward, dtype):
         for i in range(20):
             cache_r = cache_w + 1
             output = torch.nn.functional.interpolate(
-                in_tensor, mode="bilinear", scale_factor=scale_factor, align_corners=True
+                in_tensor,
+                mode="bilinear",
+                scale_factor=scale_factor,
+                align_corners=True,
             )
             if backward:
                 output = torch.autograd.grad(
