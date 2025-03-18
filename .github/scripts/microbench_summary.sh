@@ -4,7 +4,7 @@
 results_dir="$1"
 output_file="$2"
 Get_backward=${3:-False}
-cd $results_dir || exit
+cd "$results_dir" || exit
 
 echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> "$output_file"
 
