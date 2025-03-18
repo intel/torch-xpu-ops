@@ -51,6 +51,8 @@ runs:
       shell: bash
       run: |
         source torch-xpu-ops/.github/scripts/env.sh conda activate
+        sudo apt update
+        sudo apt install -y libpng-dev libjpeg-dev
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
