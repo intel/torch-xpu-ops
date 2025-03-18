@@ -12,7 +12,7 @@ for dim in [0, 1]:
             H, W = (int(shape[0]), int(shape[1]))
             input = torch.randn((H, W)).to(dtype=dtype, device=device)
 
-            softmax = torch.nn.Softmax(dim=dim)     
+            softmax = torch.nn.Softmax(dim=dim)
             softmax.to(device=device, dtype=dtype)
             grad_dpcpp = torch.randn((H, W)).to(device=device, dtype=dtype)
             input.requires_grad_(True)
