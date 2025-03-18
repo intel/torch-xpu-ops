@@ -4,8 +4,8 @@ from torch.profiler import profile, ProfilerActivity
 device = "xpu"
 backward = True
 # T,N,C,S
-shape_list = [(32, 32, 32, 16), (128, 128, 128, 128), (8, 8, 4, 8)
-]
+shape_list = [(32, 32, 32, 16), (128, 128, 128, 128), (8, 8, 4, 8)]
+
 
 def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
     log_probs_dpcpp = log_probs.to("xpu")
@@ -41,6 +41,7 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
             )
             loss_dpcpp.backward()
     print(prof.key_averages().table(sort_by="xpu_time_total"))
+
 
 for shape in shape_list:
     for dtype in [torch.float32]:

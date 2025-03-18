@@ -8,7 +8,7 @@ shape_list = [
     ((8192, 8192), (8192, 8192)),  # contiguous input
     ((100000, 10000), (100000, 10000)),  # non-contiguous input
     ((8190, 8190), (8190, 8190)),  # non-vectorized input
-    ((8192, 8192), (0.5))  # scalar input
+    ((8192, 8192), (0.5)),  # scalar input
 ]
 
 for shape in shape_list:

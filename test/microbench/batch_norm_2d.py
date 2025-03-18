@@ -12,6 +12,7 @@ shape_list = [
     (4, 48, 20, 32, 48),
 ]
 
+
 def BTN2d(shape, dtype, channels_last, backward):
     N, C, H, W, num_features = shape[0], shape[1], shape[2], shape[3], shape[4]
 
@@ -35,6 +36,7 @@ def BTN2d(shape, dtype, channels_last, backward):
     if backward:
         output[0].backward(grad)
 
+
 if __name__ == "__main__":
     backward = True
     for channels_last in [False, True]:
@@ -55,7 +57,7 @@ if __name__ == "__main__":
                     backward,
                 )
                 with profile(
-                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], 
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                     record_shapes=True,
                 ) as prof:
                     for i in range(20):

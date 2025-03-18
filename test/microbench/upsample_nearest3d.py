@@ -9,6 +9,7 @@ shape_list = [
     (16, 1024, 23, 23, 7, (2.3)),
 ]
 
+
 def Interpolate3d(shape, dtype, channels_last, backward):
     N, C, H, W, D, scale_factor = (
         shape[0],
@@ -30,10 +31,13 @@ def Interpolate3d(shape, dtype, channels_last, backward):
             device=device, dtype=dtype
         )
 
-    output = torch.nn.functional.interpolate(input, scale_factor=shape[5], mode='nearest')
+    output = torch.nn.functional.interpolate(
+        input, scale_factor=shape[5], mode="nearest"
+    )
 
     if backward:
         output.backward(torch.ones_like(output))
+
 
 if __name__ == "__main__":
     backward = True

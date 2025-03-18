@@ -28,7 +28,7 @@ if __name__ == "__main__":
                 )
                 with profile(
                     activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-                    record_shapes=True
+                    record_shapes=True,
                 ) as prof:
                     for i in range(20):
                         input.bernoulli_(p)

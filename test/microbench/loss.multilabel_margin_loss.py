@@ -4,12 +4,11 @@ from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
 backward = True
-shape_list = [
-    (8192, 8192)
-]
+shape_list = [(8192, 8192)]
 
 cache_r = torch.randn((1024 * 1024 * 1024), device="xpu")
 cache_w = torch.randn((1024 * 1024 * 1024), device="xpu")
+
 
 def _test_dpcpp(input, target, reduce, dtype):
     loss = nn.MultiLabelMarginLoss(reduction=reduce)
@@ -46,14 +45,25 @@ def _test_dpcpp(input, target, reduce, dtype):
         output.backward(torch.tensor((1.0), dtype=dtype).to("xpu"))
 
         # go
-        print("shape:", (shape), "; datatype:", dtype, "; backward:", backward, "; reduce: 0" if(reduce == "none") else "; reduce: 1")
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        print(
+            "shape:",
+            (shape),
+            "; datatype:",
+            dtype,
+            "; backward:",
+            backward,
+            "; reduce: 0" if (reduce == "none") else "; reduce: 1",
+        )
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(20):
                 cache_r = cache_w
                 output = loss(input, target)
                 cache_r = cache_w
                 output.backward(torch.tensor((1.0), dtype=dtype).to("xpu"))
         print(prof.key_averages().table(sort_by="xpu_time_total"))
+
 
 for shape in shape_list:
     for reduce in ["none", "mean"]:

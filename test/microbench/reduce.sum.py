@@ -34,7 +34,7 @@ for dim in [None, 0, 1]:
                 record_shapes=True,
             ) as prof:
                 for i in range(20):
-                    if dim == None:
+                    if dim is None:
                         output = torch.sum(input)
                     else:
                         output = torch.sum(input, dim)
