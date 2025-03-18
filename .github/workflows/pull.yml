@@ -72,6 +72,8 @@ jobs:
     runs-on: pvc_e2e
     if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 900
+    env:
+      INPUTS_PYTORCH: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
     steps:
       - name: Clean Workspace
         run: |

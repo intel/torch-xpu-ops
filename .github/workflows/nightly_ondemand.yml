@@ -99,10 +99,6 @@ jobs:
     name: linux-nightly-ondemand / e2e_test
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
-    env:
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
@@ -126,6 +122,9 @@ jobs:
           if [ -n "${GITHUB_WORKSPACE}" ];then
             rm -rf ${GITHUB_WORKSPACE}/*
           fi
+          echo "INPUTS_PYTHON=${{ inputs.python }}" >> "${GITHUB_ENV}"
+          echo "INPUTS_PYTORCH=${{ inputs.pytorch }}" >> "${GITHUB_ENV}"
+          echo "INPUTS_TRITON=${{ inputs.triton }}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -372,7 +371,7 @@ jobs:
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${INPUTS_PYTHON} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.model }}" != "" ];then

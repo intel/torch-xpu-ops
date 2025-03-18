@@ -31,7 +31,7 @@ if [[ "${input_type}" == *"conda"* ]];then
     . "${conda_config_file}"
     if [[ "${action_type}" == *"create"* ]];then
         conda remove --all -y -n "xpu_op_${ZE_AFFINITY_MASK}" || rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-        conda create python=${{ inputs.python }} cmake ninja -n "xpu_op_${ZE_AFFINITY_MASK}" -y
+        conda create python=${INPUTS_PYTHON:-"3.10"} cmake ninja -n "xpu_op_${ZE_AFFINITY_MASK}" -y
     fi
     conda activate "xpu_op_${ZE_AFFINITY_MASK}"
     conda info -e
@@ -39,7 +39,7 @@ fi
 
 # Prepare PyTorch
 if [[ "${input_type}" == *"pytorch"* ]];then
-    if [[ "${{ inputs.pytorch }}" != *"nightly_wheel"* ]]; then
+    if [[ "${INPUTS_PYTORCH}" != *"nightly_wheel"* ]]; then
       pip install --force-reinstall ${GITHUB_WORKSPACE}/torch*.whl
     else
       pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
@@ -55,7 +55,7 @@ if [[ "${input_type}" == *"pytorch"* ]];then
     pip install -r .ci/docker/requirements-ci.txt
     # Torch-xpu-ops
     rm -rf third_party/torch-xpu-ops
-    if [[ "${{ inputs.pytorch }}" != *"nightly_wheel"* ]]; then
+    if [[ "${INPUTS_PYTORCH}" != *"nightly_wheel"* ]]; then
       cp -r ${GITHUB_WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
     else
       TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
@@ -67,13 +67,9 @@ if [[ "${input_type}" == *"pytorch"* ]];then
     fi
     # Triton
     TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-    if [ -z "${{ inputs.triton }}" ]; then
-      TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-    else
-      TRITON_COMMIT_ID="${{ inputs.triton }}"
-    fi
+    TRITON_COMMIT_ID="${INPUTS_TRITON:-"$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"}"
     echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-    if [ "${{ inputs.pytorch }}" != "nightly_wheel" ] || [ ! -z "${{ inputs.triton }}" ]; then
+    if [ "${INPUTS_PYTORCH}" != "nightly_wheel" ] || [ ! -z "${INPUTS_TRITON}" ]; then
       pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
     fi
 fi
