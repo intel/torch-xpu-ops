@@ -222,12 +222,34 @@ jobs:
       pytorch: ${{ needs.preci-linux-build-abi-0.outputs.torch_commit_id }}
       ut: op_extended
       runner: linux.idc.xpu
-  
+
+  check-files:
+    if: ${{ github.repository_owner == 'intel' }}
+    name: preci-file-change-check
+    runs-on: ubuntu-22.04
+    outputs:
+      src-changed: ${{ steps.filter.outputs.src_files }}
+    steps:
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            src_files: 
+              - 'cmake/**'
+              - 'tools/**'
+              - 'src/**.cmake'
+              - 'CMakeLists.txt'
+              - '.github/workflows/_windows_ut.yml'
+              - 'test/sycl/CMakeLists.txt'
+              - 'src/xccl/CMakeLists.txt'
+              - 'src/ATen/CMakeLists.txt'
+              - 'src/CMakeLists.txt'
+
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && (needs.check-files.outputs.src-changed == 'true') }} 
     name: preci-windows
-    needs: preci-lint-check
+    needs: [preci-lint-check, check-files]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
