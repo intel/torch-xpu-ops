@@ -194,7 +194,7 @@ struct alignas(sizeof(scalar_t) * vec_size) aligned_vector {
     }
     return result;
   }
-  
+
   aligned_vector<scalar_t, vec_size> operator*(
       const aligned_vector<scalar_t, vec_size>& other) const {
     aligned_vector result;
