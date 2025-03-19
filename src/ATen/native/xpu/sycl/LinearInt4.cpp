@@ -62,7 +62,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto aptr = A;
       auto cptr = C + g_n;
 
-      memory::aligned_vector<float, 2> tmpAcc = {0.f, 0.f};
+      float tmpAcc = 0.f;
       for (int i = 0; i < k; i += GroupK * Unroll) {
 #pragma unroll
         for (int iu = 0; iu < Unroll; iu++) {
@@ -79,9 +79,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-            tmpAcc +=
-                {static_cast<float>(tmpAmulB[0]),
-                 static_cast<float>(tmpAmulB[1])};
+            tmpAcc += static_cast<float>(tmpAmulB[0]);
+            tmpAcc += static_cast<float>(tmpAmulB[1]);
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
           zptr += (GroupK / blocksize) * ld_scale_zp;
@@ -90,10 +89,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         }
       }
       float sum = 0.f;
-#pragma unroll
-      for (int i = 0; i < 2; i++) {
-        sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc[i]);
-      }
+      sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
       if (sg_id == 0) {
         *cptr = static_cast<scalar_t>(sum);
       }
@@ -114,7 +110,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
-      memory::aligned_vector<float, 2> tmpAcc = {0.f, 0.f};
+      float tmpAcc = 0.f;
       int i = 0;
       for (; i < k_body; i += GroupK * Unroll) {
 #pragma unroll
@@ -133,9 +129,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-            tmpAcc +=
-                {static_cast<float>(tmpAmulB[0]),
-                 static_cast<float>(tmpAmulB[1])};
+            tmpAcc += static_cast<float>(tmpAmulB[0]);
+            tmpAcc += static_cast<float>(tmpAmulB[1]);
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
           zptr += (GroupK / blocksize) * ld_scale_zp;
@@ -160,9 +155,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                   static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                   static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
               scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-              tmpAcc +=
-                  {static_cast<float>(tmpAmulB[0]),
-                   static_cast<float>(tmpAmulB[1])};
+              tmpAcc += static_cast<float>(tmpAmulB[0]);
+              tmpAcc += static_cast<float>(tmpAmulB[1]);
             }
             sptr += (GroupK2 / blocksize) * ld_scale_zp;
             zptr += (GroupK2 / blocksize) * ld_scale_zp;
@@ -185,8 +179,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               static_cast<int8_t>((tmps8 & 0x0f) - 8),
               static_cast<int8_t>((tmps8 >> 4) - 8)};
           scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
-          tmpAcc += {
-              static_cast<float>(tmpAmulB[0]), static_cast<float>(tmpAmulB[1])};
+          tmpAcc += static_cast<float>(tmpAmulB[0]);
+          tmpAcc += static_cast<float>(tmpAmulB[1]);
           sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           aptr += SgSize * 2;
@@ -194,10 +188,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         }
       }
       float sum = 0.f;
-#pragma unroll
-      for (int i = 0; i < 2; i++) {
-        sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc[i]);
-      }
+      sum += SubgroupReduceSumWithoutBroadcast<float, 16>(it, tmpAcc);
 
       if (sg_id == 0) {
         *cptr = static_cast<scalar_t>(sum);
