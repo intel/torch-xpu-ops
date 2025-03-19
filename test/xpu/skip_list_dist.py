@@ -46,7 +46,9 @@ skip_dict = {
         "test_transformer_offload_false_shard_grad_op_xpu",
         "test_transformer_offload_true_none_xpu",
         "test_transformer_offload_true_shard_grad_op_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1475
         "test_transformer_no_grad_mixed_precision_True_xpu",
+        "test_transformer_no_grad_mixed_precision_False_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": (
         "test_dtensor_sharded_model_load_state_dict_offload_to_cpu_False_is_even_sharded_model_False_xpu",

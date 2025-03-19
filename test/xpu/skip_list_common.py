@@ -1480,6 +1480,8 @@ skip_dict = {
         # float8 is not supported
         "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e4m3fnuz",
         "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
+        "test_scaled_gemm_offline_tunableop_xpu_float8_e4m3fnuz",
+        "test_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
         # case need to port for xpu
         "test_gemm_bias_offline_tunableop_xpu_bfloat16",
     ),
