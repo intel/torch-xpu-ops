@@ -3,7 +3,7 @@
 
 namespace at::native::xpu {
 template <
-    typename scalar_t = at::BFloat16,
+    typename scalar_t = sycl::half,
     int blocksize = 32,
     int TileK = 1,
     int TileN = 16,
@@ -108,64 +108,88 @@ void dequant_int4_kernel(
   sycl::range<1> local_range{SgSize};
   AT_DISPATCH_REDUCED_FLOATING_TYPES(
       weight.scalar_type(), "dequant_int4_kernel", [&]() {
+        using scalar_sycl_t = std::conditional_t<
+            std::is_same_v<scalar_t, at::Half>,
+            sycl::half,
+            sycl::ext::oneapi::bfloat16>;
         switch (qGroupSize) {
           case 16: {
-            auto kfn =
-                DequantInt4KernelFunctor<scalar_t, 16, TileK, TileN, SgSize>(
-                    n,
-                    k,
-                    reinterpret_cast<const uint8_t*>(
-                        weight_int4.const_data_ptr()),
-                    qScaleAndZeros.const_data_ptr<scalar_t>(),
-                    weight.mutable_data_ptr<scalar_t>());
+            auto kfn = DequantInt4KernelFunctor<
+                scalar_sycl_t,
+                16,
+                TileK,
+                TileN,
+                SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 32: {
-            auto kfn =
-                DequantInt4KernelFunctor<scalar_t, 32, TileK, TileN, SgSize>(
-                    n,
-                    k,
-                    reinterpret_cast<const uint8_t*>(
-                        weight_int4.const_data_ptr()),
-                    qScaleAndZeros.const_data_ptr<scalar_t>(),
-                    weight.mutable_data_ptr<scalar_t>());
+            auto kfn = DequantInt4KernelFunctor<
+                scalar_sycl_t,
+                32,
+                TileK,
+                TileN,
+                SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 64: {
-            auto kfn =
-                DequantInt4KernelFunctor<scalar_t, 64, TileK, TileN, SgSize>(
-                    n,
-                    k,
-                    reinterpret_cast<const uint8_t*>(
-                        weight_int4.const_data_ptr()),
-                    qScaleAndZeros.const_data_ptr<scalar_t>(),
-                    weight.mutable_data_ptr<scalar_t>());
+            auto kfn = DequantInt4KernelFunctor<
+                scalar_sycl_t,
+                64,
+                TileK,
+                TileN,
+                SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 128: {
-            auto kfn =
-                DequantInt4KernelFunctor<scalar_t, 128, TileK, TileN, SgSize>(
-                    n,
-                    k,
-                    reinterpret_cast<const uint8_t*>(
-                        weight_int4.const_data_ptr()),
-                    qScaleAndZeros.const_data_ptr<scalar_t>(),
-                    weight.mutable_data_ptr<scalar_t>());
+            auto kfn = DequantInt4KernelFunctor<
+                scalar_sycl_t,
+                128,
+                TileK,
+                TileN,
+                SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }
           case 256: {
-            auto kfn =
-                DequantInt4KernelFunctor<scalar_t, 256, TileK, TileN, SgSize>(
-                    n,
-                    k,
-                    reinterpret_cast<const uint8_t*>(
-                        weight_int4.const_data_ptr()),
-                    qScaleAndZeros.const_data_ptr<scalar_t>(),
-                    weight.mutable_data_ptr<scalar_t>());
+            auto kfn = DequantInt4KernelFunctor<
+                scalar_sycl_t,
+                256,
+                TileK,
+                TileN,
+                SgSize>(
+                n,
+                k,
+                reinterpret_cast<const uint8_t*>(weight_int4.data_ptr()),
+                reinterpret_cast<const scalar_sycl_t*>(
+                    qScaleAndZeros.data_ptr<scalar_t>()),
+                reinterpret_cast<scalar_sycl_t*>(weight.data_ptr<scalar_t>()));
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
           }

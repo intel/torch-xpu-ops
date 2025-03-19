@@ -16,7 +16,7 @@ static inline size_t padto_le(size_t src, int padding) {
   return src / size_t(padding) * size_t(padding);
 }
 
-template <typename scalar_t = at::BFloat16, int block_size = 32>
+template <typename scalar_t = sycl::half, int block_size = 32>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       const scalar_t* A,
