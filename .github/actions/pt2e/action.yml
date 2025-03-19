@@ -64,7 +64,7 @@ runs:
           fi
           # torchbench
           python -c "import torch, torchvision, torchaudio"
-          cd pt2e-performance && pip install --no-deps -r requirements.txt
+          cd pt2e-performance && pip install -r requirements.txt
           pip install -U transformers tokenizers safetensors
           python install.py --continue_on_fail
           cd ../
