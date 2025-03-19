@@ -110,6 +110,9 @@ runs:
         set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
+          if [ "${suite}" == "pt2e" ];then
+            continue
+          fi
           contains "huggingface,timm_models,torchbench" $suite
           $contains_status
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
