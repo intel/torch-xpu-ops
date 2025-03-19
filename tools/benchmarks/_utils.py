@@ -15,8 +15,8 @@ def find_pytorch_root():
 
 path = os.path.join(find_pytorch_root(), 'benchmarks/dynamo')
 sys.path.append(path)
-import torchbench
-import huggingface
+from torchbench import TorchBenchmarkRunner
+from huggingface import HuggingfaceRunner
 
 
 def apply_fake_validate_model(runner):
@@ -25,8 +25,8 @@ def apply_fake_validate_model(runner):
     runner.validate_model = fake_validate_model
 
 
-torchbench_runner = torchbench.TorchBenchmarkRunner()
-huggingface_runner = huggingface.HuggingfaceRunner()
+torchbench_runner = TorchBenchmarkRunner()
+huggingface_runner = HuggingfaceRunner()
 apply_fake_validate_model(torchbench_runner)
 apply_fake_validate_model(huggingface_runner)
 
