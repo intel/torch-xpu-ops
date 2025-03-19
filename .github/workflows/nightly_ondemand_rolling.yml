@@ -32,7 +32,7 @@ on:
         required: true
         type: string
         default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
       dt:
         required: true
         type: string
@@ -240,6 +240,16 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
+      - name: Nightly PT2E Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        uses: ./.github/actions/pt2e
+        with:
+          dt: float32,int8
+          scenario: accuracy,performance
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
+
       # Weekly launch
       - name: Weekly Huggingface Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
@@ -274,15 +284,34 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
+      - name: Weekly PT2E Accuracy Test
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: float32,int8
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
+
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: github.event_name != 'schedule'
+        if: ${{ github.event_name != 'schedule' && inputs.suite != 'pt2e' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          driver: rolling
+      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: ${{ inputs.dt }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
@@ -297,14 +326,22 @@ jobs:
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
-          rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-          if [ ${exit_label} -ne 0 ];then
-            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-            echo "There are ${exit_label} cases that need look into!!! Please check them"
-            exit ${exit_label}
+          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            rm -rf /tmp/tmp-*.txt
+            source activate e2e_ci
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            if [ ${exit_label} -ne 0 ];then
+              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+              echo "There are ${exit_label} cases that need look into!!! Please check them"
+              exit ${exit_label}
+            fi
+          else
+            source activate e2e_ci
+            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cd ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files
+            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
