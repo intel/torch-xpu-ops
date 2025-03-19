@@ -21,15 +21,21 @@ def main():
         for line in f:
             data = line.strip().split(',')
             model_name = data[0].strip()
-            batch_size = data[1].strip()
-            print(model_name)
-            device, benchmark_name, model, example_inputs, batch_size = \
-                runner.load_model(torch.device('xpu'), model_name, batch_size=int(batch_size))
-            warm_up_iters = 3
-            for i in range(warm_up_iters):
-                output = model(*example_inputs)
-            prof = profile_model_eval(model, example_inputs)
-            summary.append(benchmark_name, 'fp32', prof)
+            if len(data) == 2:
+                batch_size = int(data[1].strip())
+            else:
+                batch_size = None
+            print(model_name, batch_size)
+            try:
+                device, benchmark_name, model, example_inputs, batch_size = \
+                    runner.load_model(torch.device('xpu'), model_name, batch_size=batch_size)
+                warm_up_iters = 3
+                for i in range(warm_up_iters):
+                    output = model(*example_inputs)
+                prof = profile_model_eval(model, example_inputs)
+                summary.append(benchmark_name, 'fp32', prof)
+            except Exception as e:
+                print('error:', e, flush=True)
     summary.store('test.json')
 
 
