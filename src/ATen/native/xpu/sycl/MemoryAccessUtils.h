@@ -178,6 +178,48 @@ struct alignas(sizeof(scalar_t) * vec_size) aligned_vector {
   scalar_t const& operator[](int index) const {
     return val[index];
   }
+
+  aligned_vector<scalar_t, vec_size>& operator+=(
+      const aligned_vector<scalar_t, vec_size>& other) {
+    for (int i = 0; i < vec_size; ++i) {
+      this->val[i] += other[i];
+    }
+    return *this;
+  }
+
+  aligned_vector<scalar_t, vec_size> operator*(const scalar_t& other) const {
+    aligned_vector result;
+    for (int i = 0; i < vec_size; ++i) {
+      result[i] = this->val[i] * other;
+    }
+    return result;
+  }
+  
+  aligned_vector<scalar_t, vec_size> operator*(
+      const aligned_vector<scalar_t, vec_size>& other) const {
+    aligned_vector result;
+    for (int i = 0; i < vec_size; ++i) {
+      result[i] = this->val[i] * other[i];
+    }
+    return result;
+  }
+
+  aligned_vector<scalar_t, vec_size> operator+(
+      const aligned_vector<scalar_t, vec_size>& other) const {
+    aligned_vector result;
+    for (int i = 0; i < vec_size; ++i) {
+      result[i] = this->val[i] + other[i];
+    }
+    return result;
+  }
+
+  aligned_vector<scalar_t, vec_size> operator+(const scalar_t& other) const {
+    aligned_vector result;
+    for (int i = 0; i < vec_size; ++i) {
+      result[i] = this->val[i] + other;
+    }
+    return result;
+  }
 };
 
 template <int vec_size, typename scalar_t>
