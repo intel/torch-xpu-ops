@@ -2,8 +2,8 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
-#include <comm/SYCLContext.h>
 #include <ATen/ops/_local_scalar_dense_native.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native {
 
