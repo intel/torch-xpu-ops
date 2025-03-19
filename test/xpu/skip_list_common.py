@@ -1034,6 +1034,10 @@ skip_dict = {
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
         # RuntimeError: reflection_pad2d_backward_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'.
         "test_ReflectionPad2d_large_deterministic_xpu",
+        # Case updated in pytorch commit 97272e4
+        "test_hardswish_grad_corner_xpu_bfloat16",
+        "test_hardswish_grad_corner_xpu_float16",
+        "test_hardswish_grad_corner_xpu_float32",
     ),
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now

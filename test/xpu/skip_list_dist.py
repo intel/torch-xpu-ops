@@ -9,7 +9,7 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": (
         "test_ddp_parity_xpu",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_common.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_core.py": (
         "test_delayed_optim_step_offload_false_no_shard_xpu",
         "test_delayed_optim_step_offload_false_none_xpu",
@@ -76,8 +76,6 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": (
         "test_transformer_no_grad_mixed_precision_True_xpu",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_pure_fp16.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_traversal.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_uneven.py": None,
     "../../../../test/distributed/fsdp/test_hsdp_dtensor_state_dict.py": (
         "test_dtensor_sharded_model_load_state_dict_offload_to_cpu_False_xpu",
