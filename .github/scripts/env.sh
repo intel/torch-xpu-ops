@@ -29,6 +29,7 @@ if [[ "${input_type}" == *"conda"* ]];then
         bash "Miniforge3-$(uname)-$(uname -m).sh" -b -f -p "/opt/conda"
     fi
     . "${conda_config_file}"
+    conda deactivate && conda deactivate
     if [[ "${action_type}" == *"create"* ]];then
         conda remove --all -y -n "xpu_op_${ZE_AFFINITY_MASK}" || rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
         conda create python=${INPUTS_PYTHON:-"3.10"} cmake ninja -n "xpu_op_${ZE_AFFINITY_MASK}" -y
