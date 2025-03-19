@@ -247,14 +247,6 @@ void linear_int4_kernel(
         scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
             qScaleAndZeros.data_ptr<scalar_t>());
 
-        // const scalar_t* input_data = A.const_data_ptr<scalar_t>();
-        // const uint8_t* weight_data = reinterpret_cast<const uint8_t*>(
-        //     B.const_data_ptr()); // int4x2 or int4x8
-
-        // scalar_t* output_data = C.mutable_data_ptr<scalar_t>();
-        // const scalar_t* scale_zeros_data =
-        //     qScaleAndZeros.const_data_ptr<scalar_t>();
-
         switch (qGroupSize) {
           case 16: {
             auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 16>(
