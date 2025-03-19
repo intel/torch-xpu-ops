@@ -244,6 +244,7 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
+              - '.github/workflows/pull.yml'
 
   preci-windows:
     # Don't run on forked repos and draft PRs
