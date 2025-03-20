@@ -225,7 +225,7 @@ jobs:
 
   check-files:
     if: ${{ github.repository_owner == 'intel' }}
-    name: preci-file-change-check
+    name: preci-win-paths-filter
     runs-on: ubuntu-22.04
     outputs:
       src-changed: ${{ steps.filter.outputs.src_files }}
