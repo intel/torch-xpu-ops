@@ -26,7 +26,8 @@ def main():
             else:
                 batch_size = None
             print(model_name, batch_size)
-            try:
+            # try:
+            if True:
                 device, benchmark_name, model, example_inputs, batch_size = \
                     runner.load_model(torch.device('xpu'), model_name, batch_size=batch_size)
                 warm_up_iters = 3
@@ -34,8 +35,8 @@ def main():
                     output = model(*example_inputs)
                 prof = profile_model_eval(model, example_inputs)
                 summary.append(benchmark_name, 'fp32', prof)
-            except Exception as e:
-                print('error:', e, flush=True)
+            # except Exception as e:
+            #     print('error:', e, flush=True)
     summary.store('test.json')
 
 
