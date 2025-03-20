@@ -223,18 +223,19 @@ jobs:
       ut: op_extended
       runner: linux.idc.xpu
 
-  check-files:
+  check-conditions:
     if: ${{ github.repository_owner == 'intel' }}
-    name: preci-win-paths-filter
+    name: preci-win-conditions-filter
     runs-on: ubuntu-22.04
     outputs:
-      src-changed: ${{ steps.filter.outputs.src_files }}
+      files-changed: ${{ steps.check-files.outputs.src_changed }}
+      has-label: ${{ steps.check-label.outputs.results }}
     steps:
       - uses: dorny/paths-filter@v2
-        id: filter
+        id: check-files
         with:
           filters: |
-            src_files: 
+            src_changed: 
               - 'cmake/**'
               - 'tools/**'
               - 'src/**.cmake'
@@ -245,13 +246,21 @@ jobs:
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
               - '.github/workflows/pull.yml'
+      
+      - name: Check Label
+        id: check-label
+        run: |
+          LABEL_EXISTS=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq 'any(.name == "windows_ci")')
+          echo "results=$LABEL_EXISTS" >> $GITHUB_OUTPUT
 
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && (needs.check-files.outputs.src-changed == 'true') }} 
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }} 
     name: preci-windows
-    needs: [preci-lint-check, check-files]
+    needs: [preci-lint-check, check-conditions]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
       runner: Windows_CI
+      files-changed: ${{ needs.check-conditions.outputs.files-changed }}
+      has-label: ${{ needs.check-conditions.outputs.has-label }}
