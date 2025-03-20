@@ -92,7 +92,7 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: pvc_e2e
+      runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
