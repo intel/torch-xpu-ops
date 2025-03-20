@@ -179,5 +179,6 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
+          pip install pytest-sugar
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
