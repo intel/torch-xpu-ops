@@ -263,8 +263,12 @@ macro(SYCL_WRAP_SRCS sycl_target generated_files)
       set(SYCL_compile_output_dir "${SYCL_compile_intermediate_directory}")
 
       get_filename_component( basename ${file} NAME )
-      set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
-      set(generated_file_basename "${sycl_target}_gen_${basename}${generated_extension}")
+      if(CMAKE_CFG_INTDIR STREQUAL ".")
+        set(generated_file_path "${SYCL_compile_output_dir}")
+      else()
+        set(generated_file_path "${SYCL_compile_output_dir}/${CMAKE_CFG_INTDIR}")
+      endif()
+      set(generated_file_basename "${sycl_target}_${basename}${generated_extension}")
       set(generated_file "${generated_file_path}/${generated_file_basename}")
       set(SYCL_generated_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.SYCL-depend") # generate by compiler options -M -MF
       set(cmake_dependency_file "${SYCL_compile_intermediate_directory}/${generated_file_basename}.depend") # parse and convert SYCL_generated_dependency_file(compiler format) to cmake format
