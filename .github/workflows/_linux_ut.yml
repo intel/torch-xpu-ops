@@ -26,7 +26,7 @@ on:
       abi:
         required: false
         type: string
-        default: 1
+        default: '1'
         description: ABI version. Default abi as 1.
       python:
         required: false
