@@ -36,9 +36,13 @@ on:
       files-changed:
         required: true
         type: boolean
+        default: false
+        description: Check if filtered file changed
       has-label:
         required: true
         type: boolean
+        default: false
+        description: Check if labelled
 
 permissions: read-all
 
@@ -48,7 +52,7 @@ env:
 jobs:
   Torch-XPU-Windows-UT:
     runs-on: ${{ inputs.runner }}
-    if: ${{ inputs.files-changed == 'true' || inputs.has-label == 'true' }}
+    if: ${{ inputs.files-changed || inputs.has-label }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
