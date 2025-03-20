@@ -251,6 +251,7 @@ jobs:
         id: check-label
         run: |
           LABEL_EXISTS=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq 'any(.name == "windows_ci")')
+          echo $$LABEL_EXISTS
           echo "results=$LABEL_EXISTS" >> $GITHUB_OUTPUT
 
   preci-windows:
