@@ -63,7 +63,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
-      runner: pvc_e2e
+      runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
     runs-on: pvc_e2e
