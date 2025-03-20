@@ -121,7 +121,7 @@ jobs:
           pip install -r requirements.txt
           WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
-          if [[ ${is_fork_pr} == "false" ]]; then
+          if [[ "${is_fork_pr}" == "false" ]]; then
             if [ -f dist/torch*.whl ] && [ "${last_commit}" != "${current_commit}" ] && [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
               echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
@@ -130,7 +130,9 @@ jobs:
             if [ ! -f dist/torch*.whl ]; then
               echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
+              python setup.py clean
               git clean -df .
+              git reset --hard
               git checkout $last_commit
               # apply PRs for stock pytorch
               python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
