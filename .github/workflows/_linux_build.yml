@@ -16,7 +16,7 @@ on:
       abi:
         required: false
         type: string
-        default: 1
+        default: '1'
         description: ABI version. Default abi as 1.
       python:
         required: false
@@ -125,6 +125,7 @@ jobs:
                 echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
                 gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
                 git clean -df .
+                git reset --hard
                 git checkout $last_commit
                 # apply PRs for stock pytorch
                 python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
