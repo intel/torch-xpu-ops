@@ -91,10 +91,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         }
       }
       float sum = 0.f;
-      // sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
-      for (int i = 0; i < SgSize; i += 1) {
-        sum += group_broadcast(sg, tmpAcc, i);
-      }
+      sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
+      // for (int i = 0; i < SgSize; i += 1) {
+      //   sum += group_broadcast(sg, tmpAcc, i);
+      // }
       if (sg_id == 0) {
         *cptr = static_cast<scalar_t>(sum);
       }
@@ -206,10 +206,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int i = 0; i < SgSize; i += 1) {
         sum += group_broadcast(sg, tmpAcc, i);
       }
-      // sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
-      if (sg_id == 0) {
-        *cptr = static_cast<scalar_t>(sum);
-      }
+      sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
+      // if (sg_id == 0) {
+      //   *cptr = static_cast<scalar_t>(sum);
+      // }
     }
   }
 
