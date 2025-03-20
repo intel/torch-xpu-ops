@@ -86,6 +86,7 @@ jobs:
           fi
       - name: Build Pytorch XPU
         run: |
+          set -xe
           source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
