@@ -33,6 +33,16 @@ on:
         type: string
         default: '2025.0'
         description: Python version
+      files-changed:
+        required: true
+        type: string
+        default: 'false'
+        description: Check if filtered file changed
+      has-label:
+        required: true
+        type: string
+        default: 'false'
+        description: Check if labelled
 
 permissions: read-all
 
@@ -42,6 +52,7 @@ env:
 jobs:
   Torch-XPU-Windows-UT:
     runs-on: ${{ inputs.runner }}
+    if: ${{ inputs.files-changed == 'true' || inputs.has-label == 'true' }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
