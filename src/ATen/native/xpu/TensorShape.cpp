@@ -8,10 +8,10 @@
 #include <ATen/native/TypeProperties.h>
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
 #include <ATen/native/xpu/sycl/TensorShapeKernels.h>
-#include <comm/RegisterUtils.h>
 #include <ATen/ops/as_strided_copy_native.h>
 #include <ATen/ops/as_strided_native.h>
 #include <ATen/ops/cat_native.h>
+#include <comm/RegisterUtils.h>
 
 namespace at {
 

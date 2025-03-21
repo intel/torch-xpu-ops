@@ -349,7 +349,7 @@ void _sparse_binary_op_intersection_kernel_impl(
 
   // If the op and sum are not distributive, coalesce is required.
   const auto coalesce_if_not_distributive = [distributive_with_sum](
-      const Tensor& t, const OptTensor& t_hash_opt) -> auto{
+      const Tensor& t, const OptTensor& t_hash_opt) -> auto {
     // No need to coalesce in such a case.
     if (distributive_with_sum) {
       return std::make_tuple(t, t_hash_opt);
@@ -378,7 +378,7 @@ void _sparse_binary_op_intersection_kernel_impl(
       probably_coalesced,
       probably_coalesced_indices_hash_opt,
       source,
-      source_indices_hash_opt) = [&]() -> auto{
+      source_indices_hash_opt) = [&]() -> auto {
     // Case 1: either x or y is coalesced.
     if ((x.is_coalesced() ^ y.is_coalesced())) {
       return x.is_coalesced() ? std::make_tuple(x, x_hash_opt, y, y_hash_opt)
@@ -391,7 +391,7 @@ void _sparse_binary_op_intersection_kernel_impl(
       Tensor larger, smaller;
       OptTensor larger_hash_opt, smaller_hash_opt;
       std::tie(
-          larger, larger_hash_opt, smaller, smaller_hash_opt) = [&]() -> auto{
+          larger, larger_hash_opt, smaller, smaller_hash_opt) = [&]() -> auto {
         return x._nnz() >= y._nnz()
             ? std::make_tuple(x, x_hash_opt, y, y_hash_opt)
             : std::make_tuple(y, y_hash_opt, x, x_hash_opt);
@@ -440,7 +440,7 @@ void _sparse_binary_op_intersection_kernel_impl(
   // is a perfect hash function (no collisions ever).
 
   // Need owning storage in case of the Tensor class.
-  const auto hash_coeffs_storage = [&]() -> auto{
+  const auto hash_coeffs_storage = [&]() -> auto {
     const auto broadcasted_sparse_dim_shape = std::vector<int64_t>(
         broadcasted_shape.begin(),
         broadcasted_shape.begin() + probably_coalesced.sparse_dim());
