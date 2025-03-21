@@ -59,7 +59,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto aptr = A;
       auto cptr = C + g_n;
 
-      sycl::float tmpAcc = 0.f;
+      float tmpAcc = 0.f;
       for (int i = 0; i < k; i += GroupK) {
 // #pragma unroll
         // for (int iu = 0; iu < Unroll; iu++) {
@@ -73,12 +73,12 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk ++) {
             scalar_t tmpA = *(scalar_t*)(aptr + sg_id * TileK + ikk);
-            scalar_t tmpB = static_cast<int8_t>(tmps8[ikk])
-            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            scalar_t tmpB = static_cast<int8_t>(tmps8[ikk]);
+            auto tmpAmulB = tmpA * (tmpB * scale);
             tmpAcc += tmpAmulB;
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
-          zptr += (GroupK / blocksize) * ld_scale_zp;
+          // zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK;
       }
@@ -104,7 +104,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto bptr = B + g_n * k;
       auto aptr = A;
       auto cptr = C + g_n;
-      sycl::float tmpAcc = 0.f;
+      float tmpAcc = 0.f;
       int i = 0;
       for (; i < k_body; i += GroupK) {
 // #pragma unroll
@@ -113,20 +113,16 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK>*)tmps8 =
               *(sycl::vec<uint8_t, TileK>*)(bptr + sg_id * TileK);
 
-          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
-          // int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
-
+          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;          
           scalar_t scale = *(sptr + scale_offset);
-          // scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk ++) {
             scalar_t tmpA = *(scalar_t*)(aptr + sg_id * TileK + ikk);
             scalar_t tmpB = static_cast<int8_t>(tmps8[ikk]);
-            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            auto tmpAmulB = tmpA * (tmpB * scale);
             tmpAcc += tmpAmulB;
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
-          zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK;
         // }
@@ -147,7 +143,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             for (int ikk = 0; ikk < TileK2; ikk++) {
               scalar_t tmpA = *(scalar_t*)(aptr + sg_id * TileK2 + ikk);
               scalar_t tmpB = static_cast<int8_t>(tmps8[ikk]);
-              auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+              auto tmpAmulB = tmpA * (tmpB * scale);
               tmpAcc += tmpAmulB;
             }
             sptr += (GroupK2 / blocksize) * ld_scale_zp;
@@ -169,7 +165,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           scalar_t tmpB = static_cast<int8_t>(tmps8);
           scalar_t tmpA = *(scalar_t*)(aptr + sg_id * 2);
 
-          auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+          auto tmpAmulB = tmpA * (tmpB * scale);
           tmpAcc += tmpAmulB;
           sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           // zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
@@ -177,7 +173,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           bptr += SgSize * 2 ;
         }
       }
-      sycl::float sum = 0.f;
+      float sum = 0.f;
       sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
       if (sg_id == 0) {
         *cptr = static_cast<scalar_t>(sum);
@@ -224,14 +220,14 @@ void linear_int8_kernel(
 
         scalar_sycl_t* output_data =
             reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
-        scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
-            qScaleAndZeros.data_ptr<scalar_t>());
+        scalar_sycl_t* scales_data = reinterpret_cast<scalar_sycl_t*>(
+            scales.data_ptr<scalar_t>());
 
         auto kfn = LinearInt8KernelFunctor<scalar_sycl_t>(
                 input_data,
                 weight_data,
                 output_data,
-                scales,
+                scales_data,
                 m,
                 n,
                 k,
