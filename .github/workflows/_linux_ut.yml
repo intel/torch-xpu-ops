@@ -258,8 +258,11 @@ jobs:
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/ut_log/op_microbench
+          cd test/microbench
+          filename=$(find -- *.py)
           for i in $filename
-            python test/microbench/${i%.*}.py > ${{ github.workspace }}/ut_log/op_microbench/${i%.*}.log
+          do
+            python ${i%.*}.py > ${{ github.workspace }}/ut_log/op_microbench/${i%.*}.log
           done
           # Summary forward op time
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/ut_log/op_microbench ${{ github.workspace }}/ut_log/op_microbench/forward_op_summary.txt
