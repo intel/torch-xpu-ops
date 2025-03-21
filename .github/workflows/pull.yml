@@ -244,6 +244,7 @@ jobs:
               - 'src/xccl/CMakeLists.txt'
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
+              - '.github/workflows/_windows_ut.yml'
       
       - name: Check Label
         id: check-label
