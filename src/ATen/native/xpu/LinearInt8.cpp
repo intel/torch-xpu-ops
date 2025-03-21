@@ -3,6 +3,9 @@
 #include <ATen/native/TensorIterator.h>
 #include <torch/library.h>
 
+#include <ATen/native/xpu/sycl/LinearInt8.h>
+#include <comm/xpu_aten.h>
+
 namespace at::native {
     Tensor _weight_int8pack_mm_xpu(
         const Tensor& A,
@@ -50,3 +53,4 @@ namespace at::native {
       at::native::xpu::linear_int8_kernel(A, B, scales, C)
       return C;
     }
+}
