@@ -75,14 +75,15 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             scalar_t tmpA = *(scalar_t*)(aptr + sg_id * TileK + ikk);
             scalar_t tmpB = static_cast<int8_t>(tmps8[ikk]);
             auto tmpAmulB = tmpA * (tmpB * scale);
-            tmpAcc += tmpAmulB;
+            // tmpAcc += tmpAmulB;
+            tmpAcc += static_cast<float>(tmpAmulB[0]) + static_cast<float>(tmpAmulB[1]);
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
           // zptr += (GroupK / blocksize) * ld_scale_zp;
           aptr += GroupK;
           bptr += GroupK;
       }
-      sycl::float2 sum = {0.f, 0.f};
+      float sum = 0.f;
       sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
       if (sg_id == 0) {
         *cptr = static_cast<scalar_t>(sum[0] + sum[1]);
@@ -144,7 +145,8 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               scalar_t tmpA = *(scalar_t*)(aptr + sg_id * TileK2 + ikk);
               scalar_t tmpB = static_cast<int8_t>(tmps8[ikk]);
               auto tmpAmulB = tmpA * (tmpB * scale);
-              tmpAcc += tmpAmulB;
+              // tmpAcc += tmpAmulB;
+              tmpAcc += static_cast<float>(tmpAmulB[0]) + static_cast<float>(tmpAmulB[1]);
             }
             sptr += (GroupK2 / blocksize) * ld_scale_zp;
             // zptr += (GroupK2 / blocksize) * ld_scale_zp;
@@ -166,7 +168,8 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           scalar_t tmpA = *(scalar_t*)(aptr + sg_id * 2);
 
           auto tmpAmulB = tmpA * (tmpB * scale);
-          tmpAcc += tmpAmulB;
+          // tmpAcc += tmpAmulB;
+          tmpAcc += static_cast<float>(tmpAmulB[0]) + static_cast<float>(tmpAmulB[1]);
           sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           // zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           aptr += SgSize * 2;
@@ -235,7 +238,7 @@ void linear_int8_kernel(
                 k,
                 n);
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
-          }
+        }
           // case 32: {
           //   auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 32>(
           //       input_data,
