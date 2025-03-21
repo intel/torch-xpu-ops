@@ -26,7 +26,7 @@ on:
       abi:
         required: false
         type: string
-        default: 1
+        default: '1'
         description: ABI version. Default abi as 1.
       python:
         required: false
@@ -404,7 +404,11 @@ jobs:
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          python -c "import torch;print(torch.distributed.is_xccl_available())"
+          XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
           timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
