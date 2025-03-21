@@ -48,6 +48,7 @@ permissions: read-all
 
 env: 
     USE_XPU: 1
+    TERM: xterm
 
 jobs:
   Torch-XPU-Windows-UT:
