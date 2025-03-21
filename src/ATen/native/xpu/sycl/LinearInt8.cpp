@@ -46,8 +46,8 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int constexpr blocksize = 1;
     using scalarx2_t = sycl::vec<scalar_t, 2>;
     int ld_scale_zp = n;
-    if (k % (SgSize * 32 ) == 0) {
-      int constexpr TileK = 32;
+    if (k % (SgSize * 16 ) == 0) {
+      int constexpr TileK = 16;
       int constexpr GroupK = SgSize * TileK;
 
       int g_idx = it.get_group(0);
@@ -88,7 +88,7 @@ struct LinearInt8KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         *cptr = static_cast<scalar_t>(sum[0] + sum[1]);
       }
     } else { // k % (SgSize * 32 * Unroll) != 0
-      int constexpr TileK = 32;
+      int constexpr TileK = 16;
       int constexpr GroupK = SgSize * TileK;
       int k_body = padto_le(k, GroupK);
 
@@ -232,7 +232,7 @@ void linear_int8_kernel(
                 n,
                 k,
                 k,
-                k / qGroupSize,
+                k,
                 n);
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
             break;
