@@ -235,7 +235,6 @@ void linear_int8_kernel(
                 k,
                 n);
             sycl_kernel_submit(global_range, local_range, sycl_queue, kfn);
-            break;
           }
           // case 32: {
           //   auto kfn = LinearInt4KernelFunctor<scalar_sycl_t, 32>(
