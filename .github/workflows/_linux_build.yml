@@ -94,6 +94,7 @@ jobs:
           if [[ ${{ inputs.driver }} == 'lts' ]]; then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
+          export TORCH_XPU_ARCH_LIST="pvc,bmg,dg2,arl-h,mtl-h,lnl-m"
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
