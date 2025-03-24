@@ -2,6 +2,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/complex.h>
 #include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
