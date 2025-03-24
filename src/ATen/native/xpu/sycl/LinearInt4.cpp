@@ -67,8 +67,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          int scale_zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
-          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int scale_zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
+          int zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_zp_offset);
           scalar_t zero_point = *(zptr + scale_zp_offset);
 #pragma unroll
@@ -124,7 +124,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
 
-          int scale_zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
+          int scale_zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_zp_offset);
           scalar_t zero_point = *(zptr + scale_zp_offset);
 #pragma unroll
@@ -154,7 +154,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             *(sycl::vec<uint8_t, TileK2 / 2>*)tmps8 =
                 *(sycl::vec<uint8_t, TileK2 / 2>*)(bptr + sg_id * TileK2 / 2);
 
-            int scale_zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+            int scale_zp_offset = (sg_id * TileK2 / blocksize) * ld_scale_zp;
             scalar_t scale = *(sptr + scale_zp_offset);
             scalar_t zero_point = *(zptr + scale_zp_offset);
 #pragma unroll
@@ -181,7 +181,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (; i < k; i += SgSize * 2) {
           uint8_t tmps8 = *(bptr + sg_id);
 
-          int scale_zp_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          int scale_zp_offset = (sg_id * 2 / blocksize) * ld_scale_zp;
           scalar_t scale = *(sptr + scale_zp_offset);
           scalar_t zero_point = *(zptr + scale_zp_offset);
 
