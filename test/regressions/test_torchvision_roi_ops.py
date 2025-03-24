@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pytest
 import torch
-import torch.fx
 import torch._dynamo
+import torch.fx
 from torch import nn
 from torch.autograd import gradcheck
 from torchvision import ops
