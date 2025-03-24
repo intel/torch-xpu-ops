@@ -67,8 +67,9 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-Build:
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' }}
     secrets: inherit
-    if: ${{ ! cancelled() }}
     name: linux-nightly-ondemand
     permissions:
       issues: write
@@ -81,7 +82,7 @@ jobs:
       runner: pvc_e2e
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, '_') }}
     name: linux-nightly-ondemand
     needs: Linux-Nightly-Ondemand-Build
     uses: ./.github/workflows/_linux_ut.yml
@@ -96,15 +97,8 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
-    # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
-    env:
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
@@ -121,39 +115,45 @@ jobs:
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
+      - name: Clean Workspace
+        run: |
+          xpu-smi discovery
+          pwd && printenv
+          if [ -n "${GITHUB_WORKSPACE}" ];then
+            rm -rf ${GITHUB_WORKSPACE}/*
+          fi
+          echo "INPUTS_PYTHON=${{ inputs.python }}" >> "${GITHUB_ENV}"
+          echo "INPUTS_PYTORCH=${{ inputs.pytorch }}" >> "${GITHUB_ENV}"
+          echo "INPUTS_TRITON=${{ inputs.triton }}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Conda ENV
-        run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm
+        with:
+          path: torch-xpu-ops
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
       - name: Prepare Stock Pytorch
         run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
-          # apply PRs for stock pytorch
-          pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+          source torch-xpu-ops/.github/scripts/env.sh conda-pytorch create
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+      - name: Torch Config
+        run: |
+          source torch-xpu-ops/.github/scripts/env.sh conda activate
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
+          rm -rf ./pytorch/inductor_log
       - name: Identify pinned versions
         id: pinned
         run: |
-          source .github/scripts/env.sh
-          cd ../pytorch
+          source torch-xpu-ops/.github/scripts/env.sh oneapi
+          cd pytorch
           if [ -z ${{ inputs.triton }} ]; then
             echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           else
@@ -173,33 +173,9 @@ jobs:
           . /etc/os-release
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo ${GITHUB_ENV}
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
@@ -306,7 +282,7 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
@@ -336,8 +312,9 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   Linux-Nightly-Ondemand-Build-ABI-0:
+    # Don't run on forked repos
+    if: ${{ github.repository_owner == 'intel' && github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5' }}
     secrets: inherit
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
     name: linux-nightly-ondemand-abi0
     permissions:
       issues: write
@@ -428,7 +405,7 @@ jobs:
           printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
           echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
           printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
+          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${INPUTS_PYTHON} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
           if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
             test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
             if [ "${{ inputs.model }}" != "" ];then

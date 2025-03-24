@@ -3,7 +3,7 @@
 # Post-op the linux wheel to change the .so rpath to make the wheel work with XPU runtime pypi packages
 # Usage: rpath.sh /path/to/torch-xxxx.whl
 
-pkg=$1
+pkg="$(realpath $1)"
 PATCHELF_BIN=patchelf
 
 make_wheel_record() {
