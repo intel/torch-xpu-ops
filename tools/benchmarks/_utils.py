@@ -42,14 +42,21 @@ prof_xpu = torch.profiler.profile(
 
 def profile_model_eval(model, inputs):
     with prof_xpu:
-        with torch.no_grad():
-            model(*inputs)
+        if isinstance(inputs, dict):
+            with torch.no_grad():
+                model(**inputs)
+        else:
+            with torch.no_grad():
+                model(*inputs)
     return prof_xpu
 
 
 def profile_model_train(model, inputs, loss_fn):
     with prof_xpu:
-        loss = loss_fn(model(*inputs))
+        if isinstance(inputs, dict):
+            loss = loss_fn(model(**inputs))
+        else:
+            loss = loss_fn(model(*inputs))
         loss.backward()
     return prof_xpu
 
