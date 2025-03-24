@@ -40,6 +40,14 @@ prof_xpu = torch.profiler.profile(
 )
 
 
+def dry_run_model_eval(model, inputs, niter):
+    for i in range(niter):
+        if isinstance(inputs, dict):
+            model(**inputs)
+        else:
+            model(*inputs)
+
+
 def profile_model_eval(model, inputs):
     with prof_xpu:
         if isinstance(inputs, dict):
