@@ -1,7 +1,7 @@
 import os
 import torch
 from addict import Dict
-from _utils import profile_model_eval, OpLevelPerfSummary, torchbench_runner
+from _utils import profile_model_eval, OpLevelPerfSummary, torchbench_runner, dry_run_model_eval
 
 
 def parse_args(runner):
@@ -31,8 +31,7 @@ def main():
                 device, benchmark_name, model, example_inputs, batch_size = \
                     runner.load_model(torch.device('xpu'), model_name, batch_size=batch_size)
                 warm_up_iters = 3
-                for i in range(warm_up_iters):
-                    output = model(*example_inputs)
+                dry_run_model_eval(model, example_inputs, warm_up_iters)
                 prof = profile_model_eval(model, example_inputs)
                 summary.append(benchmark_name, 'fp32', prof)
             # except Exception as e:
