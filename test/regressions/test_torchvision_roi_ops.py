@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 import torch.fx
+import torch._dynamo
 from torch import nn
 from torch.autograd import gradcheck
 from torchvision import ops
@@ -471,6 +472,7 @@ class TestRoIAlign(RoIOpTester):
     )  # , ids=str)
     @pytest.mark.parametrize("contiguous", (True, False))
     @pytest.mark.parametrize("deterministic", (True, False))
+    @pytest.mark.opcheck_only_one
     def test_forward(
         self, device, contiguous, deterministic, aligned, x_dtype, rois_dtype=None
     ):
@@ -484,6 +486,23 @@ class TestRoIAlign(RoIOpTester):
             rois_dtype=rois_dtype,
             aligned=aligned,
         )
+
+    @pytest.mark.parametrize("aligned", (True, False))
+    @pytest.mark.parametrize("deterministic", (True, False))
+    @pytest.mark.parametrize("x_dtype", (torch.float, torch.half))
+    @pytest.mark.parametrize("rois_dtype", (torch.float, torch.half))
+    @pytest.mark.opcheck_only_one
+    def test_autocast(self, aligned, deterministic, x_dtype, rois_dtype):
+        torch._dynamo.reset()
+        with torch.amp.autocast("xpu"):
+            self.test_forward(
+                torch.device("xpu"),
+                contiguous=False,
+                deterministic=deterministic,
+                aligned=aligned,
+                x_dtype=x_dtype,
+                rois_dtype=rois_dtype,
+            )
 
 
 class TestPSRoIAlign(RoIOpTester):
