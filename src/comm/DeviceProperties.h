@@ -120,9 +120,8 @@ static inline int64_t syclMaxNumSubGroups(
 
 static inline int64_t syclMaxDSSNum(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
-  // TODO: We need to got this info from DPC++ Runtime
-  // Hardcode to 32 for ATS
-  int64_t dss_num = 32;
+  int64_t dss_num =
+      syclMaxComputeUnitSize(dev_id) / syclGpuEUCountPerSubslice(dev_id);
   return dss_num;
 }
 

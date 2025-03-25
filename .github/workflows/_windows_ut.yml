@@ -33,6 +33,16 @@ on:
         type: string
         default: '2025.0'
         description: Python version
+      files-changed:
+        required: true
+        type: string
+        default: 'false'
+        description: Check if filtered file changed
+      has-label:
+        required: true
+        type: string
+        default: 'false'
+        description: Check if labelled
 
 permissions: read-all
 
@@ -42,6 +52,7 @@ env:
 jobs:
   Torch-XPU-Windows-UT:
     runs-on: ${{ inputs.runner }}
+    if: ${{ inputs.files-changed == 'true' || inputs.has-label == 'true' }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -70,7 +81,7 @@ jobs:
           cd pytorch && git checkout ${{ inputs.pytorch }} 
           pip install pyyaml requests
           call conda install -y libuv
-          call conda install -y rust 
+          call conda install -y rust
           git config --system core.longpaths true
           git config --global core.symlinks true
           git config --global core.fsmonitor false
@@ -101,11 +112,19 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           pip install cmake setuptools==72.1.0 clang-format
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           set USE_KINETO=0
           set USE_ONEMKL=1
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
+          copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
+          copy "%CONDA_PREFIX%\Library\bin\uv.dll" .\torch\lib
+          if defined CMAKE_PREFIX_PATH (
+              set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library;%CMAKE_PREFIX_PATH%"
+          ) else (
+              set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
+          )
           python setup.py clean
           set MAX_JOBS=4
           python setup.py bdist_wheel > build_torch_wheel_log.log
@@ -145,6 +164,7 @@ jobs:
         shell: cmd
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           set PYTORCH_TEST_WITH_SLOW=1

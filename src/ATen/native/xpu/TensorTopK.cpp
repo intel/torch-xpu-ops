@@ -5,7 +5,7 @@
 
 #include <comm/RegisterUtils.h>
 
-#include <xpu/ATen/ops/topk_native.h>
+#include <ATen/ops/topk_native.h>
 
 namespace at {
 
