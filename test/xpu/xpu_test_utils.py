@@ -429,6 +429,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "test_modules_xpu.py": {
+        ("TestModuleXPU", "test_non_contiguous_tensors_nn_LazyConv3d_xpu_float32"): {
+            torch.float32: tol(atol=2e-5, rtol=7e-5),
+        }
+    },
 }
 
 

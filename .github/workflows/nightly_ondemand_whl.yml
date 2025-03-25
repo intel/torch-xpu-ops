@@ -195,6 +195,7 @@ jobs:
           scenario: accuracy,performance
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          env_prepare: true
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
