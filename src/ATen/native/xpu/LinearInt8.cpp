@@ -50,7 +50,7 @@ namespace at::native {
       // } else {
       //   at::native::xpu::linear_int4_kernel(A, B, qGroupSize, qScaleAndZeros, C);
       // }
-      at::native::xpu::linear_int8_kernel(A, B, scales, C)
+      at::native::xpu::linear_int8_kernel(A, B, scales, C);
       return C;
     }
 }
