@@ -259,9 +259,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const char* profilingTitle = nullptr);
 
   c10::intrusive_ptr<Work> allreduce_impl(
-    at::Tensor& tensor,
-    const char* profilingTitle = "xccl:all_reduce",
-    const AllreduceOptions& opts = AllreduceOptions());
+      at::Tensor& tensor,
+      const char* profilingTitle = "xccl:all_reduce",
+      const AllreduceOptions& opts = AllreduceOptions());
 
   c10::intrusive_ptr<Work> allreduce(
       std::vector<at::Tensor>& tensors,
@@ -364,7 +364,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t getSequenceNumberForGroup() override;
 
  protected:
-  std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
+  std::unordered_map<std::string, std::pair<at::xpu::XPUStream, sycl::queue>>
       xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
