@@ -517,8 +517,6 @@ Tensor _fft_r2c_mkl(
           working_tensor,
           out_sizes,
           fft_dims,
-          norm,
-          norm_scale,
           onesided,
           /*forward=*/true);
       sorted_dims.resize(sorted_dims.size() - max_dims);
