@@ -79,4 +79,21 @@ Tensor& _fft_c2r_xpu_out(
 #endif // USE_ONEMKL
 }
 
+Tensor _fft_r2c_xpu(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided) {
+  return native::xpu::_fft_r2c_mkl(self, dim, normalization, onesided);
+}
+
+Tensor& _fft_r2c_xpu_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided,
+    Tensor& out) {
+  return native::xpu::_fft_r2c_mkl_out(self, dim, normalization, onesided, out);
+}
+
 } // namespace at::native

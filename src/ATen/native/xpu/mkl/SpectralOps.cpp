@@ -478,5 +478,22 @@ Tensor& _fft_c2r_mkl_out(
       out, result, normalization, result.sizes(), dim);
 }
 
+Tensor _fft_r2c_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided) {
+  return self;
+}
+
+Tensor& _fft_r2c_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided,
+    Tensor& out) {
+  return out;
+}
+
 } // namespace at::native::xpu
 #endif // USE_ONEMKL
