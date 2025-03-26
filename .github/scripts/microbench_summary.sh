@@ -74,7 +74,7 @@ function op_summary {
         if [[ $Get_backward == "True" ]] && [[ $backward == "False" ]]; then
             echo "Only Forward"
         else
-            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$affine;$backward;$number" >> "$output_file"
+            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$mode;$affine;$backward;$number" >> "$output_file"
         fi
     done < <(echo "$texts") 3< <(echo "$times")
 }
