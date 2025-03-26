@@ -26,7 +26,9 @@ def adaptive_mp2d(shape, dtype, channels_last, backward):
         Hout = output_size[1]
         grad = torch.randn([N, C, Hout, Wout]).to(device="xpu", dtype=dtype)
 
-    adapt_mp2d = torch.nn.AdaptiveMaxPool2d(output_size=(Hout, Wout), return_indices=True)
+    adapt_mp2d = torch.nn.AdaptiveMaxPool2d(
+        output_size=(Hout, Wout), return_indices=True
+    )
 
     output = adapt_mp2d(input)
 
