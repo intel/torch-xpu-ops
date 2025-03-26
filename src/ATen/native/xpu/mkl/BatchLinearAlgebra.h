@@ -4,14 +4,14 @@
 
 namespace at::native::xpu {
 
-TORCH_XPU_API
-std::tuple<Tensor&, Tensor&, Tensor&> svd_mkl(
+TORCH_XPU_API void svd_mkl(
     const Tensor& A,
-    bool full_matrices,
-    bool compute_uv,
-    c10::optional<c10::string_view> driver,
-    Tensor& U,
-    Tensor& S,
-    Tensor& Vh);
+    const bool full_matrices,
+    const bool compute_uv,
+    const c10::optional<c10::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info);
 
 } // namespace at::native::xpu
