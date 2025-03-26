@@ -84,6 +84,8 @@ Tensor _fft_r2c_xpu(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+  TORCH_CHECK(self.is_floating_point());
+
   return native::xpu::_fft_r2c_mkl(self, dim, normalization, onesided);
 }
 
@@ -93,6 +95,8 @@ Tensor& _fft_r2c_xpu_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
+  TORCH_CHECK(self.is_floating_point());
+
   return native::xpu::_fft_r2c_mkl_out(self, dim, normalization, onesided, out);
 }
 
