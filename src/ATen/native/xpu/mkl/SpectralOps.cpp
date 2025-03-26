@@ -496,43 +496,42 @@ Tensor _fft_r2c_mkl(
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
 
-  {
-    auto working_tensor = self;
-    while (!sorted_dims.empty()) {
-      const auto max_dims =
-          std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
-      auto fft_dims = IntArrayRef(sorted_dims)
-                          .slice(sorted_dims.size() - max_dims, max_dims);
-      impl::_exec_fft(
-          out,
-          working_tensor,
+  auto working_tensor = self;
+
+  while (!sorted_dims.empty()) {
+    const auto max_dims =
+        std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+    auto fft_dims = IntArrayRef(sorted_dims)
+                        .slice(sorted_dims.size() - max_dims, max_dims);
+    impl::_exec_fft(
+        out,
+        working_tensor,
+        out_sizes,
+        fft_dims,
+        onesided,
+        /*forward=*/true);
+    sorted_dims.resize(sorted_dims.size() - max_dims);
+
+    if (sorted_dims.empty()) {
+      break;
+    }
+
+    sorted_dims = impl::_sort_dims(self, sorted_dims);
+
+    if (working_tensor.is_same(self)) {
+      working_tensor = std::move(out);
+      out = at::empty(
           out_sizes,
-          fft_dims,
-          onesided,
-          /*forward=*/true);
-      sorted_dims.resize(sorted_dims.size() - max_dims);
-
-      if (sorted_dims.empty()) {
-        break;
-      }
-
-      sorted_dims = impl::_sort_dims(self, sorted_dims);
-
-      if (working_tensor.is_same(self)) {
-        working_tensor = std::move(out);
-        out = at::empty(
-            out_sizes,
-            self.options().dtype(c10::toComplexType(self.scalar_type())));
-      } else {
-        std::swap(out, working_tensor);
-      }
+          self.options().dtype(c10::toComplexType(self.scalar_type())));
+    } else {
+      std::swap(out, working_tensor);
     }
   }
 
   // Only need to normalize the onesided slice since data in the other half is
   // overwritten
   auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
-  auto working_tensor = self;
+  working_tensor = self;
   if (!onesided) {
     if (out.sizes()[last_dim] != out_sizes[last_dim]) {
       working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
