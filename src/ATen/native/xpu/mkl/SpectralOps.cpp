@@ -496,18 +496,9 @@ Tensor _fft_r2c_mkl(
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
 
-  double norm_scale =
-      impl::_dft_scale(dim, input_sizes, out_sizes, normalization);
-
   {
     auto working_tensor = self;
     while (!sorted_dims.empty()) {
-      // do normalization exactly once, and before the loop break
-      int64_t norm = static_cast<int64_t>(native::fft_norm_mode::none);
-      if (sorted_dims.size() <= impl::mkl_max_ndim) {
-        norm = normalization;
-      }
-
       const auto max_dims =
           std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
       auto fft_dims = IntArrayRef(sorted_dims)
@@ -550,7 +541,8 @@ Tensor _fft_r2c_mkl(
     }
     _fft_fill_with_conjugate_symmetry_(out, dim);
   }
-  return out;
+
+  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
 }
 
 Tensor& _fft_r2c_mkl_out(
