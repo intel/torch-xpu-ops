@@ -25,9 +25,7 @@ def Interpolate2d(shape, dtype, channels_last, backward, mode):
             device=device, dtype=dtype
         )
 
-    output = torch.nn.functional.interpolate(
-        input, scale_factor=shape[4], mode=mode
-    )
+    output = torch.nn.functional.interpolate(input, scale_factor=shape[4], mode=mode)
 
     if backward:
         output.backward(torch.ones_like(output))
@@ -38,8 +36,8 @@ if __name__ == "__main__":
     for channels_last in [False, True]:
         for shape in shape_list:
             for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-                for mode in ['nearest']:
-                # warm up
+                for mode in ["nearest"]:
+                    # warm up
                     Interpolate2d(shape, dtype, channels_last, backward, mode)
 
                     # go

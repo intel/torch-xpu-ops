@@ -22,7 +22,18 @@ def simple_test(in_shape, scale_factor, backward, dtype, mode):
         )
 
     # go
-    print("shape:", (in_shape), "; datatype:", dtype, "; scale_factor:", scale_factor, "; mode:", mode, "; backward:", backward)
+    print(
+        "shape:",
+        (in_shape),
+        "; datatype:",
+        dtype,
+        "; scale_factor:",
+        scale_factor,
+        "; mode:",
+        mode,
+        "; backward:",
+        backward,
+    )
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
     ) as prof:
@@ -50,5 +61,5 @@ shape_list = [
 scale_factor = [[3, 3], [3, 3], [7, 7], [7, 7], 3]
 for sp, sf in zip(shape_list, scale_factor):
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-        for mode in ['bilinear']:
+        for mode in ["bilinear"]:
             simple_test(sp, sf, backward, dtype, mode)
