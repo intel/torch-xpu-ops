@@ -38,7 +38,7 @@ if __name__ == "__main__":
     for channels_last in [False, True]:
         for shape in shape_list:
             for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-                for mode in ['nearest']:
+                for mode in ['nearest-exact']:
                 # warm up
                     Interpolate2d(shape, dtype, channels_last, backward, mode)
 
