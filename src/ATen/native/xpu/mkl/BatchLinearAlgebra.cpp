@@ -348,40 +348,23 @@ static void svd_resize_and_copy(
   dst.copy_(src);
 }
 
-// void svd_kernel(
-//     const Tensor& A,
-//     const bool full_matrices,
-//     const bool compute_uv,
-//     c10::optional<c10::string_view> driver,
-//     const Tensor& U,
-//     const Tensor& S,
-//     const Tensor& Vh,
-//     const Tensor& info) {
-//   std::cout << " enter svd_kernel---" << std::endl;
-//   Tensor U_tmp, S_tmp, Vh_tmp;
-//   bool some = !full_matrices;
-//   std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, /*compute_uv=*/true);
-//   svd_resize_and_copy("U", U_tmp, U);
-//   svd_resize_and_copy("S", S_tmp, S);
-//   svd_resize_and_copy("V", Vh_tmp, Vh);
-// }
-
-std::tuple<Tensor&, Tensor&, Tensor&> svd_mkl(
+void svd_mkl(
     const Tensor& A,
-    bool full_matrices,
-    bool compute_uv,
-    c10::optional<c10::string_view> driver,
-    Tensor& U,
-    Tensor& S,
-    Tensor& Vh) {
-  std::cout << " enter svd_kernel---" << std::endl;
+    const bool full_matrices,
+    const bool compute_uv,
+    const c10::optional<c10::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  std::cout << " enter svd_mkl---" << std::endl;
   Tensor U_tmp, S_tmp, Vh_tmp;
   bool some = !full_matrices;
+
   std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, /*compute_uv=*/true);
-  svd_resize_and_copy("U", U_tmp, U);
-  svd_resize_and_copy("S", S_tmp, S);
-  svd_resize_and_copy("V", Vh_tmp, Vh);
-  return std::tuple<Tensor&, Tensor&, Tensor&>(U, S, Vh);
+  // svd_resize_and_copy("U", U_tmp, U);
+  // svd_resize_and_copy("S", S_tmp, S);
+  // svd_resize_and_copy("V", Vh_tmp, Vh);
 }
 
 } // namespace at::native::xpu
