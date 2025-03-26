@@ -6,7 +6,7 @@ output_file="$2"
 Get_backward=${3:-False}
 cd "$results_dir" || exit
 
-echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;affine;backward;time(us)" >> "$output_file"
+echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;affine;backward;time(us)" >> "$output_file"
 
 function op_summary {
     while IFS= read -r line1 && IFS= read -r line2 <&3; do
@@ -55,6 +55,9 @@ function op_summary {
             if [[ scale_factor = "$key" ]] ; then
                 scale_factor=${value}
             fi
+            if [[ mode = "$key" ]] ; then
+                mode=${value}
+            fi
             if [[ affine = "$key" ]] ; then
                 affine=${value}
             fi
@@ -93,6 +96,7 @@ do
     replacement=""
     num_samples=""
     scale_factor=""
+    mode=""
     case_name="${i%.*}"
     op_name=$(echo "$case_name" | awk -F. '{print $NF}')
     if [[ $Get_backward == "False" ]] ; then
@@ -105,7 +109,7 @@ do
         elif [[ $op_name == unique ]] ; then
             op_name="unique2"
             times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
-        elif [[ $op_name == max_pool3d ]] ; then
+        elif [[ $op_name == max_pool3d ]] || [[ $op_name == max_pool2d ]] ; then
             op_name=$op_name"_with_indices"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
@@ -121,7 +125,7 @@ do
         if [[ $op_name =~ batch_norm ]] ; then
             op_name="batch_norm_backward"
             times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
-        elif [[ $op_name == max_pool3d ]] ; then
+        elif [[ $op_name == max_pool3d ]] || [[ $op_name == max_pool2d ]] ; then
             op_name=$op_name"_with_indices_backward"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == col2im ]] ; then
