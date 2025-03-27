@@ -8,9 +8,8 @@ import pandas as pd
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-xpu", "--xpu-file", default=None, help="XPU file")
-parser.add_argument("-cuda", "--cuda-file", default=None, help="CUDA file")
-parser.add_argument("-o", "--output-file", default="./report.csv", help="Output file")
+parser.add_argument("-xpu", default=None, help="XPU file")
+parser.add_argument("-cuda", default=None, help="CUDA file")
 args = parser.parse_args()
 
 # the_two = next((x for x in primitive_list[args.files_path[1]] if x.name == p), None)
@@ -37,12 +36,12 @@ output_header = ["Category", "Model",
                  "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
                  "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
 output_data = []
-xpu_files = find_files("*_xpu_performance.csv", args.xpu_file)
+xpu_files = find_files("*_xpu_performance.csv", args.xpu)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
     # xpu_data = xpu_data.reset_index()  # make sure indexes pair with number of rows
     xpu_names = [row["name"] for index, row in xpu_data.iterrows()]
-    cuda_file = re.sub(args.xpu_file, args.cuda_file + "/", xpu_file, flags=re.IGNORECASE)
+    cuda_file = re.sub(args.xpu, args.cuda + "/", xpu_file, flags=re.IGNORECASE)
     if os.path.isfile(cuda_file):
         cuda_data= pd.read_csv(cuda_file)
         # cuda_data = cuda_data.reset_index()  # make sure indexes pair with number of rows
@@ -72,16 +71,40 @@ for xpu_file in xpu_files:
         for name in names:
             xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), "")
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
-            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], "", "", "", "", ""])
+            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
+cuda_files = find_files("*_xpu_performance.csv", args.cuda)
+for cuda_file in cuda_files:
+    cuda_data = pd.read_csv(cuda_file)
+    # cuda_data = cuda_data.reset_index()  # make sure indexes pair with number of rows
+    cuda_names = [row["name"] for index, row in cuda_data.iterrows()]
+    xpu_file = re.sub(args.cuda, args.xpu + "/", cuda_file, flags=re.IGNORECASE)
+    if not os.path.isfile(xpu_file):
+        names = set(cuda_names)
+        names = sorted(names)
+        for name in names:
+            cuda_value = next((row for index, row in cuda_data.iterrows() if row["name"] == name), "")
+            cuda_eager_latency = cuda_value["speedup"] * cuda_value["abs_latency"]
+            output_data.append([multiple_replace(cuda_file), name, -1, -1, -1, cuda_eager_latency, cuda_value["abs_latency"], cuda_value["speedup"], -1, -1])
 
 # summary
 output_data = pd.DataFrame(output_data, columns=output_header)
-print(output_data)
+geomean_list = {}
 for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]:
-    data = [row[column_name] if row[column_name] > 1 else 1 for index, row in output_data.iterrows() if row[column_name] > 0]
-    xpu_indcutor_vs_eager_geomean = geometric_mean(data) # if < 1 will use 1 inplace
-    print(column_name, ":", xpu_indcutor_vs_eager_geomean)
-
+    data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
+    if len(data) > 0:
+        geomean_list[column_name + "all"] = geometric_mean(data)
+    else:
+        geomean_list[column_name + "all"] = "N/A"
+    for model_name in ["huggingface", "timm_models", "torchbench"]:
+        data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
+        if len(data) > 0:
+            geomean_list[column_name + model_name] = geometric_mean(data)
+        else:
+            geomean_list[column_name + model_name] = "N/A"
 # save
-output_data.to_csv(args.output_file, index=False)
-# print("Output file is saved in: ", args.output_file)
+output_data.to_csv("output.csv", index=False)
+if os.path.isfile("geomean.txt"): os.remove("geomean.txt")
+for k,v in geomean_list.items():
+    print(k, v)
+    with open("geomean.txt", "a") as f:
+        f.write(str(k) + ": " + str(v) + "\n")
