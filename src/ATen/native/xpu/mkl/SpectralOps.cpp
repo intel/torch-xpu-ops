@@ -541,7 +541,7 @@ Tensor _fft_r2c_mkl(
     _fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
 }
 
 Tensor& _fft_r2c_mkl_out(
