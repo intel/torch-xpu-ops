@@ -9361,3 +9361,11 @@
   structured: True
   dispatch:
     XPU: _linalg_svd_out
+
+- func: linalg_svd(Tensor A, bool full_matrices=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh)
+  python_module: linalg
+  variants: function
+
+- func: linalg_svd.U(Tensor A, bool full_matrices=True, *, str? driver=None, Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh) -> (Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh)
+  python_module: linalg
+  variants: function
