@@ -95,7 +95,7 @@ jobs:
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
           export TORCH_XPU_ARCH_LIST='pvc,bmg-g21,lnl-m,ats-m150,arl-h,mtl-h'
-          export TORCH_XPU_ARCH_LIST='arl-h'
+          export TORCH_XPU_ARCH_LIST='arl_h_a0'
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [[ ${{ inputs.abi }} == '0' ]]; then
             export _GLIBCXX_USE_CXX11_ABI=0
