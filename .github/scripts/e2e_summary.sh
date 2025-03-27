@@ -4,31 +4,7 @@ results_dir="$1"
 artifact_type="$2"
 check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
 
-function get_reference_artifact() {
-    if [ "${artifact_type}" != "" ];then
-        gh api \
-            --method GET -F per_page=100 -F page=10 \
-            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
-            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
-        export artifact_id="$(eval "jq -r \
-                '[.artifacts[] | \
-                select(.name|test(\"${artifact_type}.*\")) | \
-                select(.workflow_run.head_branch|test(\"main\"))][0].id' \
-            ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
-        if [ "$artifact_id" -gt 1 ];then
-            gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                /repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip > reference.zip
-        fi
-    fi
-    rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference
-}
-
+# Accuracy
 function get_model_result() {
     echo -e "\n<table><thead>
         <tr>
@@ -100,7 +76,6 @@ function get_model_result() {
     echo -e "</tbody></table>\n"
 }
 
-# Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
 if [ "${accuracy}" -gt 0 ];then
     printf "#### Note:
@@ -168,6 +143,32 @@ Empty means the cases NOT run\n\n"
 fi
 
 # Performance
+function get_reference_artifact() {
+    if [ "${artifact_type}" != "" ];then
+        gh api \
+            --method GET -F per_page=100 -F page=10 \
+            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
+            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
+        export artifact_id="$(eval "jq -r \
+                '[.artifacts[] | \
+                select(.name|test(\"${artifact_type}.*\")) | \
+                select(.workflow_run.head_branch|test(\"main\"))][0].id' \
+            ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
+        if [ "$artifact_id" -gt 1 ];then
+            gh api \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                /repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip > reference.zip
+        fi
+    fi
+    rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
+    mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
+    mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
+    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference
+    export reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
+}
+
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
