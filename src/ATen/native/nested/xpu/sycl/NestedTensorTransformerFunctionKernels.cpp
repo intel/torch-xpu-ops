@@ -948,7 +948,7 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
             offsets.vec(),
             padded_values_view, // dummy not used in the lambda function
             padded_values_view,
-            PaddingFuncutor<scalar_t>(),
+            PaddingValueFuncutor<scalar_t>(),
             static_cast<scalar_t>(padding_value));
       });
 
