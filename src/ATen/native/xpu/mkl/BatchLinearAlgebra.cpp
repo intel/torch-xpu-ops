@@ -29,7 +29,6 @@ namespace impl {
     (q).throw_asynchronous();               \
   }
 
-// Copy from PyTorch fmk. The utils is not compatible with kXPU backend in 1.10
 static inline std::tuple<Tensor, Tensor, Tensor> _create_U_S_VT(
     const Tensor& input,
     bool some,
@@ -335,7 +334,7 @@ std::tuple<Tensor, Tensor, Tensor> _svd_helper(
 static void svd_resize_and_copy(
     const char* name,
     const Tensor& src,
-    Tensor& dst) {
+    const Tensor& dst) {
   TORCH_CHECK(
       src.device() == dst.device(),
       "svd output tensor ",
@@ -357,14 +356,13 @@ void svd_mkl(
     const Tensor& S,
     const Tensor& Vh,
     const Tensor& info) {
-  std::cout << " enter svd_mkl---" << std::endl;
   Tensor U_tmp, S_tmp, Vh_tmp;
   bool some = !full_matrices;
 
   std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, /*compute_uv=*/true);
-  // svd_resize_and_copy("U", U_tmp, U);
-  // svd_resize_and_copy("S", S_tmp, S);
-  // svd_resize_and_copy("V", Vh_tmp, Vh);
+  svd_resize_and_copy("U", U_tmp, U);
+  svd_resize_and_copy("S", S_tmp, S);
+  svd_resize_and_copy("V", Vh_tmp, Vh);
 }
 
 } // namespace at::native::xpu
