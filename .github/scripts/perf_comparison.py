@@ -88,23 +88,19 @@ for cuda_file in cuda_files:
 
 # summary
 output_data = pd.DataFrame(output_data, columns=output_header)
-geomean_list = {}
+geomean_list = {"Category": "Geomean"}
 for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
         geomean_list[column_name + "all"] = geometric_mean(data)
-    else:
-        geomean_list[column_name + "all"] = "N/A"
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if len(data) > 0:
             geomean_list[column_name + model_name] = geometric_mean(data)
-        else:
-            geomean_list[column_name + model_name] = "N/A"
-# save
-output_data.to_csv("output.csv", index=False)
-if os.path.isfile("geomean.txt"): os.remove("geomean.txt")
-for k,v in geomean_list.items():
-    print(k, v)
-    with open("geomean.txt", "a") as f:
-        f.write(str(k) + ": " + str(v) + "\n")
+# get output
+output_sum = pd.DataFrame.from_dict([geomean_list]).T
+# output_sum = pd.DataFrame(output_sum, columns=["Category", "Geomean"])
+output = output_sum.to_html(header=False)
+print(output)
+output = output_data.to_html(index=False)
+print("\n", output)

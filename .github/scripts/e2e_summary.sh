@@ -143,7 +143,8 @@ Empty means the cases NOT run\n\n"
 fi
 
 # Performance
-function get_reference_artifact() {
+if [ "${performance}" -gt 0 ];then
+    echo "### Performance"
     if [ "${artifact_type}" != "" ];then
         gh api \
             --method GET -F per_page=100 -F page=10 \
@@ -167,35 +168,5 @@ function get_reference_artifact() {
     mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
     unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference
     export reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
-}
-
-performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
-if [ "${performance}" -gt 0 ];then
-    echo "### Performance"
-    echo "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | Speedup |"
-    echo "| --- | --- | --- | --- | --- |"
-    for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" |sort)
-    do
-        category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_performance.*//')"
-        test_result="$(awk -M -v PREC=1024 -F ',' 'BEGIN{
-            total = 0;
-            pass = 0;
-            fail = 0;
-            speedup = 1;
-        }{
-            if ($1 == "xpu") {
-                total++;
-                if ($4 > 0) {
-                    pass++;
-                    speedup *= $4;
-                }else {
-                    fail++;
-                }
-            }
-        }END{
-            printf("%d | %d | %.2f% | %.3f\n", total, pass, pass/total*100, speedup^(1/pass))
-        }' "${csv}")"
-        echo "| ${category} | ${test_result} |"
-    done
-    echo
+    python $(dirname "$0")/perf_comparison.py -xpu ${results_dir} -cuda ${reference_dir}
 fi
