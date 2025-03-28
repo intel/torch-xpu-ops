@@ -111,6 +111,9 @@ runs:
         set -xe
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
+          if [ "${suite}" == "pt2e" ];then
+            continue
+          fi
           contains "huggingface,timm_models,torchbench" $suite
           $contains_status
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
@@ -132,7 +135,10 @@ runs:
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
                   done
                 else
-                  bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${MODEL_ONLY_NAME} &
+                  for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
+                  do
+                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
+                  done
                 fi
                 wait
                 # summarize pass rate

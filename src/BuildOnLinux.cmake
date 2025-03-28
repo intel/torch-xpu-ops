@@ -118,20 +118,17 @@ elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE
   install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 else()
   sycl_add_library(
-    xpu_sycl
+    torch_xpu_ops
     STATIC
     CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
-  add_library(torch_xpu_ops ALIAS xpu_sycl)
-  set_target_properties(xpu_sycl PROPERTIES OUTPUT_NAME torch_xpu_ops)
-  set(SYCL_TARGET xpu_sycl)
   if(USE_C10D_XCCL)
-    target_compile_definitions(xpu_sycl PRIVATE USE_C10D_XCCL)
-    target_link_libraries(xpu_sycl  PUBLIC torch::xccl)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
+    target_link_libraries(torch_xpu_ops  PUBLIC torch::xccl)
   endif()
 
-  install(TARGETS xpu_sycl DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  list(APPEND TORCH_XPU_OPS_LIBRARIES xpu_sycl)
+  install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
