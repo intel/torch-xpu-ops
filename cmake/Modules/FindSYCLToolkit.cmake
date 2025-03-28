@@ -171,13 +171,6 @@ set(SYCL_FLAGS "")
 set(SYCL_LINK_FLAGS "")
 list(APPEND SYCL_FLAGS "-fsycl")
 list(APPEND SYCL_LINK_FLAGS "-fsycl")
-if(LINUX)
-  string(REGEX MATCH "libsycl-preview.so" is_abi_neutral ${SYCL_LIBRARY})
-  if(is_abi_neutral)
-    list(APPEND SYCL_FLAGS "-fpreview-breaking-changes")
-    list(APPEND SYCL_LINK_FLAGS "-fpreview-breaking-changes")
-  endif()
-endif()
 
 set(SYCL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SYCL_FLAGS}")
 
