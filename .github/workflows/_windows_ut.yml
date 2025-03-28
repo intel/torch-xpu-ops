@@ -71,7 +71,7 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda clean -ay
           call conda remove --all -y -n windows_ci
-          call conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
+          call conda create -n windows_ci python=${{ inputs.python }} cmake=3.31.6 ninja -y
           call conda activate windows_ci
           cd ..
           if exist "pytorch" (

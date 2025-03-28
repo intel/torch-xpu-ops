@@ -63,7 +63,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake=3.31.6 ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           pip install requests
@@ -312,7 +312,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake=3.31.6 ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           pip install requests
