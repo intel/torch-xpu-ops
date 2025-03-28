@@ -151,7 +151,7 @@ if [ "${performance}" -gt 0 ];then
             -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
             > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
-        export artifact_id="$(eval "jq -r \
+        artifact_id="$(eval "jq -r \
                 '[.artifacts[] | \
                 select(.name|test(\"${artifact_type}.*\")) | \
                 select(.workflow_run.head_branch|test(\"main\"))][0].id' \
@@ -167,6 +167,6 @@ if [ "${performance}" -gt 0 ];then
     mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
     mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
     unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    export reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
-    python $(dirname "$0")/perf_comparison.py -xpu ${results_dir} -cuda ${reference_dir}
+    reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
+    python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -cuda ${reference_dir}
 fi
