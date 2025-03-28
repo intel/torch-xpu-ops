@@ -114,6 +114,7 @@ jobs:
 
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
+            pip install -U cmake==3.31.6
             WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
 
             if [[ "${is_fork_pr}" == "false" ]]; then
