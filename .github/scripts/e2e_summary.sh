@@ -19,7 +19,6 @@ function get_model_result() {
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
     )
-    rm -rf /tmp/tmp-result.txt
     for suite in ${suite_list}
     do
         model_list=$(
@@ -77,6 +76,7 @@ function get_model_result() {
 }
 
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
+echo > /tmp/tmp-result.txt
 if [ "${accuracy}" -gt 0 ];then
     printf "#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
