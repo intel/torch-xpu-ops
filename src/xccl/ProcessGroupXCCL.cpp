@@ -15,31 +15,31 @@ namespace {
 #endif // oneCCL version >= 2021.15
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOps = {
-    {ReduceOp::MIN, onecclRedOp_t::ONECCL_MIN},
-    {ReduceOp::MAX, onecclRedOp_t::ONECCL_MAX},
-    {ReduceOp::SUM, onecclRedOp_t::ONECCL_SUM},
-    {ReduceOp::PRODUCT, onecclRedOp_t::ONECCL_PROD},
+    {ReduceOp::MIN, onecclRedOp_t::onecclMin},
+    {ReduceOp::MAX, onecclRedOp_t::onecclMax},
+    {ReduceOp::SUM, onecclRedOp_t::onecclSum},
+    {ReduceOp::PRODUCT, onecclRedOp_t::onecclProd},
 #ifdef XCCL_HAS_AVG
-    {ReduceOp::AVG, onecclRedOp_t::ONECCL_AVG},
+    {ReduceOp::AVG, onecclRedOp_t::onecclAvg},
 #endif // XCCL_HAS_AVG
 
 };
 
 const std::map<at::ScalarType, onecclDataType_t> xcclDatatypes = {
-    {at::kByte, onecclDataType_t::ONECCL_UINT8},
-    {at::kChar, onecclDataType_t::ONECCL_INT8},
-    {at::kInt, onecclDataType_t::ONECCL_INT32},
-    {at::kLong, onecclDataType_t::ONECCL_INT64},
-    {at::kHalf, onecclDataType_t::ONECCL_FLOAT16},
-    {at::kFloat, onecclDataType_t::ONECCL_FLOAT32},
-    {at::kDouble, onecclDataType_t::ONECCL_FLOAT64},
-    {at::kBFloat16, onecclDataType_t::ONECCL_BFLOAT16},
-    {at::kBool, onecclDataType_t::ONECCL_UINT8},
+    {at::kByte, onecclDataType_t::onecclUint8},
+    {at::kChar, onecclDataType_t::onecclChar},
+    {at::kInt, onecclDataType_t::onecclInt32},
+    {at::kLong, onecclDataType_t::onecclInt64},
+    {at::kHalf, onecclDataType_t::onecclFloat16},
+    {at::kFloat, onecclDataType_t::onecclFloat32},
+    {at::kDouble, onecclDataType_t::onecclFloat64},
+    {at::kBFloat16, onecclDataType_t::onecclBfloat16},
+    {at::kBool, onecclDataType_t::onecclUint8},
     // use for non-reducetion op like allgather
-    {at::kFloat8_e5m2, onecclDataType_t::ONECCL_UINT8},
-    {at::kFloat8_e4m3fn, onecclDataType_t::ONECCL_UINT8},
-    {at::kFloat8_e4m3fnuz, onecclDataType_t::ONECCL_UINT8},
-    {at::kFloat8_e5m2fnuz, onecclDataType_t::ONECCL_UINT8},
+    {at::kFloat8_e5m2, onecclDataType_t::onecclUint8},
+    {at::kFloat8_e4m3fn, onecclDataType_t::onecclUint8},
+    {at::kFloat8_e4m3fnuz, onecclDataType_t::onecclUint8},
+    {at::kFloat8_e5m2fnuz, onecclDataType_t::onecclUint8},
 };
 
 bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
@@ -117,7 +117,7 @@ onecclRedOp_t getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
         // Map sum to max for bool tensors to avoid overflow issues with sum.
-        return onecclRedOp_t::ONECCL_MAX;
+        return onecclRedOp_t::onecclMax;
       }
 #ifdef XCCL_HAS_AVG
       if (reduceOp == ReduceOp::AVG) {
@@ -128,7 +128,7 @@ onecclRedOp_t getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
     }
 #if !defined(XCCL_HAS_AVG)
     if (reduceOp == ReduceOp::AVG) {
-      return onecclRedOp_t::ONECCL_SUM;
+      return onecclRedOp_t::onecclSum;
     }
 #endif
     return xcclOps.at(reduceOp);
@@ -388,13 +388,13 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
 
   xcclComm_t comm = nullptr;
-  onecclResult_t result = ONECCL_SUCCESS;
+  onecclResult_t result = onecclSuccess;
   result = onecclSetDevice(rank);
-  if (result != ONECCL_SUCCESS) {
+  if (result != onecclSuccess) {
     std::cerr << "Failed to set device.\n";
   }
   result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
-  if (result != ONECCL_SUCCESS) {
+  if (result != onecclSuccess) {
     std::cerr << "Failed to initialize communicator.\n";
   }
   XCCLComm = std::make_shared<xcclComm_t>(comm);
