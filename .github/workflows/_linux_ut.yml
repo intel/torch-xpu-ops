@@ -63,7 +63,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake=3.31.6 ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           pip install requests
@@ -116,6 +116,7 @@ jobs:
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
+            pip install -U cmake==3.31.6
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
@@ -312,7 +313,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake=3.31.6 ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../ && rm -rf pytorch
           pip install requests
@@ -365,6 +366,7 @@ jobs:
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
+            pip install -U cmake==3.31.6
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
