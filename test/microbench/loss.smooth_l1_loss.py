@@ -33,7 +33,8 @@ for shape in shape_list:
                 "; reduce: 0" if (reduce == "none") else "; reduce: 1",
             )
             with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], 
+                record_shapes=True,
             ) as prof:
                 for i in range(20):
                     cache_r = cache_w * i
