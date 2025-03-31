@@ -26,7 +26,18 @@ for shape in shape_list:
             output.backward(gy)
 
         # go
-        print("shape:", (shape[0]), "; datatype:", dtype, "; backward:", backward)
+        print(
+            "shape:",
+            shape[0],
+            "; datatype:",
+            dtype,
+            "; dim:",
+            shape[2],
+            "; shifts:",
+            shape[1],
+            "; backward:",
+            backward,
+        )
         with profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
         ) as prof:

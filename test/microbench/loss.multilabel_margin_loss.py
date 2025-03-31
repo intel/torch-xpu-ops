@@ -66,8 +66,8 @@ def _test_dpcpp(input, target, reduce, dtype):
 
 
 for shape in shape_list:
-    for reduce in ["none", "mean"]:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for reduce in ["none", "mean"]:
             input = torch.randn(shape, dtype=dtype)
             target = torch.randn(shape, dtype=dtype).long()
             input_dpcpp = input.to("xpu")

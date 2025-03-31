@@ -43,9 +43,9 @@ def fmp3d(shape, dtype, channels_last, backward):
 
 if __name__ == "__main__":
     backward = True
-    for channels_last in [False, True]:
-        for shape in shape_list:
-            for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for shape in shape_list:
+        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            for channels_last in [False, True]:
                 # warm up
                 fmp3d(shape, dtype, channels_last, backward)
 

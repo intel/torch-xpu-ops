@@ -18,7 +18,7 @@ for shape in shape_list:
         m = torch.nn.BatchNorm1d(shape[1], device=device)
         output = m(input)
 
-        print("shape:", shape[0], "; datatype:", dtype, "; backward:", backward)
+        print("shape:", shape[0], "; datatype:", dtype, "; num_features:", shape[1], "; backward:", backward)
         with profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
         ) as prof:

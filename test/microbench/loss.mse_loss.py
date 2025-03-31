@@ -44,8 +44,8 @@ def _do_test(loss, input, target, dtype, device):
 
 
 for shape in shape_list:
-    for reduce in ["none", "mean"]:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for reduce in ["none", "mean"]:
             input = torch.randn(shape, requires_grad=True)
             target = torch.randn(shape)
             loss = nn.MSELoss(reduction=reduce)

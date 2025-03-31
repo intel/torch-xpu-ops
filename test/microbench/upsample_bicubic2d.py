@@ -22,7 +22,16 @@ def simple_test(in_shape, scale_factor, backward, dtype):
         )
 
     # go
-    print("shape:", (in_shape), "; datatype:", dtype, "; backward:", backward)
+    print(
+        "shape:",
+        (in_shape),
+        "; datatype:",
+        dtype,
+        "; scale_factor:",
+        scale_factor,
+        "; backward:",
+        backward,
+    )
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
     ) as prof:
