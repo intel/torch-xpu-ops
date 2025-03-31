@@ -143,6 +143,7 @@ Empty means the cases NOT run\n\n"
 fi
 
 # Performance
+performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
     if [ "${artifact_type}" != "" ];then
