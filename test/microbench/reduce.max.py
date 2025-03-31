@@ -7,9 +7,9 @@ backward = False
 
 # dim = 1: reduce along contiguous dim
 # dim = 0: reduce along strided dim
-for dim in [1, 0]:
-    for shape in shape_list:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+for shape in shape_list:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for dim in [1, 0]:
             input = torch.randn(8192, 8192, dtype=dtype, device=device)
 
             # warm up

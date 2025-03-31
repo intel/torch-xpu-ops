@@ -6,7 +6,7 @@ output_file="$2"
 Get_backward=${3:-False}
 cd "$results_dir" || exit
 
-echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;affine;backward;time(us)" >> "$output_file"
+echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;shifts;affine;backward;time(us)" >> "$output_file"
 
 function op_summary {
     while IFS= read -r line1 && IFS= read -r line2 <&3; do
@@ -61,6 +61,9 @@ function op_summary {
             if [[ affine = "$key" ]] ; then
                 affine=${value}
             fi
+            if [[ shifts = "$key" ]] ; then
+                shifts=${value}
+            fi
         done
         number=""
         if [[ $line2 =~ ^([0-9.]+)([a-zA-Z]+)$ ]] ; then
@@ -74,7 +77,7 @@ function op_summary {
         if [[ $Get_backward == "True" ]] && [[ $backward == "False" ]]; then
             echo "Only Forward"
         else
-            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$mode;$affine;$backward;$number" >> "$output_file"
+            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$mode;$shifts;$affine;$backward;$number" >> "$output_file"
         fi
     done < <(echo "$texts") 3< <(echo "$times")
 }
@@ -97,6 +100,7 @@ do
     num_samples=""
     scale_factor=""
     mode=""
+    shifts=""
     case_name="${i%.*}"
     op_name=$(echo "$case_name" | awk -F. '{print $NF}')
     if [[ $Get_backward == "False" ]] ; then

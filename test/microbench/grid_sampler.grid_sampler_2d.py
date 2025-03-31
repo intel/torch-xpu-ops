@@ -11,10 +11,10 @@ device = "xpu"
 backward = True
 
 for shape in shape_list:
-    for mode in ["bilinear", "nearest", "bicubic"]:
-        for padding_mode in ["zeros", "border", "reflection"]:
-            for align_corners in [True, False]:
-                for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for mode in ["bilinear", "nearest", "bicubic"]:
+            for padding_mode in ["zeros", "border", "reflection"]:
+                for align_corners in [True, False]:
                     N, C, H, W = shape
 
                     input = torch.randn(N, C, H, W, dtype=dtype, device=device)

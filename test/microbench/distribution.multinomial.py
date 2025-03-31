@@ -6,9 +6,9 @@ shape_list = [(8192, 8192)]
 backward = False
 
 for shape in shape_list:
-    for replacement in [False, True]:
-        for num_samples in [2, 128]:
-            for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for replacement in [False, True]:
+            for num_samples in [2, 128]:
                 input = torch.randn(shape, dtype=dtype, device=device).abs()
                 # warm up
                 input.multinomial(num_samples, replacement)

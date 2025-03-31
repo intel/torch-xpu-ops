@@ -6,9 +6,9 @@ backward = False
 
 shape_list = [(8193, 8193), (1234, 8193), (8192, 1234), (1, 4 * 15000)]
 
-for dim in [0, 1]:
-    for shape in shape_list:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+for shape in shape_list:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for dim in [0, 1]:
             input = torch.randn(shape, dtype=dtype, device=device)
 
             # warm up

@@ -7,9 +7,9 @@ backward = False
 shape_list = [((25, 300), (22, 300), (15, 300)), ((2, 1000), (100, 1000), (8192, 1000))]
 
 for shape in shape_list:
-    for batch_first in [False, True]:
-        for padding_value in [0.0, 1.0, 2.0]:
-            for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for batch_first in [False, True]:
+            for padding_value in [0.0, 1.0, 2.0]:
                 a = torch.randn(shape[0], device=device, dtype=dtype)
                 b = torch.randn(shape[1], device=device, dtype=dtype)
                 c = torch.randn(shape[2], device=device, dtype=dtype)

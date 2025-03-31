@@ -5,9 +5,9 @@ shape_list = [(8192, 8192)]
 backward = False
 
 if __name__ == "__main__":
-    for p in [0.5, torch.tensor(0.5)]:
-        for shape in shape_list:
-            for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for shape in shape_list:
+        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            for p in [0.5, torch.tensor(0.5)]:
                 input = torch.zeros(
                     shape, dtype=torch.bfloat16, device=torch.device("xpu")
                 )

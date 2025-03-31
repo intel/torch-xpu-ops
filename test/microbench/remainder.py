@@ -7,8 +7,8 @@ backward = True
 shape_list = [(1024, 1024, 1024), (6, 7, 3, 2), (8193, 8193, 4, 4)]
 
 for shape in shape_list:
-    for divisor in [2, -1.5, 3]:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for divisor in [2, -1.5, 3]:
             input = torch.randn(shape, device=device, dtype=dtype)
             if backward:
                 input.requires_grad_(True)

@@ -6,9 +6,9 @@ backward = True
 
 shape_list = [(8192, 8192), (64, 8192), (8192, 64)]
 
-for dim in [0, 1]:
-    for shape in shape_list:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+for shape in shape_list:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for dim in [0, 1]:
             H, W = (int(shape[0]), int(shape[1]))
             input = torch.randn((H, W)).to(dtype=dtype, device=device)
 
