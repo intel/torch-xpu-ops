@@ -409,6 +409,8 @@ jobs:
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
+          xpu-smi discovery
+          xpu-smi topology -m
           timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
