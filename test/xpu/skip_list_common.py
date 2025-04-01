@@ -1038,6 +1038,8 @@ skip_dict = {
         "test_hardswish_grad_corner_xpu_bfloat16",
         "test_hardswish_grad_corner_xpu_float16",
         "test_hardswish_grad_corner_xpu_float32",
+        # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
+        "test_layer_norm_backwards_eps",
     ),
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now
