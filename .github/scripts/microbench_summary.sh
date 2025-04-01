@@ -116,6 +116,9 @@ do
         elif [[ $op_name == max_pool3d ]] || [[ $op_name == max_pool2d ]] ; then
             op_name=$op_name"_with_indices"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+        elif [[ $op_name == adaptive_avg_pool2d ]] ; then
+            op_name="_"$op_name
+            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
             op_name="aten::softmax"
             times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
