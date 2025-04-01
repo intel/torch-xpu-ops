@@ -65,7 +65,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_build || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
-          conda create -n xpu_build python=${{ inputs.python }} cmake<4.0 ninja -y
+          conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
           source activate xpu_build
           cd ../ && rm -rf pytorch
           pip install requests
