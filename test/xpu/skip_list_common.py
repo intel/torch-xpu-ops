@@ -1038,6 +1038,8 @@ skip_dict = {
         "test_hardswish_grad_corner_xpu_bfloat16",
         "test_hardswish_grad_corner_xpu_float16",
         "test_hardswish_grad_corner_xpu_float32",
+        # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
+        "test_layer_norm_backwards_eps",
     ),
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now
@@ -1423,6 +1425,7 @@ skip_dict = {
         "test_norm_fused_type_promotion_xpu_float16",
         # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
+        "_tunableop_xpu_",
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
