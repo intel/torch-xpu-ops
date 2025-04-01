@@ -40,7 +40,7 @@ for shape in shape_list:
                     dtype,
                     "; P:",
                     p,
-                    "; compute_mode:",
+                    "; mode:",
                     compute_mode,
                     "; backward:",
                     backward,
