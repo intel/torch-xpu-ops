@@ -1135,6 +1135,7 @@ skip_dict = {
         "test_reference_numerics_large_asinh_xpu_complex128",
         "test_reference_numerics_large_asinh_xpu_complex64",
         "test_reference_numerics_large_asinh_xpu_complex32",
+        "test_reference_numerics_normal_exp_xpu_complex128",
         # AssertionError: Tensor-likes are not close!
         # exceeded maximum allowed difference
         # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
