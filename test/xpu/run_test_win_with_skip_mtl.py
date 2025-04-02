@@ -1,8 +1,8 @@
-import sys
 import re
+import sys
+from io import StringIO
 import pytest
 from skip_list_win_mtl import skip_dict
-from io import StringIO
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -22,6 +22,8 @@ res = pytest.main(test_command)
 output = sys.stdout.getvalue()
 sys.stdout = original_stdout
 
-cleaned_output = re.sub(r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output)
+cleaned_output = re.sub(
+    r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output
+)
 print(cleaned_output, end="")
 sys.exit(res)
