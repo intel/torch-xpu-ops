@@ -107,5 +107,5 @@ print("\n", output)
 
 # get comparison result
 comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < 0.95) | (output_data['Target vs. Baseline [Eager]'] < 0.95)]
-with open("/tmp/tmp-result.txt", "a") as f:
-    f.write("red " + str(comparison.shape[0]) + "\n")
+# with open("/tmp/tmp-result.txt", "a") as f:
+#     f.write("red " + str(comparison.shape[0]) + "\n")
