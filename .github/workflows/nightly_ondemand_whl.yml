@@ -99,6 +99,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} -y
+          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           pip install pandas scipy tqdm
@@ -119,7 +120,6 @@ jobs:
           # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           pip install -r requirements.txt
-          pip install -U cmake==3.31.6
           TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
           echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           rm -rf third_party/torch-xpu-ops

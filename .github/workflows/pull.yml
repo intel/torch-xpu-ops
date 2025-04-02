@@ -81,7 +81,7 @@ jobs:
         run: |
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=3.10 -y
+          conda create -n e2e_ci python=3.10 cmake ninja -y
           source activate e2e_ci
           pip install mkl-static mkl-include
           pip install pandas scipy tqdm
@@ -120,7 +120,6 @@ jobs:
           source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
-          pip install -U cmake==3.31.6
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Identify pinned versions
         run: |

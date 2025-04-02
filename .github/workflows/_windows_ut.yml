@@ -71,7 +71,7 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda clean -ay
           call conda remove --all -y -n windows_ci
-          call conda create -n windows_ci python=${{ inputs.python }} -y
+          call conda create -n windows_ci python=${{ inputs.python }} cmake=3.28 ninja -y
           call conda activate windows_ci
           cd ..
           if exist "pytorch" (
@@ -111,7 +111,7 @@ jobs:
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install -U cmake==3.31.6 setuptools==72.1.0 clang-format
+          pip install cmake setuptools==72.1.0 clang-format
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           set USE_KINETO=0
           set USE_ONEMKL=1
