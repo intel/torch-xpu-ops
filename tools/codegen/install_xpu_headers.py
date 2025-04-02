@@ -120,7 +120,6 @@ def append_xpu_ops_headers(src_dir, dst_dir, common_headers, xpu_ops_headers):
                         if not re.search(re.escape(xpu_declaration), dst_text):
                             dst_lines.insert(dst_lines.index(line), xpu_declaration)
                     break
-
         
         with open_file_with_retry(dst, "w") as fw:
             fw.writelines(dst_lines)
