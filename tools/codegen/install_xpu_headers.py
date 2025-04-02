@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+import time
 
 
 parser = argparse.ArgumentParser(description="Utils for append ops headers")
@@ -15,6 +16,19 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+def open_file_with_retry(file_path, mode, retries=5, delay=0.05):
+    for attempt in range(retries):
+        try:
+            file = open(file_path, mode)
+            return file
+        except PermissionError:
+            if attempt < retries - 1:
+                print(f"Permission denied. Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                raise
+        except Exception as e:
+            raise e
 
 def append_xpu_function_header(src, dst):
     r"""
@@ -107,7 +121,8 @@ def append_xpu_ops_headers(src_dir, dst_dir, common_headers, xpu_ops_headers):
                             dst_lines.insert(dst_lines.index(line), xpu_declaration)
                     break
 
-        with open(dst, "w") as fw:
+        
+        with open_file_with_retry(dst, "w") as fw:
             fw.writelines(dst_lines)
 
 
