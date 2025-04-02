@@ -330,7 +330,6 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            rm -rf /tmp/tmp-*.txt
             source activate e2e_ci
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \

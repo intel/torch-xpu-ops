@@ -3,6 +3,7 @@
 results_dir="$1"
 artifact_type="$2"
 check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
+rm -rf /tmp/tmp-*.txt
 
 # Accuracy
 function get_model_result() {
@@ -161,13 +162,13 @@ if [ "${performance}" -gt 0 ];then
             gh api \
                 -H "Accept: application/vnd.github+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                /repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip > reference.zip
+                /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${artifact_id}/zip > reference.zip
         fi
     fi
     rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
     mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
     mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference
+    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
     reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
-    python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -cuda ${reference_dir}
+    python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -refer ${reference_dir}
 fi

@@ -8,7 +8,7 @@ from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-xpu", default=None, help="XPU file")
-parser.add_argument("-cuda", default=None, help="CUDA file")
+parser.add_argument("-refer", default=None, help="refer file")
 args = parser.parse_args()
 
 # the_two = next((x for x in primitive_list[args.files_path[1]] if x.name == p), None)
@@ -40,12 +40,12 @@ for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
     # xpu_data = xpu_data.reset_index()  # make sure indexes pair with number of rows
     xpu_names = [row["name"] for index, row in xpu_data.iterrows()]
-    cuda_file = re.sub(args.xpu, args.cuda + "/", xpu_file, flags=re.IGNORECASE)
-    if os.path.isfile(cuda_file):
-        cuda_data= pd.read_csv(cuda_file)
-        # cuda_data = cuda_data.reset_index()  # make sure indexes pair with number of rows
-        cuda_names = [row["name"] for index, row in cuda_data.iterrows()]
-        names = xpu_names + cuda_names
+    refer_file = re.sub(args.xpu, args.refer + "/", xpu_file, flags=re.IGNORECASE)
+    if os.path.isfile(refer_file):
+        refer_data= pd.read_csv(refer_file)
+        # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
+        refer_names = [row["name"] for index, row in refer_data.iterrows()]
+        names = xpu_names + refer_names
         names = set(names)
         names = sorted(names)
         for name in names:
@@ -54,16 +54,16 @@ for xpu_file in xpu_files:
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"] if xpu_value is not None else -1
             xpu_inductor_latency = xpu_value["abs_latency"] if xpu_value is not None else -1
             xpu_indcutor_vs_eager = xpu_value["speedup"] if xpu_value is not None else -1 # higher is better
-            # cuda info
-            cuda_value = next((row for index, row in cuda_data.iterrows() if row["name"] == name), None)
-            cuda_eager_latency = float(cuda_value["speedup"]) * float(cuda_value["abs_latency"]) if cuda_value is not None else -1
-            cuda_inductor_latency = cuda_value["abs_latency"] if cuda_value is not None else -1
-            cuda_indcutor_vs_eager = cuda_value["speedup"] if cuda_value is not None else -1 # higher is better
-            # xpu vs. cuda
-            xpu_vs_cuda_eager = cuda_eager_latency / xpu_eager_latency  if xpu_value is not None and cuda_value is not None and xpu_eager_latency > 0 else 0 # higher is better
-            xpu_vs_cuda_inductor = float(cuda_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and cuda_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
+            # refer info
+            refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), None)
+            refer_eager_latency = float(refer_value["speedup"]) * float(refer_value["abs_latency"]) if refer_value is not None else -1
+            refer_inductor_latency = refer_value["abs_latency"] if refer_value is not None else -1
+            refer_indcutor_vs_eager = refer_value["speedup"] if refer_value is not None else -1 # higher is better
+            # xpu vs. refer
+            xpu_vs_refer_eager = refer_eager_latency / xpu_eager_latency  if xpu_value is not None and refer_value is not None and xpu_eager_latency > 0 else 0 # higher is better
+            xpu_vs_refer_inductor = float(refer_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and refer_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
             # output data
-            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, cuda_eager_latency, cuda_inductor_latency, cuda_indcutor_vs_eager, xpu_vs_cuda_eager, xpu_vs_cuda_inductor])
+            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, xpu_vs_refer_eager, xpu_vs_refer_inductor])
     else:
         names = set(xpu_names)
         names = sorted(names)
@@ -71,19 +71,19 @@ for xpu_file in xpu_files:
             xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), "")
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
-cuda_files = find_files("*_xpu_performance.csv", args.cuda)
-for cuda_file in cuda_files:
-    cuda_data = pd.read_csv(cuda_file)
-    # cuda_data = cuda_data.reset_index()  # make sure indexes pair with number of rows
-    cuda_names = [row["name"] for index, row in cuda_data.iterrows()]
-    xpu_file = re.sub(args.cuda, args.xpu + "/", cuda_file, flags=re.IGNORECASE)
+refer_files = find_files("*_xpu_performance.csv", args.refer)
+for refer_file in refer_files:
+    refer_data = pd.read_csv(refer_file)
+    # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
+    refer_names = [row["name"] for index, row in refer_data.iterrows()]
+    xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
     if not os.path.isfile(xpu_file):
-        names = set(cuda_names)
+        names = set(refer_names)
         names = sorted(names)
         for name in names:
-            cuda_value = next((row for index, row in cuda_data.iterrows() if row["name"] == name), "")
-            cuda_eager_latency = cuda_value["speedup"] * cuda_value["abs_latency"]
-            output_data.append([multiple_replace(cuda_file), name, -1, -1, -1, cuda_eager_latency, cuda_value["abs_latency"], cuda_value["speedup"], -1, -1])
+            refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), "")
+            refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
+            output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
 
 # summary
 output_data = pd.DataFrame(output_data, columns=output_header)
@@ -104,3 +104,8 @@ print(output)
 output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
 output = output_data.to_html(index=False)
 print("\n", output)
+
+# get comparison result
+comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < 0.95) | (output_data['Target vs. Baseline [Eager]'] < 0.95)]
+with open("/tmp/tmp-result.txt", "a") as f:
+    f.write("red " + str(comparison.shape[0]) + "\n")
