@@ -99,9 +99,9 @@ function(GEN_XPU file_yaml)
     COMMAND
     ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
-    COMMAND
-    ${XPU_INSTALL_HEADER_COMMAND}
-    WORKING_DIRECTORY ${TORCH_ROOT}
+    # COMMAND
+    # ${XPU_INSTALL_HEADER_COMMAND}
+    # WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
     ${CODEGEN_XPU_YAML_DIR}/native/${file_yaml}
     ${XPUFallback_TEMPLATE}
