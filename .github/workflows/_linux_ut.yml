@@ -214,8 +214,8 @@ jobs:
           cd inductor
           rm -rf test_*.py
           cp ../inductor_bk/test_auto_functionalize.py ./
-          cp ../inductor_bk/test_aot_inductor_arrayref ./
-          cp ../inductor_bk/test_max_autotune ./
+          cp ../inductor_bk/test_aot_inductor_arrayref.py ./
+          cp ../inductor_bk/test_max_autotune.py ./
           cd ../..
           
           # Run Pytorch XPU python UT
