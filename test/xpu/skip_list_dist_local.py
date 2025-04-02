@@ -1,0 +1,57 @@
+skip_dict = {
+    "../../../../test/distributed/fsdp/test_checkpoint_wrapper.py": None,
+    # https://github.com/intel/torch-xpu-ops/issues/1536
+    #"../../../../test/distributed/fsdp/test_distributed_checkpoint.py": (
+    #    "test_distributed_checkpoint_state_dict_type0_xpu",
+    #    "test_distributed_checkpoint_state_dict_type1_xpu",
+    #),
+    "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_core.py": (
+        "test_delayed_optim_step_offload_true_no_shard_xpu",
+        "test_transformer_no_grad_mixed_precision_True_xpu",
+    ),
+    "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_flatten_params.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_freezing_weights.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_fx.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_grad_acc.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_hybrid_shard.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_ignored_modules.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_input.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_memory.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_meta.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_misc.py": (
+        "test_fsdp_zero2_eval_with_prefetch",
+    ),
+    "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": None,
+    # https://github.com/intel/torch-xpu-ops/issues/1537
+    "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": (
+        "test_use_orig_params",
+    ),
+    # Performance check, skip 
+    #"../../../../test/distributed/fsdp/test_fsdp_overlap.py": (
+    #    "test_forward_overlap",
+    #    "test_forward_overlap_xpu",
+    #),
+    "../../../../test/distributed/fsdp/test_fsdp_pure_fp16.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_state_dict.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_tp_integration.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_traversal.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_uneven.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_unshard_params.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_use_orig_params.py": None,
+    "../../../../test/distributed/fsdp/test_hsdp_dtensor_state_dict.py": None,
+    "../../../../test/distributed/fsdp/test_shard_utils.py": None,
+    "../../../../test/distributed/fsdp/test_utils.py": None,
+    "../../../../test/distributed/fsdp/test_wrap.py": None,
+}
