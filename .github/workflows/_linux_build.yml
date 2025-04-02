@@ -36,7 +36,7 @@ on:
       update_lkg:
         required: false
         type: string
-        default: ''
+        default: 'false'
         description: Whether update LKG torch version to issue #1280
     outputs:
       torch_commit_id:
@@ -116,7 +116,7 @@ jobs:
 
           if [[ "${is_fork_pr}" == "false" ]]; then
             if [ -f dist/torch*.whl ] && \
-                [ "${{ inputs.update_lkg }}" == "lkg" ] && \
+                [ "${{ inputs.update_lkg }}" == "true" ] && \
                 [ "${last_commit}" != "${current_commit}" ] && \
                 [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
               echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
