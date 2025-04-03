@@ -251,7 +251,7 @@ Tensor _flatten_indices_impl(const Tensor& indices, IntArrayRef size) {
       indices.dim() > 1 && static_cast<size_t>(indices.size(0)) == size.size());
 
   // Need owning storage in case of the Tensor class.
-  const auto hash_coeffs_storage = [&]() -> auto{
+  const auto hash_coeffs_storage = [&]() -> auto {
     auto strides = c10::contiguous_strides(size);
     return at::sparse::TensorGeometryHolder<max_static_len>(
         strides, strides, indices.options());
