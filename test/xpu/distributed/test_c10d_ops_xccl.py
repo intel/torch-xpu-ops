@@ -815,6 +815,31 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             dist.recv_object_list(object_list, 0, device=device)
             self.assertEqual(object_list[0], 99)
 
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_batch_isend_irecv(self):
+        self.assertTrue(self.pg._get_backend(torch.device("xpu")).supports_coalescing)
+        dist.barrier()
+        device_id = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device_id)
+        send_tensor = (torch.arange(2, dtype=torch.float32) + 2.0 * self.rank).to(
+            device_id
+        )
+        recv_tensor = torch.randn(2, dtype=torch.float32).to(device_id)
+        send_op = dist.P2POp(dist.isend, send_tensor, (self.rank + 1) % self.world_size)
+        recv_op = dist.P2POp(
+            dist.irecv, recv_tensor, (self.rank - 1 + self.world_size) % self.world_size
+        )
+        reqs = dist.batch_isend_irecv([send_op, recv_op])
+        for req in reqs:
+            req.wait()
+        expected_tensor = (
+            torch.arange(2, dtype=torch.float32)
+            + 2.0 * ((self.rank - 1 + self.world_size) % self.world_size)
+        ).to(device_id)
+
+        self.assertEqual(recv_tensor, expected_tensor)
+
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
 if __name__ == "__main__":
