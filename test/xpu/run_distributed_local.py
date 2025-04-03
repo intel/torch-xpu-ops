@@ -8,6 +8,9 @@ from xpu_test_utils import launch_test
 res = 0
 fail_test = []
 
+os.environ["CCL_ATL_TRANSPORT"] = "ofi"
+os.environ["CCL_SEND"] = "direct"
+os.environ["CCL_RECV"] = "direct" 
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
