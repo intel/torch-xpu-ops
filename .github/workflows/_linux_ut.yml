@@ -104,7 +104,6 @@ jobs:
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
-            export _GLIBCXX_USE_CXX11_ABI=1
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
@@ -349,7 +348,6 @@ jobs:
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
-            export _GLIBCXX_USE_CXX11_ABI=1
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl

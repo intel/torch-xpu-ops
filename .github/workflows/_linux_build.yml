@@ -85,7 +85,6 @@ jobs:
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
           export USE_XCCL=1
-          export _GLIBCXX_USE_CXX11_ABI=1
           if [[ ${{ inputs.driver }} == 'lts' ]]; then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
