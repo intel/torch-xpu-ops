@@ -1,10 +1,10 @@
 skip_dict = {
     "../../../../test/distributed/fsdp/test_checkpoint_wrapper.py": None,
     # https://github.com/intel/torch-xpu-ops/issues/1536
-    #"../../../../test/distributed/fsdp/test_distributed_checkpoint.py": (
+    # "../../../../test/distributed/fsdp/test_distributed_checkpoint.py": (
     #    "test_distributed_checkpoint_state_dict_type0_xpu",
     #    "test_distributed_checkpoint_state_dict_type1_xpu",
-    #),
+    # ),
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
@@ -37,11 +37,11 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": (
         "test_use_orig_params",
     ),
-    # Performance check, skip 
-    #"../../../../test/distributed/fsdp/test_fsdp_overlap.py": (
+    # Performance check, skip
+    # "../../../../test/distributed/fsdp/test_fsdp_overlap.py": (
     #    "test_forward_overlap",
     #    "test_forward_overlap_xpu",
-    #),
+    # ),
     "../../../../test/distributed/fsdp/test_fsdp_pure_fp16.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_state_dict.py": None,
@@ -58,7 +58,7 @@ skip_dict = {
     "../../../../test/distributed/test_c10d_common.py": None,
     "../../../../test/distributed/test_c10d_functional_native.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1508
-        #RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
+        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
         "test_reduce_scatter_tensor_coalesced",
         "test_reduce_scatter_tensor_single",
         # https://github.com/intel/torch-xpu-ops/issues/1525
@@ -123,14 +123,13 @@ skip_dict = {
         # RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
         # https://github.com/intel/torch-xpu-ops/issues/1526
         "test_tracing_xpu",
-        "test_tracing and test_tracing_with_fakepg and test_tracing_with_fakepg_xpu and test_tracing_with_dce_code and test_tracing_with_dce_code_xpu"
+        "test_tracing and test_tracing_with_fakepg and test_tracing_with_fakepg_xpu and test_tracing_with_dce_code and test_tracing_with_dce_code_xpu",
     ),
     "../../../../test/distributed/test_multi_threaded_pg.py": (
         # oneccl not support multi-threaded well, so skip it first.
         "test_bwd_sees_fwd_pg",
     ),
     "../../../../test/distributed/test_store.py": None,
-    "../../../../test/distributed/pipelining/test_backward.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
     "../../../../test/distributed/pipelining/test_microbatch.py": None,
     "../../../../test/distributed/pipelining/test_pipe.py": None,
@@ -143,6 +142,6 @@ skip_dict = {
 skip_dict_python = {
     "distributed/test_c10d_ops_xccl.py": None,
     "distributed/test_c10d_xccl.py": None,
-    "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None, # Hang error.
+    "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
     "../../../../test/distributed/pipelining/test_stage.py": None,
 }
