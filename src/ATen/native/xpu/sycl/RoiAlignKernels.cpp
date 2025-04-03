@@ -427,8 +427,12 @@ Tensor roi_align_kernel(
 
   auto input_ = input.contiguous();
   auto rois_ = rois.contiguous();
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-      input.scalar_type(), "roi_align_forward_kernel_xpu", [&] {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      input.scalar_type(),
+      "roi_align_forward_kernel_xpu",
+      [&] {
         auto kfn = RoiAlignForwardKernel<scalar_t>(
             output_size,
             input_.data_ptr<scalar_t>(),
@@ -482,8 +486,12 @@ Tensor roi_align_backward_kernel(
   at::globalContext().alertNotDeterministic("roi_align_backward_kernel_xpu");
 
   auto rois_ = rois.contiguous();
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-      grad.scalar_type(), "roi_align_backward_kernel_xpu", [&] {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      kHalf,
+      kBFloat16,
+      grad.scalar_type(),
+      "roi_align_backward_kernel_xpu",
+      [&] {
         auto kfn = RoiAlignBackwardKernel<scalar_t>(
             grad.numel(),
             grad.data_ptr<scalar_t>(),
