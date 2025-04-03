@@ -37,7 +37,7 @@ on:
 permissions: read-all
 
 jobs:
-  ut_test:
+  benchmark_test:
     runs-on: ${{ inputs.runner }} 
     if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
@@ -108,6 +108,7 @@ jobs:
             python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           pip install -r .ci/docker/requirements-ci.txt
+          pip install addict
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -119,6 +120,46 @@ jobs:
           cd ..
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
+      - name: Identify pinned versions
+        run: |
+          cd ../pytorch
+          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+      - name: Prepare Conda Env
+        run: |
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
+            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
+            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            cd vision && git checkout $TORCHVISION_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+          fi
+          cd ../ && python -c "import torch, torchvision, torchaudio"
+          rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          python install.py --continue_on_fail
+          # deps for torchrec_dlrm
+          pip install pyre_extensions
+          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install torchmetrics==1.0.3
+          pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            cd vision && git checkout $TORCHVISION_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+          fi
+          # install timm without dependencies
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          # install timm dependencies without torch and torchvision
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install numpy==1.26.4
+          pip install addict
       - name: Run OP Benchmark Test
         run: |
           cd ${{ github.workspace }}
