@@ -92,4 +92,95 @@ skip_dict = {
     #    "test_root_module_is_not_FSDP_xpu",
     # ),
     "../../../../test/distributed/fsdp/test_utils.py": None,
+    "../../../../test/distributed/test_backends.py": None,
+    "../../../../test/distributed/test_c10d_common.py": None,
+    "../../../../test/distributed/test_c10d_functional_native.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1508
+        #RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
+        "test_reduce_scatter_tensor_coalesced",
+        "test_reduce_scatter_tensor_single",
+        # https://github.com/intel/torch-xpu-ops/issues/1525
+        # ValueError: trying to initialize the default process group twice!
+        "test_inductor_all_gather_into_tensor_coalesced",
+        "test_inductor_all_gather_into_tensor_single",
+        "test_inductor_all_reduce_coalesced",
+        "test_inductor_all_reduce_non_contig_input",
+        "test_inductor_all_reduce_single",
+        "test_inductor_all_to_all_single",
+        "test_inductor_broadcast",
+        "test_inductor_inplace_op_on_view",
+        "test_inductor_reduce_scatter_tensor_coalesced",
+        "test_inductor_reduce_scatter_tensor_single",
+        "test_inductor_reuse_buffer_after_inplace_collective",
+        "test_ranks_and_tag",
+        "test_wait_tensor",
+    ),
+    "../../../../test/distributed/test_c10d_logger.py": None,
+    "../../../../test/distributed/test_c10d_object_collectives.py": (
+        # RuntimeError: Process 0 terminated or timed out after 300.09047198295593 seconds
+        # https://github.com/intel/torch-xpu-ops/issues/1535
+        "test_gather_object_cpu",
+        "test_gather_object_xpu",
+        "test_gather_object_list_cpu",
+        "test_gather_object_list_xpu",
+    ),
+    "../../../../test/distributed/test_compute_comm_reordering.py": None,
+    "../../../../test/distributed/test_control_collectives.py": None,
+    "../../../../test/distributed/test_device_mesh.py": None,
+    "../../../../test/distributed/test_dynamo_distributed.py": (
+        # AttributeError:'torch._C._distributed_c10d.ProcessGroupXCCL' object has no attribute '_set_default_timeout'
+        "test_asymmetric_compilation",
+        "test_asymmetric_compilation_with_fx_cache",
+        # ValueError: FlexAttention is only supported on CUDA or CPU devices. Found input tensors on xpu device.
+        "test_compiled_flex_attention_full_model_ddp",
+        "test_compiled_flex_attention_local_ddp",
+        # torch._dynamo.exc.InternalTorchDynamoError: AttributeError: __enter__ 
+        # https://github.com/intel/torch-xpu-ops/issues/1527
+        "test_compiler_collectives_automatic_dynamic_scalar",
+        "test_compiler_collectives_automatic_dynamic_speculation_divergence",
+        "test_compiler_collectives_automatic_dynamic_tensor",
+        "test_compiler_collectives_dim_mismatch",
+        "test_compiler_collectives_graph_break_empty_graph_still_collective",
+        "test_compiler_collectives_missing_source",
+        "test_compiler_collectives_scalar_missing_source",
+        "test_compiler_collectives_type_mismatch",
+        "test_ddp_activation_checkpointing",
+        "test_ddp_baseline_aot_eager_multiprocess",
+        "test_fsdp_activation_checkpointing",
+        "test_fsdp_aot_eager",
+        "test_fsdp_inductor",
+        "test_fsdp_setattr",
+        "test_fsdp_unspecialized_forced_getattr_inline",
+        "test_fsdp_unspecialized_forced_getattr_no_inline",
+        # RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
+        # https://github.com/intel/torch-xpu-ops/issues/1526
+        "test_get_pg_attr",
+    ),
+    "../../../../test/distributed/test_fake_pg.py": None,
+    "../../../../test/distributed/test_functional_api.py": (
+        # RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
+        # https://github.com/intel/torch-xpu-ops/issues/1526
+        "test_tracing_xpu",
+        "test_tracing and test_tracing_with_fakepg and test_tracing_with_fakepg_xpu and test_tracing_with_dce_code and test_tracing_with_dce_code_xpu"
+    ),
+    "../../../../test/distributed/test_multi_threaded_pg.py": (
+        # oneccl not support multi-threaded well, so skip it first.
+        "test_bwd_sees_fwd_pg",
+    ),
+    "../../../../test/distributed/test_store.py": None,
+    "../../../../test/distributed/pipelining/test_backward.py": None,
+    "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
+    "../../../../test/distributed/pipelining/test_backward.py": None,
+    "../../../../test/distributed/pipelining/test_microbatch.py": None,
+    "../../../../test/distributed/pipelining/test_pipe.py": None,
+    "../../../../test/distributed/pipelining/test_schedule.py": None,
+    "../../../../test/distributed/pipelining/test_transformer.py": None,
+    "../../../../test/distributed/pipelining/test_unflatten.py": None,
+}
+
+skip_dict_python = {
+    "distributed/test_c10d_ops_xccl.py": None,
+    "distributed/test_c10d_xccl.py": None,
+    "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None, # Hang error.
+    "../../../../test/distributed/pipelining/test_stage.py": None,
 }

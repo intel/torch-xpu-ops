@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-from skip_list_dist import skip_dict
+from skip_list_dist import skip_dict, skip_dict_python
 from xpu_test_utils import launch_test
 
 res = 0
@@ -15,15 +15,25 @@ def run(test_command):
     result = subprocess.run(test_command, capture_output=True, text=True)
     print(result.stdout)
     print(result.stderr)
-    if "FAILED" in result.stdout or "FAILED" in result.stderr:
-        fail_test.append(" ".join(test_command))
-    return result.returncode
+    return result
 
 
-test_command = ["python", "distributed/test_c10d_ops_xccl.py"]
-res += run(test_command)
-test_command = ["python", "distributed/test_c10d_xccl.py"]
-res += run(test_command)
+os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
+for key in skip_dict_python:
+    skip_list = skip_dict_python[key]
+    test_command = ["python", key]
+    fail = run(test_command)
+    if fail.returncode:
+        for line in fail.stderr.split("\n"):
+            if "FAIL: " in line:
+                is_error = True
+                for skip_case in skip_list:
+                    if skip_case in line:
+                        print("Skiped error: ", key + " " + skip_case)
+                        is_error = False
+                if is_error:
+                    res += fail.returncode
+                    fail_test.append("".join(key + " " + line))
 
 # run pytest with skiplist
 for key in skip_dict:
