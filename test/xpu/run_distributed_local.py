@@ -11,7 +11,7 @@ fail_test = []
 
 os.environ["CCL_ATL_TRANSPORT"] = "ofi"
 os.environ["CCL_SEND"] = "direct"
-os.environ["CCL_RECV"] = "direct" 
+os.environ["CCL_RECV"] = "direct"
 os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
@@ -36,13 +36,12 @@ if ret == 0:
                       else:
                           affinity = affinity + ',' + str(j-2)
                gpu_dict[i] = affinity
-    
-    
+
     max_affinity = ""
     for key, value in gpu_dict.items():
         if  len(value) > len(max_affinity):
             max_affinity = value
-    
+
     os.environ["ZE_AFFINITY_MASK"] = str(max_affinity)
     print(str("ZE_AFFINITY_MASK=" + os.environ.get("ZE_AFFINITY_MASK")))
 

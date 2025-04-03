@@ -96,7 +96,7 @@ skip_dict = {
         # ValueError: FlexAttention is only supported on CUDA or CPU devices. Found input tensors on xpu device.
         "test_compiled_flex_attention_full_model_ddp",
         "test_compiled_flex_attention_local_ddp",
-        # torch._dynamo.exc.InternalTorchDynamoError: AttributeError: __enter__ 
+        # torch._dynamo.exc.InternalTorchDynamoError: AttributeError: __enter__
         # https://github.com/intel/torch-xpu-ops/issues/1527
         "test_compiler_collectives_automatic_dynamic_scalar",
         "test_compiler_collectives_automatic_dynamic_speculation_divergence",
@@ -131,13 +131,13 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_store.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
-    "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
     "../../../../test/distributed/pipelining/test_microbatch.py": None,
     "../../../../test/distributed/pipelining/test_pipe.py": None,
     "../../../../test/distributed/pipelining/test_schedule.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/pipelining/test_unflatten.py": None,
+    "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
 }
 
 skip_dict_python = {
