@@ -70,7 +70,11 @@ jobs:
           source activate xpu_build
           cd ../ && rm -rf pytorch
           pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
+          if [[ ${{ inputs.pytorch }} == 'distributed_2.8' ]]; then
+            git clone https://github.com/daisyden/pytorch.git pytorch
+          else
+            git clone https://github.com/pytorch/pytorch pytorch
+          fi
           cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
           # apply PRs for stock pytorch
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
