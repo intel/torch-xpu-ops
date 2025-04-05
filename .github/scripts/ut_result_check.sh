@@ -134,19 +134,20 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
-    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
-    grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
-    compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
-    if [[ -f "${ut_suite}_xpu_distributed_test_failed_filtered.log" ]]; then
-      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
+
+if [[ "${ut_suite}" == 'xpu_distributed' || "${ut_suite}" == 'pytorch_distributed' ]]; then
+    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_test_failed.log
+    grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_test_failed.log
+    compare_and_filter_logs "${ut_suite}"_test_failed.log Known_issue.log
+    if [[ -f "${ut_suite}_test_failed_filtered.log" ]]; then
+      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_test_failed_filtered.log")
     else
-      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
+      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_test_failed.log")
     fi
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
     echo -e "========================================================================="
-    cat "./${ut_suite}_xpu_distributed_test_failed.log"
+    cat "./${ut_suite}_test_failed.log"
     ((num_failed=num_failed_xpu_distributed))
     if [[ $num_failed -gt 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
