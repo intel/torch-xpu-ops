@@ -601,3 +601,143 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-pytorch_distributed
           path: ${{ github.workspace }}/ut_log
+
+  pytorch_distributed_test:
+    runs-on: ${{ inputs.runner }}
+    if: contains(inputs.ut, 'pytorch_distributed')
+    timeout-minutes: 900
+    env:
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ../ && rm -rf pytorch
+          pip install requests
+          git clone https://github.com/daisyden/pytorch.git pytorch
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            # apply PRs for stock pytorch
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git status && git show -s
+            git submodule sync && git submodule update --init --recursive
+            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+              echo "Don't replace torch-xpu-ops!"
+            else
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+              # Workaround for torch-xpu-ops ci test
+              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            fi
+          fi
+      - name: Triton Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          fi
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          path: ${{ github.workspace }}
+      - name: Install Pytorch XPU
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          if [[ ${{ inputs.abi }} == '0' ]]; then
+            export _GLIBCXX_USE_CXX11_ABI=0
+          else
+            export _GLIBCXX_USE_CXX11_ABI=1
+          fi
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ../pytorch
+            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+            pip install -r requirements.txt
+            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+            cd ../pytorch
+            git reset --hard && git checkout ${TORCH_COMMIT_ID}
+            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            rm -rf third_party/torch-xpu-ops
+            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+            git checkout ${TORCH_XPU_OPS_COMMIT}
+            cd ../..
+            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          fi
+          pip install -r .ci/docker/requirements-ci.txt
+      - name: Torch Config
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+
+          cd ..
+          python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
+      - name: Run Torch XPU Distributed UT
+        run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install pytest
+          cd ${{ github.workspace }}
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+          mkdir -p ut_log/pytorch_distributed
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
+          XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
+          timeout 10000 python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
+          cd ${{ github.workspace }}
+          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+      - name: UT Test Results Check
+        shell: bash
+        run: |
+          function contains() {
+              contains_status="echo 'Start $2 ...'"
+              {
+                [[ $1 =~ (^|,)$2($|,) ]]
+              } || {
+                echo "[Warning] $2 is not suppotted type! Skipped!"
+                contains_status="continue"
+              }
+          }
+          set -xe
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          cd ${{ github.workspace }}/ut_log/pytorch_distributed
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          bash ut_result_check.sh 'pytorch_distributed'
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-pytorch_distributed
+          path: ${{ github.workspace }}/ut_log

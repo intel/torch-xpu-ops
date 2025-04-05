@@ -134,10 +134,9 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-
 if [[ "${ut_suite}" == 'xpu_distributed' || "${ut_suite}" == 'pytorch_distributed' ]]; then
-    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_test_failed.log
-    grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_test_failed.log
+    grep -E "^FAILED" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_test_failed.log
+    grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_test_failed.log
     compare_and_filter_logs "${ut_suite}"_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_test_failed_filtered.log" ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_test_failed_filtered.log")
