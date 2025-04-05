@@ -86,20 +86,22 @@ jobs:
           pip install requests
           if [[ ${{ inputs.pytorch }} == 'distributed_2.8' ]]; then
             git clone https://github.com/daisyden/pytorch.git pytorch
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            git submodule sync && git submodule update --init --recursive
           else
             git clone https://github.com/pytorch/pytorch pytorch
-          fi
-          cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-          # apply PRs for stock pytorch
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          git submodule sync && git submodule update --init --recursive
-          if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            # apply PRs for stock pytorch
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git status && git show -s
+            git submodule sync && git submodule update --init --recursive
+            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+              echo "Don't replace torch-xpu-ops!"
+            else
+              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+              # Workaround for torch-xpu-ops ci test
+              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+            fi
           fi
 >>>>>>> 62e9ff75 (add distributed ut in CI)
       - name: Build Pytorch XPU
