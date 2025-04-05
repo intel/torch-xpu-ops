@@ -49,7 +49,7 @@ permissions: read-all
 jobs:
   ut_test:
     runs-on: ${{ inputs.runner }} 
-    if: ${{ inputs.ut != 'xpu_distributed' }}
+    if: ${{ inputs.ut != 'xpu_distributed' || inputs.ut != 'pytorch_distributed' }}
     timeout-minutes: 900
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
