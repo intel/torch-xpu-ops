@@ -73,10 +73,10 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     fi
 fi
 if [[ "${ut_suite}" == 'xpu_distributed' || "${ut_suite}" == 'pytorch_distributed' ]]; then
-    grep -E "ERROR" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_test_failed.log
+    grep -E "^FAILED|have failures" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_test_failed.log
     num_failed_distributed=$(wc -l < "./${ut_suite}_test_failed.log")
     echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} xpu distributed"
+    echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
     cat "./${ut_suite}_test_failed.log"
     ((num_failed=num_failed_distributed))
