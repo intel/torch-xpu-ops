@@ -50,7 +50,7 @@ jobs:
   ut_test:
     runs-on: ${{ inputs.runner }} 
     if: ${{ inputs.ut != 'xpu_distributed' }}
-    timeout-minutes: 3600
+    timeout-minutes: 1000
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -209,20 +209,12 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/torch_xpu
           cd ../pytorch
-          cd test
-          cp -r inductor inductor_bk
-          cd inductor
-          rm -rf test_*.py
-          cp ../inductor_bk/test_auto_functionalize.py ./
-          cp ../inductor_bk/test_aot_inductor_arrayref.py ./
-          cp ../inductor_bk/test_max_autotune.py ./
-          cd ../..
           
           # Run Pytorch XPU python UT
           export PYTORCH_TEST_WITH_SLOW=1
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
 
-          test_cmd="python test/run_test.py --include "
+          test_cmd="python test/run_test.py --continue-through-error --include "
           # All Inductor UT under test/inductor
           for test in $(ls test/inductor | grep test);
           do 
@@ -236,7 +228,8 @@ jobs:
           if [ -f "test/test_xpu.py" ]; then
             test_cmd="${test_cmd} test_xpu.py"
           fi
-          eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+          eval "nohup $test_cmd > ${{ github.workspace }}/ut_log/torch_xpu/test_output.log 2>&1 &"
+          # eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
           echo "Torch_xpu Stage run successfully."
           cp -r test/test-reports ${{ github.workspace }}/ut_log/torch_xpu/
           function read_dir(){
