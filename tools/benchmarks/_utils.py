@@ -8,9 +8,11 @@ from pathlib import Path
 def find_pytorch_root():
     current_path = Path(__file__).resolve()
     for parent in current_path.parents:
-        print(parent.name)
-        if parent.name == 'pytorch':
-            return str(parent)
+        print('Search from:', parent)
+        for item in os.listdir(parent):
+            full_path = os.path.join(parent, item)
+            if os.path.isdir(full_path) and item == 'pytorch':
+                return str(full_path)
     raise FileNotFoundError('pytorch not found')
 
 
