@@ -88,7 +88,7 @@ jobs:
     needs: preci-linux-build-distributed
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      pytorch: ${{ needs.preci-linux-build-distributed.outputs.torch_commit_id }}
       ut: pytorch_distributed
       runner: pvc_e2e
 
@@ -137,7 +137,7 @@ jobs:
         if: ${{ inputs.pytorch }} != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ needs.preci-linux-build.outputs.torch_commit_id }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |

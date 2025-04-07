@@ -95,7 +95,7 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.pytorch }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -339,7 +339,7 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.pytorch }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -474,18 +474,13 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.pytorch }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -534,7 +529,7 @@ jobs:
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 10000 python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
+          python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
@@ -558,5 +553,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-pytorch_distributed
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-pytorch_distributed
           path: ${{ github.workspace }}/ut_log
