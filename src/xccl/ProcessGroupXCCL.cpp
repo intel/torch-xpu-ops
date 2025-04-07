@@ -203,6 +203,34 @@ void syncStream(
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
+void TensorShelf::stash(std::vector<at::Tensor>& tensors) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  tVector_.insert(tVector_.end(), tensors.begin(), tensors.end());
+}
+
+void TensorShelf::stash(TensorShelf& other) {
+  std::vector<at::Tensor>& otherVec = other.get();
+  this->stash(otherVec);
+}
+
+void TensorShelf::unstash() {
+  this->clear();
+}
+
+bool TensorShelf::empty() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return tVector_.empty();
+}
+
+void TensorShelf::clear() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  tVector_.clear();
+}
+
+std::vector<at::Tensor>& TensorShelf::get() {
+  return tVector_;
+}
+
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     at::Device& device,
     int rank,
@@ -215,6 +243,7 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
       workStartTime_(std::chrono::steady_clock::now()),
       seq_(seq) {
   xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>();
+  stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
@@ -223,7 +252,8 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
       xcclEndEvent_(w.xcclEndEvent_),
       blockingWait_(w.blockingWait_),
       workStartTime_(w.workStartTime_),
-      seq_(w.seq_) {}
+      seq_(w.seq_),
+      stashed_for_allocator_safety_(w.stashed_for_allocator_safety_) {}
 
 ProcessGroupXCCL::WorkXCCL::~WorkXCCL() = default;
 
@@ -235,14 +265,32 @@ bool ProcessGroupXCCL::WorkXCCL::isCompleted() {
 }
 
 void ProcessGroupXCCL::WorkXCCL::synchronize() {
-  synchronizeInternal(kNoTimeout);
+  synchronizeStream();
 }
 
-void ProcessGroupXCCL::WorkXCCL::synchronizeInternal(
-    std::chrono::milliseconds timeout) {
+void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
   auto currentStream = at::xpu::getCurrentXPUStream(device_.index());
   xcclEndEvent_->block(currentStream);
-  if (blockingWait_) {
+  stashed_for_allocator_safety_->unstash();
+}
+
+bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
+  RECORD_PARAM_COMMS(
+      std::make_tuple(static_cast<int64_t>(this->seq_), this->isP2P_), // seq
+      std::make_tuple(pgUID_, pgDesc_), // PG name tuple
+      rank_, // rank
+      "wait", // collective name
+      0, // inNelems
+      0, // outNelems
+      at::kByte, // dType
+      std::vector<int64_t>(), // inSplitSizes
+      std::vector<int64_t>(), // outSplitSizes
+      -1,
+      -1,
+      static_cast<int>(1));
+  synchronize();
+
+  if (blockingWait_ || timeout != kNoTimeout) {
     while (!isCompleted()) {
       auto currentTimepoint = std::chrono::steady_clock::now();
       auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -257,15 +305,11 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeInternal(
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
     }
-  }
-  if (barrierTensor_.defined()) {
+  } else if (isBarrierOp_ && !isCompleted()) {
     auto currentStream = at::xpu::getCurrentXPUStream(device_.index());
     currentStream.synchronize();
   }
-}
 
-bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
-  synchronizeInternal(timeout);
   return true;
 }
 
@@ -331,6 +375,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     at::Device& device,
     int rank,
     OpType opType,
+    bool isP2P,
     const char* profilingTitle,
     const std::vector<at::Tensor>& inputs,
     const std::vector<at::Tensor>& outputs) {
@@ -338,9 +383,11 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       device,
       rank,
       opType,
-      seqCollective_,
+      isP2P ? seqP2P_ : seqCollective_,
+      isP2P,
       profilingTitle,
-      std::optional<std::vector<at::Tensor>>(inputs));
+      profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
+                                : std::nullopt);
   return r;
 }
 
@@ -455,13 +502,9 @@ void ProcessGroupXCCL::groupEnd() {
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
-  if (coalescing_state_ & CoalP2P) {
-    seqP2P_++;
-  } else {
-    seqCollective_++;
-  }
   coalescedDevice_.set_index(-1);
   coalescedComm_ = nullptr;
+  coalescedTensors_.clear();
   coalescing_state_ |= CoalActive;
   groupStart();
 }
@@ -483,8 +526,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   const auto key = std::to_string(device.index());
   auto stream = xcclStreamsMap_.at(key).first;
 
-  auto work = initWork(device, rank_, optype);
+  auto work = initWork(
+      device,
+      rank_,
+      optype,
+      coalescing_state_ & CoalP2P,
+      "xccl:coalesced",
+      {},
+      {});
+
   work->blockingWait_ = blockingWait_;
+
+  work->stashed_for_allocator_safety_->stash(coalescedTensors_);
 
   groupEnd();
 
@@ -492,7 +545,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
-  return work;
+  coalescedTensors_.clear();
+
+  return coalescedAsync_ ? work : nullptr;
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing() {
@@ -515,6 +570,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   auto comm = getXCCLComm(key, device, opType);
 
   if (coalescing_state_ & CoalActive) {
+    if ((coalescing_state_ & CoalColl) == 0) {
+      seqCollective_++;
+    }
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -523,10 +581,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
           coalescedDevice_.index() == device.index(), MULTI_DEVICE_ERROR_MSG);
     }
     if (coalescedComm_ == nullptr) {
-      coalescedComm_ = comm;
+      coalescedComm_ = ncclComm;
     } else {
-      TORCH_CHECK(coalescedComm_ == comm, MULTI_DEVICE_ERROR_MSG);
+      TORCH_CHECK(coalescedComm_ == ncclComm, MULTI_DEVICE_ERROR_MSG);
     }
+    coalescedAsync_ = asyncOp;
   }
 
   auto stream = xcclStreamsMap_.at(key).first;
@@ -537,6 +596,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work = initWork(device, rank_, opType);
 
   work->outputs_ = std::make_shared<std::vector<at::Tensor>>(outputs);
+
+  if (asyncOp) {
+    if (coalescing_state_) {
+      coalescedTensors_.stash(inputs);
+      coalescedTensors_.stash(outputs);
+    } else {
+      work->stashed_for_allocator_safety_->stash(inputs);
+      work->stashed_for_allocator_safety_->stash(outputs);
+    }
+  }
 
   at::xpu::OptionalXPUGuard gpuGuard(device);
 
@@ -597,6 +666,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   auto comm = getXCCLComm(key, device, opType, p2pRank, isSendRecvSelf);
 
   if (coalescing_state_ & CoalActive) {
+    if ((coalescing_state_ & CoalP2P) == 0) {
+      seqP2P_++;
+    }
     coalescing_state_ |= CoalP2P;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -605,10 +677,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
           coalescedDevice_.index() == device.index(), MULTI_DEVICE_ERROR_MSG);
     }
     if (coalescedComm_ == nullptr) {
-      coalescedComm_ = comm;
+      coalescedComm_ = ncclComm;
     } else {
-      TORCH_CHECK(coalescedComm_ == comm, MULTI_DEVICE_ERROR_MSG);
+      TORCH_CHECK(coalescedComm_ == ncclComm, MULTI_DEVICE_ERROR_MSG);
     }
+    coalescedAsync_ = true;
   }
 
   auto stream = xcclStreamsMap_.at(key).first;
@@ -1358,6 +1431,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
         [&](at::xpu::XPUStream& Stream,
             c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(outputTensors_);
+          }
           // Copy the flattened output tensors to the outputs.
           c10::StreamGuard guard(Stream);
           for (const auto j : c10::irange(outputTensors_.size())) {
@@ -1367,6 +1443,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
           }
         },
         OpType::ALLGATHER,
+        opts.asyncOp,
         "xccl:all_gather");
   } else {
     const auto num_reduces = outputTensors_.size();
@@ -1550,6 +1627,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
         },
         [&](at::xpu::XPUStream& Stream,
             c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+          if (opts.asyncOp) {
+            work->stashed_for_allocator_safety_->stash(inputTensors_);
+          }
           // Copy the input tensors to the flattened inputs.
           c10::StreamGuard guard(Stream);
           for (const auto j : c10::irange(inputTensors_.size())) {
@@ -1561,6 +1641,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
         [&](at::xpu::XPUStream&,
             c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         OpType::REDUCE_SCATTER,
+        opts.asyncOp,
         "xccl:reduce_scatter");
   } else {
     const auto num_reduces = inputTensors_.size();
@@ -1727,7 +1808,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 
   auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
   TORCH_CHECK(xcclWork);
-  xcclWork->barrierTensor_ = std::move(barrierTensor);
+  xcclWork->isBarrierOp_ = true;
   return work;
 }
 
