@@ -51,7 +51,7 @@ TORCH_XPU_API void add_padding_kernel(
     const int batch_size,
     const int output_batch_size);
 
-at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
+TORCH_XPU_API at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
