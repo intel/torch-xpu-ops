@@ -26,6 +26,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
 from torch.testing._internal.common_distributed import MultiProcContinousTest
 from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    parametrize,
     skip_but_pass_in_sandcastle_if,
     TEST_WITH_DEV_DBG_ASAN,
     TEST_XPU,
@@ -92,8 +94,9 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         self.assertEqual(0, ys[0].numel())
 
     @requires_xccl()
+    @parametrize("dtype", [torch.float32, torch.cfloat])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
-    def test_broadcast_ops(self):
+    def test_broadcast_ops(self, dtype: torch.dtype):
         pg = self.pg
 
         def broadcast(xs, rootRank, rootTensor):
@@ -107,20 +110,24 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         # Every rank is root once
         for i in range(self.world_size):
             # Run with 1 input tensor
-            x = torch.tensor([self.rank]).xpu(self.rank_to_GPU[self.rank][0])
+            x = torch.tensor([self.rank], dtype=dtype).xpu(
+                self.rank_to_GPU[self.rank][0]
+            )
             output = broadcast([x], i, 0)
-            self.assertEqual(torch.tensor([i]), output[0])
+            self.assertEqual(torch.tensor([i]).to(dtype), output[0])
 
-            expected_tensor = torch.empty([i + 1, i + 1]).fill_(i + 1)
+            expected_tensor = torch.empty([i + 1, i + 1]).fill_(i + 1).to(dtype)
             xs = [
-                torch.empty([i + 1, i + 1]).fill_(-1).xpu(device=device_idx)
+                torch.empty([i + 1, i + 1]).fill_(-1).xpu(device=device_idx).to(dtype)
                 for device_idx in self.rank_to_GPU[self.rank]
             ]
 
             # test with multiple input tensors (multiple gpu in one rank)
             for j in range(len(xs)):
                 if self.rank == i:
-                    xs[j] = expected_tensor.xpu(device=self.rank_to_GPU[self.rank][j])
+                    xs[j] = expected_tensor.xpu(
+                        device=self.rank_to_GPU[self.rank][j]
+                    ).to(dtype)
 
                 broadcast(xs, i, j)
 
@@ -128,8 +135,9 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
                     self.assertEqual(tensor, expected_tensor)
 
     @requires_xccl()
+    @parametrize("dtype", [torch.float32, torch.cfloat])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
-    def test_allreduce_ops(self):
+    def test_allreduce_ops(self, dtype: torch.dtype):
         device_count = torch.xpu.device_count()
         pg = self.pg
         local_device_id = self.rank_to_GPU[self.rank][0]
@@ -141,23 +149,23 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             work.wait()
 
         # Sum
-        tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id)]
+        tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype)]
 
         allreduce(tensors, c10d.ReduceOp.SUM)
 
         ndev = self.world_size
         self.assertEqual(
-            torch.tensor([ndev * (ndev + 1) // 2]),
+            torch.tensor([ndev * (ndev + 1) // 2]).to(dtype),
             tensors[0],
         )
 
         # Avg
-        tensors = [torch.tensor([self.rank + 1.0]).xpu(local_device_id)]
+        tensors = [torch.tensor([self.rank + 1.0]).xpu(local_device_id).to(dtype)]
 
         allreduce(tensors, c10d.ReduceOp.AVG)
         ndev = self.world_size
         self.assertEqual(
-            torch.tensor([ndev * (ndev + 1.0) / (2.0 * ndev)]),
+            torch.tensor([ndev * (ndev + 1.0) / (2.0 * ndev)]).to(dtype),
             tensors[0],
         )
 
@@ -807,7 +815,33 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             dist.recv_object_list(object_list, 0, device=device)
             self.assertEqual(object_list[0], 99)
 
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_batch_isend_irecv(self):
+        self.assertTrue(self.pg._get_backend(torch.device("xpu")).supports_coalescing)
+        dist.barrier()
+        device_id = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device_id)
+        send_tensor = (torch.arange(2, dtype=torch.float32) + 2.0 * self.rank).to(
+            device_id
+        )
+        recv_tensor = torch.randn(2, dtype=torch.float32).to(device_id)
+        send_op = dist.P2POp(dist.isend, send_tensor, (self.rank + 1) % self.world_size)
+        recv_op = dist.P2POp(
+            dist.irecv, recv_tensor, (self.rank - 1 + self.world_size) % self.world_size
+        )
+        reqs = dist.batch_isend_irecv([send_op, recv_op])
+        for req in reqs:
+            req.wait()
+        expected_tensor = (
+            torch.arange(2, dtype=torch.float32)
+            + 2.0 * ((self.rank - 1 + self.world_size) % self.world_size)
+        ).to(device_id)
 
+        self.assertEqual(recv_tensor, expected_tensor)
+
+
+instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
 if __name__ == "__main__":
     rank = int(os.getenv("RANK", -1))
     world_size = int(os.getenv("WORLD_SIZE", 2))
