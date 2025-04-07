@@ -131,6 +131,8 @@ jobs:
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
       - name: Prepare Conda Env
         run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
             cd audio && git checkout $TORCHAUDIO_COMMIT_ID
