@@ -8,6 +8,7 @@ from pathlib import Path
 def find_pytorch_root():
     current_path = Path(__file__).resolve()
     for parent in current_path.parents:
+        print(parent.name)
         if parent.name == 'pytorch':
             return str(parent)
     raise FileNotFoundError('pytorch not found')
