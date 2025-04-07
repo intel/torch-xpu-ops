@@ -59,6 +59,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         int rank,
         OpType opType,
         uint64_t seq,
+        bool isP2P,
         const char* profilingTitle = nullptr,
         const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt);
     WorkXCCL(const WorkXCCL& w);
@@ -71,6 +72,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
 
     void synchronize() override;
+
+    void synchronizeStream();
 
     bool wait(std::chrono::milliseconds timeout = kNoTimeout) override;
 
@@ -93,9 +96,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     bool blockingWait_{false};
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
+    bool isP2P_;
 
    private:
-    void synchronizeInternal(std::chrono::milliseconds timeout);
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
     std::shared_ptr<TensorShelf> stashed_for_allocator_safety_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
@@ -138,6 +141,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       at::Device& device,
       int rank,
       OpType opType,
+      bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {});
@@ -196,7 +200,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
-        asyncOp profilingTitle);
+        asyncOp,
+        profilingTitle);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -254,9 +259,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const char* profilingTitle = nullptr);
 
   c10::intrusive_ptr<Work> allreduce_impl(
-    at::Tensor& tensor,
-    const char* profilingTitle = "xccl:all_reduce",
-    const AllreduceOptions& opts = AllreduceOptions());
+      at::Tensor& tensor,
+      const char* profilingTitle = "xccl:all_reduce",
+      const AllreduceOptions& opts = AllreduceOptions());
 
   c10::intrusive_ptr<Work> allreduce(
       std::vector<at::Tensor>& tensors,
@@ -376,8 +381,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::shared_ptr<xcclComm_t> coalescedComm_ = nullptr;
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
-  std::vector<std::shared_ptr<TensorShelf>> shelvesToUnstash_;
-  std::mutex shelvesMutex_;
   bool blockingWait_ = false;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};

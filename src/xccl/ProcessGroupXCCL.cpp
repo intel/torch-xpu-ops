@@ -236,12 +236,14 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     int rank,
     OpType opType,
     uint64_t seq,
+    bool isP2P,
     const char* profilingTitle,
     const std::optional<std::vector<at::Tensor>>& inputs)
     : Work(rank, opType, profilingTitle, inputs),
       device_(device),
       workStartTime_(std::chrono::steady_clock::now()),
-      seq_(seq) {
+      seq_(seq),
+      isP2P_(isP2P) {
   xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>();
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
@@ -253,6 +255,7 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
       blockingWait_(w.blockingWait_),
       workStartTime_(w.workStartTime_),
       seq_(w.seq_),
+      isP2P_(w.isP2P_),
       stashed_for_allocator_safety_(w.stashed_for_allocator_safety_) {}
 
 ProcessGroupXCCL::WorkXCCL::~WorkXCCL() = default;
@@ -275,19 +278,6 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
 }
 
 bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
-  RECORD_PARAM_COMMS(
-      std::make_tuple(static_cast<int64_t>(this->seq_), this->isP2P_), // seq
-      std::make_tuple(pgUID_, pgDesc_), // PG name tuple
-      rank_, // rank
-      "wait", // collective name
-      0, // inNelems
-      0, // outNelems
-      at::kByte, // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      -1,
-      -1,
-      static_cast<int>(1));
   synchronize();
 
   if (blockingWait_ || timeout != kNoTimeout) {
@@ -582,22 +572,23 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
           coalescedDevice_.index() == device.index(), MULTI_DEVICE_ERROR_MSG);
     }
     if (coalescedComm_ == nullptr) {
-      coalescedComm_ = ncclComm;
+      coalescedComm_ = comm;
     } else {
-      TORCH_CHECK(coalescedComm_ == ncclComm, MULTI_DEVICE_ERROR_MSG);
+      TORCH_CHECK(coalescedComm_ == comm, MULTI_DEVICE_ERROR_MSG);
     }
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = asyncOp ? xcclStreamsMap_.at(key).first;
-  : at::xpy::getCurrentXPUStream(device.index());
+  auto stream = asyncOp ? xcclStreamsMap_.at(key).first
+                        : at::xpu::getCurrentXPUStream(device.index());
   auto cclstream = xcclStreamsMap_.at(key).second;
   if (asyncOp) {
-    syncStream(device, xcclEvents_[key], ncclStream);
+    syncStream(device, xcclEventsMap_[key], stream);
   }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-  work = initWork(device, rank_, opType);
+  work =
+      initWork(device, rank_, opType, false, profilingTitle, inputs, outputs);
 
   work->outputs_ = std::make_shared<std::vector<at::Tensor>>(outputs);
 
@@ -679,9 +670,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
           coalescedDevice_.index() == device.index(), MULTI_DEVICE_ERROR_MSG);
     }
     if (coalescedComm_ == nullptr) {
-      coalescedComm_ = ncclComm;
+      coalescedComm_ = comm;
     } else {
-      TORCH_CHECK(coalescedComm_ == ncclComm, MULTI_DEVICE_ERROR_MSG);
+      TORCH_CHECK(coalescedComm_ == comm, MULTI_DEVICE_ERROR_MSG);
     }
     coalescedAsync_ = true;
   }
@@ -691,8 +682,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   syncStream(device, xcclEventsMap_[key], stream);
 
   if (!coalescing_state_) {
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-    work = initWork(device, rank_, opType);
+    auto work =
+        initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
@@ -1427,8 +1418,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(input.scalar_type());
           ccl::allgather(
               input.data_ptr(),
@@ -1449,8 +1438,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
           // Copy the flattened output tensors to the outputs.
           c10::StreamGuard guard(Stream);
           for (const auto j : c10::irange(outputTensors_.size())) {
-            c10::xpu::XPUCachingAllocator::recordStream(
-                outputTensors_[j].storage().data_ptr(), Stream);
             outputTensors_[j].copy_(outputFlattened[j], true);
           }
         },
@@ -1513,8 +1500,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
-        c10::xpu::XPUCachingAllocator::recordStream(
-            output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type());
         ccl::allgather(
             input.data_ptr(),
@@ -1616,8 +1601,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(input.scalar_type(), true);
           auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
           ccl::reduce_scatter(
@@ -1647,8 +1630,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
           // Copy the input tensors to the flattened inputs.
           c10::StreamGuard guard(Stream);
           for (const auto j : c10::irange(inputTensors_.size())) {
-            c10::xpu::XPUCachingAllocator::recordStream(
-                inputTensors_[j].storage().data_ptr(), Stream);
             inputFlattened[j].copy_(inputTensors_[j], true);
           }
         },
@@ -1713,8 +1694,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
-        c10::xpu::XPUCachingAllocator::recordStream(
-            output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         ccl::reduce_scatter(
@@ -1753,8 +1732,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
-        c10::xpu::XPUCachingAllocator::recordStream(
-            output.storage().data_ptr(), stream);
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         ccl::reduce_scatter(
@@ -1833,7 +1810,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
     at::Tensor& inputTensor,
     std::vector<int64_t>& outputSplitSizes,
     std::vector<int64_t>& inputSplitSizes,
-    const AllToAllOptions& /* unused */) {
+    const AllToAllOptions& opts) {
   checkSingleTensor(outputTensor, true);
   checkSingleTensor(inputTensor, true);
   if (outputSplitSizes.size() == 0 && inputSplitSizes.size() == 0) {
@@ -1869,8 +1846,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
           auto xcclDataType = getXcclDataType(output.scalar_type());
           ccl::alltoall(
               input.data_ptr(),
@@ -1952,7 +1927,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
 c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
     std::vector<at::Tensor>& outputTensors,
     std::vector<at::Tensor>& inputTensors,
-    const AllToAllOptions& /* unused */) {
+    const AllToAllOptions& opts) {
   auto device = outputTensors[0].device();
   int64_t total_numel = 0;
   for (const auto r : c10::irange(outputTensors.size())) {
