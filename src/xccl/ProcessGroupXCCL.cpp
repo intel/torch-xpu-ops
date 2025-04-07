@@ -563,6 +563,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     PreProcess pre,
     PostProcess post,
     OpType opType,
+    bool asyncOp,
     const char* profilingTitle) {
   seqCollective_++;
   auto device = inputs[0].device();
@@ -588,9 +589,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = xcclStreamsMap_.at(key).first;
+  auto stream = asyncOp ? xcclStreamsMap_.at(key).first;
+  : at::xpy::getCurrentXPUStream(device.index());
   auto cclstream = xcclStreamsMap_.at(key).second;
-  syncStream(device, xcclEventsMap_[key], stream);
+  if (asyncOp) {
+    syncStream(device, xcclEvents_[key], ncclStream);
+  }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work = initWork(device, rank_, opType);
@@ -612,8 +616,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   pre(stream, work);
 
   for (const auto i : c10::irange(inputs.size())) {
-    c10::xpu::XPUCachingAllocator::recordStream(
-        inputs[i].storage().data_ptr(), stream);
     fn(inputs[i], outputs[i], *comm, stream, cclstream);
   }
 
@@ -631,7 +633,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->markCompleted(at::IValue(*work->outputs_));
   work->blockingWait_ = blockingWait_;
 
-  return work;
+  return asyncOp ? work : nullptr;
 }
 
 template <typename Fn>
@@ -929,7 +931,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
           return;
         }
       },
-      OpType::GATHER);
+      OpType::GATHER,
+      opts.asyncOp,
+      "xccl:gather");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
@@ -1046,7 +1050,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
           return;
         }
       },
-      OpType::SCATTER);
+      OpType::SCATTER,
+      opts.asyncOp,
+      "xccl:scatter");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
@@ -1083,6 +1089,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
         return;
       },
       OpType::ALLREDUCE,
+      opts.asyncOp,
       profilingTitle);
 }
 
@@ -1175,6 +1182,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
         return;
       },
       OpType::COALESCED,
+      opts.asyncOp,
       "xccl:allreduce_coalesced");
 }
 
@@ -1227,7 +1235,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
         return;
       },
       OpType::BROADCAST,
-      "nccl:broadcast");
+      opts.asyncOp,
+      "xccl:broadcast");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
@@ -1260,6 +1269,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
         return;
       },
       OpType::BROADCAST,
+      opts.asyncOp,
       "xccl:_broadcast_oop");
 }
 
@@ -1327,6 +1337,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
         return;
       },
       OpType::REDUCE,
+      opts.asyncOp,
       "xccl:reduce");
 }
 
@@ -1370,6 +1381,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
         return;
       },
       OpType::REDUCE,
+      opts.asyncOp,
       "xccl:_reduce_oop");
 }
 
@@ -1514,6 +1526,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
         return;
       },
       OpType::_ALLGATHER_BASE,
+      opts.asyncOp,
       "xccl:_all_gather_base");
 }
 
@@ -1559,6 +1572,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
         return;
       },
       OpType::COALESCED,
+      opts.asyncOp,
       "xccl:all_gather_into_tensor_coalesced");
 }
 
@@ -1723,6 +1737,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
         return;
       },
       OpType::_REDUCE_SCATTER_BASE,
+      opts.asyncOp,
       "xccl:_reduce_scatter_base");
 }
 
@@ -1762,6 +1777,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
         return;
       },
       OpType::COALESCED,
+      opts.asyncOp,
       "xccl:reduce_scatter_tensor_coalesced");
 }
 
@@ -1866,6 +1882,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
           return;
         },
         OpType::ALLTOALL_BASE,
+        opts.asyncOp,
         "xccl:all_to_all");
   } else {
     c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
@@ -1927,6 +1944,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
           return;
         },
         OpType::ALLTOALL_BASE,
+        opts.asyncOp,
         "xccl:all_to_all");
   }
 }
@@ -2021,6 +2039,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
         return;
       },
       OpType::ALLTOALL,
+      opts.asyncOp,
       "xccl:all_to_all");
 }
 
