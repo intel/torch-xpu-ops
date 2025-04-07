@@ -78,7 +78,6 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: distributed_2.8
-      keep_torch_xpu_ops: true
       runner: pvc_e2e
 
   preci-ut-distributed:
