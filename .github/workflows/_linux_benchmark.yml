@@ -13,6 +13,11 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
       abi:
         required: false
         type: string
@@ -72,6 +77,20 @@ jobs:
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
           fi
+      - name: Triton Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
@@ -116,10 +135,12 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
 
           cd ..
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
       - name: Identify pinned versions
         run: |
           cd ../pytorch
