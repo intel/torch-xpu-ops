@@ -581,7 +581,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
 
   auto stream = asyncOp ? xcclStreamsMap_.at(key).first
                         : at::xpu::getCurrentXPUStream(device.index());
-  auto cclstream = xcclStreamsMap_.at(key).second;
+  auto cclstream = asyncOp ? xcclStreamsMap_.at(key).second
+                           : ccl::create_stream(stream.queue());
   if (asyncOp) {
     syncStream(device, xcclEventsMap_[key], stream);
   }
