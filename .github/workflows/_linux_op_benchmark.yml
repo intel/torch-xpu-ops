@@ -37,9 +37,8 @@ on:
 permissions: read-all
 
 jobs:
-  ut_test:
+  op_benchmark_test:
     runs-on: ${{ inputs.runner }} 
-    if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -150,5 +149,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
