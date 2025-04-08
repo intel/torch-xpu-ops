@@ -14,7 +14,7 @@ static inline size_t padto_le(size_t src, int padding) {
   return src / size_t(padding) * size_t(padding);
 }
 
-template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
+template <typename scalar_t = sycl::half, int block_size = 32>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       const scalar_t* A,
@@ -60,29 +60,25 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto aptr = A;
       auto cptr = C + g_n;
 
-      float tmpAcc = 0.f;
+      sycl::float2 tmpAcc = {0.f, 0.f};
       for (int i = 0; i < k; i += GroupK * Unroll) {
 #pragma unroll
         for (int iu = 0; iu < Unroll; iu++) {
           uint8_t tmps8[TileK / 2];
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
-          int scale_zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
-          int zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_zp_offset);
-          scalar_t zero_point = *(zptr + scale_zp_offset);
+          int scale_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          int zp_offset = sg_id * (TileK / blocksize) * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-            sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
-            sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
-            sycl::float2 tmpAmulB =
-                tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
-            tmpAcc += tmpAmulB[0];
-            tmpAcc += tmpAmulB[1];
+            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
           zptr += (GroupK / blocksize) * ld_scale_zp;
@@ -90,13 +86,10 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           bptr += GroupK / 2;
         }
       }
-      float sum = 0.f;
+      sycl::float2 sum = {0.f, 0.f};
       sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
-      // for (int i = 0; i < SgSize; i += 1) {
-      //   sum += group_broadcast(sg, tmpAcc, i);
-      // }
       if (sg_id == 0) {
-        *cptr = static_cast<scalar_t>(sum);
+        *cptr = static_cast<scalar_t>(sum[0] + sum[1]);
       }
     } else { // k % (SgSize * 32 * Unroll) != 0
       int constexpr TileK = 32;
@@ -115,7 +108,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       auto bptr = B + g_n * k / 2;
       auto aptr = A;
       auto cptr = C + g_n;
-      float tmpAcc = 0.f;
+      sycl::float2 tmpAcc = {0.f, 0.f};
       int i = 0;
       for (; i < k_body; i += GroupK * Unroll) {
 #pragma unroll
@@ -124,21 +117,19 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           *(sycl::vec<uint8_t, TileK / 2>*)tmps8 =
               *(sycl::vec<uint8_t, TileK / 2>*)(bptr + sg_id * TileK / 2);
 
-          int scale_zp_offset = (sg_id * TileK / blocksize) * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_zp_offset);
-          scalar_t zero_point = *(zptr + scale_zp_offset);
+          int scale_offset = sg_id * TileK / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * TileK / blocksize * ld_scale_zp;
+
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
                 static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                 static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-            sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
-            sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
-            sycl::float2 tmpAmulB =
-                tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
-            tmpAcc += tmpAmulB[0];
-            tmpAcc += tmpAmulB[1];
+            auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+            tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           }
           sptr += (GroupK / blocksize) * ld_scale_zp;
           zptr += (GroupK / blocksize) * ld_scale_zp;
@@ -154,21 +145,18 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             *(sycl::vec<uint8_t, TileK2 / 2>*)tmps8 =
                 *(sycl::vec<uint8_t, TileK2 / 2>*)(bptr + sg_id * TileK2 / 2);
 
-            int scale_zp_offset = (sg_id * TileK2 / blocksize) * ld_scale_zp;
-            scalar_t scale = *(sptr + scale_zp_offset);
-            scalar_t zero_point = *(zptr + scale_zp_offset);
+            int scale_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+            int zp_offset = sg_id * TileK2 / blocksize * ld_scale_zp;
+            scalar_t scale = *(sptr + scale_offset);
+            scalar_t zero_point = *(zptr + zp_offset);
 #pragma unroll
             for (int ikk = 0; ikk < TileK2; ikk += 2) {
               scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK2 + ikk);
               scalarx2_t tmpB = {
                   static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
                   static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
-              sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
-              sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
-              sycl::float2 tmpAmulB =
-                  tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
-              tmpAcc += tmpAmulB[0];
-              tmpAcc += tmpAmulB[1];
+              auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+              tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
             }
             sptr += (GroupK2 / blocksize) * ld_scale_zp;
             zptr += (GroupK2 / blocksize) * ld_scale_zp;
@@ -181,34 +169,28 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (; i < k; i += SgSize * 2) {
           uint8_t tmps8 = *(bptr + sg_id);
 
-          int scale_zp_offset = (sg_id * 2 / blocksize) * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_zp_offset);
-          scalar_t zero_point = *(zptr + scale_zp_offset);
+          int scale_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          int zp_offset = sg_id * 2 / blocksize * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_offset);
+          scalar_t zero_point = *(zptr + zp_offset);
 
           scalarx2_t tmpB = {
               static_cast<int8_t>((tmps8 & 0x0f) - 8),
               static_cast<int8_t>((tmps8 >> 4) - 8)};
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
-          sycl::float2 tmpA_fp32 = {tmpA[0], tmpA[1]};
-          sycl::float2 tmpB_fp32 = {tmpB[0], tmpB[1]};
-          sycl::float2 tmpAmulB =
-              tmpA_fp32 * (tmpB_fp32 * (float)scale + (float)zero_point);
-          tmpAcc += tmpAmulB[0];
-          tmpAcc += tmpAmulB[1];
 
+          auto tmpAmulB = tmpA * (tmpB * scale + zero_point);
+          tmpAcc += {tmpAmulB[0], tmpAmulB[1]};
           sptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           zptr += (SgSize * 2 / blocksize) * ld_scale_zp;
           aptr += SgSize * 2;
           bptr += SgSize * 2 / 2;
         }
       }
-      float sum = 0.f;
-      // for (int i = 0; i < SgSize; i += 1) {
-      //   sum += group_broadcast(sg, tmpAcc, i);
-      // }
+      sycl::float2 sum = {0.f, 0.f};
       sum += sycl::reduce_over_group(sg, tmpAcc, sycl::plus<>());
       if (sg_id == 0) {
-        *cptr = static_cast<scalar_t>(sum);
+        *cptr = static_cast<scalar_t>(sum[0] + sum[1]);
       }
     }
   }
