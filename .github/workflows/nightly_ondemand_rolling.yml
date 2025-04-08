@@ -97,7 +97,6 @@ jobs:
       runner: pvc_rolling
   
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' }}
     name: linux-nightly-ondemand-rolling / Op_microbench
     needs: Linux-Nightly-Ondemand-Build-Rolling
     uses: ./.github/workflows/_linux_op_benchmark.yml
