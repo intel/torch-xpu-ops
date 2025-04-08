@@ -164,7 +164,7 @@ jobs:
           fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          cd benchmark && git checkout 373ffb19dc470f4423a3176a4133f8f4b3cdb5bd && pip install --no-deps -r requirements.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
