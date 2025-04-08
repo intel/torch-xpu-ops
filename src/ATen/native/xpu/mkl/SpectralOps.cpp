@@ -484,6 +484,10 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
   auto input_sizes = self.sizes();
   DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
   auto last_dim = dim.back();
@@ -563,10 +567,23 @@ Tensor& _fft_r2c_mkl_out(
     bool onesided,
     Tensor& out) {
   auto result = _fft_r2c_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), onesided);
+      self, dim, static_cast<int64_t>(fft_norm_mode::none), /*onesided=*/true);
+
+  if (onesided) {
+    return impl::_fft_apply_normalization_out(
+        out, result, normalization, self.sizes(), dim);
+  }
+
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(
-      out, result, normalization, result.sizes(), dim);
+
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = result.sizes()[last_dim];
+  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
+
+  impl::_fft_apply_normalization_out(
+      out, result, normalization, self.sizes(), dim);
+  _fft_fill_with_conjugate_symmetry_(out, dim);
+  return out;
 }
 
 } // namespace at::native::xpu
