@@ -112,7 +112,7 @@ jobs:
         if: ${{ inputs.pytorch }} != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -196,39 +196,45 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-  
-  preci-linux-build-abi-0:
-    # Don't run on forked repos and draft PRs
-    secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux-abi-0
-    needs: preci-lint-check
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: main
-      abi: 0
-      runner: pvc_e2e
 
-  preci-ut-abi-0:
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux-abi-0
-    needs: preci-linux-build-abi-0
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      pytorch: ${{ needs.preci-linux-build-abi-0.outputs.torch_commit_id }}
-      ut: op_extended
-      runner: linux.idc.xpu
-  
+  check-conditions:
+    if: ${{ github.repository_owner == 'intel' }}
+    name: preci-win-conditions-filter
+    runs-on: ubuntu-22.04
+    outputs:
+      files-changed: ${{ steps.check-files.outputs.src_changed }}
+      has-label: ${{ steps.check-label.outputs.results }}
+    steps:
+      - uses: dorny/paths-filter@v2
+        id: check-files
+        with:
+          filters: |
+            src_changed: 
+              - 'cmake/**'
+              - 'tools/**'
+              - 'src/**.cmake'
+              - 'CMakeLists.txt'
+              - 'test/sycl/CMakeLists.txt'
+              - 'src/xccl/CMakeLists.txt'
+              - 'src/ATen/CMakeLists.txt'
+              - 'src/CMakeLists.txt'
+              - '.github/workflows/_windows_ut.yml'
+      
+      - name: Check Label
+        id: check-label
+        run: |
+          LABEL_EXISTS=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq 'any(.name == "windows_ci")')
+          echo $LABEL_EXISTS
+          echo "results=$LABEL_EXISTS" >> $GITHUB_OUTPUT
+
   preci-windows:
     # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) && contains(github.event.pull_request.labels.*.name, 'windows_ci') }} 
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }} 
     name: preci-windows
-    needs: preci-lint-check
+    needs: [preci-lint-check, check-conditions]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended
       runner: Windows_CI
+      files-changed: ${{ needs.check-conditions.outputs.files-changed }}
+      has-label: ${{ needs.check-conditions.outputs.has-label }}

@@ -23,11 +23,6 @@ on:
         type: string
         default: ''
         description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
-      abi:
-        required: false
-        type: string
-        default: 1
-        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -100,18 +95,13 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -293,7 +283,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-${{ env.UT_NAME }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
   
   distributed_ut_test:
@@ -349,18 +339,13 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -433,5 +418,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-xpu_distributed
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log

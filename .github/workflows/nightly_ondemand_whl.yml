@@ -195,6 +195,7 @@ jobs:
           scenario: accuracy,performance
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          env_prepare: true
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
@@ -286,7 +287,7 @@ jobs:
             source activate e2e_ci
             cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
             cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
             rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
