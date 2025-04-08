@@ -137,6 +137,7 @@ skip_dict = {
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/pipelining/test_unflatten.py": None,
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
+    "../../../../test/distributed/_shard/test_sharder.py": None,
 }
 
 skip_dict_python = {
