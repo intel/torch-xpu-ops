@@ -136,7 +136,85 @@ skip_dict = {
     "../../../../test/distributed/pipelining/test_schedule.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/pipelining/test_unflatten.py": None,
+    "../../../../test/distributed/tensor/parallel/test_micro_pipeline_tp.py": (
+        # NotImplementedError: The operator 'symm_mem::fused_matmul_reduce_scatter'
+        # is not currently implemented for the XPU device
+        # https://github.com/intel/torch-xpu-ops/issues/1547
+        "test_dtensor_seq_par_shard_dim_0",
+        "test_dtensor_seq_par_shard_dim_1",
+        "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
+        "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
+        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
+        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
+        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
+        # AssertionError: 'fused_all_gather_matmul' not found in '# AOT ID: ......'
+        # https://github.com/intel/torch-xpu-ops/issues/1548
+        "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_False",
+        "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_True",
+        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_False",
+        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_True",
+        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_False",
+        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_True",
+        # AssertionError: 'fused_all_gather_scaled_matmul' not found in 'graph():\n......'
+        # https://github.com/intel/torch-xpu-ops/issues/1549
+        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_False",
+        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_True",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_False",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_True",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_False",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_True",
+        # NotImplementedError: The operator 'aten::_scaled_mm.out' is not currently implemented for the XPU device.
+        # https://github.com/intel/torch-xpu-ops/issues/1550
+        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_False",
+        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_True",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_False",
+        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_True",
+        # NotImplementedError: The operator 'symm_mem::fused_scaled_matmul_reduce_scatter'
+        # is not currently implemented for the XPU device.
+        # https://github.com/intel/torch-xpu-ops/issues/1551
+        "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
+        "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
+        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
+        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
+        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
+        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_0",
+        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_1",
+        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_2",
+    ),
+    "../../../../test/distributed/tensor/parallel/test_tp_examples.py": (
+        # RuntimeError: aten.add.Tensor: got mixed torch.Tensor and DTensor, need to convert all torch.Tensor to DTensor before calling distributed operators!
+        # https://github.com/intel/torch-xpu-ops/issues/1555
+        "test/distributed/tensor/parallel/test_tp_examples.py::DistTensorParallelExampleTest::test_transformer_req_grad_seq_parallel_float32_thaw_all",
+        "test_transformer_req_grad_seq_parallel_float32_thaw_layers_0_attention_wv__layers_0_feed_forward_w1__layers_1_feed_forward_w2__layers_1_ffn_norm__output__tok_embeddings",
+        "test_transformer_req_grad_seq_parallel_float32_thaw_layers_1_ffn_norm__norm__output__tok_embeddings",
+        "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output__tok_embeddings",
+        "test_transformer_req_grad_seq_parallel_float32_thaw_output__tok_embeddings",
+        "test_transformer_training_is_seq_parallel_False_float32",
+        "test_transformer_training_is_seq_parallel_True_float32",
+        # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
+        # https://github.com/intel/torch-xpu-ops/issues/1556
+        "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
+    ),
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
+    "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": None,
+    "../../../../test/distributed/tensor/parallel/test_tp_style.py": None,
+    "../../../../test/distributed/tensor/test_api.py": None,
+    "../../../../test/distributed/tensor/test_attention.py": None,
+    "../../../../test/distributed/tensor/test_common_rules.py": None,
+    "../../../../test/distributed/tensor/test_dtensor.py": None,
+    "../../../../test/distributed/tensor/test_dtensor_compile.py": None,
+    "../../../../test/distributed/tensor/test_experimental_ops.py": None,
+    "../../../../test/distributed/tensor/test_init.py": None,
+    "../../../../test/distributed/tensor/test_math_ops.py": (
+        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
+        # https://github.com/intel/torch-xpu-ops/issues/1508
+        "test_mean",
+        "test_nll_loss_and_cross_entropy",
+    ),
+    "../../../../test/distributed/tensor/test_random_ops.py": None,
+    "../../../../test/distributed/tensor/test_redistribute.py": None,
+    "../../../../test/distributed/tensor/test_tensor_ops.py": None,
+    "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
 }
 
 skip_dict_python = {
@@ -144,4 +222,5 @@ skip_dict_python = {
     "distributed/test_c10d_xccl.py": None,
     "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
     "../../../../test/distributed/pipelining/test_stage.py": None,
+    "../../../../test/distributed/pipelining/test_transformer.py": None,
 }
