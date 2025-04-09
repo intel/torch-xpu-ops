@@ -136,7 +136,7 @@ jobs:
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
       - name: Run XPU OP Regression
-        if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression
@@ -148,7 +148,7 @@ jobs:
           pip install pytest
           timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
       - name: Run XPU OP Regressions test on device 1
-        if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression_dev1')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression_dev1
@@ -163,7 +163,7 @@ jobs:
           timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
           export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
       - name: Run XPU OP Extended UT
-        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_extended')
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -174,7 +174,7 @@ jobs:
           timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
           cp op_extended.xml ${{ github.workspace }}/ut_log
       - name: Run XPU OP UT
-        if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_ut')
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -192,7 +192,7 @@ jobs:
           timeout 10000 python run_test_with_only.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
           cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
       - name: Run Torch XPU UT
-        if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'torch_xpu')
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
