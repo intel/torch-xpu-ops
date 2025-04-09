@@ -2,7 +2,11 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
+#include <ATen/ops/complex.h>
+#include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/real.h>
+#include <ATen/ops/zeros_like.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl.hpp>
@@ -84,8 +88,7 @@ void _mkl_dft(
   }
 
   if (!complex_input || !complex_output) {
-    desc.set_value(
-        config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
+    desc.set_value(config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
   }
 
   desc.set_value(
@@ -393,6 +396,82 @@ Tensor& _fft_c2c_mkl_out(
     Tensor& out) {
   auto result = _fft_c2c_mkl(
       self, dim, static_cast<int64_t>(fft_norm_mode::none), forward);
+  at::native::resize_output(out, result.sizes());
+  return impl::_fft_apply_normalization_out(
+      out, result, normalization, result.sizes(), dim);
+}
+
+void HermitSymmImpl(Tensor& input, int64_t dim, int pos) {
+  std::vector<at::indexing::TensorIndex> indices(
+      input.dim(), at::indexing::Slice());
+
+  indices[dim] = pos;
+
+  Tensor values = at::complex(
+      at::real(input.index(indices)),
+      at::zeros_like(at::imag(input.index(indices))));
+
+  input.index_put_(indices, values);
+}
+
+void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
+  HermitSymmImpl(input, dim, 0);
+
+  if (out_size % 2 == 0)
+    HermitSymmImpl(input, dim, -1);
+}
+
+Tensor _fft_c2r_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto input = self;
+
+  if (dim.size() > 1) {
+    auto c2c_dims = dim.slice(0, dim.size() - 1);
+    input = _fft_c2c_mkl(
+        self,
+        c2c_dims,
+        static_cast<int64_t>(fft_norm_mode::none),
+        /*forward=*/false);
+  }
+
+  auto in_sizes = input.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
+  auto out = at::empty(
+      out_sizes,
+      self.options().dtype(c10::toRealValueType(self.scalar_type())));
+
+  input = input.clone(MemoryFormat::Contiguous);
+
+  HermitSymm(input, dim.back(), out_sizes[dim.back()]);
+
+  impl::_exec_fft(
+      out,
+      input,
+      out_sizes,
+      dim.back(),
+      /*onesided=*/true,
+      /*forward=*/false);
+
+  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+}
+
+Tensor& _fft_c2r_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size,
+    Tensor& out) {
+  auto result = _fft_c2r_mkl(
+      self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
   at::native::resize_output(out, result.sizes());
   return impl::_fft_apply_normalization_out(
       out, result, normalization, result.sizes(), dim);
