@@ -1426,7 +1426,7 @@ skip_dict = {
         "test_norm_fused_type_promotion_xpu_float16",
         # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
-        "_tunableop_xpu_",
+        "_tunableop_",
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",

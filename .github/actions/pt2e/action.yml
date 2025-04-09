@@ -96,7 +96,7 @@ runs:
       run: |
         source activate e2e_ci
         source .github/scripts/env.sh ${{ inputs.pytorch }}
-        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log"
+        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then

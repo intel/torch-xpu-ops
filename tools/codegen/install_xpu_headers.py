@@ -97,18 +97,22 @@ def append_xpu_ops_headers(src_dir, dst_dir, common_headers, xpu_ops_headers):
                 re.findall(r"struct TORCH_XPU_API.*xpu.*?{.*?};\n", src_text, re.DOTALL)
             )
 
-        with open(dst) as fr:
-            dst_lines = fr.readlines()
+        if not xpu_declarations:
+            continue
+
+        with open(dst, "r+") as f:
+            dst_lines = f.readlines()
             dst_text = "".join(dst_lines)
-            for line in dst_lines:
+            for index, line in enumerate(dst_lines):
                 if re.match(r"^(TORCH_API.*;|struct TORCH_API.*)", line):
                     for xpu_declaration in xpu_declarations:
                         if not re.search(re.escape(xpu_declaration), dst_text):
-                            dst_lines.insert(dst_lines.index(line), xpu_declaration)
+                            dst_lines.insert(index, xpu_declaration)
                     break
 
-        with open(dst, "w") as fw:
-            fw.writelines(dst_lines)
+            f.seek(0)
+            f.writelines(dst_lines)
+            f.truncate()
 
 
 def main():
