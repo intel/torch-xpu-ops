@@ -13,11 +13,6 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
-      abi:
-        required: false
-        type: string
-        default: '1'
-        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -98,11 +93,6 @@ jobs:
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
@@ -181,11 +171,11 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }} 
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ env.TORCH_COMMIT_ID }}
           path: ${{ github.workspace }}/torch*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ env.TORCH_COMMIT_ID }}
           path: ${{ github.workspace }}/pytorch_*.log

@@ -215,6 +215,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_redistribute.py": None,
     "../../../../test/distributed/tensor/test_tensor_ops.py": None,
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
+    "../../../../test/distributed/_shard/test_sharder.py": None,
 }
 
 skip_dict_python = {
