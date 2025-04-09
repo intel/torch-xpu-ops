@@ -574,14 +574,14 @@ Tensor& _fft_r2c_mkl_out(
         out, result, normalization, self.sizes(), dim);
   }
 
-  at::native::resize_output(out, result.sizes());
+  at::native::resize_output(out, self.sizes());
 
   auto last_dim = dim.back();
   auto last_dim_halfsize = result.sizes()[last_dim];
   auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
 
   impl::_fft_apply_normalization_out(
-      out, result, normalization, self.sizes(), dim);
+      out_slice, result, normalization, self.sizes(), dim);
   _fft_fill_with_conjugate_symmetry_(out, dim);
   return out;
 }
