@@ -581,7 +581,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
 
   auto stream = asyncOp ? xcclStreamsMap_.at(key).first
                         : at::xpu::getCurrentXPUStream(device.index());
-  
+
   // ccl stream use create comm stream anyway, which no need to sync
   auto cclstream = xcclStreamsMap_.at(key).second;
   if (asyncOp) {
