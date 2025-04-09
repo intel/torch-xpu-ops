@@ -394,6 +394,7 @@ def matmul_small_brute_force_3d_Nd(self, device, dtype):
 def ck_blas_library(self):
     pass
 
+
 @precisionOverride({torch.float32: 1e-2, torch.complex64: 1e-2})
 @dtypes(*floating_and_complex_types())
 def linalg_lu_family(self, device, dtype):
@@ -499,6 +500,7 @@ def linalg_lu_family(self, device, dtype):
             with self.assertRaisesRegex(RuntimeError, 'LU without pivoting is not implemented on the CPU'):
                 f(torch.empty(1, 2, 2), pivot=False)
 
+
 @precisionOverride({torch.float32: 1e-2, torch.complex64: 1e-2})
 @setLinalgBackendsToDefaultFinally
 @dtypes(*floating_and_complex_types())
@@ -510,8 +512,6 @@ def linalg_lu_solve(self, device, dtype):
     if torch.device(device).type == 'cuda':
         if torch.cuda.has_magma:
             backends.append("magma")
-        if has_cusolver():
-            backends.append("cusolver")
 
     def gen_matrices():
         rhs = 3
@@ -537,6 +537,7 @@ def linalg_lu_solve(self, device, dtype):
                     self.assertEqual(B_left, A_adj @ X)
                 else:
                     self.assertEqual(B_left, X @ A_adj)
+
 
 @dtypes(torch.double)
 def lu_unpack_check_input(self, device, dtype):
