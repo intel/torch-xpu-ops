@@ -134,6 +134,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const std::string& deviceKey,
       at::Device& device,
       OpType opType,
+      bool asyncOp,
       int p2pRank = 0,
       bool isSendRecvSelf = false);
 

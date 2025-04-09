@@ -385,6 +385,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     const std::string& deviceKey,
     at::Device& device,
     OpType opType,
+    bool asyncOp,
     int p2pRank,
     bool isSendRecvSelf) {
   if (deviceKey.empty()) {
@@ -428,8 +429,13 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   }
 
   c10::impl::VirtualGuardImpl impl(device.type());
-  c10::Stream stream =
-      impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
+
+  // asyncOp=false will always use current stream; getStrem will return current
+  // stream
+  c10::Stream stream = asyncOp
+      ? impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false)
+      : impl.getStream(device);
+
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
   auto ctx = ccl::create_context(q.get_context());
@@ -558,7 +564,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   seqCollective_++;
   auto device = inputs[0].device();
   const auto key = std::to_string(device.index());
-  auto comm = getXCCLComm(key, device, opType);
+  auto comm = getXCCLComm(key, device, opType, asyncOp);
 
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalColl) == 0) {
@@ -579,10 +585,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = asyncOp ? xcclStreamsMap_.at(key).first
-                        : at::xpu::getCurrentXPUStream(device.index());
-
-  // ccl stream use create comm stream anyway, which no need to sync
+  auto stream = xcclStreamsMap_.at(key).first;
   auto cclstream = xcclStreamsMap_.at(key).second;
   if (asyncOp) {
     syncStream(device, xcclEventsMap_[key], stream);
@@ -658,7 +661,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
   }
 
-  auto comm = getXCCLComm(key, device, opType, p2pRank, isSendRecvSelf);
+  auto comm = getXCCLComm(
+      key, device, opType, /*asyncOp=*/false, p2pRank, isSendRecvSelf);
 
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalP2P) == 0) {
