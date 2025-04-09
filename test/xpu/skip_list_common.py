@@ -773,6 +773,13 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1432
+        "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_2_key_padding_mask_dim_2_bool_xpu",
+        "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_3_key_padding_mask_dim_2_bool_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_False_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_False_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
     ),
     "test_complex_xpu.py": None,
     "test_modules_xpu.py": (
@@ -1027,6 +1034,12 @@ skip_dict = {
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
         # RuntimeError: reflection_pad2d_backward_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'.
         "test_ReflectionPad2d_large_deterministic_xpu",
+        # Case updated in pytorch commit 97272e4
+        "test_hardswish_grad_corner_xpu_bfloat16",
+        "test_hardswish_grad_corner_xpu_float16",
+        "test_hardswish_grad_corner_xpu_float32",
+        # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
+        "test_layer_norm_backwards_eps",
     ),
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now
@@ -1122,6 +1135,7 @@ skip_dict = {
         "test_reference_numerics_large_asinh_xpu_complex128",
         "test_reference_numerics_large_asinh_xpu_complex64",
         "test_reference_numerics_large_asinh_xpu_complex32",
+        "test_reference_numerics_normal_exp_xpu_complex128",
         # AssertionError: Tensor-likes are not close!
         # exceeded maximum allowed difference
         # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
@@ -1412,6 +1426,7 @@ skip_dict = {
         "test_norm_fused_type_promotion_xpu_float16",
         # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
+        "_tunableop_",
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
@@ -1466,6 +1481,13 @@ skip_dict = {
         "test_compile_int4_mm_m_64_k_32_n_64_xpu",
         "test_compile_int4_mm_m_64_k_64_n_48_xpu",
         "test_compile_int4_mm_m_64_k_64_n_64_xpu",
+        # float8 is not supported
+        "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e4m3fnuz",
+        "test_matmul_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
+        "test_scaled_gemm_offline_tunableop_xpu_float8_e4m3fnuz",
+        "test_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
+        # case need to port for xpu
+        "test_gemm_bias_offline_tunableop_xpu_bfloat16",
     ),
     "test_ops_fwd_gradients_xpu.py": (
         # All of the followings are oneDNN issues
