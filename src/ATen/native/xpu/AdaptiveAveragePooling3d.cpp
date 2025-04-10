@@ -2,10 +2,10 @@
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling3dKernels.h>
 
-#include <ATen/ops/empty.h>
-#include <ATen/ops/empty_like.h>
 #include <ATen/ops/adaptive_avg_pool3d_backward_native.h>
 #include <ATen/ops/adaptive_avg_pool3d_native.h>
+#include <ATen/ops/empty.h>
+#include <ATen/ops/empty_like.h>
 
 namespace at::native {
 
