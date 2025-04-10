@@ -106,8 +106,6 @@ function(GEN_XPU file_yaml)
     ${CODEGEN_XPU_YAML_DIR}/native/${file_yaml}
     ${XPUFallback_TEMPLATE}
     ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
-    ${ops_generated_headers}
-    ${ops_generated_sources}
   )
 
   # Post codegen delete the copied templates folder only on Windows.
