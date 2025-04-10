@@ -435,6 +435,8 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   c10::Stream stream = asyncOp
       ? impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false)
       : impl.getStream(device);
+  auto StreamKey =
+      asyncOp ? deviceKey : deviceKey + "_" + std::to_string(stream.id());
 
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
@@ -476,7 +478,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
   xcclStreamsMap_.emplace(
-      deviceKey,
+      StreamKey,
       std::make_pair(at::xpu::XPUStream(stream), std::move(xccl_stream)));
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
@@ -585,8 +587,25 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = xcclStreamsMap_.at(key).first;
-  auto cclstream = xcclStreamsMap_.at(key).second;
+  auto StreamKey = asyncOp ? key
+                           : key + "_" +
+          std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
+  auto stream = asyncOp ? xcclStreamsMap_.at(StreamKey).first
+                        : at::xpu::getCurrentXPUStream(device.index());
+
+  std::unique_ptr<ccl::stream> cclstream;
+  try {
+    cclstream =
+        std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).second);
+  } catch (...) {
+    LOG(WARNING) << "Current stream id changed, create new ccl stream";
+    cclstream =
+        std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
+    std::lock_guard<std::mutex> lock(mutex_);
+    xcclStreamsMap_.emplace(
+        StreamKey, std::make_pair(at::xpu::XPUStream(stream), *cclstream));
+  }
+
   if (asyncOp) {
     syncStream(device, xcclEventsMap_[key], stream);
   }
@@ -612,7 +631,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   pre(stream, work);
 
   for (const auto i : c10::irange(inputs.size())) {
-    fn(inputs[i], outputs[i], *comm, stream, cclstream);
+    fn(inputs[i], outputs[i], *comm, stream, *cclstream);
   }
 
   post(stream, work);
@@ -662,7 +681,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   }
 
   auto comm = getXCCLComm(
-      key, device, opType, /*asyncOp=*/false, p2pRank, isSendRecvSelf);
+      key, device, opType, /*asyncOp=*/true, p2pRank, isSendRecvSelf);
 
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalP2P) == 0) {
