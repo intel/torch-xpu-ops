@@ -56,9 +56,12 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           set -xe
+          if [ "${{ inputs.keep_torch_xpu_ops }}" == "false" ];then
+            keep_torch_xpu_ops="https://github.com/${GITHUB_REPOSITORY}.git@${GITHUB_SHA}"
+          fi
           build_status="$(
             XPU_TORCH="https://github.com/pytorch/pytorch.git@${{ inputs.pytorch }}" \
-              KEEP_TORCH_XPU_OPS="${{ inputs.keep_torch_xpu_ops }}" \
+              KEEP_TORCH_XPU_OPS="${keep_torch_xpu_ops}" \
               XPU_DRIVER="${{ inputs.driver }}" \
               XPU_CONDA_ENV="xpu-build" \
               XPU_PYTHON="${{ inputs.python }}" \
@@ -90,7 +93,7 @@ jobs:
               gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
               build_status="$(
                 XPU_TORCH="https://github.com/pytorch/pytorch.git@${last_commit}" \
-                  KEEP_TORCH_XPU_OPS="${{ inputs.keep_torch_xpu_ops }}" \
+                  KEEP_TORCH_XPU_OPS="${keep_torch_xpu_ops}" \
                   XPU_DRIVER="${{ inputs.driver }}" \
                   XPU_CONDA_ENV="xpu-build" \
                   XPU_PYTHON="${{ inputs.python }}" \

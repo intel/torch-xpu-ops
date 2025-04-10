@@ -5,7 +5,7 @@ export GIT_PAGER=cat
 # Init
 GITHUB_WORKSPACE=${GITHUB_WORKSPACE:-"/tmp"}
 XPU_TORCH=${XPU_TORCH:-"https://github.com/pytorch/pytorch.git@main"}
-KEEP_TORCH_XPU_OPS=${KEEP_TORCH_XPU_OPS:-"false"}
+KEEP_TORCH_XPU_OPS=${KEEP_TORCH_XPU_OPS:-"https://github.com/intel/torch-xpu-ops.git@main"}
 XPU_DRIVER=${XPU_DRIVER:-"lts"}
 XPU_CONDA_ENV=${XPU_CONDA_ENV:-"xpu-build"}
 XPU_PYTHON=${XPU_PYTHON:-"3.10"}
