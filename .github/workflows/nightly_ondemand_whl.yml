@@ -99,9 +99,6 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
         run: |
@@ -127,6 +124,8 @@ jobs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
           python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git show -s
+          pip install pandas scipy psutil
       - name: Identify pinned versions
         id: pinned
         run: |

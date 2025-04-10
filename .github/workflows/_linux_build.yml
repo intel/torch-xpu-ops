@@ -9,7 +9,7 @@ on:
         default: 'main'
         description: Pytorch branch/commit
       keep_torch_xpu_ops:
-        required: true
+        required: false
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
@@ -19,7 +19,7 @@ on:
         default: 'lts'
         description: Driver lts/rolling
       python:
-        required: true
+        required: false
         type: string
         default: '3.10'
         description: Python version
