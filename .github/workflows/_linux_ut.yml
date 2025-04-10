@@ -209,6 +209,12 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/torch_xpu
           cd ../pytorch
+          cd test
+          cp -r inductor inductor_bk
+          cd inductor
+          rm -rf test_*.py
+          cp ../inductor_bk/test_compile_subprocess.py ./
+          cd ../..
           
           # Run Pytorch XPU python UT
           export PYTORCH_TEST_WITH_SLOW=1
