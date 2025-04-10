@@ -221,7 +221,7 @@ skip_dict = {
 skip_dict_python = {
     "distributed/test_c10d_ops_xccl.py": None,
     "distributed/test_c10d_xccl.py": None,
-    "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
+    # "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
     "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
 }
