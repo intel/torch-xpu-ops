@@ -112,7 +112,7 @@ jobs:
         if: ${{ inputs.pytorch }} != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -198,32 +198,6 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-  
-  preci-linux-build-abi-0:
-    # Don't run on forked repos and draft PRs
-    secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux-abi-0
-    needs: preci-lint-check
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: main
-      abi: 0
-      runner: pvc_e2e
-
-  preci-ut-abi-0:
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux-abi-0
-    needs: preci-linux-build-abi-0
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      pytorch: ${{ needs.preci-linux-build-abi-0.outputs.torch_commit_id }}
-      ut: op_extended
-      runner: linux.idc.xpu
 
   check-conditions:
     if: ${{ github.repository_owner == 'intel' }}

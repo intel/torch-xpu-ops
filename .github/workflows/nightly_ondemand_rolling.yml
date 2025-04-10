@@ -77,7 +77,6 @@ jobs:
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
@@ -192,7 +191,7 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -344,7 +343,7 @@ jobs:
             source activate e2e_ci
             cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
             cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
             rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
@@ -353,37 +352,7 @@ jobs:
         with:
           name: Inductor-${{ env.run_type }}-Rolling-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-  
-  Linux-Nightly-Ondemand-Build-Rolling-ABI-0:
-    secrets: inherit
-    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
-    name: linux-nightly-ondemand-rolling-abi0
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 0
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      driver: rolling
-      runner: pvc_rolling
 
-  Linux-Weekly-UT-Tests-Rolling-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
-    name: linux-nightly-ondemand-rolling-abi0
-    needs: Linux-Nightly-Ondemand-Build-Rolling-ABI-0
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling-ABI-0.outputs.torch_commit_id }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      driver: rolling
-      runner: pvc_rolling
-  
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
