@@ -34,7 +34,9 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         )
         return os.system(test_command)
     else:
-        test_command = "pytest --timeout 600 -v --junit-xml=./op_ut_with_only.xml " + test_case
+        test_command = (
+            "pytest --timeout 600 -v --junit-xml=./op_ut_with_only.xml " + test_case
+        )
         return os.system(test_command)
 
 
