@@ -30,7 +30,8 @@ def get_result(case):
 def get_message(case):
     if not case.result:
         return ""
-    return f"{case.result[0].message.splitlines()[0]}"
+    #return f" for line in {case.result[0].message.splitlines()}"
+    return [item for item in case.result[0].message.splitlines() if "Error:" in item]
 
 def print_md_row(row, print_header):
     if print_header:
@@ -75,6 +76,8 @@ def print_suite(suite):
             category = 'op_extended'
         elif 'op_ut' in ut:
             category = 'op_ut'
+        else:
+            category = "default"
         row = {
             'Category': category,
             'UT': ut,
