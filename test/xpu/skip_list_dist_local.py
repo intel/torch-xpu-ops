@@ -216,6 +216,23 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_tensor_ops.py": None,
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
     "../../../../test/distributed/_shard/test_sharder.py": None,
+    # FSDP2
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_extensions.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_grad_scaler.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_ignore_params.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_init.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_logging.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_memory.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_overlap.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": None,
 }
 
 skip_dict_python = {
