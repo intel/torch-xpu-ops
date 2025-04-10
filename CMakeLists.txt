@@ -40,7 +40,7 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
 option(USE_XCCL "Build with XCCL support" OFF)
-option(USE_C10D_XCCL "Build with XCCL support for C10D" ON)
+cmake_dependent_option(USE_C10D_XCCL "USE C10D XCCL" ON "USE_DISTRIBUTED;USE_XCCL" OFF)
 
 # -- [ Re-generate the macros file for https://github.com/pytorch/pytorch/pull/147161
 macro(update_caffe2_macros_file)
