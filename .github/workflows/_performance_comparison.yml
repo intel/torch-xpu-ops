@@ -1,0 +1,43 @@
+name: Performance Comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        required: true
+        type: string
+        default: ''
+        description: Target artifact id
+      baseline:
+        required: true
+        type: string
+        default: ''
+        description: Baseline artifact id
+
+permissions: read-all
+
+jobs:
+  Performance-Comparison:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup workspace
+        run: |
+          rm -rf ./*
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get comparison artifacts
+        run: |
+          gh api \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${target}/zip > target.zip
+          gh api \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${baseline}/zip > baseline.zip
+          mkdir target baseline
+          unzip target.zip -d target
+          unzip baseline.zip -d baseline
+      - name: Comparison result
+        run: |
+          python .github/scripts/perf_comparison.py -xpu target -refer baseline >> ${GITHUB_STEP_SUMMARY}
