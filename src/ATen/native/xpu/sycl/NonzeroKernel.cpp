@@ -139,7 +139,6 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
       const auto num_wg = (N + wg_sz - 1) / wg_sz;
 
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), kfn);
-
     }
     if (need_to_copy) {
       tensor.copy_(tensor_.t());
