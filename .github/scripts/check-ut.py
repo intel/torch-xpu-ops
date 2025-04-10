@@ -52,7 +52,6 @@ def get_message(case):
     ]
 
     error_messages = []
-    current_error = None
     capture_next_lines = False
     indent_level = 0
 
@@ -63,14 +62,12 @@ def get_message(case):
 
         for error_type in error_types:
             if stripped_line.startswith(error_type + ": "):
-                current_error = error_type
                 error_msg = stripped_line[len(error_type)+2:]
                 error_messages.append(f"{error_type}: {error_msg}")
                 capture_next_lines = True
                 indent_level = 0
                 break
             elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
-                current_error = error_type
                 error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
                 error_messages.append(f"{error_type}: {error_msg}")
                 capture_next_lines = True
