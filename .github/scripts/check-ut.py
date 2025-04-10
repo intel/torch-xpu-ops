@@ -35,7 +35,7 @@ def get_message(case):
         return ""
     error_types = [
         "RuntimeError",
-        "ValueError", 
+        "ValueError",
         "TypeError",
         "AttributeError",
         "KeyError",
