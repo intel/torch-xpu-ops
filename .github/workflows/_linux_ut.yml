@@ -145,8 +145,8 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           cd test/regressions
-          pip install pytest
-          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+          pip install pytest pytest-timeout
+          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
       - name: Run XPU OP Regressions test on device 1
         if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
         run: |
@@ -155,13 +155,10 @@ jobs:
           xpu-smi discovery
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
           cd test/regressions
-          pip install pytest
-          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
-          export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
+          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         run: |
@@ -248,10 +245,10 @@ jobs:
 
           # All xpu ut under test/profiler
           cd ../pytorch/test/profiler
-          python -m pytest -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
-          python -m pytest -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
-          python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
-          python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
+          python -m pytest --timeout 600 -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
+          python -m pytest --timeout 600 -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
+          python -m pytest --timeout 600 -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
+          python -m pytest --timeout 600 -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -383,7 +380,7 @@ jobs:
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pytest
+          pip install pytest pytest-timeout
           cd ${{ github.workspace }}
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
