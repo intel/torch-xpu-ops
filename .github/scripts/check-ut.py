@@ -30,7 +30,54 @@ def get_result(case):
 def get_message(case):
     if not case.result:
         return ""
-    return f"{case.result[0].message.splitlines()[0]}"
+    full_text = case.result[0].text if hasattr(case.result[0], 'text') else case.result[0].message
+    if not full_text:
+        return ""
+    error_types = [
+        "RuntimeError",
+        "ValueError", 
+        "TypeError",
+        "AttributeError",
+        "KeyError",
+        "IndexError",
+        "ImportError",
+        "AssertionError",
+        "Exception",
+        "OSError",
+        "Failed",
+        "TimeoutError",
+        "asyncio.TimeoutError",
+        "FileNotFoundError",
+        "PermissionError",
+    ]
+
+    error_messages = []
+    current_error = None
+    capture_next_lines = False
+    indent_level = 0
+
+    for line in full_text.splitlines():
+        stripped_line = line.strip()
+        if not stripped_line:
+            continue
+
+        for error_type in error_types:
+            if stripped_line.startswith(error_type + ": "):
+                current_error = error_type
+                error_msg = stripped_line[len(error_type)+2:]
+                error_messages.append(f"{error_type}: {error_msg}")
+                capture_next_lines = True
+                indent_level = 0
+                break
+            elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
+                current_error = error_type
+                error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
+                error_messages.append(f"{error_type}: {error_msg}")
+                capture_next_lines = True
+                indent_level = 0
+                break
+
+    return "\n".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
 def print_md_row(row, print_header):
     if print_header:
@@ -75,6 +122,8 @@ def print_suite(suite):
             category = 'op_extended'
         elif 'op_ut' in ut:
             category = 'op_ut'
+        else:
+            category = "unknown"
         row = {
             'Category': category,
             'UT': ut,
