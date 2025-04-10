@@ -339,12 +339,6 @@ jobs:
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
-          else
-            source activate e2e_ci
-            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
-            cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
-            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
