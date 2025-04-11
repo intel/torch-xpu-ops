@@ -49,6 +49,7 @@ def get_message(case):
         "asyncio.TimeoutError",
         "FileNotFoundError",
         "PermissionError",
+        "NotImplementedError",
     ]
 
     error_messages = []
