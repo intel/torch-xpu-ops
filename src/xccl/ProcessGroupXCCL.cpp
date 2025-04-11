@@ -579,27 +579,28 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto StreamKey = asyncOp ? key
-                           : key + "_" +
-          std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
-  auto stream = asyncOp ? xcclStreamsMap_.at(StreamKey).first
+  auto stream = asyncOp ? xcclStreamsMap_.at(key).first
                         : at::xpu::getCurrentXPUStream(device.index());
 
   std::unique_ptr<ccl::stream> cclstream;
-  try {
-    cclstream =
-        std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).second);
-  } catch (...) {
-    LOG(INFO) << "Current stream id changed, create new ccl stream";
-    cclstream =
-        std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
-    std::lock_guard<std::mutex> lock(mutex_);
-    xcclStreamsMap_.emplace(
-        StreamKey, std::make_pair(at::xpu::XPUStream(stream), *cclstream));
-  }
-
   if (asyncOp) {
+    cclstream = std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).second);
     syncStream(device, xcclEventsMap_[key], stream);
+  } else {
+    auto StreamKey = key + "_" +
+        std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
+    if (xcclStreamsMap_.find(StreamKey) != xcclStreamsMap_.end()) {
+      cclstream =
+          std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).second);
+    } else {
+      LOG(INFO) << "Current stream id changed, create new ccl stream";
+      // update xcclStreamsMap_ with current stream key
+      cclstream =
+          std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
+      std::lock_guard<std::mutex> lock(mutex_);
+      xcclStreamsMap_.emplace(
+          StreamKey, std::make_pair(at::xpu::XPUStream(stream), *cclstream));
+    }
   }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
