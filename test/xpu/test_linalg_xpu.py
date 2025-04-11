@@ -16,7 +16,7 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_dtype import (
     floating_and_complex_types,
-    floating_and_complex_types_and
+    floating_and_complex_types_and,
 )
 from torch.testing._internal.common_mkldnn import bf32_on_and_off
 from torch.testing._internal.common_utils import (
@@ -432,7 +432,9 @@ def linalg_lu_family(self, device, dtype):
         if not pivot:
             self.assertEqual(
                 pivots,
-                torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(batch + (k, ))
+                torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
+                    batch + (k, )
+                ),
             )
 
         P, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=pivot)
@@ -485,7 +487,7 @@ def linalg_lu_family(self, device, dtype):
     fns = (
         partial(torch.lu, get_infos=True),
         torch.linalg.lu_factor,
-        torch.linalg.lu_factor_ex
+        torch.linalg.lu_factor_ex,
     )
     for ms, batch, pivot, singular, fn in itertools.product(
         sizes, batches, pivots, (True, False), fns
@@ -500,7 +502,7 @@ def linalg_lu_family(self, device, dtype):
         # Reproducer of a magma bug,
         # see https://bitbucket.org/icl/magma/issues/13/getrf_batched-kernel-produces-nans-on
         # This is also a bug in cuSOLVER < 11.3
-        if (dtype == torch.double and singular):
+        if dtype == torch.double and singular:
             A = torch.ones(batch + ms, dtype=dtype, device=device)
             run_test(A, pivot, singular, fn)
 
@@ -508,17 +510,17 @@ def linalg_lu_family(self, device, dtype):
     A = torch.ones(5, 3, 3, device=device)
     self.assertTrue((torch.linalg.lu_factor_ex(A, pivot=True).info >= 0).all())
 
-    if self.device_type == 'cpu':
+    if self.device_type == "cpu":
         # Error checking, no pivoting variant on CPU
         fns = [
             torch.lu,
             torch.linalg.lu_factor,
             torch.linalg.lu_factor_ex,
-            torch.linalg.lu
+            torch.linalg.lu,
         ]
         for f in fns:
             with self.assertRaisesRegex(
-                RuntimeError, 'LU without pivoting is not implemented on the CPU'
+                RuntimeError, "LU without pivoting is not implemented on the CPU"
             ):
                 f(torch.empty(1, 2, 2), pivot=False)
 
@@ -531,7 +533,7 @@ def linalg_lu_solve(self, device, dtype):
 
     backends = ["default"]
 
-    if torch.device(device).type == 'cuda':
+    if torch.device(device).type == "cuda":
         if torch.cuda.has_magma:
             backends.append("magma")
 
