@@ -4,8 +4,8 @@ import itertools
 import math
 import unittest
 from functools import partial
-import numpy as np
 
+import numpy as np
 import torch
 from torch.testing import make_tensor
 from torch.testing._internal.common_cuda import tf32_on_and_off
@@ -433,7 +433,7 @@ def linalg_lu_family(self, device, dtype):
             self.assertEqual(
                 pivots,
                 torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(
-                    batch + (k, )
+                    batch + (k,)
                 ),
             )
 
