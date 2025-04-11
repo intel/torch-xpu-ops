@@ -14,16 +14,19 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     precisionOverride,
 )
-from torch.testing._internal.common_dtype import floating_and_complex_types, floating_and_complex_types_and
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types,
+    floating_and_complex_types_and
+)
 from torch.testing._internal.common_mkldnn import bf32_on_and_off
 from torch.testing._internal.common_utils import (
     IS_WINDOWS,
     make_fullrank_matrices_with_distinct_singular_values,
     parametrize,
     run_tests,
-    slowTest,
     setBlasBackendsToDefaultFinally,
     setLinalgBackendsToDefaultFinally,
+    slowTest,
     TestCase,
 )
 
@@ -404,13 +407,15 @@ def linalg_lu_family(self, device, dtype):
     #       torch.lu_unpack
     #       torch.linalg.lu_solve
     #       torch.linalg.solve
-    make_arg_full = partial(make_fullrank_matrices_with_distinct_singular_values, device=device, dtype=dtype)
+    make_arg_full = partial(
+        make_fullrank_matrices_with_distinct_singular_values, device=device, dtype=dtype
+    )
     make_arg = partial(make_tensor, device=device, dtype=dtype)
 
     def run_test(A, pivot, singular, fn):
         k = min(A.shape[-2:])
         batch = A.shape[:-2]
-        check_errors = (fn == torch.linalg.lu_factor)
+        check_errors = fn == torch.linalg.lu_factor
         if singular and check_errors:
             # It may or may not throw as the LU decomposition without pivoting
             # may still succeed for singular matrices
@@ -425,7 +430,10 @@ def linalg_lu_family(self, device, dtype):
         self.assertEqual(pivots.size(), batch + (k,))
 
         if not pivot:
-            self.assertEqual(pivots, torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(batch + (k, )))
+            self.assertEqual(
+                pivots,
+                torch.arange(1, 1 + k, device=device, dtype=torch.int32).expand(batch + (k, ))
+            )
 
         P, L, U = torch.lu_unpack(LU, pivots, unpack_pivots=pivot)
 
@@ -452,7 +460,9 @@ def linalg_lu_family(self, device, dtype):
                 # See https://github.com/pytorch/pytorch/pull/74045#issuecomment-1112304913
                 if rhs != ():
                     for adjoint in (True, False):
-                        X = torch.linalg.lu_solve(LU, pivots, B, left=left, adjoint=adjoint)
+                        X = torch.linalg.lu_solve(
+                            LU, pivots, B, left=left, adjoint=adjoint
+                        )
                         A_adj = A.mH if adjoint else A
                         if left:
                             self.assertEqual(B, A_adj @ X)
@@ -472,8 +482,14 @@ def linalg_lu_family(self, device, dtype):
     batches = ((0,), (), (1,), (2,), (3,), (1, 0), (3, 5))
     # Non pivoting just implemented for CUDA
     pivots = (True, False) if self.device_type == "cuda" else (True,)
-    fns = (partial(torch.lu, get_infos=True), torch.linalg.lu_factor, torch.linalg.lu_factor_ex)
-    for ms, batch, pivot, singular, fn in itertools.product(sizes, batches, pivots, (True, False), fns):
+    fns = (
+        partial(torch.lu, get_infos=True),
+        torch.linalg.lu_factor,
+        torch.linalg.lu_factor_ex
+    )
+    for ms, batch, pivot, singular, fn in itertools.product(
+        sizes, batches, pivots, (True, False), fns
+    ):
         shape = batch + ms
         A = make_arg(shape) if singular else make_arg_full(*shape)
         # Just do one of them on singular matrices
@@ -484,8 +500,7 @@ def linalg_lu_family(self, device, dtype):
         # Reproducer of a magma bug,
         # see https://bitbucket.org/icl/magma/issues/13/getrf_batched-kernel-produces-nans-on
         # This is also a bug in cuSOLVER < 11.3
-        if (dtype == torch.double
-           and singular):
+        if (dtype == torch.double and singular):
             A = torch.ones(batch + ms, dtype=dtype, device=device)
             run_test(A, pivot, singular, fn)
 
@@ -495,9 +510,16 @@ def linalg_lu_family(self, device, dtype):
 
     if self.device_type == 'cpu':
         # Error checking, no pivoting variant on CPU
-        fns = [torch.lu, torch.linalg.lu_factor, torch.linalg.lu_factor_ex, torch.linalg.lu]
+        fns = [
+            torch.lu,
+            torch.linalg.lu_factor,
+            torch.linalg.lu_factor_ex,
+            torch.linalg.lu
+        ]
         for f in fns:
-            with self.assertRaisesRegex(RuntimeError, 'LU without pivoting is not implemented on the CPU'):
+            with self.assertRaisesRegex(
+                RuntimeError, 'LU without pivoting is not implemented on the CPU'
+            ):
                 f(torch.empty(1, 2, 2), pivot=False)
 
 
@@ -531,7 +553,9 @@ def linalg_lu_solve(self, device, dtype):
 
             for left, adjoint in itertools.product((True, False), repeat=2):
                 B_left = B if left else B.mT
-                X = torch.linalg.lu_solve(LU, pivots, B_left, left=left, adjoint=adjoint)
+                X = torch.linalg.lu_solve(
+                    LU, pivots, B_left, left=left, adjoint=adjoint
+                )
                 A_adj = A.mH if adjoint else A
                 if left:
                     self.assertEqual(B_left, A_adj @ X)
@@ -552,7 +576,9 @@ def lu_unpack_check_input(self, device, dtype):
     self.assertTrue(l.numel() == 0 and u.numel() == 0)
     p, l, u = torch.lu_unpack(lu_data, lu_pivots, unpack_pivots=False)
     self.assertTrue(p.numel() == 0)
-    p, l, u = torch.lu_unpack(lu_data, lu_pivots, unpack_data=False, unpack_pivots=False)
+    p, l, u = torch.lu_unpack(
+        lu_data, lu_pivots, unpack_data=False, unpack_pivots=False
+    )
     self.assertTrue(p.numel() == 0 and l.numel() == 0 and u.numel() == 0)
 
 
