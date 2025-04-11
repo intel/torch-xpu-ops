@@ -72,7 +72,6 @@ jobs:
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
@@ -287,7 +286,7 @@ jobs:
             source activate e2e_ci
             cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
             cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
             rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data

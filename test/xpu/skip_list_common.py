@@ -15,6 +15,7 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
         "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
         "test_noncontiguous_samples_histogram_xpu_float32",
+        "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex128",
         # TODO: Fix the following tests
         "test_out_warning_torch__scaled_mm_xpu",
         # To be removed from this file.
@@ -1426,7 +1427,7 @@ skip_dict = {
         "test_norm_fused_type_promotion_xpu_float16",
         # https://github.com/intel/torch-xpu-ops/issues/814
         # xpu does not have '_cuda_tunableop_is_enabled' API
-        "_tunableop_xpu_",
+        "_tunableop_",
         "test_matmul_small_brute_force_tunableop_xpu_float16",
         "test_matmul_small_brute_force_tunableop_xpu_float32",
         "test_matmul_small_brute_force_tunableop_xpu_float64",
@@ -3057,6 +3058,17 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
         # New added case in 2.7
         "test_nonzero_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1569
+        # RuntimeError: output 0: meta disagrees with real impl
+        "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
+        "test_dispatch_meta_outplace_norm_fro_xpu_complex128",
+        "test_dispatch_meta_outplace_norm_fro_xpu_complex64",
+        "test_dispatch_meta_outplace_norm_fro_xpu_float",
+        "test_dispatch_symbolic_meta_outplace_all_strides_norm_fro_xpu_float32",
+        "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_bfloat16",
+        "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_complex128",
+        "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_complex64",
+        "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_float",
     ),
     "test_type_promotion_xpu.py": None,
     "test_distributions_xpu.py": (
