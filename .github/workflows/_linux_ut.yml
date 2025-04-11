@@ -52,31 +52,47 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}
+      - name: Prepare Conda Env
         run: |
           pwd
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+      - name: Install Pytorch XPU
+        run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install pandas scipy psutil
           cd ../ && rm -rf pytorch
-          pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-            # apply PRs for stock pytorch
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-            git status && git show -s
-            git submodule sync && git submodule update --init --recursive
-            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-              echo "Don't replace torch-xpu-ops!"
-            else
-              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-              # Workaround for torch-xpu-ops ci test
-              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-            fi
+            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
           fi
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          cd ./pytorch
+          git reset --hard && git checkout ${TORCH_COMMIT_ID}
+          git status && git show -s
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            TORCH_XPU_OPS_COMMIT=${{ github.sha }}
+          else
+            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+          fi
+          rm -rf third_party/torch-xpu-ops
+          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
+          cd ../..
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          pip install -r .ci/docker/requirements-ci.txt
       - name: Triton Installation
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -91,37 +107,6 @@ jobs:
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../pytorch
-            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-            pip install -r requirements.txt
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          else
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ../pytorch
-            git reset --hard && git checkout ${TORCH_COMMIT_ID}
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-            rm -rf third_party/torch-xpu-ops
-            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-            cd third_party/torch-xpu-ops
-            git checkout ${TORCH_XPU_OPS_COMMIT}
-            cd ../..
-            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          fi
-          pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -130,7 +115,6 @@ jobs:
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python -c "import triton; print(triton.__version__)"
-
           cd ..
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
