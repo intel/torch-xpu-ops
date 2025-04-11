@@ -11,6 +11,7 @@ XPU_CONDA_ENV=${XPU_CONDA_ENV:-"xpu-build"}
 XPU_PYTHON=${XPU_PYTHON:-"3.10"}
 
 # Conda env
+. "$(dirname ${CONDA_EXE})/../etc/profile.d/conda.sh"
 conda clean -ay
 conda create python=${XPU_PYTHON} -y -n ${XPU_CONDA_ENV}
 conda activate ${XPU_CONDA_ENV}
