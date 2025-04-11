@@ -598,7 +598,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     cclstream =
         std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).second);
   } catch (...) {
-    LOG(WARNING) << "Current stream id changed, create new ccl stream";
+    LOG(INFO) << "Current stream id changed, create new ccl stream";
     cclstream =
         std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
     std::lock_guard<std::mutex> lock(mutex_);
