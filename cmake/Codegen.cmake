@@ -37,11 +37,11 @@ function(GEN_XPU file_yaml)
     file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/aten/src/ATen/templates" SrcPATH)
     execute_process(COMMAND cmd /c xcopy ${SrcPATH} ${DestPATH} /E /H /C /I /Y > nul)
   else()
-    execute_process(COMMAND ln -s ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_XPU_YAML_DIR}) # soft link to pytorch templates
+    execute_process(COMMAND ln -sf ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_XPU_YAML_DIR}) # soft link to pytorch templates
   endif()
 
   set(XPU_CODEGEN_COMMAND
-    "${PYTHON_EXECUTABLE}" -m torchgen.gen
+    "${Python_EXECUTABLE}" -m torchgen.gen
     --source-path ${CODEGEN_XPU_YAML_DIR}
     --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
     --per-operator-headers

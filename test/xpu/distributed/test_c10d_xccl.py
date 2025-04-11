@@ -496,6 +496,50 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
+    # The difference between this case and `test_send_recv` is that `test_send_recv` uses a previously created process group,
+    # whereas this case performs point-to-point operations immediately after creating the process group.
+    def test_single_p2p(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        torch.manual_seed(0)
+        send_tensor = torch.rand(10, 10).to(self.rank)
+        if self.rank == 0:
+            dist.send(send_tensor, 1)
+        if self.rank == 1:
+            recv_tensor = torch.rand(10, 10).to(self.rank)
+            dist.recv(recv_tensor, 0)
+            self.assertEqual(send_tensor, recv_tensor)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_tensor_dtype_complex(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        tensor = torch.rand(2, device=self.device)
+        tensor_c = torch.view_as_complex(tensor)
+        tensor_list = [
+            torch.rand(2, device=self.device) for _ in range(self.world_size)
+        ]
+        tensor_list_c = list(tensor_list)
+        tensor_list_c[1] = torch.view_as_complex(tensor_list_c[1])
+
+        dist.all_gather(tensor_list, tensor)
+        dist.all_gather(tensor_list, tensor_c)
+        dist.all_gather(tensor_list_c, tensor)
+        dist.all_gather(tensor_list_c, tensor_c)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
     def test_all_gather_into_tensor(self):
         store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(
