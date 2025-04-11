@@ -4,7 +4,7 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/TensorIterator.h>
 
-#include <ATen/ops/add_native.h>
+#include <xpu/ATen/ops/add_native.h>
 
 #include <ATen/native/xpu/sycl/BinaryBitwiseOpsKernels.h>
 #include <ATen/native/xpu/sycl/BinaryGeometricKernels.h>
