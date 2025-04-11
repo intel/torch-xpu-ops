@@ -74,7 +74,7 @@ def get_message(case):
                 indent_level = 0
                 break
 
-    return " | ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
+    return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
 def print_md_row(row, print_header):
     if print_header:
