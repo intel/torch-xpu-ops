@@ -6,8 +6,8 @@
 
 #include <ATen/native/xpu/sycl/Col2ImKernel.h>
 
-#include <ATen/ops/col2im_native.h>
 #include <comm/xpu_aten.h>
+#include <xpu/ATen/ops/col2im_native.h>
 
 namespace at::native {
 
