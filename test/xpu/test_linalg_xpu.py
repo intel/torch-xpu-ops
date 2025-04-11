@@ -5,7 +5,6 @@ import math
 import unittest
 from functools import partial
 
-import numpy as np
 import torch
 from torch.testing import make_tensor
 from torch.testing._internal.common_cuda import tf32_on_and_off
@@ -26,7 +25,6 @@ from torch.testing._internal.common_utils import (
     run_tests,
     setBlasBackendsToDefaultFinally,
     setLinalgBackendsToDefaultFinally,
-    slowTest,
     TestCase,
 )
 
