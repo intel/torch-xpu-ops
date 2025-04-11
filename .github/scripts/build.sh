@@ -26,24 +26,24 @@ rm -rf ${GITHUB_WORKSPACE}/xpu-pytorch
 git clone ${XPU_TORCH/@*} ${GITHUB_WORKSPACE}/xpu-pytorch
 cd ${GITHUB_WORKSPACE}/xpu-pytorch
 git checkout ${XPU_TORCH/*@}
-git remote -v
-git show -s
+git remote -v && git branch && git show -s
 
 # Set torch-xpu-ops
-if [ "${KEEP_TORCH_XPU_OPS,,}" != "true" ];then
-    sed -i "s+https://github.com/intel/torch-xpu-ops.git+${KEEP_TORCH_XPU_OPS/@*}+g" ./caffe2/CMakeLists.txt
-    git ls-remote ${KEEP_TORCH_XPU_OPS/@*} |\
-        grep "refs/heads/${KEEP_TORCH_XPU_OPS/*@}$" |\
-        awk -v c="${KEEP_TORCH_XPU_OPS/*@}" '{if(NR>0){c=$1}}END{print c}' > ./third_party/xpu.txt
-else
+if [ "${KEEP_TORCH_XPU_OPS,,}" == "true" ];then
     KEEP_TORCH_XPU_OPS="https://github.com/intel/torch-xpu-ops.git@$(cat third_party/xpu.txt)"
 fi
-rm -rf ${GITHUB_WORKSPACE}/torch-xpu-ops
-git clone ${KEEP_TORCH_XPU_OPS/@*} ${GITHUB_WORKSPACE}/torch-xpu-ops
+if [ "${KEEP_TORCH_XPU_OPS,,}" != "false" ];then
+    rm -rf ${GITHUB_WORKSPACE}/torch-xpu-ops
+    git clone ${KEEP_TORCH_XPU_OPS/@*} ${GITHUB_WORKSPACE}/torch-xpu-ops
+    cd ${GITHUB_WORKSPACE}/torch-xpu-ops
+    git checkout ${KEEP_TORCH_XPU_OPS/*@}
+fi
 cd ${GITHUB_WORKSPACE}/torch-xpu-ops
-git checkout ${KEEP_TORCH_XPU_OPS/*@}
-git remote -v
-git show -s
+git remote -v && git branch && git show -s
+cd ${GITHUB_WORKSPACE}/xpu-pytorch
+rm -rf third_party/torch-xpu-ops
+cp -r ${GITHUB_WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
+sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
 
 # oneAPI DLE
 source ${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh
