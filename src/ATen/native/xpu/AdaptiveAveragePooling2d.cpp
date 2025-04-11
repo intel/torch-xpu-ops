@@ -5,10 +5,10 @@
 
 #include <comm/xpu_aten.h>
 
-#include <ATen/ops/_adaptive_avg_pool2d_backward_native.h>
-#include <ATen/ops/_adaptive_avg_pool2d_native.h>
 #include <ATen/ops/mean.h>
 #include <ATen/ops/zeros_like.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_backward_native.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_native.h>
 
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.h>
 

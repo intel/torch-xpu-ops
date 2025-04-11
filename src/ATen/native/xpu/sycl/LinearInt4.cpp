@@ -16,7 +16,7 @@ static inline size_t padto_le(size_t src, int padding) {
   return src / size_t(padding) * size_t(padding);
 }
 
-template <typename scalar_t = sycl::half, int block_size = 32>
+template <typename scalar_t = sycl::ext::oneapi::bfloat16, int block_size = 32>
 struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   LinearInt4KernelFunctor(
       const scalar_t* A,
@@ -169,10 +169,9 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (; i < k; i += SgSize * 2) {
           uint8_t tmps8 = *(bptr + sg_id);
 
-          int scale_offset = sg_id * 2 / blocksize * ld_scale_zp;
-          int zp_offset = sg_id * 2 / blocksize * ld_scale_zp;
-          scalar_t scale = *(sptr + scale_offset);
-          scalar_t zero_point = *(zptr + zp_offset);
+          int scale_zp_offset = (sg_id * 2 / blocksize) * ld_scale_zp;
+          scalar_t scale = *(sptr + scale_zp_offset);
+          scalar_t zero_point = *(zptr + scale_zp_offset);
 
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
           scalarx2_t tmpB = {
