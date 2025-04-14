@@ -3,8 +3,8 @@
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
 
-#include <ATen/ops/native_dropout_backward_native.h>
-#include <ATen/ops/native_dropout_native.h>
+#include <xpu/ATen/ops/native_dropout_backward_native.h>
+#include <xpu/ATen/ops/native_dropout_native.h>
 
 #include <comm/xpu_aten.h>
 

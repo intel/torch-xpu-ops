@@ -1,8 +1,8 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/AveragePool3dKernels.h>
 
-#include <ATen/ops/avg_pool3d_backward_native.h>
-#include <ATen/ops/avg_pool3d_native.h>
+#include <xpu/ATen/ops/avg_pool3d_backward_native.h>
+#include <xpu/ATen/ops/avg_pool3d_native.h>
 
 namespace at {
 namespace native {
