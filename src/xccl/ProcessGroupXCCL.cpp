@@ -1791,44 +1791,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
     TORCH_CHECK(
         outputTensor.size(0) % size_ == 0,
         "xpu_alltoall_base: tensor's dim 0 does not divide equally across group size");
-    return collective(
-        inputTensor,
-        outputTensor,
-        [&](at::Tensor& input,
-            at::Tensor& output,
-            xcclComm_t& comm,
-            at::xpu::XPUStream& stream,
-            sycl::queue& SyclQueue) {
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-          auto xcclDataType = getXcclDataType(output.scalar_type());
-          size_t count = input.numel() / size_;
-          size_t rankdiff = input.nbytes() / size_;
-
-          onecclGroupStart();
-          for (const auto r : c10::irange(rank_)) {
-            if (count != 0) {
-              onecclSend(
-                  ((char*)input.data_ptr()) + r * rankdiff,
-                  count,
-                  xcclDataType,
-                  r,
-                  comm,
-                  &SyclQueue);
-              onecclRecv(
-                  ((char*)output.data_ptr()) + r * rankdiff,
-                  count,
-                  xcclDataType,
-                  r,
-                  comm,
-                  &SyclQueue);
-            }
-          }
-          onecclGroupEnd();
-          return;
-        },
-        OpType::ALLTOALL_BASE,
-        "xccl:all_to_all");
   } else {
     c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
     c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
@@ -1850,60 +1812,59 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         -1, // globalRankStart
         -1, // globalRankStride
         this->getSize()); // worldSize
-
-    return collective(
-        inputTensor,
-        outputTensor,
-        [&](at::Tensor& input,
-            at::Tensor& output,
-            xcclComm_t& comm,
-            at::xpu::XPUStream& stream,
-            sycl::queue& SyclQueue) {
-          std::vector<size_t> send_lengths(size_);
-          std::vector<size_t> recv_lengths(size_);
-          std::vector<size_t> send_offsets(size_);
-          std::vector<size_t> recv_offsets(size_);
-          c10d::computeLengthsAndOffsets(
-              inputSplitSizes, input, &send_lengths, &send_offsets);
-          c10d::computeLengthsAndOffsets(
-              outputSplitSizes, output, &recv_lengths, &recv_offsets);
-
-          size_t size = input.element_size();
-          auto xcclDataType = getXcclDataType(input.scalar_type());
-          c10::xpu::XPUCachingAllocator::recordStream(
-              output.storage().data_ptr(), stream);
-
-          auto send_offsets_data = send_offsets.data();
-          auto recv_offsets_data = recv_offsets.data();
-
-          onecclGroupStart();
-          for (const auto r : c10::irange(size_)) {
-            if (send_lengths[r] != 0) {
-              onecclSend(
-                  ((char*)input.data_ptr()) + send_offsets_data[r] * size,
-                  send_lengths[r],
-                  xcclDataType,
-                  r,
-                  comm,
-                  &SyclQueue);
-            }
-            if (recv_lengths[r] != 0) {
-              onecclRecv(
-                  ((char*)output.data_ptr()) + recv_offsets_data[r] * size,
-                  recv_lengths[r],
-                  xcclDataType,
-                  r,
-                  comm,
-                  &SyclQueue);
-            }
-          }
-          onecclGroupEnd();
-
-          return;
-        },
-        OpType::ALLTOALL_BASE,
-        "xccl:all_to_all");
   }
+  return collective(
+      inputTensor,
+      outputTensor,
+      [&](at::Tensor& input,
+          at::Tensor& output,
+          xcclComm_t& comm,
+          at::xpu::XPUStream& stream,
+          sycl::queue& SyclQueue) {
+        std::vector<size_t> send_lengths(size_);
+        std::vector<size_t> recv_lengths(size_);
+        std::vector<size_t> send_offsets(size_);
+        std::vector<size_t> recv_offsets(size_);
+        c10d::computeLengthsAndOffsets(
+            inputSplitSizes, input, &send_lengths, &send_offsets);
+        c10d::computeLengthsAndOffsets(
+            outputSplitSizes, output, &recv_lengths, &recv_offsets);
+
+        size_t size = input.element_size();
+        auto xcclDataType = getXcclDataType(input.scalar_type());
+        c10::xpu::XPUCachingAllocator::recordStream(
+            output.storage().data_ptr(), stream);
+
+        auto send_offsets_data = send_offsets.data();
+        auto recv_offsets_data = recv_offsets.data();
+
+        onecclGroupStart();
+        for (const auto r : c10::irange(size_)) {
+          if (send_lengths[r] != 0) {
+            onecclSend(
+                ((char*)input.data_ptr()) + send_offsets_data[r] * size,
+                send_lengths[r],
+                xcclDataType,
+                r,
+                comm,
+                &SyclQueue);
+          }
+          if (recv_lengths[r] != 0) {
+            onecclRecv(
+                ((char*)output.data_ptr()) + recv_offsets_data[r] * size,
+                recv_lengths[r],
+                xcclDataType,
+                r,
+                comm,
+                &SyclQueue);
+          }
+        }
+        onecclGroupEnd();
+
+        return;
+      },
+      OpType::ALLTOALL_BASE,
+      "xccl:all_to_all");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
@@ -1940,8 +1901,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       this->getSize()); // worldSize
 
   return collective(
-      inputTensors,
-      outputTensors,
+      inputTensors.front(),
+      outputTensors.front(),
       [&](at::Tensor& /* unused */,
           at::Tensor& /* unused */,
           xcclComm_t& comm,
