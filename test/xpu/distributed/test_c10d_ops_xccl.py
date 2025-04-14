@@ -908,6 +908,19 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         for t1, t2 in zip(out_tensors, expected_tensors):
             self.assertEqual(t1, t2)
 
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_all_to_all_single_none(self):
+        device = self.rank_to_GPU[self.rank][0]
+
+        send = torch.full((self.world_size, 2), self.rank).to(device)
+
+        out = torch.zeros(self.world_size, 2, dtype=send.dtype).to(device)
+        dist.all_to_all_single(out, send)
+        self.assertEqual(
+            out.tolist(), list(zip(range(self.world_size), range(self.world_size)))
+        )
+
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
 if __name__ == "__main__":
