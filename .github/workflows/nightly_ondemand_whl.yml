@@ -72,7 +72,6 @@ jobs:
     timeout-minutes: 3600
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
     outputs:
