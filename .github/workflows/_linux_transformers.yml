@@ -95,7 +95,7 @@ jobs:
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
-          pip install junitparser
+          pip install junitparser pytest-timeout
       - name: Prepare Stock XPU Pytorch
         run: |
           pwd
@@ -144,7 +144,7 @@ jobs:
         run: |
           source activate $CONDA_ENV_NAME
           cd transformers
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml -k backbone tests || \
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml -k backbone tests || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
       - name: Run tests/*.py
         env:
@@ -152,14 +152,14 @@ jobs:
         run: |
           source activate $CONDA_ENV_NAME
           cd transformers
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/*.py || true
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/*.py || true
       - name: Run tests/benchmark
         env:
           TEST_CASE: 'tests_benchmark'
         run: |
           source activate $CONDA_ENV_NAME
           cd transformers
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/benchmark || true
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/benchmark || true
       - name: Run tests/generation
         env:
           TEST_CASE: 'tests_generation'
@@ -169,7 +169,7 @@ jobs:
           # Excluding tests due to:
           # * torch.distributed.* not yet supported by XPU
           pattern="not TestFSDPGeneration"
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/generation -k "$pattern" || true
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/generation -k "$pattern" || true
       - name: Run tests/models
         env:
           TEST_CASE: 'tests_models'
@@ -184,7 +184,7 @@ jobs:
             not test_model_parallel_equal_results and \
             not test_resize_embeddings_untied and \
             not test_resize_tokens_embeddings"
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/models -k "$pattern" || true
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/models -k "$pattern" || true
       - name: Run tests/pipelines
         env:
           TEST_CASE: 'tests_pipelines'
@@ -193,7 +193,7 @@ jobs:
           cd transformers
           # Some tests are known to fail w/o clear pattern
           # TODO: drop ||true after triage and fixes
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/pipelines || true
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml tests/pipelines || true
       - name: Run tests/trainer
         env:
           TEST_CASE: 'tests_trainer'
@@ -208,7 +208,7 @@ jobs:
             not TestTrainerDistributed and \
             not TestTrainerDistributedXPU and \
             not TestFSDPTrainer"
-          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/trainer --junit-xml=reports/$TEST_CASE.xml -k "$pattern" || \
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE tests/trainer --junit-xml=reports/$TEST_CASE.xml -k "$pattern" || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
       - name: Run tests/utils
         env:
@@ -219,7 +219,7 @@ jobs:
           # Excluding tests due to:
           # * Network proxy connection issue, reason unknown
           pattern="not test_load_img_url_timeout"
-          python3 -m pytest -rsf --make-reports=$TEST_CASE tests/utils --junit-xml=reports/$TEST_CASE.xml -k "$pattern" || \
+          python3 -m pytest --timeout 600 -rsf --make-reports=$TEST_CASE tests/utils --junit-xml=reports/$TEST_CASE.xml -k "$pattern" || \
             (echo "FAILED_CASES=$FAILED_CASES,$TEST_CASE" >> $GITHUB_ENV)
       - name: Check for errors in tests
         run: |
