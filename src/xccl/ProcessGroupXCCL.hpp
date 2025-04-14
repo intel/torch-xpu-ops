@@ -19,41 +19,8 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/logger.hpp>
 namespace c10d {
-
-namespace {
-int getXCCLEnvVar(std::string envVarName) {
-  char* stringValue = std::getenv(envVarName.c_str());
-  if (stringValue != nullptr) {
-    try {
-      int val = std::stoi(stringValue);
-      return val;
-    } catch (std::exception& e) {
-      TORCH_CHECK(
-          false,
-          "Invalid value for environment variable: " + std::string(envVarName));
-    }
-  } else {
-    return -1;
-  }
-}
-
-template <typename T>
-void setXCCLEnvVar(const std::string& envVarName, T val) {
-  if constexpr (std::is_same_v<T, int>) {
-    setenv(envVarName.c_str(), std::to_string(val).c_str(), 1);
-  } else if constexpr (std::is_same_v<T, std::string>) {
-    setenv(envVarName.c_str(), val.c_str(), 1);
-  }
-}
-
-bool with_mpirun() {
-  return (getenv("MPI_LOCALRANKID") || getenv("MPI_LOCALNRANKS") ||
-          getenv("PMI_RANK") || getenv("PMI_SIZE") || getenv("PMIX_RANK"))
-      ? true
-      : false;
-}
-} // namespace
 
 static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
@@ -147,6 +114,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
+  }
+
+  bool supportsCoalescing() const override {
+    return true;
   }
 
   void startCoalescing() override;
@@ -384,6 +355,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   uint64_t getSequenceNumberForGroup() override;
 
+  std::string createLogPrefix() const;
+
+  const std::string& logPrefix() const;
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, sycl::queue>>
       xcclStreamsMap_;
@@ -401,10 +376,33 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
+  size_t local_id_;
+  std::string logPrefix_;
 };
 } // namespace c10d
 
 namespace {
+
+inline std::string getXcclVersion() {
+  static std::string versionString = []() {
+    int version = 0;
+    std::string versionString;
+    onecclGetVersion(&version);
+
+    const int majorBase = 10000;
+    const int minorBase = 100;
+    auto xcclMajor = version / majorBase;
+    auto xcclMinor = (version % majorBase) / minorBase;
+    auto xcclPatch = version % (xcclMajor * majorBase + xcclMinor * minorBase);
+    versionString = std::to_string(xcclMajor) + "." +
+        std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
+
+    return versionString;
+  }();
+
+  return versionString;
+}
+
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
@@ -429,5 +427,45 @@ inline std::string reduceOpToString(c10d::ReduceOp op) {
       return "UNKNOWN";
   }
 }
+
+// Since the current profiler trace support for XCCL is unclear, wrap
+// `RECORD_PARAM_COMMS_DATA` and output parameters as debug logs.
+// export TORCH_CPP_LOG_LEVEL=INFO
+#define RECORD_PARAM_COMMS_DATA_WITH_LOG(                                   \
+    seq,                                                                    \
+    pg_name_tuple,                                                          \
+    inputTensors,                                                           \
+    outputTensors,                                                          \
+    rank,                                                                   \
+    collective_name,                                                        \
+    inNelems,                                                               \
+    outNelems,                                                              \
+    dType,                                                                  \
+    inSplitSizes,                                                           \
+    outSplitSizes,                                                          \
+    globalRankStart,                                                        \
+    globalRankStride,                                                       \
+    worldSize)                                                              \
+  do {                                                                      \
+    LOG(INFO) << "collective_name: " << collective_name                     \
+              << ", inNelems: " << inNelems << ", outNelems: " << outNelems \
+              << ", dType: " << dType << ", root/src rank: " << rank        \
+              << ", worldSize: " << worldSize;                              \
+    RECORD_PARAM_COMMS_DATA(                                                \
+        seq,                                                                \
+        pg_name_tuple,                                                      \
+        inputTensors,                                                       \
+        outputTensors,                                                      \
+        rank,                                                               \
+        collective_name,                                                    \
+        inNelems,                                                           \
+        outNelems,                                                          \
+        dType,                                                              \
+        inSplitSizes,                                                       \
+        outSplitSizes,                                                      \
+        globalRankStart,                                                    \
+        globalRankStride,                                                   \
+        worldSize);                                                         \
+  } while (0)
 } // namespace
 #endif // USE_C10D_XCCL
