@@ -31,7 +31,7 @@ on:
       driver:
         required: false
         type: string
-        default: 'lts'
+        default: 'rolling'
         description: Driver lts/rolling
 
 permissions: read-all
@@ -95,7 +95,6 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
