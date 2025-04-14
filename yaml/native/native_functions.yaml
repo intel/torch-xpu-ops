@@ -9328,6 +9328,11 @@
     NestedTensorXPU: NestedTensor_to_padded_tensor_xpu
   autogen: to_padded_tensor.out
 
+- func: _jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max_lengths, float padding_value=0.0) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fbgemm_jagged_to_padded_dense_forward
+
 # Standard complex to complex FFT (forward or backward)
 - func: _fft_c2c(Tensor self, SymInt[] dim, int normalization, bool forward) -> Tensor
   variants: function
@@ -9338,3 +9343,14 @@
   variants: function
   dispatch:
     XPU: _fft_c2c_xpu_out
+
+# Complex to real inverse FFT
+- func: _fft_c2r(Tensor self, int[] dim, int normalization, SymInt last_dim_size) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu
+
+- func: _fft_c2r.out(Tensor self, int[] dim, int normalization, SymInt last_dim_size, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu_out
