@@ -362,10 +362,22 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 namespace {
 
 inline std::string getXcclVersion() {
-  auto xccl_version = ccl::get_library_version();
-  std::string versionString = std::to_string(xccl_version.major) + "." +
-      std::to_string(xccl_version.minor) + "." +
-      std::to_string(xccl_version.update);
+  static std::string versionString = []() {
+    int version = 0;
+    std::string versionString;
+    onecclGetVersion(&version);
+
+    const int majorBase = 10000;
+    const int minorBase = 100;
+    auto xcclMajor = version / majorBase;
+    auto xcclMinor = (version % majorBase) / minorBase;
+    auto xcclPatch = version % (xcclMajor * majorBase + xcclMinor * minorBase);
+    versionString = std::to_string(xcclMajor) + "." +
+        std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
+
+    return versionString;
+  }();
+
   return versionString;
 }
 
