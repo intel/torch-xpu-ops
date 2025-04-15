@@ -113,7 +113,7 @@ def print_failures():
         print_header = False
 
 def parse_log_file(log_file):
-    with open(log_file, 'r', encoding='utf-8') as f:
+    with open(log_file, encoding='utf-8') as f:
         content = f.read()
 
     ut_name = os.path.splitext(os.path.basename(log_file))[0]
