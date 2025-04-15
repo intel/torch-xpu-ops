@@ -4,8 +4,8 @@
 # usage
 # Summary forward op time, forward_op_summary.csv is forward summary file
 ## bash microbench_summary.sh path/to/profile's log forward_op_summary.csv
-# Summary backward op time, backward_op_summary.csv is backward summary file
-## bash microbench_summary.sh path/to/profile's log backward_op_summary.csv
+# Summary backward op time, backward_op_summary.csv is backward summary file, True means summary backward, default is false.
+## bash microbench_summary.sh path/to/profile's log backward_op_summary.csv True
 
 results_dir="$1"
 output_file="$2"
