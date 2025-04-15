@@ -8,6 +8,7 @@ from xpu_test_utils import launch_test
 res = 0
 res2 = 0
 fail_test = []
+error_log = ""
 
 os.environ["CCL_ATL_TRANSPORT"] = "ofi"
 os.environ["CCL_SEND"] = "direct"
@@ -59,20 +60,49 @@ def run(test_command):
 
 
 for key in skip_dict_python:
-    skip_list = skip_dict_python[key]
+    skip_list = skip_dict_python[key] if skip_dict_python[key] else []
     test_command = ["python", key]
     fail = run(test_command)
     if fail.returncode:
-        for line in fail.stderr.split("\n"):
-            if "FAIL: " in line:
-                is_error = True
-                for skip_case in skip_list:
-                    if skip_case in line:
-                        print("Skiped error: ", key + " " + skip_case)
-                        is_error = False
-                if is_error:
-                    res2 += fail.returncode
-                    fail_test.append("".join(key + " " + line))
+        num_skipped = 0
+        num_err = 0
+        for i, err in enumerate(fail.stderr.split("FAIL: ")):
+            if i == 0 and len(err) > 0:
+                error_log += err
+                continue
+            is_skipped = False
+            for skip_case in skip_list:
+                if skip_case in err:
+                    print("Skipped error: ", key + " " + skip_case)
+                    num_skipped += 1
+                    is_skipped = True
+                    break
+            if not is_skipped:
+                num_err += 1
+                res2 += fail.returncode
+                if i == len(fail.stderr.split("FAIL: ")) - 1:
+                    error_log += "FAIL: "
+                    for line in err.split("\n"):
+                        if line.startswith("FAILED (failures="):
+                            num_errs = line.split("=")[1].split(")")[0].strip()
+                            error_log += ("FAILED (failures=" + str(int(num_errs) - num_skipped) + f" skipped {num_skipped} cases" + ")\n")
+                        else:
+                            error_log += (line + "\n")
+                else:
+                    error_log += ("FAIL: " + err)
+            else:
+                if i == len(fail.stderr.split("FAIL: ")) - 1:
+                    error_log += "FAIL: "
+                    for line in err.split("\n"):
+                        if line.startswith("FAILED (failures="):
+                            num_errs = line.split("=")[1].split(")")[0].strip()
+                            error_log += ("FAILED (failures=" + str(int(num_errs) - num_skipped) + f" skipped {num_skipped} cases" + ")\n")
+
+    if num_err > 0:
+        fail_test.append(key)
+        renamed_key = key.replace("../../../../", "").replace("/", "_")
+        with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
+            f.write(error_log)
 
 # run pytest with skiplist
 for key in skip_dict:
