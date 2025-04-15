@@ -64,9 +64,9 @@ for key in skip_dict_python:
     skip_list = skip_dict_python[key] if skip_dict_python[key] else []
     test_command = ["python", key]
     fail = run(test_command)
+    num_skipped = 0
+    num_err = 0
     if fail.returncode:
-        num_skipped = 0
-        num_err = 0
         for i, err in enumerate(fail.stderr.split("FAIL: ")):
             if i == 0 and len(err) > 0:
                 error_log += err
@@ -99,11 +99,16 @@ for key in skip_dict_python:
                             num_errs = line.split("=")[1].split(")")[0].strip()
                             error_log += ("FAILED (failures=" + str(int(num_errs) - num_skipped) + f" skipped {num_skipped} cases" + ")\n")
 
+    renamed_key = key.replace("../../../../", "").replace("/", "_")
     if num_err > 0:
         fail_test.append(key)
-        renamed_key = key.replace("../../../../", "").replace("/", "_")
         with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
             f.write(error_log)
+    else:
+        import pdb;pdb.set_trace()
+        with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
+            f.write(fail.stdout)
+            f.write(fail.stderr)
 
 # run pytest with skiplist
 for key in skip_dict:
