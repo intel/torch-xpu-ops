@@ -171,5 +171,11 @@ if [ "${performance}" -gt 0 ];then
     unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
     reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
     python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -refer ${reference_dir}
-    python "$(dirname "$0")/../ci_expected_accuracy/calculate_best.py" --new ${results_dir} --best ${results_dir}/best.csv
+    python "$(dirname "$0")/calculate_best_perf.py" \
+        --new ${results_dir} \
+        --best ${results_dir}/best.csv \
+        --device PVC1100 --os ${OS_PRETTY_NAME} \
+        --driver ${DRIVER_VERSION} --oneapi ${BUNDLE_VERSION} \
+        --gcc ${GCC_VERSION} --python ${python} \
+        --pytorch ${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID} --torch-xpu-ops ${TORCH_XPU_OPS_COMMIT-:"${GITHUB_SHA}"}
 fi
