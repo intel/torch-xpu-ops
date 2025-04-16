@@ -70,7 +70,7 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pandas scipy psutil
+          pip install pandas scipy psutil requests
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
@@ -295,13 +295,12 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install pandas scipy psutil requests
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            cd ../..
-            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           cd ../ && rm -rf pytorch
@@ -318,6 +317,7 @@ jobs:
             git checkout ${TORCH_XPU_OPS_COMMIT}
             cd ../..
           fi
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           pip install -r .ci/docker/requirements-ci.txt
       - name: Triton Installation
         run: |
