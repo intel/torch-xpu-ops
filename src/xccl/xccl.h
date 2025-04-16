@@ -43,6 +43,7 @@ inline bool isCCLV2EnabledCached() {
   static const bool cachedValue = []() {
     const char* use_ccl_v2_env = std::getenv("USE_CCL_V2");
     if (use_ccl_v2_env) {
+      LOG(INFO) << "USE_CCL_V2";
       std::string value(use_ccl_v2_env);
       std::transform(
           value.begin(), value.end(), value.begin(), [](unsigned char c) {
