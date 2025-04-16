@@ -540,7 +540,14 @@ jobs:
           fi
           python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
           cd ${{ github.workspace }}
+          mkdir -p ut_log/pytorch_distributed_summary
+          cp op_ut_with_skip_* ${{ github.workspace }}/ut_log/pytorch_distributed_summary
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+      - name: Distributed UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/pytorch_distributed_summary/* >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check
         shell: bash
         run: |
