@@ -1009,8 +1009,8 @@ void cauchy_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct GeometricFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(
-        transformation::geometric<accscalar_t>(rand, p_));
+    return static_cast<scalar_t>(std::ceil(
+        std::log(rand) / std::log(static_cast<accscalar_t>(1.0) - p_)));
   }
 
   GeometricFunctor(accscalar_t p) : p_(p) {}
