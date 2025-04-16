@@ -19,7 +19,3 @@ set(ATen_XPU_SYCL_SRCS ${ATen_XPU_SYCL_SRCS} PARENT_SCOPE)
 foreach(HEADER  ${xpu_h})
   install(FILES ${HEADER} DESTINATION "${AT_INSTALL_INCLUDE_DIR}/ATen/xpu")
 endforeach()
-
-foreach(HEADER  ${xpu_ops_generated_headers})
-  install(FILES ${HEADER} DESTINATION ${AT_INSTALL_INCLUDE_DIR}/ATen/ops)
-endforeach()

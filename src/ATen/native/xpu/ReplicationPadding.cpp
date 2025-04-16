@@ -6,12 +6,12 @@
 
 #include <comm/RegisterUtils.h>
 
-#include <ATen/ops/replication_pad1d_backward_native.h>
-#include <ATen/ops/replication_pad1d_native.h>
-#include <ATen/ops/replication_pad2d_backward_native.h>
-#include <ATen/ops/replication_pad2d_native.h>
-#include <ATen/ops/replication_pad3d_backward_native.h>
-#include <ATen/ops/replication_pad3d_native.h>
+#include <xpu/ATen/ops/replication_pad1d_backward_native.h>
+#include <xpu/ATen/ops/replication_pad1d_native.h>
+#include <xpu/ATen/ops/replication_pad2d_backward_native.h>
+#include <xpu/ATen/ops/replication_pad2d_native.h>
+#include <xpu/ATen/ops/replication_pad3d_backward_native.h>
+#include <xpu/ATen/ops/replication_pad3d_native.h>
 
 namespace at {
 namespace native {
