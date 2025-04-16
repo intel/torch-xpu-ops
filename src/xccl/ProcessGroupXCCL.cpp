@@ -101,56 +101,56 @@ int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
 }
 
 void ProcessGroupXCCL::broadcastUniqueXCCLID(
-  onecclUniqueId* xcclID,
-  bool isSingleP2POp,
-  const std::string& p2pKey,
-  int p2pRank) {
-std::string storeKey;
-if (!isSingleP2POp) {
-  storeKey = std::to_string(xcclCommCounter_++);
-} else {
-  storeKey = p2pKey;
-}
-if (rank_ == 0 || (isSingleP2POp && p2pRank == 0)) {
-  auto vec = std::vector<uint8_t>(
-      reinterpret_cast<uint8_t*>(xcclID),
-      reinterpret_cast<uint8_t*>(xcclID) + ONECCL_UNIQUE_ID_BYTES);
-  store_->set(storeKey, vec);
-} else {
-  try {
-    auto vec = store_->get(storeKey);
-    TORCH_CHECK_WITH(
-        DistBackendError,
-        vec.size() == ONECCL_UNIQUE_ID_BYTES,
-        "Invalid size for xcclUniqueId");
-    std::memcpy(xcclID, vec.data(), vec.size());
-  } catch (const std::exception& e) {
-    std::string exceptionMsg = c10::str(
-        "[",
-        rank_,
-        "] is setting up XCCL communicator and "
-        "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-        storeKey,
-        "', but store->get('",
-        storeKey,
-        "') got error: ");
-    C10_THROW_ERROR(
-        DistBackendError,
-        exceptionMsg + e.what() +
-            ". This may indicate a possible application crash on rank 0 or a network set up issue.");
-  } catch (...) {
-    C10_THROW_ERROR(
-        DistBackendError,
-        c10::str(
-            "Unknown exception while [",
-            rank_,
-            "] is setting up XCCL communicator and "
-            "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-            storeKey,
-            "'",
-            ". This may indicate a possible application crash on rank 0 or a network set up issue."));
+    onecclUniqueId* xcclID,
+    bool isSingleP2POp,
+    const std::string& p2pKey,
+    int p2pRank) {
+  std::string storeKey;
+  if (!isSingleP2POp) {
+    storeKey = std::to_string(xcclCommCounter_++);
+  } else {
+    storeKey = p2pKey;
   }
-}
+  if (rank_ == 0 || (isSingleP2POp && p2pRank == 0)) {
+    auto vec = std::vector<uint8_t>(
+        reinterpret_cast<uint8_t*>(xcclID),
+        reinterpret_cast<uint8_t*>(xcclID) + ONECCL_UNIQUE_ID_BYTES);
+    store_->set(storeKey, vec);
+  } else {
+    try {
+      auto vec = store_->get(storeKey);
+      TORCH_CHECK_WITH(
+          DistBackendError,
+          vec.size() == ONECCL_UNIQUE_ID_BYTES,
+          "Invalid size for xcclUniqueId");
+      std::memcpy(xcclID, vec.data(), vec.size());
+    } catch (const std::exception& e) {
+      std::string exceptionMsg = c10::str(
+          "[",
+          rank_,
+          "] is setting up XCCL communicator and "
+          "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
+          storeKey,
+          "', but store->get('",
+          storeKey,
+          "') got error: ");
+      C10_THROW_ERROR(
+          DistBackendError,
+          exceptionMsg + e.what() +
+              ". This may indicate a possible application crash on rank 0 or a network set up issue.");
+    } catch (...) {
+      C10_THROW_ERROR(
+          DistBackendError,
+          c10::str(
+              "Unknown exception while [",
+              rank_,
+              "] is setting up XCCL communicator and "
+              "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
+              storeKey,
+              "'",
+              ". This may indicate a possible application crash on rank 0 or a network set up issue."));
+    }
+  }
 }
 
 bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
@@ -378,9 +378,9 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     devs_rank.emplace_back(rank, ccl::create_device(q.get_device()));
     auto xccl_kvs = get_kvs(rank_, *store_, singleP2POp, deviceKey, p2pRank);
     auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
-    XCCLComm = std::make_shared<xcclComm_t>((static_cast<void*>std::move(comms[0])));
-  }
-  else {
+    XCCLComm =
+        std::make_shared<xcclComm_t>((static_cast<void*> std::move(comms[0])));
+  } else {
     if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
       onecclGetUniqueId(&xcclID);
     }
@@ -397,7 +397,6 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     }
     XCCLComm = std::make_shared<xcclComm_t>(comm);
   }
-
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -440,12 +439,12 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 }
 
 void ProcessGroupXCCL::groupStart() {
-  ccl::group_start();
+  xccl::onecclGroupStart();
   ++xcclActiveGroupCounter_;
 }
 
 void ProcessGroupXCCL::groupEnd() {
-  ccl::group_end();
+  xccl::onecclGroupEnd();
   --xcclActiveGroupCounter_;
 }
 
@@ -645,332 +644,336 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   }
 }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
-    std::vector<at::Tensor>& tensors,
-    int dstRank,
-    int /* unused */) {
-  TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
-  // @lint-ignore CLANGTIDY
-  auto tensor = tensors.back();
-  checkSingleTensor(tensor, true);
+// c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
+//     std::vector<at::Tensor>& tensors,
+//     int dstRank,
+//     int /* unused */) {
+//   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
+//   // @lint-ignore CLANGTIDY
+//   auto tensor = tensors.back();
+//   checkSingleTensor(tensor, true);
 
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      tensors, // inputTensors
-      tensors, // outputTensors
-      dstRank, // dst rank
-      "send", // collective name
-      tensor.numel(), // inNelems
-      tensor.numel(), // outNelems
-      tensor.scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
-      this->getSize()); // worldSize
+//   RECORD_PARAM_COMMS_DATA_WITH_LOG(
+//       static_cast<int>(
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
+//       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+//       tensors, // inputTensors
+//       tensors, // outputTensors
+//       dstRank, // dst rank
+//       "send", // collective name
+//       tensor.numel(), // inNelems
+//       tensor.numel(), // outNelems
+//       tensor.scalar_type(), // dType
+//       std::vector<int64_t>(), // inSplitSizes
+//       std::vector<int64_t>(), // outSplitSizes
+//       -1, // globalRankStart
+//       -1, // globalRankStride
+//       this->getSize()); // worldSize
 
-  auto ret = pointToPoint(
-      tensor,
-      [&](at::Tensor& input,
-          xcclComm_t& comm,
-          at::xpu::XPUStream& stream,
-          ccl::stream& xcclStream,
-          int dst) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        ccl::send(
-            input.data_ptr(),
-            (size_t)input.numel(),
-            xcclDataType,
-            dst,
-            comm,
-            xcclStream);
-        return;
-      },
-      dstRank,
-      OpType::SEND,
-      c10::str("xccl:send ", rank_, "->", dstRank).c_str());
-  return ret;
-}
+//   auto ret = pointToPoint(
+//       tensor,
+//       [&](at::Tensor& input,
+//           xcclComm_t& comm,
+//           at::xpu::XPUStream& stream,
+//           ccl::stream& xcclStream,
+//           int dst) {
+//         auto xcclDataType = getXcclDataType(input.scalar_type());
+//         ccl::send(
+//             input.data_ptr(),
+//             (size_t)input.numel(),
+//             xcclDataType,
+//             dst,
+//             comm,
+//             xcclStream);
+//         return;
+//       },
+//       dstRank,
+//       OpType::SEND,
+//       c10::str("xccl:send ", rank_, "->", dstRank).c_str());
+//   return ret;
+// }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
-    std::vector<at::Tensor>& tensors,
-    int srcRank,
-    int /* unused */) {
-  TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
-  // @lint-ignore CLANGTIDY
-  auto tensor = tensors.back();
-  checkSingleTensor(tensor, true);
+// c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
+//     std::vector<at::Tensor>& tensors,
+//     int srcRank,
+//     int /* unused */) {
+//   TORCH_CHECK(tensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
+//   // @lint-ignore CLANGTIDY
+//   auto tensor = tensors.back();
+//   checkSingleTensor(tensor, true);
 
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      tensors, // inputTensors
-      tensors, // outputTensors
-      srcRank, // src rank
-      "recv", // collective name
-      tensor.numel(), // inNelems
-      tensor.numel(), // outNelems
-      tensor.scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
-      this->getSize()); // worldSize
+//   RECORD_PARAM_COMMS_DATA_WITH_LOG(
+//       static_cast<int>(
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
+//       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+//       tensors, // inputTensors
+//       tensors, // outputTensors
+//       srcRank, // src rank
+//       "recv", // collective name
+//       tensor.numel(), // inNelems
+//       tensor.numel(), // outNelems
+//       tensor.scalar_type(), // dType
+//       std::vector<int64_t>(), // inSplitSizes
+//       std::vector<int64_t>(), // outSplitSizes
+//       -1, // globalRankStart
+//       -1, // globalRankStride
+//       this->getSize()); // worldSize
 
-  auto ret = pointToPoint(
-      tensor,
-      [&](at::Tensor& output,
-          xcclComm_t& comm,
-          at::xpu::XPUStream& stream,
-          ccl::stream& xcclStream,
-          int src) {
-        auto xcclDataType = getXcclDataType(output.scalar_type());
-        ccl::recv(
-            output.data_ptr(),
-            (size_t)output.numel(),
-            xcclDataType,
-            src,
-            comm,
-            xcclStream);
-        return;
-      },
-      srcRank,
-      OpType::RECV,
-      c10::str("xccl:recv ", rank_, "<-", srcRank).c_str());
-  return ret;
-}
+//   auto ret = pointToPoint(
+//       tensor,
+//       [&](at::Tensor& output,
+//           xcclComm_t& comm,
+//           at::xpu::XPUStream& stream,
+//           ccl::stream& xcclStream,
+//           int src) {
+//         auto xcclDataType = getXcclDataType(output.scalar_type());
+//         ccl::recv(
+//             output.data_ptr(),
+//             (size_t)output.numel(),
+//             xcclDataType,
+//             src,
+//             comm,
+//             xcclStream);
+//         return;
+//       },
+//       srcRank,
+//       OpType::RECV,
+//       c10::str("xccl:recv ", rank_, "<-", srcRank).c_str());
+//   return ret;
+// }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
-    std::vector<std::vector<at::Tensor>>& outputTensors,
-    std::vector<at::Tensor>& inputTensors,
-    const GatherOptions& opts) {
-  static auto invalidArgument = [](const std::string& msg) {
-    C10_THROW_ERROR(ValueError, "ProcessGroupXCCL::gather: " + msg);
-  };
+// c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
+//     std::vector<std::vector<at::Tensor>>& outputTensors,
+//     std::vector<at::Tensor>& inputTensors,
+//     const GatherOptions& opts) {
+//   static auto invalidArgument = [](const std::string& msg) {
+//     C10_THROW_ERROR(ValueError, "ProcessGroupXCCL::gather: " + msg);
+//   };
 
-  assertRootRank(invalidArgument, opts.rootRank, size_);
+//   assertRootRank(invalidArgument, opts.rootRank, size_);
 
-  TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
-  // @lint-ignore CLANGTIDY
-  auto inputTensor = inputTensors.back();
+//   TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
+//   // @lint-ignore CLANGTIDY
+//   auto inputTensor = inputTensors.back();
 
-  std::vector<at::Tensor> outputs;
+//   std::vector<at::Tensor> outputs;
 
-  if (getRank() == opts.rootRank) {
-    if (outputTensors.size() != 1) {
-      std::stringstream ss;
-      ss << "requires a single-element output list containing a list with "
-         << getSize() << " tensors.";
-      invalidArgument(ss.str());
-    } else if (outputTensors[0].size() != static_cast<size_t>(getSize())) {
-      std::stringstream ss;
-      ss << "Incorrect output list size " << outputTensors[0].size()
-         << ". Output list size should be " << getSize()
-         << ", same as size of the process group.";
-      invalidArgument(ss.str());
-    }
+//   if (getRank() == opts.rootRank) {
+//     if (outputTensors.size() != 1) {
+//       std::stringstream ss;
+//       ss << "requires a single-element output list containing a list with "
+//          << getSize() << " tensors.";
+//       invalidArgument(ss.str());
+//     } else if (outputTensors[0].size() != static_cast<size_t>(getSize())) {
+//       std::stringstream ss;
+//       ss << "Incorrect output list size " << outputTensors[0].size()
+//          << ". Output list size should be " << getSize()
+//          << ", same as size of the process group.";
+//       invalidArgument(ss.str());
+//     }
 
-    const auto& options = inputTensor.options();
-    const auto& sizes = inputTensor.sizes();
-    assertTypeAndSizesMatch(invalidArgument, outputTensors[0], options, sizes);
-    outputs = outputTensors[0];
-  } else {
-    // if not in the root rank, initialize outputs as empty list
-    if (outputTensors.size() != 0) {
-      invalidArgument("requires empty output on non-root");
-    }
-    outputs = {};
-    // append a empty tensor to the list, we don't use it but the
-    // `collective` template function requires it to invoke its function
-    outputs.emplace_back();
-  }
+//     const auto& options = inputTensor.options();
+//     const auto& sizes = inputTensor.sizes();
+//     assertTypeAndSizesMatch(invalidArgument, outputTensors[0], options,
+//     sizes); outputs = outputTensors[0];
+//   } else {
+//     // if not in the root rank, initialize outputs as empty list
+//     if (outputTensors.size() != 0) {
+//       invalidArgument("requires empty output on non-root");
+//     }
+//     outputs = {};
+//     // append a empty tensor to the list, we don't use it but the
+//     // `collective` template function requires it to invoke its function
+//     outputs.emplace_back();
+//   }
 
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      inputTensors, // inputTensors
-      outputTensors, // outputTensors
-      opts.rootRank, // root rank
-      "gather", // collective name
-      inputTensor.numel(), // inNelems
-      inputTensor.numel() * this->getSize(), // outNelems
-      inputTensor.scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
-      this->getSize()); // worldSize
+//   RECORD_PARAM_COMMS_DATA_WITH_LOG(
+//       static_cast<int>(
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
+//       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+//       inputTensors, // inputTensors
+//       outputTensors, // outputTensors
+//       opts.rootRank, // root rank
+//       "gather", // collective name
+//       inputTensor.numel(), // inNelems
+//       inputTensor.numel() * this->getSize(), // outNelems
+//       inputTensor.scalar_type(), // dType
+//       std::vector<int64_t>(), // inSplitSizes
+//       std::vector<int64_t>(), // outSplitSize
+//       -1, // globalRankStart
+//       -1, // globalRankStride
+//       this->getSize()); // worldSize
 
-  auto inputs = std::vector<at::Tensor>{inputTensor};
-  return collective(
-      inputs,
-      outputs, // just to fit the collective interface
-      [&](at::Tensor& /* unused */,
-          at::Tensor& /* unused */,
-          xcclComm_t& comm,
-          at::xpu::XPUStream& stream,
-          ccl::stream& xcclStream) {
-        const auto root = opts.rootRank;
-        if (getRank() == root) {
-          for (auto output : outputs) {
-            c10::xpu::XPUCachingAllocator::recordStream(
-                output.storage().data_ptr(), stream);
-          }
-        }
-        {
-          auto xcclDataType = getXcclDataType(inputTensor.scalar_type());
-          if (rank_ == root) {
-            for (const auto r : c10::irange(size_)) {
-              if (r != root) {
-                // do receive
-                ccl::recv(
-                    outputs[r].data_ptr(),
-                    (size_t)inputTensor.numel(),
-                    xcclDataType,
-                    r,
-                    comm,
-                    xcclStream);
-              } else {
-                // on its own rank, simply copy from the input
-                outputs[r].copy_(inputTensor);
-              }
-            }
-          } else {
-            // do send
-            ccl::send(
-                inputTensor.data_ptr(),
-                (size_t)inputTensor.numel(),
-                xcclDataType,
-                root,
-                comm,
-                xcclStream);
-          }
-          return;
-        }
-      },
-      OpType::GATHER);
-}
+//   auto inputs = std::vector<at::Tensor>{inputTensor};
+//   return collective(
+//       inputs,
+//       outputs, // just to fit the collective interface
+//       [&](at::Tensor& /* unused */,
+//           at::Tensor& /* unused */,
+//           xcclComm_t& comm,
+//           at::xpu::XPUStream& stream,
+//           ccl::stream& xcclStream) {
+//         const auto root = opts.rootRank;
+//         if (getRank() == root) {
+//           for (auto output : outputs) {
+//             c10::xpu::XPUCachingAllocator::recordStream(
+//                 output.storage().data_ptr(), stream);
+//           }
+//         }
+//         {
+//           auto xcclDataType = getXcclDataType(inputTensor.scalar_type());
+//           if (rank_ == root) {
+//             for (const auto r : c10::irange(size_)) {
+//               if (r != root) {
+//                 // do receive
+//                 ccl::recv(
+//                     outputs[r].data_ptr(),
+//                     (size_t)inputTensor.numel(),
+//                     xcclDataType,
+//                     r,
+//                     comm,
+//                     xcclStream);
+//               } else {
+//                 // on its own rank, simply copy from the input
+//                 outputs[r].copy_(inputTensor);
+//               }
+//             }
+//           } else {
+//             // do send
+//             ccl::send(
+//                 inputTensor.data_ptr(),
+//                 (size_t)inputTensor.numel(),
+//                 xcclDataType,
+//                 root,
+//                 comm,
+//                 xcclStream);
+//           }
+//           return;
+//         }
+//       },
+//       OpType::GATHER);
+// }
 
-c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
-    std::vector<at::Tensor>& outputTensors,
-    std::vector<std::vector<at::Tensor>>& inputTensors,
-    const ScatterOptions& opts) {
-  static auto invalidArgument = [](const std::string& msg) {
-    C10_THROW_ERROR(ValueError, "ProcessGroupXCCL::scatter: " + msg);
-  };
+// c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
+//     std::vector<at::Tensor>& outputTensors,
+//     std::vector<std::vector<at::Tensor>>& inputTensors,
+//     const ScatterOptions& opts) {
+//   static auto invalidArgument = [](const std::string& msg) {
+//     C10_THROW_ERROR(ValueError, "ProcessGroupXCCL::scatter: " + msg);
+//   };
 
-  assertRootRank(invalidArgument, opts.rootRank, size_);
+//   assertRootRank(invalidArgument, opts.rootRank, size_);
 
-  TORCH_CHECK(outputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
-  auto outputTensor = outputTensors.back();
+//   TORCH_CHECK(outputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
+//   auto outputTensor = outputTensors.back();
 
-  std::vector<at::Tensor> inputs;
+//   std::vector<at::Tensor> inputs;
 
-  if (getRank() == opts.rootRank) {
-    if (inputTensors.size() != 1) {
-      std::stringstream ss;
-      ss << "requires a single-element input list containing a list with "
-         << getSize() << " tensors.";
-      invalidArgument(ss.str());
-    } else if (inputTensors[0].size() != static_cast<size_t>(getSize())) {
-      std::stringstream ss;
-      ss << "Incorrect input list size " << inputTensors[0].size()
-         << ". Input list size should be " << getSize()
-         << ", same as size of the process group.";
-      invalidArgument(ss.str());
-    }
+//   if (getRank() == opts.rootRank) {
+//     if (inputTensors.size() != 1) {
+//       std::stringstream ss;
+//       ss << "requires a single-element input list containing a list with "
+//          << getSize() << " tensors.";
+//       invalidArgument(ss.str());
+//     } else if (inputTensors[0].size() != static_cast<size_t>(getSize())) {
+//       std::stringstream ss;
+//       ss << "Incorrect input list size " << inputTensors[0].size()
+//          << ". Input list size should be " << getSize()
+//          << ", same as size of the process group.";
+//       invalidArgument(ss.str());
+//     }
 
-    const auto& options = outputTensor.options();
-    const auto& sizes = outputTensor.sizes();
-    assertTypeAndSizesMatch(invalidArgument, inputTensors[0], options, sizes);
-    inputs = inputTensors[0];
-  } else {
-    // if not in the root rank, initialize inputTensors as empty place holder
-    // with an empty list
-    if (inputTensors.size() != 0) {
-      invalidArgument("requires empty input on non-root");
-    }
-    inputs = {};
-    // append a empty tensor to the list, we don't use it but the
-    // `collective` template function requires it to invoke its function
-    inputs.emplace_back();
-  }
+//     const auto& options = outputTensor.options();
+//     const auto& sizes = outputTensor.sizes();
+//     assertTypeAndSizesMatch(invalidArgument, inputTensors[0], options,
+//     sizes); inputs = inputTensors[0];
+//   } else {
+//     // if not in the root rank, initialize inputTensors as empty place holder
+//     // with an empty list
+//     if (inputTensors.size() != 0) {
+//       invalidArgument("requires empty input on non-root");
+//     }
+//     inputs = {};
+//     // append a empty tensor to the list, we don't use it but the
+//     // `collective` template function requires it to invoke its function
+//     inputs.emplace_back();
+//   }
 
-  RECORD_PARAM_COMMS_DATA_WITH_LOG(
-      static_cast<int>(
-          this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      inputTensors, // inputTensors
-      outputTensors, // outputTensors
-      opts.rootRank, // root rank
-      "scatter", // collective name
-      outputTensor.numel() * this->getSize(), // inNelems
-      outputTensor.numel(), // outNelems
-      outputTensor.scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
-      this->getSize()); // worldSize
+//   RECORD_PARAM_COMMS_DATA_WITH_LOG(
+//       static_cast<int>(
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
+//       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+//       inputTensors, // inputTensors
+//       outputTensors, // outputTensors
+//       opts.rootRank, // root rank
+//       "scatter", // collective name
+//       outputTensor.numel() * this->getSize(), // inNelems
+//       outputTensor.numel(), // outNelems
+//       outputTensor.scalar_type(), // dType
+//       std::vector<int64_t>(), // inSplitSizes
+//       std::vector<int64_t>(), // outSplitSize
+//       -1, // globalRankStart
+//       -1, // globalRankStride
+//       this->getSize()); // worldSize
 
-  const auto root = opts.rootRank;
+//   const auto root = opts.rootRank;
 
-  auto outputs = std::vector<at::Tensor>{outputTensor};
-  return collective(
-      outputs,
-      inputs, // just to fit the collective interface
-      [&](at::Tensor& /* unused */,
-          at::Tensor& /* unused */,
-          xcclComm_t& comm,
-          at::xpu::XPUStream& stream,
-          ccl::stream& xcclStream) {
-        if (getRank() == root) {
-          for (auto input : inputs) {
-            c10::xpu::XPUCachingAllocator::recordStream(
-                input.storage().data_ptr(), stream);
-          }
-        }
-        {
-          if (rank_ == root) {
-            for (const auto r : c10::irange(size_)) {
-              if (r != root) {
-                // do send
-                size_t send_count = inputs[r].numel();
-                auto send_type = getXcclDataType(inputs[r].scalar_type());
-                ccl::send(
-                    inputs[r].data_ptr(),
-                    send_count,
-                    send_type,
-                    r,
-                    comm,
-                    xcclStream);
-              } else {
-                // on its own rank, simply copy from the input
-                outputTensor.copy_(inputs[r]);
-              }
-            }
-          } else {
-            // do receive
-            size_t recv_count = outputTensor.numel();
-            auto recv_type = getXcclDataType(outputTensor.scalar_type());
-            ccl::recv(
-                outputTensor.data_ptr(),
-                recv_count,
-                recv_type,
-                root,
-                comm,
-                xcclStream);
-          }
+//   auto outputs = std::vector<at::Tensor>{outputTensor};
+//   return collective(
+//       outputs,
+//       inputs, // just to fit the collective interface
+//       [&](at::Tensor& /* unused */,
+//           at::Tensor& /* unused */,
+//           xcclComm_t& comm,
+//           at::xpu::XPUStream& stream,
+//           ccl::stream& xcclStream) {
+//         if (getRank() == root) {
+//           for (auto input : inputs) {
+//             c10::xpu::XPUCachingAllocator::recordStream(
+//                 input.storage().data_ptr(), stream);
+//           }
+//         }
+//         {
+//           if (rank_ == root) {
+//             for (const auto r : c10::irange(size_)) {
+//               if (r != root) {
+//                 // do send
+//                 size_t send_count = inputs[r].numel();
+//                 auto send_type = getXcclDataType(inputs[r].scalar_type());
+//                 ccl::send(
+//                     inputs[r].data_ptr(),
+//                     send_count,
+//                     send_type,
+//                     r,
+//                     comm,
+//                     xcclStream);
+//               } else {
+//                 // on its own rank, simply copy from the input
+//                 outputTensor.copy_(inputs[r]);
+//               }
+//             }
+//           } else {
+//             // do receive
+//             size_t recv_count = outputTensor.numel();
+//             auto recv_type = getXcclDataType(outputTensor.scalar_type());
+//             ccl::recv(
+//                 outputTensor.data_ptr(),
+//                 recv_count,
+//                 recv_type,
+//                 root,
+//                 comm,
+//                 xcclStream);
+//           }
 
-          return;
-        }
-      },
-      OpType::SCATTER);
-}
+//           return;
+//         }
+//       },
+//       OpType::SCATTER);
+// }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
     at::Tensor& tensor,
@@ -1053,7 +1056,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   // @lint-ignore CLANGTIDY
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       tensors, // inputTensors
 //       tensors, // outputTensors
@@ -1114,7 +1118,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   // @lint-ignore CLANGTIDY
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       tensors, // inputTensors
 //       tensors, // outputTensors
@@ -1160,7 +1165,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   if (outputTensor.numel() != inputTensor.numel()) {
 //     C10_THROW_ERROR(
 //         ValueError,
-//         "Tensor input and output of _broadcast_oop must have the same number of elements ");
+//         "Tensor input and output of _broadcast_oop must have the same number
+//         of elements ");
 //   }
 //   const auto root = opts.rootRank + opts.rootTensor;
 //   return collective(
@@ -1203,7 +1209,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       tensors, // inputTensors
 //       tensors, // outputTensors
@@ -1260,7 +1267,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   TORCH_CHECK_WITH(
 //       ValueError,
 //       outputTensor.numel() == inputTensor.numel(),
-//       "Tensor input and output of _reduce_oop must have the same number of elements");
+//       "Tensor input and output of _reduce_oop must have the same number of
+//       elements");
 //   return collective(
 //       inputTensor,
 //       outputTensor,
@@ -1309,7 +1317,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputTensors, // inputTensors
 //       outputTensors, // outputTensors
@@ -1393,11 +1402,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   TORCH_CHECK_WITH(
 //       ValueError,
 //       input_tensor.numel() * size_ == output_tensor.numel(),
-//       "output tensor size must be equal to world_size times input tensor size");
+//       "output tensor size must be equal to world_size times input tensor
+//       size");
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       input_tensor, // inputTensors
 //       output_tensor, // outputTensors
@@ -1443,7 +1454,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       std::make_tuple(
 //           static_cast<int64_t>(seqCollective_) + 1,
-//           false), // seq + 1 to match collective and assume only one collective
+//           false), // seq + 1 to match collective and assume only one
+//           collective
 //                   // in coalesed range
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputs, // inputTensors
@@ -1494,7 +1506,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputTensors, // inputTensors
 //       outputTensors, // outputTensors
@@ -1591,7 +1604,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputTensor, // inputTensor
 //       outputTensor, // outputTensor
@@ -1680,10 +1694,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //       "xccl:reduce_scatter_tensor_coalesced");
 // }
 
-// c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
+// c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions&
+// opts) {
 //   RECORD_PARAM_COMMS(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       rank_, // rank
 //       "barrier", // collective name
@@ -1717,7 +1733,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //   auto barDevice = at::Device(at::DeviceType::XPU, barDevIdx);
 
 //   at::Tensor barrierTensor =
-//       at::zeros({1}, at::TensorOptions().device(barDevice).dtype(at::kFloat));
+//       at::zeros({1},
+//       at::TensorOptions().device(barDevice).dtype(at::kFloat));
 
 //   auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier");
 
@@ -1759,7 +1776,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //         "xpu_alltoall_base: tensors are not equal in size or data type");
 //     TORCH_CHECK(
 //         outputTensor.size(0) % size_ == 0,
-//         "xpu_alltoall_base: tensor's dim 0 does not divide equally across group size");
+//         "xpu_alltoall_base: tensor's dim 0 does not divide equally across
+//         group size");
 //     return collective(
 //         inputTensor,
 //         outputTensor,
@@ -1864,7 +1882,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 
 //   RECORD_PARAM_COMMS_DATA_WITH_LOG(
 //       static_cast<int>(
-//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match collective
+//           this->getSequenceNumberForGroup() + 1), // seq + 1 to match
+//           collective
 //       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
 //       inputTensors, // inputTensors
 //       outputTensors, // outputTensors
@@ -1903,8 +1922,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //             outputTensors, recvCounts, flatOutput, flatRecvCount);
 //         if (!isInputFlat) {
 //           auto flatInputSplits = flatInput.split_with_sizes(
-//               c10::IntArrayRef((int64_t*)sendCounts.data(), sendCounts.size()),
-//               0);
+//               c10::IntArrayRef((int64_t*)sendCounts.data(),
+//               sendCounts.size()), 0);
 
 //           for (int i = 0; i < size_; i++) {
 //             flatInputSplits[i].copy_(inputTensors[i].view({-1}));
@@ -1925,8 +1944,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
 //         if (!isOutputFlat) {
 //           ret_evt.wait();
 //           auto flatOutputSplits = flatOutput.split_with_sizes(
-//               c10::IntArrayRef((int64_t*)recvCounts.data(), recvCounts.size()),
-//               0);
+//               c10::IntArrayRef((int64_t*)recvCounts.data(),
+//               recvCounts.size()), 0);
 
 //           for (int i = 0; i < size_; i++) {
 //             outputTensors[i].view({-1}).copy_(flatOutputSplits[i]);

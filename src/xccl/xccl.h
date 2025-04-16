@@ -1,6 +1,13 @@
 #include <oneapi/ccl.h>
 #include <oneapi/ccl.hpp>
 
+#include <ATen/xpu/XPUEvent.h>
+#include <c10/core/StreamGuard.h>
+#include <c10/xpu/XPUCachingAllocator.h>
+#include <torch/csrc/distributed/c10d/Backend.hpp>
+#include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/logger.hpp>
+
 #if defined(CCL_MAJOR_VERSION) &&  \
     ((CCL_MAJOR_VERSION > 2021) || \
      (CCL_MAJOR_VERSION == 2021) && (CCL_MINOR_VERSION >= 15))
@@ -24,6 +31,7 @@ inline bool isCCLV2EnabledCached() {
 }
 
 namespace c10d {
+namespace {
 
 inline std::string getXcclVersion() {
   static std::string versionString = []() {
@@ -88,7 +96,7 @@ const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
     {at::kFloat8_e5m2fnuz, onecclDataType_t::onecclUint8},
 };
 
-const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV2 = {
+const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
     {at::kByte, ccl::datatype::uint8},
     {at::kChar, ccl::datatype::int8},
     {at::kInt, ccl::datatype::int32},
@@ -112,13 +120,23 @@ auto getXcclDataType(at::ScalarType type, bool is_reduction_op = false) {
         "Float8 dtypes are not currently supported for XCCL reductions");
   }
   bool useCCLV2 = isCCLV2EnabledCached();
-  auto it = useCCLV2 ? xcclDatatypesV2.find(type) : xcclDatatypesV1.find(type);
-  TORCH_CHECK_WITH(
-      TypeError,
-      (it != xcclDatatypesV2.end() && it != xcclDatatypesV1.end()),
-      "Input tensor data type is not supported for XCCL process group: ",
-      type);
-  return it->second;
+  if (useCCLV2) {
+    auto it = xcclDatatypesV2.find(type);
+    TORCH_CHECK_WITH(
+        TypeError,
+        it != xcclDatatypesV2.end(),
+        "Input tensor data type is not supported for XCCL process group: ",
+        type);
+    return it->second;
+  } else {
+    auto it = xcclDatatypesV1.find(type);
+    TORCH_CHECK_WITH(
+        TypeError,
+        it != xcclDatatypesV1.end(),
+        "Input tensor data type is not supported for XCCL process group: ",
+        type);
+    return it->second;
+  }
 }
 
 auto getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
@@ -126,7 +144,10 @@ auto getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
-        return useCCLV2 ? onecclRedOp_t::onecclMax : ccl::reduction::max;
+        if (useCCLV2)
+          return onecclRedOp_t::onecclMax;
+        else
+          return ccl::reduction::max;
       }
 #ifdef XCCL_HAS_AVG
       if (reduceOp == ReduceOp::AVG) {
@@ -137,10 +158,17 @@ auto getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
     }
 #if !defined(XCCL_HAS_AVG)
     if (reduceOp == ReduceOp::AVG) {
-      return useCCLV2 ? onecclRedOp_t::onecclSum : ccl::reduction::sum;
+      if (useCCLV2)
+        return onecclRedOp_t::onecclSum;
+      else
+        return ccl::reduction::sum;
     }
 #endif
-    return useCCLV2 ? xcclOpsV2.at(reduceOp) : xcclOpsV1.at(reduceOp);
+    if (useCCLV2) {
+      return xcclOpsV2.at(reduceOp);
+    } else {
+      return xcclOpsV1.at(reduceOp);
+    }
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
         ValueError,
