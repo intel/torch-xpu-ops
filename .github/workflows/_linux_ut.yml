@@ -346,7 +346,7 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../ && rm -rf pytorch
+          cd ../ && sudo rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
@@ -564,7 +564,6 @@ jobs:
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
           mkdir -p ut_log/pytorch_distributed
-          mkdir -p ut_log/pytorch_distributed_summary
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
           if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
@@ -572,8 +571,9 @@ jobs:
             exit 1
           fi
           python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
-          cp op_ut_with_skip_* ${{ github.workspace }}/ut_log/pytorch_distributed_summary
           cd ${{ github.workspace }}
+          mkdir -p ut_log/pytorch_distributed_summary
+          cp op_ut_with_skip_* ${{ github.workspace }}/ut_log/pytorch_distributed_summary
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: Distributed UT Test Results Summary
         run: |
