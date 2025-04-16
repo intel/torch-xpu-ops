@@ -49,6 +49,7 @@ else:
 
 from xpu_test_utils import launch_test
 
+
 # run python test
 def run(test_command):
     result = subprocess.run(test_command, capture_output=True, text=True)
@@ -84,10 +85,11 @@ for key in skip_dict_python:
                         if line.startswith("FAILED (failures="):
                             num_errs = line.split("=")[1].split(")")[0].strip()
                             error_log += (
-                                "FAILED (failures=" 
-                                + str(int(num_errs) - num_skipped) 
-                                + f" skipped {num_skipped} cases" 
-                                + ")\n")
+                                "FAILED (failures="
+                                + str(int(num_errs) - num_skipped)
+                                + f" skipped {num_skipped} cases"
+                                + ")\n"
+                            )
                         else:
                             error_log += line + "\n"
                 else:
@@ -99,9 +101,9 @@ for key in skip_dict_python:
                         if line.startswith("FAILED (failures="):
                             num_errs = line.split("=")[1].split(")")[0].strip()
                             error_log += (
-                                "FAILED (failures=" 
-                                + str(int(num_errs) - num_skipped) 
-                                + f" skipped {num_skipped} cases" 
+                                "FAILED (failures="
+                                + str(int(num_errs) - num_skipped)
+                                + f" skipped {num_skipped} cases"
                                 + ")\n"
                             )
 
@@ -112,6 +114,7 @@ for key in skip_dict_python:
             f.write(error_log)
     else:
         import pdb
+
         pdb.set_trace()
         with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
             f.write(fail.stdout)
