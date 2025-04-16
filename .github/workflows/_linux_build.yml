@@ -57,16 +57,19 @@ jobs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
     steps:
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          installer-url: https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+          auto-activate-base: false
+          activate-environment: xpu_build
+          python-version: ${{ inputs.python }}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_build || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
-          conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
-          source activate xpu_build
+          conda list
+          conda install -y cmake=3.28 ninja
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
@@ -85,7 +88,6 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           set -xe
-          source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
           export USE_XCCL=1
@@ -146,7 +148,6 @@ jobs:
           cp pytorch_${current_commit}_build.log ${{ github.workspace }}/
       - name: Torch Config
         run: |
-          source activate xpu_build
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
