@@ -532,6 +532,7 @@ jobs:
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
           mkdir -p ut_log/pytorch_distributed
+          mkdir -p ut_log/pytorch_distributed_summary
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
           if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
@@ -539,9 +540,8 @@ jobs:
             exit 1
           fi
           python run_distributed_local.py 2>${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/pytorch_distributed/pytorch_distributed_test.log
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/pytorch_distributed_summary
           cp op_ut_with_skip_* ${{ github.workspace }}/ut_log/pytorch_distributed_summary
+          cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: Distributed UT Test Results Summary
         run: |
