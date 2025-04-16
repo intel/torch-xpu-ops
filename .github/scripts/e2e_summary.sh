@@ -147,6 +147,7 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
+    pip install jq > /dev/null 2>&1
     if [ "${artifact_type}" != "" ];then
         gh api \
             --method GET -F per_page=100 -F page=10 \
@@ -174,8 +175,9 @@ if [ "${performance}" -gt 0 ];then
     python "$(dirname "$0")/calculate_best_perf.py" \
         --new ${results_dir} \
         --best ${results_dir}/best.csv \
-        --device PVC1100 --os ${OS_PRETTY_NAME} \
-        --driver ${DRIVER_VERSION} --oneapi ${BUNDLE_VERSION} \
-        --gcc ${GCC_VERSION} --python ${python} \
-        --pytorch ${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID} --torch-xpu-ops ${TORCH_XPU_OPS_COMMIT-:"${GITHUB_SHA}"}
+        --device PVC1100 --os "${OS_PRETTY_NAME}" \
+        --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
+        --gcc "${GCC_VERSION}" --python "${python}" \
+        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT-:"${GITHUB_SHA}"}" \
+        > /dev/null 2>&1
 fi
