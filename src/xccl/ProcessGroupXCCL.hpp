@@ -27,7 +27,6 @@ static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
     "XCCL_BLOCKING_WAIT"};
 
-using xcclComm_t = void*;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
 class TORCH_API ProcessGroupXCCL : public Backend {
@@ -120,6 +119,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {});
+
+  void broadcastUniqueXCCLID(
+      onecclUniqueId* xcclID,
+      bool isSingleP2POp,
+      const std::string& p2pKey,
+      int p2pRank);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
@@ -334,8 +339,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::string& logPrefix() const;
 
  protected:
-  std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
-      xcclStreamsMap_;
+  std::unordered_map<std::string, XCCLStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
@@ -392,31 +396,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 } // namespace c10d
 
 namespace {
-
-inline std::string reduceOpToString(c10d::ReduceOp op) {
-  switch (op) {
-    case c10d::ReduceOp::SUM:
-      return "SUM";
-    case c10d::ReduceOp::PRODUCT:
-      return "PRODUCT";
-    case c10d::ReduceOp::MIN:
-      return "MIN";
-    case c10d::ReduceOp::MAX:
-      return "MAX";
-    case c10d::ReduceOp::BAND:
-      return "BAND";
-    case c10d::ReduceOp::BOR:
-      return "BOR";
-    case c10d::ReduceOp::BXOR:
-      return "BXOR";
-    case c10d::ReduceOp::AVG:
-      return "AVG";
-    case c10d::ReduceOp::PREMUL_SUM:
-      return "PREMUL_SUM";
-    default:
-      return "UNKNOWN";
-  }
-}
 
 // Since the current profiler trace support for XCCL is unclear, wrap
 // `RECORD_PARAM_COMMS_DATA` and output parameters as debug logs.

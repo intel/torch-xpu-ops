@@ -100,59 +100,6 @@ int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
   return total_numel;
 }
 
-void ProcessGroupXCCL::broadcastUniqueXCCLID(
-    onecclUniqueId* xcclID,
-    bool isSingleP2POp,
-    const std::string& p2pKey,
-    int p2pRank) {
-  std::string storeKey;
-  if (!isSingleP2POp) {
-    storeKey = std::to_string(xcclCommCounter_++);
-  } else {
-    storeKey = p2pKey;
-  }
-  if (rank_ == 0 || (isSingleP2POp && p2pRank == 0)) {
-    auto vec = std::vector<uint8_t>(
-        reinterpret_cast<uint8_t*>(xcclID),
-        reinterpret_cast<uint8_t*>(xcclID) + ONECCL_UNIQUE_ID_BYTES);
-    store_->set(storeKey, vec);
-  } else {
-    try {
-      auto vec = store_->get(storeKey);
-      TORCH_CHECK_WITH(
-          DistBackendError,
-          vec.size() == ONECCL_UNIQUE_ID_BYTES,
-          "Invalid size for xcclUniqueId");
-      std::memcpy(xcclID, vec.data(), vec.size());
-    } catch (const std::exception& e) {
-      std::string exceptionMsg = c10::str(
-          "[",
-          rank_,
-          "] is setting up XCCL communicator and "
-          "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-          storeKey,
-          "', but store->get('",
-          storeKey,
-          "') got error: ");
-      C10_THROW_ERROR(
-          DistBackendError,
-          exceptionMsg + e.what() +
-              ". This may indicate a possible application crash on rank 0 or a network set up issue.");
-    } catch (...) {
-      C10_THROW_ERROR(
-          DistBackendError,
-          c10::str(
-              "Unknown exception while [",
-              rank_,
-              "] is setting up XCCL communicator and "
-              "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-              storeKey,
-              "'",
-              ". This may indicate a possible application crash on rank 0 or a network set up issue."));
-    }
-  }
-}
-
 bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
   switch (reduceOp) {
     case ReduceOp::SUM:
@@ -321,6 +268,59 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
   return r;
 }
 
+void ProcessGroupXCCL::broadcastUniqueXCCLID(
+    onecclUniqueId* xcclID,
+    bool isSingleP2POp,
+    const std::string& p2pKey,
+    int p2pRank) {
+  std::string storeKey;
+  if (!isSingleP2POp) {
+    storeKey = std::to_string(xcclCommCounter_++);
+  } else {
+    storeKey = p2pKey;
+  }
+  if (rank_ == 0 || (isSingleP2POp && p2pRank == 0)) {
+    auto vec = std::vector<uint8_t>(
+        reinterpret_cast<uint8_t*>(xcclID),
+        reinterpret_cast<uint8_t*>(xcclID) + ONECCL_UNIQUE_ID_BYTES);
+    store_->set(storeKey, vec);
+  } else {
+    try {
+      auto vec = store_->get(storeKey);
+      TORCH_CHECK_WITH(
+          DistBackendError,
+          vec.size() == ONECCL_UNIQUE_ID_BYTES,
+          "Invalid size for xcclUniqueId");
+      std::memcpy(xcclID, vec.data(), vec.size());
+    } catch (const std::exception& e) {
+      std::string exceptionMsg = c10::str(
+          "[",
+          rank_,
+          "] is setting up XCCL communicator and "
+          "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
+          storeKey,
+          "', but store->get('",
+          storeKey,
+          "') got error: ");
+      C10_THROW_ERROR(
+          DistBackendError,
+          exceptionMsg + e.what() +
+              ". This may indicate a possible application crash on rank 0 or a network set up issue.");
+    } catch (...) {
+      C10_THROW_ERROR(
+          DistBackendError,
+          c10::str(
+              "Unknown exception while [",
+              rank_,
+              "] is setting up XCCL communicator and "
+              "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
+              storeKey,
+              "'",
+              ". This may indicate a possible application crash on rank 0 or a network set up issue."));
+    }
+  }
+}
+
 std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     const std::string& deviceKey,
     at::Device& device,
@@ -372,15 +372,17 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
+  bool useCCLV2 = isCCLV2EnabledCached();
   if (!useCCLV2) {
     auto ctx = ccl::create_context(q.get_context());
     ccl::vector_class<ccl::pair_class<int, ccl::device>> devs_rank;
     devs_rank.emplace_back(rank, ccl::create_device(q.get_device()));
+
     auto xccl_kvs = get_kvs(rank_, *store_, singleP2POp, deviceKey, p2pRank);
     auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
-    XCCLComm =
-        std::make_shared<xcclComm_t>((static_cast<void*> std::move(comms[0])));
+    XCCLComm = std::make_shared<xcclComm_t>(std::move(comms[0]));
   } else {
+    onecclUniqueId xcclID;
     if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
       onecclGetUniqueId(&xcclID);
     }
@@ -391,11 +393,12 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     if (result != onecclSuccess) {
       std::cerr << "Failed to set device.\n";
     }
-    result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
+    result = onecclCommInitRank(
+        &std::get<onecclComm_t>(comm), numRanks, xcclID, rank);
     if (result != onecclSuccess) {
       std::cerr << "Failed to initialize communicator.\n";
     }
-    XCCLComm = std::make_shared<xcclComm_t>(comm);
+    XCCLComm = std::make_shared<xcclComm_t>(std::move(comm));
   }
 
   RECORD_PARAM_COMMS(
@@ -414,7 +417,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
     (void)i;
-    ccl::group_start();
+    xccl::onecclGroupStart();
   }
 
   // The oneCCL group API requires retaining the SYCL queue (xcclstream) object
@@ -429,7 +432,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
   xcclStreamsMap_.emplace(
       deviceKey,
-      std::make_pair(at::xpu::XPUStream(stream), std::move(xccl_stream)));
+      XCCLStream{at::xpu::XPUStream(stream), std::move(xccl_stream), q});
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
   LOG(INFO) << logPrefix()
@@ -476,7 +479,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   auto device = coalescedDevice_;
 
   const auto key = std::to_string(device.index());
-  auto stream = xcclStreamsMap_.at(key).first;
+  auto stream = xcclStreamsMap_.at(key).xpuStream;
 
   auto work = initWork(device, rank_, optype);
   work->blockingWait_ = blockingWait_;
@@ -524,8 +527,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
-  auto stream = xcclStreamsMap_.at(key).first;
-  auto cclstream = xcclStreamsMap_.at(key).second;
+  auto stream = xcclStreamsMap_.at(key).xpuStream;
+  auto cclstream = xcclStreamsMap_.at(key).cclStream;
+  auto syclQueue = xcclStreamsMap_.at(key).syclQueue;
   syncStream(device, xcclEventsMap_[key], stream);
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
@@ -540,7 +544,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   for (const auto i : c10::irange(inputs.size())) {
     c10::xpu::XPUCachingAllocator::recordStream(
         inputs[i].storage().data_ptr(), stream);
-    fn(inputs[i], outputs[i], *comm, stream, cclstream);
+    fn(inputs[i], outputs[i], *comm, stream, cclstream, syclQueue);
   }
 
   post(stream, work);
@@ -606,8 +610,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
   }
 
-  auto stream = xcclStreamsMap_.at(key).first;
-  auto cclstream = xcclStreamsMap_.at(key).second;
+  auto stream = xcclStreamsMap_.at(key).xpuStream;
+  auto cclstream = xcclStreamsMap_.at(key).cclStream;
   syncStream(device, xcclEventsMap_[key], stream);
 
   if (!coalescing_state_) {
@@ -986,17 +990,20 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::Tensor& output,
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
-          ccl::stream& xcclStream) {
+          ccl::stream& xcclStream,
+          sycl::queue& SyclQueue) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
-        ccl::allreduce(
-            input.data_ptr(),
-            output.data_ptr(),
-            (size_t)input.numel(),
-            xcclDataType,
-            xcclReduceOp,
-            comm,
-            xcclStream);
+        xccl::onecclAllReduce(
+            input, output, comm, opts.reduceOp, stream, xcclStream, SyclQueue);
+    // ccl::allreduce(
+    //     input.data_ptr(),
+    //     output.data_ptr(),
+    //     (size_t)input.numel(),
+    //     xcclDataType,
+    //     xcclReduceOp,
+    //     comm,
+    //     xcclStream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
