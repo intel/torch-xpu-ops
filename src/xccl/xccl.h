@@ -25,7 +25,31 @@ inline bool isCCLV2EnabledCached() {
 
 namespace c10d {
 
-namespace {
+inline std::string getXcclVersion() {
+  static std::string versionString = []() {
+    bool useCCLV2 = isCCLV2EnabledCached();
+    std::string versionString;
+    if (useCCLV2) {
+      int version = 0;
+      onecclGetVersion(&version);
+      const int majorBase = 10000;
+      const int minorBase = 100;
+      auto xcclMajor = version / majorBase;
+      auto xcclMinor = (version % majorBase) / minorBase;
+      auto xcclPatch =
+          version % (xcclMajor * majorBase + xcclMinor * minorBase);
+      versionString = std::to_string(xcclMajor) + "." +
+          std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
+    } else {
+      auto xccl_version = ccl::get_library_version();
+      versionString = std::to_string(xccl_version.major) + "." +
+          std::to_string(xccl_version.minor) + "." +
+          std::to_string(xccl_version.update);
+    }
+    return versionString;
+  }();
+  return versionString;
+}
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
@@ -123,3 +147,285 @@ auto getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
         "Cannot use ReduceOp." + reduceOpToString(reduceOp) + " with XCCL");
   }
 }
+} // namespace c10d
+
+namespace xccl {
+
+//   xcclSum = 0
+// xcclProd = 1
+// xcclMax = 3
+// xcclMin = 2
+// xcclAvg = 4
+// xcclNumOps = 5
+
+// xcclInt8 = 0
+// xcclChar = 0
+// xcclUint8 = 1
+// xcclInt32 = 4
+// xcclInt = 4
+// xcclUint32 = 5
+// xcclInt64 = 6
+// xcclUint64 = 7
+// xcclFloat16 = 8
+// xcclHalf = 8
+// xcclFloat32 = 9
+// xcclFloat = 9
+// xcclFloat64 = 10
+// xcclDouble = 10
+// xcclBfloat16 = 11
+// xcclNumTypes = 11
+// /* Reduction operation selector */
+// enum class xcclRedOp { Sum = 0, Prod = 1, Max = 2, Min = 3, Avg = 4, NumOps =
+// 5 };
+
+// /* Data types */
+// enum class xcclDataType {
+//   Int8 = 0,
+//   Char = 0,
+//   Uint8 = 1,
+//   Int32 = 2,
+//   Int = 2,
+//   Uint32 = 3,
+//   Int64 = 4,
+//   Uint64 = 5,
+//   Float16 = 6,
+//   Half = 6,
+//   Float32 = 7,
+//   Float = 7,
+//   Float64 = 8,
+//   Double = 8,
+//   Bfloat16 = 9,
+//   NumTypes = 10
+// };
+
+void onecclGroupStart() {
+  if (isCCLV2EnabledCached()) {
+    onecclGroupStart();
+  } else {
+    ccl::group_start();
+  }
+}
+
+void onecclGroupEnd() {
+  if (isCCLV2EnabledCached()) {
+    onecclGroupEnd();
+  } else {
+    ccl::group_end();
+  }
+}
+
+void onecclReduce(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    ReduceOp& reduceOp,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
+  if (isCCLV2EnabledCached()) {
+    onecclReduce(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::allreduce(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclReduce(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    ReduceOp& reduceOp,
+    const int root,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
+  if (isCCLV2EnabledCached()) {
+    onecclReduce(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        root,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::reduce(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        root,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclBroadcast(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    const int root,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type());
+  if (isCCLV2EnabledCached()) {
+    onecclBroadcast(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        root,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::broadcast(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        root,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclReduceScatter(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    ReduceOp& reduceOp,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
+  if (isCCLV2EnabledCached()) {
+    onecclReduceScatter(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)output.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::reduce_scatter(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)output.numel(),
+        xcclDataType,
+        xcclReduceOp,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclAllGather(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type());
+  if (isCCLV2EnabledCached()) {
+    onecclAllGather(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::allgather(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclSend(
+    at::Tensor& input,
+    xcclComm_t& comm,
+    const int dstRank,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type());
+  if (isCCLV2EnabledCached()) {
+    onecclSend(
+        input.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        dstRank,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::send(
+        input.data_ptr(),
+        (size_t)input.numel(),
+        xcclDataType,
+        dstRank,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+void onecclRecv(
+    at::Tensor& output,
+    xcclComm_t& comm,
+    const int srcRank,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(output.scalar_type());
+  if (isCCLV2EnabledCached()) {
+    onecclRecv(
+        output.data_ptr(),
+        (size_t)output.numel(),
+        xcclDataType,
+        srcRank,
+        comm,
+        &SyclQueue);
+  } else {
+    ccl::recv(
+        output.data_ptr(),
+        (size_t)output.numel(),
+        xcclDataType,
+        srcRank,
+        comm,
+        xcclStream);
+  }
+  return;
+}
+
+} // namespace xccl
