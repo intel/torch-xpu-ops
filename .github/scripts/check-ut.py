@@ -58,6 +58,7 @@ def get_message(case):
 
     if not case.result:
         return ""
+
     full_text = case.result[0].text if hasattr(case.result[0], 'text') else case.result[0].message
     if not full_text:
         return ""
@@ -86,6 +87,7 @@ def get_message(case):
                 break
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
+
 
 def print_md_row(row, print_header=False):
     if print_header:
@@ -240,6 +242,7 @@ def print_summary():
             'Errors': summary['Errors'],
             'Source': summary['Source']
         }, print_header)
+
         print_header = False
 
 def main():
