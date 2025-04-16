@@ -47,7 +47,7 @@ jobs:
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
-        ${{ github.workspace }}:${{ github.workspace }}
+        - ${{ github.workspace }}:${{ github.workspace }}
       env:
         commit_issue: 1280
         GH_TOKEN: ${{ github.token }}
