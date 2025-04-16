@@ -9,9 +9,6 @@ res2 = 0
 fail_test = []
 error_log = ""
 
-os.environ["CCL_ATL_TRANSPORT"] = "ofi"
-os.environ["CCL_SEND"] = "direct"
-os.environ["CCL_RECV"] = "direct"
 os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
