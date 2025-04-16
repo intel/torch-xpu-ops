@@ -61,9 +61,16 @@ TORCH_IMPL_FUNC(_upsample_bicubic2d_aa_backward_out_xpu)
  std::optional<double> scales_w,
  const Tensor& grad_input) {
   // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("upsample_bicubic2d_aa_backward_out_xpu");
+  globalContext().alertNotDeterministic(
+      "upsample_bicubic2d_aa_backward_out_xpu");
   xpu::_upsample_bicubic2d_aa_backward_out_kernel(
-      grad_input, grad_output, output_size, input_size, align_corners, scales_h, scales_w);
+      grad_input,
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
 }
 } // namespace native
 } // namespace at

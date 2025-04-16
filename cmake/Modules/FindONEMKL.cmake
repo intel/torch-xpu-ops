@@ -49,9 +49,14 @@ if((ONEMKL_INCLUDE_DIR STREQUAL "ONEMKL_INCLUDE_DIR-NOTFOUND")
 endif()
 
 if(WIN32)
-  set(MKL_LIB_NAMES "mkl_sycl" "mkl_intel_lp64" "mkl_intel_thread" "mkl_core")
+  set(MKL_LIB_NAMES "mkl_sycl_blas" "mkl_sycl_dft" "mkl_sycl_lapack"
+                    "mkl_intel_lp64" "mkl_intel_thread" "mkl_core")
+  list(TRANSFORM MKL_LIB_NAMES APPEND "_dll.lib")
 else()
-  set(MKL_LIB_NAMES "mkl_sycl_dft" "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core")
+  set(MKL_LIB_NAMES "mkl_sycl_blas" "mkl_sycl_dft" "mkl_sycl_lapack"
+                    "mkl_intel_lp64" "mkl_gnu_thread" "mkl_core")
+  list(TRANSFORM MKL_LIB_NAMES PREPEND "lib")
+  list(TRANSFORM MKL_LIB_NAMES APPEND ".so")
 endif()
 
 foreach(LIB_NAME IN LISTS MKL_LIB_NAMES)
