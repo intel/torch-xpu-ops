@@ -82,7 +82,7 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
           conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
           source activate xpu_build
-          cd ../ && rm -rf pytorch
+          cd ../ && sudo rm -rf pytorch
           pip install requests
           if [[ ${{ inputs.pytorch }} == 'distributed_2.8' ]]; then
             git clone https://github.com/daisyden/pytorch.git pytorch
