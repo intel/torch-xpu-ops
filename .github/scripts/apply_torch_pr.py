@@ -15,8 +15,6 @@ parser.add_argument('--pr-list', '-n', nargs='+',
         "https://github.com/pytorch/pytorch/pull/143739",
         # Allow XPU device for validating the arguments to sparse compressed tensor factory functions
         "https://github.com/pytorch/pytorch/pull/147306",
-        # Allow XPU backend in Depthwise_conv2d&3d operators
-        "https://github.com/pytorch/pytorch/pull/149114",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
