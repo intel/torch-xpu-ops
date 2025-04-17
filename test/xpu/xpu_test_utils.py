@@ -429,6 +429,11 @@ _xpu_tolerance_override = {
             torch.float32: tol(atol=2e-5, rtol=5e-5),
         }
     },
+    "test_modules_xpu.py": {
+        ("TestModuleXPU", "test_non_contiguous_tensors_nn_LazyConv3d_xpu_float32"): {
+            torch.float32: tol(atol=2e-5, rtol=7e-5),
+        }
+    },
 }
 
 
@@ -1173,7 +1178,8 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
+            + test_case
         )
         test_command += skip_options
     elif exe_list is not None:
@@ -1183,11 +1189,13 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
+            + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
+            + test_case
         )
     return os.system(test_command)

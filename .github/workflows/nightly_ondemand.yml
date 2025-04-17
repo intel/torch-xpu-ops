@@ -32,7 +32,7 @@ on:
         required: true
         type: string
         default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench`. Delimiter is comma
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
       dt:
         required: true
         type: string
@@ -76,9 +76,9 @@ jobs:
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 1
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: pvc_e2e
+      update_lkg: 'true'
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -103,7 +103,6 @@ jobs:
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
@@ -142,7 +141,6 @@ jobs:
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
-          git submodule sync && git submodule update --init --recursive
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             echo "Don't replace torch-xpu-ops!"
           else
@@ -186,7 +184,7 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-1
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -233,6 +231,15 @@ jobs:
           scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Nightly PT2E Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        uses: ./.github/actions/pt2e
+        with:
+          dt: float32,int8
+          scenario: accuracy,performance
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       # Weekly launch
       - name: Weekly Huggingface Full Test
         if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
@@ -264,15 +271,32 @@ jobs:
           mode: inference,training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Weekly PT2E Full Test
+        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: float32,int8
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: github.event_name != 'schedule'
+        if: ${{ github.event_name != 'schedule' && inputs.suite != 'pt2e' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: ${{ inputs.suite }}
           env_prepare: true
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ github.event_name != 'schedule' && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: ${{ inputs.dt }}
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
@@ -286,14 +310,22 @@ jobs:
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
-          rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-          if [ ${exit_label} -ne 0 ];then
-            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-            echo "There are ${exit_label} cases that need look into!!! Please check them"
-            exit ${exit_label}
+          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            rm -rf /tmp/tmp-*.txt
+            source activate e2e_ci
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            if [ ${exit_label} -ne 0 ];then
+              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+              echo "There are ${exit_label} cases that need look into!!! Please check them"
+              exit ${exit_label}
+            fi
+          else
+            source activate e2e_ci
+            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cd ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
+            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
@@ -301,34 +333,6 @@ jobs:
         with:
           name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-
-  Linux-Nightly-Ondemand-Build-ABI-0:
-    secrets: inherit
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    name: linux-nightly-ondemand-abi0
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      abi: 0
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
-
-  Linux-Weekly-UT-Tests-ABI-0:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
-    name: linux-nightly-ondemand-abi0
-    needs: Linux-Nightly-Ondemand-Build-ABI-0
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      abi: 0
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-ABI-0.outputs.torch_commit_id }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      runner: linux.idc.xpu
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}

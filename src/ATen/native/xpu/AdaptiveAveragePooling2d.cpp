@@ -22,6 +22,13 @@ Tensor adaptive_avg_pool2d_backward_xpu(
 
   native::adaptive_pool_empty_output_check(
       grad_output, "adaptive_avg_pool2d_backward");
+  TORCH_CHECK(
+      input.dim() == grad_output.dim(),
+      __func__,
+      ": Expected dimensions ",
+      input.dim(),
+      " for `gradOutput_` but got dimensions ",
+      grad_output.dim());
 
   checkAllSameGPU(__func__, {grad_output_arg, input_arg});
 
