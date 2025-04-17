@@ -87,7 +87,7 @@ jobs:
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
-          cd ${GITHUB_WORKSPACE}/xpu-pytorch
+          cd ${GITHUB_WORKSPACE}/pytorch
           current_commit=$(git rev-parse HEAD)
           is_fork_pr=false
           if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
