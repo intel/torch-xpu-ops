@@ -78,7 +78,7 @@ def get_message(case):
                 error_messages.append(f"{error_type}: {error_msg}")
                 capture_next_lines = True
                 indent_level = 0
-                break
+                break 
             elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
                 error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
                 error_messages.append(f"{error_type}: {error_msg}")
@@ -98,6 +98,37 @@ def print_md_row(row, print_header=False):
     row_values = " | ".join([f"{value}" for value in row.values()])
     print(f"| {row_values} |")
 
+def get_similar_issues(classname, name, result, message):
+    import requests
+
+    os.environ["http_proxy"] = ""
+    os.environ["https_proxy"] = ""
+    DEFAULT_HOST_IP = "10.112.100.138"
+
+    def QnA(request, host_ip=DEFAULT_HOST_IP):
+        import json
+        url = f"http://{host_ip}:8888/v1/chatqna"
+    
+        headers = {"Content-Type": "application/json"}
+    
+        response = requests.post(url, headers=headers, json=request)
+        return response
+
+    prompt = f"unit test {name} {result} with {message}, is it a known issue? If yes, what is the issue id? And what is the owner and root cuase?"
+
+    request = {
+              "messages": prompt,
+              "stream": False
+           }
+
+    response = QnA (request)
+    if response.status_code==200:
+       result = response.json()["choices"][0]["message"]["content"]
+       answer = result.split("</think>")[-1].strip()
+       answer = answer.split("**Answer:**")[-1].strip()
+       return answer 
+    return ""
+
 def print_failures():
     if not failures:
         return
@@ -105,11 +136,13 @@ def print_failures():
     print("### Test Failures")
     print_header = True
     for case in failures:
+        issue = get_similar_issues(get_classname(case), get_name(case), get_result(case), get_message(case))
         print_md_row({
             'Class name': get_classname(case),
             'Test name': get_name(case),
             'Status': get_result(case),
             'Message': get_message(case),
+            'Similar issue': issue,
             'Source': case['source'] if isinstance(case, dict) else 'XML'
         }, print_header)
         print_header = False
