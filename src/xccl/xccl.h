@@ -520,5 +520,84 @@ void onecclGather(
   }
   return;
 }
+
+void onecclScatter(
+    const std::vector<at::Tensor>& inputs,
+    at::Tensor& outputs,
+    xcclComm_t& comm,
+    const int root,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  if (isCCLV2EnabledCached()) {
+    int numranks = 0, cur_rank = 0;
+    onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
+    onecclCommUserRank(std::get<onecclComm_t>(comm), &cur_rank);
+    onecclGroupStart();
+    if (cur_rank == root) {
+      for (const auto r : c10::irange(numranks)) {
+        if (r != root) {
+          size_t send_count = inputs[r].numel();
+          auto send_type = getXcclDataType(inputs[r].scalar_type());
+          onecclSend(
+              inputs[r].data_ptr(),
+              send_count,
+              std::get<onecclDataType_t>(send_type),
+              r,
+              std::get<onecclComm_t>(comm),
+              &SyclQueue);
+        } else {
+          // on its own rank, simply copy from the input
+          outputs.copy_(inputs[r]);
+        }
+      }
+    } else {
+      size_t recv_count = outputs.numel();
+      auto recv_type = getXcclDataType(outputs.scalar_type());
+      onecclRecv(
+          outputs.data_ptr(),
+          recv_count,
+          std::get<onecclDataType_t>(recv_type),
+          root,
+          std::get<onecclComm_t>(comm),
+          &SyclQueue);
+    }
+    onecclGroupEnd();
+  } else {
+    int numranks = std::get<ccl::communicator>(comm).size();
+    int cur_rank = std::get<ccl::communicator>(comm).rank();
+    ccl::group_start();
+    if (cur_rank == root) {
+      for (const auto r : c10::irange(numranks)) {
+        if (r != root) {
+          size_t send_count = inputs[r].numel();
+          auto send_type = getXcclDataType(inputs[r].scalar_type());
+          ccl::send(
+              inputs[r].data_ptr(),
+              send_count,
+              std::get<ccl::datatype>(send_type),
+              r,
+              std::get<ccl::communicator>(comm),
+              xcclStream);
+        } else {
+          // on its own rank, simply copy from the input
+          outputs.copy_(inputs[r]);
+        }
+      }
+    } else {
+      size_t recv_count = outputs.numel();
+      auto recv_type = getXcclDataType(outputs.scalar_type());
+      ccl::recv(
+          outputs.data_ptr(),
+          recv_count,
+          std::get<ccl::datatype>(recv_type),
+          root,
+          std::get<ccl::communicator>(comm),
+          xcclStream);
+    }
+    ccl::group_end();
+  }
+  return;
+}
 } // namespace xccl
 } // namespace c10d

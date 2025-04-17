@@ -325,10 +325,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& inputTensors,
       const GatherOptions& opts = GatherOptions()) override;
 
-  // c10::intrusive_ptr<Work> scatter(
-  //     std::vector<at::Tensor>& outputTensors,
-  //     std::vector<std::vector<at::Tensor>>& inputTensors,
-  //     const ScatterOptions& opts = ScatterOptions()) override;
+  c10::intrusive_ptr<Work> scatter(
+      std::vector<at::Tensor>& outputTensors,
+      std::vector<std::vector<at::Tensor>>& inputTensors,
+      const ScatterOptions& opts = ScatterOptions()) override;
 
   void setSequenceNumberForGroup() override;
 
