@@ -33,7 +33,7 @@ cp -r ${GITHUB_WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
 sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
 
 # oneAPI DLE
-source ${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh
+source third_party/torch-xpu-ops/.github/scripts/env.sh
 icpx --version
 
 # Pre Build
@@ -57,7 +57,7 @@ WERROR=1 python setup.py bdist_wheel
 # Post Build
 python -m pip install patchelf
 rm -rf ./tmp
-bash ${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/rpath.sh ${GITHUB_WORKSPACE}/pytorch/dist/torch*.whl
+bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${GITHUB_WORKSPACE}/pytorch/dist/torch*.whl
 python -m pip install --force-reinstall tmp/torch*.whl
 
 # Verify
