@@ -187,5 +187,6 @@ jobs:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/pytorch_*.log
       - name: Cleanup
+        if: always()
         run: |
           rm -rf ../pytorch ${{ github.workspace }}
