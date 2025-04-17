@@ -172,6 +172,7 @@ if [ "${performance}" -gt 0 ];then
     unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
     reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
     python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -refer ${reference_dir}
+    cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
     python "$(dirname "$0")/calculate_best_perf.py" \
         --new ${results_dir} \
         --best ${results_dir}/best.csv \
