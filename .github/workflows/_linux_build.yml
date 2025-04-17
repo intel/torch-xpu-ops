@@ -49,6 +49,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
+        PATH: /usr/share/Modules/bin:/opt/rh/gcc-toolset-11/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         commit_issue: 1280
         GH_TOKEN: ${{ github.token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -57,19 +58,17 @@ jobs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
     steps:
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          installer-url: https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
-          auto-activate-base: false
-          activate-environment: xpu_build
-          python-version: ${{ inputs.python }}
+      - name: Setup python
+        run: |
+          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          source /opt/python/${local_python}/bin/activate
+          echo "PATH=${PATH}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          conda list
-          conda install -y cmake=3.28 ninja
+          which python && python -V && pip list
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
