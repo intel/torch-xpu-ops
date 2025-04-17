@@ -306,24 +306,24 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   //     std::vector<at::Tensor>& inputTensors,
   //     const AllToAllOptions& opts = AllToAllOptions()) override;
 
-  // c10::intrusive_ptr<Work> send(
-  //     std::vector<at::Tensor>& tensors,
-  //     int dstRank,
-  //     int tag) override;
+  c10::intrusive_ptr<Work> send(
+      std::vector<at::Tensor>& tensors,
+      int dstRank,
+      int tag) override;
 
-  // c10::intrusive_ptr<Work> recv(
-  //     std::vector<at::Tensor>& tensors,
-  //     int srcRank,
-  //     int tag) override;
+  c10::intrusive_ptr<Work> recv(
+      std::vector<at::Tensor>& tensors,
+      int srcRank,
+      int tag) override;
 
   void groupStart();
 
   void groupEnd();
 
-  // c10::intrusive_ptr<Work> gather(
-  //     std::vector<std::vector<at::Tensor>>& outputTensors,
-  //     std::vector<at::Tensor>& inputTensors,
-  //     const GatherOptions& opts = GatherOptions()) override;
+  c10::intrusive_ptr<Work> gather(
+      std::vector<std::vector<at::Tensor>>& outputTensors,
+      std::vector<at::Tensor>& inputTensors,
+      const GatherOptions& opts = GatherOptions()) override;
 
   // c10::intrusive_ptr<Work> scatter(
   //     std::vector<at::Tensor>& outputTensors,
