@@ -92,8 +92,4 @@ std::tuple<Tensor, Tensor, Tensor> conv_depthwise3d_backward_xpu(
       output_mask);
 }
 
-REGISTER_XPU_DISPATCH(
-    conv_depthwise3d_backward_stub,
-    &conv_depthwise3d_backward_xpu)
-
 } // namespace at::native
