@@ -63,7 +63,7 @@ jobs:
           # Install gh
           dnf install 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf autoremove -y git236*
+          dnf autoremove -y git236* && dnf install -y git
           dnf install gh --repo gh-cli -y
           # Setup python
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
