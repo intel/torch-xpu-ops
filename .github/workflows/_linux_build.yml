@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pytorch:
-        required: false
+        required: true
         type: string
         default: 'main'
         description: Pytorch branch/commit
@@ -13,6 +13,11 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
       python:
         required: false
         type: string
@@ -23,11 +28,6 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      driver:
-        required: false
-        type: string
-        default: 'lts'
-        description: Driver lts/rolling
       update_lkg:
         required: false
         type: string
@@ -70,51 +70,33 @@ jobs:
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-          # apply PRs for stock pytorch
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          git submodule sync && git submodule update --init --recursive
-          if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+        with:
+          path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
           set -xe
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
-          source /opt/rh/gcc-toolset-11/enable
-          export USE_ONEMKL=1
-          export USE_XCCL=1
-          if [[ ${{ inputs.driver }} == 'lts' ]]; then
-            export TORCH_XPU_ARCH_LIST='pvc'
-          fi
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          rm -rf ${{ github.workspace }}/torch*.whl ${{ github.workspace }}/pytorch_*.log
+          build_status="$(
+            XPU_TORCH="https://github.com/pytorch/pytorch.git@${{ inputs.pytorch }}" \
+              KEEP_TORCH_XPU_OPS="${{ inputs.keep_torch_xpu_ops }}" \
+              XPU_DRIVER="${{ inputs.driver }}" \
+              XPU_CONDA_ENV="xpu-build" \
+              XPU_PYTHON="${{ inputs.python }}" \
+              torch-xpu-ops/.github/scripts/build.sh \
+              > ${{ github.workspace }}/pytorch_build_${{ inputs.pytorch }}.log 2>&1 && echo $? || echo $?
+          )"
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
-          cd ../pytorch
+          cd ${GITHUB_WORKSPACE}/xpu-pytorch
           current_commit=$(git rev-parse HEAD)
           is_fork_pr=false
           if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             is_fork_pr=true
           fi
           echo ">>>>>>>>>>>>Fork PR: ${is_fork_pr}, pytorch branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
-
-          pip install -r requirements.txt
-          WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
-
           if [[ "${is_fork_pr}" == "false" ]]; then
-            if [ -f dist/torch*.whl ] && \
+            if [ "${build_status}" == "0" ] && \
                 [ "${{ inputs.update_lkg }}" == "true" ] && \
                 [ "${last_commit}" != "${current_commit}" ] && \
                 [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
@@ -126,29 +108,21 @@ jobs:
             if [ ! -f dist/torch*.whl ]; then
               echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
-              python setup.py clean
-              git clean -df .
-              git reset --hard
-              git checkout $last_commit
-              # apply PRs for stock pytorch
-              python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-              git status && git show -s
-              git submodule sync && git submodule update --init --recursive
-              if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-                echo "Don't replace torch-xpu-ops!"
-              else
-                rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-                # Workaround for torch-xpu-ops ci test
-                sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-              fi
-              WERROR=1 python setup.py bdist_wheel
+              build_status="$(
+                XPU_TORCH="https://github.com/pytorch/pytorch.git@${last_commit}" \
+                  KEEP_TORCH_XPU_OPS="${{ inputs.keep_torch_xpu_ops }}" \
+                  XPU_DRIVER="${{ inputs.driver }}" \
+                  XPU_CONDA_ENV="xpu-build" \
+                  XPU_PYTHON="${{ inputs.python }}" \
+                  torch-xpu-ops/.github/scripts/build.sh \
+                  >> ${{ github.workspace }}/pytorch_build_${last_commit}.log 2>&1 && echo $? || echo $?
+              )"
+              tail -n 100 ${{ github.workspace }}/pytorch_build_${last_commit}.log
             fi
           else
             echo "Forked PR, don't update the issue"
           fi
-          pip install --force-reinstall dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}/
-          cp pytorch_${current_commit}_build.log ${{ github.workspace }}/
+          exit ${build_status}
       - name: Torch Config
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
