@@ -350,7 +350,8 @@ void svd_mkl(
     const c10::optional<c10::string_view>& driver,
     const Tensor& U,
     const Tensor& S,
-    const Tensor& Vh) {
+    const Tensor& Vh,
+    const Tensor& info) {
   Tensor U_tmp, S_tmp, Vh_tmp;
   bool some = !full_matrices;
 
