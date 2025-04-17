@@ -9327,3 +9327,14 @@
   variants: function
   dispatch:
     XPU: _fft_c2c_xpu_out
+
+# Complex to real inverse FFT
+- func: _fft_c2r(Tensor self, int[] dim, int normalization, SymInt last_dim_size) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu
+
+- func: _fft_c2r.out(Tensor self, int[] dim, int normalization, SymInt last_dim_size, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fft_c2r_xpu_out

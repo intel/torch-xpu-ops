@@ -106,7 +106,6 @@ jobs:
     env:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1

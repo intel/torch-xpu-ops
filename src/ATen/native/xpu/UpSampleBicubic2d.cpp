@@ -5,10 +5,10 @@
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
 #include <comm/RegisterUtils.h>
 
-#include <ATen/ops/upsample_bicubic2d_backward_native.h>
-#include <ATen/ops/upsample_bicubic2d_native.h>
-#include <ATen/ops/_upsample_bicubic2d_aa_backward_native.h>
-#include <ATen/ops/_upsample_bicubic2d_aa_native.h>
+#include <xpu/ATen/ops/upsample_bicubic2d_backward_native.h>
+#include <xpu/ATen/ops/upsample_bicubic2d_native.h>
+#include <xpu/ATen/ops/_upsample_bicubic2d_aa_backward_native.h>
+#include <xpu/ATen/ops/_upsample_bicubic2d_aa_native.h>
 namespace at {
 namespace native {
 TORCH_IMPL_FUNC(upsample_bicubic2d_out_xpu)
@@ -61,9 +61,16 @@ TORCH_IMPL_FUNC(_upsample_bicubic2d_aa_backward_out_xpu)
  std::optional<double> scales_w,
  const Tensor& grad_input) {
   // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("upsample_bicubic2d_aa_backward_out_xpu");
+  globalContext().alertNotDeterministic(
+      "upsample_bicubic2d_aa_backward_out_xpu");
   xpu::_upsample_bicubic2d_aa_backward_out_kernel(
-      grad_input, grad_output, output_size, input_size, align_corners, scales_h, scales_w);
+      grad_input,
+      grad_output,
+      output_size,
+      input_size,
+      align_corners,
+      scales_h,
+      scales_w);
 }
 } // namespace native
 } // namespace at
