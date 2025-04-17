@@ -107,7 +107,6 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '30 16 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
     outputs:
@@ -133,6 +132,9 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
@@ -144,6 +146,13 @@ jobs:
           pip install requests
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
+          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
+            echo "Don't replace torch-xpu-ops!"
+          else
+            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+            # Workaround for torch-xpu-ops ci test
+            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+          fi
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -177,6 +186,7 @@ jobs:
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
@@ -184,7 +194,9 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
-          pip install pandas scipy psutil
+          source .github/scripts/env.sh
+          cd ../pytorch
+          pip install -r requirements.txt
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
@@ -195,7 +207,7 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -206,7 +218,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -217,7 +229,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -228,7 +240,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly PT2E Full Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -239,7 +251,7 @@ jobs:
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -250,7 +262,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly Torchbench Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -261,7 +273,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly Timm_models Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -272,7 +284,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly PT2E Accuracy Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -314,23 +326,27 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            rm -rf /tmp/tmp-*.txt
             source activate e2e_ci
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
-                ${{ github.workspace }}/upload_files \
-                Inductor-${{ env.run_type }}-Rolling-XPU-E2E \
-            >> ${GITHUB_STEP_SUMMARY}
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
+          else
+            source activate e2e_ci
+            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cd ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
+            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ env.run_type }}-Rolling-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
   Tests-Failure-And-Report:

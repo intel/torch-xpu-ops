@@ -1,11 +1,8 @@
 #!/bin/bash
 
 results_dir="$1"
-artifact_type="$2"
 check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
-rm -rf /tmp/tmp-*.txt
 
-# Accuracy
 function get_model_result() {
     echo -e "\n<table><thead>
         <tr>
@@ -20,6 +17,7 @@ function get_model_result() {
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
     )
+    rm -rf /tmp/tmp-result.txt
     for suite in ${suite_list}
     do
         model_list=$(
@@ -76,8 +74,8 @@ function get_model_result() {
     echo -e "</tbody></table>\n"
 }
 
+# Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
-echo > /tmp/tmp-result.txt
 if [ "${accuracy}" -gt 0 ];then
     printf "#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
@@ -147,38 +145,30 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
-    pip install jq > /dev/null 2>&1
-    if [ "${artifact_type}" != "" ];then
-        gh api \
-            --method GET -F per_page=100 -F page=10 \
-            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
-            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
-        artifact_id="$(eval "jq -r \
-                '[.artifacts[] | \
-                select(.name|test(\"${artifact_type}.*\")) | \
-                select(.workflow_run.head_branch|test(\"main\"))][0].id' \
-            ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
-        if [ "$artifact_id" -gt 1 ];then
-            gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${artifact_id}/zip > reference.zip
-        fi
-    fi
-    rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
-    reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
-    python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -refer ${reference_dir}
-    cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
-    python "$(dirname "$0")/calculate_best_perf.py" \
-        --new ${results_dir} \
-        --best ${results_dir}/best.csv \
-        --device PVC1100 --os "${OS_PRETTY_NAME}" \
-        --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
-        --gcc "${GCC_VERSION}" --python "${python}" \
-        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT-:"${GITHUB_SHA}"}" \
-        > /dev/null 2>&1
+    echo "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | Speedup |"
+    echo "| --- | --- | --- | --- | --- |"
+    for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" |sort)
+    do
+        category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_performance.*//')"
+        test_result="$(awk -M -v PREC=1024 -F ',' 'BEGIN{
+            total = 0;
+            pass = 0;
+            fail = 0;
+            speedup = 1;
+        }{
+            if ($1 == "xpu") {
+                total++;
+                if ($4 > 0) {
+                    pass++;
+                    speedup *= $4;
+                }else {
+                    fail++;
+                }
+            }
+        }END{
+            printf("%d | %d | %.2f% | %.3f\n", total, pass, pass/total*100, speedup^(1/pass))
+        }' "${csv}")"
+        echo "| ${category} | ${test_result} |"
+    done
+    echo
 fi

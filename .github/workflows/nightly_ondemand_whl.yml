@@ -73,7 +73,6 @@ jobs:
     env:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.installed.outputs.TORCH_COMMIT_ID }}
@@ -98,6 +97,9 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         id: installed
         run: |
@@ -123,8 +125,6 @@ jobs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
           python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          pip install pandas scipy psutil
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -154,7 +154,7 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -165,7 +165,7 @@ jobs:
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -176,7 +176,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -187,7 +187,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly PT2E Accuracy Test
-        if: ${{ env.run_type == 'nightly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 14 * * 0-4'
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -198,7 +198,7 @@ jobs:
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -209,7 +209,7 @@ jobs:
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -220,7 +220,7 @@ jobs:
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -231,7 +231,7 @@ jobs:
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly PT2E Accuracy Test
-        if: ${{ env.run_type == 'weekly' }}
+        if: github.event_name == 'schedule' && github.event.schedule == '0 17 * * 5'
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -273,23 +273,27 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            rm -rf /tmp/tmp-*.txt
             source activate e2e_ci
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
-                ${{ github.workspace }}/upload_files \
-                Inductor-${{ env.run_type }}-Pre-XPU-E2E \
-            >> ${GITHUB_STEP_SUMMARY}
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
+          else
+            source activate e2e_ci
+            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cd ${{ github.workspace }}/upload_files
+            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
+            rm -rf summary_pt2e.py
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ env.run_type }}-Pre-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
   Tests-Failure-And-Report:

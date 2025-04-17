@@ -82,6 +82,9 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=3.10 cmake ninja -y
+          source activate e2e_ci
+          pip install mkl-static mkl-include
+          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
@@ -94,6 +97,9 @@ jobs:
           # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
           git status && git show -s
+          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+          # Workaround for torch-xpu-ops ci test
+          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
       - name: Triton Installation
         run: |
           source activate e2e_ci
@@ -103,6 +109,7 @@ jobs:
           echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
       - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch }} != 'nightly_wheel'
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
@@ -110,7 +117,9 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
-          pip install pandas scipy psutil
+          source .github/scripts/env.sh
+          cd ../pytorch
+          pip install -r requirements.txt
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Identify pinned versions
         run: |
@@ -126,6 +135,7 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+
           cd ..
           source activate e2e_ci
           python -c "import triton; print(triton.__version__)"
@@ -136,7 +146,7 @@ jobs:
           suite: huggingface
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Huggingface FP16 Training Accuracy Test
@@ -153,7 +163,7 @@ jobs:
           suite: timm_models
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Torchbench BF16 Training Accuracy Test
@@ -162,7 +172,7 @@ jobs:
           suite: torchbench
           dt: bfloat16
           mode: training
-          scenario: accuracy,performance
+          scenario: accuracy
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Summarize archieve files
@@ -171,11 +181,9 @@ jobs:
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
+          rm -rf /tmp/tmp-*.txt
           source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
-              ${{ github.workspace }}/upload_files \
-              Inductor-weekly-LTS-XPU-E2E \
-          >> ${GITHUB_STEP_SUMMARY}
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then
             grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
@@ -211,6 +219,7 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
+      
       - name: Check Label
         id: check-label
         run: |
