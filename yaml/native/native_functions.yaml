@@ -5863,22 +5863,6 @@
   variants: method
   structured_delegate: heaviside.out
 
-- func: _conv_depthwise2d.out(Tensor self, Tensor weight, SymInt[2] kernel_size, Tensor? bias, SymInt[2] stride, SymInt[2] padding, SymInt[2] dilation, *, Tensor(a!) out) -> Tensor(a!)
-  python_module: nn
-  dispatch:
-    XPU: conv_depthwise2d_xpu_out
-
-- func: _conv_depthwise2d(Tensor self, Tensor weight, SymInt[2] kernel_size, Tensor? bias, SymInt[2] stride, SymInt[2] padding, SymInt[2] dilation) -> Tensor
-  python_module: nn
-  dispatch:
-    XPU: conv_depthwise2d_xpu
-
-- func: conv_depthwise3d(Tensor self, Tensor weight, SymInt[3] kernel_size, Tensor? bias, SymInt[3] stride, SymInt[3] padding, SymInt[3] dilation) -> Tensor
-  python_module: nn
-  dispatch:
-    XPU: conv_depthwise3d_xpu
-  autogen: conv_depthwise3d.out
-
 - func: logit_backward.grad_input(Tensor grad_output, Tensor self, float? eps=None, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
   structured: True
