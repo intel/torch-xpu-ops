@@ -58,8 +58,14 @@ jobs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
     steps:
-      - name: Setup python
+      - name: Setup based env
         run: |
+          # Install gh
+          sudo dnf install dnf5-plugins
+          sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo
+          sudo dnf autoremove -y git236*
+          sudo dnf install gh --repo gh-cli -y
+          # Setup python
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
           /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
       - name: Checkout torch-xpu-ops
@@ -87,6 +93,7 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           set -xe
+          source /opt/rh/gcc-toolset-11/enable
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           export USE_ONEMKL=1
           export USE_XCCL=1
