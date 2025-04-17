@@ -71,20 +71,6 @@ jobs:
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
           fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-          fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
@@ -104,15 +90,6 @@ jobs:
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ../pytorch
-            git reset --hard && git checkout ${TORCH_COMMIT_ID}
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-            rm -rf third_party/torch-xpu-ops
-            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-            cd third_party/torch-xpu-ops
-            git checkout ${TORCH_XPU_OPS_COMMIT}
-            cd ../..
-            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
@@ -122,7 +99,6 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          python -c "import triton; print(triton.__version__)"
 
           cd ..
           python pytorch/torch/utils/collect_env.py
