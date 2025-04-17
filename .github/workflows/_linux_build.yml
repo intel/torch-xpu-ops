@@ -49,7 +49,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
-        PATH: /usr/share/Modules/bin:/opt/rh/gcc-toolset-11/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        PATH: /opt/xpu-build/bin:/usr/share/Modules/bin:/opt/rh/gcc-toolset-11/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         commit_issue: 1280
         GH_TOKEN: ${{ github.token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -61,9 +61,7 @@ jobs:
       - name: Setup python
         run: |
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv ${{ github.workspace }}/xpu-build
-          source ${{ github.workspace }}/xpu-build/bin/activate
-          echo "PATH=${PATH}" >> "${GITHUB_ENV}"
+          /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Stock Pytorch
