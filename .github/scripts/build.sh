@@ -50,6 +50,8 @@ export USE_XCCL=1
 if [ "${XPU_DRIVER}" == "lts" ]; then
     export TORCH_XPU_ARCH_LIST='pvc'
 fi
+# gcc 11
+source /opt/rh/gcc-toolset-11/enable
 
 # Build
 WERROR=1 python setup.py bdist_wheel
