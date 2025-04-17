@@ -68,6 +68,7 @@ jobs:
         run: |
           pwd
           which python && python -V && pip list
+          pip install -U pip wheel setuptools
           cd ../ && rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
