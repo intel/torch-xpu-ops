@@ -345,11 +345,12 @@ static inline int64_t get_chunk_size(
 // oppurtunistically vectorized.
 
 bool all_contiguous(TensorList tensors) {
-  bool contiguous = true;
   for (const auto& t : tensors) {
-    contiguous &= t.is_non_overlapping_and_dense();
+    if (!t.is_contiguous()) {
+      return false;
+    }
   }
-  return contiguous;
+  return true;
 }
 
 struct SplitWithSizesCopyOutContiguousNoCastFunctor {
