@@ -16,6 +16,11 @@ inputs:
     type: string
     default: ''
     description: "Space separated list of PyPi packages to evaluate"
+  to:
+    required: false
+    type: string
+    default: ''
+    description: "File to print environment to"
 
 runs:
   using: composite
@@ -25,6 +30,11 @@ runs:
       run: |
         if [ -n "${{ inputs.conda }}" ]; then
           source activate ${{ inputs.conda }}
+        fi
+        to=$GITHUB_STEP_SUMMARY
+        if [ -n "${{ inputs.to }}" ]; then
+          to="${{ inputs.to }}"
+          mkdir -p $(dirname $to)
         fi
         {
           echo "### Environment"
@@ -71,4 +81,4 @@ runs:
           echo "| jobs.$GITHUB_JOB.env.NEOReadDebugKeys | $NEOReadDebugKeys |"
           echo "| jobs.$GITHUB_JOB.env.PYTORCH_ENABLE_XPU_FALLBACK | $PYTORCH_ENABLE_XPU_FALLBACK |"
           echo "| jobs.$GITHUB_JOB.env.PYTORCH_DEBUG_XPU_FALLBACK | $PYTORCH_DEBUG_XPU_FALLBACK |"
-        } >> $GITHUB_STEP_SUMMARY
+        } >> $to
