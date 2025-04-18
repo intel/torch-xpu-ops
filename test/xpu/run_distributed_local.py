@@ -102,7 +102,6 @@ for key in skip_dict_python:
         with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
             f.write(error_log)
     else:
-        import pdb;pdb.set_trace()
         with open(f"op_ut_with_skip_{renamed_key}.log", "w") as f:
             f.write(fail.stdout)
             f.write(fail.stderr)

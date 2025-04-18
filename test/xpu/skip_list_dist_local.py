@@ -134,7 +134,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_fsdp_optimizer_overlap",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": (
+        "test_buffer_dtype_no_root_handle",
+    ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_multi_forward_cpu",
@@ -247,6 +249,10 @@ skip_dict = {
         "test_gather_object_xpu",
         "test_gather_object_list_cpu",
         "test_gather_object_list_xpu",
+        # RuntimeError: Process 2 exited with error code 10 and exception: ; AssertionError: Scalars are not equal!
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_scatter_object_list_cpu",
+        "test_scatter_object_list_xpu",
     ),
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
     "../../../../test/distributed/test_control_collectives.py": None,
@@ -365,11 +371,34 @@ skip_dict = {
         # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
         # https://github.com/intel/torch-xpu-ops/issues/1556
         "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_loss_parallel",
+        "test_mlp_training_is_seq_parallel_False_recompute_activation_False",
+        "test_mlp_training_is_seq_parallel_True_recompute_activation_False",
+        "test_transformer_req_grad_float64_thaw_all",
+        "test_transformer_training_is_seq_parallel_False_float64",
+        "test_transformer_training_is_seq_parallel_True_float64",
+        "test_sequence_parallel_style",
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
-    "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": None,
+    "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_linear_col_wise_parallel",
+        "test_parallelize_mlp_with_module_api",
+        "test_parallelize_mlp_with_module_api_nested",
+        "test_parallelize_module_multi_wildcard",
+        "test_parallelize_module_src_data_rank",
+        "test_parallelize_module_with_digit",
+        "test_parallelize_module_with_question",
+        "test_parallelize_module_with_star",
+        "test_under_devicemesh_context",
+    ),
     "../../../../test/distributed/tensor/parallel/test_tp_style.py": None,
-    "../../../../test/distributed/tensor/test_api.py": None,
+    "../../../../test/distributed/tensor/test_api.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_distribute_tensor_rank",
+        "test_distribute_tensor_uneven_sharding",
+    ),
     "../../../../test/distributed/tensor/test_attention.py": None,
     "../../../../test/distributed/tensor/test_common_rules.py": None,
     "../../../../test/distributed/tensor/test_dtensor.py": (
@@ -401,6 +430,15 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1508
         "test_mean",
         "test_nll_loss_and_cross_entropy",
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_cumsum",
+        "test_layer_norm_bwd",
+        "test_layer_norm_bwd_req_grad",
+        "test_layer_norm_fwd",
+        "test_linear_op_reductions",
+        "test_shard0_svd",
+        "test_softmax_fwd",
+        "test_topk",
     ),
     "../../../../test/distributed/tensor/test_random_ops.py": (
         # Need to update world size
@@ -409,12 +447,39 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_redistribute.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_redistribute_shard_dim_multi_dim_mesh",
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_redistribute_shard_dim_change",
+        "test_redistribute_uneven_sharding",
+        "test_shard_to_replicate_forward_backward",
+        "test_shard_to_replicate_forward_backward_datatype_conversion",
+        "test_multi_dim_mesh",
     ),
-    "../../../../test/distributed/tensor/test_tensor_ops.py": None,
-    "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
-    "../../../../test/distributed/_shard/test_sharder.py": None,
+    "../../../../test/distributed/tensor/test_tensor_ops.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_aten_contiguous",
+        "test_gather",
+        "test_index",
+        "test_op_out_variant",
+        "test_slice",
+        "test_stack",
+        "test_where_type_promotion",
+    ),
+    "../../../../test/distributed/tensor/experimental/test_register_sharding.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_argmax",
+        "test_softmax_fwd",
+    ),
+    "../../../../test/distributed/_shard/test_sharder.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_custom_sharder",
+    ),
     # FSDP2
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_nontensor_activations",
+        "test_unused_forward_module",
+        "test_unused_forward_output",
+    ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_clip_grad_norm_2d",
@@ -425,7 +490,10 @@ skip_dict = {
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_extensions.py": None,
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_train_mixed_requires_grad_per_group",
+    ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_grad_scaler.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1508
         "test_gradient_scaler",
@@ -437,7 +505,12 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1535
         "test_fully_shard_training_memory",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_compute_dtype",
+        "test_grad_acc_with_reduce_dtype",
+        "test_reduce_dtype",
+    ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_overlap.py": (
         # Performance test, should skip
         "test_fully_shard_training_overlap",
@@ -453,6 +526,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_train_parity_multi_group_unshard_async_op",
         "test_train_parity_with_activation_checkpointing",
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_1f1b_microbatching",
+        "test_gradient_accumulation",
     ),
 }
 
