@@ -63,9 +63,13 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
           conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
           source activate xpu_build
-          cd ../ && rm -rf pytorch
+          cd ../ && sudo rm -rf pytorch
           pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
+          if [[ ${{ inputs.pytorch }} == 'distributed_2.8' ]]; then
+            git clone https://github.com/daisyden/pytorch.git pytorch
+          else
+            git clone https://github.com/pytorch/pytorch pytorch
+          fi
           cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
           # apply PRs for stock pytorch
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -167,11 +171,11 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ env.TORCH_COMMIT_ID }}
           path: ${{ github.workspace }}/torch*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ env.TORCH_COMMIT_ID }}
           path: ${{ github.workspace }}/pytorch_*.log
