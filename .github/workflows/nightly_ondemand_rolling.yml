@@ -140,7 +140,7 @@ jobs:
           pwd
           cd ../ && rm -rf pytorch
           source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone https://github.com/jianyizh/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
           # apply PRs for stock pytorch
           pip install requests
