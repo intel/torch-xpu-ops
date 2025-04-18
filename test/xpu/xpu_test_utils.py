@@ -1161,8 +1161,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{rename}.xml "
-            + test_case
+            f"pytest -v --junit-xml=./op_ut_with_skip_{rename}.xml " + test_case
         )
         test_command += skip_options
     elif exe_list is not None:
