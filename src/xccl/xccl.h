@@ -599,5 +599,71 @@ void onecclScatter(
   }
   return;
 }
+
+void onecclAllToAll(
+    void* sendbuff,
+    const size_t* sendcounts,
+    const size_t* senddispls,
+    void* recvbuff,
+    const size_t* recvcounts,
+    const size_t* recvdispls,
+    size_t size,
+    c10::ScalarType _type,
+    xcclComm_t& comm,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(_type);
+  xccl::onecclGroupStart();
+  if (isCCLV2EnabledCached()) {
+    int numranks = 0;
+    onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
+    for (const auto r : c10::irange(numranks)) {
+      if (sendcounts[r] != 0) {
+        onecclSend(
+            ((char*)sendbuff) + senddispls[r] * size,
+            sendcounts[r],
+            std::get<onecclDataType_t>(xcclDataType),
+            r,
+            std::get<onecclComm_t>(comm),
+            &SyclQueue);
+      }
+      if (sendcounts[r] != 0) {
+        onecclRecv(
+            ((char*)recvbuff) + recvdispls[r] * size,
+            recvcounts[r],
+            std::get<onecclDataType_t>(xcclDataType),
+            r,
+            std::get<onecclComm_t>(comm),
+            &SyclQueue);
+      }
+    }
+  } else {
+    int numranks = std::get<ccl::communicator>(comm).size();
+    for (const auto r : c10::irange(numranks)) {
+      if (sendcounts[r] != 0) {
+        ccl::send(
+            ((char*)sendbuff) + senddispls[r] * size,
+            sendcounts[r],
+            std::get<ccl::datatype>(xcclDataType),
+            r,
+            std::get<ccl::communicator>(comm),
+            xcclStream);
+      }
+      if (sendcounts[r] != 0) {
+        ccl::recv(
+            ((char*)recvbuff) + recvdispls[r] * size,
+            recvcounts[r],
+            std::get<ccl::datatype>(xcclDataType),
+            r,
+            std::get<ccl::communicator>(comm),
+            xcclStream);
+      }
+    }
+  }
+  xccl::onecclGroupEnd();
+  return;
+}
+
 } // namespace xccl
 } // namespace c10d
