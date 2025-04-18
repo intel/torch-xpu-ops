@@ -292,7 +292,7 @@ void max_pool3d_with_indices_out_template(
       in_batch_stride,
       out_batch_stride,
       in_hw_stride);
-  int work_group_size = syclMaxWorkItemsPerEU();
+  int work_group_size = syclMaxWorkItemsPerSubSlice();
   auto global_range =
       (OutputSize + work_group_size - 1) / work_group_size * work_group_size;
 
@@ -388,7 +388,7 @@ void max_pool3d_with_indices_backward_template(
       out_nbatch_stride,
       in_nbatch_stride);
 
-  int work_group_size = syclMaxWorkItemsPerEU();
+  int work_group_size = syclMaxWorkItemsPerSubSlice();
 
   auto global_range =
       ((gradOutputSize - 1) / work_group_size + 1) * work_group_size;

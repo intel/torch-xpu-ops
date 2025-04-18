@@ -59,7 +59,7 @@ static int64_t multi_tensor_apply_kernel_get_chunk_size(int simd) {
 }
 
 static inline int64_t multi_tensor_apply_fused_kernel_get_wg_size() {
-  return syclMaxWorkItemsPerEU();
+  return syclMaxWorkItemsPerSubSlice();
 }
 
 static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
