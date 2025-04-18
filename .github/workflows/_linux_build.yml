@@ -86,6 +86,7 @@ jobs:
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
           else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
             PYTORCH_VERSION="${{ inputs.pytorch }}"
           fi
           if [[ "${{ inputs.keep_torch_xpu_ops }}" == *"https://"* ]];then
