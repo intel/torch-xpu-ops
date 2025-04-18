@@ -131,3 +131,6 @@ runs:
             mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-SYMM
           fi
         fi
+        # summary
+        cd ${pt2e_logs_dir}
+        python ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${pt2e_logs_dir}
