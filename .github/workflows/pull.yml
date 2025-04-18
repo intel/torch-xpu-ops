@@ -117,7 +117,6 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
-          source .github/scripts/env.sh
           cd ../pytorch
           pip install -r requirements.txt
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
