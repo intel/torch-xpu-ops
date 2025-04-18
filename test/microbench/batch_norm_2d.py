@@ -39,8 +39,8 @@ def BTN2d(shape, dtype, channels_last, backward):
 
 if __name__ == "__main__":
     backward = True
-    for shape in shape_list:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        for shape in shape_list:
             for channels_last in [False, True]:
                 # warm up
                 BTN2d(shape, dtype, channels_last, backward)

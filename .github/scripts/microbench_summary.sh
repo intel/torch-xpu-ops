@@ -12,7 +12,7 @@ output_file="$2"
 Get_backward=${3:-False}
 cd "$results_dir" || exit
 
-echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;shifts;affine;backward;time(us)" >> "$output_file"
+echo "case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;padding_mode;align_corners;shifts;affine;backward;time(us)" >> "$output_file"
 
 function op_summary {
     while IFS= read -r line1 && IFS= read -r line2 <&3; do
@@ -64,6 +64,12 @@ function op_summary {
             if [[ mode = "$key" ]] ; then
                 mode=${value}
             fi
+            if [[ padding_mode = "$key" ]] ; then
+                padding_mode=${value}
+            fi
+            if [[ align_corners = "$key" ]] ; then
+                align_corners=${value}
+            fi
             if [[ affine = "$key" ]] ; then
                 affine=${value}
             fi
@@ -80,10 +86,13 @@ function op_summary {
         if [[ $unit == "ms" ]] ;then
            number=$(echo "scale=3; $number * 1000" | bc)
         fi
+        if [[ $unit == "s" ]] ;then
+           number=$(echo "scale=3; $number * 1000000" | bc)
+        fi
         if [[ $Get_backward == "True" ]] && [[ $backward == "False" ]]; then
             echo "Only Forward"
         else
-            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$mode;$shifts;$affine;$backward;$number" >> "$output_file"
+            echo "${i%.*};${datatype};${op_name};$shape;$channels_last;$dim;$output_size;$P;$reduce;$kernel_size;$stride;$replacement;$num_samples;$scale_factor;$mode;$padding_mode;$align_corners;$shifts;$affine;$backward;$number" >> "$output_file"
         fi
     done < <(echo "$texts") 3< <(echo "$times")
 }
@@ -106,6 +115,8 @@ do
     num_samples=""
     scale_factor=""
     mode=""
+    padding_mode=""
+    align_corners=""
     shifts=""
     case_name="${i%.*}"
     op_name=$(echo "$case_name" | awk -F. '{print $NF}')
@@ -122,9 +133,15 @@ do
         elif [[ $op_name == max_pool3d ]] || [[ $op_name == max_pool2d ]] ; then
             op_name=$op_name"_with_indices"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
-        elif [[ $op_name == adaptive_avg_pool2d ]] ; then
+        elif [[ $op_name == dropout ]] || [[ $op_name == layer_norm ]] ; then
+            op_name=$op_name
+            times=$(grep -w "${op_name}" "${i}" | awk  '{print $10}')
+        elif [[ $op_name == ctc_loss ]] ; then
             op_name="_"$op_name
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -w "${op_name}" "${i}" | awk  '{print $10}')
+        elif [[ $op_name == adaptive_avg_pool2d ]] ; then
+            op_name="adaptive_avg_pool2d"
+            times=$(grep -w "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
             op_name="aten::softmax"
             times=$(grep -E "${op_name}" "${i}" | awk  '{print $10}')
@@ -143,19 +160,19 @@ do
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == col2im ]] ; then
             op_name="Col2ImBackward0"
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | grep -v "autograd::engine" | awk  '{print $10}')
         elif [[ $op_name == im2col ]] ; then
             op_name="Im2ColBackward0"
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | grep -v "autograd::engine" | awk  '{print $10}')
         elif [[ $op_name == flip ]] ; then
             op_name="FlipBackward0"
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | grep -v "autograd::engine" | awk  '{print $10}')
         elif [[ $op_name == matmul ]] ; then
             op_name="MmBackward0"
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | grep -v "autograd::engine" | awk  '{print $10}')
         elif [[ $op_name == roll ]] ; then
             op_name="RollBackward0"
-            times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
+            times=$(grep -E "${op_name} " "${i}" | grep -v "autograd::engine" | awk  '{print $10}')
         elif [[ $op_name == softmax ]] ; then
             op_name=$op_name"_backward_data"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')

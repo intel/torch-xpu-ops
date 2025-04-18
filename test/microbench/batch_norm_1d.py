@@ -5,8 +5,8 @@ device = "xpu"
 
 shape_list = [((64, 8), (8)), ((4, 128, 15000), (128)), ((4, 256, 512), (256))]
 
-for shape in shape_list:
-    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+    for shape in shape_list:
         backward = True
         # input
         input = torch.randn(shape[0], device=device, dtype=dtype)
