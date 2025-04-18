@@ -349,18 +349,17 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       onecclGetUniqueId(&xcclID);
     }
     broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
-    xcclComm_t comm = nullptr;
+    onecclComm_t comm = nullptr;
     onecclResult_t result = onecclSuccess;
     result = onecclSetDevice(rank);
     if (result != onecclSuccess) {
       std::cerr << "Failed to set device.\n";
     }
-    result = onecclCommInitRank(
-        &std::get<onecclComm_t>(comm), numRanks, xcclID, rank);
+    result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
     if (result != onecclSuccess) {
       std::cerr << "Failed to initialize communicator.\n";
     }
-    XCCLComm = std::make_shared<xcclComm_t>(std::move(comm));
+    XCCLComm = std::make_shared<xcclComm_t>(comm);
   }
 
   RECORD_PARAM_COMMS(
