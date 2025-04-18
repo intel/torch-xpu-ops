@@ -8,10 +8,6 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #include <ATen/ops/_linalg_check_errors.h>
-#include <ATen/ops/_linalg_check_errors_native.h>
-#include <ATen/ops/_linalg_svd.h>
-#include <ATen/ops/_linalg_svd_meta.h>
-#include <ATen/ops/_linalg_svd_native.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
