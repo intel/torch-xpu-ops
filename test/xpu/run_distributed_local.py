@@ -49,6 +49,7 @@ else:
 
 from xpu_test_utils import launch_test
 
+
 # run python test
 def run(test_command):
     result = subprocess.run(test_command, capture_output=True, text=True)
@@ -83,18 +84,28 @@ for key in skip_dict_python:
                     for line in err.split("\n"):
                         if line.startswith("FAILED (failures="):
                             num_errs = line.split("=")[1].split(")")[0].strip()
-                            error_log += ("FAILED (failures=" + str(int(num_errs) - num_skipped) + f" skipped {num_skipped} cases" + ")\n")
+                            error_log += (
+                                "FAILED (failures="
+                                + str(int(num_errs) - num_skipped)
+                                + f" skipped {num_skipped} cases"
+                                + ")\n"
+                            )
                         else:
-                            error_log += (line + "\n")
+                            error_log += line + "\n"
                 else:
-                    error_log += ("FAIL: " + err)
+                    error_log += "FAIL: " + err
             else:
                 if i == len(fail.stderr.split("FAIL: ")) - 1:
                     error_log += "FAIL: "
                     for line in err.split("\n"):
                         if line.startswith("FAILED (failures="):
                             num_errs = line.split("=")[1].split(")")[0].strip()
-                            error_log += ("FAILED (failures=" + str(int(num_errs) - num_skipped) + f" skipped {num_skipped} cases" + ")\n")
+                            error_log += (
+                                "FAILED (failures="
+                                + str(int(num_errs) - num_skipped)
+                                + f" skipped {num_skipped} cases"
+                                + ")\n"
+                            )
 
     renamed_key = key.replace("../../../../", "").replace("/", "_")
     if num_err > 0:

@@ -17,8 +17,8 @@ skip_dict = {
         "test_checkpoint_submodule_use_reentrant_False_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": (
-       # https://github.com/intel/torch-xpu-ops/issues/1504
-       "test_ddp_parity_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/1504
+        "test_ddp_parity_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": (
