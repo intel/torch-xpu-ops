@@ -203,6 +203,7 @@ XcclRedOp getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
     }
 #if !defined(XCCL_HAS_AVG)
     if (reduceOp == ReduceOp::AVG) {
+      LOG(INFO) << "[Reduce] Use sum emulation for avg";
       if (useCCLV2)
         return onecclRedOp_t::onecclSum;
       else
