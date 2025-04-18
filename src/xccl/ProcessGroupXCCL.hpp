@@ -247,52 +247,52 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& tensors,
       const ReduceOptions& opts = ReduceOptions()) override;
 
-  // c10::intrusive_ptr<Work> _reduce_oop(
-  //     at::Tensor& outputTensors,
-  //     at::Tensor& inputTensors,
-  //     const ReduceOptions& opts = ReduceOptions());
+  c10::intrusive_ptr<Work> _reduce_oop(
+      at::Tensor& outputTensors,
+      at::Tensor& inputTensors,
+      const ReduceOptions& opts = ReduceOptions());
 
   c10::intrusive_ptr<Work> broadcast(
       std::vector<at::Tensor>& tensors,
       const BroadcastOptions& opts = BroadcastOptions()) override;
 
-  // c10::intrusive_ptr<Work> _broadcast_oop(
-  //     at::Tensor& outputTensor,
-  //     at::Tensor& inputTensor,
-  //     const BroadcastOptions& opts);
+  c10::intrusive_ptr<Work> _broadcast_oop(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
+      const BroadcastOptions& opts);
 
-  // c10::intrusive_ptr<Work> allgather(
-  //     std::vector<std::vector<at::Tensor>>& outputTensors,
-  //     std::vector<at::Tensor>& inputTensors,
-  //     const AllgatherOptions& opts = AllgatherOptions()) override;
+  c10::intrusive_ptr<Work> allgather(
+      std::vector<std::vector<at::Tensor>>& outputTensors,
+      std::vector<at::Tensor>& inputTensors,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  // c10::intrusive_ptr<Work> _allgather_base(
-  //     at::Tensor& outputbuffer,
-  //     at::Tensor& inputbuffer,
-  //     const AllgatherOptions& opts = AllgatherOptions()) override;
+  c10::intrusive_ptr<Work> _allgather_base(
+      at::Tensor& outputbuffer,
+      at::Tensor& inputbuffer,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  // c10::intrusive_ptr<Work> allgather_into_tensor_coalesced(
-  //     std::vector<at::Tensor>& outputs,
-  //     std::vector<at::Tensor>& inputs,
-  //     const AllgatherOptions& opts = AllgatherOptions()) override;
+  c10::intrusive_ptr<Work> allgather_into_tensor_coalesced(
+      std::vector<at::Tensor>& outputs,
+      std::vector<at::Tensor>& inputs,
+      const AllgatherOptions& opts = AllgatherOptions()) override;
 
-  // c10::intrusive_ptr<Work> reduce_scatter(
-  //     std::vector<at::Tensor>& outputTensors,
-  //     std::vector<std::vector<at::Tensor>>& inputTensors,
-  //     const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+  c10::intrusive_ptr<Work> reduce_scatter(
+      std::vector<at::Tensor>& outputTensors,
+      std::vector<std::vector<at::Tensor>>& inputTensors,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  // c10::intrusive_ptr<Work> _reduce_scatter_base(
-  //     at::Tensor& outputTensor,
-  //     at::Tensor& inputTensor,
-  //     const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+  c10::intrusive_ptr<Work> _reduce_scatter_base(
+      at::Tensor& outputTensor,
+      at::Tensor& inputTensor,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  // c10::intrusive_ptr<Work> reduce_scatter_tensor_coalesced(
-  //     std::vector<at::Tensor>& outputs,
-  //     std::vector<at::Tensor>& inputs,
-  //     const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
+  c10::intrusive_ptr<Work> reduce_scatter_tensor_coalesced(
+      std::vector<at::Tensor>& outputs,
+      std::vector<at::Tensor>& inputs,
+      const ReduceScatterOptions& opts = ReduceScatterOptions()) override;
 
-  // c10::intrusive_ptr<Work> barrier(
-  //     const BarrierOptions& opts = BarrierOptions()) override;
+  c10::intrusive_ptr<Work> barrier(
+      const BarrierOptions& opts = BarrierOptions()) override;
 
   // c10::intrusive_ptr<Work> alltoall_base(
   //     at::Tensor& outputTensor,
