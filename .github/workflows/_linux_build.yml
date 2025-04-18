@@ -174,5 +174,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf ${{ github.workspace }}/pytorch ${{ github.workspace }}/torch-xpu-ops \
-                  ${{ github.workspace }}/pytorch_*.log ${{ github.workspace }}/torch*.whl
+          chmod 777 . -R
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl
