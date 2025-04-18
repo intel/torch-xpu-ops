@@ -134,7 +134,6 @@ do
             op_name=$op_name"_with_indices"
             times=$(grep -E "${op_name} " "${i}" | awk  '{print $10}')
         elif [[ $op_name == dropout ]] || [[ $op_name == layer_norm ]] ; then
-            op_name=$op_name
             times=$(grep -w "${op_name}" "${i}" | awk  '{print $10}')
         elif [[ $op_name == ctc_loss ]] ; then
             op_name="_"$op_name
