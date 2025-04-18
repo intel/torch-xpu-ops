@@ -109,9 +109,9 @@ jobs:
                 --PYTORCH_VERSION="${PYTORCH_VERSION}" \
                 --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
                 --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-              > ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION}.log 2>&1 && echo $? || echo $?
+              > ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log 2>&1 && echo $? || echo $?
           )"
-          tail -n 100 ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION}.log
+          tail -n 100 ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
