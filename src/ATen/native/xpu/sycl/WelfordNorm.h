@@ -149,7 +149,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
       int address_vec_base = c_vec_offset + gy * n_channels_;
 
       // write data to staging_data;
-      if (item.get_local_id(0) == 0) {
+      if (item.get_local_id(0) == 0 && c_vec_offset < n_channels_) {
         *reinterpret_cast<acc_vec_t*>(&staging_mean[address_vec_base]) = mean;
         *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
         *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;

@@ -73,7 +73,7 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
 
     numel_ = ib_ * ic_ * ih_ * iw_;
     int total_item = std::min(numel_, syclMaxWorkItemsPerTile());
-    local_range_ = syclMaxWorkItemsPerEU();
+    local_range_ = syclMaxWorkItemsPerSubSlice();
     global_range_ = total_item < local_range_
         ? local_range_
         : (total_item / local_range_) * local_range_;
@@ -414,7 +414,7 @@ void launch_adaptive_avg_pool2d_kernel(
 
   int64_t numel = ob * oc * oh * ow;
   int total_item = std::min(numel, syclMaxWorkItemsPerTile());
-  int local_range = syclMaxWorkItemsPerEU();
+  int local_range = syclMaxWorkItemsPerSubSlice();
   int global_range = total_item < local_range
       ? local_range
       : ((total_item + local_range - 1) / local_range) * local_range;

@@ -1154,7 +1154,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
         return;
       },
       OpType::BROADCAST,
-      "nccl:broadcast");
+      "xccl:broadcast");
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(

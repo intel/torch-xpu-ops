@@ -75,7 +75,7 @@ jobs:
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
-          pip install junitparser
+          pip install junitparser pytest-timeout
           pip install transformers==${{ env.transformers }}
       - name: Prepare Stock XPU Pytorch
         run: |
@@ -120,7 +120,7 @@ jobs:
           # * tests/test_cli.py::ModelEstimatorTester::test_gated for failures due
           #   to not root caused environment configuration issue
           pattern="not test_profiler and not test_gated"
-          cmd=(python3 -m pytest -rsf --junitxml=reports/accelerate.xml -k "$pattern" tests/)
+          cmd=(python3 -m pytest --timeout 600 -rsf --junitxml=reports/accelerate.xml -k "$pattern" tests/)
           {
             echo "### Running"
             echo "\`\`\`"

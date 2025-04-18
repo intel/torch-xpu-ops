@@ -54,7 +54,7 @@ class IndexKernelConfig : public BatchKernelConfig {
             problem_batch,
             problem_along_x,
             Policy::pSegment,
-            syclMaxWorkItemsPerEU()),
+            syclMaxWorkItemsPerSubSlice()),
         sinfo_(sinfo),
         dinfo_(dinfo),
         iinfo_(iinfo),
@@ -922,7 +922,7 @@ static void launch_index_group_stride_kernel(const int64_t N, const func_t& f) {
   if (N == 0) {
     return;
   }
-  int wg_sz = syclMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = (N + wg_sz * vt - 1) / (wg_sz * vt);
   auto ker = IndexElementwiseKernelFunctor<vt, func_t>(N, f);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);

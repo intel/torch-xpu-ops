@@ -79,7 +79,7 @@ jobs:
           )
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${{ inputs.pytorch }} 
-          pip install pyyaml requests
+          pip install pyyaml requests pytest-timeout
           call conda install -y libuv
           call conda install -y rust
           git config --system core.longpaths true

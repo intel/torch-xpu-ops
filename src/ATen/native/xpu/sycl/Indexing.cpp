@@ -1075,7 +1075,7 @@ void take_put_kernel_template(
       f);
   auto caller =
       TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
-  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
   auto num_wg =
       (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
   sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
