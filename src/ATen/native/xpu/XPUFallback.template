@@ -210,13 +210,15 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_slogdet.sign",
     "_linalg_solve_ex.result",
     "linalg_solve_triangular",
-    "_linalg_svd.U",
     "lu_unpack.out",
     "ormqr",
     "_scaled_mm",
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
     "vdot",
+#if not defined(USE_ONEMKL)
+    "_linalg_svd.U",
+#endif // USE_ONEMKL
   };
   for (auto& op_name : fallback_list) {
     m.impl(
