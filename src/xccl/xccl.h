@@ -298,36 +298,36 @@ void onecclReduce(
   return;
 }
 
-// void onecclBroadcast(
-//     at::Tensor& input,
-//     at::Tensor& output,
-//     xcclComm_t& comm,
-//     const int root,
-//     at::xpu::XPUStream& stream,
-//     ccl::stream& xcclStream,
-//     sycl::queue& SyclQueue) {
-//   auto xcclDataType = getXcclDataType(input.scalar_type());
-//   if (isCCLV2EnabledCached()) {
-//     onecclBroadcast(
-//         input.data_ptr(),
-//         output.data_ptr(),
-//         (size_t)input.numel(),
-//         xcclDataType,
-//         root,
-//         comm,
-//         &SyclQueue);
-//   } else {
-//     ccl::broadcast(
-//         input.data_ptr(),
-//         output.data_ptr(),
-//         (size_t)input.numel(),
-//         xcclDataType,
-//         root,
-//         comm,
-//         xcclStream);
-//   }
-//   return;
-// }
+void onecclBroadcast(
+    at::Tensor& input,
+    at::Tensor& output,
+    xcclComm_t& comm,
+    const int root,
+    at::xpu::XPUStream& stream,
+    ccl::stream& xcclStream,
+    sycl::queue& SyclQueue) {
+  auto xcclDataType = getXcclDataType(input.scalar_type());
+  if (isCCLV2EnabledCached()) {
+    onecclBroadcast(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        std::get<onecclDataType_t>(xcclDataType),
+        root,
+        std::get<onecclComm_t>(comm),
+        &SyclQueue);
+  } else {
+    ccl::broadcast(
+        input.data_ptr(),
+        output.data_ptr(),
+        (size_t)input.numel(),
+        std::get<ccl::datatype>(xcclDataType),
+        root,
+        std::get<ccl::communicator>(comm),
+        xcclStream);
+  }
+  return;
+}
 
 // void onecclReduceScatter(
 //     at::Tensor& input,

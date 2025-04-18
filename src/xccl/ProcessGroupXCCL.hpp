@@ -238,23 +238,23 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& tensors,
       const AllreduceOptions& opts = AllreduceOptions()) override;
 
-  // c10::intrusive_ptr<Work> allreduce_coalesced(
-  //     std::vector<at::Tensor>& tensors,
-  //     const AllreduceCoalescedOptions& opts =
-  //         AllreduceCoalescedOptions()) override;
+  c10::intrusive_ptr<Work> allreduce_coalesced(
+      std::vector<at::Tensor>& tensors,
+      const AllreduceCoalescedOptions& opts =
+          AllreduceCoalescedOptions()) override;
 
-  // c10::intrusive_ptr<Work> reduce(
-  //     std::vector<at::Tensor>& tensors,
-  //     const ReduceOptions& opts = ReduceOptions()) override;
+  c10::intrusive_ptr<Work> reduce(
+      std::vector<at::Tensor>& tensors,
+      const ReduceOptions& opts = ReduceOptions()) override;
 
   // c10::intrusive_ptr<Work> _reduce_oop(
   //     at::Tensor& outputTensors,
   //     at::Tensor& inputTensors,
   //     const ReduceOptions& opts = ReduceOptions());
 
-  // c10::intrusive_ptr<Work> broadcast(
-  //     std::vector<at::Tensor>& tensors,
-  //     const BroadcastOptions& opts = BroadcastOptions()) override;
+  c10::intrusive_ptr<Work> broadcast(
+      std::vector<at::Tensor>& tensors,
+      const BroadcastOptions& opts = BroadcastOptions()) override;
 
   // c10::intrusive_ptr<Work> _broadcast_oop(
   //     at::Tensor& outputTensor,
