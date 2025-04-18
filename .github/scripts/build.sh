@@ -11,7 +11,7 @@ TORCH_XPU_OPS_VERSION=${TORCH_XPU_OPS_VERSION:-"main"}
 for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
-exit
+
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
 git clone ${PYTORCH_REPO} ${WORKSPACE}/pytorch
