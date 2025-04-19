@@ -40,6 +40,9 @@ on:
         description: Transformers version
 
 permissions: read-all
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   Torch-XPU-Accelerate-Tests:
@@ -71,7 +74,6 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           echo "Using Conda ENV name: $CONDA_ENV_NAME"
-          which conda && conda clean -ay
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
