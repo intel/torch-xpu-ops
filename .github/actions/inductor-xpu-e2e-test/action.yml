@@ -56,6 +56,7 @@ runs:
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
+          pip install --no-deps accelerate
           pip install git+https://github.com/huggingface/pytorch-image-models@730b907 --no-deps
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/730b907/requirements.txt | grep -vE torch)
           pip install -r ${GITHUB_WORKSPACE}/.github/workflows/req.txt
