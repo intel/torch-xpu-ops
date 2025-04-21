@@ -55,7 +55,10 @@ runs:
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
+          pip install git+https://github.com/huggingface/pytorch-image-models@730b907 --no-deps
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/730b907/requirements.txt | grep -vE torch)
+          pip install -r ${GITHUB_WORKSPACE}/.github/workflows/req.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions

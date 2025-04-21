@@ -1,0 +1,25 @@
+accelerate
+boto3
+bs4
+patch
+py-cpuinfo
+distro
+iopath
+pytest
+pytest-benchmark
+requests
+tabulate
+# git+https://github.com/huggingface/pytorch-image-models.git@730b907
+# this version of transformers is required by linger-kernel
+# https://github.com/linkedin/Liger-Kernel/blob/main/pyproject.toml#L23
+transformers==4.44.2
+MonkeyType
+psutil
+pyyaml
+numpy
+opencv-python
+submitit
+pynvml>=12.0.0
+pandas
+scipy
+numba
