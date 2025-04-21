@@ -7,8 +7,8 @@
 
 #include <ATen/ops/mean.h>
 #include <ATen/ops/zeros_like.h>
-#include <ATen/ops/_adaptive_avg_pool2d_backward_native.h>
-#include <ATen/ops/_adaptive_avg_pool2d_native.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_backward_native.h>
+#include <xpu/ATen/ops/_adaptive_avg_pool2d_native.h>
 
 #include <ATen/native/xpu/sycl/AdaptiveAveragePooling2dKernels.h>
 
@@ -22,6 +22,13 @@ Tensor adaptive_avg_pool2d_backward_xpu(
 
   native::adaptive_pool_empty_output_check(
       grad_output, "adaptive_avg_pool2d_backward");
+  TORCH_CHECK(
+      input.dim() == grad_output.dim(),
+      __func__,
+      ": Expected dimensions ",
+      input.dim(),
+      " for `gradOutput_` but got dimensions ",
+      grad_output.dim());
 
   checkAllSameGPU(__func__, {grad_output_arg, input_arg});
 

@@ -4,8 +4,8 @@
 #include <ATen/native/xpu/sycl/FractionalMaxPool3dKernels.h>
 #include <ATen/ops/empty.h>
 
-#include <ATen/ops/fractional_max_pool3d_backward_native.h>
-#include <ATen/ops/fractional_max_pool3d_native.h>
+#include <xpu/ATen/ops/fractional_max_pool3d_backward_native.h>
+#include <xpu/ATen/ops/fractional_max_pool3d_native.h>
 
 namespace at::native {
 
