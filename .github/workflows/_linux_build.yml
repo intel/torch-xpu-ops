@@ -93,9 +93,9 @@ jobs:
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/@.*//')"
             TORCH_XPU_OPS_VERSION="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/.*@//')"
           elif [ "${{ inputs.keep_torch_xpu_ops }}" == "true" ];then
-            TORCH_XPU_OPS_VERSION="pytorch-pinned"
+            TORCH_XPU_OPS_VERSION="pinned"
           else
-            TORCH_XPU_OPS_VERSION="ci-nightly"
+            TORCH_XPU_OPS_VERSION="cicd"
           fi
           # oneAPI DLE
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
@@ -131,7 +131,7 @@ jobs:
               gh --repo $repo issue edit $commit_issue --body-file new_body.txt
               gh --repo $repo issue comment $commit_issue -b "Update LKG torch, refer ${build_url}"
             fi
-            if [ ! -f ${{ github.workspace }}/torch*.whl ] && [ "${TORCH_XPU_OPS_VERSION}" == "ci-nightly" ]; then
+            if [ ! -f ${{ github.workspace }}/torch*.whl ] && [ "${TORCH_XPU_OPS_VERSION}" == "cicd" ]; then
               echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
               build_status="$(

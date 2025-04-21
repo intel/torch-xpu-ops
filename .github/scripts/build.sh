@@ -1,4 +1,9 @@
 #!/bin/bash
+# Usage:
+#   ./build.sh --WORKSPACE=<path/to/dir> \
+#       --PYTORCH_REPO=<pytorch repo url> --PYTORCH_VERSION=<pytorch branch or commit> \
+#       --TORCH_XPU_OPS_REPO=<torch-xpu-ops repo url> \
+#       --TORCH_XPU_OPS_VERSION=<torch-xpu-ops branch, commit or pinned(use pytorch pinned commit)>
 set -xe
 export GIT_PAGER=cat
 
@@ -21,11 +26,11 @@ git remote -v && git branch && git show -s
 git rev-parse HEAD > ${WORKSPACE}/pytorch.commit
 
 # Set torch-xpu-ops
-if [ "${TORCH_XPU_OPS_VERSION,,}" == "pytorch-pinned" ];then
+if [ "${TORCH_XPU_OPS_VERSION,,}" == "pinned" ];then
     TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
     TORCH_XPU_OPS_VERSION="$(cat ${WORKSPACE}/pytorch/third_party/xpu.txt)"
 fi
-if [ "${TORCH_XPU_OPS_VERSION,,}" != "ci-nightly" ];then
+if [ "${TORCH_XPU_OPS_VERSION,,}" != "cicd" ];then
     rm -rf ${WORKSPACE}/torch-xpu-ops
     git clone ${TORCH_XPU_OPS_REPO} ${WORKSPACE}/torch-xpu-ops
     cd ${WORKSPACE}/torch-xpu-ops
