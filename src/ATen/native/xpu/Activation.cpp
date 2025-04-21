@@ -7,9 +7,9 @@
 #include <ATen/native/TensorIterator.h>
 
 #include <ATen/ops/empty_like.h>
-#include <ATen/ops/empty.h>
-#include <ATen/ops/gelu_backward_native.h>
-#include <ATen/ops/gelu_native.h>
+#include <xpu/ATen/ops/empty.h>
+#include <xpu/ATen/ops/gelu_backward_native.h>
+#include <xpu/ATen/ops/gelu_native.h>
 
 #include <ATen/native/xpu/sycl/ActivationEluKernels.h>
 #include <ATen/native/xpu/sycl/ActivationGeluKernel.h>

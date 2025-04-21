@@ -122,7 +122,7 @@ void reflection_pad1d_template(
     int64_t nplane,
     int64_t output_w) {
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
 
   ReflectionPad1dKernelFunctor<scalar_t> kfn(
@@ -179,7 +179,7 @@ void reflection_pad1d_backward_template(
     int64_t nplane,
     int64_t output_w) {
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num = at::ceil_div(output_w, work_group_size);
 
   ReflectionPad1dBackwardKernelFunctor<scalar_t> kfn(
@@ -255,7 +255,7 @@ void reflection_pad2d_template(
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
 
   auto queue = getCurrentSYCLQueue();
-  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
 
@@ -340,7 +340,7 @@ void reflection_pad2d_backward_template(
   auto queue = getCurrentSYCLQueue();
   int64_t output_dim_x = input_dim_x + pad_l + pad_r;
   int64_t output_dim_y = input_dim_y + pad_t + pad_b;
-  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num =
       at::ceil_div(output_dim_x * output_dim_y, work_group_size);
 
@@ -437,7 +437,7 @@ inline void parallel_reflection_pad3d(
     const F& f) {
   auto queue = getCurrentSYCLQueue();
   int64_t output_plane_size = output.size(2) * output.size(3) * output.size(4);
-  int64_t work_group_size = syclMaxWorkItemsPerEU();
+  int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t work_group_num = at::ceil_div(output_plane_size, work_group_size);
   int64_t nplane = input.size(1);
   int64_t nbatch = input.size(0);

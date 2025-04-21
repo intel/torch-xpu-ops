@@ -1,8 +1,8 @@
 #include <ATen/native/ForeachUtils.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
-#include <ATen/ops/_foreach_max_native.h>
-#include <ATen/ops/_foreach_norm_native.h>
+#include <xpu/ATen/ops/_foreach_max_native.h>
+#include <xpu/ATen/ops/_foreach_norm_native.h>
 
 namespace at {
 namespace native {
