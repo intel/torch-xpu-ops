@@ -128,6 +128,8 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
@@ -179,7 +181,8 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
-          pip install pandas scipy psutil
+          cd ../pytorch
+          pip install -r requirements.txt
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |

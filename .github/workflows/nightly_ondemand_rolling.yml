@@ -95,6 +95,18 @@ jobs:
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       driver: rolling
       runner: pvc_rolling
+  
+  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
+    name: linux-nightly-ondemand-rolling / Op_microbench
+    needs: Linux-Nightly-Ondemand-Build-Rolling
+    uses: ./.github/workflows/_linux_op_benchmark.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      driver: rolling
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
@@ -133,6 +145,8 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install pandas scipy tqdm
       - name: Prepare Stock Pytorch
         run: |
           pwd
@@ -184,7 +198,8 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate e2e_ci
-          pip install pandas scipy psutil
+          cd ../pytorch
+          pip install -r requirements.txt
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |

@@ -143,7 +143,7 @@ Tensor& max_unpooling2d_forward_kernel(
               oheight,
               owidth,
               output.mutable_data_ptr<scalar_t>());
-          int64_t group_size = syclMaxWorkItemsPerEU();
+          int64_t group_size = syclMaxWorkItemsPerSubSlice();
           int64_t num_groups = (count + group_size - 1) / group_size;
           sycl_kernel_submit(
               num_groups * group_size,
