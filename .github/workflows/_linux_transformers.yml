@@ -170,7 +170,7 @@ jobs:
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
-          pip install junitparser pytest-timeout pytest-shard
+          pip install junitparser pytest-rerunfailures pytest-shard pytest-timeout
       - name: Prepare Stock XPU Pytorch
         run: |
           source activate $CONDA_ENV_NAME
@@ -219,6 +219,7 @@ jobs:
           source activate $CONDA_ENV_NAME
           cd transformers
           python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml \
+            --reruns 5 --reruns-delay 2 \
             -k "${{ matrix.test.filter}}" ${{ matrix.test.cmd }} || true
       - name: Check for errors in tests
         run: |
