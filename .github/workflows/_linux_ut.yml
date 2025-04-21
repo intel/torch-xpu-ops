@@ -70,7 +70,7 @@ jobs:
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install torch==2.7.0 --index-url https://download.pytorch.org/whl/test/xpu
           pip uninstall -y torch && pip uninstall -y torch
-          pip install ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
+          pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
           TORCH_COMMIT_ID="v2.7.0-rc10"
           cd ../pytorch
           git reset --hard && git checkout ${TORCH_COMMIT_ID}
@@ -271,7 +271,7 @@ jobs:
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install torch==2.7.0 --index-url https://download.pytorch.org/whl/test/xpu
           pip uninstall -y torch && pip uninstall -y torch
-          pip install ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
+          pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
           TORCH_COMMIT_ID="v2.7.0-rc10"
           cd ../pytorch
           git reset --hard && git checkout ${TORCH_COMMIT_ID}
