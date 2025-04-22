@@ -67,29 +67,29 @@ struct HermitianSymmetryOffsetCalculator {
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
 struct FFTConjugateCopyKernelFunctor {
   void operator()(sycl::item<1> item_id) const {
-    auto in_offset = ic.get(item_id)[0];
-    auto out_offset = oc.get(item_id)[0];
-    out_data[out_offset] = std::conj(in_data[in_offset]);
+    auto in_offset = ic_.get(item_id)[0];
+    auto out_offset = oc_.get(item_id)[0];
+    out_data_[out_offset] = std::conj(in_data_[in_offset]);
   }
 
   FFTConjugateCopyKernelFunctor(
-      int64_t numel_,
-      scalar_t* out_data_,
-      const scalar_t* in_data_,
-      inp_calc_t ic_,
-      out_calc_t oc_)
-      : numel(numel_),
-        out_data(out_data_),
-        in_data(in_data_),
-        ic(ic_),
-        oc(oc_) {}
+      int64_t numel,
+      scalar_t* out_data,
+      const scalar_t* in_data,
+      inp_calc_t ic,
+      out_calc_t oc)
+      : numel_(numel),
+        out_data_(out_data),
+        in_data_(in_data),
+        ic_(ic),
+        oc_(oc) {}
 
  private:
-  int64_t numel;
-  scalar_t* out_data;
-  const scalar_t* in_data;
-  inp_calc_t ic;
-  out_calc_t oc;
+  int64_t numel_;
+  scalar_t* out_data_;
+  const scalar_t* in_data_;
+  inp_calc_t ic_;
+  out_calc_t oc_;
 };
 
 template <typename scalar_t, typename inp_calc_t, typename out_calc_t>
