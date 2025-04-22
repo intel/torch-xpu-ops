@@ -479,6 +479,10 @@ Tensor& _fft_c2r_mkl_out(
       out, result, normalization, result.sizes(), dim);
 }
 
+REGISTER_XPU_DISPATCH(
+    fft_fill_with_conjugate_symmetry_stub,
+    &_fft_fill_with_conjugate_symmetry_xpu);
+
 Tensor _fft_r2c_mkl(
     const Tensor& self,
     IntArrayRef dim,
@@ -554,7 +558,7 @@ Tensor _fft_r2c_mkl(
       working_tensor.slice(last_dim, 0, last_dim_halfsize).copy_(out);
       out = std::move(working_tensor);
     }
-    _fft_fill_with_conjugate_symmetry_(out, dim);
+    at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
   return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
@@ -582,7 +586,7 @@ Tensor& _fft_r2c_mkl_out(
 
   impl::_fft_apply_normalization_out(
       out_slice, result, normalization, self.sizes(), dim);
-  _fft_fill_with_conjugate_symmetry_(out, dim);
+  at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   return out;
 }
 
