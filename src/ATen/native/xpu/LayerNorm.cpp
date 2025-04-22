@@ -177,6 +177,8 @@ namespace native {
       grad_bias,
       grad_input_mask);
 }
+
+REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
 } // namespace native
 
 } // namespace at
