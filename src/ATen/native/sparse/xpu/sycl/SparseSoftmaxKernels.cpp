@@ -380,7 +380,7 @@ Tensor get_offsets(
   }
   // auto strides = host_strides;
   auto strides = at::empty({ndim}, indices.options());
-  auto strides_ptr = strides.data_ptr<int64_t>();
+  // auto strides_ptr = strides.data_ptr<int64_t>();
 
   // syclMemcpyAsync(
   //     strides_ptr,
@@ -392,11 +392,10 @@ Tensor get_offsets(
     strides[kk] = host_strides[kk];
   }
 
-  auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
+  // auto indices_accessor = indices.packed_accessor64<int64_t, 2>();
   Tensor offsets = at::ones({nnz}, indices.options());
 
   for (int i = 0; i < nnz; i++) {
-    int64_t pool_index = 0;
     for (int64_t j = 0; j < ndim; j++) {
       if (j != dim) {
         offsets[i] += (strides[j] * indices[j][i]);
