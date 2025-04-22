@@ -2194,7 +2194,7 @@ void host_softmax_backward(
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::BFloat16,
       at::ScalarType::Half,
-      grad.scalar_type(),
+      gI.scalar_type(),
       "host_softmax_backward",
       [&] {
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
