@@ -20,8 +20,8 @@ class TestNNMethod(TestCase):
             [16, 7, 8, 512],
             [16, 7, 8, 512, 35],
         ]
-        input_type=torch.float16
-        output_type=torch.float
+        input_type = torch.float16
+        output_type = torch.float
         for i in range(len(shape)):
             for j in range(len(shape[i])):
                 dim = j - 1
