@@ -31,13 +31,13 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   if (dtype == kFloat8_e4m3fn) {
     switch (other_dtype) {
       case kFloat:
-        gpu_kernel(iter, CastScalarFunc<float, Float8_e4m3fn>());
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e4m3fn>());
         break;
       case kHalf:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e4m3fn>());
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e4m3fn>());
         break;
       case kBFloat16:
-        gpu_kernel(iter, CastScalarFunc<BFloat16, Float8_e4m3fn>());
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e4m3fn>());
         break;
       default:
         gpu_kernel(iter, CopyScalarFunc<Float8_e4m3fn>());
@@ -46,13 +46,13 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   } else if (dtype == kFloat8_e5m2) {
     switch (other_dtype) {
       case kFloat:
-        gpu_kernel(iter, CastScalarFunc<float, Float8_e5m2>());
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e5m2>());
         break;
       case kHalf:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e5m2>());
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e5m2>());
         break;
       case kBFloat16:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e5m2>());
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e5m2>());
         break;
       default:
         gpu_kernel(iter, CopyScalarFunc<Float8_e5m2>());
@@ -61,13 +61,13 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   } else if (dtype == kFloat8_e4m3fnuz) {
     switch (other_dtype) {
       case kFloat:
-        gpu_kernel(iter, CastScalarFunc<float, Float8_e4m3fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e4m3fnuz>());
         break;
       case kHalf:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e4m3fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e4m3fnuz>());
         break;
       case kBFloat16:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e4m3fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e4m3fnuz>());
         break;
       default:
         gpu_kernel(iter, CopyScalarFunc<Float8_e4m3fnuz>());
@@ -76,13 +76,13 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   } else if (dtype == kFloat8_e5m2fnuz) {
     switch (other_dtype) {
       case kFloat:
-        gpu_kernel(iter, CastScalarFunc<float, Float8_e5m2fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e5m2fnuz>());
         break;
       case kHalf:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e5m2fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e5m2fnuz>());
         break;
       case kBFloat16:
-        gpu_kernel(iter, CastScalarFunc<Half, Float8_e5m2fnuz>());
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e5m2fnuz>());
         break;
       default:
         gpu_kernel(iter, CopyScalarFunc<Float8_e5m2fnuz>());
