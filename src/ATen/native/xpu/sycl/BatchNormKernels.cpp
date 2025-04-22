@@ -2553,7 +2553,7 @@ batch_norm_backward_reduce_channels_last_template(
   }
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerEU() * 2,
+      syclMaxWorkItemsPerSubSlice() * 2,
       reduction_size,
       stride,
       false,

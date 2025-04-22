@@ -359,7 +359,7 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
-    size_t wg_size = syclMaxWorkItemsPerEU();
+    size_t wg_size = syclMaxWorkItemsPerSubSlice();
     wg_range_x_ = 32;
     while (problem_ <= wg_range_x_ >> 1) {
       wg_range_x_ = wg_range_x_ >> 1;
