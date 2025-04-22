@@ -419,10 +419,6 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
              point_w += input_width_ * 2) {
           int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
           int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
-          accscalar_t scale_w =
-              distance_w / static_cast<accscalar_t>(output_width_ * 2);
-          accscalar_t scale_h =
-              distance_h / static_cast<accscalar_t>(output_height_ * 2);
           bool is_boundary_w =
               !((point_w > input_width_) &&
                 (point_w < output_width_ * input_width_ * 2 - input_width_));
