@@ -13,8 +13,6 @@
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl.hpp>
 
-using namespace oneapi::mkl::dft;
-
 namespace at::native::xpu {
 
 namespace impl {
