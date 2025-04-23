@@ -40,6 +40,9 @@ on:
         description: Transformers version
 
 permissions: read-all
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   Torch-XPU-Accelerate-Tests:
@@ -67,11 +70,11 @@ jobs:
           path: accelerate
       - name: Create unique Conda ENV name
         run: |
-          echo "CONDA_ENV_NAME=hf_accelerate_test_${ZE_AFFINITY_MASK}" >> $GITHUB_ENV
+          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
+          echo "CONDA_ENV_NAME=hf_accelerate_test_${ZE_AFFINITY_MASK}_${random}" >> $GITHUB_ENV
       - name: Prepare Conda ENV
         run: |
           echo "Using Conda ENV name: $CONDA_ENV_NAME"
-          which conda && conda clean -ay
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
@@ -147,6 +150,12 @@ jobs:
         with:
           conda: $CONDA_ENV_NAME
           pip_packages: 'accelerate transformers'
+      - name: Clean up
+        if: ${{ always() }}
+        run: |
+          if [ -n "$CONDA_ENV_NAME" ]; then
+            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          fi
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
