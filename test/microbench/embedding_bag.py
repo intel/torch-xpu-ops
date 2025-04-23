@@ -1,4 +1,5 @@
 import random
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
@@ -6,7 +7,7 @@ device = "xpu"
 backward = True
 
 for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-    for reduce in ['max', 'mean', 'sum']:
+    for reduce in ["max", "mean", "sum"]:
         dict_len = 2500000
         vect_len = 128
         batch = 1024

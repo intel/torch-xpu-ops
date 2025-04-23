@@ -25,19 +25,20 @@ g_xpu = torch.Generator(device=device)
 g_xpu.manual_seed(25)
 torch.manual_seed(25)
 
+
 def Scatter(shape, dtype, dim, device):
     if dim == 2:
         m, n, k1, k2 = shape[0][0], shape[0][1], shape[0][2], shape[0][3]
         src = torch.ones((m, n, k1), dtype=dtype, device=device)
         index = torch.randint(0, k2, (m, n, k1), generator=g_xpu, device=device)
         zeros = torch.zeros(m, n, k2, dtype=dtype, device=device)
-    else: # dim=0
+    else:
         if dim == 0:
             m1, m2, n = shape[0][0], shape[0][1], shape[0][2]
             src = torch.ones((m1, n), dtype=dtype, device=device)
             index = torch.randint(0, m2, (m1, n), generator=g_xpu, device=device)
             zeros = torch.zeros(m2, n, dtype=src.dtype, device=device)
-        else: # dim=1
+        else:
             m, n1, n2 = shape[0][0], shape[0][1], shape[0][2]
             src = torch.ones((m, n1), dtype=dtype, device=device)
             index = torch.randint(0, n2, (m, n1), generator=g_xpu, device=device)

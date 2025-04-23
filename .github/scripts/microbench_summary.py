@@ -2,9 +2,9 @@
 Microbenchmark Summary Tool - Parses performance logs and generates CSV/Excel reports
 # Usage
 # Summary forward op time, forward_op_summary.csv is forward summary file
-python microbench_summary.py path/to/profile's log g forward_op_summary.csv
+python microbench_summary.py path/to/profile's log forward_op_summary.csv
 # Summary backward op time, backward_op_summary.csv is backward summary file, True means summary backward, default is false.
-python microbench_summary.py path/to/profile's log g backward_op_summary.csv --backward
+python microbench_summary.py path/to/profile's log backward_op_summary.csv --backward
 """
 
 import re
@@ -13,7 +13,7 @@ import glob
 import os
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,7 +22,7 @@ def main():
     )
     parser.add_argument("log_dir", help="Directory containing log files")
     parser.add_argument("output_file", help="Output CSV file path")
-    parser.add_argument("--backward", action="store_true", 
+    parser.add_argument("--backward", action="store_true",
                        help="Process backward operations instead of forward")
     args = parser.parse_args()
 
@@ -41,15 +41,15 @@ def main():
 def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
     data = []
     columns = [
-        "case_name", "datatype", "op_name", "shape", "channels_last", "dim", 
-        "output_size", "P", "reduce", "kernel_size", "stride", "replacement", 
-        "num_samples", "scale_factor", "mode", "padding_mode", "align_corners", 
+        "case_name", "datatype", "op_name", "shape", "channels_last", "dim",
+        "output_size", "P", "reduce", "kernel_size", "stride", "replacement",
+        "num_samples", "scale_factor", "mode", "padding_mode", "align_corners",
         "shifts", "affine", "backward", "time(us)"
     ]
 
     for log_file in glob.glob(os.path.join(log_dir, "*.log")):
         try:
-            with open(log_file, 'r') as f:
+            with open(log_file) as f:
                 content = f.read()
 
             case_name = Path(log_file).stem
@@ -97,6 +97,12 @@ def get_op_pattern(base_op_name: str, get_backward: bool) -> tuple:
             'normal': ('normal_', r'\bnormal_\b'),
             'bernoulli': ('bernoulli_', r'\bbernoulli_\b'),
             'cauchy': ('cauchy_', r'\bcauchy_\b'),
+            'index_fill': ('index_fill_', r'\bindex_fill_\b'),
+            'index_put': ('index_put_', r'\bindex_put_\b'),
+            'put': ('put_', r'\bput_\b'),
+            'masked_fill': ('masked_fill_', r'\bmasked_fill_\b'),
+            'scatter_add': ('scatter_add_', r'\bscatter_add_\b'),
+            'scatter': ('scatter_', r'\bscatter_\b'),
             'dropout': ('dropout', r'\bdropout\b'),
             'layer_norm': ('layer_norm', r'\blayer_norm\b'),
             'ctc_loss': ('_ctc_loss', r'\b_ctc_loss\b'),
@@ -109,6 +115,8 @@ def get_op_pattern(base_op_name: str, get_backward: bool) -> tuple:
             'fractional_max_pool2d': ('fractional_max_pool2d_backward', r'\bfractional_max_pool2d_backward\b'),
             'fractional_max_pool3d': ('fractional_max_pool3d_backward', r'\bfractional_max_pool3d_backward\b'),
             'adaptive_max_pool2d': ('adaptive_max_pool2d_backward', r'\badaptive_max_pool2d_backward\b'),
+            'max_unpool2d': ('MaxUnpool2DBackward0', 'MaxUnpool2DBackward0 '),
+            'max_unpool3d': ('MaxUnpool3DBackward0', 'MaxUnpool3DBackward0 '),
             'max_pool3d': ('max_pool3d_with_indices_backward', 'max_pool3d_with_indices_backward '),
             'max_pool2d': ('max_pool2d_with_indices_backward', 'max_pool2d_with_indices_backward '),
             'col2im': ('Col2ImBackward0', 'Col2ImBackward0 '),
@@ -163,17 +171,17 @@ def extract_times(content: str, pattern: str, get_backward: bool) -> List:
     for line in lines:
         if get_backward and any(x in pattern for x in ["Col2ImBackward0", "Im2ColBackward0",
                                                      "FlipBackward0", "MmBackward0",
-                                                     "RollBackward0"]):
+                                                     "RollBackward0", "MaxUnpool2DBackward0", "MaxUnpool3DBackward0"]):
             if "autograd::engine" in line:
                 continue
 
         match = re.search(fr"{pattern}.*?(?:\s+\S+){{8}}\s+(\d+\.?\d*)([a-zA-Z]*)", line)
         if match:
             results.append((match.group(1), match.group(2)))
-    
+
     return results
 
-def create_record(params: Dict, case_name: str, op_name: str, 
+def create_record(params: Dict, case_name: str, op_name: str,
                  backward: str, time_us: float) -> Dict:
     return {
         "P": params.get("p", ""),
