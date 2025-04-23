@@ -1,17 +1,19 @@
-import torch
 import random
+import torch
 from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
 backward = True
 
 for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-    for reduce in ['max','mean','sum']:
+    for reduce in ['max', 'mean', 'sum']:
         dict_len = 2500000
         vect_len = 128
         batch = 1024
 
-        emb = torch.nn.EmbeddingBag(dict_len, vect_len, mode=reduce, dtype=dtype, device=device)
+        emb = torch.nn.EmbeddingBag(
+            dict_len, vect_len, mode=reduce, dtype=dtype, device=device
+        )
         input = torch.empty([batch], dtype=torch.long, device=device)
         for i in range(batch):
             input[i] = random.randint(0, dict_len - 1)

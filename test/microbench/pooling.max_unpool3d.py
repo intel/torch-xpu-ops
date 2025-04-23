@@ -9,22 +9,38 @@ shape_list = [
 
 
 def maxUnpool3d(shape, dtype, device, channels_last, backward):
-    N, C, D, H, W = int(shape[0]), int(shape[1]), int(shape[2]), int(shape[3]), int(shape[4])
+    N, C, D, H, W = (
+        int(shape[0]),
+        int(shape[1]),
+        int(shape[2]),
+        int(shape[3]),
+        int(shape[4]),
+    )
     kernel_size = 2
 
-    pool = torch.nn.MaxPool3d(kernel_size, return_indices=True).to(device=device, dtype=dtype)
+    pool = torch.nn.MaxPool3d(kernel_size, return_indices=True).to(
+        device=device, dtype=dtype
+    )
     unpool = torch.nn.MaxUnpool3d(kernel_size).to(device=device, dtype=dtype)
     torch.manual_seed(20)
 
     if channels_last:
-        input = torch.randn([N, C, D, H, W]).to(memory_format=torch.channels_last_3d).to(device=device, dtype=torch.float32)
+        input = (
+            torch.randn([N, C, D, H, W])
+            .to(memory_format=torch.channels_last_3d)
+            .to(device=device, dtype=torch.float32)
+        )
     else:
         input = torch.randn([N, C, D, H, W]).to(device=device, dtype=torch.float32)
     output, indices = pool(input)
 
     if channels_last:
-        x_dpcpp = output.to(memory_format=torch.channels_last_3d).to(device=device, dtype=dtype)
-        indices_dpcpp = indices.to(memory_format=torch.channels_last_3d).to(device=device, dtype=torch.int64)
+        x_dpcpp = output.to(memory_format=torch.channels_last_3d).to(
+            device=device, dtype=dtype
+        )
+        indices_dpcpp = indices.to(memory_format=torch.channels_last_3d).to(
+            device=device, dtype=torch.int64
+        )
     else:
         x_dpcpp = output.to(device=device, dtype=dtype)
         indices_dpcpp = indices.to(device=device, dtype=torch.int64)
@@ -32,7 +48,11 @@ def maxUnpool3d(shape, dtype, device, channels_last, backward):
     if backward:
         x_dpcpp.requires_grad_(True)
         if channels_last:
-            grad_dpcpp = torch.randn([N, C, D, H, W]).to(memory_format=torch.channels_last_3d).to(device=device, dtype=dtype)
+            grad_dpcpp = (
+                torch.randn([N, C, D, H, W])
+                .to(memory_format=torch.channels_last_3d)
+                .to(device=device, dtype=dtype)
+            )
         else:
             grad_dpcpp = torch.randn([N, C, D, H, W]).to(device=device, dtype=dtype)
 
@@ -40,6 +60,7 @@ def maxUnpool3d(shape, dtype, device, channels_last, backward):
 
     if backward:
         y_dpcpp.backward(grad_dpcpp)
+
 
 if __name__ == "__main__":
     backward = True
@@ -68,5 +89,7 @@ if __name__ == "__main__":
                     record_shapes=True,
                 ) as prof:
                     for i in range(20):
-                        maxUnpool3d(shape, dtype, device, channels_last, backward=backward)
+                        maxUnpool3d(
+                            shape, dtype, device, channels_last, backward=backward
+                        )
                 print(prof.key_averages().table(sort_by="xpu_time_total"))
