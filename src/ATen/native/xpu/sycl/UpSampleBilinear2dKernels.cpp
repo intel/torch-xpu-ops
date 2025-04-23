@@ -60,8 +60,8 @@ struct UpsampleBilinear2dKernelFunctor {
       const accscalar_t rheight,
       const accscalar_t rwidth,
       const bool align_corners,
-      const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-      PackedTensorAccessor<scalar_t, 4> odata_acc,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+      GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
       int64_t input_height,
       int64_t input_width,
       int64_t output_height,
@@ -86,8 +86,8 @@ struct UpsampleBilinear2dKernelFunctor {
   const accscalar_t rheight_;
   const accscalar_t rwidth_;
   const bool align_corners_;
-  const PackedTensorAccessor<const scalar_t, 4> in_data_acc_;
-  PackedTensorAccessor<scalar_t, 4> out_data_acc_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> in_data_acc_;
+  GenericPackedTensorAccessor<scalar_t, 4> out_data_acc_;
   int64_t input_height_;
   int64_t input_width_;
   int64_t output_height_;
@@ -102,8 +102,8 @@ void launch_upsample_bilinear2d_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
     const bool align_corners,
-    const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-    PackedTensorAccessor<scalar_t, 4> odata_acc,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+    GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
     int64_t input_height,
     int64_t input_width,
     int64_t output_height,
@@ -1173,8 +1173,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   UpsampleGen2dAaKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      const PackedTensorAccessor<const scalar_t, 4> idata,
-      PackedTensorAccessor<scalar_t, 4> odata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+      GenericPackedTensorAccessor<scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -1203,8 +1203,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  const PackedTensorAccessor<const scalar_t, 4> idata_;
-  PackedTensorAccessor<scalar_t, 4> odata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> idata_;
+  GenericPackedTensorAccessor<scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -1312,8 +1312,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
   UpsampleGen2dAaBackwardKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      PackedTensorAccessor<scalar_t, 4> idata,
-      const PackedTensorAccessor<const scalar_t, 4> odata,
+      GenericPackedTensorAccessor<scalar_t, 4> idata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -1342,8 +1342,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  PackedTensorAccessor<scalar_t, 4> idata_;
-  const PackedTensorAccessor<const scalar_t, 4> odata_;
+  GenericPackedTensorAccessor<scalar_t, 4> idata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -1361,8 +1361,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    const PackedTensorAccessor<const scalar_t, 4> idata,
-    PackedTensorAccessor<scalar_t, 4> odata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+    GenericPackedTensorAccessor<scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
@@ -1437,8 +1437,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_backward_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    PackedTensorAccessor<scalar_t, 4> idata,
-    const PackedTensorAccessor<const scalar_t, 4> odata,
+    GenericPackedTensorAccessor<scalar_t, 4> idata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
