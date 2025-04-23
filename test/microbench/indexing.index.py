@@ -37,7 +37,9 @@ for shape in shape_list:
                         g = e[f]
                 print(prof.key_averages().table(sort_by="xpu_time_total"))
             else:
-                f = torch.linspace(0, 4 - 2, steps=int(4 / 2), device=device).to(torch.long)
+                f = torch.linspace(0, 4 - 2, steps=int(4 / 2), device=device).to(
+                    torch.long
+                )
                 # warm up
                 for i in range(100):
                     g = e[f]
