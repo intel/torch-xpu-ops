@@ -4,7 +4,7 @@ from torch.profiler import profile, ProfilerActivity
 shape_list = [(1024, 1024)]
 device = "xpu"
 backward = False
-step = int(1024/2)
+step = int(1024 / 2)
 cache_r = torch.randn((8192 * 8192), device=device)
 cache_w = torch.randn((8192 * 8192), device=device)
 
@@ -21,7 +21,16 @@ for shape in shape_list:
                 output = input.index_add(0, indices, y_0)
 
             # go
-            print("shape:", (shape), "; datatype:", dtype, "; dim:", dim, "; backward:", backward)
+            print(
+                "shape:",
+                (shape),
+                "; datatype:",
+                dtype,
+                "; dim:",
+                dim,
+                "; backward:",
+                backward,
+            )
             with profile(
                 activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                 record_shapes=True,

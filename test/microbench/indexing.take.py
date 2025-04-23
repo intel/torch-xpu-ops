@@ -10,7 +10,9 @@ cache_w = torch.randn((1024 * 1024 * 1024), device=device)
 for shape in shape_list:
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         input = torch.randn(shape, dtype=dtype, device=device)
-        indices = torch.linspace(0, 8190*8190, steps=4096*4096, device=device).to(torch.long)
+        indices = torch.linspace(0, 8190 * 8190, steps=4096 * 4096, device=device).to(
+            torch.long
+        )
 
         # warm up
         for i in range(10):
