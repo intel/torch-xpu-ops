@@ -4,6 +4,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/ops/_fft_c2c_native.h>
 #include <ATen/ops/_fft_c2r_native.h>
+#include <ATen/ops/_fft_r2c_native.h>
 #endif // USE_ONEMKL
 
 namespace at::native {
@@ -91,8 +92,7 @@ Tensor _fft_r2c_xpu(
 #else
   Tensor out_cpu = native::_fft_r2c_mkl(
       self.to(Device(at::kCPU)), dim, normalization, onesided);
-  at::native::resize_output(out, out_cpu.sizes());
-  out.copy_(out_cpu);
+  return out_cpu.to(Device(at::kXPU));
 #endif // USE_ONEMKL
 }
 
@@ -111,6 +111,7 @@ Tensor& _fft_r2c_xpu_out(
       self.to(Device(at::kCPU)), dim, normalization, onesided);
   at::native::resize_output(out, out_cpu.sizes());
   out.copy_(out_cpu);
+  return out;
 #endif // USE_ONEMKL
 }
 
