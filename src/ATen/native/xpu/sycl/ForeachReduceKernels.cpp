@@ -658,6 +658,7 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
   std::vector<at::Tensor> vec_res;
   vec_res.reserve(ntensors);
   for (const auto i : c10::irange(ntensors)) {
+    (void)i;
     vec_res.push_back(at::detail::empty_xpu(
         {},
         optTypeMetaToScalarType(options.dtype_opt()),
