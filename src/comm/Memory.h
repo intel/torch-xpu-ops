@@ -26,7 +26,7 @@ inline void memcpyHostToDevice(
     e.wait();
   } else {
     if (is_pinned) {
-      at::xpu::CachingHostAllocator_recordEvent(
+      at::getHostAllocator(at::kXPU)->record_event(
           const_cast<void*>(src),
           const_cast<void*>(hctx),
           at::xpu::getCurrentXPUStream());
@@ -36,13 +36,13 @@ inline void memcpyHostToDevice(
       // factory won't be cached in CPU allocator. When host memory is freed
       // with CPU tensor dtor at the end of train main loop, but the
       // corresponding H2D copy might not have been executed yet.
-      auto stage_mem_dptr = at::xpu::HostAlloc(n_bytes);
+      auto stage_mem_dptr = at::getHostAllocator(at::kXPU)->allocate(n_bytes);
       void* stage_mem = stage_mem_dptr.get();
       TORCH_CHECK(
           stage_mem, "Fail to allocate host memory from XPU HostAllocator");
       std::memcpy(stage_mem, src, n_bytes);
       e = queue.memcpy(dst, stage_mem, n_bytes);
-      at::xpu::CachingHostAllocator_recordEvent(
+      at::getHostAllocator(at::kXPU)->record_event(
           stage_mem,
           stage_mem_dptr.get_context(),
           at::xpu::getCurrentXPUStream());
@@ -66,7 +66,7 @@ inline void memcpyDeviceToHost(
   if (!async) {
     e.wait();
   } else if (is_pinned) {
-    at::xpu::CachingHostAllocator_recordEvent(
+    at::getHostAllocator(at::kXPU)->record_event(
         dst, const_cast<void*>(hctx), at::xpu::getCurrentXPUStream());
   }
 }

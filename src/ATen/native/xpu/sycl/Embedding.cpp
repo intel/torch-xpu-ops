@@ -175,7 +175,7 @@ void embedding_renorm_template(
     int64_t weights_stride0,
     int64_t weights_stride1,
     int64_t num_unique_indices) {
-  const int64_t work_group_size = syclMaxWorkItemsPerEU();
+  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
   auto kfn = RenormKernelFunctor<scalar_t, accscalar_t, index_t>(
       weights,
       indices,

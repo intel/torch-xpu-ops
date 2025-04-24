@@ -515,6 +515,54 @@ class CommTest(MultiProcessTestCase):
             dist.recv(recv_tensor, 0)
             self.assertEqual(send_tensor, recv_tensor)
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_tensor_dtype_complex(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        tensor = torch.rand(2, device=self.device)
+        tensor_c = torch.view_as_complex(tensor)
+        tensor_list = [
+            torch.rand(2, device=self.device) for _ in range(self.world_size)
+        ]
+        tensor_list_c = list(tensor_list)
+        tensor_list_c[1] = torch.view_as_complex(tensor_list_c[1])
+
+        dist.all_gather(tensor_list, tensor)
+        dist.all_gather(tensor_list, tensor_c)
+        dist.all_gather(tensor_list_c, tensor)
+        dist.all_gather(tensor_list_c, tensor_c)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_all_gather_into_tensor(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = "xpu"
+        for dtype in [torch.float32, torch.float8_e4m3fn, torch.float8_e5m2]:
+            tensor = torch.randn(12, 12, device=torch.device(device)).to(dtype)
+            output_tensor = torch.zeros(
+                self.world_size * 12, 12, device=torch.device(device)
+            ).to(dtype)
+            dist.all_gather_into_tensor(output_tensor, tensor)
+            for i in range(self.world_size):
+                start = i * 12
+                end = (i + 1) * 12
+                self.assertEqual(
+                    output_tensor[start:end].view(torch.float32),
+                    tensor.view(torch.float32),
+                )
+
 
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
