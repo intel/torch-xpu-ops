@@ -282,16 +282,22 @@ skip_dict = {
         "test_fsdp_setattr",
         "test_fsdp_unspecialized_forced_getattr_inline",
         "test_fsdp_unspecialized_forced_getattr_no_inline",
-        # RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
-        # https://github.com/intel/torch-xpu-ops/issues/1526
-        "test_get_pg_attr",
     ),
     "../../../../test/distributed/test_fake_pg.py": None,
-    "../../../../test/distributed/test_functional_api.py": (
-        # RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
-        # https://github.com/intel/torch-xpu-ops/issues/1526
-        "test_tracing_xpu",
-        "test_tracing and test_tracing_with_fakepg and test_tracing_with_fakepg_xpu and test_tracing_with_dce_code and test_tracing_with_dce_code_xpu",
+    "../../../../test/distributed/test_functional_api.py": None,
+    "../../../../test/distributed/test_inductor_collectives.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1581
+        # Fatal Python error: Segmentation fault
+        "test_dynamo_rewrite_dist_all_gather",
+        "test_dynamo_rewrite_dist_all_gather_list",
+        "test_dynamo_rewrite_dist_all_gather_args_match",
+        "test_dynamo_rewrite_dist_reduce_scatter",
+        "test_dynamo_support_collective_op_with_async_op_False",
+        "test_dynamo_trace_reduce_scatter_tensor",
+        "test_dynamo_trace_all_gather_tensor",
+        "test_dynamo_trace_allgather_coalesced",
+        "test_inductor_reduce_scatter_coalesced",
+        "test_inductor_all_gather_coalesced",
     ),
     "../../../../test/distributed/test_multi_threaded_pg.py": (
         # oneccl not support multi-threaded well, so skip it first.
@@ -401,21 +407,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/tensor/test_attention.py": None,
     "../../../../test/distributed/tensor/test_common_rules.py": None,
-    "../../../../test/distributed/tensor/test_dtensor.py": (
-        # Passed with updated test code for world_size 8
-        "test_auto_implicit_replication",
-        "test_default_value_sub_mesh",
-        "test_device_mesh_nd",
-        "test_dtensor_2d_mesh",
-        "test_dtensor_api_device_mesh_context_manager",
-        "test_dtensor_device_mesh_device_conversion",
-        "test_dtensor_spec_local_shard_offset",
-        "test_from_local_sub_mesh",
-        "test_implicit_replication",
-        "test_metadata_consistency_check",
-        "test_redistribute_sub_mesh",
-        "test_split_tensor_1D",
-    ),
+    "../../../../test/distributed/tensor/test_dtensor.py": None,
     "../../../../test/distributed/tensor/test_dtensor_compile.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_2d_fsdp_tp_compile",
@@ -530,6 +522,16 @@ skip_dict = {
         "test_1f1b_microbatching",
         "test_gradient_accumulation",
     ),
+    "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1508
+        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
+        "test_tracker_multi_group_eager",
+        "test_tracker_non_root_forward_backward",
+        "test_tracker_with_activation_checkpointing",
+    ),
+    "../../../../test/distributed/_tools/test_mem_tracker.py": None,
+    "../../../../test/distributed/_tools/test_memory_tracker.py": None,
+    "../../../../test/distributed/_tools/test_mod_tracker.py": None,
 }
 
 skip_dict_python = {
