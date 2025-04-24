@@ -217,9 +217,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
     "vdot",
-#if not defined(USE_ONEMKL)
-    "_linalg_svd.U",
-#endif // USE_ONEMKL
   };
   for (auto& op_name : fallback_list) {
     m.impl(
