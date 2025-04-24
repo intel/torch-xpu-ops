@@ -606,8 +606,8 @@ void launch_upsample_bilinear2d_backward_kernel(
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
   // I also have to skip double because of rounding issues, it will not pass ut
-  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height) &&
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
       !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
@@ -790,8 +790,8 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
   // I also have to skip double because of rounding issues, it will not pass ut
-  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height) &&
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
       !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
