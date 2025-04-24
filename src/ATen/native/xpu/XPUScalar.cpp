@@ -3,7 +3,7 @@
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
 #include <comm/SYCLContext.h>
-#include <ATen/ops/_local_scalar_dense_native.h>
+#include <xpu/ATen/ops/_local_scalar_dense_native.h>
 
 namespace at::native {
 

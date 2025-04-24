@@ -243,7 +243,7 @@ std::vector<Tensor> foreach_norm_kernel(
   void** tensor_list_addresses = nullptr;
 
   auto tensor_list_addresses_dptr =
-      at::xpu::HostAlloc(sizeof(void*) * ntensors);
+      at::getHostAllocator(at::kXPU)->allocate(sizeof(void*) * ntensors);
   tensor_list_addresses = (void**)tensor_list_addresses_dptr.get();
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
@@ -300,7 +300,7 @@ std::vector<Tensor> foreach_norm_kernel(
                     (void*)tensor_list_addresses,
                     sizeof(void*) * ntensors);
 
-                at::xpu::CachingHostAllocator_recordEvent(
+                at::getHostAllocator(at::kXPU)->record_event(
                     (void*)tensor_list_addresses,
                     tensor_list_addresses_dptr.get_context(),
                     at::xpu::getCurrentXPUStream());
@@ -369,7 +369,7 @@ std::vector<Tensor> foreach_norm_kernel(
                     (void*)tensor_list_addresses,
                     sizeof(void*) * ntensors);
 
-                at::xpu::CachingHostAllocator_recordEvent(
+                at::getHostAllocator(at::kXPU)->record_event(
                     (void*)tensor_list_addresses,
                     tensor_list_addresses_dptr.get_context(),
                     at::xpu::getCurrentXPUStream());
@@ -438,7 +438,7 @@ std::vector<Tensor> foreach_norm_kernel(
                     (void*)tensor_list_addresses,
                     sizeof(void*) * ntensors);
 
-                at::xpu::CachingHostAllocator_recordEvent(
+                at::getHostAllocator(at::kXPU)->record_event(
                     (void*)tensor_list_addresses,
                     tensor_list_addresses_dptr.get_context(),
                     at::xpu::getCurrentXPUStream());
@@ -629,7 +629,7 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
   auto metaAddress = static_cast<void**>(addressStorage.mutable_data_ptr());
   void** tensor_list_addresses = nullptr;
   auto tensor_list_addresses_dptr =
-      at::xpu::HostAlloc(sizeof(void*) * ntensors);
+      at::getHostAllocator(at::kXPU)->allocate(sizeof(void*) * ntensors);
   tensor_list_addresses = (void**)tensor_list_addresses_dptr.get();
 
   // Store thunks count for each tensor
@@ -637,7 +637,8 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
       at::empty({(int)(sizeof(int) * ntensors)}, options.dtype(at::kByte));
   auto metaCounts = static_cast<int*>(countsStorage.mutable_data_ptr());
   int* thunk_counts = nullptr;
-  auto thunk_counts_dptr = at::xpu::HostAlloc(sizeof(int) * ntensors);
+  auto thunk_counts_dptr =
+      at::getHostAllocator(at::kXPU)->allocate(sizeof(int) * ntensors);
   thunk_counts = (int*)thunk_counts_dptr.get();
 
   int max_chunks_per_tensor = -1;
@@ -657,6 +658,7 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
   std::vector<at::Tensor> vec_res;
   vec_res.reserve(ntensors);
   for (const auto i : c10::irange(ntensors)) {
+    (void)i;
     vec_res.push_back(at::detail::empty_xpu(
         {},
         optTypeMetaToScalarType(options.dtype_opt()),
@@ -700,13 +702,13 @@ std::vector<Tensor> foreach_max_kernel(TensorList tensors) {
             (void*)metaAddress,
             (void*)tensor_list_addresses,
             sizeof(void*) * ntensors);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             (void*)tensor_list_addresses,
             tensor_list_addresses_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
         q.memcpy(
             (void*)metaCounts, (void*)thunk_counts, sizeof(int) * ntensors);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             (void*)thunk_counts,
             thunk_counts_dptr.get_context(),
             at::xpu::getCurrentXPUStream());

@@ -1075,7 +1075,7 @@ void take_put_kernel_template(
       f);
   auto caller =
       TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
-  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
   auto num_wg =
       (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
   sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
@@ -1458,7 +1458,6 @@ void index_reduce_func_xpu_template(
                 if (numIndex <= 16) {
                   auto caller =
                       SMALL_INDEX(scalar_t, index_t, unsigned int, func_t);
-                  int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
                   size_t num_wg = std::min(
                       ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
                   size_t wg_size = std::min(sliceSize, (uint64_t)128);
