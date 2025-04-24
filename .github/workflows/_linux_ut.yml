@@ -69,8 +69,8 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-          pip uninstall -y torch && pip uninstall -y torch
-          pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
+          # pip uninstall -y torch && pip uninstall -y torch
+          # pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
           TORCH_COMMIT_ID="v2.7.0-rc10"
           cd ../pytorch
           git reset --hard && git checkout ${TORCH_COMMIT_ID}
@@ -270,8 +270,8 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-          pip uninstall -y torch && pip uninstall -y torch
-          pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
+          # pip uninstall -y torch && pip uninstall -y torch
+          # pip install --no-deps ~/torch-2.7.0.dev20250421+xpu-cp310-cp310-linux_x86_64.whl
           TORCH_COMMIT_ID="v2.7.0-rc10"
           cd ../pytorch
           git reset --hard && git checkout ${TORCH_COMMIT_ID}
