@@ -5416,8 +5416,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   auto scalar_type =
       running_mean.defined() ? running_mean.scalar_type() : self.scalar_type();
@@ -5471,8 +5470,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   std::vector<int64_t> counts(mean.size(0), count);
   Tensor counts_ = at::from_blob(

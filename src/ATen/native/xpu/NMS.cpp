@@ -36,8 +36,6 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
     return at::empty({0}, dets.options().dtype(at::kLong));
   }
 
-  constexpr int nms_items_per_group = sizeof(unsigned long long) * 8;
-
   auto order_t = std::get<1>(
       scores.sort(/*stable=*/true, /*dim=*/0, /* descending=*/true));
   auto dets_sorted = dets.index_select(0, order_t).contiguous();
