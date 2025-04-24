@@ -56,8 +56,6 @@ T inline group_x_scan_by_uds_for_loop_scan(
   const auto sub_group = item.get_sub_group();
   const auto sub_group_size = sub_group.get_local_range()[0];
 
-  typename LSConfig::item_desc id = cfg.get_item_desc(item);
-
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);
   const auto rx = item.get_local_range(1);
@@ -188,8 +186,6 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
 
   const auto sub_group = item.get_sub_group();
   const auto sub_group_size = sub_group.get_local_range()[0];
-
-  typename LSConfig::item_desc id = cfg.get_item_desc(item);
 
   const auto lix = item.get_local_id(1);
   const auto liy = item.get_local_id(0);
@@ -361,7 +357,7 @@ class LoopScanConfig {
         glb_range_y_(0),
         wg_range_x_(0),
         wg_range_y_(0) {
-    size_t wg_size = syclMaxWorkItemsPerEU();
+    size_t wg_size = syclMaxWorkItemsPerSubSlice();
     wg_range_x_ = 32;
     while (problem_ <= wg_range_x_ >> 1) {
       wg_range_x_ = wg_range_x_ >> 1;

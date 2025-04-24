@@ -218,7 +218,8 @@ void parallel_cat(
     {
       CatArrInputTensor<scalar_in_t, unsigned int>* stackInputs;
 
-      auto stackInputs_dptr = at::xpu::HostAlloc(tensorMetadataSize);
+      auto stackInputs_dptr =
+          at::getHostAllocator(at::kXPU)->allocate(tensorMetadataSize);
       stackInputs =
           (CatArrInputTensor<scalar_in_t, unsigned int>*)stackInputs_dptr.get();
 
@@ -240,7 +241,7 @@ void parallel_cat(
       }
 
       q.memcpy((void*)d_inputs, (void*)stackInputs, tensorMetadataSize);
-      at::xpu::CachingHostAllocator_recordEvent(
+      at::getHostAllocator(at::kXPU)->record_event(
           (void*)stackInputs,
           stackInputs_dptr.get_context(),
           at::xpu::getCurrentXPUStream());
