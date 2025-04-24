@@ -179,6 +179,6 @@ if [ "${performance}" -gt 0 ];then
         --device PVC1100 --os "${OS_PRETTY_NAME}" \
         --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
         --gcc "${GCC_VERSION}" --python "${python}" \
-        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT-:"${GITHUB_SHA}"}" \
+        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}" \
         > /dev/null 2>&1
 fi
