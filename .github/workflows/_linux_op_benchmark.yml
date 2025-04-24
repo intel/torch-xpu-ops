@@ -117,6 +117,7 @@ jobs:
           do
             python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
+          pip install pandas openpyxl
           # Summary forward op time
           python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
