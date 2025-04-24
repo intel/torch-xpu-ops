@@ -242,8 +242,10 @@ void max_pool3d_with_indices_out_template(
     int dilationW) {
   int64_t OutputSize = obatch * features * otime * oheight * owidth;
 
-  int out_cf_d_stride, out_cf_c_stride, in_cf_d_stride, in_cf_c_stride;
-  int out_cl_h_stride, out_cl_d_stride, in_cl_h_stride, in_cl_d_stride;
+  int out_cf_d_stride = 0, out_cf_c_stride = 0, in_cf_d_stride = 0,
+      in_cf_c_stride = 0;
+  int out_cl_h_stride = 0, out_cl_d_stride = 0, in_cl_h_stride = 0,
+      in_cl_d_stride = 0;
   if constexpr (!channels_last) {
     out_cf_d_stride = owidth * oheight;
     out_cf_c_stride = otime * out_cf_d_stride;

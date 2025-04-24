@@ -1458,7 +1458,6 @@ void index_reduce_func_xpu_template(
                 if (numIndex <= 16) {
                   auto caller =
                       SMALL_INDEX(scalar_t, index_t, unsigned int, func_t);
-                  int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
                   size_t num_wg = std::min(
                       ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
                   size_t wg_size = std::min(sliceSize, (uint64_t)128);

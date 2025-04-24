@@ -14,9 +14,6 @@ struct LerpTensorComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t self_val, scalar_t end_val, scalar_t weight_val)
       const {
-    opmath_t self_val_f = self_val;
-    opmath_t end_val_f = end_val;
-    opmath_t weight_val_f = weight_val;
     return lerp(self_val, end_val, weight_val);
   }
 };
@@ -33,8 +30,6 @@ template <typename scalar_t>
 struct LerpScalarComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t self_val, scalar_t end_val) const {
-    opmath_t self_val_f = self_val;
-    opmath_t end_val_f = end_val;
     return lerp(self_val, end_val, weight_val_);
   }
 
