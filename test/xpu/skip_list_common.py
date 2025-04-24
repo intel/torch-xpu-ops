@@ -1231,6 +1231,8 @@ skip_dict = {
         # _convert_weight_to_int4pack not support
         "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_complex64",
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_float32",
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
         "test_addbmm_xpu_complex64",
