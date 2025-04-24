@@ -31,7 +31,7 @@ class TestNNMethod(TestCase):
                 y_cpu = F.softmax(x_cpu, dim, dtype=output_type)
                 y_cpu.backward(grad.clone())
 
-                x_xou = x.clone().to(xpu_device).requires_grad_()
+                x_xpu = x.clone().to(xpu_device).requires_grad_()
                 y_xpu = F.softmax(x_xpu, dim, dtype=output_type)
                 y_xpu.backward(grad.clone().to(xpu_device))
                 self.assertEqual(y_cpu, y_xpu.cpu())
