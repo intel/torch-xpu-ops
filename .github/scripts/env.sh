@@ -14,6 +14,8 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS="\
     impi-devel==2021.14.2 |\
     oneccl-devel==2021.14.1 |\
     mkl-devel==2025.0.1 |\
+    onemkl-sycl-blas==2025.0.1 |\
     onemkl-sycl-dft==2025.0.1 |\
+    onemkl-sycl-lapack==2025.0.1 |\
     tcmlib==1.2.0 | umf==0.9.1 | intel-pti==0.10.2 \
 "
