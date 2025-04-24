@@ -97,6 +97,8 @@ def get_op_pattern(base_op_name: str, get_backward: bool) -> tuple:
             'normal': ('normal_', r'\bnormal_\b'),
             'bernoulli': ('bernoulli_', r'\bbernoulli_\b'),
             'cauchy': ('cauchy_', r'\bcauchy_\b'),
+            'embedding_bag': ('_embedding_bag', r'\b_embedding_bag\b'),
+            'nonzero': ('nonzero', r'\bnonzero\b'),
             'index_fill': ('index_fill_', r'\bindex_fill_\b'),
             'index_put': ('index_put_', r'\bindex_put_\b'),
             'put': ('put_', r'\bput_\b'),

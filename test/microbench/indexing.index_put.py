@@ -49,7 +49,7 @@ for shape in shape_list:
                 print(
                     "shape:",
                     (shape),
-                    "; dtype:",
+                    "; datatype:",
                     dtype,
                     "; mode:",
                     mode,
