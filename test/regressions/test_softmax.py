@@ -5,8 +5,8 @@ from torch.testing._internal.common_utils import TestCase
 cpu_device = torch.device("cpu")
 dpcpp_device = torch.device("xpu")
 
-class TestNNMethod(TestCase):
 
+class TestNNMethod(TestCase):
     def test_softmax_half_to_float(self):
         shape = [
             [8],
