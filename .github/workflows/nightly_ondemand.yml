@@ -104,6 +104,7 @@ jobs:
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 16 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
@@ -128,7 +129,7 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install pandas scipy tqdm
+          pip install pandas scipy psutil
       - name: Prepare Stock Pytorch
         run: |
           pwd
@@ -200,7 +201,7 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -210,7 +211,7 @@ jobs:
           scenario: accuracy
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -220,7 +221,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -230,7 +231,7 @@ jobs:
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly PT2E Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -240,7 +241,7 @@ jobs:
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -250,7 +251,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -260,7 +261,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -270,7 +271,7 @@ jobs:
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly PT2E Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '0 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -309,9 +310,11 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            rm -rf /tmp/tmp-*.txt
             source activate e2e_ci
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+              ${{ github.workspace }}/upload_files \
+              Inductor-${{ env.run_type }}-LTS-XPU-E2E \
+            >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
@@ -329,7 +332,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-${{ env.run_type }}-LTS-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
   Tests-Failure-And-Report:
