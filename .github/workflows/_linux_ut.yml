@@ -176,6 +176,18 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
           cp *.xml ${{ github.workspace }}/ut_log
+          find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+              dir_path=$(dirname "$1");
+              case "$dir_path" in
+                  *"op_ut_with_skip_quantization/core"*)
+                      dir_name="op_ut_with_skip_quantization_core";;
+                  *)
+                      dir_name=$(basename "$dir_path");;
+              esac;
+              mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+          ' _ {} \;
+          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
