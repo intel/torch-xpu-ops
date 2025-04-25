@@ -11,7 +11,7 @@
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
-#include <oneapi/mkl.hpp>
+#include <oneapi/mkl/lapack.hpp>
 
 namespace at::native::xpu {
 
