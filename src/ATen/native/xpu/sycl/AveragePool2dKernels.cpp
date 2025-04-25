@@ -669,58 +669,57 @@ void avg_pool2d_kernel(
                                                              : ScalarType::Long,
             "avg_pool2d_backward_xpu",
             [&] {
-
-          switch (memory_format) {
-            case MemoryFormat::ChannelsLast: {
-              output.unsafeGetTensorImpl()->empty_tensor_restride(
-                  MemoryFormat::ChannelsLast);
-              launch_avg_pool2d_channels_last_kernel<scalar_t, accscalar_t,index_t>(
-                  count,
-                  input,
-                  nInputPlane,
-                  inputHeight,
-                  inputWidth,
-                  outputHeight,
-                  outputWidth,
-                  kH_,
-                  kW_,
-                  dH_,
-                  dW_,
-                  padH_,
-                  padW_,
-                  output,
-                  divisor_override_value,
-                  count_include_pad,
-                  use_divisor);
-              break;
-            }
-            case MemoryFormat::Contiguous: {
-              launch_avg_pool2d_kernel<scalar_t, accscalar_t,index_t>(
-                  count,
-                  input,
-                  nInputPlane,
-                  inputHeight,
-                  inputWidth,
-                  outputHeight,
-                  outputWidth,
-                  kH_,
-                  kW_,
-                  dH_,
-                  dW_,
-                  padH_,
-                  padW_,
-                  output,
-                  divisor_override_value,
-                  count_include_pad,
-                  use_divisor);
-              break;
-            }
-            default:
-              TORCH_CHECK(
-                  false,
-                  "Unsupported memory format. Supports only "
-                  "ChannelsLast, Contiguous");
-          }
+              switch (memory_format) {
+                case MemoryFormat::ChannelsLast: {
+                  output.unsafeGetTensorImpl()->empty_tensor_restride(
+                      MemoryFormat::ChannelsLast);
+                  launch_avg_pool2d_channels_last_kernel<scalar_t, accscalar_t,index_t>(
+                      count,
+                      input,
+                      nInputPlane,
+                      inputHeight,
+                      inputWidth,
+                      outputHeight,
+                      outputWidth,
+                      kH_,
+                      kW_,
+                      dH_,
+                      dW_,
+                      padH_,
+                      padW_,
+                      output,
+                      divisor_override_value,
+                      count_include_pad,
+                      use_divisor);
+                  break;
+                }
+                case MemoryFormat::Contiguous: {
+                  launch_avg_pool2d_kernel<scalar_t, accscalar_t,index_t>(
+                      count,
+                      input,
+                      nInputPlane,
+                      inputHeight,
+                      inputWidth,
+                      outputHeight,
+                      outputWidth,
+                      kH_,
+                      kW_,
+                      dH_,
+                      dW_,
+                      padH_,
+                      padW_,
+                      output,
+                      divisor_override_value,
+                      count_include_pad,
+                      use_divisor);
+                  break;
+                }
+                default:
+                  TORCH_CHECK(
+                      false,
+                      "Unsupported memory format. Supports only "
+                      "ChannelsLast, Contiguous");
+              }
           });
         });
   }
