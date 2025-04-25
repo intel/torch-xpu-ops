@@ -1,3 +1,6 @@
+# To compare the performance diff
+# Usage:
+#   python perf_comparison.py -xpu /path/to/xpu/performance/result/dir -refer /path/to/reference/dir
 
 import re
 import os
@@ -7,11 +10,11 @@ import pandas as pd
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-xpu", default=None, help="XPU file")
-parser.add_argument("-refer", default=None, help="refer file")
+parser.add_argument("-xpu", default=None, help="XPU performance result csv files dir")
+parser.add_argument("-refer", default=None, help="XPU refrerence result csv files dir")
 args = parser.parse_args()
 
-# the_two = next((x for x in primitive_list[args.files_path[1]] if x.name == p), None)
+
 def multiple_replace(text):
     REGEX_REPLACEMENTS = [
         (r".*inductor_", ""),
@@ -38,12 +41,10 @@ output_data = []
 xpu_files = find_files("*_xpu_performance.csv", args.xpu)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
-    # xpu_data = xpu_data.reset_index()  # make sure indexes pair with number of rows
     xpu_names = [row["name"] for index, row in xpu_data.iterrows()]
     refer_file = re.sub(args.xpu, args.refer + "/", xpu_file, flags=re.IGNORECASE)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
-        # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
         names = xpu_names + refer_names
         names = set(names)
@@ -74,7 +75,6 @@ for xpu_file in xpu_files:
 refer_files = find_files("*_xpu_performance.csv", args.refer)
 for refer_file in refer_files:
     refer_data = pd.read_csv(refer_file)
-    # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
     refer_names = [row["name"] for index, row in refer_data.iterrows()]
     xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
     if not os.path.isfile(xpu_file):
@@ -106,6 +106,5 @@ output = output_data.to_html(index=False)
 print("\n", output)
 
 # get comparison result
-comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < 0.95) | (output_data['Target vs. Baseline [Eager]'] < 0.95)]
-# with open("/tmp/tmp-result.txt", "a") as f:
-#     f.write("red " + str(comparison.shape[0]) + "\n")
+criteria = 0.95
+comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < criteria) | (output_data['Target vs. Baseline [Eager]'] < criteria)]

@@ -1,4 +1,17 @@
 
+# To get the best performance number
+# Usage:
+#   python calculate_best_perf.py --best /path/to/best.csv
+#               --new /path/to/new/measured/performance/result/dir
+#               --device <Used device name>
+#               --os <Used OS version>
+#               --driver <Used driver version>
+#               --oneapi <Used oneapi version>
+#               --gcc <Used gcc version>
+#               --python <Used python version>
+#               --pytorch <Used pytorch version>
+#               --torch-xpu-ops <Used torch-xpu-ops version>
+
 import re
 import os
 import fnmatch
@@ -10,14 +23,14 @@ parser = argparse.ArgumentParser(description="Get Best Performance",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("--best", default=None, required=True, help="Saved best performance file")
 parser.add_argument("--new", default=None, required=True, help="New round launch")
-parser.add_argument("--device", default=None, type=str, help="Device")
-parser.add_argument("--os", default=None, type=str, help="OS")
-parser.add_argument("--driver", default=None, type=str, help="Driver")
-parser.add_argument("--oneapi", default=None, type=str, help="OneAPI")
-parser.add_argument("--gcc", default=None, type=str, help="GCC")
-parser.add_argument("--python", default=None, type=str, help="Python")
-parser.add_argument("--pytorch", default=None, type=str, help="PyTorch")
-parser.add_argument("--torch-xpu-ops", default=None, type=str, help="Torch XPU Ops")
+parser.add_argument("--device", default=None, type=str, help="Device name, such as PVC1100")
+parser.add_argument("--os", default=None, type=str, help="OS version, such as Ubuntu 22.04")
+parser.add_argument("--driver", default=None, type=str, help="Driver version, such as 25.05.32567")
+parser.add_argument("--oneapi", default=None, type=str, help="OneAPI version, such as 2025.1")
+parser.add_argument("--gcc", default=None, type=str, help="GCC version, such as 11")
+parser.add_argument("--python", default=None, type=str, help="Python version, such as 3.10")
+parser.add_argument("--pytorch", default=None, type=str, help="PyTorch version")
+parser.add_argument("--torch-xpu-ops", default=None, type=str, help="Torch XPU Ops version")
 args = parser.parse_args()
 
 
