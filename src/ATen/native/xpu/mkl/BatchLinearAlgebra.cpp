@@ -264,8 +264,6 @@ std::tuple<Tensor, Tensor, Tensor> _svd_helper(
       native::batchCount(self),
       self.options().dtype(kInt).device(DeviceType::CPU));
   std::vector<int32_t> infos(native::batchCount(self), 0);
-  int64_t m = self.size(-2), n = self.size(-1);
-  int64_t k = std::min(m, n);
 
   char jobz = compute_uv ? (some ? 'S' : 'A') : 'N';
 
