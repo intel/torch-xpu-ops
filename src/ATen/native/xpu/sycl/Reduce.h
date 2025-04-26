@@ -503,7 +503,7 @@ struct ReduceOp {
       OutputCalculator output_calc,
       const void* src,
       char* dst0,
-      c10::optional<char*> dst1,
+      std::optional<char*> dst1,
       void* acc_buf,
       void* group_buf,
       int* semaphores,
@@ -1193,7 +1193,7 @@ inline void gpu_reduce_kernel(
   char* in_data = (char*)iter.data_ptr(iter.ntensors() - 1);
   char* out_data = (char*)iter.data_ptr(0);
   const auto noutputs = iter.noutputs();
-  c10::optional<char*> out_data_extra;
+  std::optional<char*> out_data_extra;
   if (noutputs > 1) {
     out_data_extra = (char*)iter.data_ptr(1);
   } else {
