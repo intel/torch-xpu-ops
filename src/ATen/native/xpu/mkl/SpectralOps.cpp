@@ -107,7 +107,7 @@ void _mkl_dft(
   Tensor workspaceBuf = at::empty(
       {(long)(workspaceSizeBytes / sizeof(double))},
       input.options().dtype(at::kDouble),
-      c10::nullopt);
+      std::nullopt);
   desc.set_workspace((double*)workspaceBuf.mutable_data_ptr());
 
   auto in_data = (scalar_t*)input.const_data_ptr();

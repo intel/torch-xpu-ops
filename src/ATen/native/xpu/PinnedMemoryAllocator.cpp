@@ -8,7 +8,7 @@
 namespace at {
 namespace native {
 // Note: The user must call is_pinned(device='xpu') to explicitly call here.
-bool is_pinned_xpu(const Tensor& self, c10::optional<Device> device) {
+bool is_pinned_xpu(const Tensor& self, std::optional<Device> device) {
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
       !device.has_value() || device->type() == c10::DeviceType::XPU);
 
@@ -17,7 +17,7 @@ bool is_pinned_xpu(const Tensor& self, c10::optional<Device> device) {
 
 // Note: The user must call tensor.pin_memory(device='xpu') to explicitly call
 // here.
-Tensor _pin_memory_xpu(const Tensor& self, c10::optional<Device> device) {
+Tensor _pin_memory_xpu(const Tensor& self, std::optional<Device> device) {
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
       !device.has_value() || device->type() == c10::DeviceType::XPU);
 

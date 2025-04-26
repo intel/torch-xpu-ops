@@ -193,7 +193,7 @@ void avg_pool3d_kernel(
     IntArrayRef padding,
     bool ceil_mode,
     bool count_include_pad,
-    c10::optional<int64_t> divisor_override,
+    std::optional<int64_t> divisor_override,
     const Tensor& output) {
   TensorArg output_arg{output, "output", 1};
   TensorArg input_arg{input, "input", 2};
@@ -718,7 +718,7 @@ void avg_pool3d_backward_kernel(
     IntArrayRef padding,
     bool ceil_mode,
     bool count_include_pad,
-    c10::optional<int64_t> divisor_override,
+    std::optional<int64_t> divisor_override,
     const Tensor& gradInput) {
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage

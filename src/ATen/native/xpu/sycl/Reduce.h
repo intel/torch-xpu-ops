@@ -1197,7 +1197,7 @@ inline void gpu_reduce_kernel(
   if (noutputs > 1) {
     out_data_extra = (char*)iter.data_ptr(1);
   } else {
-    out_data_extra = c10::nullopt;
+    out_data_extra = std::nullopt;
   }
   char* acc_data = acc_buf_ptr->get_acc_slice(out_data);
 
