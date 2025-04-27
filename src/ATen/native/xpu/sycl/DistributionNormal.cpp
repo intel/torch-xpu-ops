@@ -19,7 +19,7 @@ void normal_kernel(
     const TensorBase& self,
     double mean,
     double std,
-    c10::optional<Generator> gen) {
+    std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
       gen, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::normal_kernel(self, mean, std, generator);
