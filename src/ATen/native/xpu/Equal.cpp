@@ -1,6 +1,6 @@
 #include <ATen/NamedTensorUtils.h>
 
-#include <ATen/ops/equal_native.h>
+#include <xpu/ATen/ops/equal_native.h>
 
 namespace at {
 namespace xpu {

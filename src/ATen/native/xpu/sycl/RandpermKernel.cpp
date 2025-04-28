@@ -104,7 +104,7 @@ void randperm_handle_duplicate_keys(
 Tensor randperm_kernel(
     Tensor& result,
     int64_t n,
-    c10::optional<Generator> generator) {
+    std::optional<Generator> generator) {
   auto range = at::arange(n, result.options());
 
   Tensor shuffled;

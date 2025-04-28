@@ -3,9 +3,10 @@
 #include <ATen/native/TensorFactories.h>
 #include <c10/xpu/XPUFunctions.h>
 
+#include <ATen/ops/_efficientzerotensor_native.h>
 #include <ATen/ops/empty_native.h>
 #include <ATen/ops/empty_strided_native.h>
-#include <ATen/ops/_efficientzerotensor_native.h>
+#include <xpu/ATen/ops/_efficientzerotensor_native.h>
 
 #include <ATen/native/xpu/sycl/ComplexKernels.h>
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
@@ -40,11 +41,11 @@ Tensor& eye_out_xpu(int64_t n, Tensor& result) {
 
 Tensor empty_xpu(
     IntArrayRef size,
-    c10::optional<ScalarType> dtype_opt,
-    c10::optional<Layout> layout_opt,
-    c10::optional<Device> device_opt,
-    c10::optional<bool> pin_memory_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt) {
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
   Tensor result = at::detail::empty_xpu(
       size,
       dtype_opt,
@@ -64,10 +65,10 @@ Tensor empty_xpu(
 Tensor empty_strided_xpu(
     IntArrayRef size,
     IntArrayRef stride,
-    c10::optional<ScalarType> dtype_opt,
-    c10::optional<Layout> layout_opt,
-    c10::optional<Device> device_opt,
-    c10::optional<bool> pin_memory_opt) {
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt) {
   Tensor result = at::detail::empty_strided_xpu(
       size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
   // See Note [Enabling Deterministic Operations]
@@ -94,13 +95,13 @@ Tensor _efficientzerotensor_xpu(
   auto zero_ks = at::DispatchKeySet(c10::DispatchKey::XPU) |
       at::DispatchKeySet(c10::DispatchKey::ZeroTensor);
   auto out = at::detail::empty_generic(
-      size, &allocator, zero_ks, dtype_, c10::nullopt);
+      size, &allocator, zero_ks, dtype_, std::nullopt);
   return out;
 }
 
 Tensor& randperm_out_xpu(
     int64_t n,
-    c10::optional<Generator> generator,
+    std::optional<Generator> generator,
     Tensor& result) {
   TORCH_CHECK(n >= 0, "n must be non-negative, got", n);
   at::native::check_supported_max_int_with_precision(n, result);
@@ -119,10 +120,10 @@ Tensor tril_indices_xpu(
     int64_t row,
     int64_t col,
     int64_t offset,
-    c10::optional<at::ScalarType> dtype,
-    c10::optional<at::Layout> layout,
-    c10::optional<at::Device> device,
-    c10::optional<bool> pin_memory) {
+    std::optional<at::ScalarType> dtype,
+    std::optional<at::Layout> layout,
+    std::optional<at::Device> device,
+    std::optional<bool> pin_memory) {
   TensorOptions options =
       TensorOptions().dtype(dtype).layout(layout).device(device).pinned_memory(
           pin_memory);
@@ -133,10 +134,10 @@ Tensor triu_indices_xpu(
     int64_t row,
     int64_t col,
     int64_t offset,
-    c10::optional<at::ScalarType> dtype,
-    c10::optional<at::Layout> layout,
-    c10::optional<at::Device> device,
-    c10::optional<bool> pin_memory) {
+    std::optional<at::ScalarType> dtype,
+    std::optional<at::Layout> layout,
+    std::optional<at::Device> device,
+    std::optional<bool> pin_memory) {
   TensorOptions options =
       TensorOptions().dtype(dtype).layout(layout).device(device).pinned_memory(
           pin_memory);
