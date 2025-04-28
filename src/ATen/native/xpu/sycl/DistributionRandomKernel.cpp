@@ -19,7 +19,7 @@ void random_from_to_kernel(
     TensorIteratorBase& iter,
     uint64_t range,
     int64_t base,
-    c10::optional<Generator> gen_) {
+    std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::random_from_to_kernel(iter, range, base, gen);
@@ -27,13 +27,13 @@ void random_from_to_kernel(
 
 void random_full_64_bits_range_kernel(
     TensorIteratorBase& iter,
-    c10::optional<Generator> gen_) {
+    std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::random_full_64_bits_range_kernel(iter, gen);
 }
 
-void random_kernel(TensorIteratorBase& iter, c10::optional<Generator> gen_) {
+void random_kernel(TensorIteratorBase& iter, std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::random_kernel(iter, gen);
