@@ -43,7 +43,7 @@ def write_to_github_summary(content):
 def display_comparison(results, threshold):
     if results.empty:
         print(f"\n No outlier exceeding ({threshold:.0%})")
-        write_to_github_summary(f"## No outlier exceeding ({threshold:.0%})") 
+        write_to_github_summary(f"## No outlier exceeding ({threshold:.0%})")
         return
 
     regression = results[results['change'] == '↓']
@@ -140,13 +140,13 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
     records_baseline = [preprocess_row(row) for _, row in df_baseline.iterrows()]
 
     dict_xpu = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'): 
-        record['time(us)'] 
+        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        record['time(us)']
         for record in records_xpu
     }
     dict_baseline = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'): 
-        record['time(us)'] 
+        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        record['time(us)']
         for record in records_baseline
     }
     common_keys = set(dict_xpu.keys()) & set(dict_baseline.keys())
@@ -158,7 +158,8 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
         diff = (time_baseline - time_xpu) / time_xpu
         # Compare Time, Lower is better
         if abs(diff) > threshold:
-            record = {k: v for k, v in key}
+            record = dict(key)
+            print(record)
             record.update({
                 'time_xpu_file': time_xpu,
                 'time_baseline_file': time_baseline,
@@ -181,7 +182,7 @@ def main():
 
     print(f" Compared file: {args.xpu_file} 和 {args.baseline_file}")
     print(f" Threshold: {args.threshold:.0%}")
-    write_to_github_summary("## Performance Comparison Set")  
+    write_to_github_summary("## Performance Comparison Set")
     write_to_github_summary(f"- Threshold: {args.threshold:.0%}")
 
     compare_op_time_values(
