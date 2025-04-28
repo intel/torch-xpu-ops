@@ -31,8 +31,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
     all_fieldnames = xpu_fieldnames + [f for f in baseline_fieldnames if f not in xpu_fieldnames]
     fieldnames = [f for f in all_fieldnames if f != 'time(us)']
 
-    {make_key(row, fieldnames) for row in baseline_rows}
-    set(baseline_rows)
+    baseline_keys = {make_key(row, fieldnames) for row in baseline_rows}
     xpu_keys = set(xpu_data.keys())
 
     # Resolve existing cases
