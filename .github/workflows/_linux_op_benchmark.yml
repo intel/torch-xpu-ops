@@ -127,3 +127,48 @@ jobs:
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
+      - name: Download OP Baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: op-baseline-data
+          path: baseline
+        continue-on-error: true
+      - name: Check OP Baseline
+        run: |
+          forward_exists=$([ -f "baseline/baseline_forward_op_summary.csv" ] && echo "true" || echo "false")
+          backward_exists=$([ -f "baseline/baseline_backward_op_summary.csv" ] && echo "true" || echo "false")
+          echo "forward_exists=${forward_exists}" >> $GITHUB_OUTPUT
+          echo "backward_exists=${backward_exists}" >> $GITHUB_OUTPUT
+          echo "both_exist=$([ "$forward_exists" = "true" ] && [ "$backward_exists" = "true" ] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
+      - name: Initial the OP Baseline
+        if: steps.check-baseline.outputs.both_exist != 'true'
+        run: |
+          mkdir ${{ github.workspace }}/new_baseline
+          cp ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv
+          cp ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv
+          echo "Initial the Baseline Data"
+      - name: Check the OP Regression
+        if: steps.check-baseline.outputs.both_exist == 'true'
+        run: |
+          # Compare forward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+          # Compare backward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+      - name: Update OP Baseline
+        if: steps.check-baseline.outputs.both_exist == 'true'
+        run: |
+          mkdir ${{ github.workspace }}/new_baseline
+          # Update forward op
+          python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
+          # Update backward op
+          python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv -r
+      - name: Upload OP Baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: op-baseline-data
+          path: |
+            new_baseline/baseline_forward_op_summary.csv
+            new_baseline/baseline_backward_op_summary.csv
+          if-no-files-found: error
+          retention-days: 90
