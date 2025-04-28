@@ -1759,7 +1759,7 @@ void batch_norm_elemt_channels_last_template(
     const at::Tensor& shift, // bias of BN
     const at::Tensor& mean,
     const at::Tensor& inv_std,
-    const at::optional<at::Tensor>& z = c10::nullopt, // bias after BN
+    const at::optional<at::Tensor>& z = std::nullopt, // bias after BN
     const bool fuse_relu = false) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
@@ -1947,8 +1947,8 @@ struct BatchNormElementwiseLoopsFunctor {
 void batch_norm_elemt_kernel(
     Tensor& out,
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     const Tensor& mean_,
     const Tensor& invstd_) {
   switch (batch_norm_choose_impl(self)) {
@@ -2553,7 +2553,7 @@ batch_norm_backward_reduce_channels_last_template(
   }
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerEU() * 2,
+      syclMaxWorkItemsPerSubSlice() * 2,
       reduction_size,
       stride,
       false,
@@ -2661,7 +2661,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
-    const c10::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& weight_opt,
     bool input_g,
     bool weight_g,
     bool bias_g) {
@@ -3867,7 +3867,7 @@ Tensor batch_norm_backward_elemt_kernel(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
-    const c10::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& weight_opt,
     const Tensor& sum_dy,
     const Tensor& sum_dy_xmu,
     const Tensor& count) {
@@ -4042,8 +4042,8 @@ void batch_norm_mean_var(
 
 std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
     const Tensor& self,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
     double momentum) {
   c10::MaybeOwned<Tensor> running_mean =
       at::borrow_from_optional_tensor(running_mean_opt);
@@ -4191,8 +4191,8 @@ struct BatchNormElementwiseFunctor {
 void batch_norm_elementwise(
     const Tensor& out,
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     const Tensor& mean_,
     const Tensor& invstd_) {
   switch (batch_norm_choose_impl(self)) {
@@ -4287,10 +4287,10 @@ void batch_norm_elementwise(
 
 std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
     bool train,
     double momentum,
     double epsilon,
@@ -5127,11 +5127,11 @@ Tensor batch_norm_elementwise_backward_eval(
 std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
     const Tensor& grad_out,
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
-    const c10::optional<Tensor>& save_mean_opt,
-    const c10::optional<Tensor>& save_invstd_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& save_mean_opt,
+    const std::optional<Tensor>& save_invstd_opt,
     bool train,
     double epsilon,
     std::array<bool, 3> grad_input_mask) {
@@ -5416,8 +5416,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   auto scalar_type =
       running_mean.defined() ? running_mean.scalar_type() : self.scalar_type();
@@ -5471,8 +5470,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   std::vector<int64_t> counts(mean.size(0), count);
   Tensor counts_ = at::from_blob(

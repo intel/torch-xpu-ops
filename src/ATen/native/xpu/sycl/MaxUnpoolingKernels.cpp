@@ -143,7 +143,7 @@ Tensor& max_unpooling2d_forward_kernel(
         "max_unpooling2d_forward_xpu",
         ([&] {
           if (is_channels_last(memory_format)) {
-            auto caller = MaxUnpooling2dForwardKernelFunctor<scalar_t, true>(
+            auto kfn = MaxUnpooling2dForwardKernelFunctor<scalar_t, true>(
                 count,
                 self.const_data_ptr<scalar_t>(),
                 indices.const_data_ptr<int64_t>(),
@@ -154,15 +154,15 @@ Tensor& max_unpooling2d_forward_kernel(
                 owidth,
                 output.mutable_data_ptr<scalar_t>());
 
-            int64_t group_size = syclMaxWorkItemsPerEU();
+            int64_t group_size = syclMaxWorkItemsPerSubSlice();
             int64_t num_groups = (count + group_size - 1) / group_size;
             sycl_kernel_submit(
                 num_groups * group_size,
                 group_size,
                 getCurrentSYCLQueue(),
-                caller);
+                kfn);
           } else {
-            auto caller = MaxUnpooling2dForwardKernelFunctor<scalar_t, false>(
+            auto kfn = MaxUnpooling2dForwardKernelFunctor<scalar_t, false>(
                 count,
                 self.const_data_ptr<scalar_t>(),
                 indices.const_data_ptr<int64_t>(),
@@ -172,13 +172,13 @@ Tensor& max_unpooling2d_forward_kernel(
                 oheight,
                 owidth,
                 output.mutable_data_ptr<scalar_t>());
-            int64_t group_size = syclMaxWorkItemsPerEU();
+            int64_t group_size = syclMaxWorkItemsPerSubSlice();
             int64_t num_groups = (count + group_size - 1) / group_size;
             sycl_kernel_submit(
                 num_groups * group_size,
                 group_size,
                 getCurrentSYCLQueue(),
-                caller);
+                kfn);
           }
         }));
   }

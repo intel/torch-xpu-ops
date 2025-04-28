@@ -104,6 +104,14 @@ static inline int64_t syclMaxWorkItemsPerTile(
   return eu_cnt * simd_width * hw_threads;
 }
 
+static inline int64_t syclMaxWorkItemsPerSubSlice(
+    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  int64_t simd_width = syclMaxSubGroupSize(dev_id);
+  int64_t eu_count = dev_prop->gpu_eu_count_per_subslice;
+  return simd_width * eu_count;
+}
+
 static inline int64_t syclMaxWorkItemsPerEU(
     at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);

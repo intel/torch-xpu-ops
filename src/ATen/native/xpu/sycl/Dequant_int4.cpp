@@ -30,7 +30,6 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     static_assert(TileN == SgSize);
     static_assert(TileK == 1);
     int nsg_k = k / GroupK;
-    int nsg_n = n / GroupN;
 
     int g_idx = it.get_group(0);
     auto sg = it.get_sub_group();
