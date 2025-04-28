@@ -667,7 +667,7 @@ void avg_pool2d_kernel(
         AT_DISPATCH_INDEX_TYPES(
             at::native::canUse32BitIndexMath(output, INT_MAX) ? ScalarType::Int
                                                              : ScalarType::Long,
-            "avg_pool2d_backward_xpu",
+            "avg_pool2d_xpu",
             [&] {
               switch (memory_format) {
                 case MemoryFormat::ChannelsLast: {
