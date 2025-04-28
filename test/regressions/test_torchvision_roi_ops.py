@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pytest
 import torch
+import torch._dynamo
 import torch.fx
 from torch import nn
 from torch.autograd import gradcheck
@@ -492,6 +493,7 @@ class TestRoIAlign(RoIOpTester):
     @pytest.mark.parametrize("rois_dtype", (torch.float, torch.half))
     @pytest.mark.opcheck_only_one
     def test_autocast(self, aligned, deterministic, x_dtype, rois_dtype):
+        torch._dynamo.reset()
         with torch.amp.autocast("xpu"):
             self.test_forward(
                 torch.device("xpu"),

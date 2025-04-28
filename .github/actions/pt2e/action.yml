@@ -1,0 +1,131 @@
+name: inductor-xpu-pt2e-test
+
+inputs:
+  env_prepare:
+    required: false
+    description: If set to any value, will prepare suite test env
+  dt:
+    required: true
+    type: string
+    default: 'float32'
+    description: Data precision of the test.float32,int8. Delimiter is comma
+  scenario:
+    required: true
+    type: string
+    default: 'accuracy'
+    description: accuracy,performance. Delimiter is comma
+  hf_token:
+    required: false
+    description: HUGGING_FACE_HUB_TOKEN for torchbench test
+  pytorch:
+    required: false
+    type: string
+    default: 'main'
+    description: Pytorch branch/commit
+  driver:
+    required: false
+    type: string
+    default: 'lts'
+    description: Driver lts/rolling
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare ENV
+      if: ${{ inputs.env_prepare }}
+      shell: bash
+      run: |
+        source activate e2e_ci
+        # accuracy code
+        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
+          rm -rf pt2e-accuracy
+          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
+        fi
+        # performance code
+        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
+          rm -rf pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
+        fi
+        # deps
+        if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            rm -rf pt2e-audio
+            git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
+            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
+            cd ../
+            rm -rf pt2e-vision
+            git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
+            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
+            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            cd ../
+          fi
+          # torchbench
+          python -c "import torch, torchvision, torchaudio"
+          cd pt2e-performance && pip install -r requirements.txt
+          python install.py --continue_on_fail
+          cd ../
+          # deps for torchrec_dlrm
+          pip install pyre_extensions
+          pip install fbgemm-gpu
+          pip install --no-deps torchmetrics==1.0.3 torchrec
+          # transformers
+          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+          # timm
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+        fi
+        pip install numpy==1.26.4
+        # dataset
+        if [ ! -d ${HOME}/datasets/imagenet ];then
+          rm -rf ${HOME}/datasets/imagenet
+          mkdir -p ${HOME}/datasets/imagenet
+          cd ${HOME}/datasets/imagenet
+          wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+          tar -xf ILSVRC2012_img_val.tar
+          wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+          bash valprep.sh
+        fi
+    - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
+        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      shell: bash
+      run: |
+        source activate e2e_ci
+        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
+        rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
+        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
+          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet |\
+                    tee "${pt2e_logs_dir}/accuracy-fp32.log"
+          fi
+          if [[ "${{ inputs.dt }}" == *"int8"* ]];then
+            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet |\
+                    tee "${pt2e_logs_dir}/accuracy-int8.log"
+          fi
+        fi
+        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
+          models="alexnet,demucs,dlrm,hf_Albert,hf_Bert,hf_Bert_large,hf_DistilBert,hf_Roberta_base,mnasnet1_0,mobilenet_v2,"
+          models+="mobilenet_v3_large,nvidia_deeprecommender,pytorch_CycleGAN_and_pix2pix,resnet152,resnet18,resnet50,resnext50_32x4d,"
+          models+="shufflenet_v2_x1_0,squeezenet1_1,Super_SloMo,timm_efficientnet,timm_nfnet,timm_regnet,timm_resnest,"
+          models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
+          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+            rm -rf pt2e-performance/.userbenchmark
+            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models 2>&1 |\
+                    tee "${pt2e_logs_dir}/performance-fp32.log"
+            mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-fp32
+          fi
+          if [[ "${{ inputs.dt }}" == *"int8"* ]];then
+            rm -rf pt2e-performance/.userbenchmark
+            XPU_QUANT_CONFIG=ASYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models 2>&1 |\
+                    tee "${pt2e_logs_dir}/performance-int8-ASYMM.log"
+            mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-ASYMM
+
+            rm -rf pt2e-performance/.userbenchmark
+            XPU_QUANT_CONFIG=SYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models 2>&1 |\
+                                tee "${pt2e_logs_dir}/performance-int8-SYMM.log"
+            mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-SYMM
+          fi
+        fi

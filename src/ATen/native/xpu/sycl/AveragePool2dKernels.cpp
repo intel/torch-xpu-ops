@@ -251,7 +251,7 @@ void launch_avg_pool2d_channels_last_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
+  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
@@ -299,7 +299,7 @@ void launch_avg_pool2d_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
+  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
@@ -556,7 +556,7 @@ void launch_avg_pool2d_backward_channels_last_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
+  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
@@ -607,7 +607,7 @@ void launch_avg_pool2d_backward_kernel(
   scalar_t* bottom_data = grad_input.mutable_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerEU());
+  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
@@ -642,7 +642,7 @@ void avg_pool2d_kernel(
     int64_t padW_,
     bool ceil_mode,
     bool count_include_pad,
-    c10::optional<int64_t> divisor_override,
+    std::optional<int64_t> divisor_override,
     const Tensor& output) {
   const int64_t nInputPlane = input_.size(-3);
   const int64_t inputHeight = input_.size(-2);
@@ -728,7 +728,7 @@ void avg_pool2d_backward_kernel(
     IntArrayRef padding,
     bool ceil_mode,
     bool count_include_pad,
-    c10::optional<int64_t> divisor_override,
+    std::optional<int64_t> divisor_override,
     const Tensor& gradInput) {
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1

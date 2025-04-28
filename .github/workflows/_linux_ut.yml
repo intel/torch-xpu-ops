@@ -23,11 +23,6 @@ on:
         type: string
         default: ''
         description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
-      abi:
-        required: false
-        type: string
-        default: 1
-        description: ABI version. Default abi as 1.
       python:
         required: false
         type: string
@@ -100,18 +95,11 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -135,7 +123,6 @@ jobs:
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -146,36 +133,30 @@ jobs:
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
       - name: Run XPU OP Regression
-        if: contains(inputs.ut, 'op_regression') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression
           xpu-smi discovery
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           cd test/regressions
-          pip install pytest
-          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+          pip install pytest pytest-timeout
+          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
       - name: Run XPU OP Regressions test on device 1
-        if: contains(inputs.ut, 'op_regression_dev1') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_regression_dev1')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression_dev1
           xpu-smi discovery
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          export ZE_AFFINITY_MASK_OLD=${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
           cd test/regressions
-          pip install pytest
-          timeout 8000 pytest -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
-          export ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK_OLD}
+          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
       - name: Run XPU OP Extended UT
-        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_extended')
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_TEST_WITH_SLOW=1
           cd ${{ github.workspace }}
@@ -184,9 +165,8 @@ jobs:
           timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
           cp op_extended.xml ${{ github.workspace }}/ut_log
       - name: Run XPU OP UT
-        if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_ut')
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           export PYTORCH_ENABLE_XPU_FALLBACK=1
           export PYTORCH_TEST_WITH_SLOW=1
@@ -202,9 +182,8 @@ jobs:
           timeout 10000 python run_test_with_only.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
           cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
       - name: Run Torch XPU UT
-        if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'torch_xpu')
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           mkdir -p ut_log/torch_xpu
@@ -241,7 +220,6 @@ jobs:
       - name: Run Torch XPU Profile UT
         if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/ut_log/profile_test
           # RN50 Test
@@ -258,10 +236,10 @@ jobs:
 
           # All xpu ut under test/profiler
           cd ../pytorch/test/profiler
-          python -m pytest -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
-          python -m pytest -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
-          python -m pytest -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
-          python -m pytest -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
+          python -m pytest --timeout 600 -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
+          python -m pytest --timeout 600 -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
+          python -m pytest --timeout 600 -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
+          python -m pytest --timeout 600 -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -293,7 +271,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-${{ env.UT_NAME }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
   
   distributed_ut_test:
@@ -349,18 +327,11 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          if [[ ${{ inputs.abi }} == '0' ]]; then
-            export _GLIBCXX_USE_CXX11_ABI=0
-          else
-            export _GLIBCXX_USE_CXX11_ABI=1
-          fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -384,27 +355,28 @@ jobs:
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python -c "import triton; print(triton.__version__)"
-
           cd ..
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
       - name: Run Torch XPU Distributed UT
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pytest
+          pip install pytest pytest-timeout
           cd ${{ github.workspace }}
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          python -c "import torch;print(torch.distributed.is_xccl_available())"
+          XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
           timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
@@ -429,5 +401,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-xpu_distributed
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log

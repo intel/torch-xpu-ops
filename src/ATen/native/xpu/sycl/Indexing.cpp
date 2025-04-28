@@ -386,7 +386,7 @@ void index_add_kernel(
       ") dims");
 
   if (globalContext().deterministicAlgorithms()) {
-    torch::List<c10::optional<Tensor>> indices;
+    torch::List<std::optional<Tensor>> indices;
     indices.reserve(dim + 1);
     for (int i = 0; i < dim; i++) {
       indices.emplace_back();
@@ -593,7 +593,7 @@ void index_put_kernel(
 
 void index_put_deterministic_kernel(
     Tensor& self,
-    const c10::List<c10::optional<Tensor>>& indices,
+    const c10::List<std::optional<Tensor>>& indices,
     const Tensor& value,
     bool accumulate,
     bool unsafe) {
@@ -1075,7 +1075,7 @@ void take_put_kernel_template(
       f);
   auto caller =
       TakePutKernelFunctor<TAKE_PUT_UNROLL_SZIE, decltype(loop_fn)>(N, loop_fn);
-  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
   auto num_wg =
       (N + wg_sz * TAKE_PUT_UNROLL_SZIE - 1) / (wg_sz * TAKE_PUT_UNROLL_SZIE);
   sycl_kernel_submit(num_wg * wg_sz, wg_sz, getCurrentSYCLQueue(), caller);
@@ -1458,7 +1458,6 @@ void index_reduce_func_xpu_template(
                 if (numIndex <= 16) {
                   auto caller =
                       SMALL_INDEX(scalar_t, index_t, unsigned int, func_t);
-                  int defaultMaxGroupThreads = syclMaxWorkGroupSize(caller);
                   size_t num_wg = std::min(
                       ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
                   size_t wg_size = std::min(sliceSize, (uint64_t)128);
