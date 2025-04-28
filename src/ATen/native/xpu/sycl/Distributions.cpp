@@ -187,6 +187,10 @@ void launch_gamma_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
+    // Using a seed value of 10 for the Philox random engine initialization.
+    // This seed was chosen to ensure consistent random number generation
+    // behavior for this specific kernel. Modify with caution as it affects
+    // reproducibility of results.
     engine_inputs = gen->philox_engine_inputs(10);
   }
   PhiloxState rng_engine_inputs(
