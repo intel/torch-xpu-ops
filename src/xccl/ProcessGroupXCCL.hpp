@@ -73,6 +73,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
     void setException(std::exception_ptr exception_ptr);
 
+    bool checkTimeout(
+        std::optional<std::chrono::milliseconds> timeout = std::nullopt);
+
     void printTraceback() const;
 
     void checkAndSetException();
@@ -92,7 +95,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
     friend std::ostream& operator<<(
         std::ostream& output,
-        const WorkNCCL& workNCCL);
+        const WorkXCCL& workXCCL);
 
    private:
     void synchronizeInternal(std::chrono::milliseconds timeout);
