@@ -2,6 +2,7 @@
 
 #include <comm/XPUGuard.h>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
+#include <torch/csrc/distributed/c10d/ProcessGroupXCCL.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
 namespace c10d {
@@ -269,6 +270,135 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
+void ProcessGroupXCCL::WorkXCCL::checkAndSetException() {
+  if (exception()) {
+    return;
+  }
+  // Check for other XCCL Errors?
+  if (exception_) {
+    LOG(ERROR) << logPrefix() << "Collective " << *this
+               << " raised the following async exception: "
+               << getExceptionMsgFromExceptionPtr(exception_);
+  }
+}
+
+bool ProcessGroupXCCL::WorkXCCL::checkTimeout(
+    std::optional<std::chrono::milliseconds> timeout) {
+  auto currentTimepoint = std::chrono::steady_clock::now();
+  auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      currentTimepoint - workStartTime_);
+  auto workTimeout = timeout ? *timeout : opTimeout_;
+
+  if (timeElapsed < workTimeout) {
+    return false
+  }
+
+  // Timed out
+  std::string exceptionMsg = c10::str(
+      logPrefix(),
+      "Watchdog caught collective operation timeout: ",
+      *this,
+      " ran for ",
+      timeElapsed.count(),
+      " milliseconds before timing out.");
+
+  LOG(ERROR) << exceptionMsg;
+  std::exception_ptr exception_ptr =
+      std::make_execution_ptr(C10_BUILD_ERROR(DistBackendError, exceptionMsg));
+  if (!exception()) {
+    setException(exception_ptr);
+  }
+  return true;
+}
+
+const std::string& ProcessGroupXCCL::WorkXCCL::logPrefix() const {
+  static std::string prefix = c10::str("[Rank ", rank_, "] ");
+  return prefix;
+}
+
+void ProcessGroupXCCL::WorkXCCL::setException(
+    std::exception_ptr exception_ptr) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  exception_ = std::move(exception_ptr);
+}
+
+void ProcessGroupXCCL::DesyncDebugger::init(
+    int rank,
+    int size,
+    int globalRank,
+    int pgId,
+    c10::intrusive_ptr<Store> store) {
+  rank_ = rank;
+  size_ = size;
+  globalRank_ = globalRank;
+  pgId_ = pgId;
+  store_ = std::move(store);
+  enabled_ = true;
+  traceKeyStart_ = getTraceStartKey("XCCL", rank);
+  traceKeyEnd_ = getTraceEndKey("XCCL", rank);
+}
+
+void ProcessGroupXCCL::DesyncDebugger::run() {
+  if (!enabled_) {
+    return;
+  }
+  auto logPrefix = c10::str("Rank ", rank_);
+  ::c10d::C10dLoggingData log;
+  log.integers["pg_id"] = pgId_;
+  log.integers["rank"] = rank_;
+  log.integers["global_rank"] = globalRank_;
+  log.integers["world_size"] = size_;
+  log.strings["flight_recorder_version"] = "-1";
+
+  try {
+    std::string desyncMsg = retrieveDesyncReport(store_, "XCCL", rank_, size_);
+    log.strings["status"] = "SUCCESS";
+    LOG(ERROR) << logPrefix << desyncMsg;
+  } catch (const std::exception& e) {
+    log.strings["status"] = "EXCEPTION";
+    log.strings["exception_msg"] = e.what();
+    enabled_ = false;
+    LOG(ERROR) << logPrefix
+               << " Failed to retrieve TORCH_XCCL_DESYNC_DEBUG report. "
+               << " Please file an issue. Error: " << e.what();
+  } catch (...) {
+    enabled_ = false;
+    log.strings["status"] = "EXCEPTION";
+    log.strings["exception_msg"] = "Unknown exception";
+    LOG(ERROR)
+        << logPrefix
+        << " Failed to rerieve TORCH_XCCL_DESYNC_DEBUG report with unknown error."
+        << " Please file an issue.";
+  }
+  auto logger = c10d::C10dLogger::getLogger();
+  if (logger) {
+    logger->log(log);
+  }
+}
+
+void ProcessGroupXCCL::DesyncDebugger::logWorkStart(WorkXCCL& work) {
+  if (!enabled_)
+    return;
+  if (work.startTraceUpdated_)
+    return;
+
+  work.startTraceUpdated_ = true;
+  enabled_ = c10d::traceUpdate(
+      store_, traceKeyStart_, work.seq_, opTypeToString(work.opType_));
+}
+
+void ProcessGroupXCCL::DesyncDebugger::logWorkEnd(WorkXCCL& work) {
+  if (!enabled_)
+    return;
+
+  if (!work.startTraceUpdated_) {
+    logWorkStart(work);
+  }
+
+  enabled_ = c10d::traceUpdate(
+      store_, traceKeyEnd_, work.seq_, opTypeToString(work.opType_));
+}
+
 static std::atomic<size_t> process_group_id = 0;
 
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
@@ -301,10 +431,23 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     int size)
     : Backend(rank, size),
       store_(store),
+      terminateProcessGroup_(false),
+      terminateHeartbeatMonitorThread_(false),
       xcclCommCounter_(0),
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  heartbeat_ = 1ULL;
+  coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
+  heartbeatTimeoutInSec_ = getCvarInt(TORCH_XCCL_HEARTBEAT_TIMEOUT_SEC, 60 * 8 /*8 Mins*/);
+  waitTimeoutDumpInMilSec_ = getCvarInt(TORCH_XCCL_WAIT_TIMEOUT_DUMP_MILSEC, 15 * 1000 /*15 Sec*/);
+  logCppStackOnUncleanShutdown_ = getCvarBool(TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN, true);
+  traceBufferSize_ = getCvarInt(TORCH_XCCL_TRACE_BUFFER_SIZE, 2000);
+
+  if (!blockingWait_) {
+    xcclCommWatchdogThread_ = std::thread(&ProcessGroupXCCL::xcclCommWatchdog, this);
+  }
+
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
@@ -319,7 +462,386 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
 }
 
-ProcessGroupXCCL::~ProcessGroupXCCL() = default;
+static std::mutex xcclCommMemPoolMapMutex;
+
+ProcessGroupXCCL::~ProcessGroupXCCL() {
+  terminateProcessGroup_.store(true);
+  workMetaListCV_.notify_one();
+
+  LOG(INFO) << logPrefix()
+            << "Launching ProcessGroupXCCL abort asynchrounously.";
+  std::future<bool> fut =
+      std::async(std::launch::async, [this]() { return this->abortComms(); });
+
+  ::c10d::C10dLoggingData debugLog;
+  waitForFutureOrTimeout(
+      fut, options_->timeout, "ProcessGroup abort", debugLog, true);
+  LOG(INFO) << logPrefix() << "ProcessGroupXCCL aborts successfully.";
+
+  terminateHeartbeatMonitorThread_.store(true);
+  monitorWakeUpCV_.notify_one();
+}
+
+bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
+  STATIC_SCOPED_WAIT_COUNTER(pytorch.ProcessGroupXCCL.__dumpDebuggingInfo);
+
+  static std::mutex writeDebugInfoMutex;
+  std::lock_guard<std::mutex> lock(writeDebugInfoMutex);
+  LOG(ERROR)
+      << logPrefix()
+      << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
+      << includeStackTrace;
+  if (traceBufferSize_ > 0) {
+    std::string ncclTrace = dump_nccl_trace(true, includeStackTrace, false);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
+    LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
+              << writer.getWriterTarget();
+    writer.write(ncclTrace);
+    return true
+  }
+  return false;
+}
+
+std::atomic<bool> ProcessGroupXCCL::shouldDump_(false);
+
+bool ProcessGroupXCCL::abortComms(
+    const std::optional<std::string>& abortReason) {
+  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex)
+  for (auto& [_, xcclComm] : devXCCLCommMap_) {
+  }
+  abortCommsFromMap(devXCCLCommMap_, abortReason);
+  return true;
+}
+
+void ProcessGroupXCCL::abortCommsFromMap(
+    std::unordered_map<std::string, std::shared_ptr<xcclComm_t>>& xcclCommsMap,
+    const std::optional<std::string>& abortReason) {
+  groupStart();
+  for (auto& it : xcclCommsMap) {
+    auto& devName = it.first;
+    auto& xcclComm = it.second;
+    VLOG(2) << logPrefix() << "ProcessGroupXCCL destroying xcclComm "
+            << c10::str((void*)xcclComm) << " on XPU device: " << devName;
+    xcclComm->abort(abortReason);
+    VLOG(2) << logPrefix() << "ProcessGroupNCCL destroyed "
+            << " communicator on CUDA device: " << devName;
+    groupEnd();
+  }
+}
+
+void ProcessGroupXCCL::heartbeatMonitor() {
+  c10::setThreadName("pt_xccl_heartbt");
+
+  uint64_t heartBeatCounter = 0ULL;
+  std::string errorMsg;
+  std::string exitReason;
+  bool checkDumpSignal = local_id_ == 0;
+  int monitorPollInterval = coordCheckIntervalMilSec_;
+  auto lastTimePollStore = std::chrono::steady_clock::now();
+  auto lastTimeHeartBeatCheck = std::chrono::steady_clock::now();
+
+  while (true) {
+    std::unique_lock<std::mutex> lock(monitorMutex_);
+    if (monitorWakeUpCV_.wait_for(
+            lock,
+            std::chrono::milliseconds(monitorPollInterval),
+            [&] { return terminateHeartbeatMonitorThread_.load(); })) {
+      return;
+    }
+    auto currentTime = std::chrono::steady_clock::now();
+
+    if (checkDumpSignal) {
+      // 1. Current rank has detected timeout in watchdog (shouldDump_ was set to true)
+      if (shouldDump_.load()) {
+        errorMsg = c10::str(logPrefix(),
+        "Received a dump signal due to collective timeout from this local rank.");
+        // TODO: add more pgStatus_ info, as in getNCCLWatchdogTimeoutErrorMsg
+        exitReason = "collective timeout or exception";
+        break;
+      }
+
+      // 2. Other ranks detected timeout and the current rank should dump.
+      /* if (computeDeltaMS(lastTimePollStore, currentTime) >= coordCheckIntervalMilSec_) {
+        lastTimePollStore = currentTime;
+      } */
+    }
+
+    // Check if heartbeat timeout has occurred
+    if (computeDeltaMS(lastTimeHeartBeatCheck, currentTime) >=
+        heartbeatTimeoutInSec_ * 1000L) {
+      lastTimeHeartBeatCheck = currentTime;
+      auto heartbeat = heartbeat_.load();
+      if (heartbeat != heartBeatCounter) {
+        heartBeatCounter = heartbeat;
+      } else {
+        shouldDump_.store(true);
+        errorMsg = c10::str(
+            logPrefix(),
+            "ProcessGroupXCCL's watchdog got stuck for ",
+            heartbeatTimeoutInSec_,
+            " seconds without making progress in monitoring enqueued collectives. ");
+        exitReason = "ProcessGroupXCCL watchdog hang";
+        break;   
+      }
+    }
+  }
+
+  LOG(ERROR) << errorMsg;
+
+  // 1. Dump the trace (flight recorder) to help debug after waitTimeoutDumpInMilSec_
+  // 2. Check if there is GIL deadlock (timeout after 300ms)
+  // 3. Try to dump the c++ stacktraces
+  if (checkDumpSignal && shouldDump_.load()) {
+    bool dumpStackTrace = true;
+    ::c10d::C10dLoggingData debugLog;
+    debugLog.integers["pg_id"] = static_cast<int64_t>(local_id_);
+    debugLog.integers["rank"] = rank_;
+    debugLog.integers["global_rank"] = globalRank();
+    debugLog.integers["world_size"] = getSize();
+    debugLog.strings["flight_recorder_version"] = c10d::version_val_str;
+    for (int i = 0; i < 2; i++) {
+      std::future<bool> asyncDebugDump = 
+          std::async(std::launch::async, [this, dumpStackTrace]() {
+            return this->dumpDebuggingInfo(dumpStackTrace);
+          });
+      
+      // wait for the dump until timeout - log data
+      //auto complete = waitForFutureOrTimeout(
+      //    asyncDebugDump,
+      //    std::chrono::milliseconds(waitTimeoutDumpInMilSec_),
+      //    "Flight recorder dump in heartbeatMonitor",
+      //    debugLog,
+      //    false);
+
+      if (complete) {
+        LOG(INFO) << logPrefix()
+                  << "Finished flight recorder successfully. Analyze using fr_trace script.";
+        if (i > 0) {
+          debugLog.strings["exception_msg"] = "Dump with stack trace failed.";
+        }
+        break;
+      }
+      // If we failed to dump, try without stack trace in the 2nd iteration
+      dumpStackTrace = false;
+    }
+    debugLog.integers["trace_enabled"] = int64_t(dumpStackTrace);
+    auto logger = c10d::C10dLogger::getLogger();
+    if (logger) {
+      logger->log(debugLog);
+    }
+  }
+
+  // GIL deadlock check
+  if (get_gil_checker() != nullptr) {
+    auto fut = launchAsyncGilCheck();
+    auto kGilCheckTimeout = std::chrono::milliseconds(300);
+    auto futStatus = fut.wait_for(kGilCheckTimeout);
+    if (futStatus != std::future_status::ready) {
+      TORCH_CHECK(
+        futStatus != std::future_status::deferred, "Expected future to have been launched"
+      );
+      LOG(ERROR) << logPrefix() << "Could not acquire GIL for 300ms. ";
+    }
+  } else {
+    VLOG(2) << logPrefix()
+            << "GIL checker was not registered, perhaps this is a no-python build?";
+  }
+
+  // Dump c++ stacktraces
+  auto& cpp_dumper = get_cpp_trace_dumper();
+  if (logCppStackOnUncleanShutdown_ && cpp_dumper.has_value()) {
+    LOG(INFO) << logPrefix() << "Dumping c++ stacktraces:";
+    cpp_dumper.value()(
+      [&](const std::string& line) { LOG(INFO) << logPrefix() << line; });
+    LOG(INFO) << logPrefix() << "Finished c++ stacktraces dump.";
+  }
+
+  // If desync is slow or stuck, sleep then throw an error
+  if ((terminateProcessGroup_.load() || shouldDump_.load()) &&
+      !terminateHeartbeatMonitorThread_.load()) {
+    std::this_thread::sleep_for(std::chrono::seconds(heartbeatTimeoutInSec_));
+    LOG(INFO) << logPrefix() << "slept for " << heartbeatTimeoutInSec_
+              << " seconds, waiting for desync report or process group destroy.";
+  }
+
+  if (!terminateHeartbeatMonitorThread_.load()) {
+    if (monitorThreadEnabled_.load()) {
+      LOG(FATAL) << logPrefix()
+          << "Terminating the process after attempting to dump debug info, due to "
+          << exitReason << ".";
+    } else {
+      LOG(ERROR) << logPrefix()
+          << "ProcessGroupNCCL monitor thread is disabled, but would have terminated the process"
+          << "after attempting to dump debug info, due to " << exitReason << ".";
+    }
+  }
+}
+
+void ProcessGroupXCCL::xcclCommWatchdog() {
+  c10::setThreadName("pt_xccl_watchdg");
+
+  try {
+    VLOG(2) <<  logPrefix() << "Proccess group watchdog thread started!";
+    xcclHeartbeatMonitorThread_ = std::thread(&ProcessGroupXCCL::heartbeatMonitor, this);
+    watchdogHandler();
+    VLOG(2) << "Proccess group watchdog thread terminated normally";
+  } catch (const std::exception& e) {
+    const audo exitMsg = c10::str(
+        logPrefix(),
+        "Proccess group watchdog thread terminated with exception: ",
+        e.what());
+    LOG(ERROR) << exitMsg;
+  } catch (...) {
+    LOG(ERROR) << logPrefix() << "Proccess group watchdog thread terminated with unknown exception.";
+    auto watchdogException = std::make_exception_ptr(C10_BUILD_ERROR(DistBackendError, exitMsg));
+    std::rethrow_exception(watchdogException);
+  }
+}
+
+void ProcessGroupXCCL::watchdogHandler() {
+  bool done = false;
+  auto lastStatusUpdateTime = std::chrono::steady_clock::now();
+  std::list<ProcessGroupXCCL::WorkXCCL> completedWorkList;
+
+  while (!done || !terminateProcessGroup_.load()) {
+    std::unique_log<std::mutex> lock(workMetaListMutex_);
+    workMetaListCV_.wait_for(
+      lock,
+      std::chrono::milliseconds(kWatchdogThreadSleepMillis),
+      [&]() -> bool { return terminateProcessGroup_.load(); });
+    heartbeat_++;
+
+    auto logger = ::c10d::C10dLogger::getLogger();
+    if (logger && 
+          computeDeltaMS(lastStatusUpdateTime, std::chrono::steady_clock::now()) >=
+          kWorkStatusUpdatePeriodMs) {
+      ::c10d::C10dLoggingData data;
+      data.integers["pg_id"] = static_cast<int64_t>(local_id_);
+      data.integers["rank"] = rank_;
+      data.integers["global_rank"] = globalRank();
+      data.integers["last_enqueued_work"] = pgStatus_->lastEnqueuedSeq;
+      data.integers["last_started_work"] = pgStatus_->lastStartedSeq;
+      data.integers["last_completed_work"] = pgStatus_->lastCompletedSeq;
+      data.integers["last_enqueued_numel_in"] =
+          static_cast<int64_t>(pgStatus_->lastEnqueuedNumelIn);
+      data.integers["last_enqueued_numel_out"] =
+          static_cast<int64_t>(pgStatus_->lastEnqueuedNumelOut);
+      data.integers["last_completed_numel_in"] =
+          static_cast<int64_t>(pgStatus_->lastCompletedNumelIn);
+      data.integers["last_completed_numel_out"] =
+          static_cast<int64_t>(pgStatus_->lastCompletedNumelOut);
+      data.integers["last_started_numel_in"] =
+          static_cast<int64_t>(pgStatus_->lastStartedNumelIn);
+      data.integers["last_started_numel_out"] =
+          static_cast<int64_t>(pgStatus_->lastStartedNumelOut);
+      // logging strings
+      data.strings["last_enqueued_work_name"] = pgStatus_->lastEnqueuedWorkName;
+      data.strings["last_started_work_name"] = pgStatus_->lastStartedWorkName;
+      data.strings["last_completed_work_name"] =
+          pgStatus_->lastCompletedWorkName;
+      data.strings["pg_name"] = pg_uid_;
+      data.strings["pg_desc"] = pg_desc_;
+      logger->log(data);
+      lastStatusUpdateTime = std::chrono::steady_clock::now();
+    }
+
+    for (auto it = workMetaList_.begin(); it != workMetaList_.end();) {
+      auto& work = *it;
+      if (!terminateProcessGroup_.load()) {
+        work.checkAndSetException();
+      }
+
+      if (work.exception()) {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        if (error_ == ErrorType::SUCCESS) {
+          error_ = ErrorType::COMM_ERROR;
+        }
+      }
+
+      bool timedout = !work.exception() && work.checkTimeout();
+
+      if (timedout) {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        if (error_ == ErrorType::SUCCESS) {
+          error_ = ErrorType::TIMEOUT;
+        }
+        desyncDebugger_.run()
+      }
+
+      if (work.exception()) {
+        LOG(ERROR) << c10::str(
+            logPrefix(),
+            " failfure detected by watchdog at work sequence id: ",
+            work.seq_,
+            " PG status: last enqueued work: ",
+            pgStatus_->lastEnqueuedSeq,
+            " last started work: ",
+            pgStatus_->lastCompletedSeq);
+        work.printTraceback();
+        // if dumpOnTimeoutOrEx_ broadcastDumpSignal(); sleep_for waitTimeoutDumpInMilSec_ * 4
+        work.handleException();
+      }
+      desyncDebugger_.logWorkStart(work);
+      if (pgStatus_->lastStartedSeq < static_cast<int64_t>(work.seq_) &&
+          work.isStarted()) {
+        pgStatus_->lastStartedSeq = static_cast<int64_t>(work.seq_);
+        pgStatus_->lastStartedWorkName = opTypeToString(work.opType_);
+        pgStatus_->lastStartedNumelIn = work.numelIn_;
+        pgStatus_->lastStartedNumelOut = work.numelOut_;
+      }
+
+      if (work.isCompleted()) {
+        //if (!work.stashed_for_allocator_safety_->empty()) {
+        //  std::lock_guard<std::mutex> lock(shelvesMutex_);
+        //  shelvesToUnstash_.push_back(work.stashed_for_allocator_safety_);
+        //}
+        desyncDebugger_.logWorkEnd(work);
+        pgStatus_->lastCompletedSeq = static_cast<int64_t>(work.seq_);
+        pgStatus_->lastCompletedWorkName = opTypeToString(work.opType_);
+        pgStatus_->lastCompletedNumelIn = work.numelIn_;
+        pgStatus_->lastCompletedNumelOut = work.numelOut_;
+        FlightRecorder::get()->retire_id(work.trace_id_, true);
+      } else {
+        ++it;
+      }
+      heartbeat_++;
+    }
+    done = workMetaList_.empty();
+  }
+}
+
+void ProcessGroupXCCL::workEnqueue(
+    const c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
+  {
+    std::lock_guard<std::mutex> lock(shelvesMutex_);
+    for (auto& shelf : shelvesToUnstash_) {
+      shelf->unstash();
+    }
+    shelvesToUnstash_.clear();
+  }
+
+  // in blockingWait_ mode, we don't need watchdog thread, so no need to enqueue
+  // the work
+  if (!terminateProcessGroup_.load() && !blockingWait_) {
+    std::lock_guard<std::mutex> lock(workMetaListMutex_);
+    // Avoid view tensors to be processed in cleanup thread.
+    // View tensors' destruction invokes autograd_meta, which
+    // needs to be destructed in user thread. Otherwise will
+    // get deadlock. Here we enqueue work without outputs_.
+    workMetaList_.emplace_back(*work);
+    // update the PG status related to the last enqueued work
+    pgStatus_->lastEnqueuedSeq = static_cast<int64_t>(work->seq_);
+    pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
+    pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
+    pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
+    lastWorkListUpdateTime_ = std::chrono::steady_clock::now();
+  }
+}
+
+const int& ProcessGroupXCCL::globalRank() const {
+  static int globalRank = rank_;
+  return globalRank;
+}
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
@@ -490,6 +1012,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   work->xcclEndEvent_->record(stream);
 
+  if (coalescing_state_) {
+    workEnqueue(work);
+  }
+
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
   return work;
@@ -562,6 +1088,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->markCompleted(at::IValue(*work->outputs_));
   work->blockingWait_ = blockingWait_;
 
+  if (coalescing_state_) {
+    workEnqueue(work);
+  }
   return work;
 }
 
@@ -636,6 +1165,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
+    workEnqueue(work);
     return work;
   } else {
     at::xpu::OptionalXPUGuard gpuGuard(device);

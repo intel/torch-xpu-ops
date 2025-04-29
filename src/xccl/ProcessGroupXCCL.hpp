@@ -22,9 +22,16 @@
 #include <torch/csrc/distributed/c10d/logger.hpp>
 namespace c10d {
 
-static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
-    "TORCH_XCCL_BLOCKING_WAIT",
-    "XCCL_BLOCKING_WAIT"};
+static std::vector<std::string> getXCCLEnvVarNames(std::string envVar) {
+  return {"XCCL_" + envVar, "TORCH_XCCL_" + envVar, "TORCH_NCCL_" + envVar};
+}
+
+static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = getXCCLEnvVarNames("BLOCKING_WAIT");
+static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = getXCCLEnvVarNames("COORD_CHECK_MILSEC");
+static std::vector<std::string> TORCH_XCCL_HEARTBEAT_TIMEOUT_SEC = getXCCLEnvVarNames("HEARTBEAT_TIMEOUT_SEC");
+static std::vector<std::string> TORCH_XCCL_WAIT_TIMEOUT_DUMP_MILSEC = getXCCLEnvVarNames("WAIT_TIMEOUT_DUMP_MILSEC");
+static std::vector<std::string> TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN = getXCCLEnvVarNames("LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN");
+static std::vector<std::string> TORCH_XCCL_TRACE_BUFFER_SIZE = getXCCLEnvVarNames("TRACE_BUFFER_SIZE");
 
 using xcclComm_t = ccl::communicator;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
@@ -61,6 +68,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return seq_;
     }
 
+    const std::string& logPrefix() const;
+
+    void setException(std::exception_ptr exception_ptr);
+
+    void printTraceback() const;
+
+    void checkAndSetException();
+
     std::vector<at::Tensor> result() override {
       return *outputs_;
     }
@@ -72,12 +87,40 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     bool blockingWait_ = false;
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
+    std::chrono::milliseconds opTimeout_{};
 
    private:
     void synchronizeInternal(std::chrono::milliseconds timeout);
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
     friend class ProcessGroupXCCL;
+  };
+
+  class DesyncDebugger {
+   public:
+    void init(
+      int rank,
+      int size,
+      int globalRank,
+      int pgId,
+      c10::intrusive_ptr<Store> store);
+
+    void run();
+
+    void logWorkStart(WorkXCCL& work);
+
+    void logWorkEnd(WorkXCCL& work);
+
+   private:
+    bool enabled_{false};
+    int rank_;
+    int size_;
+    int globalRank_;
+    int pgId_;
+
+    c10::intrusive_ptr<Store> store_;
+    std::string traceKeyStart_;
+    std::string traceKeyEnd_;
   };
 
   ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
@@ -332,6 +375,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
+  const int& globalRank() const;
+
+  bool dumpDebuggingInfo(bool includeStackTrace = true);
+
+  std::string createLogPrefix() const;
+
+  const std::string& logPrefix() const;
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
@@ -350,6 +401,30 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqP2P_{0};
   size_t local_id_;
   std::string logPrefix_;
+  std::atomic<bool> terminateProcessGroup_;
+  std::atomic<bool> terminateHeartbeatMonitorThread_;
+  static const int64_t kWatchdogThreadSleepMillis;
+  void workEnqueue(const c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&);
+  std::vector<std::shared_ptr<TensorShelf>> shelvesToUnstash_;
+  std::mutex monitorMutex_;
+  std::mutex shelvesMutex_;
+  std::mutex workMetaListMutex_;
+  std::mutex errorMutex_;
+  std::list<ProcessGroupXCCL::WorkXCCL> workMetaList_;
+  std::shared_ptr<ProcessGroupStatus> pgStatus_ =
+      std::make_shared<ProcessGroupStatus>();
+  ErrorType error_ = ErrorType::SUCCESS;
+  int coordCheckIntervalMilSec_;
+  std::condition_variable monitorWakeUpCV_;
+  const c10::intrusive_ptr<Options> options_;
+  static std::atomic<bool> shouldDump_;
+  int heartbeatTimeoutInSec_;
+  int waitTimeoutDumpInMilSec_;
+  int traceBufferSize_;
+  std::atomic_uint64_t heartbeat_{};
+  bool logCppStackOnUncleanShutdown_;
+  DesyncDebugger desyncDebugger_;
+  std::thread xcclHeartbeatMonitorThread_;
 
  private:
   std::mutex kvs_mutex;
