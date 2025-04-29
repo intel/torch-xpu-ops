@@ -22,7 +22,7 @@ inline int max(int a, int b) {
   return a >= b ? a : b;
 }
 
-template <typename scalar_t, typename accscalar_t,typename index_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     index_t index = item.get_global_linear_id();
@@ -126,7 +126,7 @@ struct AvgPool2dKernelFunctor {
   bool use_divisor_;
 };
 
-template <typename scalar_t, typename accscalar_t,typename index_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     index_t index = item.get_global_linear_id();
@@ -228,7 +228,7 @@ struct AvgPool2dChannelsLastKernelFunctor {
   bool use_divisor_;
 };
 
-template <typename scalar_t, typename accscalar_t,typename index_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_avg_pool2d_channels_last_kernel(
     const int total_elements,
     const Tensor& input,
@@ -255,7 +255,7 @@ void launch_avg_pool2d_channels_last_kernel(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dChannelsLastKernelFunctor<scalar_t, accscalar_t,index_t>(
+  auto kfn = AvgPool2dChannelsLastKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
       bottom_data,
       total_elements,
@@ -276,7 +276,7 @@ void launch_avg_pool2d_channels_last_kernel(
   sycl_kernel_submit(global_range, group_size, queue, kfn);
 }
 
-template <typename scalar_t, typename accscalar_t,typename index_t>
+template <typename scalar_t, typename accscalar_t, typename index_t>
 void launch_avg_pool2d_kernel(
     const int total_elements,
     const Tensor& input,
@@ -303,7 +303,7 @@ void launch_avg_pool2d_kernel(
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
-  auto kfn = AvgPool2dKernelFunctor<scalar_t, accscalar_t,index_t>(
+  auto kfn = AvgPool2dKernelFunctor<scalar_t, accscalar_t, index_t>(
       top_data,
       bottom_data,
       total_elements,
