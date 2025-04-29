@@ -664,63 +664,67 @@ void avg_pool2d_kernel(
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, input.scalar_type(), "avg_pool2d_xpu", [&] {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
-        AT_DISPATCH_INDEX_TYPES(
-            at::native::canUse32BitIndexMath(output, INT_MAX) ? ScalarType::Int
-                                                             : ScalarType::Long,
-            "avg_pool2d_xpu",
-            [&] {
-              switch (memory_format) {
-                case MemoryFormat::ChannelsLast: {
-                  output.unsafeGetTensorImpl()->empty_tensor_restride(
-                      MemoryFormat::ChannelsLast);
-                  launch_avg_pool2d_channels_last_kernel<scalar_t, accscalar_t,index_t>(
-                      count,
-                      input,
-                      nInputPlane,
-                      inputHeight,
-                      inputWidth,
-                      outputHeight,
-                      outputWidth,
-                      kH_,
-                      kW_,
-                      dH_,
-                      dW_,
-                      padH_,
-                      padW_,
-                      output,
-                      divisor_override_value,
-                      count_include_pad,
-                      use_divisor);
-                  break;
+          AT_DISPATCH_INDEX_TYPES(
+              at::native::canUse32BitIndexMath(output, INT_MAX)
+                  ? ScalarType::Int
+                  : ScalarType::Long,
+              "avg_pool2d_xpu",
+              [&] {
+                switch (memory_format) {
+                  case MemoryFormat::ChannelsLast: {
+                    output.unsafeGetTensorImpl()->empty_tensor_restride(
+                        MemoryFormat::ChannelsLast);
+                    launch_avg_pool2d_channels_last_kernel<
+                        scalar_t,
+                        accscalar_t,
+                        index_t>(
+                        count,
+                        input,
+                        nInputPlane,
+                        inputHeight,
+                        inputWidth,
+                        outputHeight,
+                        outputWidth,
+                        kH_,
+                        kW_,
+                        dH_,
+                        dW_,
+                        padH_,
+                        padW_,
+                        output,
+                        divisor_override_value,
+                        count_include_pad,
+                        use_divisor);
+                    break;
+                  }
+                  case MemoryFormat::Contiguous: {
+                    launch_avg_pool2d_kernel<scalar_t, accscalar_t, index_t>(
+                        count,
+                        input,
+                        nInputPlane,
+                        inputHeight,
+                        inputWidth,
+                        outputHeight,
+                        outputWidth,
+                        kH_,
+                        kW_,
+                        dH_,
+                        dW_,
+                        padH_,
+                        padW_,
+                        output,
+                        divisor_override_value,
+                        count_include_pad,
+                        use_divisor);
+                    break;
+                  }
+                  default:
+                    TORCH_CHECK(
+                        false,
+                        "Unsupported memory format. Supports only "
+                        "ChannelsLast, Contiguous");
                 }
-                case MemoryFormat::Contiguous: {
-                  launch_avg_pool2d_kernel<scalar_t, accscalar_t,index_t>(
-                      count,
-                      input,
-                      nInputPlane,
-                      inputHeight,
-                      inputWidth,
-                      outputHeight,
-                      outputWidth,
-                      kH_,
-                      kW_,
-                      dH_,
-                      dW_,
-                      padH_,
-                      padW_,
-                      output,
-                      divisor_override_value,
-                      count_include_pad,
-                      use_divisor);
-                  break;
-                }
-                default:
-                  TORCH_CHECK(
-                      false,
-                      "Unsupported memory format. Supports only "
-                      "ChannelsLast, Contiguous");
-              }
-          });
+              });
         });
   }
 }
