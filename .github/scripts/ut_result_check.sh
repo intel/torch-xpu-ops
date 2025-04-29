@@ -30,11 +30,6 @@ compare_and_filter_logs() {
 
     # Keep the filtered UT cases
     grep -nFf "$file_known_issue" "$file_UT" > "$filtered_content"
-
-    local original_lines=$(wc -l < "$file_UT")
-    local filtered_lines=$(wc -l < "$output_file")
-    local filtered_lines=$((original_lines - filtered_lines))
-    echo "Filtered lines: $filtered_lines"
     echo "Filtered cases file: $filtered_content"
     if [[ -s "$filtered_content" ]]; then
         echo -e "\n\033[1;31m[Filtered Cases]\033[0m"
