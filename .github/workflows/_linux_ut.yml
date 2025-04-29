@@ -49,6 +49,7 @@ jobs:
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      commit_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -260,6 +261,8 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
+          test_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -276,6 +279,7 @@ jobs:
             contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
+            gh --repo $repo issue view $commit_issue --json body -q .body | sed '/^$/d' > Known_issue.log
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
           done
@@ -293,6 +297,7 @@ jobs:
     env:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      commit_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -395,6 +400,8 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
+          test_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -407,6 +414,7 @@ jobs:
           set -xe
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
+          gh --repo $repo issue view $commit_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh 'xpu_distributed'
       - name: Upload Inductor XPU UT Log
