@@ -45,7 +45,8 @@ compare_and_filter_logs() {
 }
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' ]]; then
-    grep -E "^FAILED|have failures" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_failed.log
+    grep -E "^FAILED" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_failed.log
+    grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
     num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
@@ -62,8 +63,10 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     fi
 fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
-    grep -E "^FAILED|have failures" op_ut_with_skip_test.log | awk '{print $2}' > ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "^FAILED|have failures" op_ut_with_only_test.log | awk '{print $2}' > ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "^FAILED" op_ut_with_skip_test.log | awk '{print $2}' > ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "^FAILED" op_ut_with_only_test.log | awk '{print $2}' > ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
     compare_and_filter_logs "${ut_suite}"_with_skip_test_failed.log Known_issue.log
     num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed_filtered.log")
     compare_and_filter_logs "${ut_suite}"_with_only_test_failed.log Known_issue.log
@@ -119,7 +122,8 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     fi
 fi
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
-    grep -E "^FAILED|have failures" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
     compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
     num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
     echo -e "========================================================================="
