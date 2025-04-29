@@ -20,6 +20,7 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/logger.hpp>
+#include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 namespace c10d {
 
 static std::vector<std::string> getXCCLEnvVarNames(std::string envVar) {
@@ -88,6 +89,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     std::chrono::milliseconds opTimeout_{};
+
+    friend std::ostream& operator<<(
+        std::ostream& output,
+        const WorkNCCL& workNCCL);
 
    private:
     void synchronizeInternal(std::chrono::milliseconds timeout);
@@ -378,10 +383,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const int& globalRank() const;
 
   bool dumpDebuggingInfo(bool includeStackTrace = true);
-
-  std::string createLogPrefix() const;
-
-  const std::string& logPrefix() const;
 
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>

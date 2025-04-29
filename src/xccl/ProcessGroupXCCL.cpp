@@ -201,6 +201,26 @@ void syncStream(
 
 } // namespace
 
+std::ostream& operator<<(
+    std::ostream& output,
+    const ProcessGroupXCCL::WorkXCCL& workXCCL) {
+  std::string workInfo;
+  workInfo = c10::str(
+      "WorkXCCL(",
+      "SeqNum=",
+      workXCCL.seq_,
+      ", OpType=",
+      opTypeToString(workXCCL.opType_),
+      ", NumelIn=",
+      workXCCL.numelIn_,
+      ", NumelOut=",
+      workXCCL.numelOut_,
+      ", Timeout(ms)=",
+      workXCCL.opTimeout_.count(),
+      ")");
+  return output << workInfo;
+}
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
