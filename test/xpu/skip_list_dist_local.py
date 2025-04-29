@@ -461,10 +461,6 @@ skip_dict = {
         "test_argmax",
         "test_softmax_fwd",
     ),
-    "../../../../test/distributed/_shard/test_sharder.py": (
-        # https://jira.devtools.intel.com/browse/MLSL-3625
-        "test_custom_sharder",
-    ),
     # FSDP2
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -522,6 +518,40 @@ skip_dict = {
         "test_1f1b_microbatching",
         "test_gradient_accumulation",
     ),
+    "../../../../test/distributed/_composable/test_replicate_with_compiler.py": (
+        # AssertionError: Tensor-likes are not close!
+        # https://github.com/intel/torch-xpu-ops/issues/1504
+        "test_compile_backward_only",
+        "test_compile_bf16",
+        "test_compile_fp16",
+        "test_compile_gpu",
+        "test_compile_gpu_ac",
+    ),
+    "../../../../test/distributed/_shard/test_sharder.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_custom_sharder",
+    ),
+    "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": {
+        # RuntimeError: eof (this error originated at tensorpipe/transport/shm/connection_impl.cc:259)
+        "test_complete_world_size",
+        "test_multiple_local_shards",
+        "test_new_group",
+        "test_partial_world_size",
+        "test_grid_sharding",
+        "test_multiple_local_shards",
+        "test_new_group",
+        "test_partial_world_size",
+        "test_with_rpc_names",
+        "test_init_from_local_tensor",
+        # what():  Attempting to send a Tensor with unexpected device type xpu:3
+        # https://github.com/intel/torch-xpu-ops/issues/1616
+        "test_init_from_local_shards",
+        "test_init_from_local_shards_and_global_metadata",
+    },
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": None,
+    "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
+    "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1508
         # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
