@@ -34,7 +34,10 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
-permissions: read-all
+permissions: 
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   op_benchmark_test:
@@ -183,3 +186,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./new_baseline
           publish_branch: gh-pages
+          force_orphan: true
