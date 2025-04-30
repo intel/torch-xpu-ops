@@ -54,7 +54,7 @@ Tensor nested_from_padded_xpu(
 
     Tensor metadata =
         at::cat({target_size_sizes, padded_sizes_tensor, target_offsets});
-    metadata = metadata.to(at::Device(kCUDA), kInt, true, true);
+    metadata = metadata.to(at::Device(kXPU), kInt, true, true);
 
     auto output_size_ptr = metadata.data_ptr<int>();
     auto input_size_ptr = output_size_ptr + target_size_sizes.numel();
