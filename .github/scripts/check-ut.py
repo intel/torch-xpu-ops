@@ -86,7 +86,7 @@ def get_message(case):
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
-def print_md_row(row, print_header=False, fail_list):
+def print_md_row(row, print_header=False, fail_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
         print(f"| {header} |")
@@ -95,7 +95,7 @@ def print_md_row(row, print_header=False, fail_list):
     row_values = " | ".join([f"{value}" for value in row.values()])
     print(f"| {row_values} |")
 
-    if fail_list != None:
+    if fail_list is not None:
         fail_list.write(f"| {row_values} |\n")
 
 
