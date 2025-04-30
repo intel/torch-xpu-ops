@@ -86,7 +86,7 @@ def get_message(case):
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
-def print_md_row(row, print_header=False):
+def print_md_row(row, print_header=False, fail_list):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
         print(f"| {header} |")
@@ -95,21 +95,29 @@ def print_md_row(row, print_header=False):
     row_values = " | ".join([f"{value}" for value in row.values()])
     print(f"| {row_values} |")
 
+    if fail_list != None:
+        fail_list.write(f"| {row_values} |\n")
+
+
+
 def print_failures():
     if not failures:
         return
 
-    print("### Test Failures")
-    print_header = True
-    for case in failures:
-        print_md_row({
-            'Class name': get_classname(case),
-            'Test name': get_name(case),
-            'Status': get_result(case),
-            'Message': get_message(case),
-            'Source': case['source'] if isinstance(case, dict) else 'XML'
-        }, print_header)
-        print_header = False
+    with open("ut_failure_list.csv", "w") as fail_list:
+        fail_list.write("sep=\'|\''.\n")
+
+        print("### Test Failures")
+        print_header = True
+        for case in failures:
+            print_md_row({
+                'Class name': get_classname(case),
+                'Test name': get_name(case),
+                'Status': get_result(case),
+                'Message': get_message(case),
+                'Source': case['source'] if isinstance(case, dict) else 'XML'
+            }, print_header, fail_list)
+            print_header = False
 
 def parse_log_file(log_file):
     with open(log_file, encoding='utf-8') as f:
