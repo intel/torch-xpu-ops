@@ -34,10 +34,7 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
-permissions: 
-  contents: write
-  pages: write
-  id-token: write
+permissions: read-all
 
 jobs:
   op_benchmark_test:
