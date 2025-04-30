@@ -20,7 +20,6 @@ error_types = [
     "IndexError",
     "ImportError",
     "AssertionError",
-    "Exception",
     "OSError",
     "Failed",
     "TimeoutError",
