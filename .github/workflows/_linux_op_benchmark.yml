@@ -159,6 +159,9 @@ jobs:
       - name: Check the OP Regression
         if: steps.check-baseline.outputs.both_exist == 'true'
         run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install tabulate
           # Compare forward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
           # Compare backward op
@@ -166,6 +169,8 @@ jobs:
       - name: Update OP Baseline
         if: steps.check-baseline.outputs.both_exist == 'true'
         run: |
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir ${{ github.workspace }}/new_baseline
           # Update forward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
