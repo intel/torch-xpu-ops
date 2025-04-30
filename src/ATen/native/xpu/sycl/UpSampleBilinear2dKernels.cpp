@@ -420,14 +420,14 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
           int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
           int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
           bool is_boundary_w =
-              !((point_w > input_width_) &&
-                (point_w < output_width_ * input_width_ * 2 - input_width_));
+              !((point_w >= output_width_) &&
+                (point_w <= output_width_ * input_width_ * 2 - output_width_));
           // scale is 1 if on boundary
           distance_w =
               distance_w + is_boundary_w * (output_width_ * 2 - distance_w);
           bool is_boundary_h =
-              !((point_h > input_height_) &&
-                (point_h < output_height_ * input_height_ * 2 - input_height_));
+              !((point_h >= output_height_) &&
+                (point_h <= output_height_ * input_height_ * 2 - output_height_));
           distance_h =
               distance_h + is_boundary_h * (output_height_ * 2 - distance_h);
           accscalar_t scale =
