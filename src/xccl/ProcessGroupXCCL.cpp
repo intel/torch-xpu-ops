@@ -2493,6 +2493,40 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       "xccl:all_to_all");
 }
 
+static std::future<bool> launchAsyncGilCheck() {
+  std::promise<bool> resultPromise;
+  std::future<bool> resultFuture = resultPromise.get_future();
+  TORCH_CHECK(get_gil_checker(), "Can't check GIL with null GIL checker");
+  std::thread workerThread([promise = std::move(resultPromise)]() mutable {
+    c10::setThreadName("pt_nccl_gil_chk");
+
+    try {
+      auto& gil_checker = get_gil_checker();
+      promise.set_value((*gil_checker)());
+    } catch (...) {
+      promise.set_exception(std::current_exception());
+    }
+  });
+
+  // Detach the thread to allow it to run independently
+  workerThread.detach();
+
+  return resultFuture;
+}
+
+std::string getExceptionMsgFromExceptionPtr(
+    const std::exception_ptr& exceptionPtr) {
+  TORCH_CHECK(exceptionPtr != nullptr);
+  try {
+    std::rethrow_exception(exceptionPtr);
+  } catch (const std::exception& e) {
+    return e.what();
+  } catch (...) {
+    return "Unknown exception type";
+  }
+}
+
+
 } // namespace c10d
 
 #endif // USE_C10D_XCCL
