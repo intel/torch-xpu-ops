@@ -2293,7 +2293,8 @@ skip_dict = {
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
-        ""test_parity__foreach_div_fastpath_inplace_xpu_complex128",
+        # randomly fails
+        "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
