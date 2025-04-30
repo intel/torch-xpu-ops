@@ -56,10 +56,11 @@ void _mkl_dft(
   int64_t idist = istrides[0];
   int64_t odist = ostrides[0];
 
-  std::vector<int64_t> fwd_strides(istrides.cbegin(), istrides.cbegin() + signal_ndim + 1),
-      bwd_strides(ostrides.cbegin(), ostrides.cbegin() + signal_ndim + 1);
-  fwd_strides[0] = 0;
-  bwd_strides[0] = 0;
+  std::vector<int64_t> input_strides(
+      istrides.cbegin(), istrides.cbegin() + signal_ndim + 1),
+      output_strides(ostrides.cbegin(), ostrides.cbegin() + signal_ndim + 1);
+  input_strides[0] = 0;
+  output_strides[0] = 0;
 
   auto desc = descriptor<prec, signal_type>(mkl_signal_sizes);
   desc.set_value(config_param::PLACEMENT, config_value::NOT_INPLACE);
@@ -69,14 +70,14 @@ void _mkl_dft(
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
 
-    desc.set_value(config_param::FWD_STRIDES, fwd_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, bwd_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, input_strides.data());
+    desc.set_value(config_param::BWD_STRIDES, output_strides.data());
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
 
-    desc.set_value(config_param::FWD_STRIDES, bwd_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, fwd_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, output_strides.data());
+    desc.set_value(config_param::BWD_STRIDES, input_strides.data());
   }
 
   if (!complex_input || !complex_output) {
@@ -364,8 +365,7 @@ Tensor& _fft_c2c_mkl_out(
     int64_t normalization,
     bool forward,
     Tensor& out) {
-  auto result = _fft_c2c_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), forward);
+  auto result = _fft_c2c_mkl(self, dim, normalization, forward);
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
   return out;
@@ -440,8 +440,7 @@ Tensor& _fft_c2r_mkl_out(
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& out) {
-  auto result = _fft_c2r_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
+  auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
   return out;
@@ -527,8 +526,7 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
-  auto result = _fft_r2c_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), /*onesided=*/true);
+  auto result = _fft_r2c_mkl(self, dim, normalization, /*onesided=*/true);
 
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
