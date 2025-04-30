@@ -128,11 +128,20 @@ jobs:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Download OP Baseline
-        uses: actions/download-artifact@v4
-        with:
-          name: op-baseline-data
-          path: baseline
         continue-on-error: true
+        run: |
+          # Download forward baseline
+          curl -L "https://api.github.com/repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/new_baseline/baseline_forward_op_summary.csv?ref=gh-pages" \
+            -H "Accept: application/vnd.github.raw" \
+            -o baseline_forward_op_summary.csv
+
+          # Download backward baseline
+          curl -L "https://api.github.com/repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/new_baseline/baseline_backward_op_summary.csv?ref=gh-pages" \
+            -H "Accept: application/vnd.github.raw" \
+            -o baseline_backward_op_summary.csv
+
+          mkdir ${{ github.workspace }}/baseline
+          cp baseline*.csv ${{ github.workspace }}/baseline
       - name: Check OP Baseline
         run: |
           forward_exists=$([ -f "baseline/baseline_forward_op_summary.csv" ] && echo "true" || echo "false")
@@ -162,13 +171,10 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
           # Update backward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv -r
-      - name: Upload OP Baseline
+      - name: Deploy Baseline to gh-pages
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          name: op-baseline-data
-          path: |
-            new_baseline/baseline_forward_op_summary.csv
-            new_baseline/baseline_backward_op_summary.csv
-          if-no-files-found: error
-          retention-days: 90
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./new_baseline
+          publish_branch: gh-pages
