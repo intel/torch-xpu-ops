@@ -20,7 +20,7 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/logger.hpp>
-#include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
+#include <torch/csrc/distributed/c10d/TraceUtils.h>
 namespace c10d {
 
 static std::vector<std::string> getXCCLEnvVarNames(std::string envVar) {
@@ -92,6 +92,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     std::chrono::milliseconds opTimeout_{};
+    bool startTraceUpdated_{false};
+    size_t numelIn_ = -1;
+    size_t numelOut_ = -1;
 
     friend std::ostream& operator<<(
         std::ostream& output,
@@ -387,6 +390,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
+  void heartbeatMonitor();
+
+  void watchdogHandler();
+
+  void xcclCommWatchdog();
+
+  bool abortComms(const std::optional<std::string>& abortReason = std::nullopt);
+  void abortCommsFromMap(
+    std::unordered_map<std::string, std::shared_ptr<xcclComm_t>>& xcclCommsMap,
+    const std::optional<std::string>& abortReason);
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
@@ -409,7 +423,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::atomic<bool> terminateHeartbeatMonitorThread_;
   static const int64_t kWatchdogThreadSleepMillis;
   void workEnqueue(const c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&);
-  std::vector<std::shared_ptr<TensorShelf>> shelvesToUnstash_;
+  //std::vector<std::shared_ptr<TensorShelf>> shelvesToUnstash_;
   std::mutex monitorMutex_;
   std::mutex shelvesMutex_;
   std::mutex workMetaListMutex_;
@@ -429,6 +443,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool logCppStackOnUncleanShutdown_;
   DesyncDebugger desyncDebugger_;
   std::thread xcclHeartbeatMonitorThread_;
+  std::thread xcclCommWatchdogThread_;
+  std::condition_variable workMetaListCV_;
 
  private:
   std::mutex kvs_mutex;

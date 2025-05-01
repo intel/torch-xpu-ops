@@ -1,6 +1,7 @@
 #ifdef USE_C10D_XCCL
 
 #include <comm/XPUGuard.h>
+#include <torch/csrc/distributed/c10d/FlightRecorder.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupXCCL.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
@@ -221,6 +222,63 @@ std::ostream& operator<<(
   return output << workInfo;
 }
 
+static std::future<bool> launchAsyncGilCheck() {
+  std::promise<bool> resultPromise;
+  std::future<bool> resultFuture = resultPromise.get_future();
+  TORCH_CHECK(get_gil_checker(), "Can't check GIL with null GIL checker");
+  std::thread workerThread([promise = std::move(resultPromise)]() mutable {
+    c10::setThreadName("pt_nccl_gil_chk");
+
+    try {
+      auto& gil_checker = get_gil_checker();
+      promise.set_value((*gil_checker)());
+    } catch (...) {
+      promise.set_exception(std::current_exception());
+    }
+  });
+
+  // Detach the thread to allow it to run independently
+  workerThread.detach();
+
+  return resultFuture;
+}
+
+std::string getExceptionMsgFromExceptionPtr(
+    const std::exception_ptr& exceptionPtr) {
+  TORCH_CHECK(exceptionPtr != nullptr);
+  try {
+    std::rethrow_exception(exceptionPtr);
+  } catch (const std::exception& e) {
+    return e.what();
+  } catch (...) {
+    return "Unknown exception type";
+  }
+}
+
+static std::
+    unordered_map<std::string, std::unordered_map<std::string, std::string>>
+    getXCCLCommDumpMap() {
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
+      xcclDumpMap;
+  // TODO: Fill with info from XCCL comms
+  return xcclDumpMap;
+}
+
+std::string dump_xccl_trace(
+    bool includeCollectives,
+    bool includeStackTraces,
+    bool onlyActive) {
+  auto xcclDumpMap = getXCCLCommDumpMap();
+  return FlightRecorder::get()->dump(
+      ncclDumpMap, includeCollectives, includeStackTraces, onlyActive);
+}
+
+gil_checker_t& get_gil_checker() {
+  static gil_checker_t gil_checker = nullptr;
+  return gil_checker;
+}
+
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
@@ -310,7 +368,7 @@ bool ProcessGroupXCCL::WorkXCCL::checkTimeout(
   auto workTimeout = timeout ? *timeout : opTimeout_;
 
   if (timeElapsed < workTimeout) {
-    return false
+    return false;
   }
 
   // Timed out
@@ -324,7 +382,7 @@ bool ProcessGroupXCCL::WorkXCCL::checkTimeout(
 
   LOG(ERROR) << exceptionMsg;
   std::exception_ptr exception_ptr =
-      std::make_execution_ptr(C10_BUILD_ERROR(DistBackendError, exceptionMsg));
+      std::make_exception_ptr(C10_BUILD_ERROR(DistBackendError, exceptionMsg));
   if (!exception()) {
     setException(exception_ptr);
   }
@@ -494,9 +552,9 @@ ProcessGroupXCCL::~ProcessGroupXCCL() {
       std::async(std::launch::async, [this]() { return this->abortComms(); });
 
   ::c10d::C10dLoggingData debugLog;
-  waitForFutureOrTimeout(
-      fut, options_->timeout, "ProcessGroup abort", debugLog, true);
-  LOG(INFO) << logPrefix() << "ProcessGroupXCCL aborts successfully.";
+  //waitForFutureOrTimeout(
+  //    fut, options_->timeout, "ProcessGroup abort", debugLog, true);
+  //LOG(INFO) << logPrefix() << "ProcessGroupXCCL aborts successfully.";
 
   terminateHeartbeatMonitorThread_.store(true);
   monitorWakeUpCV_.notify_one();
@@ -517,7 +575,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
     writer.write(ncclTrace);
-    return true
+    return true;
   }
   return false;
 }
@@ -832,13 +890,13 @@ void ProcessGroupXCCL::watchdogHandler() {
 
 void ProcessGroupXCCL::workEnqueue(
     const c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {
-  {
+  /*{
     std::lock_guard<std::mutex> lock(shelvesMutex_);
     for (auto& shelf : shelvesToUnstash_) {
       shelf->unstash();
     }
     shelvesToUnstash_.clear();
-  }
+  }*/
 
   // in blockingWait_ mode, we don't need watchdog thread, so no need to enqueue
   // the work
@@ -2491,39 +2549,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       },
       OpType::ALLTOALL,
       "xccl:all_to_all");
-}
-
-static std::future<bool> launchAsyncGilCheck() {
-  std::promise<bool> resultPromise;
-  std::future<bool> resultFuture = resultPromise.get_future();
-  TORCH_CHECK(get_gil_checker(), "Can't check GIL with null GIL checker");
-  std::thread workerThread([promise = std::move(resultPromise)]() mutable {
-    c10::setThreadName("pt_nccl_gil_chk");
-
-    try {
-      auto& gil_checker = get_gil_checker();
-      promise.set_value((*gil_checker)());
-    } catch (...) {
-      promise.set_exception(std::current_exception());
-    }
-  });
-
-  // Detach the thread to allow it to run independently
-  workerThread.detach();
-
-  return resultFuture;
-}
-
-std::string getExceptionMsgFromExceptionPtr(
-    const std::exception_ptr& exceptionPtr) {
-  TORCH_CHECK(exceptionPtr != nullptr);
-  try {
-    std::rethrow_exception(exceptionPtr);
-  } catch (const std::exception& e) {
-    return e.what();
-  } catch (...) {
-    return "Unknown exception type";
-  }
 }
 
 
