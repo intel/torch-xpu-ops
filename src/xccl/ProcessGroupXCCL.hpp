@@ -34,8 +34,18 @@ static std::vector<std::string> TORCH_XCCL_WAIT_TIMEOUT_DUMP_MILSEC = getXCCLEnv
 static std::vector<std::string> TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN = getXCCLEnvVarNames("LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN");
 static std::vector<std::string> TORCH_XCCL_TRACE_BUFFER_SIZE = getXCCLEnvVarNames("TRACE_BUFFER_SIZE");
 
+constexpr const int kWorkStatusUpdatePeriodMs = 30 * 1000; // 30 seconds
 using xcclComm_t = ccl::communicator;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
+
+enum ErrorHandlingMode {
+  NoHandling = 0,
+  TearDown = 1,
+  CleanUpOnly = 2,
+  SkipCleanUp = 3
+};
+
+#define SHOULD_TEAR_DOWN(a) (a != NoHandling && a != CleanUpOnly)
 
 class TORCH_API ProcessGroupXCCL : public Backend {
  public:
@@ -76,6 +86,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     bool checkTimeout(
         std::optional<std::chrono::milliseconds> timeout = std::nullopt);
 
+    void handleException(ErrorHandlingMode asyncErrorHandling);
+
     void printTraceback() const;
 
     void checkAndSetException();
@@ -86,6 +98,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
+    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     at::Tensor barrierTensor_;
     bool blockingWait_ = false;
@@ -95,6 +108,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     bool startTraceUpdated_{false};
     size_t numelIn_ = -1;
     size_t numelOut_ = -1;
+    std::optional<uint64_t> trace_id_;
 
     friend std::ostream& operator<<(
         std::ostream& output,

@@ -5,6 +5,7 @@
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupXCCL.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
+#include <c10/util/WaitCounter.h>
 
 namespace c10d {
 
@@ -222,12 +223,32 @@ std::ostream& operator<<(
   return output << workInfo;
 }
 
+std::optional<std::function<void(std::function<void(const std::string&)>)>>&
+get_cpp_trace_dumper() {
+  static std::optional<
+      std::function<void(std::function<void(const std::string&)>)>>
+      dumper(std::nullopt);
+  return dumper;
+}
+
+gil_checker_t& get_gil_checker() {
+  static gil_checker_t gil_checker = nullptr;
+  return gil_checker;
+}
+
+static long computeDeltaMS(
+    std::chrono::time_point<std::chrono::steady_clock> start,
+    std::chrono::time_point<std::chrono::steady_clock> end) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+      .count();
+}
+
 static std::future<bool> launchAsyncGilCheck() {
   std::promise<bool> resultPromise;
   std::future<bool> resultFuture = resultPromise.get_future();
   TORCH_CHECK(get_gil_checker(), "Can't check GIL with null GIL checker");
   std::thread workerThread([promise = std::move(resultPromise)]() mutable {
-    c10::setThreadName("pt_nccl_gil_chk");
+    c10::setThreadName("pt_xccl_gil_chk");
 
     try {
       auto& gil_checker = get_gil_checker();
@@ -270,12 +291,7 @@ std::string dump_xccl_trace(
     bool onlyActive) {
   auto xcclDumpMap = getXCCLCommDumpMap();
   return FlightRecorder::get()->dump(
-      ncclDumpMap, includeCollectives, includeStackTraces, onlyActive);
-}
-
-gil_checker_t& get_gil_checker() {
-  static gil_checker_t gil_checker = nullptr;
-  return gil_checker;
+      xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
 }
 
 
@@ -302,6 +318,7 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
       xcclEndEvent_(w.xcclEndEvent_),
       blockingWait_(w.blockingWait_),
       workStartTime_(w.workStartTime_),
+      trace_id_(w.trace_id_),
       seq_(w.seq_) {}
 
 ProcessGroupXCCL::WorkXCCL::~WorkXCCL() = default;
@@ -388,6 +405,55 @@ bool ProcessGroupXCCL::WorkXCCL::checkTimeout(
   }
   return true;
 }
+
+void ProcessGroupXCCL::WorkXCCL::printTraceback() const {
+  std::optional<FlightRecorder::Entry> entry =
+      FlightRecorder::get()->getEntry(trace_id_);
+  if (entry.has_value()) {
+    auto entryVal = entry.value();
+    auto future = std::async(
+        std::launch::async, [&entryVal]() { return entryVal.getTraceback(); });
+    // Wait for the future to complete or timeout
+    auto status = future.wait_for(std::chrono::seconds(8));
+    if (status == std::future_status::ready) {
+      std::string tracebackStr = future.get();
+      LOG(ERROR) << "Stack trace of the failed collective: \n" << tracebackStr;
+    } // else, symbolizer probably timed out, we skip logging the stack trace.
+  } else {
+    LOG(ERROR)
+        << "Stack trace of the failed collective not found, "
+        << "potentially because FlightRecorder is disabled. "
+        << "You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.";
+  }
+}
+
+void ProcessGroupXCCL::WorkXCCL::handleException(
+    ErrorHandlingMode errorHandling) {
+  if (exception_) {
+    auto exceptionMsg = c10::str(
+        "Some XCCL operations have failed or timed out. Due to the ",
+        "asynchronous nature of XPU kernels, subsequent GPU operations ",
+        "might run on corrupted/incomplete data.");
+    LOG(ERROR) << logPrefix() << exceptionMsg;
+    C10_LOG_API_USAGE_ONCE("ProcessGroupXCCL.WorkXCCL.handleException");
+
+    auto logger = c10d::C10dLogger::getLogger();
+    if (logger) {
+      ::c10d::C10dLoggingData data;
+      data.strings["work_xccl_exception"] =
+          getExceptionMsgFromExceptionPtr(exception_);
+      logger->log(data);
+    }
+
+    if (SHOULD_TEAR_DOWN(errorHandling)) {
+      auto tearDownMsg = c10::str(
+          "To avoid data inconsistency, we are taking the entire process down.");
+      LOG(ERROR) << logPrefix() << tearDownMsg;
+      std::rethrow_exception(exception_);
+    }
+  }
+}
+
 
 const std::string& ProcessGroupXCCL::WorkXCCL::logPrefix() const {
   static std::string prefix = c10::str("[Rank ", rank_, "] ");
@@ -570,11 +636,11 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
       << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
       << includeStackTrace;
   if (traceBufferSize_ > 0) {
-    std::string ncclTrace = dump_nccl_trace(true, includeStackTrace, false);
+    std::string xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
     DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
-    writer.write(ncclTrace);
+    writer.write(xcclTrace);
     return true;
   }
   return false;
@@ -584,9 +650,11 @@ std::atomic<bool> ProcessGroupXCCL::shouldDump_(false);
 
 bool ProcessGroupXCCL::abortComms(
     const std::optional<std::string>& abortReason) {
-  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex)
-  for (auto& [_, xcclComm] : devXCCLCommMap_) {
-  }
+  //{
+  //  std::lock_guard<std::mutex> lock(xcclCommMemPoolMapMutex);
+  //  for (auto& [_, xcclComm] : devXCCLCommMap_) {
+  //  }
+  //}
   abortCommsFromMap(devXCCLCommMap_, abortReason);
   return true;
 }
@@ -598,11 +666,12 @@ void ProcessGroupXCCL::abortCommsFromMap(
   for (auto& it : xcclCommsMap) {
     auto& devName = it.first;
     auto& xcclComm = it.second;
-    VLOG(2) << logPrefix() << "ProcessGroupXCCL destroying xcclComm "
-            << c10::str((void*)xcclComm) << " on XPU device: " << devName;
-    xcclComm->abort(abortReason);
-    VLOG(2) << logPrefix() << "ProcessGroupNCCL destroyed "
-            << " communicator on CUDA device: " << devName;
+    //VLOG(2) << logPrefix() << "ProcessGroupXCCL destroying xcclComm "
+    //        << c10::str((void*)xcclComm) << " on XPU device: " << devName;
+    // TODO: What abort method do we have for communicator?
+    //xcclComm->abort(abortReason);
+    //VLOG(2) << logPrefix() << "ProcessGroupXCCL destroyed "
+    //        << " communicator on XPU device: " << devName;
     groupEnd();
   }
 }
@@ -633,7 +702,7 @@ void ProcessGroupXCCL::heartbeatMonitor() {
       if (shouldDump_.load()) {
         errorMsg = c10::str(logPrefix(),
         "Received a dump signal due to collective timeout from this local rank.");
-        // TODO: add more pgStatus_ info, as in getNCCLWatchdogTimeoutErrorMsg
+        // TODO: add more pgStatus_ info, as in getXCCLWatchdogTimeoutErrorMsg
         exitReason = "collective timeout or exception";
         break;
       }
@@ -691,14 +760,14 @@ void ProcessGroupXCCL::heartbeatMonitor() {
       //    debugLog,
       //    false);
 
-      if (complete) {
-        LOG(INFO) << logPrefix()
-                  << "Finished flight recorder successfully. Analyze using fr_trace script.";
-        if (i > 0) {
-          debugLog.strings["exception_msg"] = "Dump with stack trace failed.";
-        }
-        break;
-      }
+      //if (complete) {
+      //  LOG(INFO) << logPrefix()
+      //            << "Finished flight recorder successfully. Analyze using fr_trace script.";
+      //  if (i > 0) {
+      //    debugLog.strings["exception_msg"] = "Dump with stack trace failed.";
+      //  }
+      //  break;
+      //}
       // If we failed to dump, try without stack trace in the 2nd iteration
       dumpStackTrace = false;
     }
@@ -743,13 +812,9 @@ void ProcessGroupXCCL::heartbeatMonitor() {
   }
 
   if (!terminateHeartbeatMonitorThread_.load()) {
-    if (monitorThreadEnabled_.load()) {
-      LOG(FATAL) << logPrefix()
-          << "Terminating the process after attempting to dump debug info, due to "
-          << exitReason << ".";
-    } else {
+    {
       LOG(ERROR) << logPrefix()
-          << "ProcessGroupNCCL monitor thread is disabled, but would have terminated the process"
+          << "ProcessGroupXCCL monitor thread is disabled, but would have terminated the process"
           << "after attempting to dump debug info, due to " << exitReason << ".";
     }
   }
@@ -764,7 +829,7 @@ void ProcessGroupXCCL::xcclCommWatchdog() {
     watchdogHandler();
     VLOG(2) << "Proccess group watchdog thread terminated normally";
   } catch (const std::exception& e) {
-    const audo exitMsg = c10::str(
+    const auto exitMsg = c10::str(
         logPrefix(),
         "Proccess group watchdog thread terminated with exception: ",
         e.what());
@@ -782,7 +847,7 @@ void ProcessGroupXCCL::watchdogHandler() {
   std::list<ProcessGroupXCCL::WorkXCCL> completedWorkList;
 
   while (!done || !terminateProcessGroup_.load()) {
-    std::unique_log<std::mutex> lock(workMetaListMutex_);
+    std::unique_lock<std::mutex> lock(workMetaListMutex_);
     workMetaListCV_.wait_for(
       lock,
       std::chrono::milliseconds(kWatchdogThreadSleepMillis),
@@ -843,7 +908,7 @@ void ProcessGroupXCCL::watchdogHandler() {
         if (error_ == ErrorType::SUCCESS) {
           error_ = ErrorType::TIMEOUT;
         }
-        desyncDebugger_.run()
+        desyncDebugger_.run();
       }
 
       if (work.exception()) {
@@ -860,8 +925,7 @@ void ProcessGroupXCCL::watchdogHandler() {
         work.handleException();
       }
       desyncDebugger_.logWorkStart(work);
-      if (pgStatus_->lastStartedSeq < static_cast<int64_t>(work.seq_) &&
-          work.isStarted()) {
+      if (pgStatus_->lastStartedSeq < static_cast<int64_t>(work.seq_) /*&& work.isStarted()*/) {
         pgStatus_->lastStartedSeq = static_cast<int64_t>(work.seq_);
         pgStatus_->lastStartedWorkName = opTypeToString(work.opType_);
         pgStatus_->lastStartedNumelIn = work.numelIn_;
@@ -912,7 +976,7 @@ void ProcessGroupXCCL::workEnqueue(
     pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
     pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
     pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
-    lastWorkListUpdateTime_ = std::chrono::steady_clock::now();
+    //lastWorkListUpdateTime_ = std::chrono::steady_clock::now();
   }
 }
 
@@ -933,7 +997,8 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     OpType opType,
     const char* profilingTitle,
     const std::vector<at::Tensor>& inputs,
-    const std::vector<at::Tensor>& outputs) {
+    const std::vector<at::Tensor>& outputs,
+    bool record) {
   auto r = c10::make_intrusive<ProcessGroupXCCL::WorkXCCL>(
       device,
       rank,
@@ -941,6 +1006,23 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       seqCollective_,
       profilingTitle,
       std::optional<std::vector<at::Tensor>>(inputs));
+  if (record) {
+    bool isP2POp = isP2POp(opType);
+    r->trace_id_ = FlightRecorder::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        r->xcclStartEvent_.get(),
+        r->xcclEndEvent_.get(),
+        kBackendDefaultTimeout,
+        pgStatus_,
+        isP2P);
+  }
   return r;
 }
 
@@ -1227,6 +1309,20 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work = initWork(device, rank_, opType);
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
+    work->trace_id_ = FlightRecorder::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle,
+        {tensor},
+        {tensor},
+        work->xcclStartEvent_.get(),
+        work->xcclEndEvent_.get(),
+        kBackendDefaultTimeout,
+        pgStatus_,
+        /*isP2P=*/true);
 
     at::xpu::OptionalXPUGuard gpuGuard(device);
 
@@ -2310,7 +2406,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   // Device to use for barrier
   int barDevIdx = -1;
 
-  // See nccl barrier comments
+  // See xccl barrier comments
   if (!opts.device_ids.empty()) {
     barDevIdx = opts.device_ids[0];
   } else if (getBoundDeviceId()) {
