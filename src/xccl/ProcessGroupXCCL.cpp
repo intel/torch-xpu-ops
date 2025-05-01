@@ -6,6 +6,7 @@
 #include <torch/csrc/distributed/c10d/ProcessGroupXCCL.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 #include <c10/util/WaitCounter.h>
+#include <c10/util/thread_name.h>
 
 namespace c10d {
 
@@ -230,6 +231,8 @@ get_cpp_trace_dumper() {
       dumper(std::nullopt);
   return dumper;
 }
+
+typedef bool (*gil_checker_t)();
 
 gil_checker_t& get_gil_checker() {
   static gil_checker_t gil_checker = nullptr;
@@ -835,7 +838,10 @@ void ProcessGroupXCCL::xcclCommWatchdog() {
         e.what());
     LOG(ERROR) << exitMsg;
   } catch (...) {
-    LOG(ERROR) << logPrefix() << "Proccess group watchdog thread terminated with unknown exception.";
+    const auto exitMsg = c10::str(
+        logPrefix(),
+        "Process group watchdog thread terminated with exception: unknown");
+    LOG(ERROR) << exitMsg;
     auto watchdogException = std::make_exception_ptr(C10_BUILD_ERROR(DistBackendError, exitMsg));
     std::rethrow_exception(watchdogException);
   }
@@ -922,7 +928,7 @@ void ProcessGroupXCCL::watchdogHandler() {
             pgStatus_->lastCompletedSeq);
         work.printTraceback();
         // if dumpOnTimeoutOrEx_ broadcastDumpSignal(); sleep_for waitTimeoutDumpInMilSec_ * 4
-        work.handleException();
+        //work.handleException();
       }
       desyncDebugger_.logWorkStart(work);
       if (pgStatus_->lastStartedSeq < static_cast<int64_t>(work.seq_) /*&& work.isStarted()*/) {
@@ -1013,7 +1019,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
         seqP2P_,
-        op_id_
+        op_id_,
         profilingTitle ? profilingTitle : "",
         inputs,
         outputs,
@@ -1198,6 +1204,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   seqCollective_++;
   auto device = inputs[0].device();
   const auto key = std::to_string(device.index());
+  op_id_++;
   auto comm = getXCCLComm(key, device, opType);
 
   if (coalescing_state_ & CoalActive) {

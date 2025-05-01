@@ -186,7 +186,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       OpType opType,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
-      const std::vector<at::Tensor>& outputs = {});
+      const std::vector<at::Tensor>& outputs = {},
+      bool record = false);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
@@ -432,6 +433,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
   size_t local_id_;
+  uint64_t op_id_{0};
   std::string logPrefix_;
   std::atomic<bool> terminateProcessGroup_;
   std::atomic<bool> terminateHeartbeatMonitorThread_;
