@@ -1013,7 +1013,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle,
       std::optional<std::vector<at::Tensor>>(inputs));
   if (record) {
-    bool isP2POp = isP2POp(opType);
+    bool isP2P = isP2POp(opType);
     r->trace_id_ = FlightRecorder::get()->record(
         local_id_,
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
