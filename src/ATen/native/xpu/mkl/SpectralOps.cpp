@@ -526,7 +526,7 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
-  auto result = _fft_r2c_mkl(self, dim, normalization, /*onesided=*/true);
+  auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
 
   at::native::resize_output(out, result.sizes());
   out.copy_(result);
