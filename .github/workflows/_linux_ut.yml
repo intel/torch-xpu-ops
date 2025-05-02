@@ -259,6 +259,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install junitparser
           python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          cp ut_failure_list.csv ${{ github.workspace }}/ut_log/.
       - name: UT Test Results Check
         shell: bash
         run: |
