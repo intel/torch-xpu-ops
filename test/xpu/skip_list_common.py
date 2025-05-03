@@ -6,7 +6,7 @@ skip_dict = {
         "float8",
         # workarounds for the following tests
         # https://github.com/intel/torch-xpu-ops/issues/1214
-        "test_python_ref__refs_exp_xpu_complex128",
+        # "test_python_ref__refs_exp_xpu_complex128",
         "test_python_ref__refs_sigmoid_xpu_complex128",
         "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
@@ -35,7 +35,7 @@ skip_dict = {
         # AssertionError: The supported dtypes for sparse.sampled_addmm on device type xpu are incorrect! - OPs not supported
         "test_dtypes_sparse_sampled_addmm_xpu",
         # OPs not supported
-        "test_errors_dot_xpu",
+        # "test_errors_dot_xpu",
         "test_errors_vdot_xpu",
         # Linalg OPs not supported
         "test_noncontiguous_samples_linalg_det_xpu_float32",
@@ -54,7 +54,7 @@ skip_dict = {
         # RuntimeError: Long is not supported in oneDNN!
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+        # "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
@@ -666,7 +666,7 @@ skip_dict = {
         # Expected 9.183549615799121e-41 but got 0.0.
         # Absolute difference: 9.183549615799121e-41
         # Relative difference: 1.0
-        "test_nextafter_bfloat16_xpu_bfloat16",
+        # "test_nextafter_bfloat16_xpu_bfloat16",
     ),
     "test_scatter_gather_ops_xpu.py": (
         # AssertionError: Tensor-likes are not equal!
@@ -681,7 +681,7 @@ skip_dict = {
     ),  # Hard code CUDA, UT has already been rewritten to test/regressions/test_sort.py.
     "nn/test_embedding_xpu.py": (
         # NotImplementedError: Could not run 'aten::_indices' with arguments from the 'SparseXPU' backend.
-        "test_embedding_bag_device_xpu_int32_int32_float16",
+        # "test_embedding_bag_device_xpu_int32_int32_float16",
         "test_embedding_bag_device_xpu_int32_int32_float32",
         "test_embedding_bag_device_xpu_int32_int32_float64",
         "test_embedding_bag_device_xpu_int32_int64_float16",
