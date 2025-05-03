@@ -6,7 +6,7 @@ on:
       pytorch:
         required: false
         type: string
-        default: 'main'
+        default: 'nightly_wheel'
         description: Pytorch branch/commit
       keep_torch_xpu_ops:
         required: false
@@ -22,7 +22,8 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+        #description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_ut,` Delimiter is comma
       python:
         required: false
         type: string
@@ -285,13 +286,19 @@ jobs:
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
           done
-      - name: Upload Inductor XPU UT Log
-        if: always()
+      #- name: Upload Inductor XPU UT Log
+      #  if: always()
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+      #    path: ${{ github.workspace }}/ut_log
+      - name: Upload XPU UT Log
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
-          path: ${{ github.workspace }}/ut_log
-  
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-pytorch_distributed
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+
   distributed_ut_test:
     runs-on: pvc_e2e
     if: contains(inputs.ut, 'xpu_distributed')
@@ -426,9 +433,4 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log
-      - name: Upload XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.abi }}-pytorch_distributed
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+
