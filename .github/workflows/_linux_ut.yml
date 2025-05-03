@@ -6,7 +6,7 @@ on:
       pytorch:
         required: false
         type: string
-        default: 'nightly_wheel'
+        default: 'main'
         description: Pytorch branch/commit
       keep_torch_xpu_ops:
         required: false
@@ -22,8 +22,7 @@ on:
         required: true
         type: string
         default: ''
-        #description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
-        description: UT scope. `op_ut,` Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
       python:
         required: false
         type: string
