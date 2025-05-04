@@ -27,7 +27,7 @@ Tensor as_strided_xpu(
     const Tensor& self,
     IntArrayRef size,
     IntArrayRef stride,
-    c10::optional<int64_t> storage_offset = c10::nullopt) {
+    std::optional<int64_t> storage_offset = std::nullopt) {
   if (self.is_quantized()) {
     return at::native::as_strided_qtensorimpl(
         self, size, stride, storage_offset);

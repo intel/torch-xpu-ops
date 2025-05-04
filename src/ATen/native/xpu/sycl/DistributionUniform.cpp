@@ -19,7 +19,7 @@ void uniform_kernel(
     TensorIteratorBase& iter,
     double from,
     double to,
-    c10::optional<Generator> gen) {
+    std::optional<Generator> gen) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
       gen, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::uniform_kernel(iter, from, to, generator);
