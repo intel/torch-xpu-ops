@@ -300,6 +300,7 @@ std::string dump_xccl_trace(
 
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
+const int64_t ProcessGroupXCCL::kWatchdogThreadSleepMillis = 100;
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     at::Device& device,
