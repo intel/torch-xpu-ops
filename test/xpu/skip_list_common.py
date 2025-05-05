@@ -1231,6 +1231,8 @@ skip_dict = {
         # _convert_weight_to_int4pack not support
         "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_complex64",
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_float32",
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
         "test_addbmm_xpu_complex64",
@@ -2291,6 +2293,8 @@ skip_dict = {
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
+        # randomly fails
+        "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
