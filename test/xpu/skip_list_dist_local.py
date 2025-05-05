@@ -9,7 +9,7 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
+        # "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_False_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_True_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload1_offload_activations_False_use_orig_params_False",
@@ -37,7 +37,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/fsdp/test_fsdp_core.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_delayed_optim_step_offload_true_no_shard_xpu",
+        # "test_delayed_optim_step_offload_true_no_shard_xpu",
         "test_transformer_no_grad_mixed_precision_True_xpu",
         "test_delayed_optim_step_offload_false_no_shard_xpu",
         "test_delayed_optim_step_offload_false_none_xpu",
@@ -74,10 +74,11 @@ skip_dict = {
         "test_transformer_offload_true_none_xpu",
         "test_transformer_offload_true_shard_grad_op_xpu",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        " test_dtensor_sharded_tensor_state_dict_identical_offload_to_cpu_True_is_even_sharded_model_False_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": None,
+    # (
+    #     # https://github.com/intel/torch-xpu-ops/issues/1504
+    #     " test_dtensor_sharded_tensor_state_dict_identical_offload_to_cpu_True_is_even_sharded_model_False_xpu",
+    # ),
     "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
@@ -129,14 +130,15 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_memory.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_meta.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_misc.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1535
-        "test_fsdp_zero2_eval_with_prefetch",
+        # # https://github.com/intel/torch-xpu-ops/issues/1535
+        # "test_fsdp_zero2_eval_with_prefetch",
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_fsdp_optimizer_overlap",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": (
-        "test_buffer_dtype_no_root_handle",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
+    # (
+    #     "test_buffer_dtype_no_root_handle",
+    # ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_multi_forward_cpu",
@@ -225,30 +227,30 @@ skip_dict = {
         # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
         "test_reduce_scatter_tensor_coalesced",
         "test_reduce_scatter_tensor_single",
-        # https://github.com/intel/torch-xpu-ops/issues/1525
-        # ValueError: trying to initialize the default process group twice!
-        "test_inductor_all_gather_into_tensor_coalesced",
-        "test_inductor_all_gather_into_tensor_single",
-        "test_inductor_all_reduce_coalesced",
-        "test_inductor_all_reduce_non_contig_input",
-        "test_inductor_all_reduce_single",
-        "test_inductor_all_to_all_single",
-        "test_inductor_broadcast",
-        "test_inductor_inplace_op_on_view",
-        "test_inductor_reduce_scatter_tensor_coalesced",
-        "test_inductor_reduce_scatter_tensor_single",
-        "test_inductor_reuse_buffer_after_inplace_collective",
-        "test_ranks_and_tag",
-        "test_wait_tensor",
+        # # https://github.com/intel/torch-xpu-ops/issues/1525
+        # # ValueError: trying to initialize the default process group twice!
+        # "test_inductor_all_gather_into_tensor_coalesced",
+        # "test_inductor_all_gather_into_tensor_single",
+        # "test_inductor_all_reduce_coalesced",
+        # "test_inductor_all_reduce_non_contig_input",
+        # "test_inductor_all_reduce_single",
+        # "test_inductor_all_to_all_single",
+        # "test_inductor_broadcast",
+        # "test_inductor_inplace_op_on_view",
+        # "test_inductor_reduce_scatter_tensor_coalesced",
+        # "test_inductor_reduce_scatter_tensor_single",
+        # "test_inductor_reuse_buffer_after_inplace_collective",
+        # "test_ranks_and_tag",
+        # "test_wait_tensor",
     ),
     "../../../../test/distributed/test_c10d_logger.py": None,
     "../../../../test/distributed/test_c10d_object_collectives.py": (
-        # RuntimeError: Process 0 terminated or timed out after 300.09047198295593 seconds
-        # https://github.com/intel/torch-xpu-ops/issues/1535
-        "test_gather_object_cpu",
-        "test_gather_object_xpu",
-        "test_gather_object_list_cpu",
-        "test_gather_object_list_xpu",
+        # # RuntimeError: Process 0 terminated or timed out after 300.09047198295593 seconds
+        # # https://github.com/intel/torch-xpu-ops/issues/1535
+        # "test_gather_object_cpu",
+        # "test_gather_object_xpu",
+        # "test_gather_object_list_cpu",
+        # "test_gather_object_list_xpu",
         # RuntimeError: Process 2 exited with error code 10 and exception: ; AssertionError: Scalars are not equal!
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_scatter_object_list_cpu",
@@ -258,30 +260,30 @@ skip_dict = {
     "../../../../test/distributed/test_control_collectives.py": None,
     "../../../../test/distributed/test_device_mesh.py": None,
     "../../../../test/distributed/test_dynamo_distributed.py": (
-        # AttributeError:'torch._C._distributed_c10d.ProcessGroupXCCL' object has no attribute '_set_default_timeout'
-        "test_asymmetric_compilation",
-        "test_asymmetric_compilation_with_fx_cache",
-        # ValueError: FlexAttention is only supported on CUDA or CPU devices. Found input tensors on xpu device.
-        "test_compiled_flex_attention_full_model_ddp",
-        "test_compiled_flex_attention_local_ddp",
+        # # AttributeError:'torch._C._distributed_c10d.ProcessGroupXCCL' object has no attribute '_set_default_timeout'
+        # "test_asymmetric_compilation",
+        # "test_asymmetric_compilation_with_fx_cache",
+        # # ValueError: FlexAttention is only supported on CUDA or CPU devices. Found input tensors on xpu device.
+        # "test_compiled_flex_attention_full_model_ddp",
+        # "test_compiled_flex_attention_local_ddp",
         # torch._dynamo.exc.InternalTorchDynamoError: AttributeError: __enter__
         # https://github.com/intel/torch-xpu-ops/issues/1527
-        "test_compiler_collectives_automatic_dynamic_scalar",
-        "test_compiler_collectives_automatic_dynamic_speculation_divergence",
-        "test_compiler_collectives_automatic_dynamic_tensor",
-        "test_compiler_collectives_dim_mismatch",
-        "test_compiler_collectives_graph_break_empty_graph_still_collective",
-        "test_compiler_collectives_missing_source",
-        "test_compiler_collectives_scalar_missing_source",
-        "test_compiler_collectives_type_mismatch",
-        "test_ddp_activation_checkpointing",
-        "test_ddp_baseline_aot_eager_multiprocess",
-        "test_fsdp_activation_checkpointing",
-        "test_fsdp_aot_eager",
-        "test_fsdp_inductor",
+        # "test_compiler_collectives_automatic_dynamic_scalar",
+        # "test_compiler_collectives_automatic_dynamic_speculation_divergence",
+        # "test_compiler_collectives_automatic_dynamic_tensor",
+        # "test_compiler_collectives_dim_mismatch",
+        # "test_compiler_collectives_graph_break_empty_graph_still_collective",
+        # "test_compiler_collectives_missing_source",
+        # "test_compiler_collectives_scalar_missing_source",
+        # "test_compiler_collectives_type_mismatch",
+        # "test_ddp_activation_checkpointing",
+        # "test_ddp_baseline_aot_eager_multiprocess",
+        # "test_fsdp_activation_checkpointing",
+        # "test_fsdp_aot_eager",
+        # "test_fsdp_inductor",
         "test_fsdp_setattr",
-        "test_fsdp_unspecialized_forced_getattr_inline",
-        "test_fsdp_unspecialized_forced_getattr_no_inline",
+        # "test_fsdp_unspecialized_forced_getattr_inline",
+        # "test_fsdp_unspecialized_forced_getattr_no_inline",
     ),
     "../../../../test/distributed/test_fake_pg.py": None,
     "../../../../test/distributed/test_functional_api.py": None,
@@ -299,11 +301,12 @@ skip_dict = {
         "test_inductor_reduce_scatter_coalesced",
         "test_inductor_all_gather_coalesced",
     ),
-    "../../../../test/distributed/test_multi_threaded_pg.py": (
-        # oneccl not support multi-threaded well, so skip it first.
-        # https://github.com/intel/torch-xpu-ops/issues/1509
-        "test_bwd_sees_fwd_pg",
-    ),
+    "../../../../test/distributed/test_multi_threaded_pg.py": None,
+    # (
+    #     # oneccl not support multi-threaded well, so skip it first.
+    #     # https://github.com/intel/torch-xpu-ops/issues/1509
+    #     "test_bwd_sees_fwd_pg",
+    # ),
     "../../../../test/distributed/test_store.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
@@ -408,10 +411,11 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_attention.py": None,
     "../../../../test/distributed/tensor/test_common_rules.py": None,
     "../../../../test/distributed/tensor/test_dtensor.py": None,
-    "../../../../test/distributed/tensor/test_dtensor_compile.py": (
-        # https://jira.devtools.intel.com/browse/MLSL-3625
-        "test_2d_fsdp_tp_compile",
-    ),
+    "../../../../test/distributed/tensor/test_dtensor_compile.py": None,
+    # (
+    #     # https://jira.devtools.intel.com/browse/MLSL-3625
+    #     "test_2d_fsdp_tp_compile",
+    # ),
     "../../../../test/distributed/tensor/test_experimental_ops.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1535
         "test_bernoulli",
@@ -451,10 +455,10 @@ skip_dict = {
         "test_aten_contiguous",
         "test_gather",
         "test_index",
-        "test_op_out_variant",
+        # "test_op_out_variant",
         "test_slice",
         "test_stack",
-        "test_where_type_promotion",
+        # "test_where_type_promotion",
     ),
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -482,10 +486,11 @@ skip_dict = {
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_train_mixed_requires_grad_per_group",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_grad_scaler.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1508
-        "test_gradient_scaler",
-    ),
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_grad_scaler.py": None,
+    # (
+    #     # https://github.com/intel/torch-xpu-ops/issues/1508
+    #     "test_gradient_scaler",
+    # ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_ignore_params.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_init.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_logging.py": None,
