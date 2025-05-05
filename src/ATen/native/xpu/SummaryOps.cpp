@@ -9,7 +9,7 @@ namespace native {
 
 Tensor _bincount_xpu(
     const Tensor& self,
-    const c10::optional<Tensor>& weights_opt,
+    const std::optional<Tensor>& weights_opt,
     int64_t minlength) {
   c10::MaybeOwned<Tensor> weights_maybe_owned =
       at::borrow_from_optional_tensor(weights_opt);

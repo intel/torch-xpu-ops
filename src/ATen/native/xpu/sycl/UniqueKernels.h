@@ -8,7 +8,7 @@ TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor> unique_consecutive_kernel(
     const Tensor& self,
     const bool return_inverse,
     const bool return_counts,
-    c10::optional<int64_t> dim);
+    std::optional<int64_t> dim);
 
 TORCH_XPU_API std::tuple<Tensor, Tensor, Tensor> unique_dim_consecutive_kernel(
     const Tensor& self,

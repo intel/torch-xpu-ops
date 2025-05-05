@@ -247,7 +247,7 @@ void upsample_nearest1d_kernel(
     const Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
-    c10::optional<double> scales,
+    std::optional<double> scales,
     bool is_exact) {
   TensorArg input_arg{input_, "input_", 1};
   TensorArg output_arg{output, "output", 2};

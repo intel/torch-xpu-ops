@@ -66,7 +66,7 @@ static void compute_xpu(
 
 Tensor repeat_interleave_kernel(
     const Tensor& repeat,
-    c10::optional<int64_t> output_size) {
+    std::optional<int64_t> output_size) {
   Tensor output;
 
   AT_DISPATCH_INDEX_TYPES(repeat.scalar_type(), "repeat_interleave_xpu", [&] {

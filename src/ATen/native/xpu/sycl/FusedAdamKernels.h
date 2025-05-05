@@ -16,8 +16,8 @@ TORCH_XPU_API void fused_adam_amsgrad_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const c10::optional<at::Tensor>& grad_scale,
-    const c10::optional<at::Tensor>& found_inf);
+    const std::optional<at::Tensor>& grad_scale,
+    const std::optional<at::Tensor>& found_inf);
 
 TORCH_XPU_API void fused_adam_amsgrad_kernel(
     at::TensorList params,
@@ -32,8 +32,8 @@ TORCH_XPU_API void fused_adam_amsgrad_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const c10::optional<at::Tensor>& grad_scale,
-    const c10::optional<at::Tensor>& found_inf);
+    const std::optional<at::Tensor>& grad_scale,
+    const std::optional<at::Tensor>& found_inf);
 
 TORCH_XPU_API void fused_adam_kernel(
     at::TensorList params,
@@ -47,8 +47,8 @@ TORCH_XPU_API void fused_adam_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const c10::optional<at::Tensor>& grad_scale,
-    const c10::optional<at::Tensor>& found_inf);
+    const std::optional<at::Tensor>& grad_scale,
+    const std::optional<at::Tensor>& found_inf);
 
 TORCH_XPU_API void fused_adam_kernel(
     at::TensorList params,
@@ -62,7 +62,7 @@ TORCH_XPU_API void fused_adam_kernel(
     const double weight_decay,
     const double eps,
     const bool maximize,
-    const c10::optional<at::Tensor>& grad_scale,
-    const c10::optional<at::Tensor>& found_inf);
+    const std::optional<at::Tensor>& grad_scale,
+    const std::optional<at::Tensor>& found_inf);
 
 } // namespace at::native::xpu

@@ -115,7 +115,7 @@ inline scalar_t max(scalar_t a, scalar_t b) {
 
 template <typename accscalar_t>
 static inline accscalar_t compute_scales_value(
-    const c10::optional<double> scale,
+    const std::optional<double> scale,
     int64_t src_size,
     int64_t dst_size) {
   return (scale.has_value() && scale.value() > 0.)
@@ -125,7 +125,7 @@ static inline accscalar_t compute_scales_value(
 
 template <typename accscalar_t>
 static inline accscalar_t compute_scales_value_backwards(
-    const c10::optional<double> scale,
+    const std::optional<double> scale,
     int64_t src_size,
     int64_t dst_size) {
   return (scale.has_value() && scale.value() > 0.)
@@ -138,7 +138,7 @@ static inline accscalar_t area_pixel_compute_scale(
     int input_size,
     int output_size,
     bool align_corners,
-    const c10::optional<double> scale) {
+    const std::optional<double> scale) {
   if (align_corners) {
     if (output_size > 1) {
       return (accscalar_t)(input_size - 1) / (output_size - 1);

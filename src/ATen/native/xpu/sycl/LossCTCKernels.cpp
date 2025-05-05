@@ -263,6 +263,7 @@ std::tuple<Tensor, Tensor> ctc_loss_kernel_template(
     IntArrayRef input_lengths,
     IntArrayRef target_lengths,
     int64_t BLANK) {
+  TORCH_CHECK(log_probs.numel() > 0, "log_probs tensor must not be empty");
   // log_probs: input_len x batch_size x num_labels
   // targets [int64]: batch_size x target_length OR sum(target_lengths)
   CheckedFrom c = "ctc_loss_kernel";

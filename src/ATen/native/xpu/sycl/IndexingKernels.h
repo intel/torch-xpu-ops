@@ -42,7 +42,7 @@ TORCH_XPU_API void index_put_kernel(
 
 TORCH_XPU_API void index_put_deterministic_kernel(
     Tensor& self,
-    const c10::List<c10::optional<Tensor>>& indices,
+    const c10::List<std::optional<Tensor>>& indices,
     const Tensor& value,
     bool accumulate,
     bool unsafe);

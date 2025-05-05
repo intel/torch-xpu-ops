@@ -16,7 +16,7 @@ namespace xpu {
 void bernoulli_tensor_kernel(
     const TensorBase& self,
     const TensorBase& p_,
-    c10::optional<Generator> gen_) {
+    std::optional<Generator> gen_) {
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   at::native::templates::xpu::bernoulli_kernel(self, p_, generator);
@@ -25,7 +25,7 @@ void bernoulli_tensor_kernel(
 void bernoulli_scalar_kernel(
     const TensorBase& self,
     double p,
-    c10::optional<Generator> gen) {
+    std::optional<Generator> gen) {
   auto iter = TensorIterator::borrowing_nullary_op(self);
   auto generator = get_generator_or_default<at::XPUGeneratorImpl>(
       gen, at::xpu::detail::getDefaultXPUGenerator());

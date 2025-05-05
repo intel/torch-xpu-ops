@@ -224,7 +224,7 @@ std::vector<Tensor> foreach_norm_kernel(
     TensorList tensors,
     const Scalar& ord,
     double p,
-    c10::optional<ScalarType> dtype) {
+    std::optional<ScalarType> dtype) {
   const int ntensors = tensors.size();
   const ScalarType output_dtype = // tensors[0].scalar_type();
       dtype.has_value() ? dtype.value() : tensors[0].scalar_type();

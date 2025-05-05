@@ -10,8 +10,8 @@ namespace at::detail {
 TensorBase empty_xpu(
     IntArrayRef size,
     ScalarType dtype,
-    c10::optional<Device> device_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt) {
+    std::optional<Device> device_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
   at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_xpu());
@@ -24,11 +24,11 @@ TensorBase empty_xpu(
 
 TensorBase empty_xpu(
     IntArrayRef size,
-    c10::optional<ScalarType> dtype_opt,
-    c10::optional<Layout> layout_opt,
-    c10::optional<Device> device_opt,
-    c10::optional<bool> pin_memory_opt,
-    c10::optional<c10::MemoryFormat> memory_format_opt) {
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt,
+    std::optional<c10::MemoryFormat> memory_format_opt) {
   TORCH_CHECK(
       !pin_memory_opt.has_value() || !*pin_memory_opt,
       "Only dense CPU tensors can be pinned");
@@ -53,7 +53,7 @@ TensorBase empty_strided_xpu(
     IntArrayRef size,
     IntArrayRef stride,
     ScalarType dtype,
-    c10::optional<Device> device_opt) {
+    std::optional<Device> device_opt) {
   at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_xpu());
@@ -67,10 +67,10 @@ TensorBase empty_strided_xpu(
 TensorBase empty_strided_xpu(
     IntArrayRef size,
     IntArrayRef stride,
-    c10::optional<ScalarType> dtype_opt,
-    c10::optional<Layout> layout_opt,
-    c10::optional<Device> device_opt,
-    c10::optional<bool> pin_memory_opt) {
+    std::optional<ScalarType> dtype_opt,
+    std::optional<Layout> layout_opt,
+    std::optional<Device> device_opt,
+    std::optional<bool> pin_memory_opt) {
   TORCH_CHECK(
       !pin_memory_opt.has_value() || !*pin_memory_opt,
       "Only dense CPU tensors can be pinned");

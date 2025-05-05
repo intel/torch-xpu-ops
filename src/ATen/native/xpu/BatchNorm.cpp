@@ -231,8 +231,8 @@ _batch_norm_legit_no_stats_xpu_out(
 
 std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     Tensor& running_mean,
     Tensor& running_var,
     double momentum,
@@ -271,8 +271,8 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
 
 std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> _batch_norm_with_update_xpu_out(
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     Tensor& running_mean,
     Tensor& running_var,
     double momentum,

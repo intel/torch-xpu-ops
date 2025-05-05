@@ -55,7 +55,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _embedding_bag_forward_only_xpu(
     bool scale_grad_by_freq,
     int64_t mode,
     bool sparse,
-    const c10::optional<Tensor>& per_sample_weights_opt,
+    const std::optional<Tensor>& per_sample_weights_opt,
     bool include_last_offset,
     int64_t padding_idx) {
   return _embedding_bag_xpu(
@@ -79,7 +79,7 @@ Tensor _embedding_bag_dense_backward_xpu(
     int64_t num_weights,
     bool scale_grad_by_freq,
     int64_t mode,
-    const c10::optional<at::Tensor>& per_sample_weights_opt,
+    const std::optional<at::Tensor>& per_sample_weights_opt,
     int64_t padding_idx) {
   c10::MaybeOwned<Tensor> per_sample_weights_maybe_owned =
       at::borrow_from_optional_tensor(per_sample_weights_opt);

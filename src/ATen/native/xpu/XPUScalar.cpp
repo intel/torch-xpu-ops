@@ -16,10 +16,10 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
         auto value = at::detail::empty_cpu(
             {1}, /* size */
             c10::CppTypeToScalarType<scalar_t>(), /* dtype */
-            c10::nullopt, /* layout */
-            c10::nullopt, /* device */
+            std::nullopt, /* layout */
+            std::nullopt, /* device */
             false, /* pin_memory */
-            c10::nullopt /* memory format */
+            std::nullopt /* memory format */
         );
 
         auto queue = at::xpu::getCurrentSYCLQueue();

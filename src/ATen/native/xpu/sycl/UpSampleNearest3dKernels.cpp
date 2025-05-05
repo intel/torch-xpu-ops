@@ -136,9 +136,9 @@ void upsample_nearest3d_kernel(
     const Tensor& output,
     const Tensor& input_,
     IntArrayRef output_size,
-    c10::optional<double> scales_d,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w,
+    std::optional<double> scales_d,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w,
     bool is_exact) {
   TensorArg input_arg{input_, "input_", 1};
   TensorArg output_arg{output, "output", 2};
@@ -351,9 +351,9 @@ void upsample_nearest3d_backward_kernel(
     const Tensor& grad_output_,
     IntArrayRef output_size,
     IntArrayRef input_size,
-    c10::optional<double> scales_d,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w,
+    std::optional<double> scales_d,
+    std::optional<double> scales_h,
+    std::optional<double> scales_w,
     bool is_exact) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1};
   TensorArg grad_output_arg{grad_output_, "grad_output_", 2};

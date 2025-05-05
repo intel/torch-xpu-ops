@@ -2279,8 +2279,8 @@ Tensor _safe_softmax_kernel(
 Tensor masked_softmax_kernel(
     const Tensor& input_,
     const Tensor& mask_,
-    const c10::optional<int64_t> dim_,
-    const c10::optional<int64_t> mask_type_) {
+    const std::optional<int64_t> dim_,
+    const std::optional<int64_t> mask_type_) {
   Tensor output = at::empty_like(input_, input_.options());
   TORCH_CHECK(
       mask_.scalar_type() == ScalarType::Bool,
@@ -2340,7 +2340,7 @@ Tensor masked_softmax_backward_kernel(
     const Tensor& grad_,
     const Tensor& output_,
     const Tensor& mask_,
-    const c10::optional<int64_t> dim_) {
+    const std::optional<int64_t> dim_) {
   Tensor grad_input = at::empty_like(grad_, grad_.options());
   if (grad_.numel() == 0) {
     return grad_input;

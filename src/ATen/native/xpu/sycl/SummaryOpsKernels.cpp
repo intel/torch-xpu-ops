@@ -290,9 +290,9 @@ Tensor bincount_template(
     output = at::zeros(
         {nbins},
         kLong,
-        c10::nullopt /* layout */,
+        std::nullopt /* layout */,
         DeviceType::XPU,
-        c10::nullopt /* pin_memory */);
+        std::nullopt /* pin_memory */);
     tensor_histogram<
         typename c10::impl::ScalarTypeToCPPType<kLong>::type,
         input_t,

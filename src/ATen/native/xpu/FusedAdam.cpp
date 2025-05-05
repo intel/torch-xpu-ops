@@ -86,8 +86,8 @@ void _fused_adam_kernel_xpu_(
     const double eps,
     const bool amsgrad,
     const bool maximize,
-    const c10::optional<at::Tensor>& grad_scale,
-    const c10::optional<at::Tensor>& found_inf) {
+    const std::optional<at::Tensor>& grad_scale,
+    const std::optional<at::Tensor>& found_inf) {
   if (lr.is_cpu()) {
     _fused_adam_kernel_xpu_(
         params,

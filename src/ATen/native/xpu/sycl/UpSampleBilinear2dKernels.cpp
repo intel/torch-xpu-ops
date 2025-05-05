@@ -420,14 +420,14 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
           int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
           int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
           bool is_boundary_w =
-              !((point_w > input_width_) &&
-                (point_w < output_width_ * input_width_ * 2 - input_width_));
+              !((point_w >= output_width_) &&
+                (point_w <= output_width_ * input_width_ * 2 - output_width_));
           // scale is 1 if on boundary
           distance_w =
               distance_w + is_boundary_w * (output_width_ * 2 - distance_w);
           bool is_boundary_h =
-              !((point_h > input_height_) &&
-                (point_h < output_height_ * input_height_ * 2 - input_height_));
+              !((point_h >= output_height_) &&
+                (point_h <= output_height_ * input_height_ * 2 - output_height_));
           distance_h =
               distance_h + is_boundary_h * (output_height_ * 2 - distance_h);
           accscalar_t scale =
@@ -872,8 +872,8 @@ void upsample_bilinear2d_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input, "input", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -972,8 +972,8 @@ void upsample_bilinear2d_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
@@ -1509,8 +1509,8 @@ void upsample_gen2d_aa_out_kernel(
     const Tensor& input_,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input_, "input_", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -1577,8 +1577,8 @@ void upsample_gen2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(
@@ -1643,8 +1643,8 @@ void _upsample_bilinear2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
@@ -1656,8 +1656,8 @@ void _upsample_bilinear2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       grad_input,
@@ -1674,8 +1674,8 @@ void _upsample_bicubic2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
 }
@@ -1686,8 +1686,8 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BicubicFilterFunctor>(
       grad_input,
