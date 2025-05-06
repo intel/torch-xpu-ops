@@ -2,6 +2,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
+#include <ATen/native/xpu/sycl/FFTKernelFunctor.h>
 #include <ATen/ops/complex.h>
 #include <ATen/ops/imag.h>
 #include <ATen/ops/mul.h>
@@ -52,6 +53,7 @@ void _mkl_dft(
 
   auto istrides = input.strides();
   auto ostrides = output.strides();
+
   int64_t idist = istrides[0];
   int64_t odist = ostrides[0];
 
@@ -105,7 +107,7 @@ void _mkl_dft(
   Tensor workspaceBuf = at::empty(
       {(long)(workspaceSizeBytes / sizeof(double))},
       input.options().dtype(at::kDouble),
-      c10::nullopt);
+      std::nullopt);
   desc.set_workspace((double*)workspaceBuf.mutable_data_ptr());
 
   auto in_data = (scalar_t*)input.const_data_ptr();
@@ -475,6 +477,117 @@ Tensor& _fft_c2r_mkl_out(
   at::native::resize_output(out, result.sizes());
   return impl::_fft_apply_normalization_out(
       out, result, normalization, result.sizes(), dim);
+}
+
+REGISTER_XPU_DISPATCH(
+    fft_fill_with_conjugate_symmetry_stub,
+    &_fft_fill_with_conjugate_symmetry_xpu);
+
+Tensor _fft_r2c_mkl(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
+  auto input_sizes = self.sizes();
+  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
+  onesided_sizes[last_dim] = last_dim_halfsize;
+
+  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
+
+  auto sorted_dims = impl::_sort_dims(self, dim, /*exclude_last=*/true);
+  auto out = at::empty(
+      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+
+  auto working_tensor = self.clone(MemoryFormat::Contiguous);
+
+  // First do the R2C transform on the last dimension
+  impl::_exec_fft(
+      out, working_tensor, out_sizes, last_dim, onesided, /*forward=*/true);
+
+  if (dim.size() > 1) {
+    working_tensor = at::empty(
+        out_sizes,
+        self.options().dtype(c10::toComplexType(self.scalar_type())));
+  }
+
+  sorted_dims.resize(sorted_dims.size() - 1);
+
+  while (!sorted_dims.empty()) {
+    if (working_tensor.is_same(self)) {
+      working_tensor = std::move(out);
+      out = at::empty(
+          out_sizes,
+          self.options().dtype(c10::toComplexType(self.scalar_type())));
+    } else {
+      std::swap(out, working_tensor);
+    }
+
+    const auto max_dims =
+        std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
+    auto fft_dims =
+        IntArrayRef(sorted_dims).slice(sorted_dims.size() - max_dims, max_dims);
+    impl::_exec_fft(
+        out,
+        working_tensor,
+        out_sizes,
+        fft_dims,
+        onesided,
+        /*forward=*/true);
+    sorted_dims.resize(sorted_dims.size() - max_dims);
+
+    if (sorted_dims.empty()) {
+      break;
+    }
+
+    sorted_dims = impl::_sort_dims(self, sorted_dims);
+  }
+
+  // Only need to normalize the onesided slice since data in the other half is
+  // overwritten
+  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
+  working_tensor = self;
+  if (!onesided) {
+    if (out.sizes()[last_dim] != out_sizes[last_dim]) {
+      working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
+      working_tensor.slice(last_dim, 0, last_dim_halfsize).copy_(out);
+      out = std::move(working_tensor);
+    }
+    at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+  }
+
+  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+}
+
+Tensor& _fft_r2c_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided,
+    Tensor& out) {
+  auto result = _fft_r2c_mkl(
+      self, dim, static_cast<int64_t>(fft_norm_mode::none), /*onesided=*/true);
+
+  if (onesided) {
+    return impl::_fft_apply_normalization_out(
+        out, result, normalization, self.sizes(), dim);
+  }
+
+  at::native::resize_output(out, self.sizes());
+
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = result.sizes()[last_dim];
+  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
+
+  impl::_fft_apply_normalization_out(
+      out_slice, result, normalization, self.sizes(), dim);
+  at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+  return out;
 }
 
 } // namespace at::native::xpu

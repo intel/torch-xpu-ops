@@ -249,7 +249,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
         q.memcpy(dst, src, nbytes);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(src),
             iter.tensor(1).storage().data_ptr().get_context(),
             at::xpu::getCurrentXPUStream());
@@ -259,7 +259,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         // by CPU tensor factory won't be cached in CPU allocator. When host
         // memory is freed with CPU tensor dtor at the end of train main loop,
         // but the corresponding H2D copy might not have been executed yet.
-        auto stage_mem_dptr = at::xpu::HostAlloc(nbytes);
+        auto stage_mem_dptr = at::getHostAllocator(at::kXPU)->allocate(nbytes);
         void* stage_mem = stage_mem_dptr.get();
         if (!stage_mem) {
           throw std::runtime_error(
@@ -268,7 +268,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
         std::memcpy(stage_mem, src, nbytes);
         q.memcpy(dst, stage_mem, nbytes);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(stage_mem),
             stage_mem_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
@@ -276,7 +276,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
     } else {
       q.memcpy(dst, src, nbytes);
       if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(dst),
             iter.tensor(0).storage().data_ptr().get_context(),
             at::xpu::getCurrentXPUStream());

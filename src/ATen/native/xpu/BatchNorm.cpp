@@ -231,8 +231,8 @@ _batch_norm_legit_no_stats_xpu_out(
 
 std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     Tensor& running_mean,
     Tensor& running_var,
     double momentum,
@@ -240,7 +240,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
   c10::MaybeOwned<Tensor> weight_maybe_owned =
       at::borrow_from_optional_tensor(weight_opt);
   const Tensor& weight = *weight_maybe_owned;
-  const Tensor& bias = c10::value_or_else(bias_opt, [] { return Tensor(); });
+  const Tensor& bias = bias_opt.value_or(Tensor());
   Tensor reserve;
 
   reserve = at::empty({0}, input.options().dtype(kByte));
@@ -271,8 +271,8 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
 
 std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> _batch_norm_with_update_xpu_out(
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     Tensor& running_mean,
     Tensor& running_var,
     double momentum,
@@ -284,7 +284,7 @@ std::tuple<Tensor&, Tensor&, Tensor&, Tensor&> _batch_norm_with_update_xpu_out(
   c10::MaybeOwned<Tensor> weight_maybe_owned =
       at::borrow_from_optional_tensor(weight_opt);
   const Tensor& weight = *weight_maybe_owned;
-  const Tensor& bias = c10::value_or_else(bias_opt, [] { return Tensor(); });
+  const Tensor& bias = bias_opt.value_or(Tensor());
 
   std::tie(out, save_mean, save_var) = xpu::batch_norm_kernel(
       input,
@@ -315,14 +315,10 @@ std::tuple<Tensor, Tensor, Tensor> _new_batch_norm_backward_xpu(
     double eps,
     std::array<bool, 3> grad_input_mask,
     const Tensor& reserve) {
-  const Tensor& running_mean =
-      c10::value_or_else(running_mean_opt, [] { return Tensor(); });
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
-  const Tensor& save_mean =
-      c10::value_or_else(save_mean_opt, [] { return Tensor(); });
-  const Tensor& save_var =
-      c10::value_or_else(save_var_opt, [] { return Tensor(); });
+  const Tensor& running_mean = running_mean_opt.value_or(Tensor());
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
+  const Tensor& save_mean = save_mean_opt.value_or(Tensor());
+  const Tensor& save_var = save_var_opt.value_or(Tensor());
   return xpu::batch_norm_backward_kernel(
       grad_output,
       input,

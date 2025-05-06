@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pytorch:
-        required: false
+        required: true
         type: string
         default: 'main'
         description: Pytorch branch/commit
@@ -13,6 +13,11 @@ on:
         type: string
         default: 'false'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
+      driver:
+        required: false
+        type: string
+        default: 'lts'
+        description: Driver lts/rolling
       python:
         required: false
         type: string
@@ -23,11 +28,6 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      driver:
-        required: false
-        type: string
-        default: 'lts'
-        description: Driver lts/rolling
       update_lkg:
         required: false
         type: string
@@ -44,68 +44,85 @@ permissions:
 jobs:
   build:
     runs-on: ${{ inputs.runner }}
+    container:
+      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      env:
+        PATH: /opt/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        commit_issue: 1280
+        GH_TOKEN: ${{ github.token }}
+        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     outputs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
-    env:
-      commit_issue: 1280
-      GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
+      - name: Setup based env
+        run: |
+          # Cleanup workspace
+          rm -rf ${{ github.workspace }}/*
+          # Install gh
+          dnf install 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf autoremove -y git236* && dnf install -y git
+          dnf install gh --repo gh-cli -y
+          # Setup python
+          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
+          which python && python -V && pip list
+          pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_build || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
-          conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
-          source activate xpu_build
-          cd ../ && rm -rf pytorch
-          pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-          # apply PRs for stock pytorch
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          git submodule sync && git submodule update --init --recursive
-          if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+        with:
+          path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
           set -xe
-          source activate xpu_build
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
-          export USE_ONEMKL=1
-          export USE_XCCL=1
-          if [[ ${{ inputs.driver }} == 'lts' ]]; then
-            export TORCH_XPU_ARCH_LIST='pvc'
+          if [ "${{ inputs.driver }}" == "lts" ]; then
+              export TORCH_XPU_ARCH_LIST='pvc'
           fi
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+            PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
+          else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+            PYTORCH_VERSION="${{ inputs.pytorch }}"
+          fi
+          if [[ "${{ inputs.keep_torch_xpu_ops }}" == *"https://"* ]];then
+            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/@.*//')"
+            TORCH_XPU_OPS_VERSION="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/.*@//')"
+          elif [ "${{ inputs.keep_torch_xpu_ops }}" == "true" ];then
+            TORCH_XPU_OPS_VERSION="pinned"
+          else
+            TORCH_XPU_OPS_VERSION="cicd"
+          fi
+          # oneAPI DLE
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          icpx --version
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
+          build_status="$(
+              ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
+                --WORKSPACE="${{ github.workspace }}" \
+                --PYTORCH_REPO="${PYTORCH_REPO}" \
+                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+                --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
+                --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
+              > ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log 2>&1 && echo $? || echo $?
+          )"
+          tail -n 100 ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
           build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           repo="${{ github.repository }}"
           last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
-          cd ../pytorch
-          current_commit=$(git rev-parse HEAD)
+          current_commit=$(cat ${{ github.workspace }}/pytorch.commit)
           is_fork_pr=false
           if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             is_fork_pr=true
           fi
           echo ">>>>>>>>>>>>Fork PR: ${is_fork_pr}, pytorch branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
-
-          export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-          pip install -r requirements.txt
-          WERROR=1 python setup.py bdist_wheel 2>&1 | tee pytorch_${current_commit}_build.log
-
           if [[ "${is_fork_pr}" == "false" ]]; then
-            if [ -f dist/torch*.whl ] && \
+            if [ "${build_status}" == "0" ] && \
                 [ "${{ inputs.update_lkg }}" == "true" ] && \
                 [ "${last_commit}" != "${current_commit}" ] && \
                 [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
@@ -114,55 +131,34 @@ jobs:
               gh --repo $repo issue edit $commit_issue --body-file new_body.txt
               gh --repo $repo issue comment $commit_issue -b "Update LKG torch, refer ${build_url}"
             fi
-            if [ ! -f dist/torch*.whl ]; then
+            if [ ! -f ${{ github.workspace }}/torch*.whl ] && [ "${TORCH_XPU_OPS_VERSION}" == "cicd" ]; then
               echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
               gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
-              python setup.py clean
-              git clean -df .
-              git reset --hard
-              git checkout $last_commit
-              # apply PRs for stock pytorch
-              python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-              git status && git show -s
-              git submodule sync && git submodule update --init --recursive
-              if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-                echo "Don't replace torch-xpu-ops!"
-              else
-                rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-                # Workaround for torch-xpu-ops ci test
-                sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-              fi
-              WERROR=1 python setup.py bdist_wheel
+              build_status="$(
+                ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
+                --WORKSPACE="${{ github.workspace }}" \
+                --PYTORCH_REPO="https://github.com/pytorch/pytorch.git" \
+                --PYTORCH_VERSION="${last_commit}" \
+                --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
+                --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
+                  >> ${{ github.workspace }}/pytorch_build_${last_commit}.log 2>&1 && echo $? || echo $?
+              )"
+              tail -n 100 ${{ github.workspace }}/pytorch_build_${last_commit}.log
             fi
           else
             echo "Forked PR, don't update the issue"
           fi
-          pip install --force-reinstall dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}/
-          cp pytorch_${current_commit}_build.log ${{ github.workspace }}/
+          exit ${build_status}
       - name: Torch Config
         run: |
-          source activate xpu_build
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          cd ..
           python pytorch/torch/utils/collect_env.py
       - name: Identify Build version
         id: build_version
         run: |
-          source .github/scripts/env.sh
-          cd ../pytorch
-          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          . /etc/os-release
-          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo ${GITHUB_ENV}
+          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -175,3 +171,8 @@ jobs:
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/pytorch_*.log
+      - name: Cleanup
+        if: always()
+        run: |
+          chmod 777 . -R
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl
