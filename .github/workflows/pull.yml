@@ -96,7 +96,7 @@ jobs:
           # apply PRs for stock pytorch
           pip install requests
           # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_trch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
           git status && git show -s
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test
