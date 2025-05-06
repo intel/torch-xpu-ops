@@ -172,6 +172,7 @@ class LayerNormBackward : public NormBackward<scalar_t, mean_t, weight_t> {
 
 constexpr int vec_size =
     4; // we could make it dependent on dtype, but that would lead to different
+       // results between float and low-p types
 
 // Checks alignment of buffers for using vectorized loads / stores
 template <typename T>
