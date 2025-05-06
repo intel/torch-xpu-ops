@@ -79,7 +79,7 @@ def appyly_pr(pr_info, re_apply_msg):
         sys.exit(1)
 
 
-github_token = os.environ.get("GITHUB_TOKEN")
+github_token = os.environ.get("GH_TOKEN")
 headers = {'Authorization': 'Bearer ' + github_token}
 pr_list = args.pr_list + args.extra_pr_list
 pr_list = set(pr_list)
