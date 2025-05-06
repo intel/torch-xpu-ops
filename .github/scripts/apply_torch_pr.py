@@ -5,6 +5,7 @@ import urllib
 import subprocess
 import sys
 import time
+import os
 
 
 parser = argparse.ArgumentParser()
@@ -58,7 +59,12 @@ def check_merged(pr_info):
 def appyly_pr(pr_info, re_apply_msg):
     # get pr diff
     pr_file = pr_info["diff_url"].split("/")[-1]
-    urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
+    with requests.get(pr_info["diff_url"], stream=True, headers=headers) as r:
+        r.raise_for_status()
+        with open(pr_file, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=2048):
+                f.write(chunk)
+    # urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
     # apply diff
     apply_cmd = "git apply --3way " + pr_file
     apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
@@ -72,33 +78,16 @@ def appyly_pr(pr_info, re_apply_msg):
         print(apply_status, apply_message)
         sys.exit(1)
 
-def make_request_with_retry(url, max_retries=5):
-    retries = 0
-    while retries < max_retries:
-        response = requests.get(url, timeout=60)
-        if response.status_code == 429:
-            try:
-                retry_after = int(response.headers.get("Retry-After", 2))
-            except ValueError:
-                retry_after = 2
-            print(f"Too many requests. Retrying in {retry_after} seconds...")
-            time.sleep(retry_after)
-            retries += 1
-        else:
-            return response.json()
-    print("Max retries exceeded. Request failed.")
-    return None
 
-
-# headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
+github_token = os.environ.get("GITHUB_TOKEN")
+headers = {'Authorization': 'Bearer ' + github_token}
 pr_list = args.pr_list + args.extra_pr_list
 pr_list = set(pr_list)
 pr_list = sorted(pr_list)
 for pr_link in pr_list:
     repo_info = pr_link.split("/")
-    pr_info = make_request_with_retry('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
-                        repo_info[-3] + '/pulls/' + repo_info[-1])
-
+    pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
+                        repo_info[-3] + '/pulls/' + repo_info[-1], headers=headers, timeout=60).json()
     if pr_info["state"].lower() == "open":
         # for reverted PR
         reverted_id = next((item["id"] for item in pr_info["labels"] if item["name"] == "Reverted"), -1)
