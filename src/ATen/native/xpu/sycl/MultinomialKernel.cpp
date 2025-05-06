@@ -93,8 +93,8 @@ inline void renormRows(Tensor& t) {
   int64_t rows = t.size(0);
   int64_t cols = t.size(1);
   int subgroup_size = syclMaxSubGroupSize();
-  int group_size =
-      std::min(int(syclMaxWorkItemsPerEU()), subgroup_size* subgroup_size);
+  int group_size = std::min(
+      int(syclMaxWorkItemsPerSubSlice()), subgroup_size* subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
@@ -422,7 +422,7 @@ void multinomial_kernel(
     Tensor& result,
     const Tensor& self,
     const int64_t n_sample,
-    c10::optional<Generator> generator) {
+    std::optional<Generator> generator) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       generator, at::xpu::detail::getDefaultXPUGenerator());
@@ -476,27 +476,27 @@ void multinomial_kernel(
         } else {
           Tensor origDist = native::empty_like(
               self_v,
-              c10::nullopt /* dtype */,
-              c10::nullopt /* layout */,
-              c10::nullopt /* device */,
-              c10::nullopt /* pin_memory */,
+              std::nullopt /* dtype */,
+              std::nullopt /* layout */,
+              std::nullopt /* device */,
+              std::nullopt /* pin_memory */,
               LEGACY_CONTIGUOUS_MEMORY_FORMAT);
           origDist.copy_(self_v);
 
           Tensor normDist = native::empty_like(
               self_v,
-              c10::nullopt /* dtype */,
-              c10::nullopt /* layout */,
-              c10::nullopt /* device */,
-              c10::nullopt /* pin_memory */,
+              std::nullopt /* dtype */,
+              std::nullopt /* layout */,
+              std::nullopt /* device */,
+              std::nullopt /* pin_memory */,
               LEGACY_CONTIGUOUS_MEMORY_FORMAT);
 
           Tensor prefixSum = native::empty_like(
               self_v,
-              c10::nullopt /* dtype */,
-              c10::nullopt /* layout */,
-              c10::nullopt /* device */,
-              c10::nullopt /* pin_memory */,
+              std::nullopt /* dtype */,
+              std::nullopt /* layout */,
+              std::nullopt /* device */,
+              std::nullopt /* pin_memory */,
               LEGACY_CONTIGUOUS_MEMORY_FORMAT);
 
           // Renorm along rows
@@ -505,7 +505,7 @@ void multinomial_kernel(
 
           // Prefix sum along rows
           at::cumsum_out(prefixSum, normDist, 1);
-          int group_size = syclMaxWorkItemsPerEU();
+          int group_size = syclMaxWorkItemsPerSubSlice();
           int group_range_y = numDist;
           int group_range_x = (n_sample - 1) / group_size + 1;
 

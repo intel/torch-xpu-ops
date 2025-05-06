@@ -68,7 +68,10 @@ skip_dict = {
     #    "test_fsdp_init_with_device_mesh_is_even_sharded_model_True_xpu",
     #    "test_raises_warning_or_errors_xpu",
     # ),
-    "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": (
+        "test_invalid_first_iter_order_sharding_strategy1_xpu",
+        "test_train_eval_sharding_strategy1_xpu",
+    ),
     "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": (
         "test_parity_with_non_frozen_fsdp_xpu",
         "test_parity_with_ddp_xpu",

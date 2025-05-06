@@ -38,8 +38,16 @@ TORCH_IMPL_FUNC(softmax_backward_xpu_out)
       "grad_output");
   c10::impl::check_and_update_common_device(
       common_device, output, "xpu::_softmax_backward_data_out_out", "output");
+  bool half_to_float = grad.scalar_type() != input_dtype;
+  if (half_to_float) {
+    TORCH_CHECK(
+        (grad.scalar_type() == ScalarType::Float &&
+         input_dtype == ScalarType::Half),
+        "expected input and grad types to match, or input to be at::Half and grad to be at::Float");
+  }
 
-  native::xpu::_softmax_backward_kernel(grad, output, dim, false, grad_input);
+  native::xpu::_softmax_backward_kernel(
+      grad, output, dim, half_to_float, grad_input);
 }
 
 TORCH_IMPL_FUNC(log_softmax_backward_xpu_out)
@@ -64,8 +72,15 @@ TORCH_IMPL_FUNC(log_softmax_backward_xpu_out)
       output,
       "xpu::_log_softmax_backward_data_out_out",
       "output");
+  bool half_to_float = grad.scalar_type() != input_dtype;
+  if (half_to_float) {
+    TORCH_CHECK(
+        (grad.scalar_type() == ScalarType::Float &&
+         input_dtype == ScalarType::Half),
+        "expected input and grad types to match, or input to be at::Half and grad to be at::Float");
+  }
   native::xpu::_log_softmax_backward_kernel(
-      grad, output, dim, false, grad_input);
+      grad, output, dim, half_to_float, grad_input);
 }
 
 TORCH_IMPL_FUNC(log_softmax_xpu_out)
