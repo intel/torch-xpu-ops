@@ -118,4 +118,4 @@ for pr_link in pr_list:
     else:
         print("{} is {}, no need to apply".format(pr_info["diff_url"], pr_info["state"]))
         sys.exit(1)
-os.system("git checkout ci-test-$(hostname) && git reset --hard && git apply --3way *.diff")
+os.system("git checkout ci-test-$(hostname) && git reset --hard && git apply --3way *.diff && git status")
