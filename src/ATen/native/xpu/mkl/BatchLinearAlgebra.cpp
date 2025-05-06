@@ -350,11 +350,14 @@ void svd_mkl(
     const Tensor& info) {
   Tensor U_tmp, S_tmp, Vh_tmp;
   bool some = !full_matrices;
+  std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, compute_uv);
 
-  std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, /*compute_uv=*/true);
-  svd_resize_and_copy("U", U_tmp, U);
+  // TODO: Remove copy
+  if (compute_uv) {
+    svd_resize_and_copy("U", U_tmp, U);
+    svd_resize_and_copy("Vh", Vh_tmp, Vh);
+  }
   svd_resize_and_copy("S", S_tmp, S);
-  svd_resize_and_copy("V", Vh_tmp, Vh);
 }
 
 } // namespace at::native::xpu
