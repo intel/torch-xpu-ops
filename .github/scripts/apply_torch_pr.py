@@ -1,10 +1,8 @@
 
 import requests
 import argparse
-import urllib
 import subprocess
 import sys
-import time
 import os
 
 
@@ -64,7 +62,6 @@ def appyly_pr(pr_info, re_apply_msg):
         with open(pr_file, 'wb') as f:
             for chunk in r.iter_content(chunk_size=2048):
                 f.write(chunk)
-    # urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
     # apply diff
     apply_cmd = "git apply --3way " + pr_file
     apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
