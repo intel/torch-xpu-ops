@@ -88,7 +88,7 @@ pr_list = set(pr_list)
 pr_list = sorted(pr_list)
 # checkout a base branch
 os.system("git checkout -b ci-tmp-$(hostname) && git checkout -b ci-test-$(hostname) && rm -f *.diff")
-os.system("git config --global user.email intel.com 'mengfei.li@intel.com' && git config --global user.name intel")
+os.system("git config --global user.email intel.com && git config --global user.name intel")
 for pr_link in pr_list:
     repo_info = pr_link.split("/")
     pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
