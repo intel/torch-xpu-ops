@@ -4,6 +4,7 @@ import argparse
 import urllib
 import subprocess
 import sys
+import time
 
 
 parser = argparse.ArgumentParser()
@@ -71,6 +72,23 @@ def appyly_pr(pr_info, re_apply_msg):
         print(apply_status, apply_message)
         sys.exit(1)
 
+def make_request_with_retry(url, max_retries=5):
+    retries = 0
+    while retries < max_retries:
+        response = requests.get(url, timeout=60)
+        if response.status_code == 429:
+            try:
+                retry_after = int(response.headers.get("Retry-After", 2))
+            except ValueError:
+                retry_after = 2
+            print(f"Too many requests. Retrying in {retry_after} seconds...")
+            time.sleep(retry_after)
+            retries += 1
+        else:
+            return response.json()
+    print("Max retries exceeded. Request failed.")
+    return None
+
 
 # headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
 pr_list = args.pr_list + args.extra_pr_list
@@ -78,8 +96,8 @@ pr_list = set(pr_list)
 pr_list = sorted(pr_list)
 for pr_link in pr_list:
     repo_info = pr_link.split("/")
-    pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
-                        repo_info[-3] + '/pulls/' + repo_info[-1], timeout=60).json()
+    pr_info = make_request_with_retry('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
+                        repo_info[-3] + '/pulls/' + repo_info[-1])
 
     if pr_info["state"].lower() == "open":
         # for reverted PR
