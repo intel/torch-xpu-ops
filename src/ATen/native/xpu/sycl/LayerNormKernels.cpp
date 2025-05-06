@@ -546,7 +546,7 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* mean_data,
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC>;
-  int64_t wg_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t wg_size = syclMaxWorkItemsPerSubSlice();
   KernelClass kfn(
       N,
       eps,
