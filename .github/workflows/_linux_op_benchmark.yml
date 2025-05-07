@@ -184,6 +184,7 @@ jobs:
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir ${{ github.workspace }}/new_baseline
+          cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
           # Update backward op
