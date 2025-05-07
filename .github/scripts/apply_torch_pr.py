@@ -1,9 +1,9 @@
 
 import requests
 import argparse
-import urllib
 import subprocess
 import sys
+import os
 
 
 parser = argparse.ArgumentParser()
@@ -54,12 +54,17 @@ def check_merged(pr_info):
         merged = False
     return merged
 
-def appyly_pr(pr_info, re_apply_msg):
-    # get pr diff
-    pr_file = pr_info["diff_url"].split("/")[-1]
-    urllib.request.urlretrieve(pr_info["diff_url"], pr_file)
+def appyly_pr(pull_number, re_apply_msg):
+    # get the diff
+    os.system(f"\
+        git fetch origin pull/{pull_number}/head:{pull_number} && \
+        git checkout -f {pull_number} && \
+        git merge ci-tmp-$(hostname) --no-edit --no-ff > /dev/null && \
+        git diff ci-tmp-$(hostname) {pull_number} > {pull_number}.diff \
+    ")
     # apply diff
-    apply_cmd = "git apply --3way " + pr_file
+    os.system("git checkout ci-test-$(hostname)")
+    apply_cmd = f"git reset --hard && git apply --3way {pull_number}.diff"
     apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     apply_message = apply_info.communicate()[0].decode("utf-8")
     apply_status = apply_info.returncode
@@ -72,15 +77,22 @@ def appyly_pr(pr_info, re_apply_msg):
         sys.exit(1)
 
 
-# headers = {'Authorization': 'Bearer ' + args.token} if args.token != None else args.token
+github_token = os.environ.get("GH_TOKEN")
+headers = {
+    "Authorization": f"Bearer {github_token}",
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
 pr_list = args.pr_list + args.extra_pr_list
 pr_list = set(pr_list)
 pr_list = sorted(pr_list)
+# checkout a base branch
+os.system("git checkout -b ci-tmp-$(hostname) && git checkout -b ci-test-$(hostname) && rm -f *.diff")
+os.system("git config --global user.email intel.com && git config --global user.name intel")
 for pr_link in pr_list:
     repo_info = pr_link.split("/")
     pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
-                        repo_info[-3] + '/pulls/' + repo_info[-1], timeout=60).json()
-
+                        repo_info[-3] + '/pulls/' + repo_info[-1], headers=headers, timeout=60).json()
     if pr_info["state"].lower() == "open":
         # for reverted PR
         reverted_id = next((item["id"] for item in pr_info["labels"] if item["name"] == "Reverted"), -1)
@@ -93,7 +105,7 @@ for pr_link in pr_list:
                 continue
             else:
                 re_apply_msg = "is re-opened and reverted,"
-        appyly_pr(pr_info, re_apply_msg)
+        appyly_pr(repo_info[-1], re_apply_msg)
     elif pr_info["state"].lower() == "closed":
         merged_id = next((item["id"] for item in pr_info["labels"] if item["name"] == "Merged"), -1)
         re_apply_msg = "is closed but not merged"
@@ -102,7 +114,8 @@ for pr_link in pr_list:
             if merged:
                 print("{} is closed and merged, no need to apply".format(pr_info["diff_url"]))
                 continue
-        appyly_pr(pr_info, re_apply_msg)
+        appyly_pr(repo_info[-1], re_apply_msg)
     else:
         print("{} is {}, no need to apply".format(pr_info["diff_url"], pr_info["state"]))
         sys.exit(1)
+os.system("git checkout ci-test-$(hostname) && git reset --hard && git apply --3way *.diff && git status")
