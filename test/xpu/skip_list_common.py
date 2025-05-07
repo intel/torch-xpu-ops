@@ -1,6 +1,7 @@
 skip_dict = {
     "test_ops_xpu.py": (
         # skip gather cases due to new added inputs and dypes in test
+        "scatter",
         "gather",
         # Skip list of base line
         # XPU implementation doesn't claimn FP8 now
