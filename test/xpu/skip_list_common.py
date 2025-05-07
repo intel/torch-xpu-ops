@@ -1,5 +1,7 @@
 skip_dict = {
     "test_ops_xpu.py": (
+        # skip gather cases due to new added inputs and dypes in test
+        "gather",
         # Skip list of base line
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
