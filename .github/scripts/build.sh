@@ -51,7 +51,7 @@ git diff && git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
 # python -m pip install -U cmake==3.31.6
-export USE_ONEMKL=1
+export USE_ONEMKL_XPU=1
 export USE_XCCL=1
 
 # Build
