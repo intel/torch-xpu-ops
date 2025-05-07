@@ -75,7 +75,6 @@ static void apply_svd(
     int64_t ldvt,
     int64_t VT_stride,
     char jobz) {
-#ifdef USE_ONEMKL
   oneapi::mkl::jobsvd jobu, jobvt;
   if (jobz == 'N') {
     jobu = oneapi::mkl::jobsvd::N;
@@ -117,9 +116,6 @@ static void apply_svd(
         (scalar_t*)(scratchpad_at.data_ptr()),
         scratchpadsize);
   }
-#else
-  AT_ERROR("svd: oneMKL library not found in compilation");
-#endif
 } // namespace impl
 
 template <>
@@ -141,7 +137,6 @@ void apply_svd<c10::complex<double>, double>(
     int64_t ldvt,
     int64_t VT_stride,
     char jobz) {
-#ifdef USE_ONEMKL
   oneapi::mkl::jobsvd jobu, jobvt;
   if (jobz == 'N') {
     jobu = oneapi::mkl::jobsvd::N;
@@ -183,9 +178,6 @@ void apply_svd<c10::complex<double>, double>(
         reinterpret_cast<std::complex<double>*>(scratchpad_at.data_ptr()),
         scratchpadsize);
   }
-#else
-  AT_ERROR("svd: oneMKL library not found in compilation");
-#endif
 }
 
 template <>
@@ -207,7 +199,6 @@ void apply_svd<c10::complex<float>, float>(
     int64_t ldvt,
     int64_t VT_stride,
     char jobz) {
-#ifdef USE_ONEMKL
   oneapi::mkl::jobsvd jobu, jobvt;
   if (jobz == 'N') {
     jobu = oneapi::mkl::jobsvd::N;
@@ -249,9 +240,6 @@ void apply_svd<c10::complex<float>, float>(
         reinterpret_cast<std::complex<float>*>(scratchpad_at.data_ptr()),
         scratchpadsize);
   }
-#else
-  AT_ERROR("svd: oneMKL library not found in compilation");
-#endif
 }
 
 } // namespace impl
