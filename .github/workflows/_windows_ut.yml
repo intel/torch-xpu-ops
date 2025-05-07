@@ -114,7 +114,7 @@ jobs:
           pip install cmake setuptools==72.1.0 clang-format
           pip install mkl-static==2025.0.1 mkl-include==2025.0.1
           set USE_KINETO=0
-          set USE_ONEMKL=1
+          set USE_ONEMKL_XPU=1
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
