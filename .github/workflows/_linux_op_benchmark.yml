@@ -121,27 +121,38 @@ jobs:
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
-      - name: Upload Inductor XPU OP benchmark Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/op_benchmark
       - name: Download OP Baseline
         continue-on-error: true
         run: |
-          # Download forward baseline
-          curl -L "https://api.github.com/repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/new_baseline/baseline_forward_op_summary.csv?ref=gh-pages" \
-            -H "Accept: application/vnd.github.raw" \
-            -o baseline_forward_op_summary.csv
-
-          # Download backward baseline
-          curl -L "https://api.github.com/repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/new_baseline/baseline_backward_op_summary.csv?ref=gh-pages" \
-            -H "Accept: application/vnd.github.raw" \
-            -o baseline_backward_op_summary.csv
+          gh api \
+            --method GET -F per_page=100 -F page=10 \
+            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
+            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
+          artifact_id="$(eval "jq -r \
+                  '[.artifacts[] | \
+                  select(.name|test(\"Inductor-XPU-OP-Benchmark-Data.*\")) | \
+                  select(.workflow_run.head_branch|test(\"main\"))][0].id' \
+              ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
+          if [ "$artifact_id" -gt 1 ];then
+              gh api \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${artifact_id}/zip > reference.zip
+          fi
+          rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
 
           mkdir ${{ github.workspace }}/baseline
-          cp baseline*.csv ${{ github.workspace }}/baseline
+          if [ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]; then
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+          else
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+          fi
       - name: Check OP Baseline
         run: |
           forward_exists=$([ -f "baseline/baseline_forward_op_summary.csv" ] && echo "true" || echo "false")
@@ -155,6 +166,7 @@ jobs:
           mkdir ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv
           cp ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv
+          cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
           echo "Initial the Baseline Data"
       - name: Check the OP Regression
         if: steps.check-baseline.outputs.both_exist == 'true'
@@ -176,11 +188,10 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
           # Update backward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv -r
-      - name: Deploy Baseline to gh-pages
+          cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
+      - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: peaceiris/actions-gh-pages@v3
+        uses: actions/upload-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./new_baseline
-          publish_branch: gh-pages
-          force_orphan: true
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/op_benchmark
