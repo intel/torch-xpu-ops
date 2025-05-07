@@ -6,11 +6,13 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/ReductionType.h>
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
@@ -216,7 +218,8 @@ struct ScatterGatherInternalKernelLoopFunctor {
 
     int64_t idx_dim = *(int64_t*)(index_ptr_ + offsets[2]);
     SYCL_KERNEL_ASSERT(
-        idx_dim >= 0 && idx_dim < index_size_ && "index out of bounds");
+        idx_dim >= 0 && idx_dim < index_size_ &&
+        "scatter gather kernel index out of bounds");
 
     f_((scalar_t*)(self_ptr_ + offsets[0]),
        is_scatter_like ? idx_dim * index_stride_ : 0,
@@ -254,6 +257,127 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
+#define SIMD 32
+
+template <int Alignment>
+struct VectorizedGatherKernel {
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<2> item) const {
+    int64_t ind = idx_[item.get_group(1)];
+    if (allow_neg_indices_) {
+      ind = (ind < 0) ? ind + ind_dim_size_ : ind;
+    }
+    SYCL_KERNEL_ASSERT(
+        ind >= 0 && ind < ind_dim_size_ &&
+        "vectorized gather kernel index out of bounds");
+    int32_t off =
+        (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
+        Alignment; // off is guaranteed to be within int32 limits
+    if (off >= slice_size_)
+      return;
+    auto vec =
+        at::native::memory::ld_vec<Alignment>(inp_ + ind * inp_stride_ + off);
+    at::native::memory::st_vec<Alignment>(
+        out_ + item.get_group(1) * (int32_t)out_stride_ + off,
+        vec); // out offset is guaranteed to be within int32 limits
+  }
+  VectorizedGatherKernel(
+      char* out,
+      char* inp,
+      int64_t* idx,
+      int num_ind,
+      int64_t slice_size,
+      int64_t ind_dim_size,
+      int64_t inp_stride,
+      int64_t out_stride,
+      bool allow_neg_indices)
+      : out_(out),
+        inp_(inp),
+        idx_(idx),
+        num_ind_(num_ind),
+        slice_size_(slice_size),
+        ind_dim_size_(ind_dim_size),
+        inp_stride_(inp_stride),
+        out_stride_(out_stride),
+        allow_neg_indices_(allow_neg_indices) {}
+
+ private:
+  char* out_;
+  char* inp_;
+  int64_t* idx_;
+  int num_ind_;
+  int64_t slice_size_;
+  int64_t ind_dim_size_;
+  int64_t inp_stride_;
+  int64_t out_stride_;
+  bool allow_neg_indices_;
+};
+
+template <int64_t Alignment>
+void vectorized_gather_kernel_launch(
+    char* out,
+    char* inp,
+    int64_t* idx,
+    int num_ind,
+    int64_t slice_size_in_bytes,
+    int64_t ind_dim_size,
+    int64_t inp_stride_bytes,
+    int64_t out_stride_bytes,
+    bool allow_neg_indices = false) {
+  int64_t max_num_threads = syclMaxWorkItemsPerSubSlice();
+  auto num_threads = at::round_up(
+      at::ceil_div(slice_size_in_bytes, Alignment), static_cast<int64_t>(SIMD));
+  auto wg_size = std::min(max_num_threads, num_threads);
+  sycl::range<2> local_range(1, wg_size);
+  sycl::range<2> global_range(
+      static_cast<uint32_t>(
+          at::ceil_div(slice_size_in_bytes, max_num_threads * Alignment)),
+      static_cast<uint32_t>(num_ind) * wg_size);
+  auto caller = VectorizedGatherKernel<Alignment>(
+      out,
+      inp,
+      idx,
+      num_ind,
+      slice_size_in_bytes,
+      ind_dim_size,
+      inp_stride_bytes,
+      out_stride_bytes,
+      allow_neg_indices);
+  sycl_kernel_submit(
+      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
+template <int alignment>
+inline bool fast_gather_kernel_eligible(
+    const TensorIterator& iter,
+    char* const out_ptr,
+    char* const in_ptr,
+    const size_t index_stride_bytes,
+    const size_t element_size) {
+  using at::native::memory::get_alignment;
+  const auto index_element_size = iter.element_size(2);
+  // TensorIterator strides and sizes are ordered fastest moving to slowest
+  // moving, in contrast to regular sizes
+  // we need contiguous source and dst slices and aligned pointers and strides
+  // and slice size to do vectorized loads also we need idx to be expanded in
+  // the last dimension so we can copy entire slices and we need the src tensor
+  // to keep 0 stride from restriding (it could have been deleted by dimension
+  // collapse, in this case iterator would still be 2d but we cannot use fast
+  // path)
+
+  return iter.ndim() == 2 && iter.strides(2)[0] == 0 &&
+      iter.strides(2)[1] == index_element_size &&
+      static_cast<size_t>(iter.strides(0)[0]) == element_size &&
+      static_cast<size_t>(iter.strides(1)[0]) == element_size &&
+      static_cast<size_t>(iter.strides(1)[1] == 0) &&
+      get_alignment(out_ptr) == alignment &&
+      get_alignment(in_ptr) == alignment &&
+      get_alignment(static_cast<size_t>(iter.shape()[0] * element_size)) ==
+      alignment &&
+      get_alignment(static_cast<size_t>(index_stride_bytes)) == alignment &&
+      get_alignment(static_cast<size_t>(iter.strides(0)[1])) == alignment;
+}
+
 template <bool is_scatter_like, typename scalar_t>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
@@ -270,10 +394,40 @@ struct ScatterGatherInternalKernel {
       }
       return;
     }
+    std::cout << "into ScatterGatherInternalKernel\n";
 
     char* self_ptr = (char*)iter.data_ptr(0);
     char* src_ptr = (char*)iter.data_ptr(1);
     char* index_ptr = (char*)iter.data_ptr(2);
+
+    if constexpr (!is_scatter_like) {
+      constexpr size_t element_size = sizeof(scalar_t);
+      constexpr int64_t alignment = 16;
+      if (fast_gather_kernel_eligible<alignment>(
+              iter,
+              self_ptr,
+              src_ptr,
+              index_stride * element_size,
+              element_size)) {
+        auto slice_size = iter.shape()[0] * element_size;
+        auto num_ind = iter.shape()[1];
+        auto ind_dim_size = index_size;
+        auto inp_stride_bytes = index_stride * element_size;
+        auto out_stride_bytes = iter.strides(0)[1];
+        if (iter.numel() == 0)
+          return;
+        vectorized_gather_kernel_launch<alignment>(
+            self_ptr,
+            src_ptr,
+            (int64_t*)index_ptr,
+            num_ind,
+            slice_size,
+            ind_dim_size,
+            inp_stride_bytes,
+            out_stride_bytes);
+        return;
+      }
+    }
 
     auto offset_calc = make_offset_calculator<3>(iter);
 
