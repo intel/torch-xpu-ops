@@ -47,6 +47,7 @@ jobs:
     if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
     env:
+      GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
@@ -279,6 +280,7 @@ jobs:
     if: contains(inputs.ut, 'xpu_distributed')
     timeout-minutes: 900
     env:
+      GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
