@@ -124,7 +124,9 @@ jobs:
       - name: Download OP Baseline
         continue-on-error: true
         run: |
-          pip install jq
+          source .github/scripts/env.sh ${{ inputs.pytorch }}
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          sudo apt install -y jq
           gh api \
             --method GET -F per_page=100 -F page=10 \
             -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
