@@ -279,7 +279,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ steps.reference_id.outputs.REFERENCE_RUN_ID }}
-          pattern: Inductor-${{ env.run_type }}-Pre-XPU-E2E-*
+          pattern: Inductor-*-XPU-E2E-*
           path: reference
       - name: Summarize archieve files
         id: summary
