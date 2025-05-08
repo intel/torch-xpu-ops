@@ -33,7 +33,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ inputs.target }}
-          name: Inductor-weekly-LTS-XPU-E2E-Data-a9af82d9f9984b2aefc6eb4729b4cbaa4c660fd7
+          pattern: Inductor-*
           path: target
       - name: Downlaod baseline artifacts
         uses: actions/download-artifact@v4
