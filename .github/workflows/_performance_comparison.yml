@@ -18,6 +18,8 @@ permissions: read-all
 
 jobs:
   Performance-Comparison:
+    env:
+      GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup workspace
