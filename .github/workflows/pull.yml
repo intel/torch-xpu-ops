@@ -188,7 +188,7 @@ jobs:
         id: reference_id
         run: |
           set -xe
-          REFERENCE_RUN_ID="$(gh --repo  intel/torch-xpu-ops issue view ${reference_issue} \
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-weekly-LTS-XPU-E2E" |sed 's/.*: *//')"
           echo "REFERENCE_RUN_ID=${REFERENCE_RUN_ID}" >> "${GITHUB_OUTPUT}"
       - name: Download Reference Artifact
