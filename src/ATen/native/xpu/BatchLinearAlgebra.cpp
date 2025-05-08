@@ -59,7 +59,50 @@ void svd_kernel_xpu(
 }
 
 REGISTER_XPU_DISPATCH(svd_stub, &svd_kernel_xpu);
-REGISTER_XPU_DISPATCH(lu_solve_stub, &native::xpu::lu_solve_mkl);
-REGISTER_XPU_DISPATCH(lu_factor_stub, &native::xpu::lu_factor_mkl);
+
+void lu_solve_kernel_xpu(
+    const Tensor& LU,
+    const Tensor& pivots,
+    const Tensor& B,
+    TransposeType trans) {
+#if defined(USE_ONEMKL)
+  native::xpu::lu_solve_mkl(LU, pivots, B, trans);
+#else
+  const auto LU_cpu = LU.to(LU.options().device(kCPU).pinned_memory(true));
+  const auto pivots_cpu =
+      pivots.to(pivots.options().device(kCPU).pinned_memory(true));
+  auto B_cpu = B.to(B.options().device(kCPU).pinned_memory(true));
+
+  lu_solve_stub(at::kCPU, LU_cpu, pivots_cpu, B_cpu, trans);
+
+  B.copy_(B_cpu, /*non_blocking*/ true);
+#endif // USE_ONEMKL
+}
+
+REGISTER_XPU_DISPATCH(lu_solve_stub, &lu_solve_kernel_xpu);
+
+void lu_factor_kernel_xpu(
+    const Tensor& input,
+    const Tensor& pivots,
+    const Tensor& infos,
+    bool compute_pivots) {
+#if defined(USE_ONEMKL)
+  native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
+#else
+  auto input_cpu = input.to(input.options().device(kCPU).pinned_memory(true));
+  auto pivots_cpu =
+      pivots.to(pivots.options().device(kCPU).pinned_memory(true));
+  const auto infos_cpu =
+      infos.to(infos.options().device(kCPU).pinned_memory(true));
+
+  lu_factor_stub(at::kCPU, input_cpu, pivots_cpu, infos_cpu, compute_pivots);
+
+  input.copy_(input_cpu);
+  pivots.copy_(pivots_cpu);
+  infos.copy_(infos_cpu);
+#endif // USE_ONEMKL
+}
+
+REGISTER_XPU_DISPATCH(lu_factor_stub, &lu_factor_kernel_xpu);
 
 } // namespace at::native
