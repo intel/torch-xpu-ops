@@ -7,12 +7,12 @@ on:
         required: true
         type: string
         default: ''
-        description: Target artifact id
+        description: Target run id
       baseline:
         required: true
         type: string
         default: ''
-        description: Baseline artifact id
+        description: Baseline run id
 
 permissions: read-all
 
