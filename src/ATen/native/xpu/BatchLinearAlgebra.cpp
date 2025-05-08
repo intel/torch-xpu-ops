@@ -36,7 +36,7 @@ void svd_kernel_xpu(
   auto info_cpu = empty_like_cpu(info);
 
   svd_stub(
-      A_cpu.device().type(),
+      at::kCPU,
       A_cpu,
       full_matrices,
       compute_uv,
