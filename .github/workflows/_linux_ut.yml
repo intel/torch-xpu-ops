@@ -65,7 +65,7 @@ jobs:
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+            cd pytorch && git checkout main
             # apply PRs for stock pytorch
             python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
             git status && git show -s
@@ -78,26 +78,6 @@ jobs:
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
           fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-          fi
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -105,8 +85,9 @@ jobs:
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+            pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+            pip uninstall -y torch && pip uninstall -y torch
+            pip install --no-deps ~/mengfeil/torch-2.8.0.dev20250508+xpu-cp310-cp310-linux_x86_64.whl
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -311,26 +292,6 @@ jobs:
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
           fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-          fi
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -339,7 +300,6 @@ jobs:
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
