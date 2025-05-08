@@ -49,7 +49,8 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: read-all
+permissions:
+  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
@@ -72,6 +73,7 @@ jobs:
     timeout-minutes: 3600
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
@@ -262,7 +264,24 @@ jobs:
           scenario: ${{ inputs.scenario }}
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-
+      - name: Get Reference Run ID
+        id: reference_id
+        run: |
+          set -xe
+          if [ "${{ env.run_type }}" == "on-demand" ];then
+            artifact_type="weekly"
+          else
+            artifact_type="${{ env.run_type }}"
+          fi
+          REFERENCE_RUN_ID="$(gh --repo  intel/torch-xpu-ops issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-${artifact_type}-Pre-XPU-E2E" |sed 's/.*: *//')"
+          echo "REFERENCE_RUN_ID=${REFERENCE_RUN_ID}" >> "${GITHUB_OUTPUT}"
+      - name: Download Reference Artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.reference_id.outputs.REFERENCE_RUN_ID }}
+          pattern: Inductor-${{ env.run_type }}-Pre-XPU-E2E-*
+          path: reference
       - name: Summarize archieve files
         id: summary
         if: ${{ ! cancelled() }}
@@ -277,7 +296,7 @@ jobs:
             source activate e2e_ci
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
-                Inductor-${{ env.run_type }}-Pre-XPU-E2E \
+                ${{ github.workspace }}/reference \
             >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
@@ -298,6 +317,12 @@ jobs:
         with:
           name: Inductor-${{ env.run_type }}-Pre-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+      - name: Upload Reference Run ID
+        if: ${{ env.run_type != 'on-demand' }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+            sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}

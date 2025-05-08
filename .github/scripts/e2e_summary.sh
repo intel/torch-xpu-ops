@@ -1,7 +1,7 @@
 #!/bin/bash
 
 results_dir="$1"
-artifact_type="$2"
+reference_dir="$2"
 check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
 rm -rf /tmp/tmp-*.txt
 
@@ -147,32 +147,9 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
-    pip install jq > /dev/null 2>&1
-    if [ "${artifact_type}" != "" ];then
-        gh api \
-            --method GET -F per_page=100 -F page=10 \
-            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
-            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
-        artifact_id="$(eval "jq -r \
-                '[.artifacts[] | \
-                select(.name|test(\"${artifact_type}.*\")) | \
-                select(.workflow_run.head_branch|test(\"main\"))][0].id' \
-            ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
-        if [ "$artifact_id" -gt 1 ];then
-            gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${artifact_id}/zip > reference.zip
-        fi
-    fi
-    rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
-    unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
-    reference_dir="${GITHUB_WORKSPACE:-"/tmp"}/reference"
+    unzip ${reference_dir}/*.zip -d ${reference_dir} > /dev/null 2>&1
     python "$(dirname "$0")/perf_comparison.py" -xpu ${results_dir} -refer ${reference_dir}
-    cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
+    cp ${reference_dir}/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
     python "$(dirname "$0")/calculate_best_perf.py" \
         --new ${results_dir} \
         --best ${results_dir}/best.csv \

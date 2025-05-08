@@ -73,6 +73,7 @@ jobs:
     runs-on: pvc_e2e
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
@@ -183,6 +184,19 @@ jobs:
           scenario: accuracy,performance
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Get Reference Run ID
+        id: reference_id
+        run: |
+          set -xe
+          REFERENCE_RUN_ID="$(gh --repo  intel/torch-xpu-ops issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-weekly-LTS-XPU-E2E" |sed 's/.*: *//')"
+          echo "REFERENCE_RUN_ID=${REFERENCE_RUN_ID}" >> "${GITHUB_OUTPUT}"
+      - name: Download Reference Artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.reference_id.outputs.REFERENCE_RUN_ID }}
+          pattern: Inductor-weekly-LTS-XPU-E2E-*
+          path: reference
       - name: Summarize archieve files
         if: ${{ ! cancelled() }}
         run: |
@@ -192,7 +206,7 @@ jobs:
           source activate e2e_ci
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
-              Inductor-weekly-LTS-XPU-E2E \
+              ${{ github.workspace }}/reference \
           >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then
