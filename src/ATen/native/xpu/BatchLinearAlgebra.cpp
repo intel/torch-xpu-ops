@@ -4,12 +4,6 @@
 #include <ATen/ops/empty_like.h>
 #if defined(USE_ONEMKL)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
-#include <ATen/ops/linalg_lu_factor_native.h>
-#include <ATen/ops/linalg_lu_meta.h>
-#include <ATen/ops/linalg_lu_native.h>
-#include <ATen/ops/linalg_lu_solve.h>
-#include <ATen/ops/linalg_lu_solve_meta.h>
-#include <ATen/ops/linalg_lu_solve_native.h>
 #endif // USE_ONEMKL
 
 namespace at::native {

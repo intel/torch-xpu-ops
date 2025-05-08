@@ -15,20 +15,10 @@
 #include <ATen/ops/_linalg_svd_native.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
-#include <ATen/ops/linalg_lu_factor_ex.h>
-#include <ATen/ops/linalg_lu_factor_ex_meta.h>
-#include <ATen/ops/linalg_lu_factor_ex_native.h>
-#include <ATen/ops/linalg_lu_factor_native.h>
-#include <ATen/ops/linalg_lu_meta.h>
-#include <ATen/ops/linalg_lu_native.h>
-#include <ATen/ops/linalg_lu_solve.h>
-#include <ATen/ops/linalg_lu_solve_meta.h>
-#include <ATen/ops/linalg_lu_solve_native.h>
-#include <ATen/ops/lu_solve_native.h>
-#include <ATen/ops/squeeze.h>
 #include <ATen/ops/tensor.h>
 #include <ATen/ops/where.h>
 #include <ATen/ops/zeros_like.h>
+
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl/lapack.hpp>
