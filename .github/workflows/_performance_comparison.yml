@@ -33,13 +33,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ inputs.target }}
-          pattern: Inductor-*
           path: target
       - name: Downlaod baseline artifacts
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ inputs.baseline }}
-          pattern: Inductor-*-XPU-E2E-*
           path: baseline
       - name: Get comparison artifacts
         run: |
