@@ -33,10 +33,10 @@ jobs:
         run: |
           rm -rf target && mkdir target && cd target
           gh --repo ${GITHUB_REPOSITORY} run download ${{ inputs.target }} -p "Inductor-*-XPU-E2E-*"
-          unzip *.zip && cd ..
+          mv Inductor-*-XPU-E2E-*/* . && cd ..
           rm -rf baseline && mkdir baseline && cd baseline
           gh --repo ${GITHUB_REPOSITORY} run download ${{ inputs.baseline }} -p "Inductor-*-XPU-E2E-*"
-          unzip *.zip && cd ..
+          mv Inductor-*-XPU-E2E-*/* . && cd ..
       - name: Comparison result
         run: |
           python -m pip install pandas
