@@ -155,6 +155,11 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
     for key in common_keys:
         time_xpu = dict_xpu[key]
         time_baseline = dict_baseline[key]
+        
+        # Skip comparison if time_xpu is 0
+        if time_xpu == 0:
+            continue
+
         diff = (time_baseline - time_xpu) / time_xpu
         # Compare Time, Lower is better
         if abs(diff) > threshold:
