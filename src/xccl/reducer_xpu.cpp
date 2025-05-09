@@ -65,7 +65,16 @@ class XpuTimer : public Timer {
   }
 };
 
-C10_REGISTER_TYPED_CLASS(TimerRegistry, c10::kXPU, XpuTimer)
-
+// We register XpuTimer here with higher priority duo to
+// https://github.com/intel-innersource/frameworks.ai.pytorch.ipex-gpu/blob/master/csrc/gpu/distributed/reducer.cpp
+// also registered. here register for xccl and ipex register for torch-ccl.
+// After torch-ccl deprecated, we can remove ipex register and use default
+// priority.
+C10_REGISTER_TYPED_CLASS_WITH_PRIORITY(
+    TimerRegistry,
+    c10::kXPU,
+    c10::REGISTRY_PREFERRED,
+    XpuTimer)
+// C10_REGISTER_TYPED_CLASS(TimerRegistry, c10::kXPU, XpuTimer)
 } // namespace
 } // namespace c10d
