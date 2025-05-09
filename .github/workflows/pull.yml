@@ -188,6 +188,8 @@ jobs:
         id: reference_id
         run: |
           set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-weekly-LTS-XPU-E2E" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
