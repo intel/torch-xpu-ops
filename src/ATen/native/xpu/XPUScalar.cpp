@@ -36,6 +36,7 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
       kHalf,
       kBool,
       kBFloat16,
+      AT_EXPAND(AT_FLOAT8_TYPES),
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   return r;
 }
