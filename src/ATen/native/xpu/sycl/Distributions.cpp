@@ -173,7 +173,7 @@ void gamma_kernel(
       scalar_t,
       scalar_t,
       decltype(functor),
-      /*max_threads_per_block=*/512>(
+      /*max_threads_per_block=*/256>(
       const_cast<at::TensorBase&>(ret),
       const_cast<at::TensorBase&>(alpha),
       functor);
@@ -187,7 +187,11 @@ void launch_gamma_kernel(
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    engine_inputs = gen->philox_engine_inputs(42);
+    // Using a seed value of 10 for the Philox random engine initialization.
+    // This seed was chosen to ensure consistent random number generation
+    // behavior for this specific kernel. Modify with caution as it affects
+    // reproducibility of results.
+    engine_inputs = gen->philox_engine_inputs(10);
   }
   PhiloxState rng_engine_inputs(
       std::get<0>(engine_inputs), std::get<1>(engine_inputs));
