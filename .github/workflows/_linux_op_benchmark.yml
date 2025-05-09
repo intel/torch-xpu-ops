@@ -126,7 +126,7 @@ jobs:
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          sudo apt install -y jq
+          sudo apt-get install -y jq
           gh api \
             --method GET -F per_page=100 -F page=10 \
             -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -149,30 +149,14 @@ jobs:
           unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
 
           mkdir ${{ github.workspace }}/baseline
-          if [ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]; then
+          if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
             cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
             cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
           else
             cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
             cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
           fi
-      - name: Check OP Baseline
-        run: |
-          forward_exists=$([ -f "baseline/baseline_forward_op_summary.csv" ] && echo "true" || echo "false")
-          backward_exists=$([ -f "baseline/baseline_backward_op_summary.csv" ] && echo "true" || echo "false")
-          echo "forward_exists=${forward_exists}" >> $GITHUB_OUTPUT
-          echo "backward_exists=${backward_exists}" >> $GITHUB_OUTPUT
-          echo "both_exist=$([ "$forward_exists" = "true" ] && [ "$backward_exists" = "true" ] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
-      - name: Initial the OP Baseline
-        if: steps.check-baseline.outputs.both_exist != 'true'
-        run: |
-          mkdir ${{ github.workspace }}/new_baseline
-          cp ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv
-          cp ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv
-          cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
-          echo "Initial the Baseline Data"
       - name: Check the OP Regression
-        if: steps.check-baseline.outputs.both_exist == 'true'
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -182,7 +166,6 @@ jobs:
           # Compare backward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
       - name: Update OP Baseline
-        if: steps.check-baseline.outputs.both_exist == 'true'
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
