@@ -29,6 +29,27 @@ static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
 using xcclComm_t = ccl::communicator;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
+class TensorShelf {
+ public:
+  void stash(std::vector<at::Tensor>& tensors);
+
+  void stash(TensorShelf& other);
+
+  void unstash();
+
+  bool empty();
+
+  void clear();
+
+ protected:
+  std::vector<at::Tensor>& get();
+
+ private:
+  std::vector<at::Tensor> tVector_;
+
+  std::mutex mutex_;
+};
+
 class TORCH_API ProcessGroupXCCL : public Backend {
  public:
   class WorkXCCL : public Work {
@@ -38,6 +59,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         int rank,
         OpType opType,
         uint64_t seq,
+        bool isP2P,
         const char* profilingTitle = nullptr,
         const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt);
     WorkXCCL(const WorkXCCL& w);
@@ -50,6 +72,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
 
     void synchronize() override;
+
+    void synchronizeStream();
 
     bool wait(std::chrono::milliseconds timeout = kNoTimeout) override;
 
@@ -68,14 +92,15 @@ class TORCH_API ProcessGroupXCCL : public Backend {
    protected:
     at::Device device_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
-    at::Tensor barrierTensor_;
-    bool blockingWait_ = false;
+    bool isBarrierOp_{false};
+    bool blockingWait_{false};
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
+    bool isP2P_;
 
    private:
-    void synchronizeInternal(std::chrono::milliseconds timeout);
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
+    std::shared_ptr<TensorShelf> stashed_for_allocator_safety_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
     friend class ProcessGroupXCCL;
   };
@@ -116,6 +141,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       at::Device& device,
       int rank,
       OpType opType,
+      bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {});
@@ -126,6 +152,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       at::Tensor& output,
       Fn fn,
       OpType opType,
+      bool asyncOp,
       const char* profilingTitle = nullptr) {
     return collective<Fn>(
         input,
@@ -136,6 +163,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
+        asyncOp,
         profilingTitle);
   }
 
@@ -147,10 +175,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PreProcess pre,
       PostProcess post,
       OpType opType,
+      bool asyncOp,
       const char* profilingTitle = nullptr) {
     auto inputs = std::vector<at::Tensor>{input};
     auto outputs = std::vector<at::Tensor>{output};
-    return collective(inputs, outputs, fn, pre, post, opType, profilingTitle);
+    return collective(
+        inputs, outputs, fn, pre, post, opType, asyncOp, profilingTitle);
   }
 
   template <typename Fn>
@@ -159,6 +189,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& outputs,
       Fn fn,
       OpType opType,
+      bool asyncOp,
       const char* profilingTitle = nullptr) {
     return collective<Fn>(
         inputs,
@@ -169,6 +200,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
+        asyncOp,
         profilingTitle);
   }
 
@@ -180,6 +212,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PreProcess pre,
       PostProcess post,
       OpType opType,
+      bool asyncOp,
       const char* profilingTitle = nullptr);
 
   template <typename Fn>
@@ -188,6 +221,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::vector<at::Tensor>& output,
       Fn fn,
       OpType opType,
+      bool asyncOp,
       const char* profilingTitle = nullptr) {
     return collective<Fn>(
         input,
@@ -212,6 +246,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           ccl::group_end();
         },
         opType,
+        asyncOp,
         profilingTitle);
   }
 
@@ -344,6 +379,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   int coalescing_state_ = 0;
   at::Device coalescedDevice_ = at::Device("xpu");
   std::shared_ptr<xcclComm_t> coalescedComm_ = nullptr;
+  bool coalescedAsync_;
+  TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
