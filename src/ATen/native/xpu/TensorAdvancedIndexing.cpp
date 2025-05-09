@@ -139,7 +139,7 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
  int64_t dim,
  const Tensor& index,
  const Tensor& source,
- const c10::string_view reduce,
+ const std::string_view reduce,
  bool include_self,
  const Tensor& result) {
   TORCH_WARN_ONCE(
