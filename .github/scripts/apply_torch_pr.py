@@ -58,7 +58,7 @@ def appyly_pr(pull_number, re_apply_msg):
     # get the diff
     os.system(f"\
         git fetch origin pull/{pull_number}/head:{pull_number} && \
-        git checkout -f {pull_number} && \
+        git checkout -f {pull_number} && git reset --merge && \
         git merge ci-tmp-$(hostname) --no-edit --no-ff > /dev/null && \
         git diff ci-tmp-$(hostname) {pull_number} > {pull_number}.diff \
     ")
