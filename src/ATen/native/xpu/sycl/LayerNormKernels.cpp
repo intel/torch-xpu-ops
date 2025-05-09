@@ -534,6 +534,13 @@ struct VectorizedLayerNormKernelFunctor
   sycl_local_acc_t<T_ACC> buf_;
 };
 
+int64_t layer_norm_wg_size_select(int64_t max_wg_size, int n) {
+  while (max_wg_size > n && max_wg_size > SIMD) {
+    max_wg_size >>= 1;
+  }
+  return max_wg_size;
+}
+
 template <typename T, typename T_ACC>
 void launch_vectorized_layer_norm_kernel(
     int N,
@@ -546,7 +553,8 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* mean_data,
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC>;
-  int64_t wg_size = syclMaxWorkGroupSize<KernelClass>();
+  auto wg_size =
+      layer_norm_wg_size_select(syclMaxWorkGroupSize<KernelClass>(), N);
   KernelClass kfn(
       N,
       eps,
