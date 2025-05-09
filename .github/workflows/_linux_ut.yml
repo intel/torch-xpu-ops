@@ -310,8 +310,6 @@ jobs:
     timeout-minutes: 900
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

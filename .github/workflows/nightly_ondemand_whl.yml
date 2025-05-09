@@ -63,10 +63,10 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
-      runner: rolling_internal
+      runner: ut_internal
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: rolling_internal
+    runs-on: e2e_internal
     timeout-minutes: 3600
     env:
       GH_TOKEN: ${{ github.token }}
