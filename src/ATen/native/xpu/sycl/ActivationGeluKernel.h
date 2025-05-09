@@ -8,11 +8,11 @@ namespace xpu {
 
 TORCH_XPU_API void gelu_kernel(
     TensorIteratorBase& iter,
-    c10::string_view approximate);
+    std::string_view approximate);
 
 TORCH_XPU_API void gelu_backward_kernel(
     TensorIteratorBase& iter,
-    c10::string_view approximate);
+    std::string_view approximate);
 
 } // namespace xpu
 } // namespace native
