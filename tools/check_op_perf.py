@@ -6,7 +6,7 @@ from pathlib import Path
 def find_pytorch_dir():
     path = Path(__file__).resolve()
     while path != path.root:
-        if path.name == "pytorch":
+        if path.name == "torch-xpu-ops":
             return str(path)
         path = path.parent
     return ''
@@ -57,7 +57,7 @@ def find_op_time(text, ops):
 
 if __name__ == '__main__':
     root_folder = find_pytorch_dir().strip()
-    perf_suit = os.path.join(root_folder, 'third_party/torch-xpu-ops/test/microbench/')
+    perf_suit = os.path.join(root_folder, 'test/microbench/')
     import csv
     csv_data = [
         ["Operator", "Tag", "Latency(us)"],
