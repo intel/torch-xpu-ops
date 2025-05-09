@@ -1,7 +1,16 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device = "xpu"
+
+if torch.cuda.is_available():
+    device = "cuda"
+    activity = ProfilerActivity.CUDA
+    table_key = "cuda_time_total"
+else:
+    device = "xpu"
+    activity = ProfilerActivity.XPU
+    table_key = "xpu_time_total"
+
 
 shape_list = [((64, 8), (8)), ((4, 128, 15000), (128)), ((4, 256, 512), (256))]
 
@@ -29,7 +38,7 @@ for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             backward,
         )
         with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+            activities=[ProfilerActivity.CPU, activity], record_shapes=True
         ) as prof:
             for i in range(20):
                 m = torch.nn.BatchNorm1d(shape[1], device=device)
@@ -37,4 +46,4 @@ for dtype in [torch.bfloat16, torch.float16, torch.float32]:
                 if backward:
                     gy = torch.empty_like(output)
                     output.backward(gy)
-        print(prof.key_averages().table(sort_by="xpu_time_total"))
+        print(prof.key_averages().table(sort_by=table_key))
