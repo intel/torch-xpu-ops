@@ -1,7 +1,9 @@
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/TensorInfo.h>
 
 using namespace at::xpu::detail;
@@ -705,7 +707,8 @@ void _index_kernel(
     IntArrayRef index_stride,
     IntArrayRef non_index_size,
     IntArrayRef non_index_stride,
-    const func_t f) {
+    const func_t f,
+    const bool is_gather_like) {
   auto numel = iter.numel();
 
   if (numel == 0) {
@@ -774,11 +777,44 @@ void _index_kernel(
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
       _index_kernel(
-          sub_iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
+          sub_iter,
+          index_size,
+          index_stride,
+          IntArrayRef{},
+          IntArrayRef{},
+          f,
+          is_gather_like);
     }
     return;
   }
+  char* const out_ptr = static_cast<char*>(iter.data_ptr(0));
+  char* const in_ptr = static_cast<char*>(iter.data_ptr(1));
 
+  if (is_gather_like && num_indices == 1) {
+    const size_t element_size = iter.element_size(0);
+    constexpr size_t alignment = 16;
+    if (at::native::xpu::fast_gather_kernel_eligible<alignment>(
+            iter, out_ptr, in_ptr, index_stride[0], element_size)) {
+      auto slice_size = iter.shape()[0] * element_size;
+      auto num_ind = iter.shape()[1];
+      auto ind_dim_size = index_size[0];
+      auto inp_stride_bytes = index_stride[0];
+      auto out_stride_bytes = iter.strides(0)[1];
+      if (iter.numel() == 0)
+        return;
+      at::native::xpu::vectorized_gather_kernel_launch<alignment, int64_t>(
+          out_ptr,
+          in_ptr,
+          (int64_t*)iter.data_ptr(2),
+          num_ind,
+          slice_size,
+          ind_dim_size,
+          inp_stride_bytes,
+          out_stride_bytes,
+          /*allow_neg_indices*/ true);
+      return;
+    }
+  }
   index_kernel_impl<func_t>(iter, index_size, index_stride, f);
 }
 
