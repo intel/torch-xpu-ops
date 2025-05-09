@@ -26,6 +26,7 @@ OP_LIST = {
 
 def find_op_time(text, ops):
     res = []
+
     def transform_to_us(time):
         if time.endswith('us'):
             return float(time[:-2])
