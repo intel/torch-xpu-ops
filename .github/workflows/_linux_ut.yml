@@ -67,7 +67,8 @@ jobs:
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
             # apply PRs for stock pytorch
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git apply --3way ~/mengfeil/diff/*.diff
+            git status
             git status && git show -s
           fi
       - name: Triton Installation
@@ -381,7 +382,8 @@ jobs:
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
             cd ../..
-            python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            git apply --3way ~/mengfeil/diff/*.diff
+            git status
           fi
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
