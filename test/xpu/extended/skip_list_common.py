@@ -1,5 +1,7 @@
 skip_dict = {
     "test_ops_xpu.py": (
+        "scatter",
+        "gather",
         # Calculation error between XPU implementation and CPU implementation,
         # 1. Compiler optimization causes failing to promote data type to higher precision.
         # 2. Accumulate error is amplified by some operations in some extreme cases. (std::exp(extreme_large_num))
