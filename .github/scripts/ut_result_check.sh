@@ -44,7 +44,7 @@ compare_and_filter_logs() {
     fi
 }
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' ]]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log

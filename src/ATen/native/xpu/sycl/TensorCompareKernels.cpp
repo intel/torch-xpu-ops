@@ -214,7 +214,7 @@ void launch_assert_async_kernel(const c10::complex<double>* input, Msg msg) {
 
 void _assert_async_msg_kernel(
     const Tensor& self_tensor,
-    c10::string_view assert_msg) {
+    std::string_view assert_msg) {
   const TensorBase& self = get_tensor_base(self_tensor);
   auto n = self.numel();
   TORCH_CHECK(n != 0, "Boolean value of Tensor with no values is ambiguous");
