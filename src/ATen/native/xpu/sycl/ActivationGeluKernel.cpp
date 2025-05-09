@@ -76,7 +76,7 @@ struct GeluErfBackwardFunctor {
   }
 };
 
-void gelu_kernel(TensorIteratorBase& iter, c10::string_view approximate) {
+void gelu_kernel(TensorIteratorBase& iter, std::string_view approximate) {
   auto approximate_ = at::native::get_gelutype_enum(approximate);
   if (approximate_ == at::native::GeluType::Tanh) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -97,7 +97,7 @@ void gelu_kernel(TensorIteratorBase& iter, c10::string_view approximate) {
 
 void gelu_backward_kernel(
     TensorIteratorBase& iter,
-    c10::string_view approximate) {
+    std::string_view approximate) {
   auto approximate_ = at::native::get_gelutype_enum(approximate);
   if (approximate_ == at::native::GeluType::Tanh) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
