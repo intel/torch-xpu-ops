@@ -1,7 +1,7 @@
 #!/bin/bash
 ut_suite="${1:-op_regression}"   # op_regression / op_extended / op_ut / torch_xpu
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' ]]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "^FAILED|have failures" "${ut_suite}"_test.log | awk '{print $2}' > ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     num_failed=$(wc -l < "./${ut_suite}_failed.log")
