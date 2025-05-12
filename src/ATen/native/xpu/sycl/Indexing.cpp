@@ -53,13 +53,7 @@ void index_kernel(
         using dtype = OpaqueType<sizeof(scalar_t)>;
         IndexFunctor<dtype> f;
         _index_kernel(
-            iter,
-            index_size,
-            index_stride,
-            IntArrayRef{},
-            IntArrayRef{},
-            f,
-            true);
+            iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
       });
 }
 
@@ -578,13 +572,7 @@ void index_put_kernel(
         [&] {
           IndexPutAccumulateFunctor<scalar_t> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              IntArrayRef{},
-              IntArrayRef{},
-              f,
-              false);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -598,13 +586,7 @@ void index_put_kernel(
           using dtype = OpaqueType<sizeof(scalar_t)>;
           IndexPutFunctor<dtype> f;
           _index_kernel(
-              iter,
-              index_size,
-              index_stride,
-              IntArrayRef{},
-              IntArrayRef{},
-              f,
-              false);
+              iter, index_size, index_stride, IntArrayRef{}, IntArrayRef{}, f);
         });
   }
 }

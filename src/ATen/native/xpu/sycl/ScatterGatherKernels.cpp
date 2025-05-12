@@ -6,14 +6,11 @@
 
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
-#include <ATen/ceil_div.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/ReductionType.h>
 #include <ATen/native/ScatterGatherChecks.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
-#include <ATen/native/xpu/sycl/IndexKernelUtils.h>
-#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
 #include <comm/SYCLContext.h>
 
@@ -212,16 +209,14 @@ template <
     bool is_scatter_like,
     typename scalar_t,
     typename offset_calc_t,
-    typename func_t,
-    typename index_t>
+    typename func_t>
 struct ScatterGatherInternalKernelLoopFunctor {
   void operator()(int i) const {
     auto offsets = offset_calc_.get(i);
 
-    int64_t idx_dim = *(index_t*)(index_ptr_ + offsets[2]);
+    int64_t idx_dim = *(int64_t*)(index_ptr_ + offsets[2]);
     SYCL_KERNEL_ASSERT(
-        idx_dim >= 0 && idx_dim < index_size_ &&
-        "scatter gather kernel index out of bounds");
+        idx_dim >= 0 && idx_dim < index_size_ && "index out of bounds");
 
     f_((scalar_t*)(self_ptr_ + offsets[0]),
        is_scatter_like ? idx_dim * index_stride_ : 0,
@@ -259,7 +254,7 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
-template <bool is_scatter_like, typename scalar_t, typename index_t>
+template <bool is_scatter_like, typename scalar_t>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
   void operator()(
@@ -270,7 +265,7 @@ struct ScatterGatherInternalKernel {
       func_t f) {
     if (!iter.can_use_32bit_indexing()) {
       for (auto& sub_iter : iter.with_32bit_indexing()) {
-        ScatterGatherInternalKernel<is_scatter_like, scalar_t, index_t>()(
+        ScatterGatherInternalKernel<is_scatter_like, scalar_t>()(
             sub_iter, index_size, index_stride, numel, f);
       }
       return;
@@ -280,43 +275,13 @@ struct ScatterGatherInternalKernel {
     char* src_ptr = (char*)iter.data_ptr(1);
     char* index_ptr = (char*)iter.data_ptr(2);
 
-    if constexpr (!is_scatter_like) {
-      constexpr size_t element_size = sizeof(scalar_t);
-      constexpr int64_t alignment = 16;
-      if (fast_gather_kernel_eligible<alignment>(
-              iter,
-              self_ptr,
-              src_ptr,
-              index_stride * element_size,
-              element_size)) {
-        auto slice_size = iter.shape()[0] * element_size;
-        auto num_ind = iter.shape()[1];
-        auto ind_dim_size = index_size;
-        auto inp_stride_bytes = index_stride * element_size;
-        auto out_stride_bytes = iter.strides(0)[1];
-        if (iter.numel() == 0)
-          return;
-        at::native::xpu::vectorized_gather_kernel_launch<alignment, index_t>(
-            self_ptr,
-            src_ptr,
-            (index_t*)index_ptr,
-            num_ind,
-            slice_size,
-            ind_dim_size,
-            inp_stride_bytes,
-            out_stride_bytes);
-        return;
-      }
-    }
-
     auto offset_calc = make_offset_calculator<3>(iter);
 
     auto loop = ScatterGatherInternalKernelLoopFunctor<
         is_scatter_like,
         scalar_t,
         decltype(offset_calc),
-        func_t,
-        index_t>(
+        func_t>(
         self_ptr,
         src_ptr,
         index_ptr,
@@ -387,11 +352,9 @@ struct ScatterGatherBaseKernel {
               cast_to_opaque,
               OpaqueType<sizeof(scalar_t)>,
               scalar_t>::type;
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(), "scatter_gather_base_kernel_func", [&]() {
-                ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                    iter, index_size, index_stride, self.numel(), f);
-              });
+
+          ScatterGatherInternalKernel<is_scatter_like, dtype>()(
+              iter, index_size, index_stride, self.numel(), f);
         });
   }
 
@@ -438,49 +401,22 @@ struct ScatterGatherBaseKernel {
 
     auto index_size = is_scatter_like ? self_dim_size : src_dim_size;
     auto index_stride = is_scatter_like ? self_dim_stride : src_dim_stride;
-    if (self.is_quantized()) {
-      TORCH_CHECK(
-          self.qscheme() == kPerTensorAffine,
-          "Only per_tensor quantized quantized tensors are supported by gather.")
-      AT_DISPATCH_QINT_TYPES(iter.dtype(), "gather_quant_xpu", [&] {
-        using dtype = typename std::conditional<
-            cast_to_opaque,
-            OpaqueType<sizeof(scalar_t)>,
-            scalar_t>::type;
-        AT_DISPATCH_INDEX_TYPES(
-            index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
-              ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                  iter, index_size, index_stride, self.numel(), f);
-            });
-      });
-    } else {
-      AT_DISPATCH_V2(
-          iter.dtype(),
-          "gather_xpu",
-          AT_WRAP([&] {
-            using dtype = typename std::conditional<
-                cast_to_opaque,
-                OpaqueType<sizeof(scalar_t)>,
-                scalar_t>::type;
-            AT_DISPATCH_INDEX_TYPES(
-                index.scalar_type(),
-                "xpu_scatter_gather_base_kernel_func",
-                [&]() {
-                  ScatterGatherInternalKernel<
-                      is_scatter_like,
-                      dtype,
-                      index_t>()(
-                      iter, index_size, index_stride, self.numel(), f);
-                });
-          }),
-          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
-          AT_EXPAND(AT_FLOAT8_TYPES),
-          kComplexHalf,
-          kHalf,
-          kBool,
-          kBFloat16);
-    }
+
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
+        at::ScalarType::Half,
+        at::ScalarType::Bool,
+        at::ScalarType::BFloat16,
+        iter.dtype(),
+        "scatter_gather_base_kernel_func",
+        [&] {
+          using dtype = typename std::conditional<
+              cast_to_opaque,
+              OpaqueType<sizeof(scalar_t)>,
+              scalar_t>::type;
+
+          ScatterGatherInternalKernel<is_scatter_like, dtype>()(
+              iter, index_size, index_stride, self.numel(), f);
+        });
   }
 
   template <typename func_t>
@@ -538,26 +474,18 @@ struct ScatterGatherBaseKernel {
               cast_to_opaque,
               OpaqueType<sizeof(scalar_t)>,
               scalar_t>::type;
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(),
-              "xpu_scatter_gather_base_kernel_func",
-              [&]() {
-                ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                    iter, index_size, index_stride, self.numel(), f);
-              });
+
+          ScatterGatherInternalKernel<is_scatter_like, dtype>()(
+              iter, index_size, index_stride, self.numel(), f);
         });
   }
 };
 
-template <
-    typename scalar_t,
-    typename offset_calc_t,
-    typename func_t,
-    typename index_t>
+template <typename scalar_t, typename offset_calc_t, typename func_t>
 struct ScatterFillInternalKernelLoopFunctor {
   void operator()(int i) const {
     auto offsets = offset_calc_.get(i);
-    int64_t idx_dim = *(index_t*)(index_ptr_ + offsets[1]);
+    int64_t idx_dim = *(int64_t*)(index_ptr_ + offsets[1]);
     char* self_data = self_ptr_ + offsets[0];
     f_((scalar_t*)self_data + idx_dim * index_stride_, (scalar_t*)&src_val_);
   }
@@ -584,7 +512,7 @@ struct ScatterFillInternalKernelLoopFunctor {
   scalar_t src_val_;
 };
 
-template <typename scalar_t, typename index_t>
+template <typename scalar_t>
 struct ScatterFillInternalKernel {
   template <typename func_t>
   void operator()(
@@ -596,7 +524,7 @@ struct ScatterFillInternalKernel {
       const func_t& f) {
     if (!iter.can_use_32bit_indexing()) {
       for (auto& sub_iter : iter.with_32bit_indexing()) {
-        ScatterFillInternalKernel<scalar_t, index_t>()(
+        ScatterFillInternalKernel<scalar_t>()(
             sub_iter, src_val, index_size, index_stride, numel, f);
       }
       return;
@@ -610,8 +538,7 @@ struct ScatterFillInternalKernel {
     auto loop = ScatterFillInternalKernelLoopFunctor<
         scalar_t,
         decltype(offset_calc),
-        func_t,
-        index_t>(self_ptr, index_ptr, offset_calc, index_stride, f, src_val);
+        func_t>(self_ptr, index_ptr, offset_calc, index_stride, f, src_val);
 
     launch_scatter_gather_kernel(iter.numel(), loop);
   }
@@ -661,11 +588,9 @@ struct ScatterFillBaseKernel {
 
           auto src_scalar_val = src.to<scalar_t>();
           auto src_val = *(dtype*)&src_scalar_val;
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(), "scatter_fill_base_kernel_func", [&]() {
-                ScatterFillInternalKernel<dtype, index_t>()(
-                    iter, src_val, index_size, index_stride, self.numel(), f);
-              });
+
+          ScatterFillInternalKernel<dtype>()(
+              iter, src_val, index_size, index_stride, self.numel(), f);
         });
   }
 
@@ -709,13 +634,9 @@ struct ScatterFillBaseKernel {
 
           auto src_scalar_val = src.to<scalar_t>();
           auto src_val = *(dtype*)&src_scalar_val;
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(),
-              "scatter_fill_base_kernel_reduce_multiply",
-              [&]() {
-                ScatterFillInternalKernel<dtype, index_t>()(
-                    iter, src_val, index_size, index_stride, self.numel(), f);
-              });
+
+          ScatterFillInternalKernel<dtype>()(
+              iter, src_val, index_size, index_stride, self.numel(), f);
         });
   }
 };

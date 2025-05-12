@@ -1,5 +1,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
+#include <ATen/native/xpu/sycl/Indexing.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
@@ -11,11 +12,6 @@
 #include <ATen/native/xpu/sycl/RandpermKernel.h>
 
 namespace at::native::xpu {
-
-template <int N>
-struct alignas(N) OpaqueType {
-  char data[N];
-};
 
 template <typename T, typename scalar_t>
 struct HandleDuplicateKeysKernelFunctor {
