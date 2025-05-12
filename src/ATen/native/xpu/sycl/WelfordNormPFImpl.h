@@ -75,6 +75,25 @@ inline void welford_merge(
 
 } // namespace impl
 
+template <typename scalar_t, typename acc_t>
+int welford_norm_pf_kernel_vec_size(
+    int batch_size,
+    const scalar_t* input,
+    acc_t* save_mean,
+    acc_t* save_invstd,
+    int max_vec_bytes = 8) {
+  if (sizeof(scalar_t) >= max_vec_bytes)
+    return 1;
+  int vec_size = max_vec_bytes / sizeof(scalar_t);
+  while ((vec_size >= 1) && (batch_size % vec_size != 0) &&
+         (memory::can_vectorize_up_to<scalar_t>((char*)input) >= vec_size) &&
+         (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= vec_size) &&
+         (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= vec_size)) {
+    vec_size >>= 1;
+  }
+  return vec_size;
+}
+
 template <
     typename VarTransform,
     typename scalar_t,
