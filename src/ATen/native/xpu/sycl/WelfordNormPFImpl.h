@@ -75,7 +75,11 @@ inline void welford_merge(
 
 } // namespace impl
 
-template <typename scalar_t, typename acc_t, int VEC_SIZE>
+template <
+    typename VarTransform,
+    typename scalar_t,
+    typename acc_t,
+    int VEC_SIZE>
 struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
@@ -188,7 +192,7 @@ struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       acc_vec_t invstd_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        invstd_vec[v] = (acc_t)1.0 / std::sqrt(m2n[v] / count[v] + epsilon_);
+        invstd_vec[v] = VarTransform{}(m2n[v] / count[v], epsilon_);
       }
       *reinterpret_cast<acc_vec_t*>(&save_mean_[batch_vec_offset]) = mean;
       *reinterpret_cast<acc_vec_t*>(&save_invstd_[batch_vec_offset]) =
@@ -265,7 +269,8 @@ struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void init() {
-    using KernelT = WelfordNormPFKernel<scalar_t, acc_t, VEC_SIZE>;
+    using KernelT =
+        WelfordNormPFKernel<VarTransform, scalar_t, acc_t, VEC_SIZE>;
     auto max_group_size = syclMaxWorkGroupSize<KernelT>();
     std::tie(block_size_y_, block_size_x_, nblocks_y_, nblocks_x_) =
         impl::get_adaptive_config(
