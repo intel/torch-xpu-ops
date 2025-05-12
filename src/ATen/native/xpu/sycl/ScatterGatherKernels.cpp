@@ -280,7 +280,7 @@ struct ScatterGatherInternalKernel {
     char* src_ptr = (char*)iter.data_ptr(1);
     char* index_ptr = (char*)iter.data_ptr(2);
 
-    /* if constexpr (!is_scatter_like) {
+    if constexpr (!is_scatter_like) {
       constexpr size_t element_size = sizeof(scalar_t);
       constexpr int64_t alignment = 16;
       if (fast_gather_kernel_eligible<alignment>(
@@ -307,7 +307,7 @@ struct ScatterGatherInternalKernel {
             out_stride_bytes);
         return;
       }
-    } */
+    }
 
     auto offset_calc = make_offset_calculator<3>(iter);
 
