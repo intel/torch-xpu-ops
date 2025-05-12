@@ -938,12 +938,12 @@ template <typename T, int SIMD, int VEC_SIZE>
 struct ComputeInternalGradientsVectorizedFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
-  using vec_t = memory::aligned_vector<T, VEC_SIZE>;
+  using vec_t = memory::aligned_vector<T_ACC, VEC_SIZE>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
-    vec_t sum1_vec[VEC_SIZE];
-    vec_t sum2_vec[VEC_SIZE];
+    vec_t sum1_vec;
+    vec_t sum2_vec;
     auto g_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
@@ -952,16 +952,14 @@ struct ComputeInternalGradientsVectorizedFunctor
       for (int64_t hw = item.get_local_id(0) * VEC_SIZE; hw < HxW_;
            hw += item.get_local_range(0) * VEC_SIZE) {
         const int64_t vec_index = nc * HxW_ + hw;
-        vec_t vec_dY_ =
+        auto vec_dY_ =
             *reinterpret_cast<vec_t*>(const_cast<T*>(dY_) + vec_index);
-        vec_t vec_X_ =
-            *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+        auto vec_X_ = *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
 
 #pragma unroll
         for (int iv = 0; iv < VEC_SIZE; ++iv) {
-          sum1_vec[v] +=
-              static_cast<T_ACC>(vec_dY[iv]) * static_cast<T_ACC>(vec_X_[iv]);
-          sum2_vec[v] += static_cast<T_ACC>(vec_dY_[index]);
+          sum1_vec[v] = static_cast<T_ACC>(vec_dY_[iv] * vec_X_[iv]);
+          sum2_vec[v] = static_cast<T_ACC>(vec_dY_[iv]);
         }
       }
     }
@@ -981,8 +979,8 @@ struct ComputeInternalGradientsVectorizedFunctor
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         if (item.get_local_id(0) == 0) {
-          ds_vec[nc] = sum1_vec;
-          db_vec[nc] = sum2_vec;
+          ds_vec[v] = sum1_vec[v];
+          db_vec[v] = sum2_vec[v];
         }
       }
       *(reinterpret_cast<vec_t*>(ds_ + g_start)) = ds_vec;
@@ -1356,6 +1354,7 @@ void group_norm_backward_kernel_impl(
   int64_t simd = syclMaxSubGroupSize();
 
   constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
+  int64_t wg_size = 0;
 
   if (can_use_vectorization(dY_data, VEC_SIZE) &&
       can_use_vectorization(X_data, VEC_SIZE) &&
@@ -1366,7 +1365,7 @@ void group_norm_backward_kernel_impl(
         ComputeInternalGradientsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
     using KernelS32T =
         ComputeInternalGradientsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
-    int64_t wg_size = HxW / VEC_SIZE < get_group_reduce_group_size(simd)
+    wg_size = HxW / VEC_SIZE < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
 
@@ -1383,7 +1382,7 @@ void group_norm_backward_kernel_impl(
   } else {
     using KernelS16T = ComputeInternalGradientsFunctor<T, SIMD16>;
     using KernelS32T = ComputeInternalGradientsFunctor<T, SIMD32>;
-    int64_t wg_size = HxW < get_group_reduce_group_size(simd)
+    wg_size = HxW < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
     group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
