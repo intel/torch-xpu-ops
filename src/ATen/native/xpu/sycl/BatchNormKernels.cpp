@@ -9,7 +9,7 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
-#include <ATen/native/xpu/sycl/WelfordNorm.h>
+#include <ATen/native/xpu/sycl/WelfordNormPFImpl.h>
 #include <ATen/ops/from_blob.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
@@ -1072,11 +1072,8 @@ void batch_norm_stats_channels_last_template(
   at::Tensor staging_data;
   at::Tensor semaphores;
 
-  using VecKernel = WelfordBatchNormStatChannelsLastVecKernelFunctor<
-      VarTransform,
-      scalar_t,
-      accscalar_t,
-      PREFERRED_VEC_SIZE>;
+  using VecKernel =
+      WelfordNormPFKernel<scalar_t, accscalar_t, PREFERRED_VEC_SIZE>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
   auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
   auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
@@ -1086,22 +1083,20 @@ void batch_norm_stats_channels_last_template(
           reduction_size, stride, input_ptr, out_mean_ptr, out_invstd_ptr)) {
     auto kfn = VecKernel(
         input_ptr,
-        out_mean_ptr,
-        out_invstd_ptr,
-        reduction_size,
         stride,
-        nullptr,
-        nullptr,
-        epsilon);
+        reduction_size,
+        epsilon,
+        out_mean_ptr,
+        out_invstd_ptr);
     kfn.init();
 
     staging_data = at::empty({(long)(kfn.staging_size())}, out_mean.options());
     semaphores = at::zeros(
         {(long)(kfn.semaphores_size())}, input.options().dtype(at::kInt));
-    accscalar_t* staging_data_ptr = kfn.num_cooperative_groups() > 1
+    accscalar_t* staging_data_ptr = kfn.num_cooperative_blocks() > 1
         ? staging_data.mutable_data_ptr<accscalar_t>()
         : nullptr;
-    int* semaphores_ptr = kfn.num_cooperative_groups() > 1
+    int* semaphores_ptr = kfn.num_cooperative_blocks() > 1
         ? semaphores.mutable_data_ptr<int>()
         : nullptr;
 
