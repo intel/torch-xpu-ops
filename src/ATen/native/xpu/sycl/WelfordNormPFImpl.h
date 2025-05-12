@@ -85,10 +85,11 @@ int welford_norm_pf_kernel_vec_size(
   if (sizeof(scalar_t) >= max_vec_bytes)
     return 1;
   int vec_size = max_vec_bytes / sizeof(scalar_t);
-  while ((vec_size >= 1) && (batch_size % vec_size != 0) &&
-         (memory::can_vectorize_up_to<scalar_t>((char*)input) >= vec_size) &&
-         (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= vec_size) &&
-         (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= vec_size)) {
+  while (
+      !((batch_size % vec_size == 0) &&
+        (memory::can_vectorize_up_to<scalar_t>((char*)input) >= vec_size) &&
+        (memory::can_vectorize_up_to<acc_t>((char*)save_mean) >= vec_size) &&
+        (memory::can_vectorize_up_to<acc_t>((char*)save_invstd) >= vec_size))) {
     vec_size >>= 1;
   }
   return vec_size;
