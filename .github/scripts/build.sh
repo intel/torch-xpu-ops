@@ -41,13 +41,12 @@ git remote -v && git branch && git show -s
 cd ${WORKSPACE}/pytorch
 rm -rf third_party/torch-xpu-ops
 cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
-sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
 
 # Pre Build
 cd ${WORKSPACE}/pytorch
 python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
-git diff && git submodule sync && git submodule update --init --recursive
+git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
 # python -m pip install -U cmake==3.31.6
@@ -55,6 +54,8 @@ export USE_ONEMKL=1
 export USE_XCCL=1
 
 # Build
+sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+git diff
 WERROR=1 python setup.py bdist_wheel
 
 # Post Build
