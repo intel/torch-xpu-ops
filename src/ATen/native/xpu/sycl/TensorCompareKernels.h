@@ -33,6 +33,6 @@ TORCH_XPU_API void isin_kernel(
 
 TORCH_XPU_API void _assert_async_msg_kernel(
     const Tensor& self_tensor,
-    c10::string_view assert_msg);
+    std::string_view assert_msg);
 
 } // namespace at::native::xpu
