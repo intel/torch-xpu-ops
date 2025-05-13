@@ -26,7 +26,7 @@ compare_and_filter_logs() {
 
     # Filter the same content from file_UT as file_known_issue
     echo "Filtering $file_known_issue for $file_UT"
-    grep -vFf "$file_known_issue" "$file_UT" > "$output_file"
+    grep -vFxf "$file_known_issue" "$file_UT" > "$output_file"
 
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
