@@ -29,7 +29,7 @@ compare_and_filter_logs() {
     grep -vFf "$file_known_issue" "$file_UT" > "$output_file"
 
     # Keep the filtered UT cases
-    grep -nFf "$file_known_issue" "$file_UT" > "$filtered_content"
+    grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
     if [[ -s "$filtered_content" ]]; then
         echo -e "\n\033[1;31m[Filtered Cases]\033[0m"
