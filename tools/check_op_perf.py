@@ -13,11 +13,12 @@ def find_pytorch_dir():
 
 
 OP_LIST = {
-    'layer_norm.py': ['aten::native_layer_norm', 'aten::native_layer_norm_backward'],
-    'group_norm.py': ['aten::native_group_norm', 'aten::native_group_norm_backward'],
-    'batch_norm_1d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
-    'batch_norm_2d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
-    'batch_norm_3d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
+    # 'layer_norm.py': ['aten::native_layer_norm', 'aten::native_layer_norm_backward'],
+    # 'group_norm.py': ['aten::native_group_norm', 'aten::native_group_norm_backward'],
+    'batch_norm_1d.py': [('aten::native_batch_norm', 'aten::cudnn_batch_norm'), ('aten::native_batch_norm_backward', 'aten::cudnn_batch_norm_backward')],
+    # 'batch_norm_1d.py': [('aten::native_batch_norm', 'aten::cudnn_batch_norm'), 'aten::native_batch_norm_backward'],
+    # 'batch_norm_2d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
+    # 'batch_norm_3d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
 }
 
 
@@ -39,14 +40,25 @@ def find_op_time(text, ops):
         if line.startswith('shape:'):
             flag = line
         for op in ops:
-            if op in line:
-                items = []
-                for item in line.strip().split('  '):
-                    if len(item) > 1:
-                        items.append(item.strip())
-                op_name = items[0]
-                op_time = transform_to_us(items[-2])
-                res.append([op_name, flag, str(op_time)])
+            if isinstance(op, tuple):
+                for op_ in op:
+                    if op_ in line:
+                        items = []
+                        for item in line.strip().split('  '):
+                            if len(item) > 1:
+                                items.append(item.strip())
+                        op_name = items[0]
+                        op_time = transform_to_us(items[-2])
+                        res.append([op_name, flag, str(op_time)])
+            else:
+                if op in line:
+                    items = []
+                    for item in line.strip().split('  '):
+                        if len(item) > 1:
+                            items.append(item.strip())
+                    op_name = items[0]
+                    op_time = transform_to_us(items[-2])
+                    res.append([op_name, flag, str(op_time)])
     res_ = ["@@".join(item) for item in res]
     res_ = list(set(res_))
     res = [item.split("@@") for item in res_]
