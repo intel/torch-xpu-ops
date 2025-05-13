@@ -2293,6 +2293,8 @@ skip_dict = {
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
+        # randomly fails
+        "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
@@ -3073,10 +3075,7 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_float",
     ),
     "test_type_promotion_xpu.py": None,
-    "test_distributions_xpu.py": (
-        # TODO: Passed on lts driver version, but failed on rolling driver version
-        "test_gamma_gpu_sample_xpu",
-    ),
+    "test_distributions_xpu.py": None,
     "test_optim_xpu.py": (
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN

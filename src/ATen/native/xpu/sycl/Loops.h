@@ -35,7 +35,7 @@ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
 #pragma unroll
   for (int i = 0; i < item_work_size; i++) {
     if (policy.check_inbounds(i)) {
-      results[i] = c10::guts::apply(f, args[i]);
+      results[i] = std::apply(f, args[i]);
     }
   }
 
