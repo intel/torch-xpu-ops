@@ -230,7 +230,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
 };
 
 template <typename index_t, typename scalar_t>
-struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
+struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
     scalar_t* out_cached =
@@ -343,7 +343,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
     out_cached_ = sycl_local_acc_t<scalar_t>(kernel_size_C_ * group_size_, cgh);
   }
 
-  AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast(
+  AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor(
       scalar_t* gradInput,
       const scalar_t* gradOutput,
       int sizeB,
@@ -475,7 +475,7 @@ void adaptive_avg_pool2d_backward_kernel(
                     sizeof(scalar_t) +
                 2 * isizeW * sizeof(int32_t);
             if (shmem_size <= sharedMemPerGroup) {
-              AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast<int32_t, scalar_t>
+              AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor<int32_t, scalar_t>
                   kfn(grad_input.mutable_data_ptr<scalar_t>(),
                       grad_output.const_data_ptr<scalar_t>(),
                       sizeB,
