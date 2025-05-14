@@ -156,16 +156,16 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
-      #- name: Run XPU OP Extended UT
-      #  if: contains(inputs.ut, 'op_extended')
-      #  run: |
-      #    source activate xpu_op_${ZE_AFFINITY_MASK}
-      #    export PYTORCH_TEST_WITH_SLOW=1
-      #    cd ${{ github.workspace }}
-      #    mkdir -p ut_log/op_extended
-      #    cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-      #    timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
-      #    cp op_extended.xml ${{ github.workspace }}/ut_log
+      - name: Run XPU OP Extended UT
+        if: contains(inputs.ut, 'op_extended')
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          export PYTORCH_TEST_WITH_SLOW=1
+          cd ${{ github.workspace }}
+          mkdir -p ut_log/op_extended
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
+          timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
+          cp op_extended.xml ${{ github.workspace }}/ut_log
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut')
         run: |
