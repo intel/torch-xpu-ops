@@ -111,12 +111,12 @@ def print_break(needed):
     if needed:
         print("")
 
-if failures:
-    print_break(printed)
-    print("### Failures")
-    with open("ut_failure_list.csv", "w") as failure_list:
+with open("ut_failure_list.csv", "w") as failure_list:
+    if failures:
+        print_break(printed)
+        print("### Failures")
         print_cases(failures, failure_list=failure_list)
-    printed = True
+        printed = True
 
 print("### Results Summary")
 print_suite(suites)
