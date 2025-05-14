@@ -17,7 +17,7 @@ compare_and_filter_logs() {
 
     # Check whether UT's failed log contains the case of the known issue'log
     echo "Checking whether $file_UT contains $file_known_issue"
-    if grep -qFf "$file_known_issue" "$file_UT"; then
+    if grep -qxFf "$file_known_issue" "$file_UT"; then
         echo "$file_UT contains $file_known_issue"
     else
         echo "$file_UT does not contain $file_known_issue"
@@ -49,7 +49,11 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
-    num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
+    if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
+      num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
+    else
+      num_failed=$(wc -l < "./${ut_suite}_failed.log")
+    fi
     num_passed=$(wc -l < "./${ut_suite}_passed.log")
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
@@ -68,8 +72,17 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
     grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
     compare_and_filter_logs "${ut_suite}"_with_skip_test_failed.log Known_issue.log
-    num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed_filtered.log")
+    if [[ -f "${ut_suite}_with_skip_test_failed_filtered.log" ]]; then
+      num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed_filtered.log")
+    else
+      num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
+    fi
     compare_and_filter_logs "${ut_suite}"_with_only_test_failed.log Known_issue.log
+    if [[ -f "${ut_suite}_with_only_test_failed_filtered.log" ]]; then
+      num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
+    else
+      num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
+    fi
     num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
@@ -125,7 +138,11 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
     grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
     compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
-    num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
+    if [[ -f "${ut_suite}_xpu_distributed_test_failed_filtered.log" ]]; then
+      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
+    else
+      num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
+    fi
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
     echo -e "========================================================================="
