@@ -86,6 +86,8 @@ runs:
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
           bash valprep.sh
         fi
+        pip uninstall torch -y && pip uninstall torch -y
+        pip install --no-deps ~/mengfeil/torch-2.7.0.dev20250509+xpu-cp310-cp310-linux_x86_64.whl
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
