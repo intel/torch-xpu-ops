@@ -16,7 +16,7 @@
 #define START_IND_INT(a, b, c) ((a * c) / b)
 #define END_IND_INT(a, b, c) (((a + 1) * c + b - 1) / b)
 
-#define XPU_MAX_THREADS 1024 // this is safe, in reality 256 is our limit
+#define XPU_MAX_THREADS 1024
 #define GROUP_STRIDE 2 // increasing group_stride to lower # of groups launched
 
 namespace at::native::xpu {
