@@ -8354,7 +8354,7 @@ class TestTorch(TestCase):
         ):
             torch.tensor([1]).unflatten(0, [2, 2])
         with self.assertRaisesRegex(
-            RuntimeError, r"Dimension specified as 0 but tensor has no dimensions"
+            RuntimeError, r".*Dimension specified as 0 but tensor has no dimensions.*"
         ):
             torch.tensor(1).unflatten(0, [0])
         with self.assertRaisesRegex(
