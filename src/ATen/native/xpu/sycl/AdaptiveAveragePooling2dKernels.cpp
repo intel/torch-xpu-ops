@@ -237,12 +237,20 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
         (scalar_t*)out_cached_
             .template get_multi_ptr<sycl::access::decorated::no>()
             .get();
+
+    // flattening cta for pre-computation & smem initialization;
     int thread_id = item.get_global_linear_id();
 
+    // Precompute output start/end index per input index on width dimension;
+    // Not doing this for height dimension, as that's our out-most loop.
     for (index_t i = thread_id; i < isizeW_; i += group_size_) {
       ostartW_cached_[i] = START_IND_INT(i, isizeW_, osizeW_);
       oendW_cached_[i] = END_IND_INT(i, isizeW_, osizeW_);
     }
+
+    // Precompute pooling height/weight factor for each output element;
+    // This is used to weight output gradient when accumulate them on input
+    // gradient.
 
     for (index_t i = thread_id; i < osizeH_; i += group_size_) {
       r_kH_cached_[i] = scalar_t(1.0) /
@@ -255,11 +263,14 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
            START_IND_INT(i, osizeW_, isizeW_));
     }
 
+    // each cta handles a portion of a single slice on batch dimension;
     int batch_id = item.get_group(0) % sizeB_;
     int channel_id = item.get_group(0) / sizeB_;
     int channel_offset =
         item.get_local_id(0) + channel_id * item.get_local_range(0);
 
+    // use shared memory to store temporary output value. This is simply to
+    // reduce register usage.
     for (index_t i = thread_id; i < kernel_size_C_ * item.get_local_range(0) *
              item.get_local_range(1) * item.get_local_range(2);
          i += group_size_) {
@@ -271,11 +282,15 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
     auto gradInput = gradInput_ + batch_id * isizeH_ * isizeW_ * sizeC_;
     auto gradOutput = gradOutput_ + batch_id * ostrideB_;
 
+    // split out_cached and exclusively it assigned to each thread;
     out_cached = &out_cached
                      [(item.get_local_id(2) * item.get_local_range(1) +
                        item.get_local_id(1)) *
                       item.get_local_range(0) * kernel_size_C_];
 
+    // iterate on input H & W.
+    // Each cta handles a consecutive H & W section (TILE); Do NOT stride cta on
+    // tile so there's a better chance to hit L1 cache.
     index_t iH =
         (isizeH_ + item.get_group_range(2) - 1) / item.get_group_range(2);
     index_t iW =
@@ -285,10 +300,14 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
     index_t istartW = item.get_local_id(1) + item.get_group(1) * iW;
     index_t iendW = std::min(istartW + iW, isizeW_);
 
+    // Stride for threads, each warp can reuse L1 as they go. So theoretically
+    // better chance to survive cache eviction.
     for (index_t ih = istartH; ih < iendH; ih += item.get_local_range(2)) {
       index_t ostartH = START_IND_INT(ih, isizeH_, osizeH_);
       index_t oendH = END_IND_INT(ih, isizeH_, osizeH_);
       for (index_t iw = istartW; iw < iendW; iw += item.get_local_range(1)) {
+        // loop on output: hierarchy h->w->c, so we could reuse weight factor f
+        // because it remains the same for given oh & ow
         for (index_t oh = ostartH; oh < oendH; ++oh) {
           for (index_t ow = ostartW_cached_[iw]; ow < oendW_cached_[iw]; ++ow) {
             scalar_t f = r_kW_cached_[ow] * r_kH_cached_[oh];
@@ -305,6 +324,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctorChannelLast
         scalar_t* ptr_gradInput = gradInput + (ih * isizeW_ + iw) * sizeC_;
         int cached_index = item.get_local_id(0);
 
+        // write accumulated gradIput to global memory;
         for (index_t c = channel_offset; c < sizeC_;
              c += item.get_local_range(0) * kernel_stride_C_) {
           ptr_gradInput[c] = out_cached[cached_index];
