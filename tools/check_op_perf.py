@@ -15,7 +15,8 @@ def find_pytorch_dir():
 OP_LIST = {
     # 'layer_norm.py': ['aten::native_layer_norm', 'aten::native_layer_norm_backward'],
     # 'group_norm.py': ['aten::native_group_norm', 'aten::native_group_norm_backward'],
-    'batch_norm_1d.py': [('aten::native_batch_norm', 'aten::cudnn_batch_norm'), ('aten::native_batch_norm_backward', 'aten::cudnn_batch_norm_backward')],
+    'batch_norm_1d.py': [('aten::native_batch_norm', 'aten::cudnn_batch_norm'),
+                         ('aten::native_batch_norm_backward', 'aten::cudnn_batch_norm_backward')],
     # 'batch_norm_1d.py': [('aten::native_batch_norm', 'aten::cudnn_batch_norm'), 'aten::native_batch_norm_backward'],
     # 'batch_norm_2d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
     # 'batch_norm_3d.py': ['aten::native_batch_norm', 'aten::native_batch_norm_backward'],
