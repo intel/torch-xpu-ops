@@ -35,30 +35,24 @@ def find_op_time(text, ops):
         else:
             raise Exception("time format not support")
     flag = "None"
+    print(text)
     for line in text.split('\n'):
         line = line.strip()
         if line.startswith('shape:'):
             flag = line
         for op in ops:
-            if isinstance(op, tuple):
-                for op_ in op:
-                    if op_ in line:
-                        items = []
-                        for item in line.strip().split('  '):
-                            if len(item) > 1:
-                                items.append(item.strip())
-                        op_name = items[0]
-                        op_time = transform_to_us(items[-2])
-                        res.append([op_name, flag, str(op_time)])
-            else:
-                if op in line:
+            if not isinstance(op, tuple):
+                op = (op,)
+            op_base_name = op[0]
+            for op_alias in op:
+                if op_alias in line:
                     items = []
                     for item in line.strip().split('  '):
                         if len(item) > 1:
                             items.append(item.strip())
-                    op_name = items[0]
-                    op_time = transform_to_us(items[-2])
-                    res.append([op_name, flag, str(op_time)])
+                    if items[0].strip() == op_alias:
+                        op_time = transform_to_us(items[-2])
+                        res.append([op_base_name, flag, str(op_time)])
     res_ = ["@@".join(item) for item in res]
     res_ = list(set(res_))
     res = [item.split("@@") for item in res_]
