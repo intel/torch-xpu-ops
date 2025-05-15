@@ -30,7 +30,20 @@ def get_result(case):
 def get_message(case):
     if not case.result:
         return ""
-    return f"{case.result[0].message.splitlines()[0]}"
+    lines = case.result[0].message.splitlines()
+    message = []
+    message.append(f"{case.result[0].message.splitlines()[0]}")
+    collect = False 
+    for line in lines:
+        if "Traceback" in line:
+            collect = True 
+        if collect and "Error: " in line:
+            collect = False
+            break
+        if collect:
+            message.append(line)
+
+    return "".join(message)
 
 def print_md_row(row, print_header, failure_list=None):
     if print_header:
