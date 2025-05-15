@@ -8,6 +8,7 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": (
+        # Accuracy gap in FSDP checkpoint related UT
         # https://github.com/intel/torch-xpu-ops/issues/1666, 2.8 skipped
         "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_False_use_orig_params_False",
@@ -17,11 +18,13 @@ skip_dict = {
         "test_checkpoint_submodule_use_reentrant_False_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_ddp_parity_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_bf16_hook_has_wrapping_False_sharding_strategy0",
         "test_bf16_hook_has_wrapping_False_sharding_strategy1",
@@ -36,6 +39,7 @@ skip_dict = {
         "test_fp16_hook_has_wrapping_True_sharding_strategy2",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_core.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_transformer_no_grad_mixed_precision_True_xpu",
         "test_delayed_optim_step_offload_false_no_shard_xpu",
@@ -76,6 +80,7 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_hooks_multi_traversal_xpu",
         "test_parity_with_ddp_xpu",
@@ -83,6 +88,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/fsdp/test_fsdp_flatten_params.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_freezing_weights.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_False",
         "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_True",
@@ -125,16 +131,19 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_memory.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_meta.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_misc.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504, Performance test, should skip
         "test_fsdp_optimizer_overlap",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_multi_forward_cpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_flatten_sharded_optim_state_dict_nested",
         "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_False_rank0_only_False_use_diff_optim_inputs_False",
@@ -176,12 +185,14 @@ skip_dict = {
     ),
     # Performance check, skip
     # "../../../../test/distributed/fsdp/test_fsdp_overlap.py": (
-    #    # https://github.com/intel/torch-xpu-ops/issues/1504
+    #    # fsdp accuracy gaps
+        # https://github.com/intel/torch-xpu-ops/issues/1504
     #    "test_forward_overlap",
     #    "test_forward_overlap_xpu",
     # ),
     "../../../../test/distributed/fsdp/test_fsdp_pure_fp16.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_fsdp_ddp_parity_with_grad_scaler_offload_false_none_none_none",
         "test_fsdp_ddp_parity_with_grad_scaler_offload_false_shard_grad_op_none_none",
@@ -189,6 +200,7 @@ skip_dict = {
         "test_fsdp_ddp_parity_with_grad_scaler_offload_true_shard_grad_op_none_none",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_state_dict.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_state_dict_save_load_flow_state_dict_type_local_state_dict",
         "test_state_dict_save_load_flow_state_dict_type_sharded_state_dict",
@@ -199,6 +211,7 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_uneven.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_unshard_params.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_use_orig_params.py": (
+        # fsdp accuracy gaps
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_diff_hyperparams_sharding_strategy_str_full_shard",
         "test_diff_hyperparams_sharding_strategy_str_no_shard",
@@ -267,14 +280,16 @@ skip_dict = {
     "../../../../test/distributed/test_store.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
     # (
-    #     # https://github.com/intel/torch-xpu-ops/issues/1504
+    #     # fsdp accuracy gaps
+          # https://github.com/intel/torch-xpu-ops/issues/1504
     #     "test_stage_backward_weight_multiple_iters_xpu",
     #     "test_stage_backward_weight_xpu",
     #     "test_stage_backward_xpu",
     # ),
     "../../../../test/distributed/pipelining/test_microbatch.py": None,
     # (
-    #     # https://github.com/intel/torch-xpu-ops/issues/1504, need retest with oneccl fix
+    #     # fsdp accuracy gaps
+          # https://github.com/intel/torch-xpu-ops/issues/1504, need retest with oneccl fix
     #     "test_chunk_spec_xpu",
     # ),
     "../../../../test/distributed/pipelining/test_pipe.py": None,
