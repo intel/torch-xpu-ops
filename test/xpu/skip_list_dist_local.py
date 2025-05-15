@@ -8,8 +8,8 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        # "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
+        # https://github.com/intel/torch-xpu-ops/issues/1666, 2.8 skipped
+        "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_False_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_True_use_orig_params_False",
         "test_checkpoint_fsdp_wrapping_cpu_offload1_offload_activations_False_use_orig_params_False",
@@ -37,7 +37,6 @@ skip_dict = {
     ),
     "../../../../test/distributed/fsdp/test_fsdp_core.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
-        # "test_delayed_optim_step_offload_true_no_shard_xpu",
         "test_transformer_no_grad_mixed_precision_True_xpu",
         "test_delayed_optim_step_offload_false_no_shard_xpu",
         "test_delayed_optim_step_offload_false_none_xpu",
@@ -75,10 +74,6 @@ skip_dict = {
         "test_transformer_offload_true_shard_grad_op_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": None,
-    # (
-    #     # https://github.com/intel/torch-xpu-ops/issues/1504
-    #     " test_dtensor_sharded_tensor_state_dict_identical_offload_to_cpu_True_is_even_sharded_model_False_xpu",
-    # ),
     "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
@@ -130,21 +125,15 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_memory.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_meta.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_misc.py": (
-        # # https://github.com/intel/torch-xpu-ops/issues/1535
-        # "test_fsdp_zero2_eval_with_prefetch",
-        # https://github.com/intel/torch-xpu-ops/issues/1504
+        # https://github.com/intel/torch-xpu-ops/issues/1504, Performance test, should skip
         "test_fsdp_optimizer_overlap",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
-    # (
-    #     "test_buffer_dtype_no_root_handle",
-    # ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_multi_forward_cpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": None,
-    # https://github.com/intel/torch-xpu-ops/issues/1537
     "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1504
         "test_flatten_sharded_optim_state_dict_nested",
@@ -245,12 +234,6 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_c10d_logger.py": None,
     "../../../../test/distributed/test_c10d_object_collectives.py": (
-        # # RuntimeError: Process 0 terminated or timed out after 300.09047198295593 seconds
-        # # https://github.com/intel/torch-xpu-ops/issues/1535
-        # "test_gather_object_cpu",
-        # "test_gather_object_xpu",
-        # "test_gather_object_list_cpu",
-        # "test_gather_object_list_xpu",
         # RuntimeError: Process 2 exited with error code 10 and exception: ; AssertionError: Scalars are not equal!
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_scatter_object_list_cpu",
@@ -260,35 +243,14 @@ skip_dict = {
     "../../../../test/distributed/test_control_collectives.py": None,
     "../../../../test/distributed/test_device_mesh.py": None,
     "../../../../test/distributed/test_dynamo_distributed.py": (
-        # # AttributeError:'torch._C._distributed_c10d.ProcessGroupXCCL' object has no attribute '_set_default_timeout'
-        # "test_asymmetric_compilation",
-        # "test_asymmetric_compilation_with_fx_cache",
-        # # ValueError: FlexAttention is only supported on CUDA or CPU devices. Found input tensors on xpu device.
-        # "test_compiled_flex_attention_full_model_ddp",
-        # "test_compiled_flex_attention_local_ddp",
-        # torch._dynamo.exc.InternalTorchDynamoError: AttributeError: __enter__
-        # https://github.com/intel/torch-xpu-ops/issues/1527
-        # "test_compiler_collectives_automatic_dynamic_scalar",
-        # "test_compiler_collectives_automatic_dynamic_speculation_divergence",
-        # "test_compiler_collectives_automatic_dynamic_tensor",
-        # "test_compiler_collectives_dim_mismatch",
-        # "test_compiler_collectives_graph_break_empty_graph_still_collective",
-        # "test_compiler_collectives_missing_source",
-        # "test_compiler_collectives_scalar_missing_source",
-        # "test_compiler_collectives_type_mismatch",
-        # "test_ddp_activation_checkpointing",
-        # "test_ddp_baseline_aot_eager_multiprocess",
-        # "test_fsdp_activation_checkpointing",
-        # "test_fsdp_aot_eager",
-        # "test_fsdp_inductor",
+        # AssertionError: 'setattr() on Tensor.requires_grad' not found in 'Attempted to call function marked as skipped
+        # https://github.com/intel/torch-xpu-ops/issues/1667, 2.8 skipped
         "test_fsdp_setattr",
-        # "test_fsdp_unspecialized_forced_getattr_inline",
-        # "test_fsdp_unspecialized_forced_getattr_no_inline",
     ),
     "../../../../test/distributed/test_fake_pg.py": None,
     "../../../../test/distributed/test_functional_api.py": None,
     "../../../../test/distributed/test_inductor_collectives.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1581
+        # https://github.com/intel/torch-xpu-ops/issues/1581, 2.8 skipped
         # Fatal Python error: Segmentation fault
         "test_dynamo_rewrite_dist_all_gather",
         "test_dynamo_rewrite_dist_all_gather_list",
@@ -302,22 +264,19 @@ skip_dict = {
         "test_inductor_all_gather_coalesced",
     ),
     "../../../../test/distributed/test_multi_threaded_pg.py": None,
-    # (
-    #     # oneccl not support multi-threaded well, so skip it first.
-    #     # https://github.com/intel/torch-xpu-ops/issues/1509
-    #     "test_bwd_sees_fwd_pg",
-    # ),
     "../../../../test/distributed/test_store.py": None,
-    "../../../../test/distributed/pipelining/test_backward.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_stage_backward_weight_multiple_iters_xpu",
-        "test_stage_backward_weight_xpu",
-        "test_stage_backward_xpu",
-    ),
-    "../../../../test/distributed/pipelining/test_microbatch.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_chunk_spec_xpu",
-    ),
+    "../../../../test/distributed/pipelining/test_backward.py": None,
+    # (
+    #     # https://github.com/intel/torch-xpu-ops/issues/1504
+    #     "test_stage_backward_weight_multiple_iters_xpu",
+    #     "test_stage_backward_weight_xpu",
+    #     "test_stage_backward_xpu",
+    # ),
+    "../../../../test/distributed/pipelining/test_microbatch.py": None,
+    # (
+    #     # https://github.com/intel/torch-xpu-ops/issues/1504, need retest with oneccl fix
+    #     "test_chunk_spec_xpu",
+    # ),
     "../../../../test/distributed/pipelining/test_pipe.py": None,
     "../../../../test/distributed/pipelining/test_schedule.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
@@ -325,7 +284,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/parallel/test_micro_pipeline_tp.py": (
         # NotImplementedError: The operator 'symm_mem::fused_matmul_reduce_scatter'
         # is not currently implemented for the XPU device
-        # https://github.com/intel/torch-xpu-ops/issues/1547
+        # https://github.com/intel/torch-xpu-ops/issues/1547, 2.8 skipped
         "test_dtensor_seq_par_shard_dim_0",
         "test_dtensor_seq_par_shard_dim_1",
         "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
@@ -334,7 +293,7 @@ skip_dict = {
         "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
         "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
         # AssertionError: 'fused_all_gather_matmul' not found in '# AOT ID: ......'
-        # https://github.com/intel/torch-xpu-ops/issues/1548
+        # https://github.com/intel/torch-xpu-ops/issues/1548, 2.8 skipped
         "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_False",
         "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_True",
         "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_False",
@@ -342,7 +301,7 @@ skip_dict = {
         "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_False",
         "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_True",
         # AssertionError: 'fused_all_gather_scaled_matmul' not found in 'graph():\n......'
-        # https://github.com/intel/torch-xpu-ops/issues/1549
+        # https://github.com/intel/torch-xpu-ops/issues/1549, 2.8 skipped
         "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_False",
         "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_True",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_False",
@@ -350,14 +309,14 @@ skip_dict = {
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_False",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_True",
         # NotImplementedError: The operator 'aten::_scaled_mm.out' is not currently implemented for the XPU device.
-        # https://github.com/intel/torch-xpu-ops/issues/1550
+        # https://github.com/intel/torch-xpu-ops/issues/1550, 2.8 skipped
         "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_False",
         "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_True",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_False",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_True",
         # NotImplementedError: The operator 'symm_mem::fused_scaled_matmul_reduce_scatter'
         # is not currently implemented for the XPU device.
-        # https://github.com/intel/torch-xpu-ops/issues/1551
+        # https://github.com/intel/torch-xpu-ops/issues/1551, 2.8 skipped
         "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
         "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
         "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
@@ -369,7 +328,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_examples.py": (
         # RuntimeError: aten.add.Tensor: got mixed torch.Tensor and DTensor, need to convert all torch.Tensor to DTensor before calling distributed operators!
-        # https://github.com/intel/torch-xpu-ops/issues/1555
+        # https://github.com/intel/torch-xpu-ops/issues/1555, 2.8 skipped
         "test_transformer_req_grad_seq_parallel_float32_thaw_all",
         "test_transformer_req_grad_seq_parallel_float32_thaw_layers_0_attention_wv__layers_0_feed_forward_w1__layers_1_feed_forward_w2__layers_1_ffn_norm__output__tok_embeddings",
         "test_transformer_req_grad_seq_parallel_float32_thaw_layers_1_ffn_norm__norm__output__tok_embeddings",
@@ -378,7 +337,7 @@ skip_dict = {
         "test_transformer_training_is_seq_parallel_False_float32",
         "test_transformer_training_is_seq_parallel_True_float32",
         # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
-        # https://github.com/intel/torch-xpu-ops/issues/1556
+        # https://github.com/intel/torch-xpu-ops/issues/1556, 2.8 skipped
         "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_loss_parallel",
@@ -412,18 +371,13 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_common_rules.py": None,
     "../../../../test/distributed/tensor/test_dtensor.py": None,
     "../../../../test/distributed/tensor/test_dtensor_compile.py": None,
-    # (
-    #     # https://jira.devtools.intel.com/browse/MLSL-3625
-    #     "test_2d_fsdp_tp_compile",
-    # ),
     "../../../../test/distributed/tensor/test_experimental_ops.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1535
+        # https://github.com/intel/torch-xpu-ops/issues/1604
         "test_bernoulli",
     ),
     "../../../../test/distributed/tensor/test_init.py": None,
     "../../../../test/distributed/tensor/test_math_ops.py": (
-        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
-        # https://github.com/intel/torch-xpu-ops/issues/1508
+        # https://github.com/intel/torch-xpu-ops/issues/1604, hang
         "test_mean",
         "test_nll_loss_and_cross_entropy",
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -436,13 +390,8 @@ skip_dict = {
         "test_softmax_fwd",
         "test_topk",
     ),
-    "../../../../test/distributed/tensor/test_random_ops.py": (
-        # Need to update world size
-        "test_hsdp_tp_model_meta_init",
-    ),
+    "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_redistribute.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_redistribute_shard_dim_multi_dim_mesh",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_redistribute_shard_dim_change",
         "test_redistribute_uneven_sharding",
@@ -455,10 +404,9 @@ skip_dict = {
         "test_aten_contiguous",
         "test_gather",
         "test_index",
-        # "test_op_out_variant",
         "test_slice",
         "test_stack",
-        # "test_where_type_promotion",
+        "test_where_type_promotion",
     ),
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -473,29 +421,31 @@ skip_dict = {
         "test_unused_forward_output",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1504
+        # https://github.com/intel/torch-xpu-ops/issues/1661
         "test_clip_grad_norm_2d",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1571
+        # ValueError: Cannot use ReduceOp.PREMUL_SUM with XCCL 
+        # https://github.com/intel/torch-xpu-ops/issues/1571, 2.8 skipped
         "test_set_reduce_scatter_divide_factor",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": None,
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": (
+        # torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised
+        # https://github.com/intel/torch-xpu-ops/issues/1665, 2.8 skipped
+        "test_transformer_backend_inductor_fullgraph_True",
+        "test_nested_fully_shard_backend_inductor_fullgraph_True",
+    ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_extensions.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_train_mixed_requires_grad_per_group",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_grad_scaler.py": None,
-    # (
-    #     # https://github.com/intel/torch-xpu-ops/issues/1508
-    #     "test_gradient_scaler",
-    # ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_ignore_params.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_init.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_logging.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_memory.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1535
+        # https://github.com/intel/torch-xpu-ops/issues/1605
         "test_fully_shard_training_memory",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py": (
@@ -509,15 +459,15 @@ skip_dict = {
         "test_fully_shard_training_overlap",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1572
+        # Expected zero exit code but got -9
+        # https://github.com/intel/torch-xpu-ops/issues/1663
         "test_dp_state_dict_cpu_offload",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1508
-        "test_post_optim_event",
-        # https://github.com/intel/torch-xpu-ops/issues/1504
+        # https://github.com/intel/torch-xpu-ops/issues/1661
         "test_train_parity_multi_group_unshard_async_op",
+        # checkpointing issue, 2.8 skipped
         "test_train_parity_with_activation_checkpointing",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_1f1b_microbatching",
@@ -525,7 +475,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/_composable/test_replicate_with_compiler.py": (
         # AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/1504
+        # https://github.com/intel/torch-xpu-ops/issues/1668, 2.8 skipped
         "test_compile_backward_only",
         "test_compile_bf16",
         "test_compile_fp16",
@@ -539,6 +489,7 @@ skip_dict = {
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": {
         # RuntimeError: eof (this error originated at tensorpipe/transport/shm/connection_impl.cc:259)
+        # https://github.com/intel/torch-xpu-ops/issues/1617, 2.8 skipped
         "test_complete_world_size",
         "test_multiple_local_shards",
         "test_new_group",
@@ -550,20 +501,19 @@ skip_dict = {
         "test_with_rpc_names",
         "test_init_from_local_tensor",
         # what():  Attempting to send a Tensor with unexpected device type xpu:3
-        # https://github.com/intel/torch-xpu-ops/issues/1616
+        # https://github.com/intel/torch-xpu-ops/issues/1616, 2.8 skipped
         "test_init_from_local_shards",
         "test_init_from_local_shards_and_global_metadata",
     },
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": None,
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
-    "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1508
-        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
-        "test_tracker_multi_group_eager",
-        "test_tracker_non_root_forward_backward",
-        "test_tracker_with_activation_checkpointing",
-    ),
+    "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
+    # (
+    #     # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
+    #     # https://github.com/intel/torch-xpu-ops/issues/1508, 2.8 skipped
+    #     "test_tracker_with_activation_checkpointing",
+    # ),
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_memory_tracker.py": None,
     "../../../../test/distributed/_tools/test_mod_tracker.py": None,
