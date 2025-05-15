@@ -4019,7 +4019,6 @@ void batch_norm_mean_var_fused_cnl(
       input.scalar_type(),
       "batch_norm_mean_var_fused_cnl",
       [&] {
-        std::cout << "into batch_norm_mean_var_fused_cnl\n";
         using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
         const auto stride = input.sizes()[1];
@@ -4043,7 +4042,6 @@ void batch_norm_mean_var_fused_cnl(
 
         int vec_size = welford_norm_pf_kernel_vec_size<scalar_t, accscalar_t>(
             stride, input_ptr, out_mean_ptr, out_invstd_ptr); // need check running mean & var
-        std::cout << "vec_size:" << vec_size << "\n";
 
         auto running_mean_ptr = running_mean.defined()
             ? running_mean.data_ptr<accscalar_t>()
@@ -4051,8 +4049,6 @@ void batch_norm_mean_var_fused_cnl(
         auto running_var_ptr = running_var.defined()
             ? running_var.data_ptr<accscalar_t>()
             : nullptr;
-
-        std::cout << "got running_var_ptr\n";
 
 #define DISPATCH_VEC(VEC_SIZE)                                              \
   {                                                                         \
