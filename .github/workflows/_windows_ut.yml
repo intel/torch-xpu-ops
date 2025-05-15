@@ -31,7 +31,7 @@ on:
       xpu_version:
         required: false
         type: string
-        default: '2025.0'
+        default: '2025.1'
         description: Python version
       files-changed:
         required: true
@@ -48,6 +48,7 @@ permissions: read-all
 
 env: 
     USE_XPU: 1
+    XPU_ENABLE_KINETO: 1
 
 jobs:
   Torch-XPU-Windows-UT:
@@ -62,6 +63,7 @@ jobs:
         run: |
           set XPU_VERSION=${{ inputs.xpu_version }}
           call .github\scripts\install_xpu.bat
+          set "INCLUDE=C:\level_zero\temp_build\level_zero\include;%INCLUDE%" >> %GITHUB_ENV%
           if errorlevel 1 exit /b 1
       - name: Prepare Stock Pytorch
         shell: cmd
