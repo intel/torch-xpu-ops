@@ -113,7 +113,7 @@ static void apply_svd(
         ldu,
         VT_working_ptr,
         ldvt,
-        (scalar_t*)(scratchpad_at.data_ptr()),
+        scratchpad_at.data_ptr<scalar_t>(),
         scratchpadsize);
   }
 } // namespace impl
