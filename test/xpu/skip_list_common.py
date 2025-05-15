@@ -3064,7 +3064,7 @@ skip_dict = {
         "test_nonzero_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/1569
         # RuntimeError: output 0: meta disagrees with real impl
-        "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
+        # "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
         "test_dispatch_meta_outplace_norm_fro_xpu_complex128",
         "test_dispatch_meta_outplace_norm_fro_xpu_complex64",
         "test_dispatch_meta_outplace_norm_fro_xpu_float",
