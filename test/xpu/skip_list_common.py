@@ -6,7 +6,7 @@ skip_dict = {
         "float8",
         # workarounds for the following tests
         # https://github.com/intel/torch-xpu-ops/issues/1214
-        "test_python_ref__refs_exp_xpu_complex128",
+        # "test_python_ref__refs_exp_xpu_complex128",
         "test_python_ref__refs_sigmoid_xpu_complex128",
         "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
         "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
@@ -35,7 +35,7 @@ skip_dict = {
         # AssertionError: The supported dtypes for sparse.sampled_addmm on device type xpu are incorrect! - OPs not supported
         "test_dtypes_sparse_sampled_addmm_xpu",
         # OPs not supported
-        "test_errors_dot_xpu",
+        # "test_errors_dot_xpu",
         "test_errors_vdot_xpu",
         # Linalg OPs not supported
         "test_noncontiguous_samples_linalg_det_xpu_float32",
@@ -54,7 +54,7 @@ skip_dict = {
         # RuntimeError: Long is not supported in oneDNN!
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+        # "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
@@ -775,7 +775,7 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_0_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/1432
-        "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_2_key_padding_mask_dim_2_bool_xpu",
+        # "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_2_key_padding_mask_dim_2_bool_xpu",
         "test_multiheadattention_fastpath_attn_mask_attn_mask_dim_3_key_padding_mask_dim_2_bool_xpu",
         "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_False_d_model_12_xpu",
         "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
@@ -3064,7 +3064,7 @@ skip_dict = {
         "test_nonzero_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/1569
         # RuntimeError: output 0: meta disagrees with real impl
-        # "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
+        "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
         "test_dispatch_meta_outplace_norm_fro_xpu_complex128",
         "test_dispatch_meta_outplace_norm_fro_xpu_complex64",
         "test_dispatch_meta_outplace_norm_fro_xpu_float",
