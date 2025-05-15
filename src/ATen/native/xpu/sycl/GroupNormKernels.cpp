@@ -966,13 +966,13 @@ struct ComputeInternalGradientsVectorizedFunctor
       }
     }
 
-    // #pragma unroll
-    //     for (int v = 0; v < VEC_SIZE; ++v) {
-    // sum1_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
-    //     item, sum1_vec[v], ds_shared_);
-    // sum2_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
-    //     item, sum2_vec[v], db_shared_);
-    // }
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      sum1_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+          item, sum1_vec[v], ds_shared_);
+      sum2_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+          item, sum2_vec[v], db_shared_);
+    }
 
     if (item.get_local_id(0) == 0) {
       vec_td ds_vec;
