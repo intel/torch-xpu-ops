@@ -30,9 +30,22 @@ def get_result(case):
 def get_message(case):
     if not case.result:
         return ""
-    return f"{case.result[0].message.splitlines()[0]}"
+    lines = case.result[0].message.splitlines()
+    message = []
+    message.append(f"{case.result[0].message.splitlines()[0]}")
+    collect = False
+    for line in lines:
+        if "Traceback" in line:
+            collect = True
+        if collect and "Error: " in line:
+            collect = False
+            break
+        if collect:
+            message.append(line)
 
-def print_md_row(row, print_header):
+    return "".join(message)
+
+def print_md_row(row, print_header, failure_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key, _ in row.items()])
         print(f"| {header} |")
@@ -41,7 +54,11 @@ def print_md_row(row, print_header):
     row = " | ".join([f"{value}" for _, value in row.items()])
     print(f"| {row} |")
 
-def print_cases(cases):
+    if failure_list is not None:
+        failure_list.write(f"| {row} |\n")
+
+
+def print_cases(cases, failure_list=None):
     print_header = True
     for case in cases:
         classname = get_classname(case)
@@ -54,8 +71,9 @@ def print_cases(cases):
             'Status': result,
             'Message': message,
         }
-        print_md_row(row, print_header)
+        print_md_row(row, print_header, failure_list=failure_list)
         print_header = False
+
 
 def print_suite(suite):
     print_header = True
@@ -75,6 +93,9 @@ def print_suite(suite):
             category = 'op_extended'
         elif 'op_ut' in ut:
             category = 'op_ut'
+        else:
+            category = "unknown"
+
         row = {
             'Category': category,
             'UT': ut,
@@ -103,11 +124,12 @@ def print_break(needed):
     if needed:
         print("")
 
-if failures:
-    print_break(printed)
-    print("### Failures")
-    print_cases(failures)
-    printed = True
+with open("ut_failure_list.csv", "w") as failure_list:
+    if failures:
+        print_break(printed)
+        print("### Failures")
+        print_cases(failures, failure_list=failure_list)
+        printed = True
 
 print("### Results Summary")
 print_suite(suites)
