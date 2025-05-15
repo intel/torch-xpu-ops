@@ -814,37 +814,82 @@ static void apply_lu_solve_xpu_(
   int64_t* ipiv = (int64_t*)(pivots.data_ptr());
   scalar_t* b = (scalar_t*)(b_.data_ptr());
 
-  int64_t scratchpadsize = mkl_getrs_scratchpad<scalar_t>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
-  Tensor scratchpad_at = at::empty({scratchpadsize}, b_.options());
-  try {
-    mkl_getrs<scalar_t>(
+  IntArrayRef lu_batch_shape(lu_.sizes().data(), lu_.dim() - 2);
+  IntArrayRef b_batch_shape(b_.sizes().data(), b_.dim() - 2);
+  auto infer_size_buffer = at::infer_size(lu_batch_shape, b_batch_shape);
+  IntArrayRef out_batch_shape(infer_size_buffer);
+
+  bool is_broadcast = !(out_batch_shape.equals(lu_batch_shape));
+
+  if (!is_broadcast) {
+    int64_t scratchpadsize = mkl_getrs_scratchpad<scalar_t>(
         queue,
         trans,
         n,
         nrhs,
-        a,
         lda,
         stride_a,
-        ipiv,
         stride_ipiv,
-        b,
         ldb,
         stride_b,
-        batch_size,
-        (scalar_t*)(scratchpad_at.data_ptr()),
-        scratchpadsize);
-  } catch (oneapi::mkl::lapack::batch_error be) {
-    error_handle(infos_, be);
+        batch_size);
+    Tensor scratchpad_at = at::empty({scratchpadsize}, b_.options());
+    try {
+      mkl_getrs<scalar_t>(
+          queue,
+          trans,
+          n,
+          nrhs,
+          a,
+          lda,
+          stride_a,
+          ipiv,
+          stride_ipiv,
+          b,
+          ldb,
+          stride_b,
+          batch_size,
+          (scalar_t*)(scratchpad_at.data_ptr()),
+          scratchpadsize);
+    } catch (oneapi::mkl::lapack::batch_error be) {
+      error_handle(infos_, be);
+    }
+
+    return;
+  }
+
+  BroadcastLinearIndices lu_index(
+      native::batchCount(lu_), lu_batch_shape, b_batch_shape);
+
+  for (const auto i : c10::irange(batch_size)) {
+    int64_t lu_index_i = lu_index(i);
+    scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
+    scalar_t* b_working_ptr = &b[i * stride_b];
+    int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
+
+    int64_t scratchpadsize = mkl_getrs_scratchpad<scalar_t>(
+        queue, trans, n, nrhs, lda, stride_a, stride_ipiv, ldb, stride_b, 1);
+    Tensor scratchpad_at = at::empty({scratchpadsize}, b_.options());
+    try {
+      mkl_getrs<scalar_t>(
+          queue,
+          trans,
+          n,
+          nrhs,
+          a_working_ptr,
+          lda,
+          stride_a,
+          ipiv_working_ptr,
+          stride_ipiv,
+          b_working_ptr,
+          ldb,
+          stride_b,
+          1,
+          (scalar_t*)(scratchpad_at.data_ptr()),
+          scratchpadsize);
+    } catch (oneapi::mkl::lapack::batch_error be) {
+      error_handle(infos_, be);
+    }
   }
 #else
   AT_ERROR("lu: oneMKL library not found in compilation");
