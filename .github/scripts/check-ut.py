@@ -52,7 +52,7 @@ def get_result(case):
             result = "failed"
     return result
 
-def get_message(case):
+def get_message(case, failure_list=None):
     if isinstance(case, dict):
         return case.get('error', '')
 
@@ -65,48 +65,38 @@ def get_message(case):
     error_messages = []
     capture_next_lines = False
     indent_level = 0
-    collect_trace = False
-    collect_error = False
-    import pdb
-    pdb.set_trace()
+
+    collect_trace_done = False
+    collect_trace = False 
+
     for line in full_text.splitlines():
         stripped_line = line.strip()
         if not stripped_line:
             continue
 
-        # collect the first trace 
-        if collect_trace == False and "Traceback (most recent call last):" in stripped_line:
+        # Only collet the first trace
+        if collect_trace_done == False and "Traceback (most recent call last):" in stripped_line:
             collect_trace = True
-        elif collect_trace == True and "Error: " in stripped_line:
-            error_messages.append(f"{stripped_line}")
-            collect_trace = False
-            break
-        elif stripped_line == "":
-            collect_trace = False
-            break
-
+ 
         if collect_trace:
+            if "Error: " in stripped_line:
+                collect_trace = False
+                collect_trace_done = True 
             error_messages.append(f"{stripped_line}")
-
-        #for error_type in error_types:
-        #    if stripped_line.startswith(error_type + ": "):
-        #        error_msg = stripped_line[len(error_type)+2:]
-        #        error_messages.append(f"{error_type}: {error_msg}")
-        #        capture_next_lines = True
-        #        indent_level = 0
-        #        collect_trace = False
-        #        collect_error = True
-        #        break
-        #    elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
-        #        error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
-        #        error_messages.append(f"{error_type}: {error_msg}")
-        #        capture_next_lines = True
-        #        indent_level = 0
-        #        collect_trace = False
-        #        collect_error = True
-        #        break
-        #if collect_error:
-        #    break
+        else:
+            for error_type in error_types:
+                if stripped_line.startswith(error_type + ": "):
+                    error_msg = stripped_line[len(error_type)+2:]
+                    error_messages.append(f"{error_type}: {error_msg}")
+                    capture_next_lines = True
+                    indent_level = 0
+                    break
+                elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
+                    error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
+                    error_messages.append(f"{error_type}: {error_msg}")
+                    capture_next_lines = True
+                    indent_level = 0
+                    break
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
