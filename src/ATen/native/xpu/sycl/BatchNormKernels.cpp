@@ -4040,15 +4040,20 @@ void batch_norm_mean_var_fused_cnl(
         auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
         auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
 
-        int vec_size = welford_norm_pf_kernel_vec_size<scalar_t, accscalar_t>(
-            stride, input_ptr, out_mean_ptr, out_invstd_ptr); // need check running mean & var
-
         auto running_mean_ptr = running_mean.defined()
             ? running_mean.data_ptr<accscalar_t>()
             : nullptr;
         auto running_var_ptr = running_var.defined()
             ? running_var.data_ptr<accscalar_t>()
             : nullptr;
+
+        int vec_size = welford_norm_pf_kernel_vec_size<scalar_t, accscalar_t>(
+            stride,
+            input_ptr,
+            out_mean_ptr,
+            out_invstd_ptr,
+            running_mean_ptr,
+            running_var_ptr);
 
 #define DISPATCH_VEC(VEC_SIZE)                                              \
   {                                                                         \
