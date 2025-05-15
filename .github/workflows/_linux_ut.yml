@@ -50,6 +50,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      ut_skip_issue: 1624
     steps:
       - name: Prepare Env
         run: |
@@ -190,6 +191,18 @@ jobs:
             2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
             tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
           cp *.xml ${{ github.workspace }}/ut_log
+          find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+              dir_path=$(dirname "$1");
+              case "$dir_path" in
+                  *"op_ut_with_skip_quantization/core"*)
+                      dir_name="op_ut_with_skip_quantization_core";;
+                  *)
+                      dir_name=$(basename "$dir_path");;
+              esac;
+              mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+          ' _ {} \;
+          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
@@ -278,6 +291,7 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -294,6 +308,7 @@ jobs:
             contains "op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
+            gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
             cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
           done
@@ -312,6 +327,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      ut_skip_issue: 1624
     steps:
       - name: Prepare Env
         run: |
@@ -422,6 +438,7 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -434,6 +451,7 @@ jobs:
           set -xe
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
+          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh 'xpu_distributed'
       - name: Upload Inductor XPU UT Log
