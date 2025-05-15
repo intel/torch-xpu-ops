@@ -20,9 +20,9 @@ error_types = [
     "IndexError",
     "ImportError",
     "AssertionError",
-    "Exception",
+    #"Exception",
     "OSError",
-    "Failed",
+    #"Failed",
     "TimeoutError",
     "asyncio.TimeoutError",
     "FileNotFoundError",
@@ -65,29 +65,52 @@ def get_message(case):
     error_messages = []
     capture_next_lines = False
     indent_level = 0
-
+    collect_trace = False
+    collect_error = False
+    import pdb
+    pdb.set_trace()
     for line in full_text.splitlines():
         stripped_line = line.strip()
         if not stripped_line:
             continue
 
-        for error_type in error_types:
-            if stripped_line.startswith(error_type + ": "):
-                error_msg = stripped_line[len(error_type)+2:]
-                error_messages.append(f"{error_type}: {error_msg}")
-                capture_next_lines = True
-                indent_level = 0
-                break
-            elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
-                error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
-                error_messages.append(f"{error_type}: {error_msg}")
-                capture_next_lines = True
-                indent_level = 0
-                break
+        # collect the first trace 
+        if collect_trace == False and "Traceback (most recent call last):" in stripped_line:
+            collect_trace = True
+        elif collect_trace == True and "Error: " in stripped_line:
+            error_messages.append(f"{stripped_line}")
+            collect_trace = False
+            break
+        elif stripped_line == "":
+            collect_trace = False
+            break
+
+        if collect_trace:
+            error_messages.append(f"{stripped_line}")
+
+        #for error_type in error_types:
+        #    if stripped_line.startswith(error_type + ": "):
+        #        error_msg = stripped_line[len(error_type)+2:]
+        #        error_messages.append(f"{error_type}: {error_msg}")
+        #        capture_next_lines = True
+        #        indent_level = 0
+        #        collect_trace = False
+        #        collect_error = True
+        #        break
+        #    elif f"{error_type}:" in stripped_line and "Traceback" not in stripped_line:
+        #        error_msg = stripped_line.split(f'{error_type}:')[-1].strip()
+        #        error_messages.append(f"{error_type}: {error_msg}")
+        #        capture_next_lines = True
+        #        indent_level = 0
+        #        collect_trace = False
+        #        collect_error = True
+        #        break
+        #if collect_error:
+        #    break
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
-def print_md_row(row, print_header=False):
+def print_md_row(row, print_header=False, failure_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
         print(f"| {header} |")
@@ -96,7 +119,12 @@ def print_md_row(row, print_header=False):
     row_values = " | ".join([f"{value}" for value in row.values()])
     print(f"| {row_values} |")
 
-def print_failures():
+    if failure_list is not None:
+        failure_list.write(f"| {row_values} |\n")
+
+
+
+def print_failures(failure_list=None):
     if not failures:
         return
 
@@ -109,7 +137,7 @@ def print_failures():
             'Status': get_result(case),
             'Message': get_message(case),
             'Source': case['source'] if isinstance(case, dict) else 'XML'
-        }, print_header)
+        }, print_header, failure_list=failure_list)
         print_header = False
 
 def parse_log_file(log_file):
@@ -251,7 +279,9 @@ def main():
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
 
-    print_failures()
+    with open("ut_failure_list.csv", "w") as failure_list:
+        print_failures(failure_list=failure_list)
+
     print_summary()
 
 
