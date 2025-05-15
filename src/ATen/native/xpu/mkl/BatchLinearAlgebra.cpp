@@ -747,10 +747,10 @@ static void apply_lu_xpu_(
     Tensor& self_,
     Tensor& pivots_,
     std::vector<int32_t>& infos_) {
-#ifdef USE_ONEMKL
   // do nothing if empty input.
   if (self_.numel() == 0)
     return;
+
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int64_t batch_size = native::batchCount(self_);
   int64_t m = self_.size(-2);
@@ -779,9 +779,6 @@ static void apply_lu_xpu_(
   } catch (oneapi::mkl::lapack::batch_error be) {
     error_handle(infos_, be);
   }
-#else
-  AT_ERROR("lu: oneMKL library not found in compilation");
-#endif
 }
 
 template <typename scalar_t>
@@ -791,10 +788,10 @@ static void apply_lu_solve_xpu_(
     const Tensor& pivots_,
     std::vector<int32_t>& infos_,
     TransposeType t) {
-#ifdef USE_ONEMKL
   // do nothing if empty input
   if (lu_.numel() == 0)
     return;
+
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int64_t batch_size = native::batchCount(b_);
 
@@ -891,9 +888,6 @@ static void apply_lu_solve_xpu_(
       error_handle(infos_, be);
     }
   }
-#else
-  AT_ERROR("lu: oneMKL library not found in compilation");
-#endif
 }
 
 std::tuple<Tensor, Tensor, Tensor> _lu_with_info(
