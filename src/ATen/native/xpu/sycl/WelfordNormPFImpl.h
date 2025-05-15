@@ -99,11 +99,13 @@ template <
     typename VarTransform,
     typename scalar_t,
     typename acc_t,
-    int VEC_SIZE>
+    int VEC_SIZE,
+    typename running_mean_t = acc_t>
 struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using vec_t = memory::aligned_vector<scalar_t, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<acc_t, VEC_SIZE>;
   using int_vec_t = memory::aligned_vector<int, VEC_SIZE>;
+  using running_mean_vec_t = memory::aligned_vector<running_mean_t, VEC_SIZE>;
 
   void operator()(sycl::nd_item<2> item) const {
     // init welford counters
@@ -219,28 +221,28 @@ struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
           invstd_vec;
 
       if (running_mean_ != nullptr) {
-        auto running_mean_vec =
-            *reinterpret_cast<vec_t*>(&running_mean_[batch_vec_offset]);
+        auto running_mean_vec = *reinterpret_cast<running_mean_vec_t*>(
+            &running_mean_[batch_vec_offset]);
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           running_mean_vec[v] =
               mean[v] * momentum_ + (1 - momentum_) * running_mean_vec[v];
         }
-        *reinterpret_cast<vec_t*>(&running_mean_[batch_vec_offset]) =
-            running_mean_vec;
+        *reinterpret_cast<running_mean_vec_t*>(
+            &running_mean_[batch_vec_offset]) = running_mean_vec;
       }
 
       if (running_var_ != nullptr) {
-        auto running_var_vec =
-            *reinterpret_cast<vec_t*>(&running_var_[batch_vec_offset]);
+        auto running_var_vec = *reinterpret_cast<running_mean_vec_t*>(
+            &running_var_[batch_vec_offset]);
 #pragma unroll
         for (int v = 0; v < VEC_SIZE; ++v) {
           auto unbiased_var = m2n[v] / (count[v] - 1);
           running_var_vec[v] =
               unbiased_var * momentum_ + (1 - momentum_) * running_var_vec[v];
         }
-        *reinterpret_cast<vec_t*>(&running_var_[batch_vec_offset]) =
-            running_var_vec;
+        *reinterpret_cast<running_mean_vec_t*>(
+            &running_var_[batch_vec_offset]) = running_var_vec;
       }
     }
   }
@@ -345,8 +347,8 @@ struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   void set_running_mean_var(
-      scalar_t* running_mean,
-      scalar_t* running_var,
+      running_mean_t* running_mean,
+      running_mean_t* running_var,
       acc_t momentum) {
     running_mean_ = running_mean;
     running_var_ = running_var;
@@ -385,8 +387,8 @@ struct WelfordNormPFKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   acc_t* staging_data_;
   int* semaphores_;
 
-  scalar_t* running_mean_;
-  scalar_t* running_var_;
+  running_mean_t* running_mean_;
+  running_mean_t* running_var_;
   acc_t momentum_;
 
   size_t block_size_y_;
