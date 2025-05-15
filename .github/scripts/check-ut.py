@@ -33,10 +33,10 @@ def get_message(case):
     lines = case.result[0].message.splitlines()
     message = []
     message.append(f"{case.result[0].message.splitlines()[0]}")
-    collect = False 
+    collect = False
     for line in lines:
         if "Traceback" in line:
-            collect = True 
+            collect = True
         if collect and "Error: " in line:
             collect = False
             break
