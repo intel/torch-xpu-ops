@@ -67,7 +67,7 @@ def get_message(case, failure_list=None):
     indent_level = 0
 
     collect_trace_done = False
-    collect_trace = False 
+    collect_trace = False
 
     for line in full_text.splitlines():
         stripped_line = line.strip()
@@ -75,13 +75,13 @@ def get_message(case, failure_list=None):
             continue
 
         # Only collet the first trace
-        if collect_trace_done == False and "Traceback (most recent call last):" in stripped_line:
+        if not collect_trace_done and "Traceback (most recent call last):" in stripped_line:
             collect_trace = True
- 
+
         if collect_trace:
             if "Error: " in stripped_line:
                 collect_trace = False
-                collect_trace_done = True 
+                collect_trace_done = True
             error_messages.append(f"{stripped_line}")
         else:
             for error_type in error_types:
