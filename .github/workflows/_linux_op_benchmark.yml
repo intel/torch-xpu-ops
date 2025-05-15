@@ -45,82 +45,110 @@ jobs:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
+      - name: Prepare Env
         run: |
-          pwd
+          # Cleanup workspace
+          rm -rf ${{ github.workspace }}/*
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../ && rm -rf pytorch
-          pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-            # apply PRs for stock pytorch
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-            git status && git show -s
-            git submodule sync && git submodule update --init --recursive
-            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-              echo "Don't replace torch-xpu-ops!"
-            else
-              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-              # Workaround for torch-xpu-ops ci test
-              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-            fi
-          fi
-      - name: Download Pytorch wheel
+      - name: Checkout Torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Download Pytorch Wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
+      - name: Prepare Pytorch
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../pytorch
-            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-            pip install -r requirements.txt
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           fi
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          rm -rf ./pytorch
+          git clone https://github.com/pytorch/pytorch ./pytorch
+          cd ./pytorch
+          git checkout $TORCH_COMMIT_ID
           pip install -r .ci/docker/requirements-ci.txt
+      - name: Prepare Torch-xpu-ops
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ./pytorch
+          rm -rf third_party/torch-xpu-ops
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ] && [ "${{ inputs.keep_torch_xpu_ops }}" == "false" ]; then
+            cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+          else
+            TORCH_XPU_OPS_COMMIT=$(cat third_party/xpu.txt)
+            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+            git checkout $TORCH_XPU_OPS_COMMIT
+          fi
+          git show -s
+          # Apply extra patches for pytorch
+          cd ${{ github.workspace }}/pytorch
+          pip install requests
+          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+      - name: Deps Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ./pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            # Triton
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+            # Torchvision
+            rm -rf xpu-vision
+            git clone https://github.com/pytorch/vision xpu-vision
+            cd xpu-vision
+            git show -s
+            python setup.py install
+          fi
+          pip install pytest pytest-timeout
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-
-          cd ..
+          python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
+          xpu-smi discovery
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
       - name: Run Torch XPU Op Benchmark
         if: ${{ inputs.driver == 'rolling' }} 
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/op_benchmark
-          cd test/microbench
+          cd pytorch/third_party/torch-xpu-ops/test/microbench
           filename=$(find -- *.py)
           for i in $filename
           do
             python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
           # Summary forward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
+          bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/microbench_summary.sh \
+            ${{ github.workspace }}/op_benchmark \
+            ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
+          bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/microbench_summary.sh \
+            ${{ github.workspace }}/op_benchmark \
+            ${{ github.workspace }}/op_benchmark/backward_op_summary.csv \
+            True
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
         uses: actions/upload-artifact@v4

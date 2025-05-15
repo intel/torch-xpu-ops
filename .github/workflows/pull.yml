@@ -63,7 +63,6 @@ jobs:
     needs: preci-linux-build
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
 
@@ -77,62 +76,60 @@ jobs:
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare Conda ENV
+      - name: Prepare Env
         run: |
+          # Cleanup workspace
+          rm -rf ${{ github.workspace }}/*
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=3.10 cmake ninja -y
-          source activate e2e_ci
-          pip install pandas scipy psutil
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-          # apply PRs for stock pytorch
-          pip install requests
-          # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-          git status && git show -s
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-          # Workaround for torch-xpu-ops ci test
-          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
-      - name: Download Pytorch wheel
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+      - name: Checkout Torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Download Pytorch Wheel
         uses: actions/download-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
+      - name: Prepare Pytorch
+        id: torch_info
         run: |
-          source activate e2e_ci
-          cd ../pytorch
-          pip install -r requirements.txt
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          rm -rf ./pytorch
+          git clone https://github.com/pytorch/pytorch ./pytorch
+          cd ./pytorch
+          git checkout $TORCH_COMMIT_ID
+          pip install -r .ci/docker/requirements-ci.txt
+          pip install requests
+          python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          echo "TORCH_BRANCH_ID=${TORCH_BRANCH_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Deps Installation
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          cd ./pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+      - name: Torch Config
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+          xpu-smi discovery
       - name: Identify pinned versions
         run: |
-          source .github/scripts/env.sh
-          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          . /etc/os-release
-          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../pytorch
-          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+          source torch-xpu-ops/.github/scripts/env.sh
+          cd ./pytorch
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
@@ -141,14 +138,11 @@ jobs:
       - name: Torch Config
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
+          rm -rf ./pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
 
-          cd ..
-          source activate e2e_ci
-          python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
-      - name: Huggingface BF16 Training Accuracy Test
+      - name: Huggingface BF16 Training Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -157,7 +151,7 @@ jobs:
           scenario: accuracy,performance
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Huggingface FP16 Training Accuracy Test
+      - name: Huggingface FP16 Training Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -165,7 +159,7 @@ jobs:
           mode: training
           scenario: accuracy,performance
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Timm_models BF16 Training Accuracy Test
+      - name: Timm_models BF16 Training Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -174,7 +168,7 @@ jobs:
           scenario: accuracy,performance
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Torchbench BF16 Training Accuracy Test
+      - name: Torchbench BF16 Training Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -187,10 +181,10 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
           source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+          bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
               Inductor-weekly-LTS-XPU-E2E \
           >> ${GITHUB_STEP_SUMMARY}

@@ -52,12 +52,12 @@ runs:
             rm -rf pt2e-audio
             git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
             cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
+            python setup.py install
             cd ../
             rm -rf pt2e-vision
             git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
             cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            python setup.py install
             cd ../
           fi
           # torchbench
@@ -66,9 +66,8 @@ runs:
           python install.py --continue_on_fail
           cd ../
           # deps for torchrec_dlrm
-          pip install pyre_extensions
-          pip install fbgemm-gpu
-          pip install --no-deps torchmetrics==1.0.3 torchrec
+          pip install pyre_extensions fbgemm-gpu
+          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
           # transformers
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
           # timm
@@ -76,6 +75,7 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        pip list
         # dataset
         if [ ! -d ${HOME}/datasets/imagenet ];then
           rm -rf ${HOME}/datasets/imagenet
@@ -94,7 +94,7 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
+        pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then

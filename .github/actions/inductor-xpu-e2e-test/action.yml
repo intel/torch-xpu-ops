@@ -51,33 +51,33 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
+        pip install pandas scipy psutil
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
+            rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
             cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            python setup.py install && cd ..
+            rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
             cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            python setup.py install && cd ..
           fi
-          cd ../ && python -c "import torch, torchvision, torchaudio"
+          python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
-          python install.py --continue_on_fail
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
+          pip install -r requirements.txt
+          python install.py --continue_on_fail && cd ..
           # deps for torchrec_dlrm
-          pip install pyre_extensions
-          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
-          pip install torchmetrics==1.0.3
-          pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install pyre_extensions fbgemm-gpu
+          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+            rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
             cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+            python setup.py install && cd ..
           fi
           # install timm without dependencies
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
@@ -85,6 +85,7 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -93,8 +94,8 @@ runs:
       shell: bash
       run: |
         source activate e2e_ci
-        cp .github/scripts/inductor_xpu_test.sh ../pytorch
-        cd ../pytorch
+        cp torch-xpu-ops/.github/scripts/inductor_xpu_test.sh ./pytorch
+        cd ./pytorch
 
         # check param
         function contains() {
@@ -154,7 +155,7 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       shell: bash
       run: |
-        cd ../pytorch
+        cd ./pytorch
         rm -f inductor_log/summary_accuracy.csv
         for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do
@@ -163,9 +164,7 @@ runs:
         done
 
         source activate e2e_ci
-        cd ${{ github.workspace }}
-        cp .github/scripts/inductor_summary.py ../pytorch
-        cd ../pytorch
+        cp ../torch-xpu-ops/.github/scripts/inductor_summary.py ../pytorch
         pip install styleFrame scipy pandas
         set -xe
         dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
