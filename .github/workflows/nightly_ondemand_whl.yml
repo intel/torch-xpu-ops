@@ -76,9 +76,9 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
     outputs:
-      TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
-      TORCH_COMMIT_ID: ${{ steps.installed.outputs.TORCH_COMMIT_ID }}
-      TORCH_XPU_OPS_COMMIT: ${{ steps.installed.outputs.TORCH_XPU_OPS_COMMIT }}
+      TORCH_BRANCH_ID: ${{ steps.torch_info.outputs.TORCH_BRANCH_ID }}
+      TORCH_COMMIT_ID: ${{ steps.torch_info.outputs.TORCH_COMMIT_ID }}
+      TORCH_XPU_OPS_COMMIT: ${{ steps.torch_info.outputs.TORCH_XPU_OPS_COMMIT }}
       TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
       TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
       TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
@@ -92,49 +92,53 @@ jobs:
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare Conda ENV
+      - name: Prepare Env
         run: |
+          # Cleanup workspace
+          rm -rf ${{ github.workspace }}/*
           which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
-          pip install pandas scipy psutil
-      - name: Prepare Stock Pytorch
-        id: installed
+          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+      - name: Checkout Torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Prepare Pytorch
+        id: torch_info
         run: |
-          pwd
-          source activate e2e_ci
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../ && rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${TORCH_COMMIT_ID}
-          # apply PRs for stock pytorch
+          rm -rf ./pytorch
+          git clone https://github.com/pytorch/pytorch ./pytorch
+          cd ./pytorch
+          git checkout $TORCH_COMMIT_ID
+          pip install -r .ci/docker/requirements-ci.txt
           pip install requests
-          # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          pip install -r requirements.txt
-          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          rm -rf third_party/torch-xpu-ops
-          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          cd ../../
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          echo "TORCH_BRANCH_ID=${TORCH_BRANCH_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_XPU_OPS_COMMIT=$(cat third_party/xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Torch Config
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+          xpu-smi discovery
       - name: Identify pinned versions
         id: pinned
         run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source torch-xpu-ops/.github/scripts/env.sh
           echo "TORCHVISION_COMMIT_ID=$(python -c 'import torchvision; print(torchvision.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHAUDIO_COMMIT_ID=$(python -c 'import torchaudio; print(torchaudio.version.git_version)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRITON_COMMIT_ID=$(python -c 'import triton; print(triton.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../pytorch
+          cd ./pytorch
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -149,7 +153,7 @@ jobs:
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
+          rm -rf ./pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
 
@@ -268,14 +272,14 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
           find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             source activate e2e_ci
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+            bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
                 Inductor-${{ env.run_type }}-Pre-XPU-E2E \
             >> ${GITHUB_STEP_SUMMARY}
@@ -287,7 +291,7 @@ jobs:
             fi
           else
             source activate e2e_ci
-            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
+            cp -r ${{ github.workspace }}/torch-xpu-ops/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
             cd ${{ github.workspace }}/upload_files
             python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
             rm -rf summary_pt2e.py
