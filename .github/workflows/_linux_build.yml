@@ -34,7 +34,8 @@ on:
         default: 'false'
         description: Whether update LKG torch version to issue #1280
 
-permissions: read-all
+permissions:
+  issues: write
 
 jobs:
   build:
