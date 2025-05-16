@@ -101,7 +101,6 @@ jobs:
             # Workaround for torch-xpu-ops ci test
             sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
           fi
->>>>>>> 62e9ff75 (add distributed ut in CI)
       - name: Build Pytorch XPU
         run: |
           set -xe
