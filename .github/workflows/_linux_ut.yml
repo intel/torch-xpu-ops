@@ -51,6 +51,136 @@ jobs:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
+    strategy:
+      matrix:
+        test:
+          - name: 'op_regression'
+            condition: "contains(inputs.ut, 'op_regression')"
+            directory: 'test/regressions'
+            command: 'pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml'
+            log_prefix: 'op_regression'
+            timeout: 8000
+            env: {}
+            additional_steps: |
+              pip install pytest pytest-timeout
+          - name: 'op_regression_dev1'
+            condition: "contains(inputs.ut, 'op_regression_dev1')"
+            directory: 'test/regressions'
+            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml'
+            log_prefix: 'op_regression_dev1'
+            timeout: 8000
+            env:
+              ZE_AFFINITY_MASK: 'unset'
+            additional_steps: |
+              pip install pytest pytest-timeout
+          - name: 'op_transformers'
+            condition: "contains(inputs.ut, 'op_transformers')"
+            directory: '../pytorch/'
+            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml'
+            log_prefix: 'op_transformers'
+            timeout: 3600
+            env:
+              PYTORCH_TEST_WITH_SLOW: '1'
+            additional_steps: |
+              pip install pytest pytest-timeout
+          - name: 'op_extended'
+            condition: "contains(inputs.ut, 'op_extended')"
+            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
+            command: 'python run_test_with_skip.py'
+            log_prefix: 'op_extended'
+            timeout: 10000
+            env:
+              PYTORCH_TEST_WITH_SLOW: '1'
+            xml_post_processing: |
+              cp op_extended.xml ${{ github.workspace }}/ut_log
+          - name: 'op_ut'
+            condition: "contains(inputs.ut, 'op_ut')"
+            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
+            log_prefix: 'op_ut'
+            commands:
+              - command: 'python run_test_with_skip.py'
+                log_suffix: 'with_skip'
+                xml_post_processing: |
+                  cp *.xml ${{ github.workspace }}/ut_log
+                  find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+                      dir_path=$(dirname "$1");
+                      case "$dir_path" in
+                          *"op_ut_with_skip_quantization/core"*)
+                              dir_name="op_ut_with_skip_quantization_core";;
+                          *)
+                              dir_name=$(basename "$dir_path");;
+                      esac;
+                      mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+                  ' _ {} \;
+                  cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+                  cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+              - command: 'python run_test_with_only.py'
+                log_suffix: 'with_only'
+                xml_post_processing: |
+                  cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
+            timeout: 10000
+            env:
+              PYTORCH_ENABLE_XPU_FALLBACK: '1'
+              PYTORCH_TEST_WITH_SLOW: '1'
+          - name: 'torch_xpu'
+            condition: "contains(inputs.ut, 'torch_xpu')"
+            directory: '../pytorch'
+            command: |
+              for xpu_case in build/bin/*{xpu,sycl}*; do
+                if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
+                  case_name=$(basename "$xpu_case")
+                  echo "Testing ${case_name} ..."
+                  "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml
+                fi
+              done
+              test_cmd="python test/run_test.py --include "
+              for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
+              for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
+              if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
+              eval $test_cmd
+            log_prefix: 'torch_xpu'
+            timeout: 10000
+            env:
+              PYTORCH_TEST_WITH_SLOW: '1'
+              PYTORCH_TESTING_DEVICE_ONLY_FOR: 'xpu'
+            additional_steps: |
+              TEST_REPORTS_DIR=${{ github.workspace }}/../pytorch/test/test-reports
+              rm -rf "$TEST_REPORTS_DIR" && mkdir -p "$TEST_REPORTS_DIR"
+          - name: 'xpu_profiling'
+            condition: "${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}"
+            directory: '${{ github.workspace }}'
+            commands:
+              - command: 'PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0'
+                output_handling: |
+                  cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
+                log_file: 'rn50_profile.log'
+              - command: 'python -u test/profiling/correlation_id_mixed.py'
+                log_dir: 'issue_reproduce'
+                log_file: 'correlation_id_mixed.log'
+              - command: 'python -u test/profiling/reproducer.missing.gpu.kernel.time.py'
+                log_dir: 'issue_reproduce'
+                log_file: 'reproducer.missing.gpu.kernel.time.log'
+              - command: 'python -u test/profiling/time_precision_in_profile.py'
+                log_dir: 'issue_reproduce'
+                log_file: 'time_precision_in_profile.log'
+              - command: 'python -u test/profiling/profile_partial_runtime_ops.py'
+                log_dir: 'issue_reproduce'
+                log_file: 'profile_partial_runtime_ops.log'
+              - command: 'python -u test/profiling/triton_xpu_ops_time.py'
+                log_dir: 'issue_reproduce'
+                log_file: 'triton_xpu_ops_time.log'
+              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_cpp_thread.py'
+                log_file: 'test_cpp_thread.log'
+              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_execution_trace.py'
+                log_file: 'test_execution_trace.log'
+              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_memory_profiler.py'
+                log_file: 'test_memory_profiler.log'
+              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_profiler_tree.py'
+                log_file: 'test_profiler_tree.log'
+            timeout: 10000
+            env: {}
+            additional_steps: |
+              mkdir -p ${{ github.workspace }}/ut_log/profile_test/issue_reproduce
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -134,162 +264,48 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
-      - name: Run XPU OP Regression
-        if: contains(inputs.ut, 'op_regression')
-        run: |
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/op_regression
-          xpu-smi discovery
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ${{ github.workspace }}
-          cd test/regressions
-          pip install pytest pytest-timeout
-          timeout 8000 pytest --timeout 600 -v \
-            --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
-            2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
-      - name: Run XPU OP Regressions test on device 1
-        if: contains(inputs.ut, 'op_regression_dev1')
-        run: |
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/op_regression_dev1
-          xpu-smi discovery
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          unset ZE_AFFINITY_MASK
-          cd ${{ github.workspace }}
-          cd test/regressions
-          timeout 8000 pytest --timeout 600 -v test_operation_on_device_1.py \
-            --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
-            2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
-      - name: Run XPU Transformers UT
-        if: contains(inputs.ut, 'op_transformers')
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          export PYTORCH_TEST_WITH_SLOW=1
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/op_transformers
-          cd ../pytorch/
-          timeout 3600 pytest --timeout 600 -v test/test_transformers.py -k xpu \
-            --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
-            2>${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
-      - name: Run XPU OP Extended UT
-        if: contains(inputs.ut, 'op_extended')
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          export PYTORCH_TEST_WITH_SLOW=1
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/op_extended
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          timeout 10000 python run_test_with_skip.py \
-            2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
-          cp op_extended.xml ${{ github.workspace }}/ut_log
-      - name: Run XPU OP UT
-        if: contains(inputs.ut, 'op_ut')
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          export PYTORCH_ENABLE_XPU_FALLBACK=1
-          export PYTORCH_TEST_WITH_SLOW=1
-          cd ${{ github.workspace }}
-          mkdir -p ut_log/op_ut
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          timeout 10000 python run_test_with_skip.py \
-            2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
-          cp *.xml ${{ github.workspace }}/ut_log
-          find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
-              dir_path=$(dirname "$1");
-              case "$dir_path" in
-                  *"op_ut_with_skip_quantization/core"*)
-                      dir_name="op_ut_with_skip_quantization_core";;
-                  *)
-                      dir_name=$(basename "$dir_path");;
-              esac;
-              mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
-          ' _ {} \;
-          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
-          # Cases run with a on-demand white list, since some suites are too
-          # slow to go through all operators on CPU. So add cases on-demand
-          # when XPU implementatoin is done.
-          # test_foreach, test_decomp
-          timeout 10000 python run_test_with_only.py \
-            2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
-          cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
-      - name: Run Torch XPU UT
-        if: contains(inputs.ut, 'torch_xpu')
+      - name: Run XPU UT Test
+        if: ${{ matrix.test.condition }}
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
-          mkdir -p ut_log/torch_xpu
-          cd ../pytorch
-          TEST_REPORTS_DIR=$(pwd)/test/test-reports
-          rm -rf "$TEST_REPORTS_DIR" && mkdir -p "$TEST_REPORTS_DIR"
-          # Run Pytorch XPU binary UT
-          for xpu_case in build/bin/*{xpu,sycl}*; do
-            if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
-              case_name=$(basename "$xpu_case")
-              echo "Testing ${case_name} ..."
-              "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml \
-                2>${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test_error.log | \
-                tee ${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test.log
+          mkdir -p ut_log/${{ matrix.test.log_prefix }}
+          ${{ matrix.test.additional_steps }}
+
+          export ${{ join(matrix.test.env.*, ' ') }}
+          cd ${{ matrix.test.directory }}
+
+          if [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
+            ${{ each command in matrix.test.commands }}
+              echo "Running profile command: ${{ command.command }}"
+              if [[ "${{ command.command }}" == *"cd "* ]]; then
+                ( ${{ command.command }} ) | \
+                  tee ${{ github.workspace }}/ut_log/profile_test/${{ command.log_dir || '' }}/${{ command.log_file }}
+              else
+                ${{ command.command }} | \
+                  tee ${{ github.workspace }}/ut_log/profile_test/${{ command.log_dir || '' }}/${{ command.log_file }}
+              fi
+              ${{ command.output_handling || '' }}
+            ${{ end }}
+          else
+            if [ -z "${{ matrix.test.commands }}" ]; then
+              echo "Running single command test"
+              timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
+                2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_suffix }}_test.log
+              
+              ${{ matrix.test.xml_post_processing || '' }}
+            else
+              echo "Running multi-command test"
+              ${{ each command in matrix.test.commands }}
+                echo "Running command: ${{ command.command }}"
+                timeout ${{ matrix.test.timeout }} ${{ command.command }} \
+                  2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test_error.log | \
+                  tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test.log
+                
+                ${{ command.xml_post_processing || '' }}
+              ${{ end }}
             fi
-          done
-          # Run Pytorch XPU python UT
-          export PYTORCH_TEST_WITH_SLOW=1
-          export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-
-          test_cmd="python test/run_test.py --include "
-          # All Inductor UT under test/inductor
-          for test in $(ls test/inductor | grep test);
-          do 
-              test_cmd="${test_cmd} inductor/$test";
-          done
-          # All xpu ut under test/xpu
-          for test in $(ls test/xpu | grep test);
-          do 
-              test_cmd="${test_cmd} xpu/$test";
-          done
-          if [ -f "test/test_xpu.py" ]; then
-            test_cmd="${test_cmd} test_xpu.py"
-          fi
-          eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
-      - name: Run Torch XPU Profile UT
-        if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          mkdir -p ${{ github.workspace }}/ut_log/profile_test
-          # RN50 Test
-          PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-          cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
-
-          # All Issue Reproduce UT
-          mkdir -p ${{ github.workspace }}/ut_log/profile_test/issue_reproduce
-          python -u test/profiling/correlation_id_mixed.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
-          python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
-          python -u test/profiling/time_precision_in_profile.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
-          python -u test/profiling/profile_partial_runtime_ops.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
-          python -u test/profiling/triton_xpu_ops_time.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
-
-          # All xpu ut under test/profiler
-          cd ../pytorch/test/profiler
-          python -m pytest --timeout 600 -vs test_cpp_thread.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
-          python -m pytest --timeout 600 -vs test_execution_trace.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
-          python -m pytest --timeout 600 -vs test_memory_profiler.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
-          python -m pytest --timeout 600 -vs test_profiler_tree.py | \
-            tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
