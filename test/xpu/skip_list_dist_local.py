@@ -17,112 +17,15 @@ skip_dict = {
         "test_checkpoint_fsdp_wrapping_cpu_offload1_offload_activations_True_use_orig_params_False",
         "test_checkpoint_submodule_use_reentrant_False_xpu",
     ),
-    "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_ddp_parity_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_bf16_hook_has_wrapping_False_sharding_strategy0",
-        "test_bf16_hook_has_wrapping_False_sharding_strategy1",
-        "test_bf16_hook_has_wrapping_False_sharding_strategy2",
-        "test_bf16_hook_has_wrapping_True_sharding_strategy0",
-        "test_bf16_hook_has_wrapping_True_sharding_strategy1",
-        "test_bf16_hook_has_wrapping_True_sharding_strategy2",
-        "test_fp16_hook_has_wrapping_False_sharding_strategy1",
-        "test_fp16_hook_has_wrapping_False_sharding_strategy2",
-        "test_fp16_hook_has_wrapping_True_sharding_strategy0",
-        "test_fp16_hook_has_wrapping_True_sharding_strategy1",
-        "test_fp16_hook_has_wrapping_True_sharding_strategy2",
-    ),
-    "../../../../test/distributed/fsdp/test_fsdp_core.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_transformer_no_grad_mixed_precision_True_xpu",
-        "test_delayed_optim_step_offload_false_no_shard_xpu",
-        "test_delayed_optim_step_offload_false_none_xpu",
-        "test_delayed_optim_step_offload_false_shard_grad_op_xpu",
-        "test_delayed_optim_step_offload_true_none_xpu",
-        "test_delayed_optim_step_offload_true_shard_grad_op_xpu",
-        "test_delayed_reduce_scatter_offload_false_no_shard_xpu",
-        "test_delayed_reduce_scatter_offload_false_none_xpu",
-        "test_delayed_reduce_scatter_offload_false_shard_grad_op_xpu",
-        "test_delayed_reduce_scatter_offload_true_none_xpu",
-        "test_delayed_reduce_scatter_offload_true_shard_grad_op_xpu",
-        "test_mixture_of_experts_offload_false_no_shard_xpu",
-        "test_mixture_of_experts_offload_false_none_xpu",
-        "test_mixture_of_experts_offload_false_shard_grad_op_xpu",
-        "test_mixture_of_experts_offload_true_none_xpu",
-        "test_mixture_of_experts_offload_true_shard_grad_op_xpu",
-        "test_mixture_of_experts_with_delay_before_free_offload_false_no_shard_xpu",
-        "test_mixture_of_experts_with_delay_before_free_offload_false_none_xpu",
-        "test_mixture_of_experts_with_delay_before_free_offload_false_shard_grad_op_xpu",
-        "test_mixture_of_experts_with_delay_before_free_offload_true_none_xpu",
-        "test_mixture_of_experts_with_delay_before_free_offload_true_shard_grad_op_xpu",
-        "test_nested_always_wrap_model_offload_false_no_shard_xpu",
-        "test_nested_always_wrap_model_offload_false_none_xpu",
-        "test_nested_always_wrap_model_offload_false_shard_grad_op_xpu",
-        "test_nested_always_wrap_model_offload_true_none_xpu",
-        "test_nested_always_wrap_model_offload_true_shard_grad_op_xpu",
-        "test_nested_wrapped_model_offload_false_no_shard_xpu",
-        "test_nested_wrapped_model_offload_false_none_xpu",
-        "test_nested_wrapped_model_offload_false_shard_grad_op_xpu",
-        "test_nested_wrapped_model_offload_true_none_xpu",
-        "test_nested_wrapped_model_offload_true_shard_grad_op_xpu",
-        "test_transformer_offload_false_none_xpu",
-        "test_transformer_offload_false_shard_grad_op_xpu",
-        "test_transformer_offload_true_none_xpu",
-        "test_transformer_offload_true_shard_grad_op_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_core.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_dtensor_state_dict.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_exec_order.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_hooks_multi_traversal_xpu",
-        "test_parity_with_ddp_xpu",
-        "test_parity_with_non_frozen_fsdp_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_fine_tune.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_flatten_params.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_freezing_weights.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_False_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_GradToNone_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_False_disable_autograd_True_forward_prefetch_True ",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_False_forward_prefetch_True",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_False",
-        "test_freezing_weights_with_nested_trunk_True_freezing_method_FreezingMethod_RequiresGrad_freeze_after_wrap_fsdp_True_disable_autograd_True_forward_prefetch_True",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_freezing_weights.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_fx.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_grad_acc.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_hybrid_shard.py": None,
@@ -136,53 +39,9 @@ skip_dict = {
         "test_fsdp_optimizer_overlap",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_mixed_precision.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_multi_forward_cpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_flatten_sharded_optim_state_dict_nested",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_False_rank0_only_False_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_False_rank0_only_False_use_diff_optim_inputs_True",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_False_rank0_only_True_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_False_rank0_only_True_use_diff_optim_inputs_True",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_True_rank0_only_False_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_True_rank0_only_False_use_diff_optim_inputs_True",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_True_rank0_only_True_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type0_use_multiple_param_groups_True_rank0_only_True_use_diff_optim_inputs_True",
-        "test_optim_state_dict_nested_state_dict_type1_use_multiple_param_groups_False_rank0_only_False_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type1_use_multiple_param_groups_False_rank0_only_False_use_diff_optim_inputs_True",
-        "test_optim_state_dict_nested_state_dict_type1_use_multiple_param_groups_True_rank0_only_False_use_diff_optim_inputs_False",
-        "test_optim_state_dict_nested_state_dict_type1_use_multiple_param_groups_True_rank0_only_False_use_diff_optim_inputs_True",
-        "test_rekey_optim_state_dict_to_ids_state_dict_type0_use_multiple_param_groups_False",
-        "test_rekey_optim_state_dict_to_ids_state_dict_type0_use_multiple_param_groups_True",
-        "test_rekey_optim_state_dict_to_ids_state_dict_type1_use_multiple_param_groups_False",
-        "test_rekey_optim_state_dict_to_ids_state_dict_type1_use_multiple_param_groups_True",
-        "test_rekey_optim_state_dict_to_names",
-        "test_scatter_full_optim_state_dict_nested_halve_world_size",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_False_use_diff_optim_inputs_False",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_False_use_diff_optim_inputs_True",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_True_use_diff_optim_inputs_False",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_True_use_diff_optim_inputs_True",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_False_use_diff_optim_inputs_False",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_False_use_diff_optim_inputs_True",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_True_use_diff_optim_inputs_False",
-        "test_scatter_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_True_use_diff_optim_inputs_True",
-        "test_shard_full_optim_state_dict_nested_halve_world_size",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_False_use_diff_optim_inputs_False",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_False_use_diff_optim_inputs_True",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_True_use_diff_optim_inputs_False",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_False_wrap_alt_True_use_diff_optim_inputs_True",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_False_use_diff_optim_inputs_False",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_False_use_diff_optim_inputs_True",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_True_use_diff_optim_inputs_False",
-        "test_shard_full_optim_state_dict_nested_use_multiple_param_groups_True_wrap_alt_True_use_diff_optim_inputs_True",
-        "test_use_orig_params",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_optim_state.py": None,
     # Performance check, skip
     # "../../../../test/distributed/fsdp/test_fsdp_overlap.py": (
     #    # fsdp accuracy gaps
@@ -191,60 +50,20 @@ skip_dict = {
     #    "test_forward_overlap_xpu",
     # ),
     "../../../../test/distributed/fsdp/test_fsdp_pure_fp16.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_fsdp_ddp_parity_with_grad_scaler_offload_false_none_none_none",
-        "test_fsdp_ddp_parity_with_grad_scaler_offload_false_shard_grad_op_none_none",
-        "test_fsdp_ddp_parity_with_grad_scaler_offload_true_none_none_none",
-        "test_fsdp_ddp_parity_with_grad_scaler_offload_true_shard_grad_op_none_none",
-    ),
-    "../../../../test/distributed/fsdp/test_fsdp_state_dict.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_state_dict_save_load_flow_state_dict_type_local_state_dict",
-        "test_state_dict_save_load_flow_state_dict_type_sharded_state_dict",
-        "test_state_dict_save_load_flow_state_dict_type_state_dict",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_state_dict.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_tp_integration.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_traversal.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_uneven.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_unshard_params.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_use_orig_params.py": (
-        # fsdp accuracy gaps
-        # https://github.com/intel/torch-xpu-ops/issues/1504
-        "test_diff_hyperparams_sharding_strategy_str_full_shard",
-        "test_diff_hyperparams_sharding_strategy_str_no_shard",
-        "test_diff_hyperparams_sharding_strategy_str_shard_grad_op",
-        "test_no_sync_correctness",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_use_orig_params.py": None,
     "../../../../test/distributed/fsdp/test_hsdp_dtensor_state_dict.py": None,
     "../../../../test/distributed/fsdp/test_shard_utils.py": None,
     "../../../../test/distributed/fsdp/test_utils.py": None,
     "../../../../test/distributed/fsdp/test_wrap.py": None,
     "../../../../test/distributed/test_backends.py": None,
     "../../../../test/distributed/test_c10d_common.py": None,
-    "../../../../test/distributed/test_c10d_functional_native.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1508
-        # RuntimeError: oneCCL: coll_param.cpp:455 validate: EXCEPTION: average operation is not supported for the scheduler path
-        "test_reduce_scatter_tensor_coalesced",
-        "test_reduce_scatter_tensor_single",
-        # # https://github.com/intel/torch-xpu-ops/issues/1525
-        # # ValueError: trying to initialize the default process group twice!
-        # "test_inductor_all_gather_into_tensor_coalesced",
-        # "test_inductor_all_gather_into_tensor_single",
-        # "test_inductor_all_reduce_coalesced",
-        # "test_inductor_all_reduce_non_contig_input",
-        # "test_inductor_all_reduce_single",
-        # "test_inductor_all_to_all_single",
-        # "test_inductor_broadcast",
-        # "test_inductor_inplace_op_on_view",
-        # "test_inductor_reduce_scatter_tensor_coalesced",
-        # "test_inductor_reduce_scatter_tensor_single",
-        # "test_inductor_reuse_buffer_after_inplace_collective",
-        # "test_ranks_and_tag",
-        # "test_wait_tensor",
-    ),
+    "../../../../test/distributed/test_c10d_functional_native.py": None,
     "../../../../test/distributed/test_c10d_logger.py": None,
     "../../../../test/distributed/test_c10d_object_collectives.py": (
         # RuntimeError: Process 2 exited with error code 10 and exception: ; AssertionError: Scalars are not equal!
@@ -275,6 +94,7 @@ skip_dict = {
         "test_dynamo_trace_allgather_coalesced",
         "test_inductor_reduce_scatter_coalesced",
         "test_inductor_all_gather_coalesced",
+        "test_reorder_peak_memory",
     ),
     "../../../../test/distributed/test_multi_threaded_pg.py": None,
     "../../../../test/distributed/test_store.py": None,
@@ -386,15 +206,9 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_common_rules.py": None,
     "../../../../test/distributed/tensor/test_dtensor.py": None,
     "../../../../test/distributed/tensor/test_dtensor_compile.py": None,
-    "../../../../test/distributed/tensor/test_experimental_ops.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1604
-        "test_bernoulli",
-    ),
+    "../../../../test/distributed/tensor/test_experimental_ops.py": None,
     "../../../../test/distributed/tensor/test_init.py": None,
     "../../../../test/distributed/tensor/test_math_ops.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1604, hang
-        "test_mean",
-        "test_nll_loss_and_cross_entropy",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_cumsum",
         "test_layer_norm_bwd",
@@ -435,10 +249,7 @@ skip_dict = {
         "test_unused_forward_module",
         "test_unused_forward_output",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1661
-        "test_clip_grad_norm_2d",
-    ),
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": (
         # ValueError: Cannot use ReduceOp.PREMUL_SUM with XCCL 
         # https://github.com/intel/torch-xpu-ops/issues/1571, 2.8 skipped
@@ -459,10 +270,7 @@ skip_dict = {
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_ignore_params.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_init.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_logging.py": None,
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_memory.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1605
-        "test_fully_shard_training_memory",
-    ),
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_memory.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_compute_dtype",
@@ -473,15 +281,9 @@ skip_dict = {
         # Performance test, should skip
         "test_fully_shard_training_overlap",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": (
-        # Expected zero exit code but got -9
-        # https://github.com/intel/torch-xpu-ops/issues/1663
-        "test_dp_state_dict_cpu_offload",
-    ),
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": (
-        # https://github.com/intel/torch-xpu-ops/issues/1661
-        "test_train_parity_multi_group_unshard_async_op",
         # checkpointing issue, 2.8 skipped
         "test_train_parity_with_activation_checkpointing",
         # https://jira.devtools.intel.com/browse/MLSL-3625
