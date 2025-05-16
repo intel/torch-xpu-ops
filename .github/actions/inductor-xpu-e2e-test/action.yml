@@ -67,7 +67,8 @@ runs:
           pip install -r requirements.txt
           python install.py --continue_on_fail && cd ..
           # deps for torchrec_dlrm
-          pip install pyre_extensions fbgemm-gpu
+          pip install pyre_extensions
+          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
           pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
