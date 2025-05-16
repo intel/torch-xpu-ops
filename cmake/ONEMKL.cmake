@@ -1,4 +1,4 @@
-option(USE_ONEMKL_XPU "Build with ONEMKL XPU support" OFF)
+option(USE_ONEMKL_XPU "Build with ONEMKL XPU support" ON)
 
 if(DEFINED ENV{USE_ONEMKL_XPU})
   set(USE_ONEMKL_XPU $ENV{USE_ONEMKL_XPU})
