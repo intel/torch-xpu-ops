@@ -164,7 +164,7 @@ runs:
         done
 
         source activate e2e_ci
-        cp ../torch-xpu-ops/.github/scripts/inductor_summary.py ../pytorch
+        cp ../torch-xpu-ops/.github/scripts/inductor_summary.py .
         pip install styleFrame scipy pandas
         set -xe
         dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
