@@ -22,7 +22,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
       python:
         required: false
         type: string
@@ -50,6 +50,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -143,7 +144,10 @@ jobs:
           cd ${{ github.workspace }}
           cd test/regressions
           pip install pytest pytest-timeout
-          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml 2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+          timeout 8000 pytest --timeout 600 -v \
+            --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
+            2>${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
       - name: Run XPU OP Regressions test on device 1
         if: contains(inputs.ut, 'op_regression_dev1')
         run: |
@@ -154,7 +158,22 @@ jobs:
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
           cd test/regressions
-          timeout 8000 pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml test_operation_on_device_1.py 2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
+          timeout 8000 pytest --timeout 600 -v test_operation_on_device_1.py \
+            --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
+            2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
+      - name: Run XPU Transformers UT
+        if: contains(inputs.ut, 'op_transformers')
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          export PYTORCH_TEST_WITH_SLOW=1
+          cd ${{ github.workspace }}
+          mkdir -p ut_log/op_transformers
+          cd ../pytorch/
+          timeout 3600 pytest --timeout 600 -v test/test_transformers.py -k xpu \
+            --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
+            2>${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended')
         run: |
@@ -163,7 +182,9 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_extended
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
-          timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
+          timeout 10000 python run_test_with_skip.py \
+            2>${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
           cp op_extended.xml ${{ github.workspace }}/ut_log
       - name: Run XPU OP UT
         if: contains(inputs.ut, 'op_ut')
@@ -174,13 +195,29 @@ jobs:
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_ut
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          timeout 10000 python run_test_with_skip.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+          timeout 10000 python run_test_with_skip.py \
+            2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
           cp *.xml ${{ github.workspace }}/ut_log
+          find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+              dir_path=$(dirname "$1");
+              case "$dir_path" in
+                  *"op_ut_with_skip_quantization/core"*)
+                      dir_name="op_ut_with_skip_quantization_core";;
+                  *)
+                      dir_name=$(basename "$dir_path");;
+              esac;
+              mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+          ' _ {} \;
+          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
           # test_foreach, test_decomp
-          timeout 10000 python run_test_with_only.py 2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
+          timeout 10000 python run_test_with_only.py \
+            2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
           cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
       - name: Run Torch XPU UT
         if: contains(inputs.ut, 'torch_xpu')
@@ -196,7 +233,9 @@ jobs:
             if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
               case_name=$(basename "$xpu_case")
               echo "Testing ${case_name} ..."
-              "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml 2>${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test.log
+              "$xpu_case" --gtest_output=xml:"$TEST_REPORTS_DIR"/"$case_name".xml \
+                2>${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/torch_xpu/binary_ut_torch_xpu_${case_name}_test.log
             fi
           done
           # Run Pytorch XPU python UT
@@ -217,7 +256,8 @@ jobs:
           if [ -f "test/test_xpu.py" ]; then
             test_cmd="${test_cmd} test_xpu.py"
           fi
-          eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+          eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
       - name: Run Torch XPU Profile UT
         if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
         run: |
@@ -229,18 +269,27 @@ jobs:
 
           # All Issue Reproduce UT
           mkdir -p ${{ github.workspace }}/ut_log/profile_test/issue_reproduce
-          python -u test/profiling/correlation_id_mixed.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
-          python -u test/profiling/reproducer.missing.gpu.kernel.time.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
-          python -u test/profiling/time_precision_in_profile.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
-          python -u test/profiling/profile_partial_runtime_ops.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
-          python -u test/profiling/triton_xpu_ops_time.py | tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
+          python -u test/profiling/correlation_id_mixed.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
+          python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+          python -u test/profiling/time_precision_in_profile.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
+          python -u test/profiling/profile_partial_runtime_ops.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+          python -u test/profiling/triton_xpu_ops_time.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
 
           # All xpu ut under test/profiler
           cd ../pytorch/test/profiler
-          python -m pytest --timeout 600 -vs test_cpp_thread.py | tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
-          python -m pytest --timeout 600 -vs test_execution_trace.py | tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
-          python -m pytest --timeout 600 -vs test_memory_profiler.py | tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
-          python -m pytest --timeout 600 -vs test_profiler_tree.py | tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
+          python -m pytest --timeout 600 -vs test_cpp_thread.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
+          python -m pytest --timeout 600 -vs test_execution_trace.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
+          python -m pytest --timeout 600 -vs test_memory_profiler.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
+          python -m pytest --timeout 600 -vs test_profiler_tree.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -249,6 +298,7 @@ jobs:
       - name: UT Test Results Check
         shell: bash
         run: |
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -262,9 +312,10 @@ jobs:
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
-            contains "op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu" $ut_suite
+            contains "op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu" $ut_suite
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
+            gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
           done
@@ -283,6 +334,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -379,12 +431,15 @@ jobs:
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 10000 python run_distributed.py 2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+          timeout 10000 python run_distributed.py \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
         shell: bash
         run: |
+          repo="${{ github.repository }}"
           function contains() {
               contains_status="echo 'Start $2 ...'"
               {
@@ -397,6 +452,7 @@ jobs:
           set -xe
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
+          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh 'xpu_distributed'
       - name: Upload Inductor XPU UT Log
