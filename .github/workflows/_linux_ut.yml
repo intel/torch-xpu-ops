@@ -270,13 +270,13 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           mkdir -p ut_log/${{ matrix.test.log_prefix }}
-          ${{ matrix.test.additional_steps }}
+          ${{ fromJson(matrix.test).additional_steps }}
 
-          export ${{ join(matrix.test.env.*, ' ') }}
-          cd ${{ matrix.test.directory }}
+          export ${{ join(fromJson(matrix.test).env.*, ' ') }}
+          cd ${{ fromJson(matrix.test).directory }}
 
           if [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
-            ${{ each command in matrix.test.commands }}
+            for command in ${{ matrix.test.commands }}; do
               echo "Running profile command: ${{ command.command }}"
               if [[ "${{ command.command }}" == *"cd "* ]]; then
                 ( ${{ command.command }} ) | \
@@ -286,7 +286,7 @@ jobs:
                   tee ${{ github.workspace }}/ut_log/profile_test/${{ command.log_dir || '' }}/${{ command.log_file }}
               fi
               ${{ command.output_handling || '' }}
-            ${{ end }}
+            done
           else
             if [ -z "${{ matrix.test.commands }}" ]; then
               echo "Running single command test"
@@ -297,14 +297,14 @@ jobs:
               ${{ matrix.test.xml_post_processing || '' }}
             else
               echo "Running multi-command test"
-              ${{ each command in matrix.test.commands }}
+              for command in ${{ matrix.test.commands }}; do
                 echo "Running command: ${{ command.command }}"
                 timeout ${{ matrix.test.timeout }} ${{ command.command }} \
                   2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test_error.log | \
                   tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test.log
                 
                 ${{ command.xml_post_processing || '' }}
-              ${{ end }}
+              done
             fi
       - name: UT Test Results Summary
         run: |
