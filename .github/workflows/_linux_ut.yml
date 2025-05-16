@@ -97,29 +97,32 @@ jobs:
             condition: "contains(inputs.ut, 'op_ut')"
             directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
             log_prefix: 'op_ut'
-            commands:
-              - name: run_test_with_skip
-                command: 'python run_test_with_skip.py'
-                log_suffix: 'with_skip'
-                xml_post_processing: |
-                  cp *.xml ${{ github.workspace }}/ut_log
-                  find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
-                      dir_path=$(dirname "$1");
-                      case "$dir_path" in
-                          *"op_ut_with_skip_quantization/core"*)
-                              dir_name="op_ut_with_skip_quantization_core";;
-                          *)
-                              dir_name=$(basename "$dir_path");;
-                      esac;
-                      mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
-                  ' _ {} \;
-                  cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-                  cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
-              - name: run_test_with_only
-                command: 'python run_test_with_only.py'
-                log_suffix: 'with_only'
-                xml_post_processing: |
-                  cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
+            command_script: |
+              python run_test_with_skip.py \
+                2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+              cp *.xml ${{ github.workspace }}/ut_log
+              find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+                  dir_path=$(dirname "$1");
+                  case "$dir_path" in
+                      *"op_ut_with_skip_quantization/core"*)
+                          dir_name="op_ut_with_skip_quantization_core";;
+                      *)
+                          dir_name=$(basename "$dir_path");;
+                  esac;
+                  mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+              ' _ {} \;
+              cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+              cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+              # Cases run with a on-demand white list, since some suites are too
+              # slow to go through all operators on CPU. So add cases on-demand
+              # when XPU implementatoin is done.
+              # test_foreach, test_decomp
+              # Run with only
+              python run_test_with_only.py \
+                2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
+              cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
             timeout: 10000
             env:
               PYTORCH_ENABLE_XPU_FALLBACK: '1'
@@ -151,44 +154,33 @@ jobs:
           - name: 'xpu_profiling'
             condition: "${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}"
             directory: '${{ github.workspace }}'
-            commands:
-              - name: rn50_profile
-                command: 'PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0'
-                output_handling: |
-                  cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
-                log_file: 'rn50_profile.log'
-              - name: issue_reproduce
-                command: 'python -u test/profiling/correlation_id_mixed.py'
-                log_dir: 'issue_reproduce'
-                log_file: 'correlation_id_mixed.log'
-              - name: issue_reproduce
-                command: 'python -u test/profiling/reproducer.missing.gpu.kernel.time.py'
-                log_dir: 'issue_reproduce'
-                log_file: 'reproducer.missing.gpu.kernel.time.log'
-              - name: issue_reproduce
-                command: 'python -u test/profiling/time_precision_in_profile.py'
-                log_dir: 'issue_reproduce'
-                log_file: 'time_precision_in_profile.log'
-              - name: issue_reproduce
-                command: 'python -u test/profiling/profile_partial_runtime_ops.py'
-                log_dir: 'issue_reproduce'
-                log_file: 'profile_partial_runtime_ops.log'
-              - name: issue_reproduce
-                command: 'python -u test/profiling/triton_xpu_ops_time.py'
-                log_dir: 'issue_reproduce'
-                log_file: 'triton_xpu_ops_time.log'
-              - name: rn50_profile
-                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_cpp_thread.py'
-                log_file: 'test_cpp_thread.log'
-              - name: official ut
-                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_execution_trace.py'
-                log_file: 'test_execution_trace.log'
-              - name: official ut
-                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_memory_profiler.py'
-                log_file: 'test_memory_profiler.log'
-              - name: official ut
-                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_profiler_tree.py'
-                log_file: 'test_profiler_tree.log'
+            command_script: |
+              # RN50 Test
+              PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
+              cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
+
+              # All Issue Reproduce UT
+              python -u test/profiling/correlation_id_mixed.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
+              python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+              python -u test/profiling/time_precision_in_profile.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
+              python -u test/profiling/profile_partial_runtime_ops.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+              python -u test/profiling/triton_xpu_ops_time.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
+
+              # All xpu ut under test/profiler
+              cd ../pytorch/test/profiler
+              python -m pytest --timeout 600 -vs test_cpp_thread.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
+              python -m pytest --timeout 600 -vs test_execution_trace.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
+              python -m pytest --timeout 600 -vs test_memory_profiler.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
+              python -m pytest --timeout 600 -vs test_profiler_tree.py | \
+                tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
             timeout: 10000
             env: {}
             additional_steps: |
@@ -287,37 +279,17 @@ jobs:
           export ${{ join(fromJson(matrix.test).env.*, ' ') }}
           cd ${{ fromJson(matrix.test).directory }}
 
-          if [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
-            for command in ${{ toJson(matrix.test.commands) }}; do
-              echo "Running profile command: ${{ fromJson(item).command }}"
-              if [[ "${{ fromJson(item).command }}" == *"cd "* ]]; then
-                ( ${{ fromJson(item).command }} ) | \
-                  tee ${{ github.workspace }}/ut_log/profile_test/${{ fromJson(item).log_dir || '' }}/${{ fromJson(item).log_file }}
-              else
-                ${{ fromJson(item).command }} | \
-                  tee ${{ github.workspace }}/ut_log/profile_test/${{ fromJson(item).log_dir || '' }}/${{ fromJson(item).log_file }}
-              fi
-              ${{ command.output_handling || '' }}
-            done
+          if [ "${{ matrix.test.name }}" == "op_ut" ]; then
+            ${{ matrix.test.command_script }}
+          elif [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
+            ${{ matrix.test.command_script }}
           else
-            if [ -z "${{ matrix.test.commands }}" ]; then
-              echo "Running single command test"
-              timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
-                2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
-                tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_suffix }}_test.log
-              
-              ${{ matrix.test.xml_post_processing || '' }}
-            else
-              echo "Running multi-command test"
-              for command in ${{ toJson(matrix.test.commands) }}; do
-                echo "Running command: ${{ fromJson(item).command }}"
-                timeout ${{ matrix.test.timeout }} ${{ fromJson(item).command }} \
-                  2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ fromJson(item).log_suffix }}_test_error.log | \
-                  tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ fromJson(item).log_suffix }}_test.log
-                
-                ${{ command.xml_post_processing || '' }}
-              done
-            fi
+            timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
+              2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_suffix }}_test.log
+            
+            ${{ matrix.test.xml_post_processing || '' }}
+          fi
       - name: UT Test Results Summary
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
