@@ -1,4 +1,4 @@
-#if defined(USE_ONEMKL)
+#if defined(USE_ONEMKL_XPU)
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
@@ -591,4 +591,4 @@ Tensor& _fft_r2c_mkl_out(
 }
 
 } // namespace at::native::xpu
-#endif // USE_ONEMKL
+#endif // USE_ONEMKL_XPU
