@@ -9350,3 +9350,111 @@
   variants: function
   dispatch:
     XPU: _fft_r2c_xpu_out
+
+# This function is exposes the `compute_uv` flag, which is then used to implement `linalg.svd` and
+# `linalg.svdvals` as composite functions that call this one
+- func: _linalg_svd(Tensor A, bool full_matrices=False, bool compute_uv=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh)
+  variants: function
+  structured_delegate: _linalg_svd.U
+
+- func: _linalg_svd.U(Tensor A, bool full_matrices=False, bool compute_uv=True, *, str? driver=None, Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh) -> (Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh)
+  structured: True
+  dispatch:
+    XPU: _linalg_svd_out
+
+- func: linalg_svd(Tensor A, bool full_matrices=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh)
+  python_module: linalg
+  variants: function
+
+- func: linalg_svd.U(Tensor A, bool full_matrices=True, *, str? driver=None, Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh) -> (Tensor(a!) U, Tensor(b!) S, Tensor(c!) Vh)
+  python_module: linalg
+  variants: function
+
+- func: linalg_lu_factor_ex(Tensor A, *, bool pivot=True, bool check_errors=False) -> (Tensor LU, Tensor pivots, Tensor info)
+  python_module: linalg
+  structured_delegate: linalg_lu_factor_ex.out
+  variants: function
+
+- func: linalg_lu_factor_ex.out(Tensor A, *, bool pivot=True, bool check_errors=False, Tensor(a!) LU, Tensor(b!) pivots, Tensor(c!) info) -> (Tensor(a!) LU, Tensor(b!) pivots, Tensor(c!) info)
+  python_module: linalg
+  variants: function
+  structured: True
+  dispatch:
+    XPU: linalg_lu_factor_ex_out
+
+# linalg.lu
+- func: linalg_lu(Tensor A, *, bool pivot=True) -> (Tensor P, Tensor L, Tensor U)
+  python_module: linalg
+  structured_delegate: linalg_lu.out
+  variants: function
+
+- func: linalg_lu.out(Tensor A, *, bool pivot=True, Tensor(a!) P, Tensor(b!) L, Tensor(c!) U) -> (Tensor(a!) P, Tensor(b!) L, Tensor(c!) U)
+  python_module: linalg
+  variants: function
+  structured: True
+  dispatch:
+    XPU: linalg_lu_out
+
+# linalg.lu_solve
+- func: linalg_lu_solve(Tensor LU, Tensor pivots, Tensor B, *, bool left=True, bool adjoint=False) -> Tensor
+  python_module: linalg
+  structured_delegate: linalg_lu_solve.out
+  variants: function
+
+- func: linalg_lu_solve.out(Tensor LU, Tensor pivots, Tensor B, *, bool left=True, bool adjoint=False, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  variants: function
+  structured: True
+  dispatch:
+    XPU: linalg_lu_solve_out
+
+- func: lu_unpack(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True) -> (Tensor P, Tensor L, Tensor U)
+  structured_delegate: lu_unpack.out
+  variants: function
+
+- func: lu_unpack.out(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True, *, Tensor(a!) P, Tensor(b!) L, Tensor(c!) U) -> (Tensor(a!) P, Tensor(b!) L, Tensor(c!) U)
+  variants: function
+  structured: True
+  dispatch:
+    CPU, CUDA: lu_unpack_out
+
+# linalg.det
+- func: _linalg_det(Tensor A) -> (Tensor result, Tensor LU, Tensor pivots)
+  structured_delegate: _linalg_det.result
+
+- func: _linalg_det.result(Tensor A, *, Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots) -> (Tensor(a!) result, Tensor(b!) LU, Tensor(c!) pivots)
+  structured: True
+  dispatch:
+    XPU: _linalg_det_out
+
+- func: linalg_det(Tensor A) -> Tensor
+  python_module: linalg
+  variants: function
+
+- func: linalg_det.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+
+# torch.det, alias for torch.linalg.det
+- func: det(Tensor self) -> Tensor
+  variants: function, method
+
+# linalg.slogdet
+- func: _linalg_slogdet(Tensor A) -> (Tensor sign, Tensor logabsdet, Tensor LU, Tensor pivots)
+  structured_delegate: _linalg_slogdet.sign
+
+- func: _linalg_slogdet.sign(Tensor A, *, Tensor(a!) sign, Tensor(b!) logabsdet, Tensor(c!) LU, Tensor(d!) pivots) -> (Tensor(a!) sign, Tensor(b!) logabsdet, Tensor(c!) LU, Tensor(d!) pivots)
+  structured: True
+  dispatch:
+    XPU: _linalg_slogdet_out
+
+- func: linalg_slogdet(Tensor A) -> (Tensor sign, Tensor logabsdet)
+  python_module: linalg
+
+- func: linalg_slogdet.out(Tensor A, *, Tensor(a!) sign, Tensor(b!) logabsdet) -> (Tensor(a!) sign, Tensor(b!) logabsdet)
+  python_module: linalg
+
+- func: slogdet(Tensor self) -> (Tensor sign, Tensor logabsdet)
+  variants: function, method
+
+- func: slogdet.out(Tensor self, *, Tensor(a!) sign, Tensor(b!) logabsdet) -> (Tensor(a!) sign, Tensor(b!) logabsdet)
+  variants: function
