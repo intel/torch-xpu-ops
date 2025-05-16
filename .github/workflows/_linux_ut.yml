@@ -98,7 +98,8 @@ jobs:
             directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
             log_prefix: 'op_ut'
             commands:
-              - command: 'python run_test_with_skip.py'
+              - name: run_test_with_skip
+                command: 'python run_test_with_skip.py'
                 log_suffix: 'with_skip'
                 xml_post_processing: |
                   cp *.xml ${{ github.workspace }}/ut_log
@@ -114,7 +115,8 @@ jobs:
                   ' _ {} \;
                   cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
                   cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
-              - command: 'python run_test_with_only.py'
+              - name: run_test_with_only
+                command: 'python run_test_with_only.py'
                 log_suffix: 'with_only'
                 xml_post_processing: |
                   cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
@@ -150,32 +152,42 @@ jobs:
             condition: "${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}"
             directory: '${{ github.workspace }}'
             commands:
-              - command: 'PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0'
+              - name: rn50_profile
+                command: 'PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0'
                 output_handling: |
                   cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
                 log_file: 'rn50_profile.log'
-              - command: 'python -u test/profiling/correlation_id_mixed.py'
+              - name: issue_reproduce
+                command: 'python -u test/profiling/correlation_id_mixed.py'
                 log_dir: 'issue_reproduce'
                 log_file: 'correlation_id_mixed.log'
-              - command: 'python -u test/profiling/reproducer.missing.gpu.kernel.time.py'
+              - name: issue_reproduce
+                command: 'python -u test/profiling/reproducer.missing.gpu.kernel.time.py'
                 log_dir: 'issue_reproduce'
                 log_file: 'reproducer.missing.gpu.kernel.time.log'
-              - command: 'python -u test/profiling/time_precision_in_profile.py'
+              - name: issue_reproduce
+                command: 'python -u test/profiling/time_precision_in_profile.py'
                 log_dir: 'issue_reproduce'
                 log_file: 'time_precision_in_profile.log'
-              - command: 'python -u test/profiling/profile_partial_runtime_ops.py'
+              - name: issue_reproduce
+                command: 'python -u test/profiling/profile_partial_runtime_ops.py'
                 log_dir: 'issue_reproduce'
                 log_file: 'profile_partial_runtime_ops.log'
-              - command: 'python -u test/profiling/triton_xpu_ops_time.py'
+              - name: issue_reproduce
+                command: 'python -u test/profiling/triton_xpu_ops_time.py'
                 log_dir: 'issue_reproduce'
                 log_file: 'triton_xpu_ops_time.log'
-              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_cpp_thread.py'
+              - name: rn50_profile
+                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_cpp_thread.py'
                 log_file: 'test_cpp_thread.log'
-              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_execution_trace.py'
+              - name: official ut
+                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_execution_trace.py'
                 log_file: 'test_execution_trace.log'
-              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_memory_profiler.py'
+              - name: official ut
+                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_memory_profiler.py'
                 log_file: 'test_memory_profiler.log'
-              - command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_profiler_tree.py'
+              - name: official ut
+                command: 'cd ../pytorch/test/profiler && python -m pytest --timeout 600 -vs test_profiler_tree.py'
                 log_file: 'test_profiler_tree.log'
             timeout: 10000
             env: {}
@@ -276,14 +288,14 @@ jobs:
           cd ${{ fromJson(matrix.test).directory }}
 
           if [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
-            for command in ${{ matrix.test.commands }}; do
-              echo "Running profile command: ${{ command.command }}"
-              if [[ "${{ command.command }}" == *"cd "* ]]; then
-                ( ${{ command.command }} ) | \
-                  tee ${{ github.workspace }}/ut_log/profile_test/${{ command.log_dir || '' }}/${{ command.log_file }}
+            for command in ${{ toJson(matrix.test.commands) }}; do
+              echo "Running profile command: ${{ fromJson(item).command }}"
+              if [[ "${{ fromJson(item).command }}" == *"cd "* ]]; then
+                ( ${{ fromJson(item).command }} ) | \
+                  tee ${{ github.workspace }}/ut_log/profile_test/${{ fromJson(item).log_dir || '' }}/${{ fromJson(item).log_file }}
               else
-                ${{ command.command }} | \
-                  tee ${{ github.workspace }}/ut_log/profile_test/${{ command.log_dir || '' }}/${{ command.log_file }}
+                ${{ fromJson(item).command }} | \
+                  tee ${{ github.workspace }}/ut_log/profile_test/${{ fromJson(item).log_dir || '' }}/${{ fromJson(item).log_file }}
               fi
               ${{ command.output_handling || '' }}
             done
@@ -297,11 +309,11 @@ jobs:
               ${{ matrix.test.xml_post_processing || '' }}
             else
               echo "Running multi-command test"
-              for command in ${{ matrix.test.commands }}; do
-                echo "Running command: ${{ command.command }}"
-                timeout ${{ matrix.test.timeout }} ${{ command.command }} \
-                  2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test_error.log | \
-                  tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ command.log_suffix }}_test.log
+              for command in ${{ toJson(matrix.test.commands) }}; do
+                echo "Running command: ${{ fromJson(item).command }}"
+                timeout ${{ matrix.test.timeout }} ${{ fromJson(item).command }} \
+                  2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ fromJson(item).log_suffix }}_test_error.log | \
+                  tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_${{ fromJson(item).log_suffix }}_test.log
                 
                 ${{ command.xml_post_processing || '' }}
               done
