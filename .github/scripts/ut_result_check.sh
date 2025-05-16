@@ -83,7 +83,6 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     else
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
     fi
-    num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
