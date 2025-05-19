@@ -48,6 +48,7 @@ jobs:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - /home/sdp/mengfeil:/mengfeil
       env:
         PATH: /opt/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         commit_issue: 1280
@@ -98,7 +99,7 @@ jobs:
           # oneAPI DLE
           # PTI 0.10.3
           rm -rf /opt/intel/oneapi/pti
-          bash /home/sdp/mengfeil/intel-pti-dev-0.10.3.7_offline.sh -a -s --eula accept
+          bash /mengfeil/intel-pti-dev-0.10.3.7_offline.sh -a -s --eula accept
           realpath /opt/intel/oneapi/pti/latest
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           sycl-ls
