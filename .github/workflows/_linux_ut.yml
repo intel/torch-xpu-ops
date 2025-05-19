@@ -420,6 +420,7 @@ jobs:
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
       - name: Run Torch XPU Distributed UT
         run: |
+          set -x -e -o pipefail
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ut_log/xpu_distributed
           cd pytorch/third_party/torch-xpu-ops/test/xpu
