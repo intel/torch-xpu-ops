@@ -51,6 +51,7 @@ jobs:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
+      UT_INPUT: ${{ inputs.ut }}
     strategy:
       matrix:
         test:
