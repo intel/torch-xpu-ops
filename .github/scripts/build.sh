@@ -71,8 +71,7 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     intel-openmp==2025.1.1 | \
     tbb==2022.1.0 | \
     tcmlib==1.3.0 | \
-    umf==0.10.0 | \
-    intel-pti==0.12.0
+    umf==0.10.0
 "
 
 # Build
