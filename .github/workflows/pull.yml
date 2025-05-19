@@ -201,6 +201,7 @@ jobs:
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
           source activate e2e_ci
+          export IS_PR=1
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
               ${{ github.workspace }}/reference \
