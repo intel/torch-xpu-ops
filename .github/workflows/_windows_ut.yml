@@ -48,7 +48,6 @@ permissions: read-all
 
 env: 
     USE_XPU: 1
-    XPU_ENABLE_KINETO: 1
 
 jobs:
   Torch-XPU-Windows-UT:
@@ -63,7 +62,6 @@ jobs:
         run: |
           set XPU_VERSION=${{ inputs.xpu_version }}
           call .github\scripts\install_xpu.bat
-          set "INCLUDE=C:\level_zero\temp_build\level_zero\include;%INCLUDE%" >> %GITHUB_ENV%
           if errorlevel 1 exit /b 1
       - name: Prepare Stock Pytorch
         shell: cmd
@@ -115,9 +113,6 @@ jobs:
           cd ../pytorch
           pip install -r requirements.txt
           pip install cmake setuptools==72.1.0 clang-format
-          pip install mkl-static mkl-include
-          set XPU_ENABLE_KINETO=1
-          set USE_STATIC_MKL=1
           set USE_ONEMKL=1
           set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
           set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE

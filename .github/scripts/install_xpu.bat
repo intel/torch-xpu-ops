@@ -2,10 +2,6 @@
 REM Description: Install Intel Support Packages on Windows
 REM BKM reference: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpus.html
 
-set SRC_DIR=C:\level_zero
-if exist "%SRC_DIR%\temp_build" rmdir /s /q "%SRC_DIR%\temp_build"
-mkdir "%SRC_DIR%\temp_build"
-
 :xpu_bundle_install_start
 
 set XPU_BUNDLE_PARENT_DIR=C:\Program Files (x86)\Intel\oneAPI
@@ -86,15 +82,3 @@ if errorlevel 1 exit /b 1
 del xpu_extra.exe
 
 :xpu_install_end
-
-if not "%XPU_ENABLE_KINETO%"=="1" goto install_end
-:: Install Level Zero SDK
-set XPU_EXTRA_LZ_URL=https://github.com/oneapi-src/level-zero/releases/download/v1.14.0/level-zero-sdk_1.14.0.zip
-curl -k -L %XPU_EXTRA_LZ_URL% --output "%SRC_DIR%\temp_build\level_zero_sdk.zip"
-echo "Installing level zero SDK..."
-set PATH=%PATH%;"C:\Program Files\7-Zip"
-7z x "%SRC_DIR%\temp_build\level_zero_sdk.zip" -o"%SRC_DIR%\temp_build\level_zero"
-set "INCLUDE=%SRC_DIR%\temp_build\level_zero\include;%INCLUDE%"
-del "%SRC_DIR%\temp_build\level_zero_sdk.zip"
-
-:install_end
