@@ -50,8 +50,8 @@ git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
 export USE_STATIC_MKL=1
-export USE_ONEMKL=1
-export USE_XCCL=1
+# export USE_ONEMKL=1
+# export USE_XCCL=1
 export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     intel-cmplr-lib-rt==2025.1.1 | \
     intel-cmplr-lib-ur==2025.1.1 | \
@@ -84,6 +84,8 @@ python -m pip install patchelf
 rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
 python -m pip install --force-reinstall tmp/torch*.whl
+python -m pip install /mengfeil/intel_pti-0.10.3-py2.py3-none-manylinux_2_28_x86_64.whl
+python -m pip install pytorch-triton-xpu --index-url https://download.pytorch.org/whl/xpu
 
 # Verify
 cd ${WORKSPACE}
