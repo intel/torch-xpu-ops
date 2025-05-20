@@ -278,7 +278,7 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            source activate e2e_ci
+            source activate xpu_op_${ZE_AFFINITY_MASK}
             bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
                 Inductor-${{ env.run_type }}-Pre-XPU-E2E \
@@ -290,7 +290,7 @@ jobs:
               exit ${exit_label}
             fi
           else
-            source activate e2e_ci
+            source activate xpu_op_${ZE_AFFINITY_MASK}
             cp -r ${{ github.workspace }}/torch-xpu-ops/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
             cd ${{ github.workspace }}/upload_files
             python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e

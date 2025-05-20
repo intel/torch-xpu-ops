@@ -83,7 +83,7 @@ jobs:
           which conda && conda clean -ay
           conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
+          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=3.10 cmake ninja -y
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -183,7 +183,7 @@ jobs:
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
-          source activate e2e_ci
+          source activate xpu_op_${ZE_AFFINITY_MASK}
           bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
               Inductor-weekly-LTS-XPU-E2E \
