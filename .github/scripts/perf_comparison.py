@@ -73,7 +73,7 @@ for xpu_file in xpu_files:
             xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), "")
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
-if args.pr:
+if not args.pr:
     refer_files = find_files("*_xpu_performance.csv", args.refer)
     for refer_file in refer_files:
         refer_data = pd.read_csv(refer_file)

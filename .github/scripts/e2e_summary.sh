@@ -148,7 +148,7 @@ performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
     unzip ${reference_dir}/*.zip -d ${reference_dir} > /dev/null 2>&1
-    if [ "$IS_PR" == "1" ];then
+    if [ "${IS_PR}" == "1" ];then
         python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir} --pr
     else
         python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir}
