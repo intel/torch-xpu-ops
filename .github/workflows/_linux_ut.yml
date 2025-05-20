@@ -52,11 +52,12 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     strategy:
+      fail-fast: false
       matrix:
         test:
           - name: 'op_regression'
-            condition: "contains(inputs.ut, 'op_regression')"
-            directory: 'test/regressions'
+            condition: ${{ contains(inputs.ut, 'op_regression') }}
+            directory: 'torch-xpu-ops/test/regressions'
             command: 'pytest --timeout 600 -v --junit-xml=$LOG_DIR/op_regression.xml'
             log_prefix: 'op_regression'
             timeout: 8000
@@ -64,8 +65,8 @@ jobs:
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'op_regression_dev1'
-            condition: "contains(inputs.ut, 'op_regression_dev1')"
-            directory: 'test/regressions'
+            condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
+            directory: 'torch-xpu-ops/test/regressions'
             command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$LOG_DIR/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
             timeout: 8000
@@ -74,8 +75,8 @@ jobs:
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'op_transformers'
-            condition: "contains(inputs.ut, 'op_transformers')"
-            directory: '../pytorch/'
+            condition: ${{ contains(inputs.ut, 'op_transformers') }}
+            directory: 'pytorch/'
             command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$LOG_DIR/op_transformers.xml'
             log_prefix: 'op_transformers'
             timeout: 3600
@@ -84,8 +85,8 @@ jobs:
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'op_extended'
-            condition: "contains(inputs.ut, 'op_extended')"
-            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
+            condition: ${{ contains(inputs.ut, 'op_extended') }}
+            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
             command: 'python run_test_with_skip.py'
             log_prefix: 'op_extended'
             timeout: 10000
@@ -94,8 +95,8 @@ jobs:
             xml_post_processing: |
               cp op_extended.xml $LOG_DIR
           - name: 'op_ut'
-            condition: "contains(inputs.ut, 'op_ut')"
-            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
+            condition: ${{ contains(inputs.ut, 'op_ut') }}
+            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu'
             log_prefix: 'op_ut'
             command_script: |
               python run_test_with_skip.py \
@@ -128,7 +129,7 @@ jobs:
               PYTORCH_ENABLE_XPU_FALLBACK: '1'
               PYTORCH_TEST_WITH_SLOW: '1'
           - name: 'torch_xpu'
-            condition: "contains(inputs.ut, 'torch_xpu')"
+            condition: ${{ contains(inputs.ut, 'torch_xpu') }}
             directory: '../pytorch'
             command: |
               for xpu_case in build/bin/*{xpu,sycl}*; do
@@ -152,7 +153,7 @@ jobs:
               TEST_REPORTS_DIR=${{ github.workspace }}/../pytorch/test/test-reports
               rm -rf "$TEST_REPORTS_DIR" && mkdir -p "$TEST_REPORTS_DIR"
           - name: 'xpu_profiling'
-            condition: "${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}"
+            condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
             directory: '${{ github.workspace }}'
             command_script: |
               # RN50 Test
@@ -193,12 +194,11 @@ jobs:
         run: |
           which conda && conda clean -ay
           echo "conda_path=$(dirname $(dirname $(which conda)))" >> $GITHUB_OUTPUT
-          echo "workspace_path=$(pwd)" >> $GITHUB_OUTPUT
       - name: Create unique workspace
         run: |
           # Create unique workspace directory for this test
-          mkdir -p WORKSPACE_PATH=$workspace_path/workspace_${{ matrix.test.name }}
-          echo "WORKSPACE_PATH=$workspace_path/workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
+          mkdir -p ${{ github.workspace }}/workspace_${{ matrix.test.name }}
+          echo "WORKSPACE_PATH=${{ github.workspace }}/workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
           mkdir -p $LOG_DIR
@@ -216,13 +216,13 @@ jobs:
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
             # apply PRs for stock pytorch
-            python ${{ needs.setup.outputs.workspace_path }}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+            python ${{ github.workspace }}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
             git status && git show -s
             git submodule sync && git submodule update --init --recursive
             if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
               echo "Don't replace torch-xpu-ops!"
             else
-              rm -rf third_party/torch-xpu-ops && cp -r ${{ needs.setup.outputs.workspace_path }}/torch-xpu-ops third_party/
+              rm -rf third_party/torch-xpu-ops && cp -r ${{ github.workspace }}/torch-xpu-ops third_party/
               # Workaround for torch-xpu-ops ci test
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
@@ -287,17 +287,20 @@ jobs:
         run: |
           source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH
-          mkdir -p ut_log/${{ matrix.test.log_prefix }}
+          echo "Running ${{ matrix.test.name }}"
+          echo "Directory: ${{ matrix.test.directory }}"
           ${{ fromJson(matrix.test).additional_steps }}
-
           export ${{ join(fromJson(matrix.test).env.*, ' ') }}
-          cd ${{ fromJson(matrix.test).directory }}
 
           if [ "${{ matrix.test.name }}" == "op_ut" ]; then
+            cd $WORKSPACE_PATH/${{ matrix.test.directory }}
             ${{ matrix.test.command_script }}
           elif [ "${{ matrix.test.name }}" == "xpu_profiling" ]; then
+            cd ${{ github.workspace }}
             ${{ matrix.test.command_script }}
           else
+            cp -r ${{ github.workspace }}/torch-xpu-ops $WORKSPACE_PATH
+            cd $WORKSPACE_PATH/${{ matrix.test.directory }}
             timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
               2>$LOG_DIR/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
               tee $LOG_DIR/${{ matrix.test.name }}/${{ matrix.test.log_suffix }}_test.log
@@ -338,7 +341,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
-          path: $LOG_DIR
+          path: ${{ github.workspace }}/ut_log
   
   distributed_ut_test:
     runs-on: pvc_e2e
