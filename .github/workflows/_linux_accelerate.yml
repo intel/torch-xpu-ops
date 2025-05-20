@@ -57,6 +57,9 @@ jobs:
       PYTORCH_DEBUG_XPU_FALLBACK: 1
       ZE_AFFINITY_MASK: 0
       PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
