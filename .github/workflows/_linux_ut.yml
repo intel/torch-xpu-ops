@@ -437,7 +437,7 @@ jobs:
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 1800 python run_distributed.py \
+          timeout 1000 python run_distributed.py \
             2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
             tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
       - name: Reset Ptrace_scope
