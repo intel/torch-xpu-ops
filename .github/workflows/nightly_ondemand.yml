@@ -78,7 +78,6 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       runner: pvc_e2e
-      update_lkg: 'true'
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
