@@ -359,6 +359,18 @@ jobs:
             sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
           gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
+  Windows-Nightly-Ondemand-UT-Tests:
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    name: Windows-nightly-ondemand
+    uses: ./.github/workflows/_windows_ut.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      files-changed: false
+      has-label: true
+      runner: Windows_CI
+
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
