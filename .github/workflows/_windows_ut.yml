@@ -115,7 +115,6 @@ jobs:
           pip install cmake setuptools==72.1.0 clang-format
           pip install mkl-static mkl-include
           set USE_STATIC_MKL=1
-          set USE_ONEMKL_XPU=1
           copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
           copy "%CONDA_PREFIX%\Library\bin\uv.dll" .\torch\lib
           if defined CMAKE_PREFIX_PATH (
