@@ -197,6 +197,7 @@ jobs:
       - name: Summarize archieve files
         if: ${{ ! cancelled() }}
         run: |
+          set -x -e -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary

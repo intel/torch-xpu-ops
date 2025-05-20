@@ -282,6 +282,7 @@ jobs:
         id: summary
         if: ${{ ! cancelled() }}
         run: |
+          set -x -e -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
