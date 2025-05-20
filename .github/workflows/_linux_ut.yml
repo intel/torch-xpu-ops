@@ -189,25 +189,20 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Setup Paths
-        id: setup
-        run: |
-          which conda && conda clean -ay
-          echo "conda_path=$(dirname $(dirname $(which conda)))" >> $GITHUB_OUTPUT
       - name: Create unique workspace
         run: |
-          # Create unique workspace directory for this test
+          # Create unique workspace directory for each UT test
           mkdir -p ${{ github.workspace }}/workspace_${{ matrix.test.name }}
           echo "WORKSPACE_PATH=${{ github.workspace }}/workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}" >> $GITHUB_ENV
+          mkdir -p ${{ github.workspace }}/ut_log
           echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
-          mkdir -p $LOG_DIR
       - name: Prepare Stock Pytorch
         run: |
           pwd
           which conda && conda clean -ay
           conda remove --all -y -n $CONDA_ENV_NAME || \
-                rm -rf $conda_path/envs/$CONDA_ENV_NAME
+                rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH && rm -rf pytorch
