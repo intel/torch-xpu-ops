@@ -420,8 +420,11 @@ jobs:
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
+          set -x -e -u -o pipefail
+          sudo rm -rf ptrace_scope.bk
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
-          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+          cat ptrace_scope.bk
+          echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
       - name: Run Torch XPU Distributed UT
         run: |
           set -x -e -o pipefail
@@ -434,13 +437,15 @@ jobs:
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 10000 python run_distributed.py \
+          timeout 1800 python run_distributed.py \
             2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
             tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |
-          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          if [ -f ptrace_scope.bk ]; then
+            sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          fi
       - name: UT Test Results Check
         shell: bash
         run: |
