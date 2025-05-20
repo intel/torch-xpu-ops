@@ -417,13 +417,16 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
-      - name: Run Torch XPU Distributed UT
+      - name: Set Ptrace_scope
+        if: ${{ always() }}
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pytest pytest-timeout
-          cd ${{ github.workspace }}
           sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
           sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
+      - name: Run Torch XPU Distributed UT
+        run: |
+          set -x -e -o pipefail
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install pytest pytest-timeout
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
@@ -434,7 +437,9 @@ jobs:
           timeout 10000 python run_distributed.py \
             2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
             tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
-          cd ${{ github.workspace }}
+      - name: Reset Ptrace_scope
+        if: ${{ always() }}
+        run: |
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
         shell: bash
