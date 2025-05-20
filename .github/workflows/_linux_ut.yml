@@ -429,8 +429,8 @@ jobs:
           pip install pytest pytest-timeout
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
-          if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
+          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
