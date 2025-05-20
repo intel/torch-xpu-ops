@@ -1,5 +1,3 @@
-#if defined(USE_ONEMKL)
-
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/core/Tensor.h>
@@ -349,4 +347,3 @@ void svd_mkl(
 }
 
 } // namespace at::native::xpu
-#endif // USE_ONEMKL
