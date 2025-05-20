@@ -20,14 +20,12 @@ void svd_kernel_xpu(
 #if defined(USE_ONEMKL)
   native::xpu::svd_mkl(A, full_matrices, compute_uv, driver, U, S, Vh, info);
 #else
-  const auto A_cpu = A.to(A.options()
-                              .device(kCPU)
-                              .memory_format(at::MemoryFormat::Contiguous)
-                              .pinned_memory(true));
-  // U, S, Vh, info are the right size and strides, but are on GPU
-  // We copy them into CPU in pinned_memory
+  const auto A_cpu = A.to(
+      A.options().device(kCPU).memory_format(at::MemoryFormat::Contiguous));
+  // U, S, Vh, info are the right size and strides, but these tensors are on GPU
+  // and need to be copied
   const auto empty_like_cpu = [](const Tensor& t) {
-    return at::empty_like(t, t.options().device(kCPU).pinned_memory(true));
+    return at::empty_like(t, t.options().device(kCPU));
   };
 
   auto U_cpu = compute_uv ? empty_like_cpu(U) : Tensor{};
@@ -50,11 +48,11 @@ void svd_kernel_xpu(
   // We can do a non_blocking copy, as there is an unconditional check of the
   // infos in the calling function
   if (compute_uv) {
-    U.copy_(U_cpu, /*non_blocking*/ true);
-    Vh.copy_(Vh_cpu, /*non_blocking*/ true);
+    U.copy_(U_cpu);
+    Vh.copy_(Vh_cpu);
   }
-  S.copy_(S_cpu, /*non_blocking*/ true);
-  info.copy_(info_cpu, /*non_blocking*/ true);
+  S.copy_(S_cpu);
+  info.copy_(info_cpu);
 #endif // USE_ONEMKL
 }
 
