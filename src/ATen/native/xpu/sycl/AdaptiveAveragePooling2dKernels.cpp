@@ -406,24 +406,36 @@ void adaptive_avg_pool2d_backward_kernel(
     const Tensor& grad_output_,
     const Tensor& input_) {
   Tensor input, grad_output;
+  if (input_.ndimension() == 3) {
+    input = input_.contiguous();
+    grad_output = grad_output_.contiguous();
+    grad_input = at::empty_like(input);
+  } else {
+    auto smf = input_.suggest_memory_format();
+    input = input_.contiguous(smf);
+    grad_output = grad_output_.contiguous(smf);
+    grad_input = at::empty_like(input_, smf);
+  }
 
-  auto smf = input_.suggest_memory_format();
-  input = input_.contiguous(smf);
-  grad_output = grad_output_.contiguous(smf);
-  grad_input = at::empty_like(input_, smf);
+  int osizeH = grad_output.size(-2);
+  int osizeW = grad_output.size(-1);
+
+  int sizeC = input.size(-3);
+  int isizeH = input.size(-2);
+  int isizeW = input.size(-1);
+
+  bool is_3d = grad_output.ndimension() == 3;
+  if (is_3d) {
+    grad_output.resize_({1, sizeC, osizeH, osizeW});
+    grad_input.resize_({1, sizeC, isizeH, isizeW});
+  }
 
   int sizeB = input.size(0);
-  int sizeC = input.size(1);
-  int isizeH = input.size(2);
-  int isizeW = input.size(3);
 
   int64_t ostrideB = grad_output.stride(0);
   int64_t ostrideC = grad_output.stride(1);
   int64_t ostrideH = grad_output.stride(2);
   int64_t ostrideW = grad_output.stride(3);
-
-  int osizeH = grad_output.size(-2);
-  int osizeW = grad_output.size(-1);
   if (is_smf_channels_last(grad_output)) {
     // preserve channels_last stride on input tensor;
     if (!grad_input.is_contiguous(at::MemoryFormat::ChannelsLast)) {
@@ -475,7 +487,9 @@ void adaptive_avg_pool2d_backward_kernel(
                     sizeof(scalar_t) +
                 2 * isizeW * sizeof(int32_t);
             if (shmem_size <= sharedMemPerGroup) {
-              AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor<int32_t, scalar_t>
+              AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor<
+                  int32_t,
+                  scalar_t>
                   kfn(grad_input.mutable_data_ptr<scalar_t>(),
                       grad_output.const_data_ptr<scalar_t>(),
                       sizeB,
@@ -529,6 +543,10 @@ void adaptive_avg_pool2d_backward_kernel(
             sycl_kernel_submit(kfn.glb_range(), kfn.loc_range(), q, kfn);
           }
         });
+  }
+  if (is_3d) {
+    grad_output.resize_({sizeC, osizeH, osizeW});
+    grad_input.resize_({sizeC, isizeH, isizeW});
   }
 }
 
