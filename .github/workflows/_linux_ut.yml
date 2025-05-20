@@ -42,23 +42,7 @@ on:
 permissions: read-all
 
 jobs:
-  setup:
-    runs-on: ${{ inputs.runner }}
-    outputs:
-      conda_path: ${{ steps.setup.outputs.conda_path }}
-      workspace_path: ${{ steps.setup.outputs.workspace_path }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Setup Paths
-        id: setup
-        run: |
-          which conda && conda clean -ay
-          echo "conda_path=$(dirname $(dirname $(which conda)))" >> $GITHUB_OUTPUT
-          echo "workspace_path=$(pwd)" >> $GITHUB_OUTPUT
-
   ut_test:
-    needs: setup
     runs-on: ${{ inputs.runner }} 
     if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
@@ -204,11 +188,17 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Setup Paths
+        id: setup
+        run: |
+          which conda && conda clean -ay
+          echo "conda_path=$(dirname $(dirname $(which conda)))" >> $GITHUB_OUTPUT
+          echo "workspace_path=$(pwd)" >> $GITHUB_OUTPUT
       - name: Create unique workspace
         run: |
           # Create unique workspace directory for this test
-          mkdir -p ${{ needs.setup.outputs.workspace_path }}/workspace_${{ matrix.test.name }}
-          echo "WORKSPACE_PATH=${{ needs.setup.outputs.workspace_path }}/workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
+          mkdir -p WORKSPACE_PATH=$workspace_path/workspace_${{ matrix.test.name }}
+          echo "WORKSPACE_PATH=$workspace_path/workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
           mkdir -p $LOG_DIR
@@ -217,7 +207,7 @@ jobs:
           pwd
           which conda && conda clean -ay
           conda remove --all -y -n $CONDA_ENV_NAME || \
-                rm -rf ${{ needs.setup.outputs.conda_path }}/envs/$CONDA_ENV_NAME
+                rm -rf $conda_path/envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH && rm -rf pytorch
@@ -239,7 +229,7 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH/pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
@@ -259,7 +249,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate $CONDA_ENV_NAME
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd $WORKSPACE_PATH/pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -282,7 +272,7 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate $CONDA_ENV_NAME
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -295,7 +285,7 @@ jobs:
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH
           mkdir -p ut_log/${{ matrix.test.log_prefix }}
           ${{ fromJson(matrix.test).additional_steps }}
@@ -316,7 +306,7 @@ jobs:
           fi
       - name: UT Test Results Summary
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          source activate $CONDA_ENV_NAME
           pip install junitparser
           python .github/scripts/check-ut.py $LOG_DIR/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check
@@ -456,8 +446,8 @@ jobs:
             exit 1
           fi
           timeout 10000 python run_distributed.py \
-            2>$LOG_DIR/xpu_distributed/xpu_distributed_test_error.log | \
-            tee $LOG_DIR/xpu_distributed/xpu_distributed_test.log
+            2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
           cd ${{ github.workspace }}
           sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
       - name: UT Test Results Check
@@ -475,7 +465,7 @@ jobs:
           }
           set -xe
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd $LOG_DIR/xpu_distributed
+          cd ${{ github.workspace }}/ut_log/xpu_distributed
           gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh 'xpu_distributed'
@@ -484,4 +474,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
-          path: $LOG_DIR
+          path: ${{ github.workspace }}/ut_log
