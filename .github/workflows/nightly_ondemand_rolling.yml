@@ -134,6 +134,9 @@ jobs:
       TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Prepare Env
         run: |

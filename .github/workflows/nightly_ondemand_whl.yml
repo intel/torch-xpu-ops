@@ -91,6 +91,9 @@ jobs:
       OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Prepare Env
         run: |

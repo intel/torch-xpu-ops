@@ -44,6 +44,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Prepare Env
         run: |

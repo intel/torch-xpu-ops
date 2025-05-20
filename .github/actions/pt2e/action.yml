@@ -30,6 +30,9 @@ inputs:
 
 runs:
   using: composite
+  defaults:
+    run:
+      shell: bash -e -x -o pipefail {0}
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}

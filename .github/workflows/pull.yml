@@ -75,6 +75,9 @@ jobs:
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Prepare Env
         run: |
