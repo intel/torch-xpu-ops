@@ -1,7 +1,6 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-
 if torch.cuda.is_available():
     device = "cuda"
     activity = ProfilerActivity.CUDA
