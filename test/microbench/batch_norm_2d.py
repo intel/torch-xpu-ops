@@ -1,7 +1,15 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device = "xpu"
+if torch.cuda.is_available():
+    device = "cuda"
+    activity = ProfilerActivity.CUDA
+    table_key = "cuda_time_total"
+else:
+    device = "xpu"
+    activity = ProfilerActivity.XPU
+    table_key = "xpu_time_total"
+
 
 shape_list = [
     (256, 256, 56, 56, 256),
@@ -20,14 +28,14 @@ def BTN2d(shape, dtype, channels_last, backward):
         input = (
             torch.randn(N, C, H, W)
             .to(memory_format=torch.channels_last)
-            .to(device="xpu", dtype=dtype)
+            .to(device=device, dtype=dtype)
         )
     else:
-        input = torch.randn(N, C, H, W).to(device="xpu", dtype=dtype)
+        input = torch.randn(N, C, H, W).to(device=device, dtype=dtype)
 
     if backward:
         input.requires_grad_(True)
-        grad = torch.randn([C, H, W]).to(device="xpu", dtype=dtype)
+        grad = torch.randn([C, H, W]).to(device=device, dtype=dtype)
 
     BTN = torch.nn.BatchNorm2d(shape[4], device=device)
 
@@ -59,9 +67,9 @@ if __name__ == "__main__":
                     backward,
                 )
                 with profile(
-                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                    activities=[ProfilerActivity.CPU, activity],
                     record_shapes=True,
                 ) as prof:
                     for i in range(20):
                         BTN2d(shape, dtype, channels_last, backward=True)
-                print(prof.key_averages().table(sort_by="xpu_time_total"))
+                print(prof.key_averages().table(sort_by=table_key))
