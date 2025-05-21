@@ -181,7 +181,6 @@ skip_dict = {
         "test_transformer_req_grad_float64_thaw_all",
         "test_transformer_training_is_seq_parallel_False_float64",
         "test_transformer_training_is_seq_parallel_True_float64",
-        "test_sequence_parallel_style",
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
     "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": (
