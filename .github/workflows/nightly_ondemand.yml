@@ -336,6 +336,18 @@ jobs:
           name: Inductor-${{ env.run_type }}-LTS-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
+  Windows-Nightly-Ondemand-UT-Tests:
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    name: Windows-nightly-ondemand
+    uses: ./.github/workflows/_windows_ut.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      files-changed: false
+      has-label: true
+      runner: Windows_CI
+
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
