@@ -311,6 +311,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ut_skip_issue: 1624
     steps:
+      - name: Set the UT name
+        run: |
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
