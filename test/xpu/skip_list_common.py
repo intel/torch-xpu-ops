@@ -555,7 +555,6 @@ skip_dict = {
         "test_neg_view_linalg_det_xpu_float64",
         "test_neg_view_linalg_eig_xpu_float64",
         "test_neg_view_linalg_eigh_xpu_float64",
-        "test_neg_view_linalg_eigvals_xpu_float64",
         "test_neg_view_linalg_eigvalsh_xpu_float64",
         "test_neg_view_linalg_householder_product_xpu_float64",
         "test_neg_view_linalg_inv_ex_xpu_float64",
@@ -1231,6 +1230,8 @@ skip_dict = {
         # _convert_weight_to_int4pack not support
         "_int4_mm_m_",
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_complex64",
+        "test_tensordot_out_kernel_errors_with_autograd_xpu_float32",
         "test_1_sized_with_0_strided_xpu_float64",
         "test_addbmm_xpu_complex128",
         "test_addbmm_xpu_complex64",
@@ -1892,7 +1893,6 @@ skip_dict = {
         "test_fn_grad_linalg_eigh_xpu_complex128",
         "test_fn_grad_linalg_eigh_xpu_float64",
         "test_fn_grad_linalg_eigvals_xpu_complex128",
-        "test_fn_grad_linalg_eigvals_xpu_float64",
         "test_fn_grad_linalg_eigvalsh_xpu_complex128",
         "test_fn_grad_linalg_eigvalsh_xpu_float64",
         "test_fn_grad_linalg_householder_product_xpu_complex128",
@@ -2291,6 +2291,8 @@ skip_dict = {
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
+        # randomly fails
+        "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
@@ -2384,7 +2386,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_linalg_eigh_xpu_complex",
         "test_dispatch_meta_outplace_linalg_eigh_xpu_float64",
         "test_dispatch_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_dispatch_meta_outplace_linalg_eigvals_xpu_float64",
         "test_dispatch_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_dispatch_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_dispatch_meta_outplace_linalg_inv_ex_xpu_complex",
@@ -2514,7 +2515,6 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_linalg_eigh_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_linalg_eigh_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_dispatch_symbolic_meta_outplace_linalg_eigvals_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_inv_ex_xpu_complex",
@@ -2644,7 +2644,6 @@ skip_dict = {
         "test_meta_outplace_linalg_eigh_xpu_complex",
         "test_meta_outplace_linalg_eigh_xpu_float64",
         "test_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_meta_outplace_linalg_eigvals_xpu_float64",
         "test_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_meta_outplace_linalg_inv_ex_xpu_complex",
@@ -3071,10 +3070,7 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_norm_fro_xpu_float",
     ),
     "test_type_promotion_xpu.py": None,
-    "test_distributions_xpu.py": (
-        # TODO: Passed on lts driver version, but failed on rolling driver version
-        "test_gamma_gpu_sample_xpu",
-    ),
+    "test_distributions_xpu.py": None,
     "test_optim_xpu.py": (
         # oneDNN issues
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN

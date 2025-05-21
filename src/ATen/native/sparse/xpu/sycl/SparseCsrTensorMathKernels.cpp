@@ -248,7 +248,6 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
   auto ioptions = crow_indices.options();
   Tensor values = sparse.values();
   auto nrows = sparse.size(0);
-  auto numel = values.numel();
 
   Tensor new_crow_indices = at::empty({crow_indices.numel()}, ioptions);
   Tensor new_col_indices = at::empty({}, ioptions);

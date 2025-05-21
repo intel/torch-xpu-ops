@@ -60,8 +60,8 @@ struct UpsampleBilinear2dKernelFunctor {
       const accscalar_t rheight,
       const accscalar_t rwidth,
       const bool align_corners,
-      const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-      PackedTensorAccessor<scalar_t, 4> odata_acc,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+      GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
       int64_t input_height,
       int64_t input_width,
       int64_t output_height,
@@ -86,8 +86,8 @@ struct UpsampleBilinear2dKernelFunctor {
   const accscalar_t rheight_;
   const accscalar_t rwidth_;
   const bool align_corners_;
-  const PackedTensorAccessor<const scalar_t, 4> in_data_acc_;
-  PackedTensorAccessor<scalar_t, 4> out_data_acc_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> in_data_acc_;
+  GenericPackedTensorAccessor<scalar_t, 4> out_data_acc_;
   int64_t input_height_;
   int64_t input_width_;
   int64_t output_height_;
@@ -102,8 +102,8 @@ void launch_upsample_bilinear2d_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
     const bool align_corners,
-    const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-    PackedTensorAccessor<scalar_t, 4> odata_acc,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+    GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
     int64_t input_height,
     int64_t input_width,
     int64_t output_height,
@@ -419,19 +419,15 @@ struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
              point_w += input_width_ * 2) {
           int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
           int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
-          accscalar_t scale_w =
-              distance_w / static_cast<accscalar_t>(output_width_ * 2);
-          accscalar_t scale_h =
-              distance_h / static_cast<accscalar_t>(output_height_ * 2);
           bool is_boundary_w =
-              !((point_w > input_width_) &&
-                (point_w < output_width_ * input_width_ * 2 - input_width_));
+              !((point_w >= output_width_) &&
+                (point_w <= output_width_ * input_width_ * 2 - output_width_));
           // scale is 1 if on boundary
           distance_w =
               distance_w + is_boundary_w * (output_width_ * 2 - distance_w);
           bool is_boundary_h =
-              !((point_h > input_height_) &&
-                (point_h < output_height_ * input_height_ * 2 - input_height_));
+              !((point_h >= output_height_) &&
+                (point_h <= output_height_ * input_height_ * 2 - output_height_));
           distance_h =
               distance_h + is_boundary_h * (output_height_ * 2 - distance_h);
           accscalar_t scale =
@@ -610,8 +606,8 @@ void launch_upsample_bilinear2d_backward_kernel(
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
   // I also have to skip double because of rounding issues, it will not pass ut
-  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height) &&
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
       !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
@@ -794,8 +790,8 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
   // TODO: when input 3x3, scale is 1.5, output is 4x4,
   // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
   // I also have to skip double because of rounding issues, it will not pass ut
-  can_optimize = can_optimize && input_width > (rwidth * output_width) &&
-      input_height > (rheight * output_height) &&
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
       !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
@@ -876,8 +872,8 @@ void upsample_bilinear2d_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input, "input", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -976,8 +972,8 @@ void upsample_bilinear2d_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
@@ -1177,8 +1173,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   UpsampleGen2dAaKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      const PackedTensorAccessor<const scalar_t, 4> idata,
-      PackedTensorAccessor<scalar_t, 4> odata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+      GenericPackedTensorAccessor<scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -1207,8 +1203,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  const PackedTensorAccessor<const scalar_t, 4> idata_;
-  PackedTensorAccessor<scalar_t, 4> odata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> idata_;
+  GenericPackedTensorAccessor<scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -1316,8 +1312,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
   UpsampleGen2dAaBackwardKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      PackedTensorAccessor<scalar_t, 4> idata,
-      const PackedTensorAccessor<const scalar_t, 4> odata,
+      GenericPackedTensorAccessor<scalar_t, 4> idata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -1346,8 +1342,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  PackedTensorAccessor<scalar_t, 4> idata_;
-  const PackedTensorAccessor<const scalar_t, 4> odata_;
+  GenericPackedTensorAccessor<scalar_t, 4> idata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -1365,8 +1361,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    const PackedTensorAccessor<const scalar_t, 4> idata,
-    PackedTensorAccessor<scalar_t, 4> odata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+    GenericPackedTensorAccessor<scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
@@ -1441,8 +1437,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_backward_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    PackedTensorAccessor<scalar_t, 4> idata,
-    const PackedTensorAccessor<const scalar_t, 4> odata,
+    GenericPackedTensorAccessor<scalar_t, 4> idata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
@@ -1513,8 +1509,8 @@ void upsample_gen2d_aa_out_kernel(
     const Tensor& input_,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input_, "input_", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -1581,8 +1577,8 @@ void upsample_gen2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(
@@ -1647,8 +1643,8 @@ void _upsample_bilinear2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
@@ -1660,8 +1656,8 @@ void _upsample_bilinear2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       grad_input,
@@ -1678,8 +1674,8 @@ void _upsample_bicubic2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
 }
@@ -1690,8 +1686,8 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BicubicFilterFunctor>(
       grad_input,
