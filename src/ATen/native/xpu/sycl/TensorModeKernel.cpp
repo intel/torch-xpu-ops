@@ -217,6 +217,7 @@ inline T reduceGroupWithNThreadLocalReductions(
     T init) {
   int offset = item.get_local_id(2) * N;
   T local = offset < numVals ? threadVals[0] : init;
+  T identity_element = init;
 
 #pragma unroll
   for (int i = 1; i < N; ++i) {
@@ -226,7 +227,7 @@ inline T reduceGroupWithNThreadLocalReductions(
   }
 
   return GroupReduceWithoutBroadcast<T, ReduceOp, 32>(
-      item, local, reduceOp, smem);
+      item, local, reduceOp, identity_element, smem);
 }
 
 template <typename T, unsigned int Power2Size>
