@@ -340,7 +340,7 @@ jobs:
             $contains_status
             cd ${{ github.workspace }}/ut_log/${ut_suite}
             gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
-            gh api "repos/${{ github.repository }}/issues?labels=known_ut_issue" \
+            gh api "repos/${{ github.repository }}/issues?labels=skipped" \
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
             > issues.log
             awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
