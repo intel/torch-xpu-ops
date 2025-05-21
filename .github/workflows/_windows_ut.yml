@@ -31,7 +31,7 @@ on:
       xpu_version:
         required: false
         type: string
-        default: '2025.0'
+        default: '2025.1'
         description: Python version
       files-changed:
         required: true
@@ -108,16 +108,14 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
           call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
           pip install cmake setuptools==72.1.0 clang-format
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          set USE_KINETO=0
+          pip install mkl-static mkl-include
+          set USE_STATIC_MKL=1
           set USE_ONEMKL=1
-          set CMAKE_SHARED_LINKER_FLAGS=/FORCE:MULTIPLE
-          set CMAKE_MODULE_LINKER_FLAGS=/FORCE:MULTIPLE
-          set CMAKE_EXE_LINKER_FLAGS=/FORCE:MULTIPLE
           copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
           copy "%CONDA_PREFIX%\Library\bin\uv.dll" .\torch\lib
           if defined CMAKE_PREFIX_PATH (
