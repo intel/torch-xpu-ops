@@ -64,7 +64,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut,xpu_distributed
+      ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
   
   preci-linux-build-distributed:
@@ -96,6 +96,8 @@ jobs:
     name: preci-linux / e2e_test
     needs: preci-linux-build
     runs-on: pvc_e2e
+    env:
+      GH_TOKEN: ${{ github.token }}
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
@@ -118,8 +120,8 @@ jobs:
           cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
           # apply PRs for stock pytorch
           pip install requests
-          # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
+          # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
           git status && git show -s
           rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
           # Workaround for torch-xpu-ops ci test

@@ -73,7 +73,7 @@ REGISTER_XPU_DISPATCH(isin_default_stub, &xpu::isin_kernel);
 
 void _assert_async_msg_xpu(
     const Tensor& self_tensor,
-    c10::string_view assert_msg) {
+    std::string_view assert_msg) {
   xpu::_assert_async_msg_kernel(self_tensor, assert_msg);
 }
 

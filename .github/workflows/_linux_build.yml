@@ -74,8 +74,33 @@ jobs:
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-        with:
-          path: torch-xpu-ops
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_build || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_build
+          conda create -n xpu_build python=${{ inputs.python }} cmake=3.28 ninja -y
+          source activate xpu_build
+          cd ../ && sudo rm -rf pytorch
+          pip install requests
+          if [[ ${{ inputs.pytorch }} == 'distributed_2.8' ]]; then
+            git clone https://github.com/daisyden/pytorch.git pytorch
+          else
+            git clone https://github.com/pytorch/pytorch pytorch
+          fi
+          cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
+          # apply PRs for stock pytorch
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git show -s
+          git submodule sync && git submodule update --init --recursive
+          if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
+            echo "Don't replace torch-xpu-ops!"
+          else
+            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
+            # Workaround for torch-xpu-ops ci test
+            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+          fi
       - name: Build Pytorch XPU
         run: |
           set -xe

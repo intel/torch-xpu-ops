@@ -66,9 +66,9 @@ endif()
 
 # Propagate the option to PyTorch
 if(USE_DISTRIBUTED AND USE_XCCL AND USE_C10D_XCCL)
-  caffe2_update_option(USE_C10D_XCCL ON)
+  set(USE_C10D_XCCL ON CACHE BOOL "Build with XCCL support for C10D" FORCE)
 else()
-  caffe2_update_option(USE_C10D_XCCL OFF)
+  set(USE_C10D_XCCL OFF CACHE BOOL "Build with XCCL support for C10D" FORCE)
 endif()
 
 if(BUILD_TEST)
