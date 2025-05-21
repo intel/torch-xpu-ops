@@ -195,17 +195,16 @@ jobs:
           rm -r ${{ github.workspace }}/../workspace_${{ matrix.test.name }} && mkdir -p ${{ github.workspace }}/../workspace_${{ matrix.test.name }}
           echo "WORKSPACE_PATH=${{ github.workspace }}/../workspace_${{ matrix.test.name }}" >> $GITHUB_ENV
           echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}" >> $GITHUB_ENV
-          mkdir -p ${{ github.workspace }}/ut_log
-          echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
       - name: Prepare Stock Pytorch
         run: |
           export CONDA_PKGS_DIRS="${{ runner.temp }}/conda_pkgs_${{ github.run_id }}"
           mkdir -p "$CONDA_PKGS_DIRS"
           pwd
           which conda && conda clean -ay
+          conda install -n base -c conda-forge mamba -y
           conda remove --all -y -n $CONDA_ENV_NAME || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
+          mamba create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH && rm -rf pytorch
           pip install requests
@@ -219,7 +218,7 @@ jobs:
             if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
               echo "Don't replace torch-xpu-ops!"
             else
-              rm -rf third_party/torch-xpu-ops && cp -r ../../torch-xpu-ops third_party/
+              rm -rf third_party/torch-xpu-ops && cp -r "$(realpath ${{ github.workspace }})" third_party/
               # Workaround for torch-xpu-ops ci test
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
@@ -282,6 +281,8 @@ jobs:
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
+          mkdir -p ${{ github.workspace }}/ut_log
+          echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
           source activate $CONDA_ENV_NAME
           cd $WORKSPACE_PATH
           echo "Running ${{ matrix.test.name }}"
