@@ -295,6 +295,7 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install junitparser
           python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
       - name: Upload Inductor XPU UT Log
         if: always()
         uses: actions/upload-artifact@v4
@@ -307,6 +308,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     env:
+      GH_TOKEN: ${{ github.token }}
       ut_skip_issue: 1624
     steps:
       - name: Download XPU UT Logs
