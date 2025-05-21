@@ -34,7 +34,7 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
-permissions: read-all
+permissions: write-all
 
 jobs:
   op_benchmark_test:
@@ -42,6 +42,7 @@ jobs:
     timeout-minutes: 900
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1689
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
@@ -87,7 +88,6 @@ jobs:
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
@@ -123,30 +123,16 @@ jobs:
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
       - name: Download OP Baseline
         continue-on-error: true
+        id: reference_id
         run: |
           source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          sudo apt-get install -y jq
-          gh api \
-            --method GET -F per_page=100 -F page=10 \
-            -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts \
-            > ${GITHUB_WORKSPACE:-"/tmp"}/refer.json
-          artifact_id="$(eval "jq -r \
-                  '[.artifacts[] | \
-                  select(.name|test(\"Inductor-XPU-OP-Benchmark-Data.*\")) | \
-                  select(.workflow_run.head_branch|test(\"main\"))][0].id' \
-              ${GITHUB_WORKSPACE:-"/tmp"}/refer.json")"
-          if [ "$artifact_id" -gt 1 ];then
-              gh api \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  /repos/${GITHUB_REPOSITORY:-"intel/torch-xpu-ops"}/actions/artifacts/${artifact_id}/zip > reference.zip
-          fi
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
           mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          mv reference.zip ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          unzip ${GITHUB_WORKSPACE:-"/tmp"}/reference/reference.zip -d ${GITHUB_WORKSPACE:-"/tmp"}/reference > /dev/null 2>&1
+          mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
 
           mkdir ${{ github.workspace }}/baseline
           if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
@@ -182,3 +168,9 @@ jobs:
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
+      - name: Upload Reference Run ID
+        if: ${{ env.run_type != 'on-demand' }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+            sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
