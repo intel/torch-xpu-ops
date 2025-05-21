@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pytorch-13
+    runs-on: ${{ inputs.ut }}
     timeout-minutes: 3600
     env:
       GH_TOKEN: ${{ github.token }}
