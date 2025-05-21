@@ -1,6 +1,5 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/RoiAlignKernels.h>
-#include <comm/XPUGuard.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 namespace at::native::xpu {
