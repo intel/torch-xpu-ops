@@ -231,8 +231,7 @@ jobs:
           export PYTORCH_TEST_WITH_SLOW=1
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
 
-          python test/run_test.py \
-           --include inductor/test_torchinductor.py inductor/test_torchinductor_opinfo.py 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
+          python test/run_test.py --include inductor/test_torchinductor.py inductor/test_torchinductor_opinfo.py 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
             tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
           cp -r test/test-reports ${{ github.workspace }}/ut_log/torch_xpu/
           function read_dir(){
