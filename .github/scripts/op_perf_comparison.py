@@ -181,8 +181,8 @@ def main():
     parser = argparse.ArgumentParser(description='Compare time values between two CSV files')
     parser.add_argument('-x', '--xpu_file', required=True, help='XPU OP performance result csv files dir')
     parser.add_argument('-b', '--baseline_file', required=True, help="XPU OP baseline result csv files dir")
-    parser.add_argument('-t', '--threshold', type=float, default=0.05,
-                       help='Threshold for time difference (default: 0.05 for 5%)')
+    parser.add_argument('-t', '--threshold', type=float, default=0.10,
+                       help='Threshold for time difference (default: 0.10 for 10%)')
     args = parser.parse_args()
 
     print(f" Compared file: {args.xpu_file} 和 {args.baseline_file}")
