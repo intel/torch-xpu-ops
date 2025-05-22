@@ -192,13 +192,14 @@ jobs:
       - name: Create unique workspace
         run: |
           # Create unique conda env for each UT test
-          echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}" >> $GITHUB_ENV
+          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
+          echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}_${random}" >> $GITHUB_ENV
       - name: Prepare Stock Pytorch
         run: |
           export CONDA_PKGS_DIRS="${{ runner.temp }}/conda_pkgs_${{ github.run_id }}"
           mkdir -p "$CONDA_PKGS_DIRS"
           pwd
-          which conda && conda clean -ay
+          which conda
           conda remove --all -y -n $CONDA_ENV_NAME || \
                 rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
@@ -304,6 +305,7 @@ jobs:
           pip install junitparser
           python .github/scripts/check-ut.py $LOG_DIR/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: UT Test Results Check
+        if: ${{ matrix.test.condition }}
         shell: bash
         run: |
           repo="${{ github.repository }}"
