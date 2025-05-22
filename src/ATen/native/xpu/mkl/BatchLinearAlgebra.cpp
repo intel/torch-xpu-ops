@@ -38,9 +38,7 @@ static oneapi::mkl::transpose to_blas_(TransposeType trans) {
   TORCH_INTERNAL_ASSERT(false, "Invalid transpose type");
 }
 
-void error_handle(
-    std::vector<int32_t>& infos,
-    const oneapi::mkl::lapack::batch_error& be) {
+void error_handle(int32_t* infos, const oneapi::mkl::lapack::batch_error& be) {
   auto errs = be.exceptions();
   auto ids = be.ids();
   for (auto& i : ids) {
@@ -375,7 +373,7 @@ template <typename scalar_t>
 static void apply_lu_xpu_(
     const Tensor& self_,
     Tensor& pivots_,
-    std::vector<int32_t>& infos_) {
+    int32_t* infos_) {
   // do nothing if empty input.
   if (self_.numel() == 0)
     return;
@@ -415,7 +413,6 @@ static void apply_lu_solve_xpu_(
     const Tensor& b_,
     const Tensor& lu_,
     const Tensor& pivots_,
-    std::vector<int32_t>& infos_,
     TransposeType t) {
   // do nothing if empty input
   if (lu_.numel() == 0)
@@ -454,26 +451,22 @@ static void apply_lu_solve_xpu_(
             stride_b,
             batch_size);
         Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        try {
-          mkl_getrs<scalar_t>(
-              queue,
-              trans,
-              n,
-              nrhs,
-              a,
-              lda,
-              stride_a,
-              ipiv,
-              stride_ipiv,
-              b,
-              ldb,
-              stride_b,
-              batch_size,
-              scratchpad_at.data_ptr<scalar_t>(),
-              scratchpad_size);
-        } catch (const oneapi::mkl::lapack::batch_error& be) {
-          error_handle(infos_, be);
-        }
+        mkl_getrs<scalar_t>(
+            queue,
+            trans,
+            n,
+            nrhs,
+            a,
+            lda,
+            stride_a,
+            ipiv,
+            stride_ipiv,
+            b,
+            ldb,
+            stride_b,
+            batch_size,
+            scratchpad_at.data_ptr<scalar_t>(),
+            scratchpad_size);
       };
 
   bool is_broadcast = false;
@@ -510,10 +503,8 @@ void lu_solve_mkl(
     const Tensor& pivots,
     const Tensor& B,
     TransposeType trans) {
-  std::vector<int32_t> infos_vec(native::batchCount(LU), 0);
-
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
-    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, infos_vec, trans);
+    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, trans);
   });
 }
 
@@ -556,19 +547,14 @@ void lu_factor_mkl(
       "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
 
   // handle the info
-  std::vector<int32_t> infos_vec(native::batchCount(LU), 0);
+  info.zero_();
+  int32_t* infos_data = info.data_ptr<int32_t>();
+
   // mkl needs long for pivots, but PT is int
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
-    apply_lu_xpu_<scalar_t>(LU, pivots_, infos_vec);
+    apply_lu_xpu_<scalar_t>(LU, pivots_, infos_data);
   });
-  auto expected_info_shape =
-      IntArrayRef(LU.sizes().cbegin(), LU.sizes().cend() - 2);
-
-  info.copy_(at::from_blob(
-      (int32_t*)(infos_vec.data()),
-      expected_info_shape,
-      c10::toRealValueType(info.scalar_type())));
 
   // Copy to original pivots tensor
   pivots.copy_(pivots_);
