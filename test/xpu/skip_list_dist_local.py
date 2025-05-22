@@ -63,7 +63,6 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_wrap.py": None,
     "../../../../test/distributed/test_backends.py": None,
     "../../../../test/distributed/test_c10d_common.py": None,
-    "../../../../test/distributed/test_c10d_functional_native.py": None,
     "../../../../test/distributed/test_c10d_logger.py": None,
     "../../../../test/distributed/test_c10d_object_collectives.py": (
         # RuntimeError: Process 2 exited with error code 10 and exception: ; AssertionError: Scalars are not equal!
@@ -338,6 +337,7 @@ skip_dict = {
 skip_dict_python = {
     "distributed/test_c10d_ops_xccl.py": None,
     "distributed/test_c10d_xccl.py": None,
+    "../../../../test/distributed/test_c10d_functional_native.py": None,
     # "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
     "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
