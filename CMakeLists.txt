@@ -39,9 +39,6 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
-option(USE_XCCL "Build with XCCL support" OFF)
-option(USE_C10D_XCCL "Build with XCCL support for C10D" ON)
-
 # -- [ Re-generate the macros file for https://github.com/pytorch/pytorch/pull/147161
 macro(update_caffe2_macros_file)
   configure_file(
@@ -49,26 +46,14 @@ macro(update_caffe2_macros_file)
     ${CMAKE_BINARY_DIR}/caffe2/core/macros.h)
 endmacro()
 
-if(NOT DEFINED USE_XCCL)
-  # Propagate the option to PyTorch
-  caffe2_update_option(USE_XCCL OFF)
-  update_caffe2_macros_file()
-endif()
-
 if(USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
   if(NOT PYTORCH_FOUND_XCCL)
     # Propagate the option to PyTorch
     caffe2_update_option(USE_XCCL OFF)
+    caffe2_update_option(USE_C10D_XCCL OFF)
     update_caffe2_macros_file()
   endif()
-endif()
-
-# Propagate the option to PyTorch
-if(USE_DISTRIBUTED AND USE_XCCL AND USE_C10D_XCCL)
-  set(USE_C10D_XCCL ON CACHE BOOL "Build with XCCL support for C10D" FORCE)
-else()
-  set(USE_C10D_XCCL OFF CACHE BOOL "Build with XCCL support for C10D" FORCE)
 endif()
 
 if(BUILD_TEST)
