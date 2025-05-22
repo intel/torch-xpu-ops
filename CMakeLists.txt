@@ -76,6 +76,9 @@ endif()
 
 # Only for debugging. Save building time by shrinking translation unit scope.
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
+if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
+  set(BUILD_SEPARATE_OPS TRUE)
+endif()
 set(BUILD_SPLIT_KERNEL_LIB $ENV{BUILD_SPLIT_KERNEL_LIB})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 
