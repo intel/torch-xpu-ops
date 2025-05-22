@@ -289,9 +289,9 @@ jobs:
           echo "Directory: ${{ matrix.test.directory }}"
           ${{ matrix.test.additional_steps }}
 
-          ENV_KEYS="${{ join(keys(matrix.test.env), ' ') }}"
-          if [ -n "$ENV_KEYS" ]; then
-            for var_name in $ENV_KEYS; do
+          ENV_VARS="${{ toJSON(matrix.test.env) }}"
+          if [ -n "$ENV_VARS" ]; then
+            for var_name in $(echo "$ENV_VARS" | grep -o '"\([^"]*\)":' | cut -d'"' -f2); do
               export "$var_name=${{ matrix.test.env[var_name] }}"
             done
           fi
