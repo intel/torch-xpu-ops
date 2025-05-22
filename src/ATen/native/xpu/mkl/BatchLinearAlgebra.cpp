@@ -519,17 +519,13 @@ void lu_factor_mkl(
       LU.sizes(),
       " instead");
 
+  TORCH_CHECK(
+      pivot,
+      "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
+
   auto sizes = LU.sizes().vec();
   const auto m = sizes.cend()[-2];
   const auto n = sizes.cend()[-1];
-
-  // make column major strides for BLAS
-  auto LU_strides = at::native::batched_matrix_contiguous_strides(
-      sizes,
-      /*f-contig*=*/true);
-  // auto LU_new = set_strided(LU, sizes, LU_strides, LU.options());
-  auto LU_new = at::empty_strided(sizes, LU_strides, LU.options());
-  // Tensor LU_use = C10_UNLIKELY(LU_new.has_value()) ? LU_new.values() : LU;
 
   // Set sizes to the size of pivots
   sizes.pop_back();
@@ -541,10 +537,6 @@ void lu_factor_mkl(
   sizes.pop_back();
   // set_contiguous_no_create(info, sizes, LU.options().dtype(kInt));
   info.contiguous();
-
-  TORCH_CHECK(
-      pivot,
-      "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
 
   // handle the info
   info.zero_();
@@ -558,8 +550,6 @@ void lu_factor_mkl(
 
   // Copy to original pivots tensor
   pivots.copy_(pivots_);
-  // if (LU_new.has_value())
-  // return std::tuple<Tensor&, Tensor&, Tensor&>(LU, pivots, info);
 }
 
 } // namespace at::native::xpu
