@@ -284,9 +284,9 @@ jobs:
           source activate $CONDA_ENV_NAME
           echo "Running ${{ matrix.test.name }}"
           echo "Directory: ${{ matrix.test.directory }}"
-          ${{ fromJson(matrix.test).additional_steps }}
-          export ${{ join(fromJson(matrix.test).env.*, ' ') }}
-          cd ${{ fromJson(matrix.test).directory }}
+          ${{ matrix.test.additional_steps }}
+          export ${{ join(matrix.test.env.*, ' ') }}
+          cd ${{ matrix.test.directory }}
 
           if [ "${{ matrix.test.name }}" == "op_ut" ]; then
             ${{ matrix.test.command_script }}
