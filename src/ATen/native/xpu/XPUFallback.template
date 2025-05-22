@@ -211,7 +211,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_slogdet.sign",
     "_linalg_solve_ex.result",
     "linalg_solve_triangular",
-    "_linalg_svd.U",
     "lu_unpack.out",
     "ormqr",
     "_scaled_mm",
