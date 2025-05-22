@@ -1,7 +1,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
-#include <ATen/ops/empty_like.h>
 #if defined(USE_ONEMKL)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL
@@ -17,8 +16,7 @@ void lu_solve_kernel_xpu(
   native::xpu::lu_solve_mkl(LU, pivots, B, trans);
 #else
   const auto LU_cpu = LU.to(LU.options().device(kCPU));
-  const auto pivots_cpu =
-      pivots.to(pivots.options().device(kCPU));
+  const auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
   auto B_cpu = B.to(B.options().device(kCPU));
 
   lu_solve_stub(at::kCPU, LU_cpu, pivots_cpu, B_cpu, trans);

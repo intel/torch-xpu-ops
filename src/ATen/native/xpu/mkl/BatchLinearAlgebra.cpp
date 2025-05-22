@@ -12,9 +12,6 @@
 #include <ATen/ops/_linalg_check_errors_native.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
-#include <ATen/ops/tensor.h>
-#include <ATen/ops/where.h>
-#include <ATen/ops/zeros_like.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -372,48 +369,6 @@ int64_t mkl_getrs_scratchpad<c10::complex<float>>(
       ldb,
       stride_b,
       batch_size);
-}
-
-template <typename scalar_t>
-int64_t mkl_getri_scratchpad(
-    sycl::queue& queue,
-    int64_t n,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t ldainv,
-    int64_t stride_ainv,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getri_batch_scratchpad_size<scalar_t>(
-      queue, n, lda, stride_a, stride_ipiv, ldainv, stride_ainv, batch_size);
-}
-
-template <>
-int64_t mkl_getri_scratchpad<c10::complex<double>>(
-    sycl::queue& queue,
-    int64_t n,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t ldainv,
-    int64_t stride_ainv,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getri_batch_scratchpad_size<std::complex<double>>(
-      queue, n, lda, stride_a, stride_ipiv, ldainv, stride_ainv, batch_size);
-}
-
-template <>
-int64_t mkl_getri_scratchpad<c10::complex<float>>(
-    sycl::queue& queue,
-    int64_t n,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t ldainv,
-    int64_t stride_ainv,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getri_batch_scratchpad_size<std::complex<float>>(
-      queue, n, lda, stride_a, stride_ipiv, ldainv, stride_ainv, batch_size);
 }
 
 template <typename scalar_t>
