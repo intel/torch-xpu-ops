@@ -34,7 +34,8 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
-permissions: write-all
+permissions: 
+  issues: write
 
 jobs:
   op_benchmark_test:
