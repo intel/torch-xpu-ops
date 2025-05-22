@@ -13,7 +13,6 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
-#include <comm/XPUGuard.h>
 
 #include <ATen/ops/empty_like.h>
 
@@ -228,13 +227,13 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   }
 
   // Copy between CPU and GPU
-  c10::xpu::OptionalXPUGuard device_guard;
+  c10::OptionalDeviceGuard device_guard;
   enum { _H2D_, _D2H_ } copy_kind;
   if (dst_device.type() == c10::DeviceType::XPU && src_device.is_cpu()) {
-    device_guard.set_device(dst_device);
+    device_guard.reset_device(dst_device);
     copy_kind = _H2D_;
   } else if (dst_device.is_cpu() && src_device.type() == c10::DeviceType::XPU) {
-    device_guard.set_device(src_device);
+    device_guard.reset_device(src_device);
     copy_kind = _D2H_;
   } else {
     TORCH_INTERNAL_ASSERT(false, "unsupported devices in GPU copy_()");
