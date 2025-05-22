@@ -295,6 +295,9 @@ jobs:
           source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install junitparser
           python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          if [ -e "ut_failure_list.csv" ];then
+              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          fi
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
       - name: Upload Inductor XPU UT Log
         if: always()
@@ -302,6 +305,12 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
+      - name: Upload XPU UT Failure list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
   
   ut_test_results_check:
     needs: ut_test
@@ -449,25 +458,35 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           rm -rf /tmp/torchinductor_*
           rm -rf ~/.triton/cache
+      - name: Set Ptrace_scope
+        if: ${{ always() }}
+        run: |
+          set -x -e -u -o pipefail
+          sudo rm -rf ptrace_scope.bk
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          cat ptrace_scope.bk
+          echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
       - name: Run Torch XPU Distributed UT
         run: |
+          set -x -e -o pipefail
           source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install pytest pytest-timeout
-          cd ${{ github.workspace }}
-          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
-          sudo echo "0"|sudo tee /proc/sys/kernel/yama/ptrace_scope
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          XCCL_EANBLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
-          if [[ "${XCCL_ENABLE}}" == 'False' ]]; then
+          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 10000 python run_distributed.py \
+          timeout 1800 python run_distributed.py \
             2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
             tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
-          cd ${{ github.workspace }}
-          sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+      - name: Reset Ptrace_scope
+        if: ${{ always() }}
+        run: |
+          if [ -f ptrace_scope.bk ]; then
+            sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          fi
       - name: UT Test Results Check
         shell: bash
         run: |
