@@ -94,7 +94,7 @@ Tensor& bucketize_out_xpu(
       boundaries.dim(),
       ")");
   searchsorted_out_xpu(
-      boundaries, self, out_int32, right, nullopt, nullopt, result);
+      boundaries, self, out_int32, right, std::nullopt, std::nullopt, result);
   return result;
 }
 
