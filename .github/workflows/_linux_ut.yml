@@ -290,9 +290,11 @@ jobs:
           ${{ matrix.test.additional_steps }}
 
           ENV_VARS="${{ toJSON(matrix.test.env) }}"
-          if [ -n "$ENV_VARS" ]; then
-            for var_name in $(echo "$ENV_VARS" | grep -o '"\([^"]*\)":' | cut -d'"' -f2); do
-              export "$var_name=${{ matrix.test.env[var_name] }}"
+          if [ -n "$ENV_VARS" ] && [ "$ENV_VARS" != "{}" ]; then
+            echo "$ENV_VARS" | sed -e 's/{//' -e 's/}//' -e 's/"//g' | tr ',' '\n' | while IFS=':' read -r var_name value; do
+              var_name=$(echo "$var_name" | xargs)
+              value=$(echo "$value" | xargs)
+              export "$var_name=$value"
             done
           fi
 
