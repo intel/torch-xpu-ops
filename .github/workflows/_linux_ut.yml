@@ -70,9 +70,9 @@ jobs:
             command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$LOG_DIR/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
             timeout: 8000
-            env:
-              ZE_AFFINITY_MASK: 'unset'
+            env: {}
             additional_steps: |
+              unset ZE_AFFINITY_MASK
               pip install pytest pytest-timeout
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
@@ -233,6 +233,8 @@ jobs:
           fi
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            export TMPDIR=/tmp/triton_${CONDA_ENV_NAME}
+            mkdir -p $TMPDIR
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
@@ -281,11 +283,19 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/ut_log
           echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
+          mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
           source activate $CONDA_ENV_NAME
           echo "Running ${{ matrix.test.name }}"
           echo "Directory: ${{ matrix.test.directory }}"
           ${{ matrix.test.additional_steps }}
-          export ${{ join(matrix.test.env.*, ' ') }}
+
+          ENV_KEYS="${{ join(keys(matrix.test.env), ' ') }}"
+          if [ -n "$ENV_KEYS" ]; then
+            for var_name in $ENV_KEYS; do
+              export "$var_name=${{ matrix.test.env[var_name] }}"
+            done
+          fi
+
           cd ${{ matrix.test.directory }}
 
           if [ "${{ matrix.test.name }}" == "op_ut" ]; then
