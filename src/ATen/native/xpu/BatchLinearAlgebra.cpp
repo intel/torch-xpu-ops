@@ -16,14 +16,14 @@ void lu_solve_kernel_xpu(
 #if defined(USE_ONEMKL)
   native::xpu::lu_solve_mkl(LU, pivots, B, trans);
 #else
-  const auto LU_cpu = LU.to(LU.options().device(kCPU).pinned_memory(true));
+  const auto LU_cpu = LU.to(LU.options().device(kCPU));
   const auto pivots_cpu =
-      pivots.to(pivots.options().device(kCPU).pinned_memory(true));
-  auto B_cpu = B.to(B.options().device(kCPU).pinned_memory(true));
+      pivots.to(pivots.options().device(kCPU));
+  auto B_cpu = B.to(B.options().device(kCPU));
 
   lu_solve_stub(at::kCPU, LU_cpu, pivots_cpu, B_cpu, trans);
 
-  B.copy_(B_cpu, /*non_blocking*/ true);
+  B.copy_(B_cpu);
 #endif // USE_ONEMKL
 }
 
