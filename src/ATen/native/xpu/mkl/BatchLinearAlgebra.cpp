@@ -373,7 +373,7 @@ int64_t mkl_getrs_scratchpad<c10::complex<float>>(
 
 template <typename scalar_t>
 static void apply_lu_xpu_(
-    Tensor& self_,
+    const Tensor& self_,
     Tensor& pivots_,
     std::vector<int32_t>& infos_) {
   // do nothing if empty input.
@@ -539,7 +539,6 @@ void lu_factor_mkl(
   // auto LU_new = set_strided(LU, sizes, LU_strides, LU.options());
   auto LU_new = at::empty_strided(sizes, LU_strides, LU.options());
   // Tensor LU_use = C10_UNLIKELY(LU_new.has_value()) ? LU_new.values() : LU;
-  Tensor LU_use = LU;
 
   // Set sizes to the size of pivots
   sizes.pop_back();
@@ -560,11 +559,11 @@ void lu_factor_mkl(
   std::vector<int32_t> infos_vec(native::batchCount(LU), 0);
   // mkl needs long for pivots, but PT is int
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU_use.scalar_type(), "lu_xpu", [&] {
-    apply_lu_xpu_<scalar_t>(LU_use, pivots_, infos_vec);
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
+    apply_lu_xpu_<scalar_t>(LU, pivots_, infos_vec);
   });
   auto expected_info_shape =
-      IntArrayRef(LU_use.sizes().cbegin(), LU_use.sizes().cend() - 2);
+      IntArrayRef(LU.sizes().cbegin(), LU.sizes().cend() - 2);
 
   info.copy_(at::from_blob(
       (int32_t*)(infos_vec.data()),
@@ -574,7 +573,6 @@ void lu_factor_mkl(
   // Copy to original pivots tensor
   pivots.copy_(pivots_);
   // if (LU_new.has_value())
-  LU.copy_(LU_use);
   // return std::tuple<Tensor&, Tensor&, Tensor&>(LU, pivots, info);
 }
 
