@@ -237,10 +237,11 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
         (scalar_t*)out_cached_
             .template get_multi_ptr<sycl::access::decorated::no>()
             .get();
-
     // flattening cta for pre-computation & smem initialization;
-    int thread_id = item.get_global_linear_id();
-
+    int thread_id = item.get_local_id(2) +
+        item.get_local_range(2) *
+            (item.get_local_id(1) +
+             item.get_local_range(1) * item.get_local_id(0));
     // Precompute output start/end index per input index on width dimension;
     // Not doing this for height dimension, as that's our out-most loop.
     for (index_t i = thread_id; i < isizeW_; i += group_size_) {
@@ -251,7 +252,6 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     // Precompute pooling height/weight factor for each output element;
     // This is used to weight output gradient when accumulate them on input
     // gradient.
-
     for (index_t i = thread_id; i < osizeH_; i += group_size_) {
       r_kH_cached_[i] = scalar_t(1.0) /
           (END_IND_INT(i, osizeH_, isizeH_) -
@@ -264,15 +264,15 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     }
 
     // each cta handles a portion of a single slice on batch dimension;
-    int batch_id = item.get_group(0) % sizeB_;
-    int channel_id = item.get_group(0) / sizeB_;
+    int batch_id = item.get_group(2) % sizeB_;
+    int channel_id = item.get_group(2) / sizeB_;
     int channel_offset =
-        item.get_local_id(0) + channel_id * item.get_local_range(0);
+        item.get_local_id(2) + channel_id * item.get_local_range(2);
 
     // use shared memory to store temporary output value. This is simply to
     // reduce register usage.
-    for (index_t i = thread_id; i < kernel_size_C_ * item.get_local_range(0) *
-             item.get_local_range(1) * item.get_local_range(2);
+    for (index_t i = thread_id; i < kernel_size_C_ * item.get_local_range(2) *
+             item.get_local_range(1) * item.get_local_range(0);
          i += group_size_) {
       out_cached[i] = scalar_t(0.0);
     }
@@ -284,25 +284,25 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
 
     // split out_cached and exclusively it assigned to each thread;
     out_cached = &out_cached
-                     [(item.get_local_id(2) * item.get_local_range(1) +
+                     [(item.get_local_id(0) * item.get_local_range(1) +
                        item.get_local_id(1)) *
-                      item.get_local_range(0) * kernel_size_C_];
+                      item.get_local_range(2) * kernel_size_C_];
 
     // iterate on input H & W.
-    // Each cta handles a consecutive H & W section (TILE); Do NOT stride cta on
+    // each cta handles a consecutive H & W section (TILE); Do NOT stride CTA on
     // tile so there's a better chance to hit L1 cache.
     index_t iH =
-        (isizeH_ + item.get_group_range(2) - 1) / item.get_group_range(2);
+        (isizeH_ + item.get_group_range(0) - 1) / item.get_group_range(0);
     index_t iW =
         (isizeW_ + item.get_group_range(1) - 1) / item.get_group_range(1);
-    index_t istartH = item.get_local_id(2) + item.get_group(2) * iH;
+    index_t istartH = item.get_local_id(0) + item.get_group(0) * iH;
     index_t iendH = std::min(istartH + iH, isizeH_);
     index_t istartW = item.get_local_id(1) + item.get_group(1) * iW;
     index_t iendW = std::min(istartW + iW, isizeW_);
 
     // Stride for threads, each warp can reuse L1 as they go. So theoretically
     // better chance to survive cache eviction.
-    for (index_t ih = istartH; ih < iendH; ih += item.get_local_range(2)) {
+    for (index_t ih = istartH; ih < iendH; ih += item.get_local_range(0)) {
       index_t ostartH = START_IND_INT(ih, isizeH_, osizeH_);
       index_t oendH = END_IND_INT(ih, isizeH_, osizeH_);
       for (index_t iw = istartW; iw < iendW; iw += item.get_local_range(1)) {
@@ -313,28 +313,26 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
             scalar_t f = r_kW_cached_[ow] * r_kH_cached_[oh];
             const scalar_t* ptr_gradOutput =
                 gradOutput + oh * ostrideH_ + ow * ostrideW_;
-            int cached_index = item.get_local_id(0);
+            int cached_index = item.get_local_id(2);
             for (index_t c = channel_offset; c < sizeC_;
-                 c += item.get_local_range(0) * kernel_stride_C_) {
+                 c += item.get_local_range(2) * kernel_stride_C_) {
               out_cached[cached_index] += ptr_gradOutput[c * ostrideC_] * f;
-              cached_index += item.get_local_range(0);
+              cached_index += item.get_local_range(2);
             }
           }
         }
         scalar_t* ptr_gradInput = gradInput + (ih * isizeW_ + iw) * sizeC_;
-        int cached_index = item.get_local_id(0);
-
-        // write accumulated gradInput to global memory;
+        int cached_index = item.get_local_id(2);
+        // write accumulated gradIput to global memory;
         for (index_t c = channel_offset; c < sizeC_;
-             c += item.get_local_range(0) * kernel_stride_C_) {
+             c += item.get_local_range(2) * kernel_stride_C_) {
           ptr_gradInput[c] = out_cached[cached_index];
           out_cached[cached_index] = scalar_t(0.0);
-          cached_index += item.get_local_range(0);
+          cached_index += item.get_local_range(2);
         }
       }
     }
   }
-
   void sycl_ker_config_convention(sycl::handler& cgh) {
     ostartW_cached_ = sycl_local_acc_t<int>(isizeW_, cgh);
     oendW_cached_ = sycl_local_acc_t<int>(isizeW_, cgh);
@@ -358,7 +356,6 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
       index_t ostrideC,
       index_t ostrideH,
       index_t ostrideW,
-      size_t shmem_size,
       size_t group_size)
       : gradInput_(gradInput),
         gradOutput_(gradOutput),
@@ -374,7 +371,6 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
         ostrideC_(ostrideC),
         ostrideH_(ostrideH),
         ostrideW_(ostrideW),
-        shmem_size_(shmem_size),
         group_size_(group_size) {}
 
  private:
@@ -436,6 +432,7 @@ void adaptive_avg_pool2d_backward_kernel(
   int64_t ostrideC = grad_output.stride(1);
   int64_t ostrideH = grad_output.stride(2);
   int64_t ostrideW = grad_output.stride(3);
+
   if (is_smf_channels_last(grad_output)) {
     // preserve channels_last stride on input tensor;
     if (!grad_input.is_contiguous(at::MemoryFormat::ChannelsLast)) {
@@ -459,7 +456,7 @@ void adaptive_avg_pool2d_backward_kernel(
       group_x = std::max<int>(
           std::min<int>(lastPow2(sizeC), max_threads / group_y / group_z), 1);
       sycl::range<3> local_range{
-          (size_t)group_x, (size_t)group_y, (size_t)group_z};
+          (size_t)group_z, (size_t)group_y, (size_t)group_x};
 
       int kernel_stride_C = ceil_div(sizeC, group_x * 4);
       int kernel_size_C = ceil_div(sizeC, group_x * kernel_stride_C);
@@ -470,9 +467,9 @@ void adaptive_avg_pool2d_backward_kernel(
       int range_z = ceil_div(isizeH, group_z * GROUP_STRIDE);
 
       sycl::range<3> global_range{
-          (size_t)range_x * group_x,
+          (size_t)range_z * group_z,
           (size_t)range_y * group_y,
-          (size_t)range_z * group_z};
+          (size_t)range_x * group_x};
 
       AT_ASSERT(input.numel() < std::numeric_limits<int32_t>::max());
 
@@ -504,14 +501,14 @@ void adaptive_avg_pool2d_backward_kernel(
                       ostrideC,
                       ostrideH,
                       ostrideW,
-                      shmem_size,
                       group_x * group_y * group_z);
               sycl_kernel_submit(
                   global_range, local_range, getCurrentSYCLQueue(), kfn);
               done = true;
             } else {
               TORCH_WARN_ONCE(
-                  "Requested shmem_size exceeds sharedMemPerBlock limit! Reducing max_threads...");
+                  "Requested shmem_size exceeds sharedMemPerBlock "
+                  "limit! Reducing max_threads...");
               max_threads /= 2;
             }
           });
