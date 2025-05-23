@@ -9350,3 +9350,28 @@
   variants: function
   dispatch:
     XPU: _fft_r2c_xpu_out
+
+- func: linalg_lu_factor_ex(Tensor A, *, bool pivot=True, bool check_errors=False) -> (Tensor LU, Tensor pivots, Tensor info)
+  python_module: linalg
+  structured_delegate: linalg_lu_factor_ex.out
+  variants: function
+
+- func: linalg_lu_factor_ex.out(Tensor A, *, bool pivot=True, bool check_errors=False, Tensor(a!) LU, Tensor(b!) pivots, Tensor(c!) info) -> (Tensor(a!) LU, Tensor(b!) pivots, Tensor(c!) info)
+  python_module: linalg
+  variants: function
+  structured: True
+  dispatch:
+    XPU: linalg_lu_factor_ex_out
+
+# linalg.lu_solve
+- func: linalg_lu_solve(Tensor LU, Tensor pivots, Tensor B, *, bool left=True, bool adjoint=False) -> Tensor
+  python_module: linalg
+  structured_delegate: linalg_lu_solve.out
+  variants: function
+
+- func: linalg_lu_solve.out(Tensor LU, Tensor pivots, Tensor B, *, bool left=True, bool adjoint=False, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  variants: function
+  structured: True
+  dispatch:
+    XPU: linalg_lu_solve_out
