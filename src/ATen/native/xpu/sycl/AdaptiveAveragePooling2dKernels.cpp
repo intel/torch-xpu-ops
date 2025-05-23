@@ -324,7 +324,7 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
         }
         scalar_t* ptr_gradInput = gradInput + (ih * isizeW_ + iw) * sizeC_;
         int cached_index = item.get_local_id(2);
-        // write accumulated gradIput to global memory;
+        // write accumulated gradInput to global memory;
         for (index_t c = channel_offset; c < sizeC_;
              c += item.get_local_range(2) * kernel_stride_C_) {
           ptr_gradInput[c] = out_cached[cached_index];
