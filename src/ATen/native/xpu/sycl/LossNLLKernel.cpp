@@ -471,11 +471,11 @@ struct NllLossBackwardReduce2DKernelFunctor {
               ? static_cast<scalar_t>(gradOutput_ptr[0]) /
                   static_cast<scalar_t>(*total_weight_ptr)
               : static_cast<scalar_t>(gradOutput_ptr[0]));
-    for (i = local_item_id; i < nframe; i += local_size) {
-      t = (int)target_ptr[i];
+    i = local_item_id;
+    if (i < ndim * nframe) {
+      t = (int)target_ptr[i % ndim];
       if (t != (int)ignore_index) {
-        gradInput_ptr[i * ndim + t] =
-            has_weights ? weights_ptr[t] * grad : grad;
+        gradInput_ptr[i] = has_weights ? weights_ptr[t] * grad : grad;
       }
     }
   }
