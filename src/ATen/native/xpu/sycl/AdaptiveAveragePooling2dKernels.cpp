@@ -264,6 +264,7 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     }
 
     // each cta handles a portion of a single slice on batch dimension;
+    // we use get_group_range(2) to handle striding on C as well.
     int batch_id = item.get_group(2) % sizeB_;
     int channel_id = item.get_group(2) / sizeB_;
     int channel_offset =
@@ -300,7 +301,7 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     index_t istartW = item.get_local_id(1) + item.get_group(1) * iW;
     index_t iendW = std::min(istartW + iW, isizeW_);
 
-    // Stride for threads, each warp can reuse L1 as they go. So theoretically
+    // Stride for threads, each subgroup can reuse L1 as they go. So theoretically
     // better chance to survive cache eviction.
     for (index_t ih = istartH; ih < iendH; ih += item.get_local_range(0)) {
       index_t ostartH = START_IND_INT(ih, isizeH_, osizeH_);
