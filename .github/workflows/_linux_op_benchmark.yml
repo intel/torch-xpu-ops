@@ -118,6 +118,7 @@ jobs:
         if: ${{ inputs.driver == 'rolling' }} 
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
+          source .github/scripts/env.sh
           mkdir -p ${{ github.workspace }}/op_benchmark
           cd test/microbench
           filename=$(find -- *.py)
