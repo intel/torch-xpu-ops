@@ -55,6 +55,9 @@ inline T& GroupReduceSumWithoutBroadcast(
   val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
   item.barrier(sycl_local_fence); // prevent races when GroupReduceSum are
                                   // called in a row.
+  if (n_sg == 1) {
+    return val;
+  }
   if (sg_tid == 0) {
     shared[sg_id] = val;
   }
