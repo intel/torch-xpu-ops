@@ -106,7 +106,6 @@ jobs:
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -118,7 +117,6 @@ jobs:
       - name: Run Torch XPU Op Benchmark
         if: ${{ inputs.driver == 'rolling' }} 
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/op_benchmark
           cd test/microbench
@@ -135,7 +133,6 @@ jobs:
         continue-on-error: true
         id: reference_id
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
@@ -154,7 +151,6 @@ jobs:
           fi
       - name: Check the OP Regression
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install tabulate
           # Compare forward op
@@ -163,7 +159,6 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
       - name: Update OP Baseline
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
