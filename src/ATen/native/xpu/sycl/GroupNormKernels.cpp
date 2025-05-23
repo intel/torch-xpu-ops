@@ -71,6 +71,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int64_t i = item.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
     WelfordType val(0, 0, 0, 0);
+    WelfordType identity_element(0, 0, 0, 0);
     for (int64_t j = item.get_local_id(0); j < N_;
          j += item.get_local_range(0)) {
       const int64_t index = i * N_ + j;
@@ -78,7 +79,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
 
     val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item, val, welford_op, shared_);
+        item, val, welford_op, identity_element, shared_);
 
     if (item.get_local_id(0) == 0) {
       T_ACC m1;
@@ -117,6 +118,7 @@ struct GNRowwiseMomentsVectorizedFunctor
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     WelfordType val[VEC_SIZE];
+    WelfordType identity_element(0, 0, 0, 0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
     auto g_start = item.get_group(0) * VEC_SIZE;
 
@@ -139,7 +141,7 @@ struct GNRowwiseMomentsVectorizedFunctor
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
       val[v] = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-          item, val[v], welford_op, shared_);
+          item, val[v], welford_op, identity_element, shared_);
     }
 
     if (item.get_local_id(0) == 0) {

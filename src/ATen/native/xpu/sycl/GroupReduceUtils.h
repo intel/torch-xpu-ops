@@ -120,9 +120,8 @@ inline T& SubgroupReduceWithoutBroadcast(
   auto sg_tid = sg.get_local_linear_id();
 #pragma unroll
   for (int offset = 1; offset < SIMD; offset <<= 1) {
-    T temp = sycl::shift_group_left(sg, val, offset);
     if (sg_tid < SIMD - offset) {
-      val = op.combine(val, temp);
+      val = op.combine(val, sycl::shift_group_left(sg, val, offset));
     }
   }
   return val;
@@ -133,6 +132,7 @@ inline T& GroupReduceWithoutBroadcast(
     sycl::nd_item<DIM>& item,
     T& val,
     const ReduceOp& op,
+    const T& identity_element,
     shared_t shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
@@ -148,10 +148,9 @@ inline T& GroupReduceWithoutBroadcast(
     shared[sg_id] = val;
   }
   item.barrier(sycl_local_fence);
+  val = (sg_id < n_sg) ? shared[sg_id] : identity_element;
   if (sg_id == 0) {
-    for (int i = 1; i < n_sg; i++) {
-      val = op.combine(val, shared[i]);
-    }
+    val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
   }
   return val;
 }
