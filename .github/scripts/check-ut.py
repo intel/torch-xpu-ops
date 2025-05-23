@@ -87,7 +87,7 @@ def get_message(case):
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
-def print_md_row(row, print_header=False):
+def print_md_row(row, print_header=False, failure_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
         print(f"| {header} |")
@@ -96,7 +96,11 @@ def print_md_row(row, print_header=False):
     row_values = " | ".join([f"{value}" for value in row.values()])
     print(f"| {row_values} |")
 
-def print_failures():
+    if failure_list is not None:
+        failure_list.write(f"| {row_values} |\n")
+
+
+def print_failures(failure_list=None):
     if not failures:
         return
 
@@ -109,7 +113,7 @@ def print_failures():
             'Status': get_result(case),
             'Message': get_message(case),
             'Source': case['source'] if isinstance(case, dict) else 'XML'
-        }, print_header)
+        }, print_header, failure_list=failure_list)
         print_header = False
 
 def parse_log_file(log_file):
@@ -251,7 +255,8 @@ def main():
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
 
-    print_failures()
+    with open("ut_failure_list.csv", "w") as failure_list:
+        print_failures(failure_list=failure_list)
     print_summary()
 
 

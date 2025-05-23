@@ -1,7 +1,6 @@
 #include <ATen/EmptyTensor.h>
 #include <ATen/native/ResizeCommon.h>
 #include <comm/SYCLContext.h>
-#include <comm/XPUGuard.h>
 
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
 
@@ -22,7 +21,7 @@ void resize_bytes_xpu(StorageImpl* storage, size_t size_bytes) {
     return;
   }
 
-  c10::xpu::XPUGuard guard(device.index());
+  c10::DeviceGuard guard(device);
   at::DataPtr data = allocator->allocate(size_bytes);
   if (storage->data_ptr()) {
     at::globalContext().lazyInitDevice(c10::DeviceType::XPU);
@@ -66,9 +65,9 @@ TensorImpl* resize_impl_xpu_(
   }
 
   // NB: We don't need to hold the device guard when calling from TH
-  at::xpu::OptionalXPUGuard guard;
+  c10::OptionalDeviceGuard guard;
   if (device_guard) {
-    guard.set_index(self->storage().device().index());
+    guard.reset_device(self->storage().device());
   }
 
   const auto itemsize = self->dtype().itemsize();

@@ -1,6 +1,5 @@
 #ifdef USE_C10D_XCCL
 
-#include <comm/XPUGuard.h>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
@@ -370,7 +369,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   bool batchP2P = xcclActiveGroupCounter_ > 0;
   bool singleP2POp = isP2POp(opType, batchP2P);
 
-  at::xpu::OptionalXPUGuard gpuGuard(device);
+  c10::OptionalDeviceGuard gpuGuard(device);
 
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
     (void)i;
@@ -581,7 +580,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
-  at::xpu::OptionalXPUGuard gpuGuard(device);
+  c10::OptionalDeviceGuard gpuGuard(device);
 
   pre(stream, work);
 
@@ -666,7 +665,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
-    at::xpu::OptionalXPUGuard gpuGuard(device);
+    c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
         tensor.storage().data_ptr(), stream);
@@ -683,7 +682,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->markCompleted(at::IValue(*work->outputs_));
     return work;
   } else {
-    at::xpu::OptionalXPUGuard gpuGuard(device);
+    c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
         tensor.storage().data_ptr(), stream);
