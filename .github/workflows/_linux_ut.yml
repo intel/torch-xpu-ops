@@ -58,7 +58,7 @@ jobs:
           - name: 'op_regression'
             condition: ${{ contains(inputs.ut, 'op_regression') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v --junit-xml=$LOG_DIR/op_regression.xml'
+            command: 'pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml'
             log_prefix: 'op_regression'
             timeout: 8000
             additional_steps: |
@@ -66,7 +66,7 @@ jobs:
           - name: 'op_regression_dev1'
             condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$LOG_DIR/op_regression_dev1.xml'
+            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
             timeout: 8000
             additional_steps: |
@@ -75,7 +75,7 @@ jobs:
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: '../pytorch'
-            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$LOG_DIR/op_transformers.xml'
+            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml'
             log_prefix: 'op_transformers'
             timeout: 3600
             additional_steps: |
@@ -91,7 +91,7 @@ jobs:
               pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
             xml_post_processing: |
-              cp op_extended.xml $LOG_DIR
+              cp op_extended.xml ${{ github.workspace }}/ut_log
           - name: 'op_ut'
             condition: ${{ contains(inputs.ut, 'op_ut') }}
             directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
@@ -100,9 +100,9 @@ jobs:
               export PYTORCH_ENABLE_XPU_FALLBACK=1
               export PYTORCH_TEST_WITH_SLOW=1
               timeout 10000 python run_test_with_skip.py \
-                2>$LOG_DIR/op_ut/op_ut_with_skip_test_error.log | \
-                tee $LOG_DIR/op_ut/op_ut_with_skip_test.log
-              cp *.xml $LOG_DIR
+                2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+              cp *.xml ${{ github.workspace }}/ut_log
               find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
                   dir_path=$(dirname "$1");
                   case "$dir_path" in
@@ -113,17 +113,17 @@ jobs:
                   esac;
                   mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
               ' _ {} \;
-              cp op_ut_with_skip_nn/*.xml $LOG_DIR
-              cp op_ut_with_skip_quantization/core/*.xml $LOG_DIR
+              cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+              cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
               # Cases run with a on-demand white list, since some suites are too
               # slow to go through all operators on CPU. So add cases on-demand
               # when XPU implementatoin is done.
               # test_foreach, test_decomp
               # Run with only
               timeout 10000 python run_test_with_only.py \
-                2>$LOG_DIR/op_ut/op_ut_with_only_test_error.log | \
-                tee $LOG_DIR/op_ut/op_ut_with_only_test.log
-              cp op_ut_with_only.xml $LOG_DIR
+                2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
+              cp op_ut_with_only.xml ${{ github.workspace }}/ut_log
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu'
@@ -156,33 +156,33 @@ jobs:
             command_script: |
               # RN50 Test
               PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-              cp profiling.fp32.train.pt $LOG_DIR/profile_test
+              cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/profile_test
 
               # All Issue Reproduce UT
               python -u test/profiling/correlation_id_mixed.py | \
-                tee $LOG_DIR/profile_test/issue_reproduce/correlation_id_mixed.log
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
               python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-                tee $LOG_DIR/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
               python -u test/profiling/time_precision_in_profile.py | \
-                tee $LOG_DIR/profile_test/issue_reproduce/time_precision_in_profile.log
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
               python -u test/profiling/profile_partial_runtime_ops.py | \
-                tee $LOG_DIR/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
               python -u test/profiling/triton_xpu_ops_time.py | \
-                tee $LOG_DIR/profile_test/issue_reproduce/triton_xpu_ops_time.log
+                tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
 
               # All xpu ut under test/profiler
               cd ../pytorch/test/profiler
               python -m pytest --timeout 600 -vs test_cpp_thread.py | \
-                tee $LOG_DIR/profile_test/test_cpp_thread.log
+                tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
               python -m pytest --timeout 600 -vs test_execution_trace.py | \
-                tee $LOG_DIR/profile_test/test_execution_trace.log
+                tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
               python -m pytest --timeout 600 -vs test_memory_profiler.py | \
-                tee $LOG_DIR/profile_test/test_memory_profiler.log
+                tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
               python -m pytest --timeout 600 -vs test_profiler_tree.py | \
-                tee $LOG_DIR/profile_test/test_profiler_tree.log
+                tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
             additional_steps: |
               pip install pytest pytest-timeout
-              mkdir -p $LOG_DIR/profile_test/issue_reproduce
+              mkdir -p ${{ github.workspace }}/ut_log/profile_test/issue_reproduce
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -230,9 +230,12 @@ jobs:
           fi
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            export TMPDIR=/tmp/triton_${CONDA_ENV_NAME}
-            mkdir -p $TMPDIR
+            # set specific path for each job
+            export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_JOB}"
+            mkdir -p $TRITON_WORKDIR
+            cd $TRITON_WORKDIR
             pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+            cd -
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
@@ -279,7 +282,6 @@ jobs:
         if: ${{ matrix.test.condition }}
         run: |
           mkdir -p ${{ github.workspace }}/ut_log
-          echo "LOG_DIR=${{ github.workspace }}/ut_log" >> $GITHUB_ENV
           mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
           source activate $CONDA_ENV_NAME
           echo "Running ${{ matrix.test.name }}"
@@ -292,8 +294,8 @@ jobs:
             eval "${{ matrix.test.command_script }}"
           else
             timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
-              2>$LOG_DIR/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
-              tee $LOG_DIR/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
+              2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
             ${{ matrix.test.xml_post_processing || '' }}
           fi
       - name: UT Test Results Summary
@@ -325,7 +327,7 @@ jobs:
           do
             contains "op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu" $ut_suite
             $contains_status
-            cd $LOG_DIR/${ut_suite}
+            cd ${{ github.workspace }}/ut_log/${ut_suite}
             gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
             cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
             bash ut_result_check.sh ${ut_suite}
