@@ -2,7 +2,12 @@
 #include <c10/util/intrusive_ptr.h>
 #include <torch/csrc/distributed/c10d/ProcessGroup.hpp>
 #include <torch/csrc/distributed/c10d/Types.hpp>
+#include <torch/csrc/autograd/profiler.h>
 #include <torch/library.h>
+
+static std::vector<std::string> TORCH_XCCL_DISABLE_ALLREDUCE_PROFILER = {
+    "TORCH_XCCL_DISABLE_ALLREDUCE_PROFILER",
+    "XCCL_DISABLE_ALLREDUCE_PROFILER"};
 
 namespace c10d {
 namespace ops {
@@ -84,6 +89,11 @@ std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>> allreduce_XPU(
     bool asyncOp,
     int64_t timeout) {
   auto tensor_vec = tensors.vec();
+  // Due to bug in PTI, profiling needs to be skipped for allreduce between multiple nodes
+  // TODO: Remove this when PTI is fixed
+  bool disableAllreduceProfiler = getCvarBool(TORCH_XCCL_DISABLE_ALLREDUCE_PROFILER) && torch::autograd::profiler::profilerEnabled();
+  if (disableAllreduceProfiler)
+    torch::autograd::profiler::toggleCollectionDynamic(false, {torch::autograd::profiler::ActivityType::XPU});
   auto work = process_group->getBackend(c10::DeviceType::XPU)
                   ->allreduce(
                       tensor_vec,
@@ -91,6 +101,8 @@ std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>> allreduce_XPU(
                           *reduce_op.get(),
                           std::chrono::milliseconds(timeout),
                           asyncOp});
+  if (disableAllreduceProfiler)
+    torch::autograd::profiler::toggleCollectionDynamic(true, {torch::autograd::profiler::ActivityType::XPU});
   return std::tuple<std::vector<at::Tensor>, c10::intrusive_ptr<Work>>(
       std::move(tensor_vec), work);
 }
