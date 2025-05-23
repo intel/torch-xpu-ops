@@ -2,6 +2,7 @@
 
 import sys
 import unittest
+import os
 
 import pytest
 import torch
@@ -56,35 +57,54 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
-cpu_xpu_all = (
-    (
-        torch.bfloat16,
-        torch.complex64,
-        torch.float16,
-        torch.float32,
-        torch.int16,
-        torch.int32,
-        torch.int64,
-        torch.int8,
-        torch.uint8,
-        torch.bool,
+
+# For ut small test scope, default value - false
+ut_small_test_scope = os.getenv('UT_SMALL_TEST_SCOPE', 'false')
+
+if ut_small_test_scope ==  'false':
+    cpu_xpu_all = (
+        (
+            torch.bfloat16,
+            torch.complex64,
+            torch.float16,
+            torch.float32,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.int8,
+            torch.uint8,
+            torch.bool,
+        )
+        if "has_fp64=0" in str(torch.xpu.get_device_properties(0))
+        else (
+            torch.bfloat16,
+            torch.complex128,
+            torch.complex64,
+            torch.float16,
+            torch.float32,
+            torch.float64,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.int8,
+            torch.uint8,
+            torch.bool,
+        )
     )
-    if "has_fp64=0" in str(torch.xpu.get_device_properties(0))
-    else (
-        torch.bfloat16,
-        torch.complex128,
-        torch.complex64,
-        torch.float16,
-        torch.float32,
-        torch.float64,
-        torch.int16,
-        torch.int32,
-        torch.int64,
-        torch.int8,
-        torch.uint8,
-        torch.bool,
+else:
+    # UT small test scope 
+    cpu_xpu_all = (
+        (
+            torch.float16,
+            torch.float32,
+        )
+        if "has_fp64=0" in str(torch.xpu.get_device_properties(0))
+        else (
+            torch.float16,
+            torch.float32,
+        )
     )
-)
+
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
 _xpu_computation_ops = [
