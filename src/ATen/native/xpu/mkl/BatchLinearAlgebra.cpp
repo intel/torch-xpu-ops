@@ -518,32 +518,17 @@ void lu_factor_mkl(
       "torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: ",
       LU.sizes(),
       " instead");
-
   TORCH_CHECK(
       pivot,
       "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
-
-  auto sizes = LU.sizes().vec();
-  const auto m = sizes.cend()[-2];
-  const auto n = sizes.cend()[-1];
-
-  // Set sizes to the size of pivots
-  sizes.pop_back();
-  sizes.back() = std::min(m, n);
-  pivots.contiguous();
-  // set_contiguous_no_create(pivots, sizes, LU.options().dtype(kInt));
-
-  // Set sizes to the size of info
-  sizes.pop_back();
-  // set_contiguous_no_create(info, sizes, LU.options().dtype(kInt));
-  info.contiguous();
 
   // handle the info
   info.zero_();
   int32_t* infos_data = info.data_ptr<int32_t>();
 
-  // mkl needs long for pivots, but PT is int
+  // oneMKL requires Long for pivots but PyTorch provides Int
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
+
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
     apply_lu_xpu_<scalar_t>(LU, pivots_, infos_data);
   });
