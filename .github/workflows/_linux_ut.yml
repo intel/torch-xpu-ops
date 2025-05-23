@@ -234,7 +234,8 @@ jobs:
             export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_JOB}"
             mkdir -p $TRITON_WORKDIR
             cd $TRITON_WORKDIR
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+            export TRITON_BUILD_PARALLEL=1
+            pip install --force-reinstall --no-build-isolation "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
             cd -
           fi
       - name: Download Pytorch wheel
@@ -322,16 +323,11 @@ jobs:
               }
           }
           set -xe
-          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          for ut_suite in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
-          do
-            contains "op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu" $ut_suite
-            $contains_status
-            cd ${{ github.workspace }}/ut_log/${ut_suite}
-            gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
-            cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-            bash ut_result_check.sh ${ut_suite}
-          done
+          echo "UT_NAME=${{ matrix.test.name }}" >> "${GITHUB_ENV}"
+          cd ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
+          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          bash ut_result_check.sh ${{ matrix.test.name }}
       - name: Upload Inductor XPU UT Log
         if: always()
         uses: actions/upload-artifact@v4
