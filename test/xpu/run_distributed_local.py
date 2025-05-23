@@ -9,6 +9,9 @@ res2 = 0
 fail_test = []
 error_log = ""
 
+# libfabric WA to hang issue
+os.environ["FI_PROVIDER"] = "tcp"
+
 os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
