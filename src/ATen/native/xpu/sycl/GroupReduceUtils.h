@@ -133,8 +133,7 @@ inline T& GroupReduceWithoutBroadcast(
     shared_t shared) {
   auto sg = item.get_sub_group();
   int sg_tid = sg.get_local_linear_id();
-  int sg_lid = sg_tid % SIMD;
-  int sg_wid = sg.get_group_linear_id();
+  int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
   item.barrier(sycl_local_fence); // prevent races when GroupReduce
@@ -143,11 +142,11 @@ inline T& GroupReduceWithoutBroadcast(
     return val;
   }
   if (sg_tid == 0) {
-    shared[sg_wid] = val;
+    shared[sg_id] = val;
   }
   item.barrier(sycl_local_fence);
-  val = (sg_tid < n_sg) ? shared[sg_lid] : identity_element;
-  if (sg_wid == 0) {
+  val = (sg_id < n_sg) ? shared[sg_id] : identity_element;
+  if (sg_id == 0) {
     val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
   }
   return val;
