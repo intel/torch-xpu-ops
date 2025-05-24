@@ -89,6 +89,8 @@ jobs:
             PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
             PYTORCH_VERSION="${{ inputs.pytorch }}"
           fi
+          PYTORCH_REPO="https://github.com/jianyizh/pytorch"
+          PYTORCH_VERSION="jianyi/offset_fail"
           if [[ "${{ inputs.keep_torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/@.*//')"
             TORCH_XPU_OPS_VERSION="$(echo ${{ inputs.keep_torch_xpu_ops }} |sed 's/.*@//')"
