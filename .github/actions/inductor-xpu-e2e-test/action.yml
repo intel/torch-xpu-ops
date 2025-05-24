@@ -90,6 +90,7 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        ONEDNN_VERBOSE: 1
       shell: bash
       run: |
         source activate e2e_ci
