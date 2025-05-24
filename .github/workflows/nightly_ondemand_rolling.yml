@@ -83,7 +83,7 @@ jobs:
       update_lkg: 'true'
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pvc_rolling
+    runs-on: pytorch-12
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test
