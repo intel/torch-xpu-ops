@@ -67,7 +67,7 @@ T bilinear_interpolate(
   return val;
 }
 template <typename T>
-struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__{
+struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     auto wg = item.get_group(0);
     int n = wg / wgs_per_roi_;
