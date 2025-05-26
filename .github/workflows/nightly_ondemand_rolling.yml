@@ -131,7 +131,7 @@ jobs:
           cd pytorch && git checkout jianyi/offset_fail
           # apply PRs for stock pytorch
           pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git apply ~/mengfeil/diff/*.diff
           git status && git show -s
           if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
             echo "Don't replace torch-xpu-ops!"
