@@ -60,7 +60,7 @@ static void apply_svd(
     scalar_t* self_data,
     int64_t lda,
     int64_t self_stride,
-    int64_t batchsize,
+    int64_t batch_size,
     int64_t m,
     int64_t n,
     TensorOptions self_opt,
@@ -90,7 +90,7 @@ static void apply_svd(
           queue, jobu, jobvt, m, n, lda, ldu, ldvt);
   Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
 
-  for (int64_t i = 0; i < batchsize; i++) {
+  for (int64_t i = 0; i < batch_size; i++) {
     scalar_t* self_working_ptr = &self_data[i * self_stride];
     scalar_t* U_working_ptr = &U_data[i * U_stride];
     value_t* S_working_ptr = &S_data[i * S_stride];
@@ -122,7 +122,7 @@ void apply_svd<c10::complex<double>, double>(
     c10::complex<double>* self_data,
     int64_t lda,
     int64_t self_stride,
-    int64_t batchsize,
+    int64_t batch_size,
     int64_t m,
     int64_t n,
     TensorOptions self_opt,
@@ -152,7 +152,7 @@ void apply_svd<c10::complex<double>, double>(
           queue, jobu, jobvt, m, n, lda, ldu, ldvt);
   Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
 
-  for (int64_t i = 0; i < batchsize; i++) {
+  for (int64_t i = 0; i < batch_size; i++) {
     c10::complex<double>* self_working_ptr = &self_data[i * self_stride];
     c10::complex<double>* U_working_ptr = &U_data[i * U_stride];
     double* S_working_ptr = &S_data[i * S_stride];
@@ -184,7 +184,7 @@ void apply_svd<c10::complex<float>, float>(
     c10::complex<float>* self_data,
     int64_t lda,
     int64_t self_stride,
-    int64_t batchsize,
+    int64_t batch_size,
     int64_t m,
     int64_t n,
     TensorOptions self_opt,
@@ -214,7 +214,7 @@ void apply_svd<c10::complex<float>, float>(
           queue, jobu, jobvt, m, n, lda, ldu, ldvt);
   Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
 
-  for (int64_t i = 0; i < batchsize; i++) {
+  for (int64_t i = 0; i < batch_size; i++) {
     c10::complex<float>* self_working_ptr = &self_data[i * self_stride];
     c10::complex<float>* U_working_ptr = &U_data[i * U_stride];
     float* S_working_ptr = &S_data[i * S_stride];
@@ -242,89 +242,6 @@ void apply_svd<c10::complex<float>, float>(
 
 } // namespace impl
 
-std::tuple<Tensor, Tensor, Tensor> _svd_helper(
-    const Tensor& self,
-    bool some,
-    bool compute_uv) {
-  auto infos_tensor = at::zeros(
-      native::batchCount(self),
-      self.options().dtype(kInt).device(DeviceType::CPU));
-  std::vector<int32_t> infos(native::batchCount(self), 0);
-
-  char jobz = compute_uv ? (some ? 'S' : 'A') : 'N';
-
-  Tensor U_working_copy, S_working_copy, VT_working_copy;
-  std::tie(U_working_copy, S_working_copy, VT_working_copy) =
-      impl::_create_U_S_VT(self, some, compute_uv);
-
-  if (self.numel() > 0) {
-    auto self_working_copy = native::cloneBatchedColumnMajor(self);
-    auto& queue = at::xpu::getCurrentSYCLQueue();
-    auto self_stride = at::native::matrixStride(self_working_copy);
-    auto U_stride = compute_uv ? at::native::matrixStride(U_working_copy) : 1;
-    auto S_stride = S_working_copy.size(-1);
-    auto VT_stride = compute_uv ? at::native::matrixStride(VT_working_copy) : 1;
-    auto batchsize = at::native::batchCount(self_working_copy);
-
-    auto m = self_working_copy.size(-2);
-    auto n = self_working_copy.size(-1);
-    int64_t lda = self_working_copy.stride(-1);
-    int64_t ldu = compute_uv ? U_working_copy.stride(-1) : 1;
-    int64_t ldvt = compute_uv ? VT_working_copy.stride(-1) : 1;
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(self.scalar_type(), "svd_xpu", [&] {
-      using value_t = typename c10::scalar_value_type<scalar_t>::type;
-      impl::apply_svd<scalar_t, value_t>(
-          queue,
-          self_working_copy.data_ptr<scalar_t>(),
-          lda,
-          self_stride,
-          batchsize,
-          m,
-          n,
-          self.options(),
-          compute_uv ? U_working_copy.data_ptr<scalar_t>() : nullptr,
-          ldu,
-          U_stride,
-          S_working_copy.data_ptr<value_t>(),
-          S_stride,
-          compute_uv ? VT_working_copy.data_ptr<scalar_t>() : nullptr,
-          ldvt,
-          VT_stride,
-          jobz);
-    });
-
-    std::copy(
-        infos.begin(), infos.end(), infos_tensor.template data_ptr<int32_t>());
-    at::_linalg_check_errors(infos_tensor, "svd_xpu", self.dim() == 2);
-
-    if (!compute_uv) {
-      VT_working_copy.zero_();
-      U_working_copy.zero_();
-    }
-  } else {
-    U_working_copy.zero_();
-    VT_working_copy.zero_();
-  }
-
-  return std::make_tuple(U_working_copy, S_working_copy, VT_working_copy);
-}
-
-static void svd_resize_and_copy(
-    const char* name,
-    const Tensor& src,
-    const Tensor& dst) {
-  TORCH_CHECK(
-      src.device() == dst.device(),
-      "svd output tensor ",
-      name,
-      " is on the wrong device: expected ",
-      src.device(),
-      " got ",
-      dst.device());
-  at::native::resize_output(dst, src.sizes());
-  dst.copy_(src);
-}
-
 void svd_mkl(
     const Tensor& A,
     const bool full_matrices,
@@ -334,16 +251,66 @@ void svd_mkl(
     const Tensor& S,
     const Tensor& Vh,
     const Tensor& info) {
-  Tensor U_tmp, S_tmp, Vh_tmp;
-  bool some = !full_matrices;
-  std::tie(U_tmp, S_tmp, Vh_tmp) = _svd_helper(A, some, compute_uv);
+  // SVD unit tests will be failed with "Complex datatype matmul is not
+  // supported in oneDNN" before Complex MatMul is available.
+  TORCH_CHECK(
+      !A.is_complex(), "Complex datatype SVD is not supported currently");
 
-  // TODO: Remove copy
-  if (compute_uv) {
-    svd_resize_and_copy("U", U_tmp, U);
-    svd_resize_and_copy("Vh", Vh_tmp, Vh);
+  // Initialize info
+  info.zero_();
+
+  // Do nothing if input tensor is empty.
+  if (A.numel() == 0)
+    return;
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+
+  const auto A_stride = at::native::matrixStride(A);
+  const auto U_stride = compute_uv ? at::native::matrixStride(U) : 1;
+  const auto S_stride = S.size(-1);
+  const auto Vh_stride = compute_uv ? at::native::matrixStride(Vh) : 1;
+
+  const auto batch_size = at::native::batchCount(A);
+  char jobz = compute_uv ? (full_matrices ? 'A' : 'S') : 'N';
+
+  const auto m = A.size(-2);
+  const auto n = A.size(-1);
+  const auto lda = A.stride(-1);
+  const auto ldu = compute_uv ? U.stride(-1) : 1;
+  const auto ldvh = compute_uv ? Vh.stride(-1) : 1;
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(A.scalar_type(), "svd_xpu", [&] {
+    using value_t = typename c10::scalar_value_type<scalar_t>::type;
+
+    const auto A_data = A.data_ptr<scalar_t>();
+    const auto U_data = compute_uv ? U.data_ptr<scalar_t>() : nullptr;
+    const auto S_data = S.data_ptr<value_t>();
+    const auto Vh_data = compute_uv ? Vh.data_ptr<scalar_t>() : nullptr;
+
+    impl::apply_svd<scalar_t, value_t>(
+        queue,
+        A_data,
+        lda,
+        A_stride,
+        batch_size,
+        m,
+        n,
+        A.options(),
+        U_data,
+        ldu,
+        U_stride,
+        S_data,
+        S_stride,
+        Vh_data,
+        ldvh,
+        Vh_stride,
+        jobz);
+  });
+
+  if (!compute_uv) {
+    U.zero_();
+    Vh.zero_();
   }
-  svd_resize_and_copy("S", S_tmp, S);
 }
 
 } // namespace at::native::xpu
