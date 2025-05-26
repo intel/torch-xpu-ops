@@ -47,6 +47,7 @@ else:
     print("xpu-smi topology failed")
     sys.exit(255)
 
+
 # run python test
 def run(test_command):
     result = subprocess.run(test_command, capture_output=True, text=True)
