@@ -72,10 +72,11 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto wg = item.get_group(0);
     int n = wg / wgs_per_roi_;
     int index = (wg - n * wgs_per_roi_) * item.get_local_range(0);
+    int pw,ph,c;
     if (index < items_per_roi_) {
-      int pw = index % pooled_width_;
-      int ph = (index / pooled_width_) % pooled_height_;
-      int c = (index / pooled_width_ / pooled_height_) % channels_;
+      pw = index % pooled_width_;
+      ph = (index / pooled_width_) % pooled_height_;
+      c = (index / pooled_width_ / pooled_height_) % channels_;
 
       const T* offset_rois = rois_ + n * 5;
       if (item.get_local_id(0) == 0) {
@@ -88,8 +89,9 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
         cache_roi_[3] = offset_rois[3] * spatial_scale_ - offset;
         cache_roi_[4] = offset_rois[4] * spatial_scale_ - offset;
       }
-      item.barrier(sycl_local_fence);
-
+    }
+    item.barrier(sycl_local_fence);
+    if (index < items_per_roi_) {
       int roi_batch_ind = cache_roi_[0];
       T roi_start_w = cache_roi_[1];
       T roi_start_h = cache_roi_[2];
