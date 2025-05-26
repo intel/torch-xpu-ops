@@ -79,11 +79,11 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
-      runner: pvc_rolling
+      runner: pytorch-11
       ut: ${{ inputs.ut }}
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pvc_rolling
+    runs-on: pytorch-11
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test
