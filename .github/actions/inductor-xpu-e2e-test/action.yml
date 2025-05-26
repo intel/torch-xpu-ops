@@ -67,12 +67,9 @@ runs:
           # deps for torchrec_dlrm
           pip install pyre_extensions
           pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
-          pip install torchmetrics==1.0.3
-          pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
         fi
-        if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
-          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
-        fi
+        pip install transformers
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
@@ -80,9 +77,9 @@ runs:
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           fi
           # install timm without dependencies
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.15
           # install timm dependencies without torch and torchvision
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.15/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
