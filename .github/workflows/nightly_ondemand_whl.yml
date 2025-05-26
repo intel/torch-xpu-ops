@@ -56,17 +56,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      pytorch: nightly_wheel
-      runner: linux.idc.xpu
-
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_e2e
+    runs-on: pytorch-11
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
@@ -106,7 +97,7 @@ jobs:
         run: |
           pwd
           source activate e2e_ci
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -125,7 +116,8 @@ jobs:
           cd third_party/torch-xpu-ops
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git apply ~/mengfeil/diff/*.diff
+          git diff && git status
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -298,83 +290,3 @@ jobs:
         with:
           name: Inductor-${{ env.run_type }}-Pre-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
-
-  Tests-Failure-And-Report:
-    if: ${{ ! cancelled() }}
-    runs-on: [ self-hosted, Linux ]
-    permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-WHL-Tests
-    steps:
-      - name: Report github issue for XPU OPS nightly
-        if: github.repository_owner == 'intel'
-        run: |
-          set -xe
-          # Test env
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_COMMIT_ID }}"
-          TORCH_XPU_OPS_COMMIT="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCH_XPU_OPS_COMMIT }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.DRIVER_VERSION }}"
-          KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.KERNEL_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.outputs.TIMEOUT_MODELS }}"
-          # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.result }}" == "success" ];then
-            test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-WHL-Tests.result }}" == "failure" ];then
-            test_status=Failure
-            cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
-          else
-            test_status=None
-            exit 0
-          fi
-          # Test Type
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_type="On-demand"
-            test_issue_id=426
-            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "0 17 * * 5" ];then
-            test_type="Weekly"
-            test_issue_id=432
-          else
-            test_type="Nightly"
-            test_issue_id=432
-          fi
-          # Test report
-          echo -e "**${test_status}** $test_type WHL Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
-          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${TORCH_XPU_OPS_COMMIT:0:7} on pinned | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Transformers | Timm | Torchbench | Torchvision | Torchaudio\n--- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          printf "[${TRANSFORMERS_VERSION:0:7}](https://github.com/huggingface/transformers/commit/${TRANSFORMERS_VERSION:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TIMM_COMMIT_ID:0:7}](https://github.com/huggingface/pytorch-image-models/commit/${TIMM_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION |$KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.model }}" != "" ];then
-              test_scope+="; model=${{ inputs.model }}"
-            fi
-            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
-          fi
-          echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
-          echo "$cc_comment" >> ${{ github.workspace }}/report.txt
-          # Report
-          report_txt=$(cat ${{ github.workspace }}/report.txt)
-          gh --repo $repo issue comment $test_issue_id --body "$report_txt"
