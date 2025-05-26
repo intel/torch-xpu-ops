@@ -147,7 +147,6 @@ struct RoiAlignForwardKernel {
     }
   }
   RoiAlignForwardKernel(
-      int nthreads,
       const T* input,
       const T spatial_scale,
       int item_per_rois,
@@ -161,8 +160,7 @@ struct RoiAlignForwardKernel {
       bool aligned,
       const T* rois,
       T* output)
-      : nthreads_(nthreads),
-        input_(input),
+      : input_(input),
         spatial_scale_(spatial_scale),
         item_per_roi_(item_per_rois),
         wg_per_roi_(wg_per_roi),
@@ -180,7 +178,6 @@ struct RoiAlignForwardKernel {
   }
 
  private:
-  const int nthreads_;
   const T* input_;
   const T spatial_scale_;
   const int item_per_roi_;
@@ -453,10 +450,13 @@ Tensor roi_align_kernel(
         int64_t local_range =
             syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
         int item_per_roi = pooled_height * pooled_width * channels;
+        if (item_per_roi < local_range) {
+          local_range = (item_per_roi + 32 - 1) / 32 *
+              32; // wg can be smaller but it better to be a mutiple of 32
+        }
         int wg_per_roi = (item_per_roi + local_range - 1) / local_range;
         int64_t global_range = wg_per_roi * num_rois;
         auto kfn = RoiAlignForwardKernel<scalar_t>(
-            output_size,
             input_.data_ptr<scalar_t>(),
             spatial_scale,
             item_per_roi,
