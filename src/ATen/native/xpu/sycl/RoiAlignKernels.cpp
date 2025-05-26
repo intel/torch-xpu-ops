@@ -67,19 +67,18 @@ T bilinear_interpolate(
   return val;
 }
 template <typename T>
-struct RoiAlignForwardKernel {
+struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__{
   void operator()(sycl::nd_item<1> item) const {
     auto wg = item.get_group(0);
-    auto idx = item.get_local_id(0);
-    int n = wg / wg_per_roi_;
-    int index = (wg - n * wg_per_roi_) * item.get_local_range(0);
-    if (index < item_per_roi_) {
+    int n = wg / wgs_per_roi_;
+    int index = (wg - n * wgs_per_roi_) * item.get_local_range(0);
+    if (index < items_per_roi_) {
       int pw = index % pooled_width_;
       int ph = (index / pooled_width_) % pooled_height_;
       int c = (index / pooled_width_ / pooled_height_) % channels_;
 
       const T* offset_rois = rois_ + n * 5;
-      if (idx == 0) {
+      if (item.get_local_id(0) == 0) {
         cache_roi_[0] = offset_rois[0];
 
         // Do not using rounding; this implementation detail is critical
@@ -149,8 +148,8 @@ struct RoiAlignForwardKernel {
   RoiAlignForwardKernel(
       const T* input,
       const T spatial_scale,
-      int item_per_rois,
-      int wg_per_roi,
+      int items_per_rois,
+      int wgs_per_roi,
       int channels,
       int height,
       int width,
@@ -162,8 +161,8 @@ struct RoiAlignForwardKernel {
       T* output)
       : input_(input),
         spatial_scale_(spatial_scale),
-        item_per_roi_(item_per_rois),
-        wg_per_roi_(wg_per_roi),
+        items_per_roi_(items_per_rois),
+        wgs_per_roi_(wgs_per_roi),
         channels_(channels),
         height_(height),
         width_(width),
@@ -174,14 +173,15 @@ struct RoiAlignForwardKernel {
         rois_(rois),
         output_(output) {}
   void sycl_ker_config_convention(sycl::handler& cgh) {
+    // each roi will have 5 values, batch_idx,x1,y1,x2,y2
     cache_roi_ = sycl_local_acc_t<T>(5, cgh);
   }
 
  private:
   const T* input_;
   const T spatial_scale_;
-  const int item_per_roi_;
-  const int wg_per_roi_;
+  const int items_per_roi_;
+  const int wgs_per_roi_;
   const int channels_;
   const int height_;
   const int width_;
@@ -449,18 +449,18 @@ Tensor roi_align_kernel(
       [&] {
         int64_t local_range =
             syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
-        int item_per_roi = pooled_height * pooled_width * channels;
-        if (item_per_roi < local_range) {
-          local_range = (item_per_roi + 32 - 1) / 32 *
+        int items_per_roi = pooled_height * pooled_width * channels;
+        if (items_per_roi < local_range) {
+          local_range = (items_per_roi + 32 - 1) / 32 *
               32; // wg can be smaller but it better to be a mutiple of 32
         }
-        int wg_per_roi = (item_per_roi + local_range - 1) / local_range;
-        int64_t global_range = wg_per_roi * num_rois;
+        int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
+        int64_t global_range = wgs_per_roi * num_rois;
         auto kfn = RoiAlignForwardKernel<scalar_t>(
             input_.data_ptr<scalar_t>(),
             spatial_scale,
-            item_per_roi,
-            wg_per_roi,
+            items_per_roi,
+            wgs_per_roi,
             channels,
             height,
             width,
