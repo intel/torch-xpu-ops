@@ -49,7 +49,7 @@ git apply /home/sdp/mengfeil/diff/*.diff
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
-export USE_KINETO=0
+# export USE_KINETO=0
 export USE_STATIC_MKL=1
 export USE_XCCL=1
 export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
