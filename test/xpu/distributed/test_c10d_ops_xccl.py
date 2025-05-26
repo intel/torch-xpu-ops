@@ -11,7 +11,6 @@
 import math
 import os
 import sys
-import tempfile
 
 import torch
 import torch.distributed as c10d
@@ -28,6 +27,7 @@ from torch.testing._internal.common_distributed import MultiProcContinousTest
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
+    run_tests,
     skip_but_pass_in_sandcastle_if,
     TEST_WITH_DEV_DBG_ASAN,
     TEST_XPU,
@@ -924,18 +924,4 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
 if __name__ == "__main__":
-    rank = int(os.getenv("RANK", -1))
-    world_size = int(os.getenv("WORLD_SIZE", 2))
-
-    if rank != -1:
-        # Launched with torchrun or other multi-proc launchers. Directly run the test.
-        ProcessGroupXCCLOpTest.run_rank(rank, world_size)
-    else:
-        # Launched as a single process. Spawn subprocess to run the tests.
-        # Also need a rendezvous file for `init_process_group` purpose.
-        rdvz_file = tempfile.NamedTemporaryFile(delete=False).name
-        torch.multiprocessing.spawn(
-            ProcessGroupXCCLOpTest.run_rank,
-            nprocs=world_size,
-            args=(world_size, rdvz_file),
-        )
+    run_tests()
