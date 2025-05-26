@@ -99,11 +99,10 @@ jobs:
             command_script: |
               export PYTORCH_ENABLE_XPU_FALLBACK=1
               export PYTORCH_TEST_WITH_SLOW=1
-              export LOG_PATH=../../../../../../torch-xpu-ops
               timeout 10000 python run_test_with_skip.py \
-                2>$LOG_PATH/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-                tee $LOG_PATH/ut_log/op_ut/op_ut_with_skip_test.log
-              cp *.xml $LOG_PATH/ut_log
+                2>../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_skip_test_error.log | \
+                tee ../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_skip_test.log
+              cp *.xml ../../../../../../torch-xpu-ops/ut_log
               find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
                   dir_path=$(dirname "$1");
                   case "$dir_path" in
@@ -114,17 +113,17 @@ jobs:
                   esac;
                   mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
               ' _ {} \;
-              cp op_ut_with_skip_nn/*.xml $LOG_PATH/ut_log
-              cp op_ut_with_skip_quantization/core/*.xml $LOG_PATH/ut_log
+              cp op_ut_with_skip_nn/*.xml ../../../../../../torch-xpu-ops/ut_log
+              cp op_ut_with_skip_quantization/core/*.xml ../../../../../../torch-xpu-ops/ut_log
               # Cases run with a on-demand white list, since some suites are too
               # slow to go through all operators on CPU. So add cases on-demand
               # when XPU implementatoin is done.
               # test_foreach, test_decomp
               # Run with only
               timeout 10000 python run_test_with_only.py \
-                2>$LOG_PATH/ut_log/op_ut/op_ut_with_only_test_error.log | \
-                tee $LOG_PATH/ut_log/op_ut/op_ut_with_only_test.log
-              cp op_ut_with_only.xml $LOG_PATH/ut_log
+                2>../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_only_test_error.log | \
+                tee ../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_only_test.log
+              cp op_ut_with_only.xml ../../../../../../torch-xpu-ops/ut_log
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu'
@@ -228,13 +227,18 @@ jobs:
           fi
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            # set specific path for each job
-            export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_JOB}_${GITHUB_RUN_ID}"
-            mkdir -p $TRITON_WORKDIR
-            cd $TRITON_WORKDIR
-            export TRITON_BUILD_PARALLEL=1
-            pip install --force-reinstall --no-clean "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-            cd -
+            ( 
+              echo "[$(date)] Job ${GITHUB_JOB} waiting for lock..."
+              flock -x 200 || exit 1
+              trap "rm -f /tmp/triton.lock" EXIT
+              echo "[$(date)] Job ${GITHUB_JOB} acquired lock"
+              export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_RUN_ID}"
+              mkdir -p $TRITON_WORKDIR
+              cd $TRITON_WORKDIR
+              export TRITON_BUILD_PARALLEL=0
+              pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+              cd -
+            ) 200>/tmp/triton_install.lock
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
