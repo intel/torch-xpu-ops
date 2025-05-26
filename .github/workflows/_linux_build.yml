@@ -106,10 +106,8 @@ jobs:
           # oneAPI DLE
           rm -rf /opt/intel/ ~/.intel/
           if [ "${{ inputs.ut }}" == "oneapi" ];then
-            bash /home/sdp/mengfeil/2025.2/intel-deep-learning-essentials-2025.2.0.484_offline.sh -a -s --eula accept --action remove
             bash /home/sdp/mengfeil/2025.2/intel-deep-learning-essentials-2025.2.0.484_offline.sh -a -s --eula accept --action install
           else
-            bash /home/sdp/mengfeil/2025.1/intel-deep-learning-essentials-2025.1.3.7_offline.sh -a -s --eula accept --action remove
             bash /home/sdp/mengfeil/2025.1/intel-deep-learning-essentials-2025.1.3.7_offline.sh -a -s --eula accept --action install
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
