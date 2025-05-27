@@ -49,6 +49,7 @@ inline T& GroupReduceSumWithoutBroadcast(
     T& val,
     shared_t shared) {
   auto sg = item.get_sub_group();
+  int g_tid = item.get_local_linear_id();
   int sg_tid = sg.get_local_linear_id();
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
@@ -63,9 +64,13 @@ inline T& GroupReduceSumWithoutBroadcast(
   }
   item.barrier(sycl_local_fence);
   if (sg_id == 0) {
-    for (int i = 1; i < n_sg; i++) {
+    // for (int i = 1; i < n_sg; i++) {
+    //   val += shared[i];
+    // }
+    for (int i = sg_tid; i < n_sg; i += SIMD) {
       val += shared[i];
     }
+    val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
   }
   return val;
 }

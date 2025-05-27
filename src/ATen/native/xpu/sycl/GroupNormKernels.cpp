@@ -118,11 +118,11 @@ struct GNRowwiseMomentsVectorizedFunctor
       sycl::nd_item<1> item) const {
     WelfordType val[VEC_SIZE];
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    auto g_start = item.get_group(0) * VEC_SIZE;
+    auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      const int64_t i = g_start + v;
+      const int64_t i = group_start + v;
       for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
            j += item.get_local_range(0) * VEC_SIZE) {
         const int64_t vec_index = i * N_ + j;
@@ -153,8 +153,8 @@ struct GNRowwiseMomentsVectorizedFunctor
         mean_vec[v] = m1;
         rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       }
-      *(reinterpret_cast<vec_t*>(mean_ + g_start)) = mean_vec;
-      *(reinterpret_cast<vec_t*>(rstd_ + g_start)) = rstd_vec;
+      *(reinterpret_cast<vec_t*>(mean_ + group_start)) = mean_vec;
+      *(reinterpret_cast<vec_t*>(rstd_ + group_start)) = rstd_vec;
     }
   }
 
@@ -939,17 +939,17 @@ struct ComputeInternalGradientsVectorizedFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
-  using vec_td = memory::aligned_vector<T_ACC, VEC_SIZE>;
+  using acc_vec_t = memory::aligned_vector<T_ACC, VEC_SIZE>;
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
-    vec_td sum1_vec = {};
-    vec_td sum2_vec = {};
-    auto g_start = item.get_group(0) * VEC_SIZE;
+    acc_vec_t sum1_vec = {};
+    acc_vec_t sum2_vec = {};
+    auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      const int64_t nc = g_start + v;
+      const int64_t nc = group_start + v;
       for (int64_t hw = item.get_local_id(0) * VEC_SIZE; hw < HxW_;
            hw += item.get_local_range(0) * VEC_SIZE) {
         const int64_t vec_index = nc * HxW_ + hw;
@@ -975,8 +975,8 @@ struct ComputeInternalGradientsVectorizedFunctor
     }
 
     if (item.get_local_id(0) == 0) {
-      vec_td ds_vec;
-      vec_td db_vec;
+      acc_vec_t ds_vec;
+      acc_vec_t db_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
         if (item.get_local_id(0) == 0) {
@@ -984,8 +984,8 @@ struct ComputeInternalGradientsVectorizedFunctor
           db_vec[v] = sum2_vec[v];
         }
       }
-      *(reinterpret_cast<vec_td*>(ds_ + g_start)) = ds_vec;
-      *(reinterpret_cast<vec_td*>(db_ + g_start)) = db_vec;
+      *(reinterpret_cast<acc_vec_t*>(ds_ + group_start)) = ds_vec;
+      *(reinterpret_cast<acc_vec_t*>(db_ + group_start)) = db_vec;
     }
   }
 
