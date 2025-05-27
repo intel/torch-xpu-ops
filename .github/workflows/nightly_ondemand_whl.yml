@@ -60,7 +60,7 @@ jobs:
     runs-on: pytorch-11
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
-    timeout-minutes: 3600
+    timeout-minutes: 36000
     env:
       GH_TOKEN: ${{ github.token }}
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
