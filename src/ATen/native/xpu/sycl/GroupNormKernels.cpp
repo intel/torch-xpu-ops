@@ -143,8 +143,6 @@ struct GNRowwiseMomentsVectorizedFunctor
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      // val[v] = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-      //     item, val[v], welford_op, identity_element, shared_);
       if (item.get_local_range(0) <= SIMD) {
         val[v] = SubgroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
             item, val[v], welford_op);
