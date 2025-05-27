@@ -117,10 +117,6 @@ jobs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
           git apply ~/mengfeil/diff/*.diff
-          if [ "${{ inputs.ut }}" == "triton" ];then
-            pip uninstall -y pytorch-triton-xpu && pip uninstall -y pytorch-triton-xpu
-            pip install --no-deps ~/mengfeil/pytorch_triton_xpu-3.3.1+gitdcab8e38-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-          fi
       - name: Identify pinned versions
         id: pinned
         run: |
