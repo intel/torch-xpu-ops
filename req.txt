@@ -1,4 +1,3 @@
-accelerate
 boto3
 bs4
 patch
@@ -20,4 +19,3 @@ pynvml>=12.0.0
 pandas
 scipy
 numba
-
