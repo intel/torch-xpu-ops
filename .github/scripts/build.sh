@@ -77,7 +77,9 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
 
 # Build
 sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-git diff
+wget https://github.com/pytorch/pytorch/pull/154359.diff
+git apply 154359.diff
+git diff && git status
 WERROR=1 python setup.py bdist_wheel
 
 # Post Build
