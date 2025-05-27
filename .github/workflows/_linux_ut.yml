@@ -91,7 +91,7 @@ jobs:
               pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
             xml_post_processing: |
-              cp op_extended.xml ../../../../../../../torch-xpu-ops/ut_log
+              cp op_extended.xml $GITHUB_WORKSPACE/ut_log
           - name: 'op_ut'
             condition: ${{ contains(inputs.ut, 'op_ut') }}
             directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
@@ -100,9 +100,9 @@ jobs:
               export PYTORCH_ENABLE_XPU_FALLBACK=1
               export PYTORCH_TEST_WITH_SLOW=1
               timeout 10000 python run_test_with_skip.py \
-                2>../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-                tee ../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_skip_test.log
-              cp *.xml ../../../../../../torch-xpu-ops/ut_log
+                2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test_error.log | \
+                tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test.log
+              cp *.xml $GITHUB_WORKSPACE/ut_log
               find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
                   dir_path=$(dirname "$1");
                   case "$dir_path" in
@@ -113,17 +113,17 @@ jobs:
                   esac;
                   mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
               ' _ {} \;
-              cp op_ut_with_skip_nn/*.xml ../../../../../../torch-xpu-ops/ut_log
-              cp op_ut_with_skip_quantization/core/*.xml ../../../../../../torch-xpu-ops/ut_log
+              cp op_ut_with_skip_nn/*.xml $GITHUB_WORKSPACE/ut_log
+              cp op_ut_with_skip_quantization/core/*.xml $GITHUB_WORKSPACE/ut_log
               # Cases run with a on-demand white list, since some suites are too
               # slow to go through all operators on CPU. So add cases on-demand
               # when XPU implementatoin is done.
               # test_foreach, test_decomp
               # Run with only
               timeout 10000 python run_test_with_only.py \
-                2>../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_only_test_error.log | \
-                tee ../../../../../../torch-xpu-ops/ut_log/op_ut/op_ut_with_only_test.log
-              cp op_ut_with_only.xml ../../../../../../torch-xpu-ops/ut_log
+                2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test_error.log | \
+                tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test.log
+              cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu'
@@ -155,30 +155,30 @@ jobs:
             command_script: |
               # RN50 Test
               PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-              cp profiling.fp32.train.pt ../../ut_log/profile_test
+              cp profiling.fp32.train.pt $GITHUB_WORKSPACE/ut_log/profile_test
 
               # All Issue Reproduce UT
               python -u test/profiling/correlation_id_mixed.py | \
-                tee ../../ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
               python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-                tee ../../ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
               python -u test/profiling/time_precision_in_profile.py | \
-                tee ../../ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
               python -u test/profiling/profile_partial_runtime_ops.py | \
-                tee ../../ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
               python -u test/profiling/triton_xpu_ops_time.py | \
-                tee ../../ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
 
               # All xpu ut under test/profiler
               cd ../pytorch/test/profiler
               python -m pytest --timeout 600 -vs test_cpp_thread.py | \
-                tee ../../../../ut_log/profile_test/test_cpp_thread.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_cpp_thread.log
               python -m pytest --timeout 600 -vs test_execution_trace.py | \
-                tee ../../../../ut_log/profile_test/test_execution_trace.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_execution_trace.log
               python -m pytest --timeout 600 -vs test_memory_profiler.py | \
-                tee ../../../../ut_log/profile_test/test_memory_profiler.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_memory_profiler.log
               python -m pytest --timeout 600 -vs test_profiler_tree.py | \
-                tee ../../../../ut_log/profile_test/test_profiler_tree.log
+                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_profiler_tree.log
             additional_steps: |
               pip install pytest pytest-timeout
               mkdir -p ut_log/profile_test/issue_reproduce
