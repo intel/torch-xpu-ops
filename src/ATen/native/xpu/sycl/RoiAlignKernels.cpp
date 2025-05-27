@@ -69,34 +69,37 @@ T bilinear_interpolate(
 template <typename T>
 struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
+    // each roi will have 5 values, batch_idx,x1,y1,x2,y2
+    constexpr int roi_size = 5;
     auto wg = item.get_group(0);
     int n = wg / wgs_per_roi_;
-    int index = (wg - n * wgs_per_roi_) * item.get_local_range(0);
-    int pw,ph,c;
-    if (index < items_per_roi_) {
-      pw = index % pooled_width_;
-      ph = (index / pooled_width_) % pooled_height_;
-      c = (index / pooled_width_ / pooled_height_) % channels_;
+    int output_index_on_batch_n =
+        (wg - n * wgs_per_roi_) * item.get_local_range(0) +
+        item.get_local_id(0);
+    const T* current_roi = rois_ + n * roi_size;
+    if (item.get_local_id(0) == 0) {
+      cached_roi_[0] = current_roi[0];
 
-      const T* offset_rois = rois_ + n * 5;
-      if (item.get_local_id(0) == 0) {
-        cache_roi_[0] = offset_rois[0];
-
-        // Do not using rounding; this implementation detail is critical
-        T offset = aligned_ ? (T)0.5 : (T)0.0;
-        cache_roi_[1] = offset_rois[1] * spatial_scale_ - offset;
-        cache_roi_[2] = offset_rois[2] * spatial_scale_ - offset;
-        cache_roi_[3] = offset_rois[3] * spatial_scale_ - offset;
-        cache_roi_[4] = offset_rois[4] * spatial_scale_ - offset;
-      }
+      // Do not using rounding; this implementation detail is critical
+      T offset = aligned_ ? (T)0.5 : (T)0.0;
+      cached_roi_[1] = current_roi[1] * spatial_scale_ - offset;
+      cached_roi_[2] = current_roi[2] * spatial_scale_ - offset;
+      cached_roi_[3] = current_roi[3] * spatial_scale_ - offset;
+      cached_roi_[4] = current_roi[4] * spatial_scale_ - offset;
     }
     item.barrier(sycl_local_fence);
-    if (index < items_per_roi_) {
-      int roi_batch_ind = cache_roi_[0];
-      T roi_start_w = cache_roi_[1];
-      T roi_start_h = cache_roi_[2];
-      T roi_end_w = cache_roi_[3];
-      T roi_end_h = cache_roi_[4];
+
+    if (output_index_on_batch_n < items_per_roi_) {
+      int pw = output_index_on_batch_n % pooled_width_;
+      int ph = (output_index_on_batch_n / pooled_width_) % pooled_height_;
+      int c = (output_index_on_batch_n / pooled_width_ / pooled_height_) %
+          channels_;
+
+      int roi_batch_ind = cached_roi_[0];
+      T roi_start_w = cached_roi_[1];
+      T roi_start_h = cached_roi_[2];
+      T roi_end_w = cached_roi_[3];
+      T roi_end_h = cached_roi_[4];
 
       T roi_width = roi_end_w - roi_start_w;
       T roi_height = roi_end_h - roi_start_h;
@@ -137,14 +140,19 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
               static_cast<T>(ix + .5f) * bin_size_w /
                   static_cast<T>(roi_bin_grid_w);
 
-          T val =
-              bilinear_interpolate(offset_input, height_, width_, y, x, index);
+          T val = bilinear_interpolate(
+              offset_input,
+              height_,
+              width_,
+              y,
+              x,
+              output_index_on_batch_n + n * items_per_roi_);
           output_val += val;
         }
       }
       output_val /= count;
 
-      output_[index] = output_val;
+      output_[output_index_on_batch_n + n * items_per_roi_] = output_val;
     }
   }
   RoiAlignForwardKernel(
@@ -176,7 +184,7 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
         output_(output) {}
   void sycl_ker_config_convention(sycl::handler& cgh) {
     // each roi will have 5 values, batch_idx,x1,y1,x2,y2
-    cache_roi_ = sycl_local_acc_t<T>(5, cgh);
+    cached_roi_ = sycl_local_acc_t<T>(5, cgh);
   }
 
  private:
@@ -193,7 +201,7 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   const bool aligned_;
   const T* rois_;
   T* output_;
-  sycl_local_acc_t<T> cache_roi_;
+  sycl_local_acc_t<T> cached_roi_;
 };
 
 template <typename T>
