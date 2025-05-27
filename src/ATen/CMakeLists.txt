@@ -7,7 +7,7 @@ file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse
 file(GLOB xpu_sycl "native/xpu/sycl/*.cpp" "native/sparse/xpu/sycl/*.cpp" "native/nested/xpu/sycl/*.cpp" "native/transformers/sycl/*.cpp" "native/quantized/sycl/*.cpp")
 
 list(APPEND ATen_XPU_CPP_SRCS ${xpu_cpp})
-if(USE_ONEMKL)
+if(USE_ONEMKL_XPU)
   list(APPEND ATen_XPU_MKL_SRCS ${xpu_mkl})
 endif()
 list(APPEND ATen_XPU_NATIVE_CPP_SRCS ${xpu_native_cpp})
