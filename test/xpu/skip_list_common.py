@@ -2295,6 +2295,7 @@ skip_dict = {
         "use_cuda_graph_True",
         # randomly fails
         "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
