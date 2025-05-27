@@ -64,9 +64,6 @@ inline T& GroupReduceSumWithoutBroadcast(
   }
   item.barrier(sycl_local_fence);
   if (sg_id == 0) {
-    // for (int i = 1; i < n_sg; i++) {
-    //   val += shared[i];
-    // }
     for (int i = sg_tid; i < n_sg; i += SIMD) {
       val += shared[i];
     }
