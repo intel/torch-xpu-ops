@@ -72,7 +72,11 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
     "../../../../test/distributed/test_control_collectives.py": None,
-    "../../../../test/distributed/test_device_mesh.py": None,
+    "../../../../test/distributed/test_device_mesh.py": {
+        # RuntimeError: Process 1 exited with error code 10 and exception:
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_scatter_1d",
+    },
     "../../../../test/distributed/test_dynamo_distributed.py": (
         # AssertionError: 'setattr() on Tensor.requires_grad' not found in 'Attempted to call function marked as skipped
         # https://github.com/intel/torch-xpu-ops/issues/1667, 2.8 skipped
