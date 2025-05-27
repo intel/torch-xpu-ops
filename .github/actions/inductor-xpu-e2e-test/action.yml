@@ -60,9 +60,11 @@ runs:
             cd vision && git checkout $TORCHVISION_COMMIT_ID
             python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
           fi
+          pip install git+https://github.com/huggingface/pytorch-image-models.git@730b907
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/730b907/requirements.txt | grep -vE torch)
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install -r requirements.txt
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install -r ${GITHUB_WORKSPACE}/req.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
