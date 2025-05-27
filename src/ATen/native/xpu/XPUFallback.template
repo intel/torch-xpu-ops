@@ -95,7 +95,7 @@ static bool lazy_registration_and_redispatch(
           torch::Library::IMPL,
           register_func,
           "torchvision",
-          c10::make_optional(c10::DispatchKey::XPU),
+          std::make_optional(c10::DispatchKey::XPU),
           __FILE__,
           __LINE__);
 
