@@ -91,12 +91,15 @@ def simple_reduce_tests(rank, world_size):
 
 TEST_MULTIXPU = torch.xpu.device_count() > 1
 
+print("22222222222222222222\n", flush=True)
+
 
 class RendezvousEnvTest(TestCase):
     @retry_on_connect_failures
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_XPU, "No GPUs available, skipping test")
     def test_common_errors(self):
+        print("333333333333333\n", flush=True)
         vars = {
             "WORLD_SIZE": "1",
             "RANK": "0",
@@ -233,6 +236,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
     )
     def test_close_multi_pg_unordered(self):
+        print("4444444444444444444444\n", flush=True)
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
         t = torch.rand(10, 10, device=device)
@@ -555,6 +559,8 @@ class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
     COLLECTIVE_ARGUMENT = auto()  # broadcast_object_list(device=)
 
+
+print("111111111111111111111111111111111\n", flush=True)
 
 if __name__ == "__main__":
     run_tests()

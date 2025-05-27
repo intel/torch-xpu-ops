@@ -41,6 +41,8 @@ if TEST_WITH_DEV_DBG_ASAN:
 
 TEST_MULTIGPU = TEST_XPU and torch.xpu.device_count() >= 2
 
+print("11111111111111111111111111111111111\n", flush=True)
+
 
 class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @classmethod
@@ -60,6 +62,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_empty_tensors(self):
+        print("222222222222222222222222222222\n", flush=True)
         pg = self.pg
         local_device_idx = self.rank_to_GPU[self.rank][0]
 
@@ -97,6 +100,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @parametrize("dtype", [torch.float32, torch.cfloat])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_broadcast_ops(self, dtype: torch.dtype):
+        print("3333333333333333333333333333\n", flush=True)
         pg = self.pg
 
         def broadcast(xs, rootRank, rootTensor):
@@ -138,6 +142,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @parametrize("dtype", [torch.float32, torch.cfloat])
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_allreduce_ops(self, dtype: torch.dtype):
+        print("44444444444444444444444444444444\n", flush=True)
         device_count = torch.xpu.device_count()
         pg = self.pg
         local_device_id = self.rank_to_GPU[self.rank][0]
@@ -197,6 +202,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_alltoall_ops_with_xpufree_race(self):
+        print("55555555555555555555555555\n", flush=True)
         pg = self.pg
         opts = c10d.AllToAllOptions()
         local_device = f"xpu:{self.rank_to_GPU[self.rank][0]}"
@@ -922,20 +928,28 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
         )
 
 
+print("##########before instantiate\n", flush=True)
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
+print("##########after instantiate\n", flush=True)
 if __name__ == "__main__":
-    rank = int(os.getenv("RANK", -1))
+    rank = int(os.getenv("RANK", -1))  # noqa: UP032
     world_size = int(os.getenv("WORLD_SIZE", 2))
 
+    print(f"########## world_size {world_size} {rank}", flush=True)
     if rank != -1:
         # Launched with torchrun or other multi-proc launchers. Directly run the test.
+        print("\nbefore process group", flush=True)
         ProcessGroupXCCLOpTest.run_rank(rank, world_size)
+        print("\nafter process group", flush=True)
     else:
         # Launched as a single process. Spawn subprocess to run the tests.
         # Also need a rendezvous file for `init_process_group` purpose.
+
+        print("\nbefore multiprocess spawn", flush=True)
         rdvz_file = tempfile.NamedTemporaryFile(delete=False).name
         torch.multiprocessing.spawn(
             ProcessGroupXCCLOpTest.run_rank,
             nprocs=world_size,
             args=(world_size, rdvz_file),
         )
+        print("\nafter multiprocess spawn", flush=True)
