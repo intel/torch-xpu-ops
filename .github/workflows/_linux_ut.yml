@@ -66,7 +66,7 @@ jobs:
           - name: 'op_regression_dev1'
             condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=../../ut_log/op_regression_dev1.xml'
+            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
             timeout: 8000
             additional_steps: |
@@ -75,7 +75,7 @@ jobs:
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: '../pytorch'
-            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=../torch-xpu-ops/ut_log/op_transformers.xml'
+            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$GITHUB_WORKSPACE/ut_log/op_transformers.xml'
             log_prefix: 'op_transformers'
             timeout: 3600
             additional_steps: |
@@ -330,6 +330,12 @@ jobs:
           gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ matrix.test.name }}
+      - name: Clean up
+        if: ${{ always() }}
+        run: |
+          if [ -n "$CONDA_ENV_NAME" ]; then
+            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          fi
       - name: Upload Inductor XPU UT Log
         if: always()
         uses: actions/upload-artifact@v4
