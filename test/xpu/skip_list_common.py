@@ -555,7 +555,6 @@ skip_dict = {
         "test_neg_view_linalg_det_xpu_float64",
         "test_neg_view_linalg_eig_xpu_float64",
         "test_neg_view_linalg_eigh_xpu_float64",
-        "test_neg_view_linalg_eigvals_xpu_float64",
         "test_neg_view_linalg_eigvalsh_xpu_float64",
         "test_neg_view_linalg_householder_product_xpu_float64",
         "test_neg_view_linalg_inv_ex_xpu_float64",
@@ -1047,6 +1046,8 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
+        # https://github.com/intel/torch-xpu-ops/issues/1702
+        "test_index_put_deterministic_with_optional_tensors_xpu",
     ),
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
@@ -1894,7 +1895,6 @@ skip_dict = {
         "test_fn_grad_linalg_eigh_xpu_complex128",
         "test_fn_grad_linalg_eigh_xpu_float64",
         "test_fn_grad_linalg_eigvals_xpu_complex128",
-        "test_fn_grad_linalg_eigvals_xpu_float64",
         "test_fn_grad_linalg_eigvalsh_xpu_complex128",
         "test_fn_grad_linalg_eigvalsh_xpu_float64",
         "test_fn_grad_linalg_householder_product_xpu_complex128",
@@ -2295,6 +2295,7 @@ skip_dict = {
         "use_cuda_graph_True",
         # randomly fails
         "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
@@ -2388,7 +2389,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_linalg_eigh_xpu_complex",
         "test_dispatch_meta_outplace_linalg_eigh_xpu_float64",
         "test_dispatch_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_dispatch_meta_outplace_linalg_eigvals_xpu_float64",
         "test_dispatch_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_dispatch_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_dispatch_meta_outplace_linalg_inv_ex_xpu_complex",
@@ -2518,7 +2518,6 @@ skip_dict = {
         "test_dispatch_symbolic_meta_outplace_linalg_eigh_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_linalg_eigh_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_dispatch_symbolic_meta_outplace_linalg_eigvals_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_dispatch_symbolic_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_dispatch_symbolic_meta_outplace_linalg_inv_ex_xpu_complex",
@@ -2648,7 +2647,6 @@ skip_dict = {
         "test_meta_outplace_linalg_eigh_xpu_complex",
         "test_meta_outplace_linalg_eigh_xpu_float64",
         "test_meta_outplace_linalg_eigvals_xpu_complex",
-        "test_meta_outplace_linalg_eigvals_xpu_float64",
         "test_meta_outplace_linalg_eigvalsh_xpu_complex",
         "test_meta_outplace_linalg_eigvalsh_xpu_float64",
         "test_meta_outplace_linalg_inv_ex_xpu_complex",

@@ -95,7 +95,7 @@ static bool lazy_registration_and_redispatch(
           torch::Library::IMPL,
           register_func,
           "torchvision",
-          c10::make_optional(c10::DispatchKey::XPU),
+          std::make_optional(c10::DispatchKey::XPU),
           __FILE__,
           __LINE__);
 
@@ -195,6 +195,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "linalg_cholesky_ex.L",
     "_linalg_det.result",
     "linalg_eig",
+    "_linalg_eigvals",
+    "linalg_eigvals.out",
     "_linalg_eigh.eigenvalues",
     "linalg_householder_product",
     "linalg_inv_ex.inverse",
