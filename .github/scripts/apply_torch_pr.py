@@ -85,7 +85,6 @@ for pr_link in pr_list:
     repo_info = pr_link.split("/")
     pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
                         repo_info[-3] + '/pulls/' + repo_info[-1], headers=headers, timeout=60).json()
-
     if pr_info["state"].lower() == "open":
         # for reverted PR
         reverted_id = next((item["id"] for item in pr_info["labels"] if item["name"] == "Reverted"), -1)
