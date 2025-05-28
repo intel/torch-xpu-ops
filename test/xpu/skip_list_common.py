@@ -1043,6 +1043,8 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
+        # https://github.com/intel/torch-xpu-ops/issues/1702
+        "test_index_put_deterministic_with_optional_tensors_xpu",
     ),
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
@@ -2268,6 +2270,7 @@ skip_dict = {
         "use_cuda_graph_True",
         # randomly fails
         "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
