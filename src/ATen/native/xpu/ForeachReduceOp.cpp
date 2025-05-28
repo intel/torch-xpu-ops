@@ -8,7 +8,7 @@ namespace at {
 namespace native {
 
 static inline void check_foreach_norm_dtype(
-    optional<ScalarType> opt_dtype,
+    std::optional<ScalarType> opt_dtype,
     ScalarType self_dtype,
     const char* const name) {
   if (opt_dtype.has_value()) {
