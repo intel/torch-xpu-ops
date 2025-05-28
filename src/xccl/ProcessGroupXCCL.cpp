@@ -5,6 +5,8 @@
 
 namespace c10d {
 
+using FlightRecorderXCCL = FlightRecorder<at::xpu::XPUEvent>;
+
 namespace {
 
 #if defined(CCL_MAJOR_VERSION) &&  \
@@ -293,13 +295,19 @@ const std::string& ProcessGroupXCCL::logPrefix() const {
 ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
-    int size)
+    int size,
+    c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
       store_(store),
+      options_(std::move(options)),
       xcclCommCounter_(0),
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  this->setGroupUid(options->group_name);
+
+  FlightRecorder<c10::Event>::get()->record_pg_ranks(
+      std::make_tuple(pg_uid_, pg_desc_), groupRanks());
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
@@ -315,6 +323,15 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() = default;
+
+const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
+  if (options_->global_ranks_in_group.empty()) {
+    static std::vector<uint64_t> globalRanks(size_);
+    std::iota(globalRanks.begin(), globalRanks.end(), 0);
+    return globalRanks;
+  }
+  return options_->global_ranks_in_group;
+}
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
@@ -339,6 +356,24 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle,
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
+  
+  if (record) {
+    bool isP2P = isP2POp(opType);
+    r->trace_id_ = FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        work->getSequencenumber(),
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        r->xcclStartEvent_.get(),
+        r->xcclEndEvent_.get(),
+        options_->timeout,
+        pgStatus_,
+        isP2P);
+  }
   return r;
 }
 
@@ -460,6 +495,24 @@ void ProcessGroupXCCL::startCoalescing() {
   groupStart();
 }
 
+void ProcessGroupXCCL::setStartedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastStartedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastStartedWorkName = opTypeToString(work->opType);
+  pgStatus_->lastStartedNumelIn = work->numelIn_;
+  pgStatus_->lastStartedNumelOut = work->numelOut_;
+}
+
+// TODO: Add queue/thread to wait for completed work and mark status
+// void ProcessGroupXCCL::setCompletedPgStatus(
+//     c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+//   pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
+//   pgStatus_->lastCompletedWorkName = opTypeToString(work->opType);
+//   pgStatus_->lastCompletedNumelIn = work->numelIn_;
+//   pgStatus_->lastCompletedNumelOut = work->numelOut_;
+//   FlightRecorderXCCL::get()->retire_id(work.trace_id_, true);
+// }
+
 c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   if (coalescedComm_ == nullptr) {
     // There is no actual work being coalesced, return here
@@ -493,6 +546,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
+  setStartedPgStatus(work);
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
@@ -567,6 +621,22 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work =
       initWork(device, rank_, opType, false, profilingTitle, inputs, outputs);
+  if (coalescing_state_) {
+    FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        work->getSequencenumber(),
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        nullptr,
+        nullptr,
+        options_->timeout,
+        pgStatus_,
+        false);
+  }
 
   work->outputs_ = std::make_shared<std::vector<at::Tensor>>(outputs);
 
@@ -601,6 +671,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
   work->blockingWait_ = blockingWait_;
+
+  work->numelIn_ = 0;
+  work->numelOut_ = 0;
+  for (const auto& input : inputs) {
+    work->numelIn_ += input.numel();
+  }
+  for (const auto& output : outputs) {
+    work->numelOut_ += output.numel();
+  }
+  setStartedPgStatus(work);
 
   return asyncOp ? work : nullptr;
 }
@@ -665,6 +745,21 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
+    work->trace_id_ = FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        work->getSequencenumber(),
+        profilingTitle,
+        {tensor},
+        {tensor},
+        work->xcclStartEvent_.get(),
+        work->xcclEndEvent_.get(),
+        options_->timeout,
+        pgStatus_,
+        true);
+
     c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
@@ -682,12 +777,29 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->markCompleted(at::IValue(*work->outputs_));
     return work;
   } else {
+    FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        work->getSequencenumber(),
+        profilingTitle,
+        {tensor},
+        {tensor},
+        nullptr,
+        nullptr,
+        options_->timeout,
+        pgStatus_,
+        true);
     c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
         tensor.storage().data_ptr(), stream);
 
     fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+
+    work->numelIn_ = work->numelOut_ = tensor.numel();
+    setStartedPgStatus(work);
 
     return nullptr;
   }
@@ -1968,3 +2080,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
 } // namespace c10d
 
 #endif // USE_C10D_XCCL
+
+void printNcclCommProxyTrace(
+    const std::string& dumpReason,
+    const std::unordered_map<std::string, std::string>& dumpMap) {
+  LOG(INFO) << "Dumping nccl comm trace, reason: " << dumpReason;
+  for (auto& [key, value] : dumpMap) {
+    LOG(INFO) << "key: " << key << ", value: " << value;
+  }
+  LOG(INFO) << "----------------------";
+}

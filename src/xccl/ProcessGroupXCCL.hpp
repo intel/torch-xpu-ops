@@ -84,6 +84,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     uint64_t getSequencenumber() const override {
       return seq_;
     }
+    virtual const std::vector<at::Tensor> getInputTensors() = 0;
+    virtual const std::vector<at::Tensor> getOutputTensors() = 0;
+    inline std::string getProfilerTitle() const {
+      return profilingTitle_;
+    }
 
     std::vector<at::Tensor> result() override {
       return *outputs_;
@@ -97,6 +102,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     bool isP2P_;
+    std::optional<uint64_t> trace_id_;
+    size_t numelIn_ = -1;
+    size_t numelOut_ = -1;
 
    private:
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
@@ -104,6 +112,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     c10::intrusive_ptr<at::ivalue::Future> future_;
     friend class ProcessGroupXCCL;
   };
+
+  struct Options : public Backend::Options {
+    explicit Options();
+
+    static c10::intrusive_ptr<Options> create() {
+      return c10::make_intrusive<Options>();
+    }
+
+    std::vector<uint8_t> global_ranks_in_group;
+    std::string group_name;
+  }
 
   ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
 
@@ -367,12 +386,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
+  const std::vector<uint64_t>& groupRanks() const;
+
+  void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
+  const c10::intrusive_ptr<Options> options_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::set<int> usedDeviceIdxs_;
@@ -387,6 +411,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqP2P_{0};
   size_t local_id_;
   std::string logPrefix_;
+  std::shared_ptr<ProcessGroupStatus> pgStatus_ =
+      std::make_shared<ProcessGroupStatus>();
 
  private:
   std::mutex kvs_mutex;
