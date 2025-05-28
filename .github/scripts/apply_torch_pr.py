@@ -55,22 +55,16 @@ def check_merged(pr_info):
     return merged
 
 def appyly_pr(pull_number, re_apply_msg):
-    # get the diff
-    os.system(f"\
-        git fetch origin pull/{pull_number}/head:{pull_number} && \
-        git checkout -f {pull_number} && \
-        git merge ci-tmp-$(hostname) --no-edit --no-ff > /dev/null && \
-        git diff ci-tmp-$(hostname) {pull_number} > {pull_number}.diff \
-    ")
     # apply diff
-    os.system("git checkout ci-test-$(hostname)")
-    apply_cmd = f"git reset --hard && git apply --3way {pull_number}.diff"
+    apply_cmd = f"git reset --hard && git pull origin pull/{pull_number}/head --no-commit "
     apply_info = subprocess.Popen(apply_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     apply_message = apply_info.communicate()[0].decode("utf-8")
     apply_status = apply_info.returncode
     # apply status
     if apply_status == 0:
         print("{} {}, applied got SUCCESSFUL".format(pr_info["diff_url"], re_apply_msg))
+        # get diff file
+        os.system(f"git restore --staged . && git diff > {pull_number}.diff")
     else:
         print("{} {}, applied got FAILED".format(pr_info["diff_url"], apply_message))
         print(apply_status, apply_message)
@@ -87,8 +81,7 @@ pr_list = args.pr_list + args.extra_pr_list
 pr_list = set(pr_list)
 pr_list = sorted(pr_list)
 # checkout a base branch
-os.system("git checkout -b ci-tmp-$(hostname) && git checkout -b ci-test-$(hostname) && rm -f *.diff")
-os.system("git config --global user.email intel.com && git config --global user.name intel")
+need_apply = 0
 for pr_link in pr_list:
     repo_info = pr_link.split("/")
     pr_info = requests.get('https://api.' + repo_info[-5] + '/repos/' + repo_info[-4] + '/' + \
@@ -106,6 +99,7 @@ for pr_link in pr_list:
             else:
                 re_apply_msg = "is re-opened and reverted,"
         appyly_pr(repo_info[-1], re_apply_msg)
+        need_apply += 1
     elif pr_info["state"].lower() == "closed":
         merged_id = next((item["id"] for item in pr_info["labels"] if item["name"] == "Merged"), -1)
         re_apply_msg = "is closed but not merged"
@@ -115,7 +109,9 @@ for pr_link in pr_list:
                 print("{} is closed and merged, no need to apply".format(pr_info["diff_url"]))
                 continue
         appyly_pr(repo_info[-1], re_apply_msg)
+        need_apply += 1
     else:
         print("{} is {}, no need to apply".format(pr_info["diff_url"], pr_info["state"]))
         sys.exit(1)
-os.system("git checkout ci-test-$(hostname) && git reset --hard && git apply --3way *.diff && git status")
+if need_apply > 0:
+    os.system(f"git reset --hard && git apply --3way *.diff && git status")
