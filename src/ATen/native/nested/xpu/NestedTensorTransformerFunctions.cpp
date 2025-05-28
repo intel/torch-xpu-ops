@@ -4,8 +4,6 @@
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
 
-#include <comm/XPUGuard.h>
-
 namespace at::native {
 
 namespace {
@@ -220,8 +218,8 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward(
       max_lengths.size(),
       " != num_jagged_dim, ",
       num_jagged_dim);
-  at::xpu::OptionalXPUGuard device_guard;
-  device_guard.set_index(values.get_device());
+  c10::OptionalDeviceGuard device_guard;
+  device_guard.reset_device(values.device());
 
   return at::native::xpu::_fbgemm_jagged_to_padded_dense_forward_kernel(
       values, offsets, max_lengths, padding_value);
