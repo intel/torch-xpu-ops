@@ -231,22 +231,22 @@ jobs:
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
 
           echo -e \
-          "inductor/test_torchinductor.py\n" \
-          "inductor/test_torchinductor_opinfo.py\n" \
-          "inductor/test_aot_inductor.py\n" \
-          "inductor/test_codecache.py\n" \
-          "inductor/test_kernel_benchmark.py\n" \
-          "inductor/test_max_autotune.py\n" \
-          "inductor/test_mkldnn_pattern_matcher.py\n" \
-          "inductor/test_triton_kernels.py\n" \
-          "inductor/test_compile_subprocess.py\n" \
-          "inductor/test_compiled_optimizers.py\n" \
-          "inductor/test_compiled_autograd.py" \
+          "test_torchinductor.py\n" \
+          "test_torchinductor_opinfo.py\n" \
+          "test_aot_inductor.py\n" \
+          "test_codecache.py\n" \
+          "test_kernel_benchmark.py\n" \
+          "test_max_autotune.py\n" \
+          "test_mkldnn_pattern_matcher.py\n" \
+          "test_triton_kernels.py\n" \
+          "test_compile_subprocess.py\n" \
+          "test_compiled_optimizers.py\n" \
+          "test_compiled_autograd.py" \
           > test_files.txt
           for line in $(cat test_files.txt)
           do
-            python test/run_test.py --include $line 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_$line_test_error.log | \
-              tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_$line_test.log
+            python test/run_test.py --include inductor/${line} 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${line}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${line}_test.log
           done 
           cp -r test/test-reports ${{ github.workspace }}/ut_log/torch_xpu/
           function read_dir(){
