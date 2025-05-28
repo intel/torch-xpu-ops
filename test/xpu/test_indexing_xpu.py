@@ -1,8 +1,7 @@
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests
-from torch.testing._internal.common_utils import DeterministicGuard
+from torch.testing._internal.common_utils import DeterministicGuard, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -14,6 +13,7 @@ with XPUPatchForImport(False):
     from test_indexing import NumpyTests, TestIndexing
 
     torch.Tensor.is_cuda = torch.Tensor.is_xpu
+
     def __test_index_put_deterministic_with_optional_tensors(self, device):
         def func(x, i, v):
             with DeterministicGuard(True):
