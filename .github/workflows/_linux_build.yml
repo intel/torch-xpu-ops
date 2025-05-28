@@ -78,7 +78,7 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
-          set -xe
+          set -xe -o pipefail
           if [ "${{ inputs.driver }}" == "lts" ]; then
               export TORCH_XPU_ARCH_LIST='pvc'
           fi
@@ -99,56 +99,15 @@ jobs:
           fi
           # oneAPI DLE
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          icpx --version
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
-          build_status="$(
-              ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
-                --WORKSPACE="${{ github.workspace }}" \
-                --PYTORCH_REPO="${PYTORCH_REPO}" \
-                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
-                --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
-                --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-              > ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log 2>&1 && echo $? || echo $?
-          )"
-          tail -n 100 ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ github.repository }}"
-          last_commit=$(gh --repo $repo issue view $commit_issue --json body -q .body | grep ${{ inputs.pytorch }} | cut -d'[' -f 2 | cut -d']' -f 1)
-          current_commit=$(cat ${{ github.workspace }}/pytorch.commit)
-          is_fork_pr=false
-          if [ -n "${{ github.event.pull_request }}" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-            is_fork_pr=true
-          fi
-          echo ">>>>>>>>>>>>Fork PR: ${is_fork_pr}, pytorch branch: ${{ inputs.pytorch }}, last commit: ${last_commit}, current commit: ${current_commit}"
-          if [[ "${is_fork_pr}" == "false" ]]; then
-            if [ "${build_status}" == "0" ] && \
-                [ "${{ inputs.update_lkg }}" == "true" ] && \
-                [ "${last_commit}" != "${current_commit}" ] && \
-                [[ "${{ inputs.pytorch }}" == "main" || "${{ inputs.pytorch }}" == "release/"* ]]; then
-              echo "Wheel build successful, update last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
-              gh --repo $repo issue view $commit_issue --json body -q .body | sed "s;${last_commit};${current_commit};g" | sed '/^$/d' > new_body.txt
-              gh --repo $repo issue edit $commit_issue --body-file new_body.txt
-              gh --repo $repo issue comment $commit_issue -b "Update LKG torch, refer ${build_url}"
-            fi
-            if [ ! -f ${{ github.workspace }}/torch*.whl ] && [ "${TORCH_XPU_OPS_VERSION}" == "cicd" ]; then
-              echo "Wheel build failed, use last commit in the issue https://github.com/intel/torch-xpu-ops/issues/1280"
-              gh --repo $repo issue comment $commit_issue -b "Wheel build failed with commit [${current_commit}](https://github.com/pytorch/pytorch/tree/${current_commit}), refer ${build_url}. CC @intel/torch-xpu-ops-maintain @EikanWang @riverliuintel @fengyuan14 @xytintel @etaf @chuanqi129 @mengfei25"
-              build_status="$(
-                ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
-                --WORKSPACE="${{ github.workspace }}" \
-                --PYTORCH_REPO="https://github.com/pytorch/pytorch.git" \
-                --PYTORCH_VERSION="${last_commit}" \
-                --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
-                --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-                  >> ${{ github.workspace }}/pytorch_build_${last_commit}.log 2>&1 && echo $? || echo $?
-              )"
-              tail -n 100 ${{ github.workspace }}/pytorch_build_${last_commit}.log
-            fi
-          else
-            echo "Forked PR, don't update the issue"
-          fi
-          exit ${build_status}
+          ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
+            --WORKSPACE="${{ github.workspace }}" \
+            --PYTORCH_REPO="${PYTORCH_REPO}" \
+            --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+            --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
+            --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
+            2>&1 |tee ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
       - name: Torch Config
         run: |
           python -c "import torch; print(torch.__config__.show())"
