@@ -458,9 +458,10 @@ Tensor roi_align_kernel(
             syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
-	  constexpr int simd_len = 32;
-          local_range = std::min(local_range, int64_t(items_per_roi + simd_len - 1) / simd_len *
-              simd_len);
+          constexpr int simd_len = 32;
+          local_range = std::min(
+              local_range,
+              int64_t(items_per_roi + simd_len - 1) / simd_len * simd_len);
         }
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
