@@ -27,28 +27,25 @@ T bilinear_interpolate(
     return 0;
   }
 
-  if (y <= 0)
-    y = 0;
-  if (x <= 0)
-    x = 0;
+  y = std::max(T(0), y);
+  x = std::max(T(0), x);
 
   int y_low = (int)y;
   int x_low = (int)x;
   int y_high;
   int x_high;
 
-  if (y_low >= height - 1) {
-    y_high = y_low = height - 1;
+  y_low = std::min(height - 1, y_low);
+  x_low = std::min(width - 1, x_low);
+  y_high = std::min(y_low + 1, height - 1);
+  x_high = std::min(x_low + 1, width - 1);
+
+  if (y_low == height - 1) {
     y = (T)y_low;
-  } else {
-    y_high = y_low + 1;
   }
 
-  if (x_low >= width - 1) {
-    x_high = x_low = width - 1;
+  if (x_low == width - 1) {
     x = (T)x_low;
-  } else {
-    x_high = x_low + 1;
   }
 
   T ly = y - y_low;
@@ -461,8 +458,9 @@ Tensor roi_align_kernel(
             syclMaxWorkGroupSize<RoiAlignForwardKernel<scalar_t>>();
         int items_per_roi = pooled_height * pooled_width * channels;
         if (items_per_roi < local_range) {
-          local_range = (items_per_roi + 32 - 1) / 32 *
-              32; // wg can be smaller but it better to be a mutiple of 32
+	  constexpr int simd_len = 32;
+          local_range = std::min(local_range, int64_t(items_per_roi + simd_len - 1) / simd_len *
+              simd_len);
         }
         int wgs_per_roi = (items_per_roi + local_range - 1) / local_range;
         int64_t global_range = wgs_per_roi * num_rois;
