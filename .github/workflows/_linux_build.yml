@@ -70,6 +70,7 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
+          set -xe -o pipefail
           if [ "${{ inputs.driver }}" == "lts" ]; then
               export TORCH_XPU_ARCH_LIST='pvc'
           fi
@@ -98,7 +99,7 @@ jobs:
             --PYTORCH_VERSION="${PYTORCH_VERSION}" \
             --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
             --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-            2>&1 | tee ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
+            2>&1 |tee ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
       - name: Torch Config
         run: |
           python -c "import torch; print(torch.__config__.show())"
