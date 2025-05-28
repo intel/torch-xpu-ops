@@ -1,0 +1,316 @@
+#include <ATen/Dispatch.h>
+#include <ATen/ExpandUtils.h>
+#include <ATen/core/Tensor.h>
+#include <ATen/native/BatchLinearAlgebra.h>
+#include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/native/Resize.h>
+#include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
+#include <ATen/ops/_linalg_check_errors.h>
+
+#include <comm/SYCLContext.h>
+#include <comm/TensorInfo.h>
+#include <oneapi/mkl/lapack.hpp>
+
+namespace at::native::xpu {
+
+namespace impl {
+
+#define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
+  {                                         \
+    auto e = (routine(__VA_ARGS__));        \
+    (q).throw_asynchronous();               \
+  }
+
+static inline std::tuple<Tensor, Tensor, Tensor> _create_U_S_VT(
+    const Tensor& input,
+    bool some,
+    bool compute_uv) {
+  auto sizes = input.sizes().vec();
+  int64_t m = input.size(-2), n = input.size(-1);
+  auto k = std::min(m, n);
+
+  sizes[input.dim() - 1] = (compute_uv && some) ? k : m;
+  auto U_strides =
+      at::native::batched_matrix_contiguous_strides(sizes, /*f-contig*=*/true);
+  // U should be a column-major or a batch of column-major matrices
+  // ... x m x ucol will have strides: ...., ucol, 1
+  // We require: ...., 1, m
+
+  Tensor U_empty;
+  U_empty = at::empty_strided(sizes, U_strides, input.options());
+
+  sizes[input.dim() - 2] = some ? k : n;
+  sizes[input.dim() - 1] = n;
+  auto Vh_strides =
+      at::native::batched_matrix_contiguous_strides(sizes, /*f-contig*=*/true);
+  Tensor VT_empty;
+  VT_empty = at::empty_strided(sizes, Vh_strides, input.options());
+
+  sizes.pop_back();
+  sizes[input.dim() - 2] = std::min(m, n);
+  Tensor S_empty;
+  ScalarType dtype = toRealValueType(typeMetaToScalarType(input.dtype()));
+  S_empty = at::empty(sizes, input.options().dtype(dtype));
+  return std::tuple<Tensor, Tensor, Tensor>(U_empty, S_empty, VT_empty);
+}
+
+template <typename scalar_t, typename value_t>
+static void apply_svd(
+    sycl::queue& queue,
+    scalar_t* self_data,
+    int64_t lda,
+    int64_t self_stride,
+    int64_t batch_size,
+    int64_t m,
+    int64_t n,
+    TensorOptions self_opt,
+    scalar_t* U_data,
+    int64_t ldu,
+    int64_t U_stride,
+    value_t* S_data,
+    int64_t S_stride,
+    scalar_t* VT_data,
+    int64_t ldvt,
+    int64_t VT_stride,
+    char jobz) {
+  oneapi::mkl::jobsvd jobu, jobvt;
+  if (jobz == 'N') {
+    jobu = oneapi::mkl::jobsvd::N;
+    jobvt = oneapi::mkl::jobsvd::N;
+  } else if (jobz == 'S') {
+    jobu = oneapi::mkl::jobsvd::S;
+    jobvt = oneapi::mkl::jobsvd::S;
+  } else {
+    jobu = oneapi::mkl::jobsvd::A;
+    jobvt = oneapi::mkl::jobsvd::A;
+  }
+
+  std::int64_t scratchpadsize =
+      oneapi::mkl::lapack::gesvd_scratchpad_size<scalar_t>(
+          queue, jobu, jobvt, m, n, lda, ldu, ldvt);
+  Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
+
+  for (int64_t i = 0; i < batch_size; i++) {
+    scalar_t* self_working_ptr = &self_data[i * self_stride];
+    scalar_t* U_working_ptr = &U_data[i * U_stride];
+    value_t* S_working_ptr = &S_data[i * S_stride];
+    scalar_t* VT_working_ptr = &VT_data[i * VT_stride];
+
+    SYCL_ONEMKL_SUBMIT(
+        queue,
+        oneapi::mkl::lapack::gesvd,
+        queue,
+        jobu,
+        jobvt,
+        m,
+        n,
+        self_working_ptr,
+        lda,
+        S_working_ptr,
+        U_working_ptr,
+        ldu,
+        VT_working_ptr,
+        ldvt,
+        scratchpad_at.data_ptr<scalar_t>(),
+        scratchpadsize);
+  }
+} // namespace impl
+
+template <>
+void apply_svd<c10::complex<double>, double>(
+    sycl::queue& queue,
+    c10::complex<double>* self_data,
+    int64_t lda,
+    int64_t self_stride,
+    int64_t batch_size,
+    int64_t m,
+    int64_t n,
+    TensorOptions self_opt,
+    c10::complex<double>* U_data,
+    int64_t ldu,
+    int64_t U_stride,
+    double* S_data,
+    int64_t S_stride,
+    c10::complex<double>* VT_data,
+    int64_t ldvt,
+    int64_t VT_stride,
+    char jobz) {
+  oneapi::mkl::jobsvd jobu, jobvt;
+  if (jobz == 'N') {
+    jobu = oneapi::mkl::jobsvd::N;
+    jobvt = oneapi::mkl::jobsvd::N;
+  } else if (jobz == 'S') {
+    jobu = oneapi::mkl::jobsvd::S;
+    jobvt = oneapi::mkl::jobsvd::S;
+  } else {
+    jobu = oneapi::mkl::jobsvd::A;
+    jobvt = oneapi::mkl::jobsvd::A;
+  }
+
+  std::int64_t scratchpadsize =
+      oneapi::mkl::lapack::gesvd_scratchpad_size<std::complex<double>>(
+          queue, jobu, jobvt, m, n, lda, ldu, ldvt);
+  Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
+
+  for (int64_t i = 0; i < batch_size; i++) {
+    c10::complex<double>* self_working_ptr = &self_data[i * self_stride];
+    c10::complex<double>* U_working_ptr = &U_data[i * U_stride];
+    double* S_working_ptr = &S_data[i * S_stride];
+    c10::complex<double>* VT_working_ptr = &VT_data[i * VT_stride];
+
+    SYCL_ONEMKL_SUBMIT(
+        queue,
+        oneapi::mkl::lapack::gesvd,
+        queue,
+        jobu,
+        jobvt,
+        m,
+        n,
+        reinterpret_cast<std::complex<double>*>(self_working_ptr),
+        lda,
+        S_working_ptr,
+        reinterpret_cast<std::complex<double>*>(U_working_ptr),
+        ldu,
+        reinterpret_cast<std::complex<double>*>(VT_working_ptr),
+        ldvt,
+        reinterpret_cast<std::complex<double>*>(scratchpad_at.data_ptr()),
+        scratchpadsize);
+  }
+}
+
+template <>
+void apply_svd<c10::complex<float>, float>(
+    sycl::queue& queue,
+    c10::complex<float>* self_data,
+    int64_t lda,
+    int64_t self_stride,
+    int64_t batch_size,
+    int64_t m,
+    int64_t n,
+    TensorOptions self_opt,
+    c10::complex<float>* U_data,
+    int64_t ldu,
+    int64_t U_stride,
+    float* S_data,
+    int64_t S_stride,
+    c10::complex<float>* VT_data,
+    int64_t ldvt,
+    int64_t VT_stride,
+    char jobz) {
+  oneapi::mkl::jobsvd jobu, jobvt;
+  if (jobz == 'N') {
+    jobu = oneapi::mkl::jobsvd::N;
+    jobvt = oneapi::mkl::jobsvd::N;
+  } else if (jobz == 'S') {
+    jobu = oneapi::mkl::jobsvd::S;
+    jobvt = oneapi::mkl::jobsvd::S;
+  } else {
+    jobu = oneapi::mkl::jobsvd::A;
+    jobvt = oneapi::mkl::jobsvd::A;
+  }
+
+  std::int64_t scratchpadsize =
+      oneapi::mkl::lapack::gesvd_scratchpad_size<std::complex<float>>(
+          queue, jobu, jobvt, m, n, lda, ldu, ldvt);
+  Tensor scratchpad_at = at::empty({scratchpadsize}, self_opt);
+
+  for (int64_t i = 0; i < batch_size; i++) {
+    c10::complex<float>* self_working_ptr = &self_data[i * self_stride];
+    c10::complex<float>* U_working_ptr = &U_data[i * U_stride];
+    float* S_working_ptr = &S_data[i * S_stride];
+    c10::complex<float>* VT_working_ptr = &VT_data[i * VT_stride];
+
+    SYCL_ONEMKL_SUBMIT(
+        queue,
+        oneapi::mkl::lapack::gesvd,
+        queue,
+        jobu,
+        jobvt,
+        m,
+        n,
+        reinterpret_cast<std::complex<float>*>(self_working_ptr),
+        lda,
+        S_working_ptr,
+        reinterpret_cast<std::complex<float>*>(U_working_ptr),
+        ldu,
+        reinterpret_cast<std::complex<float>*>(VT_working_ptr),
+        ldvt,
+        reinterpret_cast<std::complex<float>*>(scratchpad_at.data_ptr()),
+        scratchpadsize);
+  }
+}
+
+} // namespace impl
+
+void svd_mkl(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const c10::optional<c10::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  // SVD unit tests will be failed with "Complex datatype matmul is not
+  // supported in oneDNN" before Complex MatMul is available.
+  TORCH_CHECK(
+      !A.is_complex(), "Complex datatype SVD is not supported currently");
+
+  // Initialize info
+  info.zero_();
+
+  // Do nothing if input tensor is empty.
+  if (A.numel() == 0)
+    return;
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+
+  const auto A_stride = at::native::matrixStride(A);
+  const auto U_stride = compute_uv ? at::native::matrixStride(U) : 1;
+  const auto S_stride = S.size(-1);
+  const auto Vh_stride = compute_uv ? at::native::matrixStride(Vh) : 1;
+
+  const auto batch_size = at::native::batchCount(A);
+  char jobz = compute_uv ? (full_matrices ? 'A' : 'S') : 'N';
+
+  const auto m = A.size(-2);
+  const auto n = A.size(-1);
+  const auto lda = A.stride(-1);
+  const auto ldu = compute_uv ? U.stride(-1) : 1;
+  const auto ldvh = compute_uv ? Vh.stride(-1) : 1;
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(A.scalar_type(), "svd_xpu", [&] {
+    using value_t = typename c10::scalar_value_type<scalar_t>::type;
+
+    const auto A_data = A.data_ptr<scalar_t>();
+    const auto U_data = compute_uv ? U.data_ptr<scalar_t>() : nullptr;
+    const auto S_data = S.data_ptr<value_t>();
+    const auto Vh_data = compute_uv ? Vh.data_ptr<scalar_t>() : nullptr;
+
+    impl::apply_svd<scalar_t, value_t>(
+        queue,
+        A_data,
+        lda,
+        A_stride,
+        batch_size,
+        m,
+        n,
+        A.options(),
+        U_data,
+        ldu,
+        U_stride,
+        S_data,
+        S_stride,
+        Vh_data,
+        ldvh,
+        Vh_stride,
+        jobz);
+  });
+
+  if (!compute_uv) {
+    U.zero_();
+    Vh.zero_();
+  }
+}
+
+} // namespace at::native::xpu
