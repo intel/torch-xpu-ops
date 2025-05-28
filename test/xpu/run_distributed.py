@@ -9,6 +9,8 @@ res = 0
 res2 = 0
 fail_test = []
 
+os.environ["FI_PROVIDER"] = "tcp"
+
 
 # run python test
 def run(test_command):
