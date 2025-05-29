@@ -192,6 +192,8 @@ def determine_category(ut):
         return 'op_regression_dev1'
     elif ut == 'op_extended':
         return 'op_extended'
+    elif ut == 'torch_xpu':
+        return 'inductor_ut'
     elif 'op_ut' in ut:
         return 'op_ut'
     else:

@@ -261,6 +261,15 @@ jobs:
             done
           }
           read_dir test/test-reports/python-pytest
+          cd ${{ github.workspace }}/ut_log
+          find . -name 'inductor.*' -exec bash -c '
+              for file; do
+                  newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                  if [ "$file" != "$newfile" ]; then
+                      mv -v "$file" "$newfile"
+                  fi
+              done
+          ' bash {} +
       - name: Run Torch XPU Profile UT
         if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
         run: |
