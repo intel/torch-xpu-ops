@@ -461,7 +461,6 @@ Tensor& max_unpooling3d_forward_kernel(
     IntArrayRef stride,
     IntArrayRef padding) {
   at::globalContext().alertNotDeterministic("max_unpooling3d_forward_out");
-  TORCH_CHECK(output.is_contiguous(), "output must be contiguous");
   max_unpooling3d_shape_check(
       self_,
       Tensor(),
