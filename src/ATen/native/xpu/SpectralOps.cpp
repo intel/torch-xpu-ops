@@ -1,10 +1,10 @@
+#include <ATen/native/Resize.h>
+#include <ATen/ops/_fft_r2c_native.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #else
-#include <ATen/native/Resize.h>
 #include <ATen/ops/_fft_c2c_native.h>
 #include <ATen/ops/_fft_c2r_native.h>
-#include <ATen/ops/_fft_r2c_native.h>
 #endif // USE_ONEMKL_XPU
 
 namespace at::native {
@@ -87,13 +87,9 @@ Tensor _fft_r2c_xpu(
     bool onesided) {
   TORCH_CHECK(self.is_floating_point());
 
-#if defined(USE_ONEMKL_XPU)
-  return native::xpu::_fft_r2c_mkl(self, dim, normalization, onesided);
-#else
   Tensor out_cpu = native::_fft_r2c_mkl(
       self.to(Device(at::kCPU)), dim, normalization, onesided);
   return out_cpu.to(Device(at::kXPU));
-#endif // USE_ONEMKL_XPU
 }
 
 Tensor& _fft_r2c_xpu_out(
@@ -104,15 +100,11 @@ Tensor& _fft_r2c_xpu_out(
     Tensor& out) {
   TORCH_CHECK(self.is_floating_point());
 
-#if defined(USE_ONEMKL_XPU)
-  return native::xpu::_fft_r2c_mkl_out(self, dim, normalization, onesided, out);
-#else
   Tensor out_cpu = native::_fft_r2c_mkl(
       self.to(Device(at::kCPU)), dim, normalization, onesided);
   at::native::resize_output(out, out_cpu.sizes());
   out.copy_(out_cpu);
   return out;
-#endif // USE_ONEMKL_XPU
 }
 
 } // namespace at::native
