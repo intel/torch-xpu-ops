@@ -71,7 +71,6 @@ Tensor& max_unpooling2d_forward_kernel(
     IntArrayRef output_size) {
   at::globalContext().alertNotDeterministic("max_unpooling2d_forward_out");
 
-  TORCH_CHECK(output.is_contiguous(), "output must be contiguous");
   TORCH_CHECK(
       indices_.scalar_type() == at::ScalarType::Long,
       "elements in indices should be type int64 but got: ",
