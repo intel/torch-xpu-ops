@@ -943,8 +943,15 @@ struct ComputeInternalGradientsVectorizedFunctor
 
   [[intel::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
-    acc_vec_t sum1_vec = {};
-    acc_vec_t sum2_vec = {};
+    acc_vec_t sum1_vec;
+    acc_vec_t sum2_vec;
+
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      sum1_vec[v] = 0;
+      sum2_vec[v] = 0;
+    }
+
     auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
@@ -979,10 +986,8 @@ struct ComputeInternalGradientsVectorizedFunctor
       acc_vec_t db_vec;
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        if (item.get_local_id(0) == 0) {
-          ds_vec[v] = sum1_vec[v];
-          db_vec[v] = sum2_vec[v];
-        }
+        ds_vec[v] = sum1_vec[v];
+        db_vec[v] = sum2_vec[v];
       }
       *(reinterpret_cast<acc_vec_t*>(ds_ + group_start)) = ds_vec;
       *(reinterpret_cast<acc_vec_t*>(db_ + group_start)) = db_vec;
