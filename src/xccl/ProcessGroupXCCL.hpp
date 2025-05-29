@@ -86,9 +86,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
     virtual const std::vector<at::Tensor> getInputTensors() = 0;
     virtual const std::vector<at::Tensor> getOutputTensors() = 0;
-    inline std::string getProfilerTitle() const {
-      return profilingTitle_;
-    }
 
     std::vector<at::Tensor> result() override {
       return *outputs_;
@@ -96,6 +93,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
+    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
@@ -122,9 +120,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
     std::vector<uint8_t> global_ranks_in_group;
     std::string group_name;
-  }
+  };
 
-  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
+  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size, c10::intrusive_ptr<Options> options);
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
