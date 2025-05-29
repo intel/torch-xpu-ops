@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pytorch-13
+    runs-on: ${{ inputs.ut }}
     # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 36000
