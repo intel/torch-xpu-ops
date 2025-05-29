@@ -36,12 +36,12 @@ on:
       accelerate:
         required: false
         type: string
-        default: 'v1.4.0'
+        default: 'v1.7.0'
         description: Accelerate version
       transformers:
         required: false
         type: string
-        default: 'v4.49.0'
+        default: 'v4.51.3'
         description: Transformers version
 
 permissions: read-all
@@ -55,8 +55,8 @@ env:
   NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   python: ${{ inputs.python != '' && inputs.python || '3.10' }}
-  accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.4.0'}}
-  transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.49.0' }}
+  accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
+  transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
   PACKAGES: |
     espeak-ng
     git-lfs
@@ -68,6 +68,7 @@ env:
     libavutil-dev
     libswresample-dev
     libswscale-dev
+    pciutils
   PYTEST_TIMEOUT: 600
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
@@ -78,22 +79,32 @@ jobs:
       torch: ${{ steps.getver.outputs.torch }}
       torchvision: ${{ steps.getver.outputs.torchvision }}
       torchaudio: ${{ steps.getver.outputs.torchaudio }}
+      triton: ${{ steps.getver.outputs.triton }}
     steps:
       - id: getver
         run: |
-          torch="2.8.0.dev20250412+xpu"  #$(pip index versions torch $TORCH_INDEX | grep torch | sed -E 's/.*\((.*)\)/\1/')
-          torchvision="0.22.0.dev20250412+xpu"  #$(pip index versions torchvision $TORCH_INDEX | grep torch | sed -E 's/.*\((.*)\)/\1/')
-          torchaudio="2.6.0.dev20250412+xpu"  #$(pip index versions torchaudio $TORCH_INDEX | grep torch | sed -E 's/.*\((.*)\)/\1/')
+          # We can't just `pip index version...` and get the last available
+          # version as pytorch packages may have tricky dependencies. Instead
+          # we dry run install packages and get versions which would be installed.
+          # See: https://github.com/pytorch/pytorch/issues/154687
+          pip install --dry-run --ignore-installed $TORCH_INDEX \
+            torch torchvision torchaudio pytorch-triton-xpu >_log.txt
+
+          torch=$(cat _log.txt | grep "Would install" | sed -E "s/.*torch-([^ ]*).*/\1/")
+          torchvision=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchvision-([^ ]*).*/\1/")
+          torchaudio=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchaudio-([^ ]*).*/\1/")
+          triton=$(cat _log.txt | grep "Would install" | sed -E "s/.*pytorch-triton-xpu-([^ ]*).*/\1/")
           echo "torch=$torch" | tee -a "$GITHUB_OUTPUT"
           echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
+          echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
 
   tests:
     needs: prepare
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 1
       matrix:
         test:
           # Excluding tests due to:
@@ -195,10 +206,6 @@ jobs:
           if [ -d "$HF_HOME" ]; then
             ls -al ${{ env.HF_HOME }}
             du -sh ${{ env.HF_HOME }}
-          else
-            echo "HF cache directory does not exist"
-            echo "WARNING: Some tests might fail fetching content from the hub!"
-            echo "WARNING: Populate cache with test content!"
           fi
       - name: Prepare OS environment
         run: |
@@ -227,14 +234,15 @@ jobs:
           conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
           source activate $CONDA_ENV_NAME
-          pip install junitparser pytest-rerunfailures pytest-shard pytest-timeout
+          pip install junitparser pytest-shard pytest-timeout
       - name: Prepare Stock XPU Pytorch
         run: |
           source activate $CONDA_ENV_NAME
           pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
-            torchaudio==${{ needs.prepare.outputs.torchaudio }}
+            torchaudio==${{ needs.prepare.outputs.torchaudio }} \
+            pytorch-triton-xpu==${{needs.prepare.outputs.triton }}
       - name: Prepare Transformers
         run: |
           pwd
@@ -444,4 +452,3 @@ jobs:
           if [ -n "$CONDA_ENV_NAME" ]; then
             conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           fi
-
