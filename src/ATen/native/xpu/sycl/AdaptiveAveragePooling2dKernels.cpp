@@ -403,7 +403,6 @@ void adaptive_avg_pool2d_backward_kernel(
     const Tensor& grad_output_,
     const Tensor& input_) {
   Tensor input, grad_output;
-  printf("adaptive_avg_pool2d_backward_kernel\n");
   if (input_.ndimension() == 3) {
     input = input_.contiguous();
     grad_output = grad_output_.contiguous();
