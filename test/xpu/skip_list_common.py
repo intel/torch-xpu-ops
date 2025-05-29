@@ -718,6 +718,8 @@ skip_dict = {
         "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
     ),
     "test_transformers_xpu.py": (
+        # AssertionError("Torch not compiled with CUDA enabled")
+        "test_mem_eff_attention_fail_with_batch_size_geq_65536",
         # https://github.com/intel/torch-xpu-ops/issues/761
         # AssertionError: False is not true
         # CPU fallback failure. To support aten::transformer_encoder_layer_forward with proper priority.
@@ -2271,6 +2273,8 @@ skip_dict = {
         # randomly fails
         "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
         "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
+        "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
