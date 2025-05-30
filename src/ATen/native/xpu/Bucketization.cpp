@@ -10,7 +10,7 @@ Tensor& searchsorted_out_xpu(
     const Tensor& self,
     bool out_int32,
     bool right,
-    const std::optional<c10::string_view> side_opt,
+    const std::optional<std::string_view> side_opt,
     const std::optional<Tensor>& sorter_opt,
     Tensor& result) {
   // See [Note: hacky wrapper removal for optional tensor]
@@ -38,7 +38,7 @@ Tensor& searchsorted_out_xpu(
     const Scalar& self,
     bool out_int32,
     bool right,
-    const std::optional<c10::string_view> side_opt,
+    const std::optional<std::string_view> side_opt,
     const std::optional<Tensor>& sorter_opt,
     Tensor& result) {
   const Tensor& scalar_tensor =
@@ -58,7 +58,7 @@ Tensor searchsorted_xpu(
     const Tensor& self,
     bool out_int32,
     bool right,
-    const std::optional<c10::string_view> side_opt,
+    const std::optional<std::string_view> side_opt,
     const std::optional<Tensor>& sorter) {
   ScalarType scalar_type = out_int32 ? ScalarType::Int : ScalarType::Long;
   c10::TensorOptions options =
@@ -74,7 +74,7 @@ Tensor searchsorted_xpu(
     const Scalar& self,
     bool out_int32,
     bool right,
-    const std::optional<c10::string_view> side_opt,
+    const std::optional<std::string_view> side_opt,
     const std::optional<Tensor>& sorter) {
   const Tensor& scalar_tensor =
       searchsorted_scalar_tensor(self, sorted_sequence.device());
@@ -94,7 +94,7 @@ Tensor& bucketize_out_xpu(
       boundaries.dim(),
       ")");
   searchsorted_out_xpu(
-      boundaries, self, out_int32, right, nullopt, nullopt, result);
+      boundaries, self, out_int32, right, std::nullopt, std::nullopt, result);
   return result;
 }
 

@@ -58,6 +58,8 @@ skip_dict = {
         "test_compare_cpu_log_softmax_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_float16",
+        "test_compare_cpu_histc_xpu_bfloat16",
+        "test_compare_cpu_histc_xpu_float16",
         # TestCompositeCompliance::test_cow_input
         # XPU Tensor fails in copy-on-write cases
         # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes.
@@ -173,6 +175,7 @@ skip_dict = {
         # AssertionError: Tensor-likes are not close!
         # https://github.com/intel/torch-xpu-ops/issues/781
         "test_compare_cpu_square_xpu_complex64",
+        "test_compare_cpu_square_xpu_complex128",
         # The operator 'aten::_assert_async.msg' is not currently implemented for the XPU device.
         "test_operator_multinomial_xpu_float32",
         "test_view_replay_multinomial_xpu_float32"

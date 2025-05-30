@@ -14,6 +14,23 @@
 
 namespace at::native::xpu {
 
+#define PREFERRED_VEC_SIZE \
+  2 // To reduce register spill, we should not allocate too many
+
+int64_t get_adaptive_workgroup_size(
+    int64_t prob_size,
+    int simd,
+    int max_wg_size) {
+  auto max_size = std::min(max_wg_size, simd * simd);
+  int64_t sizes[5] = {simd, 64, 128, 256, max_size};
+  for (int i = 0; i < 5; ++i) {
+    if (prob_size <= sizes[i]) {
+      return sizes[i];
+    }
+  }
+  return max_size;
+}
+
 template <
     typename scalar_t,
     typename acc_scalar_t,
@@ -101,22 +118,20 @@ struct GNRowwiseMomentsVectorizedFunctor
       sycl::nd_item<1> item) const {
     WelfordType val[VEC_SIZE];
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    auto g_start = item.get_group(0) * VEC_SIZE;
+    auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
     for (int v = 0; v < VEC_SIZE; ++v) {
-      const int64_t i = g_start + v;
-      if (i < G_) {
-        for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
-             j += item.get_local_range(0) * VEC_SIZE) {
-          const int64_t vec_index = i * N_ + j;
-          vec_t vec_in =
-              *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+      const int64_t i = group_start + v;
+      for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
+           j += item.get_local_range(0) * VEC_SIZE) {
+        const int64_t vec_index = i * N_ + j;
+        vec_t vec_in =
+            *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
 #pragma unroll
-          for (int iv = 0; iv < VEC_SIZE; ++iv) {
-            val[v] = welford_op.reduce(
-                val[v], static_cast<T_ACC>(vec_in[iv]), vec_index + iv);
-          }
+        for (int iv = 0; iv < VEC_SIZE; ++iv) {
+          val[v] = welford_op.reduce(
+              val[v], static_cast<T_ACC>(vec_in[iv]), vec_index + iv);
         }
       }
     }
@@ -138,8 +153,8 @@ struct GNRowwiseMomentsVectorizedFunctor
         mean_vec[v] = m1;
         rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
       }
-      *(reinterpret_cast<vec_t*>(mean_ + g_start)) = mean_vec;
-      *(reinterpret_cast<vec_t*>(rstd_ + g_start)) = rstd_vec;
+      *(reinterpret_cast<vec_t*>(mean_ + group_start)) = mean_vec;
+      *(reinterpret_cast<vec_t*>(rstd_ + group_start)) = rstd_vec;
     }
   }
 
@@ -149,93 +164,14 @@ struct GNRowwiseMomentsVectorizedFunctor
 
   GNRowwiseMomentsVectorizedFunctor(
       int64_t N,
-      int64_t G,
       T eps,
       const T* X,
       T* mean,
       T* rstd)
-      : N_(N), G_(G), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
+      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
 
  private:
   int64_t N_;
-  int64_t G_;
-  T eps_;
-  const T* X_;
-  T* mean_;
-  T* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
-};
-
-template <typename T, int SIMD>
-struct GNRowwiseMomentsNHWCFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
-  using WelfordType = WelfordData<T_ACC, int64_t>;
-  using WelfordOp =
-      WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
-
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
-    auto group_x = item.get_group(0);
-    auto gorup_dim_x = item.get_local_range(0);
-    auto thread_x = item.get_local_id(0);
-    const int64_t channels_per_group = C_ / G_;
-    const int64_t batch_index = group_x / G_;
-    const int64_t ng = group_x % G_;
-    const int64_t batch_offset = batch_index * H_ * W_ * C_;
-    const int64_t group_offset = ng * channels_per_group;
-    const int64_t start = batch_offset + group_offset;
-
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    WelfordType val(0, 0, 0, 0);
-    for (int64_t j = thread_x; j < H_ * W_; j += gorup_dim_x) {
-      for (int64_t c = 0; c < channels_per_group; ++c) {
-        const int64_t index = start + j * C_ + c;
-        val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
-      }
-    }
-
-    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item, val, welford_op, shared_);
-
-    if (thread_x == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
-      mean_[group_x] = m1;
-      rstd_[group_x] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
-    }
-  }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
-  }
-
-  GNRowwiseMomentsNHWCFunctor(
-      int64_t N,
-      int64_t H,
-      int64_t W,
-      int64_t C,
-      int64_t G,
-      T eps,
-      const T* X,
-      T* mean,
-      T* rstd)
-      : N_(N),
-        H_(H),
-        W_(W),
-        C_(C),
-        G_(G),
-        eps_(eps),
-        X_(X),
-        mean_(mean),
-        rstd_(rstd) {}
-
- private:
-  int64_t N_;
-  int64_t H_;
-  int64_t W_;
-  int64_t C_;
-  int64_t G_;
   T eps_;
   const T* X_;
   T* mean_;
@@ -416,102 +352,53 @@ void group_norm_kernel_impl(
   T* mean_data = mean.mutable_data_ptr<T>();
   T* rstd_data = rstd.mutable_data_ptr<T>();
 
-  at::MemoryFormat x_format = X.suggest_memory_format();
-  Y.is_contiguous(x_format);
-
   auto& queue = getCurrentSYCLQueue();
   int64_t simd = syclMaxSubGroupSize();
   int64_t prob_size = D * HxW;
-  int64_t wg_size = prob_size < get_group_reduce_group_size(simd)
-      ? simd
-      : get_group_reduce_group_size(simd);
-  int64_t nwg = N * G;
-  auto global_range = sycl::range<1>(nwg * wg_size);
-  auto local_range = sycl::range<1>(wg_size);
+  int64_t stride = N * G;
 
-  int height;
-  int width;
+  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
 
-  switch (x_format) {
-    case MemoryFormat::Contiguous: {
-      constexpr int VEC_SIZE =
-          2; // To reduce the register pressure caused by WelfordData, we apply
-             // 2-way vectorization only to half-precision data.
-      if (sizeof(T) < sizeof(float) &&
-          can_use_vectorization(X_data, VEC_SIZE) &&
-          can_use_vectorization(mean_data, VEC_SIZE) &&
-          can_use_vectorization(rstd_data, VEC_SIZE) &&
-          prob_size % VEC_SIZE == 0) {
-        using FUNC_T_SIMD16 =
-            GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
-        using FUNC_T_SIMD32 =
-            GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
-        if (simd == SIMD16) {
-          wg_size = syclMaxWorkGroupSize<FUNC_T_SIMD16>();
-        } else if (simd == SIMD32) {
-          wg_size = syclMaxWorkGroupSize<FUNC_T_SIMD32>();
-        } else {
-          TORCH_INTERNAL_ASSERT(
-              false,
-              "The GroupNorm kernel currently only supports SIMD16 or SIMD32.");
-        }
-        auto global_range_ =
-            sycl::range<1>((N * G + VEC_SIZE - 1) / VEC_SIZE * wg_size);
-        auto local_range_ = sycl::range<1>(wg_size);
-        group_norm_kernel_simd_choice_and_launch<FUNC_T_SIMD16, FUNC_T_SIMD32>(
-            simd,
-            global_range_,
-            local_range_,
-            queue,
-            prob_size,
-            N * G,
-            eps,
-            X_data,
-            mean_data,
-            rstd_data);
-      } else {
-        group_norm_kernel_simd_choice_and_launch<
-            GNRowwiseMomentsFunctor<T, SIMD16>,
-            GNRowwiseMomentsFunctor<T, SIMD32>>(
-            simd,
-            global_range,
-            local_range,
-            queue,
-            prob_size,
-            eps,
-            X_data,
-            mean_data,
-            rstd_data);
-      }
-      break;
-    }
-    case MemoryFormat::ChannelsLast: {
-      height = X.size(2);
-      width = X.size(3);
-      group_norm_kernel_simd_choice_and_launch<
-          GNRowwiseMomentsNHWCFunctor<T, SIMD16>,
-          GNRowwiseMomentsNHWCFunctor<T, SIMD32>>(
-          simd,
-          global_range,
-          local_range,
-          queue,
-          N,
-          height,
-          width,
-          C,
-          G,
-          eps,
-          X_data,
-          mean_data,
-          rstd_data);
-      break;
-    }
-    default: {
-      TORCH_CHECK(
-          false,
-          "Unsupported memory format for group normalization: ",
-          x_format);
-    }
+  if (can_use_vectorization(X_data, VEC_SIZE) &&
+      can_use_vectorization(mean_data, VEC_SIZE) &&
+      can_use_vectorization(rstd_data, VEC_SIZE) && prob_size % VEC_SIZE == 0 &&
+      stride % VEC_SIZE == 0) {
+    using KernelS16T = GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
+    using KernelS32T = GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
+    auto max_size = std::min(
+        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+    auto wg_size =
+        get_adaptive_workgroup_size(prob_size / VEC_SIZE, simd, max_size);
+    auto global_range = sycl::range<1>((stride / VEC_SIZE) * wg_size);
+    auto local_range = sycl::range<1>(wg_size);
+    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+        simd,
+        global_range,
+        local_range,
+        queue,
+        prob_size,
+        eps,
+        X_data,
+        mean_data,
+        rstd_data);
+  } else {
+    using KernelS16T = GNRowwiseMomentsFunctor<T, SIMD16>;
+    using KernelS32T = GNRowwiseMomentsFunctor<T, SIMD32>;
+    auto max_size = std::min(
+        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+    auto wg_size = get_adaptive_workgroup_size(prob_size, simd, max_size);
+    auto global_range = sycl::range<1>(stride * wg_size);
+    auto local_range = sycl::range<1>(wg_size);
+    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+        simd,
+        global_range,
+        local_range,
+        queue,
+        prob_size,
+        eps,
+        X_data,
+        mean_data,
+        rstd_data);
   }
 
   if (HxW == 1) {
@@ -541,36 +428,15 @@ void group_norm_kernel_impl(
         C, G, mean_data, rstd_data, gamma_data, beta_data, a_data, b_data);
     sycl_kernel_submit(sycl::range<1>(N * C), queue, caller);
 
-    switch (x_format) {
-      case MemoryFormat::Contiguous: {
-        TensorIterator iter =
-            TensorIteratorConfig()
-                .check_all_same_dtype(std::is_same_v<T, T_ACC>)
-                .resize_outputs(false)
-                .add_owned_output(Y.view({N * C, HxW}))
-                .add_owned_const_input(X.view({N * C, HxW}))
-                .add_owned_input(a.view({N * C, 1}))
-                .add_owned_input(b.view({N * C, 1}))
-                .build();
-        gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
-        break;
-      }
-      case MemoryFormat::ChannelsLast: {
-        TensorIterator iter =
-            TensorIteratorConfig()
-                .check_all_same_dtype(std::is_same_v<T, T_ACC>)
-                .resize_outputs(false)
-                .add_owned_output(Y)
-                .add_owned_const_input(X)
-                .add_owned_input(a.view({N, C, 1, 1}))
-                .add_owned_input(b.view({N, C, 1, 1}))
-                .build();
-        gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
-        break;
-      }
-      default:
-        break; // shouldn't hit this
-    }
+    TensorIterator iter = TensorIteratorConfig()
+                              .check_all_same_dtype(std::is_same_v<T, T_ACC>)
+                              .resize_outputs(false)
+                              .add_owned_output(Y.view({N * C, HxW}))
+                              .add_owned_const_input(X.view({N * C, HxW}))
+                              .add_owned_input(a.view({N * C, 1}))
+                              .add_owned_input(b.view({N * C, 1}))
+                              .build();
+    gpu_kernel(iter, GroupNormFunctor<T, T_ACC>());
   }
 }
 
@@ -1068,6 +934,91 @@ struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   sycl_local_acc_t<T_ACC> db_shared_;
 };
 
+template <typename T, int SIMD, int VEC_SIZE>
+struct ComputeInternalGradientsVectorizedFunctor
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  using T_ACC = acc_type_device<T, kXPU>;
+  using vec_t = memory::aligned_vector<T, VEC_SIZE>;
+  using acc_vec_t = memory::aligned_vector<T_ACC, VEC_SIZE>;
+
+  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+      sycl::nd_item<1> item) const {
+    acc_vec_t sum1_vec;
+    acc_vec_t sum2_vec;
+
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      sum1_vec[v] = 0;
+      sum2_vec[v] = 0;
+    }
+
+    auto group_start = item.get_group(0) * VEC_SIZE;
+
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      const int64_t nc = group_start + v;
+      for (int64_t hw = item.get_local_id(0) * VEC_SIZE; hw < HxW_;
+           hw += item.get_local_range(0) * VEC_SIZE) {
+        const int64_t vec_index = nc * HxW_ + hw;
+        vec_t vec_dY_ =
+            *reinterpret_cast<vec_t*>(const_cast<T*>(dY_) + vec_index);
+        vec_t vec_X_ =
+            *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+
+#pragma unroll
+        for (int iv = 0; iv < VEC_SIZE; ++iv) {
+          sum1_vec[v] += static_cast<T_ACC>(vec_dY_[iv] * vec_X_[iv]);
+          sum2_vec[v] += static_cast<T_ACC>(vec_dY_[iv]);
+        }
+      }
+    }
+
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      sum1_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+          item, sum1_vec[v], ds_shared_);
+      sum2_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+          item, sum2_vec[v], db_shared_);
+    }
+
+    if (item.get_local_id(0) == 0) {
+      acc_vec_t ds_vec;
+      acc_vec_t db_vec;
+#pragma unroll
+      for (int v = 0; v < VEC_SIZE; ++v) {
+        ds_vec[v] = sum1_vec[v];
+        db_vec[v] = sum2_vec[v];
+      }
+      *(reinterpret_cast<acc_vec_t*>(ds_ + group_start)) = ds_vec;
+      *(reinterpret_cast<acc_vec_t*>(db_ + group_start)) = db_vec;
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    ds_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+    db_shared_ =
+        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+  }
+
+  ComputeInternalGradientsVectorizedFunctor(
+      int64_t HxW,
+      const T* dY,
+      const T* X,
+      T_ACC* ds,
+      T_ACC* db)
+      : HxW_(HxW), dY_(dY), X_(X), ds_(ds), db_(db) {}
+
+ private:
+  int64_t HxW_;
+  const T* dY_;
+  const T* X_;
+  T_ACC* ds_;
+  T_ACC* db_;
+  sycl_local_acc_t<T_ACC> ds_shared_;
+  sycl_local_acc_t<T_ACC> db_shared_;
+};
+
 template <typename T, typename T_ACC>
 struct GroupNormBackwardC1Functor {
   T_ACC operator()(T rstd, T gamma) const {
@@ -1406,23 +1357,50 @@ void group_norm_backward_kernel_impl(
   }
 
   auto& queue = getCurrentSYCLQueue();
-
   int64_t simd = syclMaxSubGroupSize();
-  int64_t wg_size = HxW < get_group_reduce_group_size(simd)
-      ? simd
-      : get_group_reduce_group_size(simd);
-  group_norm_kernel_simd_choice_and_launch<
-      ComputeInternalGradientsFunctor<T, SIMD16>,
-      ComputeInternalGradientsFunctor<T, SIMD32>>(
-      simd,
-      sycl::range<1>(N * C * wg_size),
-      sycl::range<1>(wg_size),
-      queue,
-      HxW,
-      dY_data,
-      X_data,
-      ds_data,
-      db_data);
+
+  constexpr int VEC_SIZE = PREFERRED_VEC_SIZE;
+  int64_t wg_size = 0;
+
+  if (can_use_vectorization(dY_data, VEC_SIZE) &&
+      can_use_vectorization(X_data, VEC_SIZE) &&
+      can_use_vectorization(ds_data, VEC_SIZE) &&
+      can_use_vectorization(db_data, VEC_SIZE) && HxW % VEC_SIZE == 0 &&
+      (N * C) % VEC_SIZE == 0) {
+    using KernelS16T =
+        ComputeInternalGradientsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
+    using KernelS32T =
+        ComputeInternalGradientsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
+    wg_size = (HxW / VEC_SIZE) < get_group_reduce_group_size(simd)
+        ? simd
+        : get_group_reduce_group_size(simd);
+    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+        simd,
+        sycl::range<1>((N * C / VEC_SIZE) * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        HxW,
+        dY_data,
+        X_data,
+        ds_data,
+        db_data);
+  } else {
+    using KernelS16T = ComputeInternalGradientsFunctor<T, SIMD16>;
+    using KernelS32T = ComputeInternalGradientsFunctor<T, SIMD32>;
+    wg_size = HxW < get_group_reduce_group_size(simd)
+        ? simd
+        : get_group_reduce_group_size(simd);
+    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+        simd,
+        sycl::range<1>(N * C * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        HxW,
+        dY_data,
+        X_data,
+        ds_data,
+        db_data);
+  }
 
   if (dX.defined()) {
     Tensor c1 = at::empty({0}, X.options().dtype(kAccType));
@@ -1507,8 +1485,8 @@ void group_norm_backward_kernel_impl(
       sycl_kernel_submit(sycl::range<1>(C), queue, caller);
     } else {
       // The algorithm for colwise reduction here is to accumulate each
-      // (subgroup_size) cols to a (subgroup_size^2) tile and write the tile to
-      // shared memory. Then do subgroup reduce for each col in the tile.
+      // (subgroup_size) cols to a (subgroup_size^2) tile and write the tile
+      // to shared memory. Then do subgroup reduce for each col in the tile.
       const int64_t kReduceTileSize = simd;
       const int64_t B = (C + kReduceTileSize - 1) / kReduceTileSize;
       auto global_range =

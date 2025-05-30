@@ -13,7 +13,12 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
-        test_command = "pytest -v " + test_case + skip_options
+        test_command = (
+            "pytest --timeout 600 -v "
+            + "--junit-xml=./op_ut_with_only.xml "
+            + test_case
+            + skip_options
+        )
         return os.system(test_command)
     elif exe_list is not None:
         exe_options = ' -k "' + exe_list[0]
@@ -21,10 +26,17 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
-        test_command = "pytest -v " + test_case + exe_options
+        test_command = (
+            "pytest --timeout 600 -v "
+            + "--junit-xml=./op_ut_with_only.xml "
+            + test_case
+            + exe_options
+        )
         return os.system(test_command)
     else:
-        test_command = "pytest -v " + test_case
+        test_command = (
+            "pytest --timeout 600 -v --junit-xml=./op_ut_with_only.xml " + test_case
+        )
         return os.system(test_command)
 
 

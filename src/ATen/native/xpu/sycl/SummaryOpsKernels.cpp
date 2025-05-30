@@ -238,14 +238,12 @@ Tensor _histc_kernel(
     int64_t nbins,
     const Scalar& min,
     const Scalar& max) {
-  if (self.scalar_type() == ScalarType::Half) {
-    AT_ERROR("HalfTensor is not supported");
-  }
-  return AT_DISPATCH_ALL_TYPES(self.scalar_type(), "_histc_xpu", [&] {
-    using bounds_t = at::acc_type_device<scalar_t, kXPU>;
-    return _histc_template<scalar_t>(
-        self, nbins, min.to<bounds_t>(), max.to<bounds_t>());
-  });
+  return AT_DISPATCH_ALL_TYPES_AND2(
+      kHalf, kBFloat16, self.scalar_type(), "_histc_xpu", [&] {
+        using bounds_t = at::acc_type_device<scalar_t, kXPU>;
+        return _histc_template<scalar_t>(
+            self, nbins, min.to<bounds_t>(), max.to<bounds_t>());
+      });
 }
 
 template <typename input_t, typename weights_t>
@@ -290,9 +288,9 @@ Tensor bincount_template(
     output = at::zeros(
         {nbins},
         kLong,
-        c10::nullopt /* layout */,
+        std::nullopt /* layout */,
         DeviceType::XPU,
-        c10::nullopt /* pin_memory */);
+        std::nullopt /* pin_memory */);
     tensor_histogram<
         typename c10::impl::ScalarTypeToCPPType<kLong>::type,
         input_t,

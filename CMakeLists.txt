@@ -36,12 +36,24 @@ set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
 list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
+include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
-option(USE_XCCL "Build with XCCL support" ON)
+# -- [ Re-generate the macros file for https://github.com/pytorch/pytorch/pull/147161
+macro(update_caffe2_macros_file)
+  configure_file(
+    ${TORCH_ROOT}/caffe2/core/macros.h.in
+    ${CMAKE_BINARY_DIR}/caffe2/core/macros.h)
+endmacro()
 
-if(NOT WIN32 AND USE_XCCL)
+if(USE_XCCL)
   include(${TORCH_XPU_OPS_ROOT}/cmake/XCCL.cmake)
+  if(NOT PYTORCH_FOUND_XCCL)
+    # Propagate the option to PyTorch
+    caffe2_update_option(USE_XCCL OFF)
+    caffe2_update_option(USE_C10D_XCCL OFF)
+    update_caffe2_macros_file()
+  endif()
 endif()
 
 if(BUILD_TEST)
@@ -64,6 +76,9 @@ endif()
 
 # Only for debugging. Save building time by shrinking translation unit scope.
 set(BUILD_SEPARATE_OPS $ENV{BUILD_SEPARATE_OPS})
+if(CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)")
+  set(BUILD_SEPARATE_OPS TRUE)
+endif()
 set(BUILD_SPLIT_KERNEL_LIB $ENV{BUILD_SPLIT_KERNEL_LIB})
 add_subdirectory(${TORCH_XPU_OPS_ROOT}/src)
 

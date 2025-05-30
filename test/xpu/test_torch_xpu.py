@@ -38,7 +38,6 @@ from torch.testing._internal.common_cuda import (
     _create_scaling_models_optimizers,
     TEST_CUDNN,
     TEST_MULTIGPU,
-    tf32_is_not_fp32,
     tf32_on_and_off,
 )
 from torch.testing._internal.common_device_type import (
@@ -212,7 +211,7 @@ assert torch.get_default_dtype() is torch.float32
 # sharding on sandcastle. This line silences flake warnings
 load_tests = load_tests
 
-AMPERE_OR_ROCM = TEST_WITH_ROCM or tf32_is_not_fp32()
+AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
 
 @contextlib.contextmanager
@@ -8355,7 +8354,7 @@ class TestTorch(TestCase):
         ):
             torch.tensor([1]).unflatten(0, [2, 2])
         with self.assertRaisesRegex(
-            IndexError, r"Dimension specified as 0 but tensor has no dimensions"
+            RuntimeError, r".*Dimension specified as 0 but tensor has no dimensions.*"
         ):
             torch.tensor(1).unflatten(0, [0])
         with self.assertRaisesRegex(

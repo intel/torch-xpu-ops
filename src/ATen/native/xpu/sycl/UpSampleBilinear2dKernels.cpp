@@ -60,8 +60,8 @@ struct UpsampleBilinear2dKernelFunctor {
       const accscalar_t rheight,
       const accscalar_t rwidth,
       const bool align_corners,
-      const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-      PackedTensorAccessor<scalar_t, 4> odata_acc,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+      GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
       int64_t input_height,
       int64_t input_width,
       int64_t output_height,
@@ -86,8 +86,8 @@ struct UpsampleBilinear2dKernelFunctor {
   const accscalar_t rheight_;
   const accscalar_t rwidth_;
   const bool align_corners_;
-  const PackedTensorAccessor<const scalar_t, 4> in_data_acc_;
-  PackedTensorAccessor<scalar_t, 4> out_data_acc_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> in_data_acc_;
+  GenericPackedTensorAccessor<scalar_t, 4> out_data_acc_;
   int64_t input_height_;
   int64_t input_width_;
   int64_t output_height_;
@@ -102,8 +102,8 @@ void launch_upsample_bilinear2d_kernel(
     const accscalar_t rheight,
     const accscalar_t rwidth,
     const bool align_corners,
-    const PackedTensorAccessor<const scalar_t, 4> idata_acc,
-    PackedTensorAccessor<scalar_t, 4> odata_acc,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata_acc,
+    GenericPackedTensorAccessor<scalar_t, 4> odata_acc,
     int64_t input_height,
     int64_t input_width,
     int64_t output_height,
@@ -274,6 +274,219 @@ size_t idx(
   return (nc * height + y) * width + x;
 }
 
+template <typename scalar_t, typename accscalar_t, bool is_channel_last>
+struct UpsampleBilinear2dBackwardAlignKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int index = item.get_global_linear_id();
+    if (index < i_numel_) {
+      int c, w1, h1, n;
+      if constexpr (is_channel_last) {
+        c = index % channels_;
+        w1 = (index / channels_) % input_width_;
+        h1 = (index / channels_ / input_width_) % input_height_;
+        n = index / channels_ / input_width_ / input_height_;
+      } else {
+        c = (index / input_width_ / input_height_) % channels_;
+        w1 = index % input_width_;
+        h1 = (index / input_width_) % input_height_;
+        n = index / input_width_ / input_height_ / channels_;
+      }
+      accscalar_t tmp = static_cast<accscalar_t>(0);
+      const int in_index_w = (output_width_ - 1) * w1;
+      const int in_index_h = (output_height_ - 1) * h1;
+      int out_index_w_start = w1 > 0 ? (output_width_ - 1) * (w1 - 1) /
+                  (input_width_ - 1) * (input_width_ - 1) +
+              (input_width_ - 1)
+                                     : 0;
+      int out_index_h_start = h1 > 0 ? (output_height_ - 1) * (h1 - 1) /
+                  (input_height_ - 1) * (input_height_ - 1) +
+              (input_height_ - 1)
+                                     : 0;
+      int out_index_w_end = w1 < input_width_ - 1
+          ? (output_width_ - 1) * (w1 + 1) / (input_width_ - 1) *
+              (input_width_ - 1)
+          : (input_width_ - 1) * (output_width_ - 1);
+      int out_index_h_end = h1 < input_height_ - 1
+          ? (output_height_ - 1) * (h1 + 1) / (input_height_ - 1) *
+              (input_height_ - 1)
+          : (input_height_ - 1) * (output_height_ - 1);
+      for (int point_h = out_index_h_start; point_h <= out_index_h_end;
+           point_h += input_height_ - 1) {
+        for (int point_w = out_index_w_start; point_w <= out_index_w_end;
+             point_w += input_width_ - 1) {
+          int distance_w = output_width_ - 1 - std::abs(point_w - in_index_w);
+          int distance_h = output_height_ - 1 - std::abs(point_h - in_index_h);
+          accscalar_t scale =
+              static_cast<accscalar_t>(distance_h * distance_w) /
+              static_cast<accscalar_t>(
+                  (output_width_ - 1) * (output_height_ - 1));
+          if constexpr (is_channel_last) {
+            tmp += scale *
+                static_cast<accscalar_t>(odata_[idx_cl(
+                    n,
+                    point_h / (input_height_ - 1),
+                    point_w / (input_width_ - 1),
+                    c,
+                    output_height_,
+                    output_width_,
+                    channels_)]);
+          } else {
+            size_t output_index = ((n * channels_ + c) * output_height_ +
+                                   point_h / (input_height_ - 1)) *
+                    output_width_ +
+                point_w / (input_width_ - 1);
+            tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
+          }
+        }
+      }
+      idata_[index] = static_cast<scalar_t>(tmp);
+    }
+  }
+  UpsampleBilinear2dBackwardAlignKernelFunctor(
+      const int input_height,
+      const int input_width,
+      const int output_height,
+      const int output_width,
+      scalar_t* idata,
+      const scalar_t* odata,
+      const int channels,
+      const size_t i_numel)
+      : input_height_(input_height),
+        input_width_(input_width),
+        output_height_(output_height),
+        output_width_(output_width),
+        idata_(idata),
+        odata_(odata),
+        channels_(channels),
+        i_numel_(i_numel) {}
+
+ private:
+  const int input_height_;
+  const int input_width_;
+  const int output_height_;
+  const int output_width_;
+  scalar_t* idata_;
+  const scalar_t* odata_;
+  const int channels_;
+  const size_t i_numel_;
+};
+
+template <typename scalar_t, typename accscalar_t, bool is_channel_last>
+struct UpsampleBilinear2dBackwardNotAlignKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int index = item.get_global_linear_id();
+    if (index < i_numel_) {
+      int c, w1, h1, n;
+      if constexpr (is_channel_last) {
+        c = index % channels_;
+        w1 = (index / channels_) % input_width_;
+        h1 = (index / channels_ / input_width_) % input_height_;
+        n = index / channels_ / input_width_ / input_height_;
+      } else {
+        c = (index / input_width_ / input_height_) % channels_;
+        w1 = index % input_width_;
+        h1 = (index / input_width_) % input_height_;
+        n = index / input_width_ / input_height_ / channels_;
+      }
+      accscalar_t tmp = static_cast<accscalar_t>(0);
+      // suppose we interpolate in an image with width =
+      // input_width*output_width*2
+      const int in_index_w = output_width_ * (2 * w1 + 1);
+      const int in_index_h = output_height_ * (2 * h1 + 1);
+      const int out_index_w_start = w1 > 0
+          ? (output_width_ * (2 * w1 - 1) - input_width_) / (2 * input_width_) *
+                  (2 * input_width_) +
+              3 * input_width_
+          : input_width_;
+      const int out_index_h_start = h1 > 0
+          ? (output_height_ * (2 * h1 - 1) - input_height_) /
+                  (2 * input_height_) * (2 * input_height_) +
+              3 * input_height_
+          : input_height_;
+      const int out_index_w_end = w1 < input_width_ - 1
+          ? (output_width_ * (2 * w1 + 3) - input_width_) / (2 * input_width_) *
+                  (2 * input_width_) +
+              input_width_
+          : output_width_ * input_width_ * 2 - input_width_;
+      const int out_index_h_end = h1 < input_height_ - 1
+          ? (output_height_ * (2 * h1 + 3) - input_height_) /
+                  (2 * input_height_) * (2 * input_height_) +
+              input_height_
+          : output_height_ * input_height_ * 2 - input_height_;
+      for (int point_h = out_index_h_start; point_h <= out_index_h_end;
+           point_h += input_height_ * 2) {
+        for (int point_w = out_index_w_start; point_w <= out_index_w_end;
+             point_w += input_width_ * 2) {
+          int distance_w = output_width_ * 2 - std::abs(point_w - in_index_w);
+          int distance_h = output_height_ * 2 - std::abs(point_h - in_index_h);
+          bool is_boundary_w =
+              !((point_w >= output_width_) &&
+                (point_w <= output_width_ * input_width_ * 2 - output_width_));
+          // scale is 1 if on boundary
+          distance_w =
+              distance_w + is_boundary_w * (output_width_ * 2 - distance_w);
+          bool is_boundary_h =
+              !((point_h >= output_height_) &&
+                (point_h <= output_height_ * input_height_ * 2 - output_height_));
+          distance_h =
+              distance_h + is_boundary_h * (output_height_ * 2 - distance_h);
+          accscalar_t scale =
+              static_cast<accscalar_t>(distance_h * distance_w) /
+              static_cast<accscalar_t>(
+                  (output_width_ * 2) * (output_height_ * 2));
+
+          if constexpr (is_channel_last) {
+            tmp += scale *
+                static_cast<accscalar_t>(odata_[idx_cl(
+                    n,
+                    (point_h - input_height_) / (2 * input_height_),
+                    (point_w - input_height_) / (2 * input_width_),
+                    c,
+                    output_height_,
+                    output_width_,
+                    channels_)]);
+          } else {
+            size_t output_index =
+                ((n * channels_ + c) * output_height_ +
+                 (point_h - input_height_) / (2 * input_height_)) *
+                    output_width_ +
+                (point_w - input_height_) / (2 * input_width_);
+            tmp += scale * static_cast<accscalar_t>(odata_[output_index]);
+          }
+        }
+      }
+      idata_[index] = static_cast<scalar_t>(tmp);
+    }
+  }
+  UpsampleBilinear2dBackwardNotAlignKernelFunctor(
+      const int input_height,
+      const int input_width,
+      const int output_height,
+      const int output_width,
+      scalar_t* idata,
+      const scalar_t* odata,
+      const int channels,
+      const size_t i_numel)
+      : input_height_(input_height),
+        input_width_(input_width),
+        output_height_(output_height),
+        output_width_(output_width),
+        idata_(idata),
+        odata_(odata),
+        channels_(channels),
+        i_numel_(i_numel) {}
+
+ private:
+  const int input_height_;
+  const int input_width_;
+  const int output_height_;
+  const int output_width_;
+  scalar_t* idata_;
+  const scalar_t* odata_;
+  const int channels_;
+  const size_t i_numel_;
+};
+
 template <typename scalar_t, typename accscalar_t>
 struct UpsampleBilinear2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
@@ -388,30 +601,89 @@ void launch_upsample_bilinear2d_backward_kernel(
   const size_t o_numel = nc * output_width * output_height;
   const size_t i_numel = nc * input_width * input_height;
 
-  const size_t num_kernels = nc * output_width * output_height;
+  bool can_optimize = input_height < output_height &&
+      input_width < output_width && input_height > 1 && input_width > 1;
+  // TODO: when input 3x3, scale is 1.5, output is 4x4,
+  // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  // I also have to skip double because of rounding issues, it will not pass ut
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
+      !std::is_same<scalar_t, double>::value;
+  if (can_optimize) {
+    if (align_corners) {
+      UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
+          kfn(input_height,
+              input_width,
+              output_height,
+              output_width,
+              idata,
+              odata,
+              channels,
+              i_numel);
 
-  UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
-      nc,
-      input_height,
-      input_width,
-      output_height,
-      output_width,
-      nbatch,
-      channels,
-      rheight,
-      rwidth,
-      align_corners,
-      idata,
-      odata,
-      o_numel,
-      i_numel);
+      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+      auto queue = getCurrentSYCLQueue();
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
-  int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
-  auto queue = getCurrentSYCLQueue();
+      sycl_kernel_submit(
+          sycl::range<1>(num_group * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          kfn);
+    } else {
+      UpsampleBilinear2dBackwardNotAlignKernelFunctor<
+          scalar_t,
+          accscalar_t,
+          false>
+          kfn(input_height,
+              input_width,
+              output_height,
+              output_width,
+              idata,
+              odata,
+              channels,
+              i_numel);
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
+      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+      auto queue = getCurrentSYCLQueue();
+
+      sycl_kernel_submit(
+          sycl::range<1>(num_group * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          kfn);
+    }
+
+  } else {
+    const size_t num_kernels = nc * output_width * output_height;
+
+    UpsampleBilinear2dBackwardKernelFunctor<scalar_t, accscalar_t> kfn(
+        nc,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        nbatch,
+        channels,
+        rheight,
+        rwidth,
+        align_corners,
+        idata,
+        odata,
+        o_numel,
+        i_numel);
+
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)num_kernels, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
+
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
+  }
 }
 
 template <typename scalar_t, typename accscalar_t>
@@ -513,26 +785,86 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
     const int channels,
     const size_t o_numel,
     const size_t i_numel) {
-  UpsampleBilinear2dBackwardnhwcKernelFunctor<scalar_t, accscalar_t> kfn(
-      input_height,
-      input_width,
-      output_height,
-      output_width,
-      rheight,
-      rwidth,
-      align_corners,
-      idata,
-      odata,
-      channels,
-      o_numel,
-      i_numel);
+  bool can_optimize = input_height < output_height &&
+      input_width < output_width && input_height > 1 && input_width > 1;
+  // TODO: when input 3x3, scale is 1.5, output is 4x4,
+  // pytorch prefer use 1/1.5, but my implementation treat it as 3/4...
+  // I also have to skip double because of rounding issues, it will not pass ut
+  can_optimize = can_optimize && (align_corners || (input_width == (rwidth * output_width) &&
+      input_height == (rheight * output_height))) &&
+      !std::is_same<scalar_t, double>::value;
+  if (can_optimize) {
+    if (align_corners) {
+      UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>
+          kfn(input_height,
+              input_width,
+              output_height,
+              output_width,
+              idata,
+              odata,
+              channels,
+              i_numel);
 
-  int64_t wg_size = syclMaxWorkGroupSize(kfn);
-  int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
-  auto queue = getCurrentSYCLQueue();
+      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+      auto queue = getCurrentSYCLQueue();
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_group * wg_size), sycl::range<1>(wg_size), queue, kfn);
+      sycl_kernel_submit(
+          sycl::range<1>(num_group * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          kfn);
+
+    } else {
+      UpsampleBilinear2dBackwardNotAlignKernelFunctor<
+          scalar_t,
+          accscalar_t,
+          true>
+          kfn(input_height,
+              input_width,
+              output_height,
+              output_width,
+              idata,
+              odata,
+              channels,
+              i_numel);
+
+      int64_t wg_size = syclMaxWorkGroupSize(kfn);
+      int num_group = at::ceil_div((int64_t)i_numel, (int64_t)wg_size);
+      auto queue = getCurrentSYCLQueue();
+
+      sycl_kernel_submit(
+          sycl::range<1>(num_group * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          kfn);
+    }
+
+  } else {
+    UpsampleBilinear2dBackwardnhwcKernelFunctor<scalar_t, accscalar_t> kfn(
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        rheight,
+        rwidth,
+        align_corners,
+        idata,
+        odata,
+        channels,
+        o_numel,
+        i_numel);
+
+    int64_t wg_size = syclMaxWorkGroupSize(kfn);
+    int num_group = at::ceil_div((int64_t)o_numel, (int64_t)wg_size);
+    auto queue = getCurrentSYCLQueue();
+
+    sycl_kernel_submit(
+        sycl::range<1>(num_group * wg_size),
+        sycl::range<1>(wg_size),
+        queue,
+        kfn);
+  }
 }
 
 void upsample_bilinear2d_out_kernel(
@@ -540,8 +872,8 @@ void upsample_bilinear2d_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input, "input", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -640,8 +972,8 @@ void upsample_bilinear2d_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(__func__, {grad_output_arg, grad_input_arg});
@@ -675,7 +1007,7 @@ void upsample_bilinear2d_backward_out_kernel(
       [&] {
         if (memory_format == at::MemoryFormat::ChannelsLast && channels >= 4 &&
             grad_input.is_contiguous(memory_format)) {
-          using accscalar_t = at::acc_type<scalar_t, true>;
+          using accscalar_t = acc_type_device<scalar_t, kXPU>;
 
           Tensor grad_output =
               grad_output_.contiguous(at::MemoryFormat::ChannelsLast);
@@ -841,8 +1173,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   UpsampleGen2dAaKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      const PackedTensorAccessor<const scalar_t, 4> idata,
-      PackedTensorAccessor<scalar_t, 4> odata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+      GenericPackedTensorAccessor<scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -871,8 +1203,8 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  const PackedTensorAccessor<const scalar_t, 4> idata_;
-  PackedTensorAccessor<scalar_t, 4> odata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> idata_;
+  GenericPackedTensorAccessor<scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -980,8 +1312,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
   UpsampleGen2dAaBackwardKernelFunctor(
       const accscalar_t height_scale,
       const accscalar_t width_scale,
-      PackedTensorAccessor<scalar_t, 4> idata,
-      const PackedTensorAccessor<const scalar_t, 4> odata,
+      GenericPackedTensorAccessor<scalar_t, 4> idata,
+      const GenericPackedTensorAccessor<const scalar_t, 4> odata,
       InterpFilter interp_filter,
       int64_t input_height,
       int64_t input_width,
@@ -1010,8 +1342,8 @@ struct UpsampleGen2dAaBackwardKernelFunctor
  private:
   const accscalar_t height_scale_;
   const accscalar_t width_scale_;
-  PackedTensorAccessor<scalar_t, 4> idata_;
-  const PackedTensorAccessor<const scalar_t, 4> odata_;
+  GenericPackedTensorAccessor<scalar_t, 4> idata_;
+  const GenericPackedTensorAccessor<const scalar_t, 4> odata_;
   InterpFilter interp_filter_;
   int64_t input_height_;
   int64_t input_width_;
@@ -1029,8 +1361,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    const PackedTensorAccessor<const scalar_t, 4> idata,
-    PackedTensorAccessor<scalar_t, 4> odata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> idata,
+    GenericPackedTensorAccessor<scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
@@ -1105,8 +1437,8 @@ template <typename scalar_t, typename accscalar_t, typename InterpFilter>
 void launch_upsample_gen2d_aa_backward_kernel(
     const accscalar_t height_scale,
     const accscalar_t width_scale,
-    PackedTensorAccessor<scalar_t, 4> idata,
-    const PackedTensorAccessor<const scalar_t, 4> odata,
+    GenericPackedTensorAccessor<scalar_t, 4> idata,
+    const GenericPackedTensorAccessor<const scalar_t, 4> odata,
     InterpFilter interp_filter,
     int64_t input_height,
     int64_t input_width,
@@ -1177,8 +1509,8 @@ void upsample_gen2d_aa_out_kernel(
     const Tensor& input_,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg input_arg{input_, "input_", 1}, output_arg{output, "output", 2};
   checkAllSameGPU(__func__, {input_arg, output_arg});
 
@@ -1245,8 +1577,8 @@ void upsample_gen2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   TensorArg grad_input_arg{grad_input, "grad_input", 1},
       grad_output_arg{grad_output_, "grad_output_", 2};
   checkAllSameGPU(
@@ -1311,8 +1643,8 @@ void _upsample_bilinear2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
@@ -1324,8 +1656,8 @@ void _upsample_bilinear2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BilinearFilterFunctor>(
       grad_input,
@@ -1342,8 +1674,8 @@ void _upsample_bicubic2d_aa_out_kernel(
     const Tensor& input,
     IntArrayRef output_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_out_kernel<upsample_antialias::BicubicFilterFunctor>(
       output, input, output_size, align_corners, scales_h, scales_w);
 }
@@ -1354,8 +1686,8 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
     IntArrayRef output_size,
     IntArrayRef input_size,
     bool align_corners,
-    c10::optional<double> scales_h,
-    c10::optional<double> scales_w) {
+    std::optional<double> scales_h,
+    std::optional<double> scales_w) {
   return upsample_gen2d_aa_backward_out_kernel<
       upsample_antialias::BicubicFilterFunctor>(
       grad_input,

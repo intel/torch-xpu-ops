@@ -1,6 +1,5 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/NMSKernel.h>
-#include <comm/XPUGuard.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
@@ -36,45 +35,12 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
     return at::empty({0}, dets.options().dtype(at::kLong));
   }
 
-  constexpr int nms_items_per_group = sizeof(unsigned long long) * 8;
-
   auto order_t = std::get<1>(
       scores.sort(/*stable=*/true, /*dim=*/0, /* descending=*/true));
   auto dets_sorted = dets.index_select(0, order_t).contiguous();
 
-  int dets_num = dets.size(0);
-  int col_blocks = (dets_num + nms_items_per_group - 1) / nms_items_per_group;
-
-  auto mask = nms_kernel(dets_sorted, iou_threshold);
-
-  at::Tensor mask_cpu = mask.to(at::kCPU);
-  unsigned long long* mask_host =
-      (unsigned long long*)mask_cpu.mutable_data_ptr();
-
-  std::vector<unsigned long long> remv(col_blocks);
-  memset(&remv[0], 0, sizeof(unsigned long long) * col_blocks);
-
-  at::Tensor keep =
-      at::empty({dets_num}, dets.options().dtype(at::kLong).device(at::kCPU));
-  int64_t* keep_out = keep.mutable_data_ptr<int64_t>();
-
-  int num_to_keep = 0;
-  for (int i = 0; i < dets_num; i++) {
-    int nblock = i / nms_items_per_group;
-    int inblock = i % nms_items_per_group;
-
-    if (!(remv[nblock] & (1ULL << inblock))) {
-      keep_out[num_to_keep++] = i;
-      unsigned long long* p = mask_host + i * col_blocks;
-      for (int j = nblock; j < col_blocks; j++) {
-        remv[j] |= p[j];
-      }
-    }
-  }
-
-  return order_t.index(
-      {keep.narrow(/*dim=*/0, /*start=*/0, /*length=*/num_to_keep)
-           .to(order_t.device(), keep.scalar_type())});
+  auto keep = nms_kernel(dets_sorted, iou_threshold);
+  return order_t.masked_select(keep);
 }
 
 } // namespace at::native::xpu

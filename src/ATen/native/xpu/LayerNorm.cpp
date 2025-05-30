@@ -49,18 +49,19 @@ namespace native {
 
   Tensor Y = at::native::empty_like(
       *X,
-      c10::nullopt /* dtype */,
-      c10::nullopt /* layout */,
-      c10::nullopt /* device */,
-      c10::nullopt /* pin_memory */,
+      std::nullopt /* dtype */,
+      std::nullopt /* layout */,
+      std::nullopt /* device */,
+      std::nullopt /* pin_memory */,
       LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
   auto acc_type = at::toAccumulateType(input.scalar_type(), true);
 
   Tensor mean = at::empty({M}, X->options().dtype(acc_type));
   Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
 
   native::xpu::layer_norm_kernel(
-      *X, *gamma, *beta, M, N, epsilon, Y, mean, rstd);
+      *X, *gamma, *beta, M, N, epsilon, &Y, &mean, &rstd);
 
   const auto input_shape = input.sizes();
   const size_t axis = input.dim() - normalized_shape.size();
@@ -123,43 +124,43 @@ namespace native {
   if (grad_input_mask[0]) {
     grad_input = at::native::empty_like(
         *X,
-        c10::nullopt /* dtype */,
-        c10::nullopt /* layout */,
-        c10::nullopt /* device */,
-        c10::nullopt /* pin_memory */,
+        std::nullopt /* dtype */,
+        std::nullopt /* layout */,
+        std::nullopt /* device */,
+        std::nullopt /* pin_memory */,
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
 
   if (grad_input_mask[1]) {
     grad_weight = M > 0 ? at::native::empty_like(
                               *gamma,
-                              c10::nullopt /* dtype */,
-                              c10::nullopt /* layout */,
-                              c10::nullopt /* device */,
-                              c10::nullopt /* pin_memory */,
+                              std::nullopt /* dtype */,
+                              std::nullopt /* layout */,
+                              std::nullopt /* device */,
+                              std::nullopt /* pin_memory */,
                               LEGACY_CONTIGUOUS_MEMORY_FORMAT)
                         : at::native::zeros_like(
                               *gamma,
-                              c10::nullopt /* dtype */,
-                              c10::nullopt /* layout */,
-                              c10::nullopt /* device */,
-                              c10::nullopt /* pin_memory */,
+                              std::nullopt /* dtype */,
+                              std::nullopt /* layout */,
+                              std::nullopt /* device */,
+                              std::nullopt /* pin_memory */,
                               LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
   if (grad_input_mask[2]) {
     grad_bias = M > 0 ? at::native::empty_like(
                             *beta,
-                            c10::nullopt /* dtype */,
-                            c10::nullopt /* layout */,
-                            c10::nullopt /* device */,
-                            c10::nullopt /* pin_memory */,
+                            std::nullopt /* dtype */,
+                            std::nullopt /* layout */,
+                            std::nullopt /* device */,
+                            std::nullopt /* pin_memory */,
                             LEGACY_CONTIGUOUS_MEMORY_FORMAT)
                       : at::native::zeros_like(
                             *beta,
-                            c10::nullopt /* dtype */,
-                            c10::nullopt /* layout */,
-                            c10::nullopt /* device */,
-                            c10::nullopt /* pin_memory */,
+                            std::nullopt /* dtype */,
+                            std::nullopt /* layout */,
+                            std::nullopt /* device */,
+                            std::nullopt /* pin_memory */,
                             LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
 
@@ -176,6 +177,8 @@ namespace native {
       grad_bias,
       grad_input_mask);
 }
+
+REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
 } // namespace native
 
 } // namespace at

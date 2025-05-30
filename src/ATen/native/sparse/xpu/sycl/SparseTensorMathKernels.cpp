@@ -6,12 +6,15 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
+#include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
+#include <ATen/ops/_sparse_sum.h>
+#include <ATen/ops/_sparse_sum_backward_native.h>
 #include <ATen/ops/_sparse_sum_native.h>
 #include <ATen/ops/add_native.h>
 #include <ATen/ops/addmm_native.h>
@@ -32,6 +35,9 @@
 #include <comm/TensorInfo.h>
 
 namespace at::native::xpu {
+
+using at::xpu::detail::getTensorInfo;
+using at::xpu::detail::TensorInfo;
 
 #define I_INFO(tensor) at::xpu::detail::getTensorInfo<int64_t, uint64_t>(tensor)
 #define V_INFO(tensor) \
@@ -481,6 +487,233 @@ SparseTensor& mul_sparse_kernel(
     return r_.zero_();
   }
   return _mul_sparse_sparse_out(t_, src_, r_);
+}
+
+template <typename scalar_t>
+struct SparseSumBackwardFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t i =
+        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    if (i >= total_threads)
+      return;
+    const int64_t j = input_indices_pos_ti.data[i];
+
+    bool has_match = false;
+    if (grad_indices_ti.data[j] == input_indices_ti.data[i]) {
+      has_match = true;
+    }
+
+    int64_t grad_input_values_stride0 = grad_input_values_ti.strides[0];
+    int64_t out_start = i * grad_input_values_stride0;
+    int64_t out_end = (i + 1) * grad_input_values_stride0;
+    int64_t in_start = j * grad_values_expand_ti.strides[0];
+
+    if (has_match) {
+      for (int64_t out_i = out_start, in_i = in_start; out_i < out_end;
+           out_i++, in_i++) {
+        grad_input_values_ti.data[out_i] = grad_values_expand_ti.data[in_i];
+      }
+    } else {
+      for (int64_t out_i = out_start; out_i < out_end; out_i++) {
+        grad_input_values_ti.data[out_i] = scalar_t(0);
+      }
+    }
+  }
+
+  SparseSumBackwardFunctor(
+      int64_t total_threads,
+      const TensorInfo<int64_t, int64_t> grad_indices_ti,
+      const TensorInfo<int64_t, int64_t> input_indices_ti,
+      const TensorInfo<int64_t, int64_t> input_indices_pos_ti,
+      const TensorInfo<scalar_t, int64_t> grad_values_expand_ti,
+      TensorInfo<scalar_t, int64_t> grad_input_values_ti)
+      : total_threads(total_threads),
+        grad_indices_ti(grad_indices_ti),
+        input_indices_ti(input_indices_ti),
+        input_indices_pos_ti(input_indices_pos_ti),
+        grad_values_expand_ti(grad_values_expand_ti),
+        grad_input_values_ti(grad_input_values_ti) {}
+
+ private:
+  int64_t total_threads;
+  const TensorInfo<int64_t, int64_t> grad_indices_ti;
+  const TensorInfo<int64_t, int64_t> input_indices_ti;
+  const TensorInfo<int64_t, int64_t> input_indices_pos_ti;
+  const TensorInfo<scalar_t, int64_t> grad_values_expand_ti;
+  TensorInfo<scalar_t, int64_t> grad_input_values_ti;
+};
+
+Tensor _sparse_sum_backward_kernel(
+    const Tensor& grad_,
+    const SparseTensor& input_,
+    IntArrayRef dims_to_sum) {
+  TORCH_CHECK(
+      grad_.is_xpu(),
+      "_sparse_sum_backward_xpu: expected 'grad_' to be XPU tensor, but got CPU tensor");
+  TORCH_CHECK(
+      input_.is_xpu(),
+      "_sparse_sum_backward_xpu: expected 'input_' to be XPU tensor, but got CPU tensor");
+
+  // Short circuit if grad is either zero or empty
+  if (((grad_.is_sparse() || at::sparse_csr::is_sparse_compressed(grad_)) &&
+       !grad_._nnz()) ||
+      !grad_.numel()) {
+    return at::zeros_like(input_);
+  }
+
+  auto input = input_.coalesce();
+  const int64_t input_dim = input.dim();
+  auto dims_to_sum_b = dim_list_to_bitset(dims_to_sum, input_dim);
+  auto dims_to_sum_v = dims_to_sum.vec();
+  maybe_wrap_dims(dims_to_sum_v, input_dim);
+
+  Tensor input_indices = input._indices();
+  Tensor input_values = input._values();
+  IntArrayRef input_sizes = input.sizes();
+  const int64_t input_sparse_dim = input.sparse_dim();
+  const int64_t input_dense_dim = input.dense_dim();
+  const int64_t input_nnz = input._nnz();
+
+  int64_t sparse_dims_to_sum_size = 0;
+  auto sparse_dims_to_keep_v = std::vector<int64_t>();
+  auto dense_dims_to_sum_v = std::vector<int64_t>();
+  for (int64_t d = 0; d < input_dim; d++) {
+    if (dims_to_sum_b[d]) {
+      if (d < input_sparse_dim)
+        sparse_dims_to_sum_size++;
+      else
+        dense_dims_to_sum_v.emplace_back(d + 1 - input_sparse_dim);
+    } else {
+      if (d < input_sparse_dim)
+        sparse_dims_to_keep_v.emplace_back(d);
+    }
+  }
+
+  const bool sum_all_sparse_dim = (input_sparse_dim == sparse_dims_to_sum_size);
+  const bool sum_dense_dim = (dense_dims_to_sum_v.size() > 0);
+  const bool sum_sparse_dim = (sparse_dims_to_sum_size > 0);
+
+  if (sum_all_sparse_dim) {
+    TORCH_CHECK(
+        !grad_.is_sparse(),
+        "_sparse_sum_backward_xpu: expected grad Tensor to be dense since all sparse dims are summed");
+    auto grad_input_values = grad_;
+    auto expand_size = input_values.sizes().vec();
+    if (sum_dense_dim) {
+      auto dense_expand_size = std::vector<int64_t>(expand_size);
+      dense_expand_size.erase(dense_expand_size.begin()); // remove nnz dim
+      for (auto d : dense_dims_to_sum_v)
+        grad_input_values =
+            grad_input_values.unsqueeze(d - 1); // -1 since grad has no nnz dim
+      grad_input_values = grad_input_values.expand(dense_expand_size);
+    }
+    grad_input_values = grad_input_values.expand(expand_size)
+                            .clone(at::MemoryFormat::Contiguous);
+    return at::_sparse_coo_tensor_with_dims_and_tensors(
+        input_sparse_dim,
+        input_dense_dim,
+        input_sizes,
+        input_indices.clone(at::MemoryFormat::Contiguous),
+        grad_input_values,
+        input.options().dtype(grad_.dtype())); // convert to grad dtype
+  } else {
+    TORCH_CHECK(
+        grad_.is_sparse(),
+        "_sparse_sum_backward_xpu: expected grad_ Tensor to be sparse, but got dense");
+    auto grad = grad_.coalesce();
+    Tensor grad_indices = grad._indices();
+    Tensor grad_values = grad._values();
+    const int64_t grad_sparse_dim = grad.sparse_dim();
+    const int64_t grad_nnz = grad._nnz();
+
+    Tensor grad_values_expand = grad_values;
+    if (sum_dense_dim) {
+      auto expand_size = input_values.sizes().vec();
+      if (sum_sparse_dim)
+        expand_size[0] = grad_values.size(0); // update nnz
+      for (auto d : dense_dims_to_sum_v)
+        grad_values_expand = grad_values_expand.unsqueeze(d);
+      grad_values_expand = grad_values_expand.expand(expand_size)
+                               .clone(at::MemoryFormat::Contiguous);
+    }
+
+    Tensor grad_input_values;
+    if (!sum_sparse_dim) {
+      grad_input_values = grad_values_expand;
+    } else {
+      grad_input_values = at::empty_like(
+          input_values, grad_values.options(), LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+      AT_ASSERT(grad_input_values.is_xpu());
+
+      // get 1D indices
+      auto grad_sparse_dim_to_keep_v = std::vector<int64_t>(grad_sparse_dim);
+      std::iota(
+          grad_sparse_dim_to_keep_v.begin(),
+          grad_sparse_dim_to_keep_v.end(),
+          0);
+
+      auto grad_indices_1D = flatten_indices_by_dims(
+          grad_indices,
+          grad.sizes(),
+          grad_sparse_dim_to_keep_v); // flatten indices on all sparse_dim
+                                      // of grad, output indices is
+                                      // coalesced and sorted
+      auto input_indices_1D = flatten_indices_by_dims(
+          input_indices, input_sizes, sparse_dims_to_keep_v);
+
+      // store lower_bound of input indices at grad indices
+      Tensor input_indices_pos =
+          at::empty_like(input_indices_1D, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+
+      pstl::lower_bound_tensor<int64_t>(
+          grad_indices_1D.data_ptr<int64_t>(),
+          grad_indices_1D.data_ptr<int64_t>() + grad_nnz,
+          input_indices_1D.data_ptr<int64_t>(),
+          input_indices_1D.data_ptr<int64_t>() + input_nnz,
+          input_indices_pos.data_ptr<int64_t>());
+
+      auto grad_indices_ti = getTensorInfo<int64_t, int64_t>(grad_indices_1D);
+      auto input_indices_ti = getTensorInfo<int64_t, int64_t>(input_indices_1D);
+      auto input_indices_pos_ti =
+          getTensorInfo<int64_t, int64_t>(input_indices_pos);
+
+      AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
+          kHalf, grad_values.scalar_type(), "_sparse_sum_backward_xpu", [&] {
+            auto grad_values_expand_ti =
+                getTensorInfo<scalar_t, int64_t>(grad_values_expand);
+            auto grad_input_values_ti =
+                getTensorInfo<scalar_t, int64_t>(grad_input_values);
+
+            auto kfn = SparseSumBackwardFunctor<scalar_t>(
+                input_nnz,
+                grad_indices_ti,
+                input_indices_ti,
+                input_indices_pos_ti,
+                grad_values_expand_ti,
+                grad_input_values_ti);
+
+            size_t target_global_size = syclMaxWorkItemsPerTile();
+            size_t group_size = std::min(input_nnz, syclMaxWorkGroupSize(kfn));
+            size_t max_work_group_num = target_global_size / group_size;
+            size_t num_groups = (input_nnz + group_size - 1) / group_size;
+            if (num_groups > max_work_group_num)
+              num_groups = max_work_group_num;
+            sycl_kernel_submit(
+                num_groups * group_size,
+                group_size,
+                getCurrentSYCLQueue(),
+                kfn);
+          });
+    }
+
+    return at::_sparse_coo_tensor_with_dims_and_tensors(
+        input_sparse_dim,
+        input_dense_dim,
+        input_sizes,
+        input_indices.clone(at::MemoryFormat::Contiguous),
+        grad_input_values,
+        grad.options());
+  }
 }
 
 } // namespace at::native::xpu

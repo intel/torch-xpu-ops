@@ -13,7 +13,6 @@
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
-#include <comm/XPUGuard.h>
 
 #include <ATen/ops/empty_like.h>
 
@@ -228,13 +227,13 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   }
 
   // Copy between CPU and GPU
-  c10::xpu::OptionalXPUGuard device_guard;
+  c10::OptionalDeviceGuard device_guard;
   enum { _H2D_, _D2H_ } copy_kind;
   if (dst_device.type() == c10::DeviceType::XPU && src_device.is_cpu()) {
-    device_guard.set_device(dst_device);
+    device_guard.reset_device(dst_device);
     copy_kind = _H2D_;
   } else if (dst_device.is_cpu() && src_device.type() == c10::DeviceType::XPU) {
-    device_guard.set_device(src_device);
+    device_guard.reset_device(src_device);
     copy_kind = _D2H_;
   } else {
     TORCH_INTERNAL_ASSERT(false, "unsupported devices in GPU copy_()");
@@ -249,7 +248,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
         q.memcpy(dst, src, nbytes);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(src),
             iter.tensor(1).storage().data_ptr().get_context(),
             at::xpu::getCurrentXPUStream());
@@ -259,7 +258,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         // by CPU tensor factory won't be cached in CPU allocator. When host
         // memory is freed with CPU tensor dtor at the end of train main loop,
         // but the corresponding H2D copy might not have been executed yet.
-        auto stage_mem_dptr = at::xpu::HostAlloc(nbytes);
+        auto stage_mem_dptr = at::getHostAllocator(at::kXPU)->allocate(nbytes);
         void* stage_mem = stage_mem_dptr.get();
         if (!stage_mem) {
           throw std::runtime_error(
@@ -268,7 +267,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
 
         std::memcpy(stage_mem, src, nbytes);
         q.memcpy(dst, stage_mem, nbytes);
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(stage_mem),
             stage_mem_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
@@ -276,7 +275,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
     } else {
       q.memcpy(dst, src, nbytes);
       if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
-        at::xpu::CachingHostAllocator_recordEvent(
+        at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(dst),
             iter.tensor(0).storage().data_ptr().get_context(),
             at::xpu::getCurrentXPUStream());

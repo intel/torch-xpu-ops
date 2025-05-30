@@ -1,0 +1,23 @@
+option(USE_ONEMKL_XPU "Build with ONEMKL XPU support" ON)
+
+if(DEFINED ENV{USE_ONEMKL_XPU})
+  set(USE_ONEMKL_XPU $ENV{USE_ONEMKL_XPU})
+endif()
+
+message(STATUS "USE_ONEMKL_XPU is set to ${USE_ONEMKL_XPU}")
+
+if(NOT USE_ONEMKL_XPU)
+  return()
+endif()
+
+find_package(ONEMKL)
+if(NOT ONEMKL_FOUND)
+  message(FATAL_ERROR "Can NOT find ONEMKL cmake helpers module!")
+endif()
+
+set(TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR ${ONEMKL_INCLUDE_DIR})
+
+set(TORCH_XPU_OPS_ONEMKL_LIBRARIES ${ONEMKL_LIBRARIES})
+
+list(INSERT TORCH_XPU_OPS_ONEMKL_LIBRARIES 1 "-Wl,--start-group")
+list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--end-group")
