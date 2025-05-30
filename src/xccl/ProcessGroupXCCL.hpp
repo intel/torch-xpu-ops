@@ -117,7 +117,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return c10::make_intrusive<Options>();
     }
 
-    std::vector<uint8_t> global_ranks_in_group;
+    std::vector<uint64_t> global_ranks_in_group;
     std::string group_name;
   };
 
@@ -410,6 +410,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
+  uint64_t op_id_{0};
   size_t local_id_;
   std::string logPrefix_;
   std::shared_ptr<ProcessGroupStatus> pgStatus_ =

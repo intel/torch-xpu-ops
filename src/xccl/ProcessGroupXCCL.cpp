@@ -309,7 +309,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   this->setGroupUid(options->group_name);
 
-  FlightRecorderXCCL<c10::Event>::get()->record_pg_ranks(
+  FlightRecorderXCCL::get()->record_pg_ranks(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
   init();
   const std::string OFF = "OFF";
@@ -360,13 +360,12 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
   
-  bool isP2P = isP2POp(opType);
   r->trace_id_ = FlightRecorderXCCL::get()->record(
       local_id_,
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
       seqCollective_,
       seqP2P_,
-      r->getSequencenumber(),
+      op_id_,
       profilingTitle ? profilingTitle : "",
       inputs,
       outputs,
@@ -489,7 +488,6 @@ void ProcessGroupXCCL::groupEnd() {
 
 ProcessGroupXCCL::Options::Options()
     : Backend::Options(XCCL_BACKEND_NAME) {}
-}
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
@@ -584,6 +582,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     if ((coalescing_state_ & CoalColl) == 0) {
       seqCollective_++;
     }
+    op_id_++;
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -632,7 +631,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
         seqP2P_,
-        work->getSequencenumber(),
+        op_id_,
         profilingTitle ? profilingTitle : "",
         inputs,
         outputs,
@@ -719,6 +718,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
   }
 
+  op_id_++;
   auto comm = getXCCLComm(key, device, opType, p2pRank, isSendRecvSelf);
 
   if (coalescing_state_ & CoalActive) {
@@ -755,7 +755,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
         seqP2P_,
-        work->getSequencenumber(),
+        op_id_,
         profilingTitle,
         {tensor},
         {tensor},
@@ -787,7 +787,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
         seqP2P_,
-        work->getSequencenumber(),
+        op_id_,
         profilingTitle,
         {tensor},
         {tensor},
