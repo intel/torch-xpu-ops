@@ -1,8 +1,18 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device = "xpu"
+if torch.cuda.is_available():
+    device = "cuda"
+    activity = ProfilerActivity.CUDA
+    table_key = "cuda_time_total"
+else:
+    device = "xpu"
+    activity = ProfilerActivity.XPU
+    table_key = "xpu_time_total"
+
+
 backward = True
+
 
 shape_list = [
     (1, 32, 128, 32, 32),  # all channel for 1 group
@@ -64,7 +74,7 @@ for shape in shape_list:
                     backward,
                 )
                 with profile(
-                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
+                    activities=[ProfilerActivity.CPU, activity],
                     record_shapes=True,
                 ) as prof:
                     for i in range(20):
@@ -73,4 +83,4 @@ for shape in shape_list:
                         if backward:
                             grad_out = torch.randn_like(output).to(device)
                             (grad_dpcpp,) = torch.autograd.grad(output, input, grad_out)
-                print(prof.key_averages().table(sort_by="xpu_time_total"))
+                print(prof.key_averages().table(sort_by=table_key))
