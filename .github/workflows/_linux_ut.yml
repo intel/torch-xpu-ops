@@ -230,10 +230,10 @@ jobs:
             ( 
               echo "[$(date)] Job ${GITHUB_JOB} waiting for lock..."
               flock -x 200 || exit 1
+              export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_RUN_ID}"
               trap "rm -f /tmp/triton.lock; rm -rf \$TRITON_WORKDIR" EXIT
               echo "[$(date)] Job ${GITHUB_JOB} acquired lock"
-              export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_RUN_ID}"
-              mkdir -p $TRITON_WORKDIR
+              mkdir -p $TRITON_WORKDIR || exit 1
               cd $TRITON_WORKDIR
               export TRITON_BUILD_PARALLEL=0
               pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
