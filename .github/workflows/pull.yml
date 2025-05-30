@@ -263,5 +263,5 @@ jobs:
     with: 
       ut: op_extended,torch_xpu
       runner: Windows_CI
-      files_changed: ${{ needs.preci-conditions-filter.outputs.src_changed }}
+      src_changed: ${{ needs.preci-conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.preci-conditions-filter.outputs.has_label }}
