@@ -230,7 +230,7 @@ jobs:
             ( 
               echo "[$(date)] Job ${GITHUB_JOB} waiting for lock..."
               flock -x 200 || exit 1
-              trap "rm -f /tmp/triton.lock" EXIT
+              trap "rm -f /tmp/triton.lock; rm -rf \$TRITON_WORKDIR" EXIT
               echo "[$(date)] Job ${GITHUB_JOB} acquired lock"
               export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_RUN_ID}"
               mkdir -p $TRITON_WORKDIR
