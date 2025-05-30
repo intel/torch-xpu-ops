@@ -609,6 +609,21 @@ void index_put_kernel(
   }
 }
 
+DimVector valsShape(
+    IntArrayRef self_sizes,
+    int64_t dims_before,
+    int64_t dims_indexed,
+    IntArrayRef replacement_shape) {
+  auto shape = DimVector(self_sizes);
+  int64_t end = dims_before + dims_indexed;
+  shape.erase(shape.begin() + dims_before, shape.begin() + end);
+  shape.insert(
+      shape.begin() + dims_before,
+      replacement_shape.begin(),
+      replacement_shape.end());
+  return shape;
+}
+
 void index_put_deterministic_kernel(
     Tensor& self,
     const c10::List<std::optional<Tensor>>& indices,
@@ -633,30 +648,21 @@ void index_put_deterministic_kernel(
   bool self_contiguous = self.is_contiguous();
   auto self_ = self_contiguous ? self : self.contiguous();
   Tensor linearIndex, src, expandedValue = value;
-  int64_t nElemBefore, strideBefore, sliceSize;
+  int64_t nElemBefore, strideBefore, sliceSize, dims_before, dims_indexed;
   std::vector<int64_t> inversePerm;
   std::tie(
-      linearIndex, src, nElemBefore, strideBefore, sliceSize, inversePerm) =
-      makeLinearIndex(self_, indices, !unsafe);
+      linearIndex,
+      src,
+      nElemBefore,
+      strideBefore,
+      sliceSize,
+      inversePerm,
+      dims_before,
+      dims_indexed) = makeLinearIndex(self_, indices, !unsafe);
+  auto vals_shape =
+      valsShape(src.sizes(), dims_before, dims_indexed, linearIndex.sizes());
   int64_t num_indices = linearIndex.numel();
-
-  if (expandedValue.numel() < num_indices * nElemBefore * sliceSize) {
-    auto expanded_size = at::DimVector(expandedValue.sizes());
-
-    auto size1 = expandedValue.sizes();
-    auto size2 = linearIndex.sizes();
-    if (are_expandable(size1, size2)) {
-      expanded_size = infer_size_dimvector(size1, size2);
-    }
-    if (nElemBefore > 1) {
-      expanded_size.insert(expanded_size.begin(), nElemBefore);
-    }
-    if (sliceSize > 1) {
-      expanded_size.insert(expanded_size.end(), sliceSize);
-    }
-    expandedValue = expandedValue.expand(expanded_size);
-  }
-  expandedValue = expandedValue.contiguous();
+  expandedValue = expandedValue.expand(vals_shape).contiguous();
 
   if (num_indices > 0 && sliceSize > 0) {
     const bool permuted = !src.is_contiguous();
