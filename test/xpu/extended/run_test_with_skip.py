@@ -17,6 +17,14 @@ for skip_case in skip_list[1:]:
     skip_options += skip_option
 
 os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-test_command = ["-k", skip_options, "--timeout", "600", "--junit-xml=./op_extended.xml", "-v", "test_ops_xpu.py"]
+test_command = [
+    "-k",
+    skip_options,
+    "--timeout",
+    "600",
+    "--junit-xml=./op_extended.xml",
+    "-v",
+    "test_ops_xpu.py",
+]
 res = pytest.main(test_command)
 sys.exit(res)

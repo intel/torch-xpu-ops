@@ -1160,21 +1160,71 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         if test_case == "test_dataloader_xpu.py":
-            test_command = ["-k", skip_options, "-n", "1", "--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "-k",
+                skip_options,
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
         else:
-            test_command = ["-k", skip_options, "--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "-k",
+                skip_options,
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
     elif exe_list is not None:
         exe_options = exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
             exe_options += exe_option
         if test_case == "test_dataloader_xpu.py":
-            test_command = ["-k", exe_options, "-n", "1", "--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "-k",
+                exe_options,
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
         else:
-            test_command = ["-k", exe_options, "--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "-k",
+                exe_options,
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
     else:
         if test_case == "test_dataloader_xpu.py":
-            test_command = ["-n", "1", "--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
         else:
-            test_command = ["--timeout", "600", f"--junit-xml=./op_ut_with_skip_{test_case}.xml", "-v", test_case]
+            test_command = [
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
     return pytest.main(test_command)
