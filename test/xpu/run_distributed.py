@@ -11,7 +11,7 @@ fail_test = []
 
 # libfabric WA to avoid hang issue
 os.environ["FI_PROVIDER"] = "tcp"
-os.environ["ZE_AFFINITY_MASK"] = "0,1,2,3"
+# os.environ["ZE_AFFINITY_MASK"] = "0,1,2,3"
 
 
 # run python test
