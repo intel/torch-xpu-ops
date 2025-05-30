@@ -166,7 +166,6 @@ jobs:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
-        if: ${{ env.run_type != 'on-demand' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
             sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
