@@ -98,6 +98,7 @@ jobs:
     runs-on: pvc_e2e
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
     # Don't run on forked repos and draft PRs
     if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
     timeout-minutes: 900
@@ -208,16 +209,28 @@ jobs:
           scenario: accuracy,performance
           env_prepare: true
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Download Reference Artifact
+        id: reference_id
+        run: |
+          set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-weekly-LTS-XPU-E2E" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
         if: ${{ ! cancelled() }}
         run: |
+          set -x -e -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
           source activate e2e_ci
+          export IS_PR=1
           bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
-              Inductor-weekly-LTS-XPU-E2E \
+              ${{ github.workspace }}/reference \
           >> ${GITHUB_STEP_SUMMARY}
           exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           if [ ${exit_label} -ne 0 ];then

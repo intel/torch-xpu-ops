@@ -1,6 +1,6 @@
 # To compare the performance diff
 # Usage:
-#   python perf_comparison.py -xpu /path/to/xpu/performance/result/dir -refer /path/to/reference/dir
+#   python perf_comparison.py --xpu /path/to/xpu/performance/result/dir --refer /path/to/reference/dir
 
 import re
 import os
@@ -10,8 +10,9 @@ import pandas as pd
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-xpu", default=None, help="XPU performance result csv files dir")
-parser.add_argument("-refer", default=None, help="XPU refrerence result csv files dir")
+parser.add_argument("--xpu", default=None, help="XPU performance result csv files dir")
+parser.add_argument("--refer", default=None, help="XPU refrerence result csv files dir")
+parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
 args = parser.parse_args()
 
 
@@ -46,7 +47,7 @@ for xpu_file in xpu_files:
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
-        names = xpu_names + refer_names
+        names = xpu_names if args.pr else xpu_names + refer_names
         names = set(names)
         names = sorted(names)
         for name in names:
@@ -72,18 +73,19 @@ for xpu_file in xpu_files:
             xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), "")
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
-refer_files = find_files("*_xpu_performance.csv", args.refer)
-for refer_file in refer_files:
-    refer_data = pd.read_csv(refer_file)
-    refer_names = [row["name"] for index, row in refer_data.iterrows()]
-    xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
-    if not os.path.isfile(xpu_file):
-        names = set(refer_names)
-        names = sorted(names)
-        for name in names:
-            refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), "")
-            refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
-            output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
+if not args.pr:
+    refer_files = find_files("*_xpu_performance.csv", args.refer)
+    for refer_file in refer_files:
+        refer_data = pd.read_csv(refer_file)
+        refer_names = [row["name"] for index, row in refer_data.iterrows()]
+        xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
+        if not os.path.isfile(xpu_file):
+            names = set(refer_names)
+            names = sorted(names)
+            for name in names:
+                refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), "")
+                refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
+                output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
 
 # summary
 output_data = pd.DataFrame(output_data, columns=output_header)
