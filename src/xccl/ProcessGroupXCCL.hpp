@@ -85,8 +85,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     uint64_t getSequencenumber() const override {
       return seq_;
     }
-    virtual const std::vector<at::Tensor> getInputTensors() = 0;
-    virtual const std::vector<at::Tensor> getOutputTensors() = 0;
 
     std::vector<at::Tensor> result() override {
       return *outputs_;
@@ -123,14 +121,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::string group_name;
   };
 
-  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size, c10::intrusive_ptr<Options> options);
+  ProcessGroupXCCL(
+    const c10::intrusive_ptr<Store>& store,
+    int rank,
+    int size,
+    c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
       int rank,
       int size,
       const std::string& groupName)
-      : ProcessGroupXCCL(store, rank, size, Options::create()) {}
+      : ProcessGroupXCCL(store, rank, size) {}
 
   ~ProcessGroupXCCL() override;
 
