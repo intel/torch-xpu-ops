@@ -19,6 +19,7 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/TraceUtils.hpp>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 namespace c10d {
 
