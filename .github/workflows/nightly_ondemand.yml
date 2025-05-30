@@ -67,7 +67,8 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-Build:
-    if: ${{ ! cancelled() }}
+    if: ${{ github.repository_owner == 'intel' }}
+    secrets: inherit
     name: linux-nightly-ondemand
     permissions:
       issues: write
@@ -95,8 +96,6 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e
     name: linux-nightly-ondemand / e2e_test
-    # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
     env:

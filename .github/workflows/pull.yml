@@ -97,6 +97,7 @@ jobs:
     name: preci-linux
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
     needs: [preci-conditions-filter]
+    secrets: inherit
     permissions:
       issues: write
     uses: ./.github/workflows/_linux_build.yml
