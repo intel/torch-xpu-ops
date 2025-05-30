@@ -3,6 +3,8 @@
 import contextlib
 
 import torch
+import torch.nn.functional as F
+from torch.nn.attention import sdpa_kernel, SDPBackend
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import parametrize, run_tests
 
@@ -51,6 +53,34 @@ with XPUPatchForImport(False):
 
             mha(query=x, key=x, value=x, key_padding_mask=pad_mask)
 
+    def _test_mem_eff_attention_fail_with_batch_size_geq_65536(self):
+        query = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        key = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        value = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        with sdpa_kernel(backends=SDPBackend.EFFICIENT_ATTENTION):
+            out = F.scaled_dot_product_attention(query, key, value)
+        out_cpu = F.scaled_dot_product_attention(query.cpu(), key.cpu(), value.cpu())
+        self.assertEqual(out, out_cpu, atol=1e-3, rtol=1e-4)
+
+    def _test_mem_eff_attention_fail_with_batch_size_geq_65536_error(self):
+        query = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        key = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        value = torch.rand([2**16, 2, 2, 8], device="xpu", dtype=torch.float16)
+        error_str = (
+            r"Efficient attention cannot produce valid seed, "
+            r"logsumexp and offset outputs when the batch size exceeds \(65535\)\."
+        )
+        with self.assertRaisesRegex(RuntimeError, error_str):
+            torch._scaled_dot_product_efficient_attention(
+                query, key, value, attn_bias=None, compute_log_sumexp=True
+            )
+
+    TestSDPAFailureModes.test_mem_eff_attention_fail_with_batch_size_geq_65536 = (
+        _test_mem_eff_attention_fail_with_batch_size_geq_65536
+    )
+    TestSDPAFailureModes.test_mem_eff_attention_fail_with_batch_size_geq_65536_error = (
+        _test_mem_eff_attention_fail_with_batch_size_geq_65536_error
+    )
     TestTransformers.test_mha_native_args = mha_native_args
 
 instantiate_device_type_tests(
