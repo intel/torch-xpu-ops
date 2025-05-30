@@ -71,27 +71,17 @@ jobs:
   preci-ut:
     secrets: inherit
     if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_ut') }}
-    name: preci-linux-ut
+    name: preci-linux
     needs: [preci-linux-build, preci-lint-check]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      disabled_tests: ${{ needs.preci-lint-check.outputs.disabled_tests }}
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut
       runner: linux.idc.xpu
 
-  preci-distributed:
-    secrets: inherit
-    if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_distributed') }}
-    name: preci-linux-distributed
-    needs: [preci-linux-build, preci-lint-check]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: xpu_distributed
-      runner: pytorch-06
-
   preci-e2e-test:
-    name: preci-linux-e2e
+    name: preci-linux / e2e_test
     needs: [preci-linux-build, preci-lint-check]
     runs-on: pvc_e2e
     env:
