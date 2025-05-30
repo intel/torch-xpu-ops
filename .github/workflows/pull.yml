@@ -68,7 +68,7 @@ jobs:
       pytorch: main
       runner: pvc_e2e
 
-  preci-ut:
+  preci-linux-ut:
     secrets: inherit
     if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_ut') }}
     name: preci-linux
@@ -80,7 +80,7 @@ jobs:
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut
       runner: linux.idc.xpu
 
-  preci-e2e-test:
+  preci-linux-e2e:
     name: preci-linux / e2e_test
     needs: [preci-linux-build, preci-lint-check]
     runs-on: pvc_e2e
