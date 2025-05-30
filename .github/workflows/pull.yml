@@ -42,7 +42,13 @@ jobs:
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && cp -r ../torch-xpu-ops third_party/
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT build/xpu/**/*.* build/xpu/*.* third_party/torch-xpu-ops/src/*.* third_party/torch-xpu-ops/src/**/*.* third_party/torch-xpu-ops/src/**/**/*.* third_party/torch-xpu-ops/src/**/**/**/*.*"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
+                                                    build/xpu/**/*.* \
+                                                    build/xpu/*.* \
+                                                    third_party/torch-xpu-ops/src/*.* \
+                                                    third_party/torch-xpu-ops/src/**/*.* \
+                                                    third_party/torch-xpu-ops/src/**/**/*.* \
+                                                    third_party/torch-xpu-ops/src/**/**/**/*.*"
           export CLANG=1
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
       - name: Get PR infos
@@ -51,7 +57,7 @@ jobs:
           set -x -e -o pipefail
           sudo apt update
           sudo apt install -y dos2unix
-          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
+          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} -c 2>&1 |tee pr-info.txt
           dos2unix pr-info.txt
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
