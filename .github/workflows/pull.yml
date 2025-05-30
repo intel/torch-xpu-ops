@@ -49,7 +49,7 @@ jobs:
           set -x -e -o pipefail
           sudo apt update
           sudo apt install -y dos2unix
-          gh --repo intel/torch-xpu-ops pr view 1709 2>&1 |tee pr-info.txt
+          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
           dos2unix pr-info.txt
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
