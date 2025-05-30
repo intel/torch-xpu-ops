@@ -342,7 +342,7 @@ jobs:
 
   distributed_ut_test:
     runs-on: pvc_e2e
-    if: contains(inputs.ut, 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_distribute'))
+    if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
