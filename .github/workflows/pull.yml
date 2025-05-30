@@ -1,6 +1,8 @@
 name: pull
 
 on:
+  issue_comment:                                     
+    types: [created, edited, deleted]
   pull_request:
     types:
       - opened
@@ -29,3 +31,5 @@ jobs:
           set -xe
           echo "${{ github.event.pull_request.body }}"
           echo "${{ github.event.pull_request.comments }}"
+          echo "${{ github.event.issue.pull_request }}"
+          echo "${{ github.event.comment.body }}"
