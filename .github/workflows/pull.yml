@@ -244,8 +244,9 @@ jobs:
 
   check-conditions:
     # Don't run on forked repos and draft PRs
-    if: ${{ github.repository_owner == 'intel' }}
+    if: ${{ github.repository_owner == 'intel' && !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_all') }}
     name: preci-win-conditions-filter
+    needs: [preci-lint-check]
     runs-on: ubuntu-22.04
     outputs:
       files-changed: ${{ steps.check-files.outputs.src_changed }}
