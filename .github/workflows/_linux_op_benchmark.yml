@@ -134,9 +134,10 @@ jobs:
         id: reference_id
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
+          conda install gh --channel conda-forge -y
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
-          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} --name "Inductor-XPU-OP-Benchmark-Data-*"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
           mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
           mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
