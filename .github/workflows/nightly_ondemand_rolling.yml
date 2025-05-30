@@ -68,7 +68,6 @@ concurrency:
 jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
     # Don't run on forked repos
-    secrets: inherit
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling
     permissions:

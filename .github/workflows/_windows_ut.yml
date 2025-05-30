@@ -33,12 +33,12 @@ on:
         type: string
         default: '2025.1'
         description: Python version
-      files-changed:
+      src_changed:
         required: true
         type: string
         default: 'false'
         description: Check if filtered file changed
-      has-label:
+      has_label:
         required: true
         type: string
         default: 'false'
@@ -52,8 +52,8 @@ env:
 jobs:
   Torch-XPU-Windows-UT:
     runs-on: ${{ inputs.runner }}
-    if: ${{ inputs.files-changed == 'true' || inputs.has-label == 'true' }}
-    timeout-minutes: 900
+    if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
+    timeout-minutes: 300
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
