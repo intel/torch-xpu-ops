@@ -59,7 +59,7 @@ jobs:
   preci-linux-build:
     secrets: inherit
     if: ${{ github.event.pull_request.draft == false && !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_all')}}
-    name: preci-linux-build
+    name: preci-linux
     needs: preci-lint-check
     permissions:
       issues: write
