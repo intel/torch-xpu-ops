@@ -99,13 +99,13 @@ jobs:
             TORCH_XPU_OPS_COMMIT=$(cat third_party/xpu.txt)
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
             cd third_party/torch-xpu-ops
-            git checkout $TORCH_XPU_OPS_COMMIT
+            git checkout ${TORCH_XPU_OPS_COMMIT}
           fi
           git show -s
           # Apply extra patches for pytorch
           cd ${{ github.workspace }}/pytorch
           pip install requests
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          python ${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
       - name: Deps Installation
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
@@ -388,13 +388,13 @@ jobs:
             TORCH_XPU_OPS_COMMIT=$(cat third_party/xpu.txt)
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
             cd third_party/torch-xpu-ops
-            git checkout $TORCH_XPU_OPS_COMMIT
+            git checkout ${TORCH_XPU_OPS_COMMIT}
           fi
           git show -s
           # Apply extra patches for pytorch
           cd ${{ github.workspace }}/pytorch
           pip install requests
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          python ${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/apply_torch_pr.py
       - name: Deps Installation
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
