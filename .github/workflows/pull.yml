@@ -25,6 +25,8 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
     runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
     outputs:
       disabled_tests: ${{ steps.pr-info.outputs.disabled_tests }}
     steps:
@@ -57,7 +59,7 @@ jobs:
   preci-linux-build:
     secrets: inherit
     if: ${{ github.event.pull_request.draft == false && !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_all')}}
-    name: preci-linux
+    name: preci-linux-build
     needs: preci-lint-check
     permissions:
       issues: write
@@ -69,7 +71,7 @@ jobs:
   preci-ut:
     secrets: inherit
     if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_ut') }}
-    name: preci-linux
+    name: preci-linux-ut
     needs: [preci-linux-build, preci-lint-check]
     uses: ./.github/workflows/_linux_ut.yml
     with:
@@ -77,19 +79,19 @@ jobs:
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut
       runner: linux.idc.xpu
 
-  preci-ut-distributed:
+  preci-distributed:
     secrets: inherit
     if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_distributed') }}
-    name: preci-linux
+    name: preci-linux-distributed
     needs: [preci-linux-build, preci-lint-check]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
       ut: xpu_distributed
-      runner: linux.idc.xpu
+      runner: pytorch-06
 
-  Inductor-XPU-E2E-CI-Tests:
-    name: preci-linux / e2e_test
+  preci-e2e-test:
+    name: preci-linux-e2e
     needs: [preci-linux-build, preci-lint-check]
     runs-on: pvc_e2e
     env:

@@ -43,7 +43,7 @@ permissions: read-all
 
 jobs:
   ut_test:
-    runs-on: ${{ inputs.runner }} 
+    runs-on: ${{ inputs.runner }}
     if: ${{ inputs.ut != 'xpu_distributed' }}
     timeout-minutes: 900
     env:
@@ -336,7 +336,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
 
   distributed_ut_test:
-    runs-on: pvc_e2e
+    runs-on: ${{ inputs.runner }}
     if: contains(inputs.ut, 'xpu_distributed')
     timeout-minutes: 900
     env:
