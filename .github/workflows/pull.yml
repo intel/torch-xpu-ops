@@ -25,6 +25,8 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
     runs-on: ubuntu-22.04
+    outputs:
+      disabled_tests: ${{ steps.pr-info.outputs.disabled_tests }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -41,11 +43,20 @@ jobs:
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT build/xpu/**/*.* build/xpu/*.* third_party/torch-xpu-ops/src/*.* third_party/torch-xpu-ops/src/**/*.* third_party/torch-xpu-ops/src/**/**/*.* third_party/torch-xpu-ops/src/**/**/**/*.*"
           export CLANG=1
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
+      - name: Get PR infos
+        id: pr-info
+        run: |
+          set -x -e -o pipefail
+          sudo apt update
+          sudo apt install -y dos2unix
+          gh --repo intel/torch-xpu-ops pr view 1709 2>&1 |tee pr-info.txt
+          dos2unix pr-info.txt
+          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
+          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   preci-linux-build:
-    # Don't run on forked repos and draft PRs
     secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ github.event.pull_request.draft == false && !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_all')}}
     name: preci-linux
     needs: preci-lint-check
     permissions:
@@ -56,26 +67,35 @@ jobs:
       runner: pvc_e2e
 
   preci-ut:
-    # Don't run on forked repos and draft PRs
     secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_ut') }}
     name: preci-linux
-    needs: preci-linux-build
+    needs: [preci-linux-build, preci-lint-check]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
+      ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut
+      runner: linux.idc.xpu
+
+  preci-ut-distributed:
+    secrets: inherit
+    if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_distributed') }}
+    name: preci-linux
+    needs: [preci-linux-build, preci-lint-check]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
+      ut: xpu_distributed
       runner: linux.idc.xpu
 
   Inductor-XPU-E2E-CI-Tests:
     name: preci-linux / e2e_test
-    needs: preci-linux-build
+    needs: [preci-linux-build, preci-lint-check]
     runs-on: pvc_e2e
     env:
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1645
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    if: ${{ !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_e2e') }}
     timeout-minutes: 900
     steps:
       - name: Checkout torch-xpu-ops
@@ -221,6 +241,7 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   check-conditions:
+    # Don't run on forked repos and draft PRs
     if: ${{ github.repository_owner == 'intel' }}
     name: preci-win-conditions-filter
     runs-on: ubuntu-22.04
@@ -251,8 +272,7 @@ jobs:
           echo "results=$LABEL_EXISTS" >> $GITHUB_OUTPUT
 
   preci-windows:
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }} 
+    if: ${{ github.event.pull_request.draft == false && !contains(needs.preci-lint-check.outputs.disabled_tests, 'disable_win') }} 
     name: preci-windows
     needs: [preci-lint-check, check-conditions]
     uses: ./.github/workflows/_windows_ut.yml
