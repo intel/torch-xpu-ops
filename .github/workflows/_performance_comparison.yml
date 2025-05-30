@@ -21,6 +21,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Cleanup workspace
         run: |

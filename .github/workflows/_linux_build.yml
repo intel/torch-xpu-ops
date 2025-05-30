@@ -28,15 +28,6 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      update_lkg:
-        required: false
-        type: string
-        default: 'false'
-        description: Whether update LKG torch version to issue #1280
-    outputs:
-      torch_commit_id:
-        description: The commit id of the torch build
-        value: ${{ jobs.build.outputs.TORCH_COMMIT_ID }}
 
 permissions:
   issues: write
@@ -54,9 +45,10 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-    outputs:
-      TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 900
+    defaults:
+      run:
+        shell: bash -e -x -o pipefail {0}
     steps:
       - name: Setup based env
         run: |
@@ -114,12 +106,7 @@ jobs:
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python pytorch/torch/utils/collect_env.py
-      - name: Identify Build version
-        id: build_version
-        run: |
-          echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
       - name: Upload Torch XPU Wheel
-        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
