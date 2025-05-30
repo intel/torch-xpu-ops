@@ -780,6 +780,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
+
+    work->numelIn_ = work->numelOut_ = tensor.numel();
+    setStartedPgStatus(work);
     return work;
   } else {
     FlightRecorderXCCL::get()->record(
@@ -802,9 +805,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         tensor.storage().data_ptr(), stream);
 
     fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-
-    work->numelIn_ = work->numelOut_ = tensor.numel();
-    setStartedPgStatus(work);
 
     return nullptr;
   }
