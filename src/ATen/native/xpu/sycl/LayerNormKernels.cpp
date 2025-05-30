@@ -554,8 +554,8 @@ void launch_vectorized_layer_norm_kernel(
     T_ACC* mean_data,
     T_ACC* rstd_data) {
   using KernelClass = VectorizedLayerNormKernelFunctor<T, T_ACC>;
-  auto wg_size =
-      layer_norm_wg_size_select(syclMaxWorkGroupSize<KernelClass>(), N);
+  auto wg_size = layer_norm_wg_size_select(
+      syclMaxWorkGroupSize<KernelClass>(), N / vec_size);
   KernelClass kfn(
       N,
       eps,
