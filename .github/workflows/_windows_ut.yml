@@ -50,7 +50,7 @@ env:
     USE_XPU: 1
 
 jobs:
-  Torch-XPU-Windows-UT:
+  ut_test:
     runs-on: ${{ inputs.runner }}
     if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
     timeout-minutes: 300
