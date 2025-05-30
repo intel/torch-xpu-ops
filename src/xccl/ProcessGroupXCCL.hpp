@@ -129,7 +129,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       int rank,
       int size,
       const std::string& groupName)
-      : ProcessGroupXCCL(store, rank, size) {}
+      : ProcessGroupXCCL(store, rank, size, Options::create()) {}
 
   ~ProcessGroupXCCL() override;
 
