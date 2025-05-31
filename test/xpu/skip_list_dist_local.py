@@ -72,11 +72,11 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
     "../../../../test/distributed/test_control_collectives.py": None,
-    "../../../../test/distributed/test_device_mesh.py": {
+    "../../../../test/distributed/test_device_mesh.py": (
         # RuntimeError: Process 1 exited with error code 10 and exception:
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_scatter_1d",
-    },
+    ),
     "../../../../test/distributed/test_dynamo_distributed.py": (
         # AssertionError: 'setattr() on Tensor.requires_grad' not found in 'Attempted to call function marked as skipped
         # https://github.com/intel/torch-xpu-ops/issues/1667, 2.8 skipped
@@ -306,7 +306,7 @@ skip_dict = {
         "test_custom_sharder",
     ),
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
-    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": {
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": (
         # RuntimeError: eof (this error originated at tensorpipe/transport/shm/connection_impl.cc:259)
         # https://github.com/intel/torch-xpu-ops/issues/1617, 2.8 skipped
         "test_complete_world_size",
@@ -323,7 +323,7 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1616, 2.8 skipped
         "test_init_from_local_shards",
         "test_init_from_local_shards_and_global_metadata",
-    },
+    ),
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": None,
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
