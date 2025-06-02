@@ -86,8 +86,8 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.15/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
-        # pip uninstall -y pytorch-triton-xpu && pip uninstall -y pytorch-triton-xpu
-        # pip install --no-deps /home/sdp/mengfeil/pytorch_triton_xpu-3.3.1+git664df8ac-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        pip uninstall -y pytorch-triton-xpu && pip uninstall -y pytorch-triton-xpu
+        pip install --no-deps /home/sdp/mengfeil/pytorch_triton_xpu-3.3.1+git664df8ac-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
