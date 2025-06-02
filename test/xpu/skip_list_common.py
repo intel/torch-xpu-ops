@@ -3,19 +3,19 @@ skip_dict = {
         # Skip list of base line
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
-        "float8",
+        # "float8",
         # workarounds for the following tests
         # https://github.com/intel/torch-xpu-ops/issues/1214
         # "test_python_ref__refs_exp_xpu_complex128",
-        "test_python_ref__refs_sigmoid_xpu_complex128",
-        "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
-        "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
-        "test_python_ref_torch_fallback__refs_log2_xpu_complex128",
-        "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
-        "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
-        "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
-        "test_noncontiguous_samples_histogram_xpu_float32",
-        "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex128",
+        # "test_python_ref__refs_sigmoid_xpu_complex128",
+        # "test_python_ref_executor__refs_log2_executor_aten_xpu_complex128",
+        # "test_python_ref_executor__refs_exp_executor_aten_xpu_complex128",
+        # "test_python_ref_torch_fallback__refs_log2_xpu_complex128",
+        # "test_python_ref_torch_fallback__refs_log10_xpu_complex128",
+        # "test_python_ref_torch_fallback__refs_sigmoid_xpu_complex128",
+        # "test_python_ref_executor__refs_log10_executor_aten_xpu_complex128",
+        # "test_noncontiguous_samples_histogram_xpu_float32",
+        # "test_python_ref_executor__refs_sigmoid_executor_aten_xpu_complex128",
         # TODO: Fix the following tests
         "test_out_warning_torch__scaled_mm_xpu",
         # To be removed from this file.
@@ -43,14 +43,14 @@ skip_dict = {
         # Sparse CSR OPs not supported
         # RuntimeError: device type of values (xpu) must be CPU or CUDA or Meta
         # https://github.com/intel/torch-xpu-ops/issues/357
-        "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
+        # "test_compare_cpu_sparse_sampled_addmm_xpu_float32",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_complex64",
         "test_out_requires_grad_error_sparse_sampled_addmm_xpu_float32",
         # OneDNN issues, https://github.com/intel/torch-xpu-ops/issues/253
         # RuntimeError: Long is not supported in oneDNN!
         # RuntimeError: could not create a primitive descriptor for a deconvolution forward propagation primitive
         # RuntimeError: Double and complex datatype matmul is not supported in oneDNN
-        "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
+        # "test_noncontiguous_samples_nn_functional_conv3d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose1d_xpu_int64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_complex64",
         "test_noncontiguous_samples_nn_functional_conv_transpose2d_xpu_float32",
