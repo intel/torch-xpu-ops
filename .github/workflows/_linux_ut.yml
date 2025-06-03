@@ -323,6 +323,8 @@ jobs:
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
@@ -505,6 +507,8 @@ jobs:
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
