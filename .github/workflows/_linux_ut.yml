@@ -341,7 +341,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
 
   distributed_ut_test:
-    runs-on: pvc_e2e
+    runs-on: pytorch-06
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
     env:
