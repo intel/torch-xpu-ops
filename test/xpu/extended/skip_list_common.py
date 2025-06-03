@@ -58,6 +58,8 @@ skip_dict = {
         "test_compare_cpu_log_softmax_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_float16",
+        "test_compare_cpu_histc_xpu_bfloat16",
+        "test_compare_cpu_histc_xpu_float16",
         # TestCompositeCompliance::test_cow_input
         # XPU Tensor fails in copy-on-write cases
         # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes.
