@@ -314,7 +314,7 @@ jobs:
   
   ut_test_results_check:
     needs: ut_test
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
@@ -487,7 +487,30 @@ jobs:
           if [ -f ptrace_scope.bk ]; then
             sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
-      - name: UT Test Results Check
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
+          path: ${{ github.workspace }}/ut_log
+
+  distributed_ut_test_results_check:
+    needs: distributed_ut_test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ut_skip_issue: 1624
+    steps:
+      - name: Set the UT name
+        run: |
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
+          path: ${{ github.workspace }}/ut_log
+      - name: Check UT Results
         shell: bash
         run: |
           repo="${{ github.repository }}"
@@ -504,11 +527,18 @@ jobs:
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
           gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
+          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
+          --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
+          > issues.log
+          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
+          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
+          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
+          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh 'xpu_distributed'
       - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed-checked
           path: ${{ github.workspace }}/ut_log
