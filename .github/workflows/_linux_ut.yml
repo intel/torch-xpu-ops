@@ -23,6 +23,11 @@ on:
         type: string
         default: ''
         description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
+      disabled_tests:
+        required: false
+        type: string
+        default: ''
+        description: List disabled tests, such as disable_ut or disable_distributed
       python:
         required: false
         type: string
@@ -43,9 +48,9 @@ permissions: read-all
 
 jobs:
   ut_test:
-    runs-on: ${{ inputs.runner }} 
-    if: ${{ inputs.ut != 'xpu_distributed' }}
-    timeout-minutes: 900
+    runs-on: ${{ inputs.runner }}
+    if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
+    timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -337,8 +342,8 @@ jobs:
 
   distributed_ut_test:
     runs-on: pytorch-06
-    if: contains(inputs.ut, 'xpu_distributed')
-    timeout-minutes: 900
+    if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
