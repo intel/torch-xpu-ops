@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ATen/ATen.h>
-#include <XPUSymmetricMemoryTypes.hpp>
+#include <xccl/XPUSymmetricMemoryTypes.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/SymmetricMemory.hpp>
 

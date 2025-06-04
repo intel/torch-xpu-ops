@@ -5,7 +5,7 @@
 
 #include <c10/util/error.h>
 
-#include <XPUSymmetricMemoryUtils.hpp>
+#include <xccl/XPUSymmetricMemoryUtils.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/cuda/utils.hpp>
 
