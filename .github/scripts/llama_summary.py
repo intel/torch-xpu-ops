@@ -90,7 +90,7 @@ def write_to_csv(data, section_headers, output_file):
 def main():
     parser = argparse.ArgumentParser(description='obtain the calls of nono aten op')
     parser.add_argument('-i', '--input', required=True, help='input log path')
-    parser.add_argument('-o', '--output', default='output.csv', 
+    parser.add_argument('-o', '--output', default='output.csv',
                        help='output summary file')
 
     args = parser.parse_args()
