@@ -1,5 +1,5 @@
-#include <XPUSymmetricMemory.hpp>
-#include <XPUSymmetricMemoryUtils.hpp>
+#include <xccl/XPUSymmetricMemory.hpp>
+#include <xccl/XPUSymmetricMemoryUtils.hpp>
 
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 // todo: check this point
-#include <ze_api.h>
+#include <level_zero/ze_api.h>
 
 namespace c10d {
 namespace symmetric_memory {
