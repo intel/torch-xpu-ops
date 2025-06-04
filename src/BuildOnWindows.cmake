@@ -23,8 +23,34 @@ macro(setup_common_libraries)
   target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
   target_link_libraries(torch_xpu_ops_aten PUBLIC c10)
 endmacro()
+if(DEBUG_XPU)
+   add_library(
+    torch_xpu_ops
+    STATIC
+    ${ATen_XPU_CPP_SRCS}
+    ${ATen_XPU_MKL_SRCS}
+    ${ATen_XPU_NATIVE_CPP_SRCS}
+    ${ATen_XPU_GEN_SRCS})
+  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycl-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      STATIC
+      SYCL_SOURCES ${sycl_src})
+    target_compile_definitions(${sycl_lib} PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
-if(BUILD_SEPARATE_OPS)
+    target_link_libraries(torch_xpu_ops
+        PUBLIC
+        ${sycl_lib}
+    )
+    target_link_options(torch_xpu_ops PUBLIC
+        "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
+    )
+    list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+elseif(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
