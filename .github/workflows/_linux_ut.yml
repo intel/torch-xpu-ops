@@ -285,6 +285,12 @@ jobs:
           python -u test/profiling/triton_xpu_ops_time.py | \
             tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
 
+          # llama case for calls number test
+          python test/profiling/llama.py | \
+            tee ${{ github.workspace }}/ut_log/profile_test/llama.log
+          python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/profile_test/llama.log -o ${{ github.workspace }}/ut_log/profile_test/llama_summary.csv
+          bash .github/scripts/check_baseline.sh .github/scripts/llama_baseline.csv ${{ github.workspace }}/ut_log/profile_test/llama_summary.csv
+
           # All xpu ut under test/profiler
           cd ../pytorch/test/profiler
           python -m pytest --timeout 600 -vs test_cpp_thread.py | \
