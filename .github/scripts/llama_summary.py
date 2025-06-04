@@ -33,7 +33,7 @@ def extract_non_aten_data(section_content):
     return section_data
 
 def process_log_file(input_file):
-    with open(input_file, 'r') as f:
+    with open(input_file) as f:
         log_content = f.read()
 
     sections = parse_log_sections(log_content)

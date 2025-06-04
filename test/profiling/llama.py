@@ -1,5 +1,5 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
 
@@ -21,9 +21,11 @@ with torch.no_grad():
             "; i:",
             i,
         )
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU]) as prof:
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=1
-            )
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.XPU,
+            ]
+        ) as prof:
+            outputs = model.generate(**inputs, max_new_tokens=1)
         print(prof.key_averages().table(sort_by="xpu_time_total", row_limit=-1))
