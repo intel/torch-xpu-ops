@@ -1,7 +1,7 @@
 #pragma once
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/SymmetricMemory.hpp>
-#include <XPUSymmetricMemoryTypes.hpp>
+#include <xccl/XPUSymmetricMemoryTypes.hpp>
 
 namespace c10d {
 namespace symmetric_memory {
