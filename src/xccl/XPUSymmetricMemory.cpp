@@ -4,7 +4,7 @@
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
 #include <c10/xpu/XPUCachingAllocator.h>
-#include <c10/xpu/XPUGuard.h>
+#include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 
 #include <sys/socket.h>
@@ -35,21 +35,8 @@ AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
     return;
   }
-  c10::xpu::XPUGuard guard(device_idx);
-  C10_XPU_CHECK(xpuDeviceSynchronize());
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
-  // Leak the cuda allocations during static deinitialization
-  auto driver_api = c10::cuda::DriverAPI::get();
-  C10_CUDA_DRIVER_CHECK(
-      driver_api->cuMemUnmap_(reinterpret_cast<CUdeviceptr>(ptr), block_size));
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMemRelease_(handle));
-#elif defined(USE_ROCM)
-  C10_HIP_CHECK(hipMemUnmap(reinterpret_cast<hipDeviceptr_t>(ptr), block_size));
-  C10_HIP_CHECK(hipMemRelease(handle));
-#else
-  TORCH_CHECK(
-      false, "XPUSymmetricMemory requires PYTORCH_C10_DRIVER_API_SUPPORTED");
-#endif
+  c10::DeviceGuard guard(device_idx);
+  c10::xpu::syncStreamsOnDevice();
 }
 
 XPUSymmetricMemory::XPUSymmetricMemory(
@@ -77,10 +64,10 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   signal_pads_dev_ = reinterpret_cast<void**>(
       c10::xpu::XPUCachingAllocator::raw_alloc(arr_size));
 
-  c10::xpu::XPUGuard guard(local_device_idx);
+  c10::DeviceGuard guard(local_device_idx);
   // todo: zl_debug
-  xpu::getCurrentXPUStream().queue().memcpy(buffers_dev_, buffers_.data(), arr_size);
-  xpu::getCurrentXPUStream().queue().memcpy(signal_pads_dev_, signal_pads_.data(), arr_size);
+  at::xpu::getCurrentXPUStream().queue().memcpy(buffers_dev_, buffers_.data(), arr_size);
+  at::xpu::getCurrentXPUStream().queue().memcpy(signal_pads_dev_, signal_pads_.data(), arr_size);
 }
 
 std::vector<void*> XPUSymmetricMemory::get_buffer_ptrs() {
@@ -269,75 +256,32 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
-  c10::xpu::XPUGuard guard(device_idx);
-  device_idx = static_cast<int>(guard.current_device().index());
+  c10::DeviceGuard guard(device_idx);
+  //device_idx = static_cast<int>(guard.current_device().index()); // zl_debug todo
 
-  sycl::queue current_queue = xpu::getCurrentXPUStream().queue()
-  sycl::context sycl_context = queue.get_context()
-  sycl::device sycl_device = queue.get_device()
-  zePhysicalMemCreate(sycl_context, sycl_device)
+  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  sycl::context sycl_context = queue.get_context();
+  sycl::device sycl_device = queue.get_device();
+  zePhysicalMemCreate(sycl_context, sycl_device);
 
-
-
-
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
-  CUmemAllocationProp prop = {};
-  prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  // NOLINTNEXTLINE(bugprone-signed-char-misuse)
-  prop.location.id = device_idx;
-  prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-
-
-  size_t granularity;
-  auto driver_api = c10::cuda::DriverAPI::get();
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMemGetAllocationGranularity_(
-      &granularity, &prop, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
-  block_size = at::round_up(block_size, granularity);
-
-  HandleType handle;
-  C10_CUDA_DRIVER_CHECK(
-      driver_api->cuMemCreate_(&handle, block_size, &prop, 0));
-
-#elif defined(USE_ROCM)
-  hipMemAllocationProp prop = {};
-  prop.type = hipMemAllocationTypePinned;
-  prop.location.type = hipMemLocationTypeDevice;
-  // NOLINTNEXTLINE(bugprone-signed-char-misuse)
-  prop.location.id = device_idx;
-  prop.requestedHandleType = hipMemHandleTypePosixFileDescriptor;
-
-
-  size_t granularity;
-  C10_HIP_CHECK(hipMemGetAllocationGranularity(
-      &granularity, &prop, hipMemAllocationGranularityRecommended));
-  block_size = at::round_up(block_size, granularity);
-
-  HandleType handle;
-  C10_HIP_CHECK(hipMemCreate(reinterpret_cast<hipMemGenericAllocationHandle_t*>(&handle), block_size, &prop, 0));
-
-#else
-  TORCH_CHECK(
-      false, "XPUSymmetricMemory requires PYTORCH_C10_DRIVER_API_SUPPORTED");
-#endif
   void* ptr = nullptr;
-  map_block(&ptr, handle, block_size, device_idx);
-
-  AT_CUDA_CHECK(cudaMemset(ptr, 0, block_size));
-
-  auto alloc_ref =
-      c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
-  auto block = c10::make_intrusive<Block>(
-      std::move(alloc_ref),
-      device_idx,
-      block_size,
-      size,
-      signal_pad_offset,
-      group_name);
-  {
-    std::unique_lock lock(mutex_);
-    ptr_to_block_.emplace(ptr, std::move(block));
-  }
+//  map_block(&ptr, handle, block_size, device_idx);
+//
+//  TORCH_CHECK(cudaMemset(ptr, 0, block_size));
+//
+//  auto alloc_ref =
+//      c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
+//  auto block = c10::make_intrusive<Block>(
+//      std::move(alloc_ref),
+//      device_idx,
+//      block_size,
+//      size,
+//      signal_pad_offset,
+//      group_name);
+//  {
+//    std::unique_lock lock(mutex_);
+//    ptr_to_block_.emplace(ptr, std::move(block));
+//  }
   return ptr;
 }
 
@@ -511,7 +455,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     return it->second;
   }
 
-  c10::cuda::CUDAGuard guard(block->device_idx);
+  c10::DeviceGuard guard(block->device_idx);
 
   // Currently, IpcChannel is using a file based socket for inter-process communication
   IpcChannel ipc_channel;
