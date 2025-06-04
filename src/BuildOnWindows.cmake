@@ -49,7 +49,8 @@ if(DEBUG_XPU)
     target_link_options(torch_xpu_ops PUBLIC
         "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
     )
-    list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+  endforeach()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 elseif(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})

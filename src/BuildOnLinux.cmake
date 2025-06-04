@@ -35,8 +35,8 @@ if(DEBUG_XPU)
     $<TARGET_FILE:${sycl_lib}>
     "-Wl,--no-whole-archive"
     )
-    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
   endforeach()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 elseif(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
