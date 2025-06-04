@@ -6,6 +6,7 @@
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
+#include <ATen/ops/ones_like.h>
 #include <comm/MemoryFormat.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
@@ -1406,6 +1407,7 @@ void group_norm_backward_kernel_impl(
     Tensor c1 = at::empty({0}, X.options().dtype(kAccType));
     Tensor c2 = at::empty({N, G}, X.options().dtype(kAccType));
     Tensor c3 = at::empty({N, G}, X.options().dtype(kAccType));
+    Tensor dummy_gamma = at::empty({1, G, D}, X.options().dtype(kAccType));
     T_ACC* c2_data = c2.mutable_data_ptr<T_ACC>();
     T_ACC* c3_data = c3.mutable_data_ptr<T_ACC>();
 
@@ -1417,9 +1419,7 @@ void group_norm_backward_kernel_impl(
                       .add_owned_const_input(gamma.view({1, G, D}))
                       .build();
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
-    }
-    else {
-      Tensor dummy_gamma= at::ones({1, G, D}, X.options().dtype(kAccType));
+    } else {
       auto iter = TensorIteratorConfig()
                       .check_all_same_dtype(std::is_same<T, T_ACC>::value)
                       .add_output(c1)
@@ -1452,18 +1452,18 @@ void group_norm_backward_kernel_impl(
         c3_data);
 
     // if (gamma.defined()) {
-      std::cout << "gamma.defined()---" << std::endl;
-      auto iter = TensorIteratorConfig()
-                      .check_all_same_dtype(std::is_same<T, T_ACC>::value)
-                      .resize_outputs(false)
-                      .add_owned_output(dX.view({N * G, D, HxW}))
-                      .add_owned_const_input(dY.view({N * G, D, HxW}))
-                      .add_owned_const_input(X.view({N * G, D, HxW}))
-                      .add_owned_const_input(c1.view({N * G, D, 1}))
-                      .add_owned_const_input(c2.view({N * G, 1, 1}))
-                      .add_owned_const_input(c3.view({N * G, 1, 1}))
-                      .build();
-      gpu_kernel(iter, GroupNormBackwardDXFunctor<T, T_ACC>());
+    std::cout << "gamma.defined()---" << std::endl;
+    auto iter = TensorIteratorConfig()
+                    .check_all_same_dtype(std::is_same<T, T_ACC>::value)
+                    .resize_outputs(false)
+                    .add_owned_output(dX.view({N * G, D, HxW}))
+                    .add_owned_const_input(dY.view({N * G, D, HxW}))
+                    .add_owned_const_input(X.view({N * G, D, HxW}))
+                    .add_owned_const_input(c1.view({N * G, D, 1}))
+                    .add_owned_const_input(c2.view({N * G, 1, 1}))
+                    .add_owned_const_input(c3.view({N * G, 1, 1}))
+                    .build();
+    gpu_kernel(iter, GroupNormBackwardDXFunctor<T, T_ACC>());
   }
 
   if (dgamma.defined() || dbeta.defined()) {
