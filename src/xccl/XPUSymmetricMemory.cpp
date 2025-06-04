@@ -35,7 +35,7 @@ AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
     return;
   }
-  c10::DeviceGuard guard(device_idx);
+//  c10::DeviceGuard guard(device_idx); // zl_debug: todo
   c10::xpu::syncStreamsOnDevice();
 }
 
@@ -64,7 +64,7 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   signal_pads_dev_ = reinterpret_cast<void**>(
       c10::xpu::XPUCachingAllocator::raw_alloc(arr_size));
 
-  c10::DeviceGuard guard(local_device_idx);
+//  c10::DeviceGuard guard(local_device_idx); //todo
   // todo: zl_debug
   at::xpu::getCurrentXPUStream().queue().memcpy(buffers_dev_, buffers_.data(), arr_size);
   at::xpu::getCurrentXPUStream().queue().memcpy(signal_pads_dev_, signal_pads_.data(), arr_size);
@@ -256,13 +256,13 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
-  c10::DeviceGuard guard(device_idx);
+//  c10::DeviceGuard guard(device_idx);   // todo
   //device_idx = static_cast<int>(guard.current_device().index()); // zl_debug todo
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   sycl::context sycl_context = queue.get_context();
   sycl::device sycl_device = queue.get_device();
-  zePhysicalMemCreate(sycl_context, sycl_device);
+//  zePhysicalMemCreate(sycl_context, sycl_device);
 
   void* ptr = nullptr;
 //  map_block(&ptr, handle, block_size, device_idx);
@@ -455,7 +455,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     return it->second;
   }
 
-  c10::DeviceGuard guard(block->device_idx);
+//  c10::DeviceGuard guard(block->device_idx); // todo
 
   // Currently, IpcChannel is using a file based socket for inter-process communication
   IpcChannel ipc_channel;
