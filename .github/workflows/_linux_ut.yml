@@ -350,6 +350,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       ut_skip_issue: 1624
+    strategy:
+      matrix:
+        ut_name: ${{ needs.ut_test.*.outputs.ut_name }}
     steps:
       - name: Get matrix UT value
         run: |
@@ -359,8 +362,8 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
-          path: ${{ github.workspace }}/ut_log
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.ut_name }}
+          path: ${{ github.workspace }}/ut_log/${{ matrix.ut_name }}
       - name: Check UT Results
         shell: bash
         run: |
@@ -375,7 +378,7 @@ jobs:
               }
           }
           set -xe
-          cd ${{ github.workspace }}/ut_log/${{ env.UT_NAME }}
+          cd ${{ github.workspace }}/ut_log/${{ matrix.ut_name }}
           gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
           --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
@@ -385,12 +388,12 @@ jobs:
           cat issues_temp.log | awk '{print $1}' >> Known_issue.log
           awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh ${{ env.UT_NAME }}
+          bash ut_result_check.sh ${{ matrix.ut_name }}
       - name: Upload Inductor XPU UT Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}-checked
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.ut_name }}-checked
           path: ${{ github.workspace }}/ut_log
 
   distributed_ut_test:
