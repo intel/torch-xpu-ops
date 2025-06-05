@@ -187,6 +187,8 @@ jobs:
             additional_steps: |
               pip install pytest pytest-timeout
               mkdir -p ut_log/profile_test/issue_reproduce
+    outputs: 
+      ut_name: ${{ steps.set-output.outputs.UT_NAME || 'false' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -339,11 +341,10 @@ jobs:
         if: ${{ matrix.test.condition }}
         run: |
           echo "UT_NAME=${{ matrix.test.name }}" >> $GITHUB_OUTPUT
-    outputs: ${{ steps.set-output.outputs.UT_NAME || 'false' }}
   
   ut_test_results_check:
     needs: ut_test
-    if: needs.ut_test.outputs.UT_NAME != 'false'
+    if: ${{ needs.ut_test.outputs.ut_name != 'false' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -352,7 +353,7 @@ jobs:
     steps:
       - name: Get matrix UT value
         run: |
-          echo "UT_NAME=${{ needs.ut_test.outputs.UT_NAME }}" >> "${GITHUB_ENV}"
+          echo "UT_NAME=${{ needs.ut_test.outputs.ut_name }}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
