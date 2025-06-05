@@ -57,10 +57,8 @@ static std::vector<int64_t> computeLinearStride(const Tensor& tensor) {
   return stride;
 }
 
-static std::tuple<Tensor, int64_t, int64_t, int64_t> computeLinearIndex(
-    const Tensor& src,
-    TensorList indices,
-    bool check_range) {
+static std::tuple<Tensor, int64_t, int64_t, int64_t, int64_t, int64_t>
+computeLinearIndex(const Tensor& src, TensorList indices, bool check_range) {
   auto strides = computeLinearStride(src);
   const auto& device = src.options().device();
 
@@ -70,8 +68,10 @@ static std::tuple<Tensor, int64_t, int64_t, int64_t> computeLinearIndex(
   // are not being index.
   Tensor linearIndex;
   int64_t nElemBefore = 1, nElemAfter = 1, strideBefore = 0;
+  int64_t dims_before = 0, dims_indexed = 0;
   for (const auto i : c10::irange(src.dim())) {
     if (indices[i].defined()) {
+      dims_indexed++;
       // Cast index to the longType matching src's device
       // This allows us to support ie indexing a xpu tensor with a cpu tensor
       Tensor index =
@@ -88,17 +88,30 @@ static std::tuple<Tensor, int64_t, int64_t, int64_t> computeLinearIndex(
     } else if (linearIndex.defined()) {
       nElemAfter *= src.size(i);
     } else {
+      dims_before++;
       nElemBefore *= src.size(i);
     }
   }
 
   return std::make_tuple(
-      std::move(linearIndex), nElemBefore, strideBefore, nElemAfter);
+      std::move(linearIndex),
+      nElemBefore,
+      strideBefore,
+      nElemAfter,
+      dims_before,
+      dims_indexed);
 }
 
-static std::
-    tuple<Tensor, Tensor, int64_t, int64_t, int64_t, std::vector<int64_t>>
-    makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
+static std::tuple<
+    Tensor,
+    Tensor,
+    int64_t,
+    int64_t,
+    int64_t,
+    std::vector<int64_t>,
+    int64_t,
+    int64_t>
+makeLinearIndex(Tensor self, IOptTensorListRef orig, bool check_range) {
   checkIndexTensorTypes(orig, /*allow_int*/ true);
   // first expand BoolTensor (masks) or ByteTensor (masks) into 1 or more
   // LongTensors
@@ -121,10 +134,22 @@ static std::
     std::tie(self, indices, inversePerm) =
         transposeToFrontAndInvPerm(self, indices);
   }
-  auto [linearIndex, nElemBefore, strideBefore, nElemAfter] =
-      computeLinearIndex(self, indices, check_range);
+  auto
+      [linearIndex,
+       nElemBefore,
+       strideBefore,
+       nElemAfter,
+       dims_before,
+       dims_indexed] = computeLinearIndex(self, indices, check_range);
   return std::make_tuple(
-      linearIndex, self, nElemBefore, strideBefore, nElemAfter, inversePerm);
+      linearIndex,
+      self,
+      nElemBefore,
+      strideBefore,
+      nElemAfter,
+      inversePerm,
+      dims_before,
+      dims_indexed);
 }
 
 } // namespace at::native::xpu
