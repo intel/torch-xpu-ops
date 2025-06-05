@@ -188,7 +188,7 @@ jobs:
               pip install pytest pytest-timeout
               mkdir -p ut_log/profile_test/issue_reproduce
     outputs: 
-      ut_name: ${{ steps.set-output.outputs.UT_NAME || 'false' }}
+      ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -344,7 +344,6 @@ jobs:
   
   ut_test_results_check:
     needs: ut_test
-    if: ${{ needs.ut_test.outputs.ut_name != 'false' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -352,7 +351,7 @@ jobs:
       ut_skip_issue: 1624
     strategy:
       matrix:
-        ut_name: ${{ needs.ut_test.*.outputs.ut_name }}
+        ut_name: ${{ contains(needs.ut_test.outputs, 'ut_name') && needs.ut_test.*.outputs.ut_name || ['none'] }}
     steps:
       - name: Get matrix UT value
         run: |
@@ -360,11 +359,13 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
+        if: matrix.ut_name != 'none'
         uses: actions/download-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.ut_name }}
           path: ${{ github.workspace }}/ut_log/${{ matrix.ut_name }}
       - name: Check UT Results
+        if: matrix.ut_name != 'none'
         shell: bash
         run: |
           repo="${{ github.repository }}"
@@ -390,7 +391,7 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ matrix.ut_name }}
       - name: Upload Inductor XPU UT Log
-        if: always()
+        if: matrix.ut_name != 'none'
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.ut_name }}-checked
