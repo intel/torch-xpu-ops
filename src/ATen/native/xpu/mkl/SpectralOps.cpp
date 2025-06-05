@@ -36,17 +36,6 @@ static DimVector _sort_dims(
   return sorted_dims;
 }
 
-DimVector _get_strides(DimVector& sizes) {
-  auto ndim = sizes.size();
-  DimVector strides(ndim);
-
-  strides.back() = 1;
-  for (int i = ndim - 2; i >= 0; --i)
-    strides[i] = strides[i + 1] * sizes[i + 1];
-
-  return strides;
-}
-
 template <precision prec, domain signal_type, typename scalar_t>
 void _mkl_dft(
     const Tensor& input,
@@ -197,7 +186,7 @@ void _fft_with_size(
       onesided);
 }
 
-DimVector _get_permute_dims(Tensor self, IntArrayRef dim) {
+DimVector _get_permute_dims(const Tensor& self, IntArrayRef dim) {
   const auto ndim = self.dim();
 
   // Permute dimensions so batch dimensions come first, and in stride order
@@ -581,24 +570,25 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
-  auto ndim = out.dim();
+  // Get dim permutation based on the assumption that all dimensions are
+  // processed at once
   DimVector dim_permute = impl::_get_permute_dims(self, dim);
+  // Make final out tensor contiguous with assumed size
+  Tensor fout = out.permute(dim_permute).clone(MemoryFormat::Contiguous);
 
-  DimVector permuted_out_sizes(ndim);
-  for (int i = 0; i < ndim; ++i)
-    permuted_out_sizes[i] = out.size(dim_permute[i]);
+  // Prepare to restore the original out dimension order
+  auto ndim = out.dim();
+  DimVector dim_restore(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    dim_restore[dim_permute[i]] = i;
+  }
 
-  DimVector permuted_out_strides = impl::_get_strides(permuted_out_sizes);
+  // Restore the original out shape and align the final out strides with CPU
+  // implementation
+  auto out_strides = fout.permute(dim_restore).strides();
+  fout.as_strided_(out_sizes, out_strides, out.storage_offset());
 
-  // Get final out strides
-  DimVector out_strides(ndim);
-  for (int i = 0; i < ndim; ++i)
-    out_strides[dim_permute[i]] = permuted_out_strides[i];
-
-  out = out.permute(dim_permute).contiguous();
-  out.as_strided_(out_sizes, out_strides, out.storage_offset());
-
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  return impl::_fft_apply_normalization(fout, normalization, input_sizes, dim);
 }
 
 Tensor& _fft_r2c_mkl_out(
