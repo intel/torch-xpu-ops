@@ -28,11 +28,13 @@ struct HermitianSymmetryOffsetCalculator {
     TORCH_INTERNAL_ASSERT(sizes.size() <= XPU_MAX_TENSORINFO_DIMS);
     dims = sizes.size();
 
-    for (dim_type i = 0; i < XPU_MAX_TENSORINFO_DIMS; ++i) {
-      if (i < dims) {
+    {
+      dim_type i;
+      for (i = 0; i < dims; ++i) {
         sizes_[i] = at::detail::IntDivider<index_t>(sizes[i]);
         strides_[i] = strides[i] / element_size;
-      } else {
+      }
+      for (; i < XPU_MAX_TENSORINFO_DIMS; ++i) {
         sizes_[i] = at::detail::IntDivider<index_t>(1);
         strides_[i] = 0;
       }
