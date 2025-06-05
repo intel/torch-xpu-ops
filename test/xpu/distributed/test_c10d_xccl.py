@@ -550,6 +550,23 @@ class CommTest(MultiProcessTestCase):
                     tensor.view(torch.float32),
                 )
 
+    # Ensure xccl always xpu default distributed backend
+    @requires_xccl()
+    def test_xccl_priority(self):
+        dist.Backend.register_backend(
+            "fake",
+            lambda store, rank, size, timeout: dist.ProcessGroup(rank, size),
+            devices=["xpu"],
+        )
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        a = torch.randn(2, device="xpu")
+        dist.all_reduce(a)
+
 
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device
