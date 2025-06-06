@@ -186,17 +186,8 @@ void _fft_with_size(
       onesided);
 }
 
-// Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
-Tensor& _exec_fft(
-    Tensor& out,
-    Tensor self,
-    IntArrayRef out_sizes,
-    IntArrayRef dim,
-    bool onesided,
-    bool forward) {
+DimVector _get_permute_dims(const Tensor& self, IntArrayRef dim) {
   const auto ndim = self.dim();
-  const int64_t signal_ndim = dim.size();
-  const auto batch_dims = ndim - signal_ndim;
 
   // Permute dimensions so batch dimensions come first, and in stride order
   // This maximizes data locality when collapsing to a single batch dimension
@@ -219,6 +210,24 @@ Tensor& _exec_fft(
   });
   std::copy(dim.cbegin(), dim.cend(), batch_end);
 
+  return dim_permute;
+}
+
+// Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
+Tensor& _exec_fft(
+    Tensor& out,
+    Tensor self,
+    IntArrayRef out_sizes,
+    IntArrayRef dim,
+    bool onesided,
+    bool forward) {
+  const auto ndim = self.dim();
+  const int64_t signal_ndim = dim.size();
+  const auto batch_dims = ndim - signal_ndim;
+
+  // Permute dimensions so batch dimensions come first, and in stride order
+  // This maximizes data locality when collapsing to a single batch dimension
+  DimVector dim_permute = _get_permute_dims(self, dim);
   auto input = self.permute(dim_permute);
 
   // Collapse batch dimensions into a single dimension
@@ -561,7 +570,25 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  // Get dim permutation based on the assumption that all dimensions are
+  // processed at once
+  DimVector dim_permute = impl::_get_permute_dims(self, dim);
+  // Make final out tensor contiguous with assumed size
+  Tensor fout = out.permute(dim_permute).clone(MemoryFormat::Contiguous);
+
+  // Prepare to restore the original out dimension order
+  auto ndim = out.dim();
+  DimVector dim_restore(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    dim_restore[dim_permute[i]] = i;
+  }
+
+  // Restore the original out shape and align the final out strides with CPU
+  // implementation
+  auto out_strides = fout.permute(dim_restore).strides();
+  fout.as_strided_(out_sizes, out_strides, out.storage_offset());
+
+  return impl::_fft_apply_normalization(fout, normalization, input_sizes, dim);
 }
 
 Tensor& _fft_r2c_mkl_out(
