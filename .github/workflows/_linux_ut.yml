@@ -378,7 +378,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}
-          path: ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
+          path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         if: ${{ matrix.test.condition }}
         shell: bash
