@@ -81,7 +81,6 @@ jobs:
       - name: Install Pytorch XPU
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
@@ -96,7 +95,6 @@ jobs:
       - name: Torch Config
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -108,7 +106,6 @@ jobs:
       - name: Run Torch XPU Op Benchmark
         if: ${{ inputs.driver == 'rolling' }} 
         run: |
-          source .github/scripts/env.sh ${{ inputs.pytorch }}
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/op_benchmark
           cd test/microbench
