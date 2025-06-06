@@ -81,7 +81,7 @@ jobs:
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pvc_rolling
+    runs-on: pytorch-13
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
