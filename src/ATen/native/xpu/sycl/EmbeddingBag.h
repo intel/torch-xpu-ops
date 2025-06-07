@@ -21,7 +21,9 @@ template <
     int vec_size,
     typename vec_t,
     typename vec_acc_t,
-    typename vec_idx_t>
+    typename vec_idx_t,
+    bool per_sample_weights_defined,
+    bool padding_idx_defined>
 struct EmbeddingBagKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto desc = cfg_.get_item_desc(item);
@@ -53,46 +55,55 @@ struct EmbeddingBagKernelFunctor {
           value_max[i] = at::numeric_limits<accscalar_t>::lower_bound();
           index_max[i] = -1;
         }
+        index_t index_off, vec_idx, i_off;
+        vec_t other;
+        auto handle_non_padding = [&]() {
+          i_off = vec_idx * vec_len_ + desc.glb_problem;
+          other = w_vec_[i_off];
+
+          if constexpr (mode == MODE_SUM) {
+#pragma unroll
+            for (int i = 0; i < vec_size; i++) {
+              if constexpr (per_sample_weights_defined) {
+                other[i] *= per_sample_weights_[index_off];
+              }
+              value[i] += other[i];
+            }
+          } else if constexpr (mode == MODE_MEAN) {
+#pragma unroll
+            for (int i = 0; i < vec_size; i++) {
+              value[i] += other[i];
+            }
+          } else if constexpr (mode == MODE_MAX) {
+#pragma unroll
+            for (int i = 0; i < vec_size; i++) {
+              if (other[i] > value_max[i]) {
+                value_max[i] = other[i];
+                if (max_index_) {
+                  index_max[i] = vec_idx;
+                }
+              }
+            }
+          }
+        };
 
         for (index_t off = start; off < end; off++) {
-          index_t index_off = off;
-          index_t vec_idx = index_[index_off];
-          SYCL_KERNEL_ASSERT(vec_idx < num_row_);
+          index_off = off;
+          vec_idx = index_[index_off];
+          // SYCL_KERNEL_ASSERT(vec_idx < num_row_);
 
           if (walk_on_bag && desc.glb_problem == 0) {
             offset2bag_[index_off] = off_off;
           }
 
-          if (padding_idx_ != vec_idx) {
-            index_t i_off = vec_idx * vec_len_ + desc.glb_problem;
-            vec_t other = w_vec_[i_off];
-
-            if constexpr (mode == MODE_SUM) {
-#pragma unroll
-              for (int i = 0; i < vec_size; i++) {
-                if (per_sample_weights_) {
-                  other[i] *= per_sample_weights_[index_off];
-                }
-                value[i] += other[i];
-              }
-            } else if constexpr (mode == MODE_MEAN) {
-#pragma unroll
-              for (int i = 0; i < vec_size; i++) {
-                value[i] += other[i];
-              }
-            } else if constexpr (mode == MODE_MAX) {
-#pragma unroll
-              for (int i = 0; i < vec_size; i++) {
-                if (other[i] > value_max[i]) {
-                  value_max[i] = other[i];
-                  if (max_index_) {
-                    index_max[i] = vec_idx;
-                  }
-                }
-              }
+          if constexpr (padding_idx_defined) {
+            if (padding_idx_ != vec_idx) {
+              handle_non_padding();
+            } else {
+              padding_cnt++;
             }
           } else {
-            padding_cnt++;
+            handle_non_padding();
           }
         }
 
