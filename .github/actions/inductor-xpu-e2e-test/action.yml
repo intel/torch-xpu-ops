@@ -135,7 +135,7 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{print $1 - 1":"NR - 1}'))
+                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{if($1==0){print $1":"NR - 1}else{print $1 - 1":"NR - 1}}'))
                   for xpu_id in ${xpu_list[*]}
                   do
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
