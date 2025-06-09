@@ -313,48 +313,6 @@ void* XPUSymmetricMemoryAllocator::alloc(
   return ptr;
 }
 
-void* XPUSymmetricMemoryAllocator::alloc(
-    size_t size,
-    int device_idx,
-    const std::optional<std::string>& group_name) {
-
-  size_t signal_pad_offset = at::round_up(size, 16UL);
-  size_t block_size = signal_pad_offset + signal_pad_size;
-
-  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  sycl::context sycl_dev = current_queue.get_context();
-  sycl::device sycl_ctx = current_queue.get_device();
-  ze_context_handle_t ze_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-  ze_device_handle_t ze_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
-
-  // 获取 granularity
-  ze_physical_mem_desc_t phys_desc = {
-      ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr,
-      ZE_PHYSICAL_MEM_DESC_FLAG_BIAS_UNCACHED, block_size, 0};
-
-  // 创建物理内存句柄
-  ze_physical_mem_handle_t handle = nullptr;
-  ZE_CHECK(zePhysicalMemCreate(ze_ctx, ze_dev, &phys_desc, &handle));
-
-  // 分配虚拟地址空间（只映射，不物理分配）
-  void* ptr = nullptr;
-  map_block(&ptr, handle, block_size, device_idx);
-
-  // 初始化（memset）
-  memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
-
-  // 构造 Block 和 AllocationRef（假设这些结构未变）
-  auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
-  auto block = c10::make_intrusive<Block>(
-      std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
-
-  {
-    std::unique_lock lock(mutex_);
-    ptr_to_block_.emplace(ptr, std::move(block));
-  }
-  return ptr;
-}
-
 void XPUSymmetricMemoryAllocator::free(void* ptr) {
   std::unique_lock lock(mutex_);
   ptr_to_block_.erase(ptr);
