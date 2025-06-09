@@ -72,3 +72,10 @@ jobs:
       - name: Prepare Conda ENV
         run: |
           printenv
+          echo "DEBUG=mengfeil" >> "$GITHUB_ENV"
+      - name: Prepare Conda ENV
+        run: |
+          printenv
+          echo "printenv" > a.sh
+          chmod +x a.sh
+          ./a.sh
