@@ -1407,7 +1407,8 @@ void group_norm_backward_kernel_impl(
     Tensor c1 = at::empty({0}, X.options().dtype(kAccType));
     Tensor c2 = at::empty({N, G}, X.options().dtype(kAccType));
     Tensor c3 = at::empty({N, G}, X.options().dtype(kAccType));
-    Tensor dummy_gamma = at::empty({1, G, D}, X.options().dtype(kAccType));
+    Tensor dummy_gamma = at::ones_like(
+        gamma, X.options().dtype(kAccType), at::MemoryFormat::Preserve);
     T_ACC* c2_data = c2.mutable_data_ptr<T_ACC>();
     T_ACC* c3_data = c3.mutable_data_ptr<T_ACC>();
 
@@ -1429,7 +1430,7 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
     }
 
-    std::cout << "ComputeBackwardFusedParamsFunctor---" << std::endl;
+    // std::cout << "ComputeBackwardFusedParamsFunctor---" << std::endl;
     wg_size = (C / G) < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
@@ -1451,8 +1452,7 @@ void group_norm_backward_kernel_impl(
         c2_data,
         c3_data);
 
-    // if (gamma.defined()) {
-    std::cout << "gamma.defined()---" << std::endl;
+    // std::cout << "gamma.defined()---" << std::endl;
     auto iter = TensorIteratorConfig()
                     .check_all_same_dtype(std::is_same<T, T_ACC>::value)
                     .resize_outputs(false)
@@ -1469,7 +1469,7 @@ void group_norm_backward_kernel_impl(
   if (dgamma.defined() || dbeta.defined()) {
     T* dgamma_data = dgamma.defined() ? dgamma.mutable_data_ptr<T>() : nullptr;
     T* dbeta_data = dbeta.defined() ? dbeta.mutable_data_ptr<T>() : nullptr;
-    std::cout << "dgamma.defined() || dbeta.defined()---" << std::endl;
+    // std::cout << "dgamma.defined() || dbeta.defined()---" << std::endl;
     if (N <= 128) {
       // For small batch size, do colwise reduce directly.
       auto caller = GammaBetaBackwardPlainFunctor<T>(
