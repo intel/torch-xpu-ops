@@ -22,9 +22,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
     steps:
-      - name: Cleanup workspace
+      - name: Cleanup Workspace
         run: |
-          rm -rf ./target ./baseline
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Setup python
         uses: actions/setup-python@v5
         with:

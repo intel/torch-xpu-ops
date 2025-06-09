@@ -60,6 +60,11 @@ jobs:
       HF_HUB_ETAG_TIMEOUT: 120
       HF_HUB_DOWNLOAD_TIMEOUT: 120
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:

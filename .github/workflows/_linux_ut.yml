@@ -57,6 +57,11 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -267,6 +272,11 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -299,7 +309,6 @@ jobs:
           unset ZE_AFFINITY_MASK
           cd test/regressions
           timeout 8000 pytest --timeout 600 -v test_operation_on_device_1.py
-
   ut_test_results_check:
     needs: [ut_test, ut_test_dev1]
     runs-on: ubuntu-22.04
@@ -308,6 +317,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ut_skip_issue: 1624
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -367,6 +381,11 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -425,7 +444,6 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log
-
   distributed_ut_test_results_check:
     needs: distributed_ut_test
     runs-on: ubuntu-22.04
@@ -434,6 +452,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ut_skip_issue: 1624
     steps:
+      - name: Cleanup Workspace
+        run: |
+          cd ..
+          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
+          mkdir -p ${{ github.workspace }}
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
