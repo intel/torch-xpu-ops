@@ -52,15 +52,6 @@ runs:
       run: |
         source activate e2e_ci
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip uninstall torchaudio torchvision -y
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py install
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py install
-          fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
@@ -81,12 +72,6 @@ runs:
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip uninstall torchvision -y
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py install
-          fi
           # install timm without dependencies
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
           # install timm dependencies without torch and torchvision

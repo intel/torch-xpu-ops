@@ -137,33 +137,24 @@ jobs:
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Conda ENV
+      - name: Download Pytorch wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+      - name: Prepare Test Env
         run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
-          source activate e2e_ci
-          pip install pandas scipy psutil
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
-          # apply PRs for stock pytorch
-          pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+          set -xe -o pipefail
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_VERSION="main"
+          cd ../
+          chmod +x ./torch-xpu-ops/.github/scripts/setup_test_env.sh
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+                --CONDA_ENV="e2e_ci" \
+                --PYTHON_VERSION="${{ inputs.python }}" \
+                --PYTORCH_REPO="${PYTORCH_REPO}" \
+                --PYTORCH_VERSION="${PYTORCH_VERSION}"
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -196,24 +187,10 @@ jobs:
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
