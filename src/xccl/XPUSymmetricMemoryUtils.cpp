@@ -5,6 +5,7 @@
 
 #include <c10/util/error.h>
 
+#include <c10/xpu/XPUCachingAllocator.h>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <level_zero/ze_api.h>
@@ -197,7 +198,7 @@ void map_block(
     size_t size,
     int device_idx) {
    sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-   sycl::device sycl_ctx = current_queue.get_device();
+   sycl::context sycl_ctx = current_queue.get_context();
    ze_context_handle_t ze_context =
     sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
 
