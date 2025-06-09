@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sycl/sycl.hpp>
 #include <ATen/ATen.h>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
@@ -115,6 +116,7 @@ class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       void* ptr,
       const std::optional<std::string>& group_name) override;
   bool has_multicast_support(int device_idx) override;
+  void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr);
 
  private:
   c10::intrusive_ptr<Block> find_block(void* ptr);
