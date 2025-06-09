@@ -503,7 +503,7 @@ Tensor _fft_r2c_mkl(
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
 
-  auto working_tensor = self.clone(MemoryFormat::Contiguous);
+  auto working_tensor = self.contiguous();
 
   // First do the R2C transform on the last dimension
   impl::_exec_fft(
@@ -518,14 +518,7 @@ Tensor _fft_r2c_mkl(
   sorted_dims.resize(sorted_dims.size() - 1);
 
   while (!sorted_dims.empty()) {
-    if (working_tensor.is_same(self)) {
-      working_tensor = std::move(out);
-      out = at::empty(
-          out_sizes,
-          self.options().dtype(c10::toComplexType(self.scalar_type())));
-    } else {
-      std::swap(out, working_tensor);
-    }
+    std::swap(out, working_tensor);
 
     const auto max_dims =
         std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
