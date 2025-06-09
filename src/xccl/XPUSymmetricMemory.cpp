@@ -366,114 +366,50 @@ static bool check_group_multicast_support(
   }
 }
 
-static void init_multicast_for_block(
-    HandleType& mc_handle,
-    void*& mc_addr,
-    const c10::intrusive_ptr<Block>& block,
-    IpcChannel& ipc_channel,
-    const std::vector<int>& pids,
-    const c10::intrusive_ptr<c10d::Store>& store,
-    int rank,
-    int world_size) {
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED) && \
-    defined(CUDART_SUPPORTS_MULTICAST)
-  auto driver_api = c10::cuda::DriverAPI::get();
-  if (rank == 0) {
-    CUmulticastObjectProp mc_prop{};
-    mc_prop.numDevices = world_size;
-    mc_prop.handleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-    mc_prop.size = block->block_size;
-
-    // create a multicast object, which acts as a handle that allows multiple
-    // devices or processes to access the same memory allocation coherently.
-    auto err = driver_api->cuMulticastCreate_(&mc_handle, &mc_prop);
-    if (err != CUDA_SUCCESS) {
-      const char* err_str;
-      CUresult get_error_str_err = driver_api->cuGetErrorString_(err, &err_str);
-      if (get_error_str_err != CUDA_SUCCESS) {
-        err_str = "unknown cuda driver error";
-      }
-      LOG(WARNING)
-          << "SymmetricMemory: cuMulticastCreate failed with: \"" << err_str
-          << "\". Gracefully skipping multicast initialization. "
-          << "However, this is unexpected. Please report the issue on GitHub.";
-      // Allow peers gracefully skip multicast initialization by sending -1
-      ipc_channel.broadcast_fds(rank, 0, pids, -1);
-      return;
-    }
-
-    int mc_fd;
-    // using the CUDA Driver API to export a multicast object into a POSIX file descriptor.
-    C10_CUDA_DRIVER_CHECK(driver_api->cuMemExportToShareableHandle_(
-        &mc_fd, mc_handle, CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
-    ipc_channel.broadcast_fds(rank, 0, pids, mc_fd);
-    // Ref count is incremented as soon as SCM_RIGHTS send happens
-    close(mc_fd);
-  } else {
-    int mc_fd = ipc_channel.broadcast_fds(rank, 0, pids, -1);
-    if (mc_fd == -1) {
-      return;
-    }
-    // Convert back to a handle from the broadcasted POSIX file descriptor.
-    C10_CUDA_DRIVER_CHECK(driver_api->cuMemImportFromShareableHandle_(
-        &mc_handle,
-        (void*)(uintptr_t)mc_fd,
-        CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
-    close(mc_fd);
-  }
-
-  // All rank adds their physical allocation to the multicast object
-  C10_CUDA_DRIVER_CHECK(
-      driver_api->cuMulticastAddDevice_(mc_handle, block->device_idx));
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMulticastBindMem_(
-      mc_handle, 0, block->alloc_ref->handle, 0, block->block_size, 0));
-
-  map_block(&mc_addr, mc_handle, block->block_size, block->device_idx);
-  storeExchange.barrier(store, rank, world_size);
-#endif
-}
-
-void XPUSymmetricMemoryAllocator::exchange_peer_ipc_mem(sycl::queue& queue, void* ptr)
-    {
-        // Step 1: Get base address of the pointer
-        sycl::context ctx = queue.get_context();
-        auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-
-        void *base_addr;
-        size_t base_size;
-        zeCheck(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
-
-        // Step 2: Get IPC mem handle from base address
-        alignas(64) exchange_contents send_buf;
-        alignas(64) exchange_contents recv_buf[world];
-
-        // fill in the exchange info
-        zeCheck(zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle));
-        send_buf.offset = (char*)ptr - (char*)base_addr;
-        send_buf.pid = getpid();
-
-        // Step 3: Exchange the handles and offsets
-        memset(recv_buf, 0, sizeof(recv_buf));
-        // Overkill if we don't really needs all peer's handles
-        un_allgather(&send_buf, recv_buf, rank, world);
-
-        for (uint32_t i = 0; i < world; i++)
-        {
-            // Step 4: Prepare pid file descriptor of next process
-            auto* peer = recv_buf + i;
-            // Step 6: Open IPC handle of remote peer
-            auto l0_device
-                = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
-            void* peer_base;
-
-            zeCheck(zeMemOpenIpcHandle(
-                    l0_ctx, l0_device, peer->ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base));
-            buffers[i] = (char*)peer_base + peer->offset;
-            sync_buffer[i] = (char*)peer_base + peer->offset + data_size_per_buffer * sizeof(data_type);
-            offsets[i] = peer->offset;
-            ipc_handle[i] = send_buf.ipc_handle;
-        }
-    }
+//void XPUSymmetricMemoryAllocator::exchange_peer_ipc_mem(sycl::queue& queue, void* ptr)
+//    {
+//        // Step 1: Get base address of the pointer
+//        sycl::context ctx = queue.get_context();
+//        auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+//
+//        void *base_addr;
+//        size_t base_size;
+//        ze_result_t status = zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size);
+//        TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemGetAddressRange failed");
+//
+//        // Step 2: Get IPC mem handle from base address
+//        alignas(64) exchange_contents send_buf;
+//        alignas(64) exchange_contents recv_buf[world];
+//
+//        // fill in the exchange info
+//        status = zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle);
+//        TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
+//        send_buf.offset = (char*)ptr - (char*)base_addr;
+//        send_buf.pid = getpid();
+//
+//        // Step 3: Exchange the handles and offsets
+//        memset(recv_buf, 0, sizeof(recv_buf));
+//        // Overkill if we don't really needs all peer's handles
+//        un_allgather(&send_buf, recv_buf, rank, world);
+//
+//        for (uint32_t i = 0; i < world; i++)
+//        {
+//            // Step 4: Prepare pid file descriptor of next process
+//            auto* peer = recv_buf + i;
+//            // Step 6: Open IPC handle of remote peer
+//            auto l0_device
+//                = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
+//            void* peer_base;
+//
+//            status = zeMemOpenIpcHandle(
+//                    l0_ctx, l0_device, peer->ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base);
+//            TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemOpenIpcHandle failed");
+//            buffers[i] = (char*)peer_base + peer->offset;
+//            sync_buffer[i] = (char*)peer_base + peer->offset + data_size_per_buffer * sizeof(data_type);
+//            offsets[i] = peer->offset;
+//            ipc_handle[i] = send_buf.ipc_handle;
+//        }
+//    }
 
 c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* ptr,
@@ -516,28 +452,13 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   int world_size = group_info.world_size;
   int block_fd;
 
-// todo: get fd and handle
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
-  auto driver_api = c10::cuda::DriverAPI::get();
-  // using the CUDA Driver API to export a GPU memory block as a
-  // POSIX file descriptor (FD), so it can be shared across processes via IPC.
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMemExportToShareableHandle_(
-      &block_fd,
-      block->alloc_ref->handle,
-      CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR,
-      0));
+  // Step 6: Open IPC handle of remote peer
+  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  sycl::context ctx = current_queue.get_context();
+  auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
 
-   ZE_CALL(zeMemOpenIpcHandle, (remote_context, device, block->alloc_ref->handle,, {}, &ptr))
-
-#endif
-    // Step 6: Open IPC handle of remote peer
-    sycl::context ctx = queue.get_context();
-    auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-    auto l0_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
-
-    ze_result_t result = zeMemGetIpcHandle(l0_ctx, block->ptr, &ipc_handle);
-
-   TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
+  ze_result_t result = zeMemGetIpcHandle(l0_ctx, block->ptr, &ipc_handle);
+  TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
 
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
@@ -586,11 +507,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   HandleType mc_handle{};
   void* mc_addr = nullptr;
   bool group_has_multicast_support = check_group_multicast_support(reqs);
-  if (!allow_overlapping_devices() && group_has_multicast_support) {
-    init_multicast_for_block(
-        mc_handle, mc_addr, block, ipc_channel, pids, store, rank, world_size);
-  }
-
+  //todo: not support multicast now
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs;
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {
