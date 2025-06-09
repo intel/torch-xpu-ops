@@ -499,7 +499,6 @@ Tensor _fft_r2c_mkl(
 
   IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
 
-  auto sorted_dims = impl::_sort_dims(self, dim, /*exclude_last=*/true);
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
 
@@ -515,9 +514,11 @@ Tensor _fft_r2c_mkl(
         self.options().dtype(c10::toComplexType(self.scalar_type())));
   }
 
-  sorted_dims.resize(sorted_dims.size() - 1);
+  DimVector sorted_dims(dim.begin(), dim.end() - 1);
 
   while (!sorted_dims.empty()) {
+    sorted_dims = impl::_sort_dims(self, sorted_dims);
+
     std::swap(out, working_tensor);
 
     const auto max_dims =
@@ -532,12 +533,6 @@ Tensor _fft_r2c_mkl(
         onesided,
         /*forward=*/true);
     sorted_dims.resize(sorted_dims.size() - max_dims);
-
-    if (sorted_dims.empty()) {
-      break;
-    }
-
-    sorted_dims = impl::_sort_dims(self, sorted_dims);
   }
 
   // Only need to normalize the onesided slice since data in the other half is
