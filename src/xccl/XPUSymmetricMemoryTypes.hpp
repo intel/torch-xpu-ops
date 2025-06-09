@@ -3,6 +3,6 @@
 namespace c10d::symmetric_memory {
 
 constexpr size_t signal_pad_size = 2048;
-using HandleType = void*;
+using HandleType = ze_physical_mem_handle_t;
 
 } // namespace c10d::symmetric_memory
