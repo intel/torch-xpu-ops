@@ -257,53 +257,34 @@ void* XPUSymmetricMemoryAllocator::alloc(
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
 
-   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  // 获取 SYCL/Level Zero context 和 device
+  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
    sycl::context sycl_dev = current_queue.get_context();
    sycl::device sycl_ctx = current_queue.get_device();
    ze_context_handle_t ze_ctx =
-    sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-   ze_device_handle_t ze_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
+    sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
+   ze_device_handle_t ze_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
 
-  // 申请设备内存描述
-  ze_device_mem_alloc_desc_t dev_desc = {};
-  dev_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
-  dev_desc.pNext = nullptr;
-  dev_desc.ordinal = 0;
-  dev_desc.flags = ZE_DEVICE_MEM_ALLOC_FLAG_BIAS_CACHED;
+  // 获取 granularity
+  ze_physical_mem_desc_t phys_desc = {
+      ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr, 0, block_size};
 
-  // 推荐粒度对齐（Level Zero 并不显式返回粒度，通常是驱动固定，建议用 64KB）
-  constexpr size_t granularity = 64 * 1024;
-  block_size = at::round_up(block_size, granularity);
+  // 创建物理内存句柄
+  ze_physical_mem_handle_t handle = nullptr;
+  ze_result_t status = zePhysicalMemCreate(ze_ctx, ze_dev, &phys_desc, &handle);
+  TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zePhysicalMemCreate failed");
 
-  // 分配设备内存（此内存支持导出为 IPC）
+  // 分配虚拟地址空间（只映射，不物理分配）
   void* ptr = nullptr;
-  ze_result_t res = zeMemAllocDevice(
-      ze_context,
-      &dev_desc,
-      block_size,
-      /* alignment = */ granularity,
-      ze_device,
-      &ptr);
-  TORCH_CHECK(res == ZE_RESULT_SUCCESS, "zeMemAllocDevice failed");
+  map_block(&ptr, handle, block_size, device_idx);
 
-  // 零初始化内存（Level Zero 没有 native memset，手动写 0）
-  std::memset(ptr, 0, block_size);
+  // 初始化（memset）
+  memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
 
-  // 获取 IPC 句柄
-  ze_ipc_mem_handle_t ipc_handle;
-  res = zeMemGetIpcHandle(ze_context, ptr, &ipc_handle);
-  TORCH_CHECK(res == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
-
-  // 封装 AllocationRef 和 Block
-  auto alloc_ref =
-      c10::make_intrusive<AllocationRef>(ptr, ipc_handle, block_size, device_idx);
+  // 构造 Block 和 AllocationRef（假设这些结构未变）
+  auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
   auto block = c10::make_intrusive<Block>(
-      std::move(alloc_ref),
-      device_idx,
-      block_size,
-      size,
-      signal_pad_offset,
-      group_name);
+      std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
 
   {
     std::unique_lock lock(mutex_);
