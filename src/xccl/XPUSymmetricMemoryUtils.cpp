@@ -217,7 +217,8 @@ void map_block(
       virtual_ptr,           // virtual memory to map to
       size,
       handle,                // physical memory handle
-      0                      // flags
+      0,                      // flags
+      ZE_MEMORY_ACCESS_ATTRIBUTE_READWRITE //ze_memory_access_attribute_t
   );
   TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemMap failed");
 

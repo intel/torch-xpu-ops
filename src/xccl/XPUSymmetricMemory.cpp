@@ -6,6 +6,7 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
+#include <c10/xpu/XPUCachingAllocator.h>
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -456,6 +457,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   sycl::context ctx = current_queue.get_context();
   auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+  sycl::device dev = current_queue.get_device();
+  auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
 
   ze_result_t result = zeMemGetIpcHandle(l0_ctx, block->ptr, &ipc_handle);
   TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
@@ -492,8 +495,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 
     void* imported_ptr = nullptr;
     result = zeMemOpenIpcHandle(
-        context,
-        device,
+        l0_ctx,
+        l0_dev,
         imported_handles[r],
         ZE_IPC_MEMORY_FLAG_NONE,
         &imported_ptr);
