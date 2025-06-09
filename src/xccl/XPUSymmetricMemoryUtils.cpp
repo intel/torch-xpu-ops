@@ -8,6 +8,7 @@
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <level_zero/ze_api.h>
+#include <sycl/sycl.hpp>
 
 namespace c10d::symmetric_memory {
 
@@ -140,7 +141,7 @@ int IpcChannel::recv_fd() {
   return *reinterpret_cast<int*>(CMSG_DATA(cmsg));
 }
 
-std::vector<ze_ipc_mem_handle_t> IpcChannel::all_gather_fds(
+std::vector<int> IpcChannel::all_gather_fds(
     int rank,
     const std::vector<int>& pids,
     int fd) {

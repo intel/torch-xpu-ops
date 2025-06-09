@@ -259,8 +259,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   // 获取 SYCL/Level Zero context 和 device
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-   sycl::context sycl_dev = current_queue.get_context();
-   sycl::device sycl_ctx = current_queue.get_device();
+   sycl::context sycl_ctx = current_queue.get_context();
+   sycl::device sycl_dev = current_queue.get_device();
    ze_context_handle_t ze_ctx =
     sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
    ze_device_handle_t ze_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
