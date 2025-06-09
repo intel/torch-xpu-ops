@@ -60,10 +60,8 @@ jobs:
     steps:
       - name: Setup based env
         run: |
-          cd ..
           # Cleanup workspace
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/*
           # Install gh
           dnf install 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
