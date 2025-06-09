@@ -19,6 +19,7 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/TraceUtils.h>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 namespace c10d {
 
@@ -91,12 +92,16 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
+    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     bool isP2P_;
+    std::optional<uint64_t> trace_id_;
+    size_t numelIn_ = -1;
+    size_t numelOut_ = -1;
 
    private:
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
@@ -105,7 +110,22 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     friend class ProcessGroupXCCL;
   };
 
-  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
+  struct Options : public Backend::Options {
+    explicit Options();
+
+    static c10::intrusive_ptr<Options> create() {
+      return c10::make_intrusive<Options>();
+    }
+
+    std::vector<uint64_t> global_ranks_in_group;
+    std::string group_name;
+  };
+
+  ProcessGroupXCCL(
+    const c10::intrusive_ptr<Store>& store,
+    int rank,
+    int size,
+    c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
@@ -368,6 +388,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::string& logPrefix() const;
 
   c10::DeviceIndex guessDeviceId() const;
+  const std::vector<uint64_t>& groupRanks() const;
+
+  void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
 
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
@@ -375,6 +398,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
+  const c10::intrusive_ptr<Options> options_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::set<int> usedDeviceIdxs_;
@@ -387,8 +411,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
+  uint64_t op_id_{0};
   size_t local_id_;
   std::string logPrefix_;
+  std::shared_ptr<ProcessGroupStatus> pgStatus_ =
+      std::make_shared<ProcessGroupStatus>();
 
  private:
   std::mutex kvs_mutex;
