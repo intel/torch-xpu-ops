@@ -195,6 +195,11 @@ void map_block(
     c10d::symmetric_memory::HandleType handle,
     size_t size,
     int device_idx) {
+   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+   sycl::device sycl_ctx = current_queue.get_device();
+   ze_context_handle_t ze_context =
+    sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
+
   // 1. Reserve virtual address space
   void* virtual_ptr = nullptr;
   ze_result_t status = zeVirtualMemReserve(
