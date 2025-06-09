@@ -7,7 +7,7 @@
 
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
-#include <torch/csrc/distributed/c10d/cuda/utils.hpp>
+#include <level_zero/ze_api.h>
 
 namespace c10d::symmetric_memory {
 
@@ -140,7 +140,7 @@ int IpcChannel::recv_fd() {
   return *reinterpret_cast<int*>(CMSG_DATA(cmsg));
 }
 
-std::vector<int> IpcChannel::all_gather_fds(
+std::vector<ze_ipc_mem_handle_t> IpcChannel::all_gather_fds(
     int rank,
     const std::vector<int>& pids,
     int fd) {
@@ -195,14 +195,12 @@ void map_block(
     c10d::symmetric_memory::HandleType handle,
     size_t size,
     int device_idx) {
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
   auto driver_api = c10::cuda::DriverAPI::get();
   auto dev_ptr = reinterpret_cast<CUdeviceptr*>(ptr);
   // Allocate virtual address space
-  C10_CUDA_DRIVER_CHECK(
-      driver_api->cuMemAddressReserve_(dev_ptr, size, 0ULL, 0, 0ULL));
+  zeVirtualMemReserve(dev_ptr, size, 0ULL, 0, 0ULL);
   // Map the physical memory to the virtual address
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMemMap_(*dev_ptr, size, 0, handle, 0ULL));
+  zeVirtualMemMap(*dev_ptr, size, 0, handle, 0ULL);
 
   // Set access permissions
   CUmemAccessDesc desc;
@@ -210,32 +208,7 @@ void map_block(
   // NOLINTNEXTLINE(bugprone-signed-char-misuse)
   desc.location.id = static_cast<int>(device_idx);
   desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  C10_CUDA_DRIVER_CHECK(driver_api->cuMemSetAccess_(*dev_ptr, size, &desc, 1));
-#elif defined(USE_ROCM)
-  C10_HIP_CHECK(hipMemAddressReserve(ptr, size, 0ULL, 0, 0ULL));
-  C10_HIP_CHECK(hipMemMap(
-      *ptr,
-      size,
-      0,
-      reinterpret_cast<hipMemGenericAllocationHandle_t>(handle),
-      0ULL));
-  C10_HIP_CHECK(hipMemMap(
-      *ptr,
-      size,
-      0,
-      reinterpret_cast<hipMemGenericAllocationHandle_t>(handle),
-      0ULL));
-
-  hipMemAccessDesc desc;
-  desc.location.type = hipMemLocationTypeDevice;
-  // NOLINTNEXTLINE(bugprone-signed-char-misuse)
-  desc.location.id = static_cast<int>(device_idx);
-  desc.flags = hipMemAccessFlagsProtReadWrite;
-  C10_HIP_CHECK(hipMemSetAccess(*ptr, size, &desc, 1));
-#else
-  TORCH_CHECK(
-      false, "CUDASymmetricMemory requires PYTORCH_C10_DRIVER_API_SUPPORTED");
-#endif
+  zeVirtualMemSetAccessAttribute(*dev_ptr, size, &desc, 1);
 }
 
 } // namespace c10d::symmetric_memory
