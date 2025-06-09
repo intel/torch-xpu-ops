@@ -61,9 +61,9 @@ if [ "${PYTORCH_VERSION}" == "main" ];then
     TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
     TORCHAUDIO_COMMIT=$(cat .github/ci_commit_pins/audio.txt)
     rm -rf xpu-vision && git git clone https://github.com/pytorch/vision.git xpu-vision
-    cd xpu-vision && python setup.py install && cd ..
+    cd xpu-vision && git checkout ${TORCHVISION_COMMIT} && python setup.py install && cd ..
     rm -rf xpu-audio && git git clone https://github.com/pytorch/audio.git xpu-audio
-    cd xpu-audio && python setup.py install && cd ..
+    cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT} && python setup.py install && cd ..
 fi
 python -m pip install -r .ci/docker/requirements-ci.txt
 
