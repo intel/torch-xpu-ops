@@ -256,32 +256,102 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
-//  c10::DeviceGuard guard(device_idx);   // todo
-  //device_idx = static_cast<int>(guard.current_device().index()); // zl_debug todo
+
+   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+   sycl::context sycl_dev = current_queue.get_context();
+   sycl::device sycl_ctx = current_queue.get_device();
+   ze_context_handle_t ze_ctx =
+    sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+   ze_device_handle_t ze_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
+
+  // 申请设备内存描述
+  ze_device_mem_alloc_desc_t dev_desc = {};
+  dev_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+  dev_desc.pNext = nullptr;
+  dev_desc.ordinal = 0;
+  dev_desc.flags = ZE_DEVICE_MEM_ALLOC_FLAG_BIAS_CACHED;
+
+  // 推荐粒度对齐（Level Zero 并不显式返回粒度，通常是驱动固定，建议用 64KB）
+  constexpr size_t granularity = 64 * 1024;
+  block_size = at::round_up(block_size, granularity);
+
+  // 分配设备内存（此内存支持导出为 IPC）
+  void* ptr = nullptr;
+  ze_result_t res = zeMemAllocDevice(
+      ze_context,
+      &dev_desc,
+      block_size,
+      /* alignment = */ granularity,
+      ze_device,
+      &ptr);
+  TORCH_CHECK(res == ZE_RESULT_SUCCESS, "zeMemAllocDevice failed");
+
+  // 零初始化内存（Level Zero 没有 native memset，手动写 0）
+  std::memset(ptr, 0, block_size);
+
+  // 获取 IPC 句柄
+  ze_ipc_mem_handle_t ipc_handle;
+  res = zeMemGetIpcHandle(ze_context, ptr, &ipc_handle);
+  TORCH_CHECK(res == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
+
+  // 封装 AllocationRef 和 Block
+  auto alloc_ref =
+      c10::make_intrusive<AllocationRef>(ptr, ipc_handle, block_size, device_idx);
+  auto block = c10::make_intrusive<Block>(
+      std::move(alloc_ref),
+      device_idx,
+      block_size,
+      size,
+      signal_pad_offset,
+      group_name);
+
+  {
+    std::unique_lock lock(mutex_);
+    ptr_to_block_.emplace(ptr, std::move(block));
+  }
+
+  return ptr;
+}
+
+void* XPUSymmetricMemoryAllocator::alloc(
+    size_t size,
+    int device_idx,
+    const std::optional<std::string>& group_name) {
+
+  size_t signal_pad_offset = at::round_up(size, 16UL);
+  size_t block_size = signal_pad_offset + signal_pad_size;
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  sycl::context sycl_context = queue.get_context();
-  sycl::device sycl_device = queue.get_device();
-//  zePhysicalMemCreate(sycl_context, sycl_device);
+  sycl::context sycl_dev = current_queue.get_context();
+  sycl::device sycl_ctx = current_queue.get_device();
+  ze_context_handle_t ze_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+  ze_device_handle_t ze_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
 
+  // 获取 granularity
+  ze_physical_mem_desc_t phys_desc = {
+      ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr,
+      ZE_PHYSICAL_MEM_DESC_FLAG_BIAS_UNCACHED, block_size, 0};
+
+  // 创建物理内存句柄
+  ze_physical_mem_handle_t handle = nullptr;
+  ZE_CHECK(zePhysicalMemCreate(ze_ctx, ze_dev, &phys_desc, &handle));
+
+  // 分配虚拟地址空间（只映射，不物理分配）
   void* ptr = nullptr;
-//  map_block(&ptr, handle, block_size, device_idx);
-//
-//  TORCH_CHECK(cudaMemset(ptr, 0, block_size));
-//
-//  auto alloc_ref =
-//      c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
-//  auto block = c10::make_intrusive<Block>(
-//      std::move(alloc_ref),
-//      device_idx,
-//      block_size,
-//      size,
-//      signal_pad_offset,
-//      group_name);
-//  {
-//    std::unique_lock lock(mutex_);
-//    ptr_to_block_.emplace(ptr, std::move(block));
-//  }
+  map_block(&ptr, handle, block_size, device_idx);
+
+  // 初始化（memset）
+  memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
+
+  // 构造 Block 和 AllocationRef（假设这些结构未变）
+  auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
+  auto block = c10::make_intrusive<Block>(
+      std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
+
+  {
+    std::unique_lock lock(mutex_);
+    ptr_to_block_.emplace(ptr, std::move(block));
+  }
   return ptr;
 }
 
@@ -424,6 +494,48 @@ static void init_multicast_for_block(
 #endif
 }
 
+void XPUSymmetricMemoryAllocator::exchange_peer_ipc_mem(sycl::queue& queue, void* ptr)
+    {
+        // Step 1: Get base address of the pointer
+        sycl::context ctx = queue.get_context();
+        auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+
+        void *base_addr;
+        size_t base_size;
+        zeCheck(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
+
+        // Step 2: Get IPC mem handle from base address
+        alignas(64) exchange_contents send_buf;
+        alignas(64) exchange_contents recv_buf[world];
+
+        // fill in the exchange info
+        zeCheck(zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle));
+        send_buf.offset = (char*)ptr - (char*)base_addr;
+        send_buf.pid = getpid();
+
+        // Step 3: Exchange the handles and offsets
+        memset(recv_buf, 0, sizeof(recv_buf));
+        // Overkill if we don't really needs all peer's handles
+        un_allgather(&send_buf, recv_buf, rank, world);
+
+        for (uint32_t i = 0; i < world; i++)
+        {
+            // Step 4: Prepare pid file descriptor of next process
+            auto* peer = recv_buf + i;
+            // Step 6: Open IPC handle of remote peer
+            auto l0_device
+                = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
+            void* peer_base;
+
+            zeCheck(zeMemOpenIpcHandle(
+                    l0_ctx, l0_device, peer->ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base));
+            buffers[i] = (char*)peer_base + peer->offset;
+            sync_buffer[i] = (char*)peer_base + peer->offset + data_size_per_buffer * sizeof(data_type);
+            offsets[i] = peer->offset;
+            ipc_handle[i] = send_buf.ipc_handle;
+        }
+    }
+
 c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* ptr,
     const std::optional<std::string>& group_name) {
@@ -465,6 +577,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   int world_size = group_info.world_size;
   int block_fd;
 
+// todo: get fd and handle
 #if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
   auto driver_api = c10::cuda::DriverAPI::get();
   // using the CUDA Driver API to export a GPU memory block as a
@@ -474,13 +587,18 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       block->alloc_ref->handle,
       CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR,
       0));
-#elif defined (USE_ROCM)
-  C10_HIP_CHECK(hipMemExportToShareableHandle(
-      &block_fd, block->alloc_ref->handle, hipMemHandleTypePosixFileDescriptor, 0));
-#else
-  TORCH_CHECK(
-      false, "XPUSymmetricMemory requires PYTORCH_C10_DRIVER_API_SUPPORTED");
+
+   ZE_CALL(zeMemOpenIpcHandle, (remote_context, device, block->alloc_ref->handle,, {}, &ptr))
+
 #endif
+    // Step 6: Open IPC handle of remote peer
+    sycl::context ctx = queue.get_context();
+    auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+    auto l0_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
+
+    ze_result_t result = zeMemGetIpcHandle(l0_ctx, block->ptr, &ipc_handle);
+
+   TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
 
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
@@ -496,7 +614,9 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   for (int r = 0; r < world_size; ++r) {
     pids[r] = reqs[r].pid;
   }
-  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
+  std::vector<ze_ipc_mem_handle_t> imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
+
+   imported_handles = ipc_channel.all_gather_ipc_handles(rank, group_info.pids, ipc_handle);
 
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
@@ -509,28 +629,20 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
     }
-    // This api imports a GPU memory allocation that was previously exported as a file
-    // descriptor and it returns a memory handle.
-#if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
-    C10_CUDA_DRIVER_CHECK(driver_api->cuMemImportFromShareableHandle_(
-        &handles[r],
-        (void*)(uintptr_t)imported_fds[r],
-        CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
-#elif defined (USE_ROCM)
-    C10_HIP_CHECK(hipMemImportFromShareableHandle(
-        &handles[r],
-        (void*)(uintptr_t)&(imported_fds[r]),
-        hipMemHandleTypePosixFileDescriptor));
-#else
-  TORCH_CHECK(
-      false, "XPUSymmetricMemory requires PYTORCH_C10_DRIVER_API_SUPPORTED");
-#endif
+
+    void* imported_ptr = nullptr;
+    result = zeMemOpenIpcHandle(
+        context,
+        device,
+        imported_handles[r],
+        ZE_IPC_MEMORY_FLAG_NONE,
+        &imported_ptr);
+    TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemOpenIpcHandle failed");
+
     map_block(&buffers[r], handles[r], block->block_size, block->device_idx);
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
-    close(imported_fds[r]);
   }
   storeExchange.barrier(store, rank, world_size);
-  close(block_fd);
 
   HandleType mc_handle{};
   void* mc_addr = nullptr;
