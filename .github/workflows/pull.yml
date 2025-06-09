@@ -124,32 +124,24 @@ jobs:
       reference_issue: 1645
     timeout-minutes: 300
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Conda ENV
-        run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=3.10 cmake ninja -y
-          source activate e2e_ci
-          pip install pandas scipy psutil requests
       - name: Download Pytorch wheel
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number }}
-      - name: Install Pytorch XPU
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+      - name: Prepare Test Env
         run: |
-          source activate e2e_ci
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          cd ../ && rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${TORCH_COMMIT_ID}
-          pip install -r requirements.txt
-          # apply PRs for stock pytorch
-          # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-          git show -s && git status && git diff
+          set -xe -o pipefail
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_VERSION="main"
+          cd ../
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
+                --CONDA_ENV="e2e_ci" \
+                --PYTHON_VERSION="3.10" \
+                --PYTORCH_REPO="${PYTORCH_REPO}" \
+                --PYTORCH_VERSION="${PYTORCH_VERSION}"
       - name: Triton Installation
         run: |
           source activate e2e_ci
@@ -180,11 +172,7 @@ jobs:
         run: |
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          cd ..
-          source activate e2e_ci
-          python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
+
       - name: Huggingface BF16 Training Accuracy Test
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:

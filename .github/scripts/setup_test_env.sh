@@ -50,7 +50,7 @@ else
 fi
 git remote -v && git branch && git show -s
 cd ../..
-if [ "${PYTORCH_VERSION}" == "cicd" ];then
+if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
     python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
 else
     python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py

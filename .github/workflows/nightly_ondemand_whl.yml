@@ -100,8 +100,8 @@ jobs:
           PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
           PYTORCH_VERSION="nightly"
           cd ../
-          chmod +x ./torch-xpu-ops/.github/scripts/setup_test_env.sh
-          ./torch-xpu-ops/.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="e2e_ci" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \

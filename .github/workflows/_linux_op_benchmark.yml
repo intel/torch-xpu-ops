@@ -61,8 +61,8 @@ jobs:
           else
             PYTORCH_VERSION="main"
           fi
-          chmod +x ./.github/scripts/setup_test_env.sh
-          ./.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+          ./.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="xpu_op_${ZE_AFFINITY_MASK}" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \

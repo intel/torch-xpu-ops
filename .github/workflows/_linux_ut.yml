@@ -74,8 +74,8 @@ jobs:
             PYTORCH_VERSION="main"
           fi
           cd ../
-          chmod +x ./torch-xpu-ops/.github/scripts/setup_test_env.sh
-          ./torch-xpu-ops/.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="xpu_op_${ZE_AFFINITY_MASK}" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
@@ -284,8 +284,8 @@ jobs:
             PYTORCH_VERSION="main"
           fi
           cd ../
-          chmod +x ./torch-xpu-ops/.github/scripts/setup_test_env.sh
-          ./torch-xpu-ops/.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="xpu_op_${ZE_AFFINITY_MASK}" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
@@ -384,8 +384,8 @@ jobs:
             PYTORCH_VERSION="main"
           fi
           cd ../
-          chmod +x ./torch-xpu-ops/.github/scripts/setup_test_env.sh
-          ./torch-xpu-ops/.github/scripts/setup_test_env.sh --WORKSPACE="${{ github.workspace }}" \
+          ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
+                --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="xpu_op_${ZE_AFFINITY_MASK}" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
