@@ -29,6 +29,7 @@ jobs:
         id: check-label
         run: |
           set -xe
+          printenv
           echo "${{ github.event.pull_request.body }}"
           echo "${{ github.event.pull_request.comments }}"
           echo "${{ github.event.issue.pull_request }}"
