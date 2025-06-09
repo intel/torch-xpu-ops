@@ -76,6 +76,6 @@ python -c "import triton; print(triton.__version__)"
 python pytorch/torch/utils/collect_env.py
 
 # Clean cache
-rm -rf /tmp/torchinductor_*
-rm -rf ~/.triton/
-rm -rf /tmp/tmp*
+rm -rf /tmp/* || sudo rm -rf /tmp/*
+rm -rf ~/.triton || sudo rm -rf ~/.triton
+rm -rf ~/.cache || sudo rm -rf ~/.cache
