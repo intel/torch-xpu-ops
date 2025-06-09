@@ -195,20 +195,38 @@ void map_block(
     c10d::symmetric_memory::HandleType handle,
     size_t size,
     int device_idx) {
-  auto driver_api = c10::cuda::DriverAPI::get();
-  auto dev_ptr = reinterpret_cast<CUdeviceptr*>(ptr);
-  // Allocate virtual address space
-  zeVirtualMemReserve(dev_ptr, size, 0ULL, 0, 0ULL);
-  // Map the physical memory to the virtual address
-  zeVirtualMemMap(*dev_ptr, size, 0, handle, 0ULL);
+  // 1. Reserve virtual address space
+  void* virtual_ptr = nullptr;
+  ze_result_t status = zeVirtualMemReserve(
+      ze_context,            // context
+      nullptr,               // let L0 pick virtual address
+      size,                  // size
+      &virtual_ptr           // out: reserved address
+  );
+  TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemReserve failed");
 
-  // Set access permissions
-  CUmemAccessDesc desc;
-  desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  // NOLINTNEXTLINE(bugprone-signed-char-misuse)
-  desc.location.id = static_cast<int>(device_idx);
-  desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  zeVirtualMemSetAccessAttribute(*dev_ptr, size, &desc, 1);
+  // 2. Map physical memory to virtual address
+  status = zeVirtualMemMap(
+      ze_context,
+      virtual_ptr,           // virtual memory to map to
+      size,
+      handle,                // physical memory handle
+      0                      // flags
+  );
+  TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemMap failed");
+
+  // 3. Set access attributes
+  ze_memory_access_attribute_t access = ZE_MEMORY_ACCESS_ATTRIBUTE_READWRITE;
+  status = zeVirtualMemSetAccessAttribute(
+      ze_context,
+      virtual_ptr,
+      size,
+      access
+  );
+  TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemSetAccessAttribute failed");
+
+  // 4. Return pointer
+  *ptr = virtual_ptr;
 }
 
 } // namespace c10d::symmetric_memory
