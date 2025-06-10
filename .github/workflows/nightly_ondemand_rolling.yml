@@ -92,10 +92,10 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       driver: rolling
-      runner: pytorch-12
+      runner: pytorch-13
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pytorch-12
+    runs-on: pytorch-13
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
