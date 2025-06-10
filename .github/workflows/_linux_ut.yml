@@ -111,7 +111,8 @@ jobs:
             cd ../pytorch
             export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
             pip install -r requirements.txt
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            pip install /home/sdp/mengfeil/2025.2/*.whl
+            pip install ${{ github.workspace }}/torch*.whl
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu

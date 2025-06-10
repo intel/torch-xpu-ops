@@ -52,26 +52,26 @@ python -m pip install mkl-static mkl-include
 export USE_STATIC_MKL=1
 export USE_XCCL=1
 export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
-    intel-cmplr-lib-rt==2025.1.1 | \
-    intel-cmplr-lib-ur==2025.1.1 | \
-    intel-cmplr-lic-rt==2025.1.1 | \
-    intel-sycl-rt==2025.1.1 | \
-    oneccl-devel==2021.15.2; platform_system == 'Linux' and platform_machine == 'x86_64' | \
-    oneccl==2021.15.2; platform_system == 'Linux' and platform_machine == 'x86_64' | \
-    impi-rt==2021.15.0; platform_system == 'Linux' and platform_machine == 'x86_64' | \
-    onemkl-sycl-blas==2025.1.0 | \
-    onemkl-sycl-dft==2025.1.0 | \
-    onemkl-sycl-lapack==2025.1.0 | \
-    onemkl-sycl-rng==2025.1.0 | \
-    onemkl-sycl-sparse==2025.1.0 | \
-    dpcpp-cpp-rt==2025.1.1 | \
-    intel-opencl-rt==2025.1.1 | \
-    mkl==2025.1.0 | \
-    intel-openmp==2025.1.1 | \
-    tbb==2022.1.0 | \
-    tcmlib==1.3.0 | \
-    umf==0.10.0 | \
-    intel-pti==0.12.3
+    intel-cmplr-lib-rt | \
+    intel-cmplr-lib-ur | \
+    intel-cmplr-lic-rt | \
+    intel-sycl-rt | \
+    oneccl-devel | \
+    oneccl | \
+    impi-rt | \
+    onemkl-sycl-blas | \
+    onemkl-sycl-dft | \
+    onemkl-sycl-lapack | \
+    onemkl-sycl-rng | \
+    onemkl-sycl-sparse | \
+    dpcpp-cpp-rt | \
+    intel-opencl-rt | \
+    mkl | \
+    intel-openmp | \
+    tbb | \
+    tcmlib | \
+    umf | \
+    intel-pti
 "
 
 # Build
@@ -83,7 +83,8 @@ WERROR=1 python setup.py bdist_wheel
 python -m pip install patchelf
 rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
-python -m pip install --force-reinstall tmp/torch*.whl
+python -m pip install /home/sdp/mengfeil/2025.2/*.whl
+python -m pip install tmp/torch*.whl
 
 # Verify
 cd ${WORKSPACE}

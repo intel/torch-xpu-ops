@@ -78,8 +78,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
-      runner: pvc_rolling
-      update_lkg: 'true'
+      runner: pytorch-12
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -93,22 +92,10 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       driver: rolling
-      runner: pvc_rolling
-  
-  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    name: linux-nightly-ondemand-rolling / Op_microbench
-    needs: Linux-Nightly-Ondemand-Build-Rolling
-    uses: ./.github/workflows/_linux_op_benchmark.yml
-    with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
-      driver: rolling
-      runner: pvc_rolling
+      runner: pytorch-12
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
-    runs-on: pvc_rolling
+    runs-on: pytorch-12
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
@@ -207,7 +194,8 @@ jobs:
           source activate e2e_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          pip install /home/sdp/mengfeil/2025.2/*.whl
+          pip install ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
