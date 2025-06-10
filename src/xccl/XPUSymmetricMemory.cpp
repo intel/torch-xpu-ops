@@ -265,6 +265,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
     sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
    ze_device_handle_t ze_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
 
+  std::cout << "zl_debug get context and device done " << std::endl;
   // 获取 granularity
   ze_physical_mem_desc_t phys_desc = {
       ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr, 0, block_size};
@@ -274,22 +275,31 @@ void* XPUSymmetricMemoryAllocator::alloc(
   ze_result_t status = zePhysicalMemCreate(ze_ctx, ze_dev, &phys_desc, &handle);
   TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zePhysicalMemCreate failed");
 
+  std::cout << "zl_debug physical device memory allocation done " << std::endl;
+
   // 分配虚拟地址空间（只映射，不物理分配）
   void* ptr = nullptr;
   map_block(&ptr, handle, block_size, device_idx);
 
+  std::cout << "zl_debug map virtual to physical done " << std::endl;
+
   // 初始化（memset）
   memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
-
+  
+  std::cout << "zl_debug memset to 0 for initialization " << std::endl;
   // 构造 Block 和 AllocationRef（假设这些结构未变）
   auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
+  std::cout << "zl_debug make AllocationRef " << std::endl;
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
+  std::cout << "zl_debug make block done " << std::endl;
 
   {
     std::unique_lock lock(mutex_);
     ptr_to_block_.emplace(ptr, std::move(block));
   }
+
+  std::cout << "zl_debug before return ptr" << std::endl;
 
   return ptr;
 }
@@ -506,7 +516,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* peer_base;
     zeMemOpenIpcHandle(l0_ctx, l0_dev, peer_ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base);
     void* physical_buffer_ptr = (char*)peer_base + reqs[r].base_offset;
-    map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
+    //map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
+    buffers[r] = physical_buffer_ptr;
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);

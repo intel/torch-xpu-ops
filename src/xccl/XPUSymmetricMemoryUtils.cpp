@@ -201,7 +201,7 @@ void map_block(
    sycl::context sycl_ctx = current_queue.get_context();
    ze_context_handle_t ze_context =
     sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
-
+  std::cout << "zl_debug in map_block to get virtual address " << std::endl;
   // 1. Reserve virtual address space
   void* virtual_ptr = nullptr;
   ze_result_t status = zeVirtualMemReserve(
@@ -211,6 +211,7 @@ void map_block(
       &virtual_ptr           // out: reserved address
   );
   TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemReserve failed");
+  std::cout << "zl_debug get zeVirtualMemReserve done " << std::endl;
 
   // 2. Map physical memory to virtual address
   status = zeVirtualMemMap(
@@ -222,6 +223,7 @@ void map_block(
       ZE_MEMORY_ACCESS_ATTRIBUTE_READWRITE //ze_memory_access_attribute_t
   );
   TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemMap failed");
+  std::cout << "zl_debug get zeVirtualMemMap done " << std::endl;
 
   // 3. Set access attributes
   ze_memory_access_attribute_t access = ZE_MEMORY_ACCESS_ATTRIBUTE_READWRITE;
@@ -232,6 +234,7 @@ void map_block(
       access
   );
   TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeVirtualMemSetAccessAttribute failed");
+  std::cout << "zl_debug get zeVirtualMemSetAccessAttribute done " << std::endl;
 
   // 4. Return pointer
   *ptr = virtual_ptr;
